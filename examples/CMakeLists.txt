@@ -27,3 +27,4 @@ formula_add_example(dimensions_and_units dimensions_and_units.cpp "all checks pa
 formula_add_example(quantities quantities.cpp "all checks passed: yes")
 formula_add_example(expressions expressions.cpp "all checks passed: yes")
 formula_add_example(citations citations.cpp "all checks passed: yes")
+formula_add_example(tracing tracing.cpp "all checks passed: yes")
