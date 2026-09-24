@@ -316,3 +316,104 @@ TEST_CASE("integer types that cannot wrap still convert implicitly", "[rational]
     CHECK(Rational { IntMin }.numerator() == IntMin);
     CHECK(Rational { IntMax }.numerator() == IntMax);
 }
+
+TEST_CASE("rational: an exact root comes back exactly", "[rational]")
+{
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 4 }, 2).value() == formula::Rational { 2 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 9, 4 }, 2).value() == formula::Rational { 3, 2 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 27, 8 }, 3).value() == formula::Rational { 3, 2 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { -27 }, 3).value() == formula::Rational { -3 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 1 }, 5).value() == formula::Rational { 1 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational {}, 2).value() == formula::Rational {});
+}
+
+TEST_CASE("rational: an inexact root is refused rather than approximated", "[rational]")
+{
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 2 }, 2).error() == formula::ArithmeticError::Inexact);
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 10 }, 3).error()
+                   == formula::ArithmeticError::Inexact);
+}
+
+TEST_CASE("rational: a root outside the domain is refused", "[rational]")
+{
+    // An even root of a negative number is not a real number.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { -4 }, 2).error()
+                   == formula::ArithmeticError::DomainError);
+    // Degree zero describes no root at all.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 4 }, 0).error()
+                   == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("rational: a root near the integer limit is found, not overflowed past", "[rational]")
+{
+    // 3037000000^2 = 9223369000000000000, an exact square a whisker under
+    // IntMax (within 0.00004% of it). The search starts with candidates whose
+    // square vastly exceeds what Int can hold, so it must detect that overflow
+    // and narrow down toward the true root -- never let an intermediate
+    // product silently exceed the target and send the search the wrong way,
+    // which would report this exact root as Inexact instead of finding it.
+    // Measured: dropping the early-abort guard in exact_integer_root makes
+    // this exact case come back Inexact, which is precisely the bug this
+    // test exists to catch.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 9223369000000000000LL }, 2).value()
+                   == formula::Rational { 3037000000LL });
+
+    // Genuinely inexact and near the limit: IntMax itself is not a perfect
+    // square, so this must still come back Inexact rather than a wrong root.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { IntMax }, 2).error()
+                   == formula::ArithmeticError::Inexact);
+}
+
+TEST_CASE("rational: the root of the extreme negative is refused rather than overflowed to", "[rational]")
+{
+    // IntMin has no positive counterpart representable in Int: its magnitude is
+    // IntMax + 1. Negating the numerator to reach a positive intermediate is
+    // signed overflow, undefined behaviour, even though the true cube root
+    // (-2^21) is representable. This must come back Overflow, not Inexact and
+    // not a value.
+    constexpr formula::Rational::Int extremeNegative = std::numeric_limits<formula::Rational::Int>::min();
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { extremeNegative }, 3).error()
+                   == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("rational: a pathologically large degree is refused quickly, not searched for", "[rational]")
+{
+    // Not STATIC_REQUIRE: at this degree, the unguarded search takes long
+    // enough that a constant expression would hit the compiler's step limit
+    // and fail to compile rather than answer Inexact -- exactly why this is a
+    // runtime check instead. Degree is an ordinary int a caller controls, so
+    // 1e9 is reachable, not contrived.
+    REQUIRE(formula::checked_exact_nth_root(formula::Rational { 2 }, 1'000'000'000).error()
+            == formula::ArithmeticError::Inexact);
+}
+
+TEST_CASE("rational: Pi is a stated approximation, close enough to be useful", "[rational]")
+{
+    // Deliberately asserted as a bound rather than an equality: the point is
+    // that the documented error bound holds, not that the fraction is memorised
+    // in two places.
+    constexpr formula::Rational squared = formula::Pi * formula::Pi;
+    CHECK(squared.to_double() > 9.8696044010893);
+    CHECK(squared.to_double() < 9.8696044010897);
+    STATIC_REQUIRE(formula::Pi.denominator() > 1);
+}
+
+TEST_CASE("rational: Pi's documented error bound is pinned, exactly", "[rational]")
+{
+    // A double cannot pin an 8e-17 bound -- its ulp near 3.14 is about
+    // 4.44e-16, coarser than the bound itself -- so this compares Pi against
+    // two decimal rationals computed by hand from pi's known digits: pi minus
+    // 8e-17, rounded UP to 18 decimals so it stays no greater than the true
+    // threshold, and pi plus 8e-17, rounded DOWN so it stays no less than the
+    // true one. Pi landing strictly between them proves it is within 8e-17 of
+    // pi. Comparison rather than subtraction deliberately: Pi's denominator
+    // and these decimals' denominators share no common factor, so
+    // checked_sub's least-common-multiple scaling would overflow computing
+    // their difference directly, even though the true difference is tiny --
+    // Rational::operator<=> has no such limit, by its own documented design.
+    constexpr Rational belowPiBy8e17 = *Rational::from_decimal(3'141'592'653'589'793'159LL, -18);
+    constexpr Rational abovePiBy8e17 = *Rational::from_decimal(3'141'592'653'589'793'318LL, -18);
+
+    STATIC_REQUIRE(formula::Pi > belowPiBy8e17);
+    STATIC_REQUIRE(formula::Pi < abovePiBy8e17);
+}

@@ -23,8 +23,10 @@ add_executable(formula-cpp-tests
     runtime_tests.cpp
     compile_time_tests.cpp
     cross_tu_a.cpp
+    expression_cross_tu_b.cpp
     checked_int_tests.cpp
     error_tests.cpp
+    expression_tests.cpp
     rational_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp
@@ -35,6 +37,10 @@ add_executable(formula-cpp-tests
     quantity_tests.cpp
     quantity_cross_tu_b.cpp
     measured_tests.cpp
+    outcome_tests.cpp
+    environment_tests.cpp
+    evaluate_tests.cpp
+    function_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -58,7 +64,6 @@ endfunction()
 # The expected text is the library's OWN static_assert message. All three
 # compilers echo it verbatim (MSVC wraps it as `error C2338: static assertion
 # failed: '<message>'`), so one literal substring matches on every leg.
-formula_add_negative_test(duplicate_producer "formula: two or more functors return the same type")
 formula_add_negative_test(rational_from_floating_point
     "formula: a floating-point value is not an exact rational")
 formula_add_negative_test(rational_from_wide_unsigned
@@ -110,6 +115,27 @@ formula_add_negative_test(describe_missing_description
     "formula: this type does not declare any quantity metadata")
 formula_add_negative_test(describe_dimension_mismatch
     "formula: this type's declared dimension does not match its unit's dimension")
+
+formula_add_negative_test(expression_add_dimension_mismatch
+    "the two sides of this addition or subtraction measure different")
+
+formula_add_negative_test(expression_inconsistent_describe
+    "describes a dimension its own unit does not measure")
+
+formula_add_negative_test(expression_subtract_dimension_mismatch
+    "the two sides of this addition or subtraction measure different")
+
+formula_add_negative_test(environment_duplicate_quantity
+    "supplies the same quantity more than once")
+
+formula_add_negative_test(environment_missing_quantity
+    "provides no value for this quantity")
+
+formula_add_negative_test(evaluate_result_dimension_mismatch
+    "does not measure the dimension this expression computes")
+
+formula_add_negative_test(function_zero_root_degree
+    "a root of degree zero describes no operation")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

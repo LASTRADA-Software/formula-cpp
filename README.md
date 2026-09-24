@@ -8,17 +8,19 @@ trail, a rendering, and a documentation page.
 
 ## Status
 
-Early. The foundation and packaging are in place; the expression layer described
-in `docs/superpowers/specs/2026-09-23-formula-cpp-design.md` is being built
-phase by phase.
+Early. The foundation, the numeric and dimensional layers, and the expression
+layer described in `docs/superpowers/specs/2026-09-23-formula-cpp-design.md`
+are in place and are being extended phase by phase; constraints and rendering
+are still to come.
 
-The repository's original example, `examples/simple.cpp`, demonstrates the
-*prototype* evaluator -- a type-keyed lazy dependency graph built from lambda
-functors. It is not the declarative expression layer the library exists for:
-formulas written with ordinary operators, carrying their own provenance,
-dimensionally checked at compile time. That layer is not implemented yet, and
-the prototype API shown in the example is scheduled to be replaced by it. See
-the design specification above for the intended shape.
+`examples/simple.cpp` and `examples/expressions.cpp` demonstrate the
+declarative expression layer the library exists for: formulas written with
+ordinary operators, carrying their own provenance, dimensionally checked at
+compile time, and evaluated into an outcome rather than a bare number. The
+prototype evaluator that originally stood in for it -- a type-keyed lazy
+dependency graph built from lambda functors -- has been retired. See
+[`docs/expressions.md`](docs/expressions.md) and the design specification
+above for the full shape.
 
 Exact rational arithmetic (`formula::Rational`) and norm-style rounding (`formula::round` and the
 seven `formula::RoundingMode` values) are available now and verified by the test suite. See
@@ -33,6 +35,12 @@ A quantity type (`formula::Quantity`, carrying its own symbol, description and u
 metadata access point for it and for foreign types alike (`formula::Describe`), and a measurement
 that may honestly be absent (`formula::Measured`) are also available now. See
 [`docs/quantities.md`](docs/quantities.md) and the worked example in `examples/quantities.cpp`.
+
+Formulas written with ordinary operators (`formula::var`, `+`, `-`, `*`, `/`, `formula::pow`,
+`formula::sqrt`, `formula::cbrt`, `formula::root`, `formula::pi`), a type-keyed environment of
+inputs (`formula::Environment`), and evaluation into a traceable `formula::Outcome` -- a value, an
+absence, or a manual override, never a silent zero -- are also available now. See
+[`docs/expressions.md`](docs/expressions.md) and the worked example in `examples/expressions.cpp`.
 
 ## Requirements
 

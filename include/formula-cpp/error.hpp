@@ -32,6 +32,10 @@ enum class ArithmeticError : std::uint8_t
     /// An argument was outside the domain of the operation -- a non-positive
     /// step, say, or fewer than one significant digit.
     DomainError,
+    /// The exact answer exists mathematically but is not a rational number, so
+    /// this layer refuses rather than returning a nearby one. The square root of
+    /// two is the canonical case.
+    Inexact,
 };
 
 /// A lowercase noun phrase with no trailing punctuation, so callers can embed it
@@ -49,6 +53,8 @@ enum class ArithmeticError : std::uint8_t
             return "value is not finite";
         case ArithmeticError::DomainError:
             return "argument outside the domain of the operation";
+        case ArithmeticError::Inexact:
+            return "no exact rational result exists";
     }
     return "unknown arithmetic error";
 }

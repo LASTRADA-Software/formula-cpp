@@ -14,3 +14,5 @@ compile_commands.json
 *.user
 .claude/settings.local.json
 .claude/worktrees/
+/.superpowers/
+*.pdb

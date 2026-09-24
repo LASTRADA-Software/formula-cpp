@@ -33,19 +33,23 @@ target_sources(formula-cpp INTERFACE
     FILE_SET HEADERS
     BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
     FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/formula.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/evaluation.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/checked_int.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/fixed_string.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/dimension.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/environment.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/error.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/evaluate.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/expression.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/formula.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/function.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/measured.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/outcome.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/quantity.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rational.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/dimension.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/unit.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/quantity.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/measured.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/checked_int.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/fixed_string.hpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp")
 
 # These three are workarounds for cl's non-conformance and are REQUIRED to
 # compile this library's headers at all, so they are INTERFACE, not PRIVATE:

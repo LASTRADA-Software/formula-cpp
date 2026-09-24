@@ -470,4 +470,116 @@ constexpr Rational& operator/=(Rational& lhs, Rational rhs)
     return detail::or_throw(checked_pow(base, exponent));
 }
 
+/// A rational that is **not** pi.
+///
+/// 245 850 922 / 78 256 779 is a convergent of pi's continued fraction; it
+/// differs from pi by less than 8e-17, which is finer than a `double` can
+/// distinguish, and both halves fit comfortably in 64 bits. It is the one
+/// deliberate approximation in the exact layer, and it is written here rather
+/// than computed so that every caller gets the same number and the trace can
+/// state which number it was.
+inline constexpr Rational Pi { 245'850'922, 78'256'779 };
+
+namespace detail
+{
+    /// The integer @p degree-th root of @p value, or nothing when it is not
+    /// exact. Binary search rather than Newton: the search space is bounded by
+    /// the value itself, every step stays inside `Int`, and there is no
+    /// convergence question to get wrong.
+    [[nodiscard]] constexpr std::optional<Rational::Int> exact_integer_root(Rational::Int value, int degree) noexcept
+    {
+        if (value < 0)
+            return std::nullopt;
+        if (value < 2)
+            return value;
+
+        Rational::Int low = 1;
+        Rational::Int high = value;
+        while (low <= high)
+        {
+            Rational::Int const middle = low + (high - low) / 2;
+
+            // middle^degree, abandoning the moment it exceeds `value` so the
+            // multiplication can never overflow.
+            Rational::Int power = 1;
+            bool tooBig = false;
+            for (int step = 0; step < degree; ++step)
+            {
+                std::optional<Rational::Int> const next = mul_checked_or_none(power, middle);
+                if (!next || *next > value)
+                {
+                    tooBig = true;
+                    break;
+                }
+                power = *next;
+            }
+
+            if (tooBig)
+                high = middle - 1;
+            else if (power == value)
+                return middle;
+            else
+                low = middle + 1;
+        }
+        return std::nullopt;
+    }
+} // namespace detail
+
+/// The exact @p degree-th root of @p value.
+///
+/// Answers only when the answer is a rational number: the root of 4 is 2 and the
+/// root of 9/4 is 3/2, but the root of 2 is `ArithmeticError::Inexact` rather
+/// than a nearby fraction. A layer whose promise is "never a wrong number" has
+/// no business rounding silently; a formula that needs an irrational root is
+/// evaluated in a representation that has room for one.
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_exact_nth_root(Rational value, int degree) noexcept
+{
+    if (degree < 1)
+        return std::unexpected { ArithmeticError::DomainError };
+    if (value.sign() < 0 && degree % 2 == 0)
+        return std::unexpected { ArithmeticError::DomainError };
+
+    // IntMin has no positive counterpart Int can hold -- its magnitude is
+    // IntMax + 1 -- so negating it to reach a positive intermediate is signed
+    // overflow, undefined behaviour. checked_negate refuses the same numerator
+    // for the same reason; this follows that precedent rather than inventing a
+    // second rule for it. Overflow is the honest answer here, not Inexact:
+    // Inexact means no exact root exists, but IntMin's cube root, -2^21, both
+    // exists and is representable -- it is only the magnitude of the
+    // intermediate numerator that is not. Reworking the search onto an
+    // unsigned magnitude to rescue this one input would add new numeric code
+    // at the end of a phase to save a single edge case, which risks a worse
+    // bug than the one it fixes.
+    if (value.numerator() == detail::IntMin)
+        return std::unexpected { ArithmeticError::Overflow };
+
+    bool const negative = value.sign() < 0;
+    Rational::Int const numerator = negative ? -value.numerator() : value.numerator();
+
+    // At degree 63 or higher, exact_integer_root's binary search is
+    // pathological rather than merely slow: once it probes middle == 1, power
+    // stays 1 for the rest of that probe's inner loop, so the loop runs the
+    // full `degree` multiplications of 1 by 1 before concluding "too small" --
+    // and degree is an ordinary int a caller controls, so nothing bounds how
+    // long that takes. The search is also unnecessary at this degree: 2^63
+    // alone exceeds IntMax, so no numerator or denominator magnitude of 2 or
+    // more could have an exact root here -- reaching it would need at least
+    // 2^63, which Int cannot hold. That leaves only magnitude 0 and 1, both
+    // fixed points of every power, so the answer is read off directly instead
+    // of searched for.
+    if (degree >= 63)
+    {
+        if (numerator > 1 || value.denominator() > 1)
+            return std::unexpected { ArithmeticError::Inexact };
+        return value;
+    }
+
+    std::optional<Rational::Int> const rootedNumerator = detail::exact_integer_root(numerator, degree);
+    std::optional<Rational::Int> const rootedDenominator = detail::exact_integer_root(value.denominator(), degree);
+    if (!rootedNumerator || !rootedDenominator)
+        return std::unexpected { ArithmeticError::Inexact };
+
+    return Rational::make(negative ? -*rootedNumerator : *rootedNumerator, *rootedDenominator);
+}
+
 } // namespace formula
