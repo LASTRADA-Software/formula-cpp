@@ -94,7 +94,7 @@ written. These are measurements, not expectations:
 | `test/environment_tests.cpp` | **Create.** |
 | `test/evaluate_tests.cpp` | **Create.** |
 | `test/expression_cross_tu.hpp`, `test/expression_cross_tu_b.cpp` | **Create.** Two translation units must agree on a formula's type. |
-| `test/negative/*.cpp` | **Create** eight; **delete** `duplicate_producer.cpp` (task 6). |
+| `test/negative/*.cpp` | **Create** seven; **delete** `duplicate_producer.cpp` (task 6). |
 | `examples/expressions.cpp` | **Create.** |
 | `examples/simple.cpp` | **Rewrite** against the new API. |
 | `docs/expressions.md` | **Create**, and add to `mkdocs.yml`. |

@@ -250,10 +250,32 @@ Two entry points evaluate a formula, and they answer different questions:
 
 `formula::RepTraits<Rep>` teaches each representation its own arithmetic --
 `Rational`'s through the `checked_` functions in `rational.hpp`, `double`'s
-directly, with `Overflow` deliberately not reported for `double` (`inf` is
-what a `double` says, and the caller asked for `double`). The primary
+directly, with `Overflow` deliberately not reported by that arithmetic itself
+(`inf` is what a `double` says, and the caller asked for `double`). That is
+not the same as saying a `double` evaluation never sees `Overflow`: every leaf
+is converted to the coherent SI unit in exact `Rational` before it is handed
+to `RepTraits<double>`, and that conversion can overflow -- a quantity whose
+declared unit puts it near the edge of the representable range reports
+`Overflow` from `checked_evaluate_si<double>` exactly as it would from the
+exact representation, before the `double` arithmetic ever runs. The primary
 template is undefined, so a representation nobody has taught the library
 fails at the point of use, naming itself.
+
+Both entry points also convert every leaf as a **point** on its unit's scale,
+never as a difference -- `checked_convert`'s own documentation says so, and
+the evaluator does not qualify it further. An affine unit, of which this
+library ships one, degrees Celsius, therefore behaves as an absolute
+temperature inside a formula, not as a delta: 20 °C minus 15 °C is exactly 5 K
+once both leaves have been converted to the coherent SI unit (kelvin) and
+subtracted there, but reading that same computed 5 K back through a result
+quantity declared in degrees Celsius gives −268,15, because the conversion
+adds the offset the point 5 K sits at, not the offset the interval spans. A
+quantity that represents a *difference* -- a temperature swing, not a
+temperature -- must declare a non-offset unit such as kelvin; declaring it in
+an affine unit asks the library a different question than the one intended.
+`test/evaluate_tests.cpp`'s `"evaluate: an offset unit converts a point, not a
+difference"` pins today's behaviour, so a later phase changes it deliberately
+rather than by accident.
 
 ## Powers, roots and pi
 
@@ -277,7 +299,7 @@ circular area of a 100 mm diameter = 0.007854 m2 (computed)
 ```
 
 `formula::Pi` is a documented rational convergent -- `245850922/78256779`,
-which differs from pi by less than 6e-17 -- and is deliberately **not** pi
+which differs from pi by less than 8e-17 -- and is deliberately **not** pi
 itself: it is the one approximation the exact layer makes on purpose, written
 once so every caller gets the same number and the trace states which number
 it was.

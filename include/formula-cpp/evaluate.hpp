@@ -82,8 +82,12 @@ struct RepTraits<Rational>
 };
 
 /// Binary floating point, for formulas whose values exact rationals cannot
-/// hold. Overflow is not reported here: a `double` says `inf` and the caller
-/// asked for `double`.
+/// hold. This arithmetic itself never reports `Overflow`: a `double` says
+/// `inf` and the caller asked for `double`. That is not the last word on
+/// `Overflow` for this representation, though -- `detail::in_si` converts
+/// every leaf in exact `Rational` before handing it to `RepTraits<Rep>::from`,
+/// so a leaf whose conversion to the coherent SI unit overflows still fails
+/// the whole evaluation, `double` included.
 template <>
 struct RepTraits<double>
 {

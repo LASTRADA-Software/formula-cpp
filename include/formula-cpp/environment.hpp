@@ -187,6 +187,15 @@ class Environment
     }
 
     /// Where the value for @p Q came from.
+    ///
+    /// `checked_evaluate` does not call this: it already knows, from
+    /// `Env::is_entered<Result>`, whether the result it is about to return was
+    /// typed in or derived, and decides `ValueSource` from that directly. This
+    /// accessor is the one a future tracing layer (phase 7) will consult for an
+    /// *input's* provenance instead, which is a question the evaluator never
+    /// asks today. Consequently `ValueSource::Measured` -- correct as it is
+    /// here -- cannot appear in any `Outcome` this phase produces; only
+    /// `Derived` and `ManuallyEntered` do.
     template <Described Q>
     [[nodiscard]] constexpr ValueSource source_of() const noexcept
     {
