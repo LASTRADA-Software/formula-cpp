@@ -1301,7 +1301,10 @@ dialects, with the same formula rendered three ways; the symbol table and its
 ordering rule; generating a page; and the repository's own rule that every
 citation here is invented because real standards are copyrighted.
 
-Take every snippet from a test or the example so it cannot drift.
+Take every snippet from a test, from the example, or verbatim from a header's
+own declarations -- the point is that the snippet is compiled somewhere, so it
+cannot drift from the code it describes. A snippet you retype into the page is
+compiled nowhere and is exactly what this rule excludes.
 
 - [ ] **Step 3: All four presets, then commit**
 
@@ -1319,8 +1322,8 @@ its invisibility to arithmetic are task 1. §19's MkDocs + Doxygen site is task
 `WARN_AS_ERROR` on undocumented entities is task 5 step 1. §19's "every fenced
 C++ block compiles" is **deliberately not implemented**: it needs a doc-code
 extractor that is a project of its own, and the same guarantee is obtained more
-cheaply here by taking every snippet from a test or an example, which tasks 4
-and 6 require. That is a narrowing of the spec and is called out rather than
+cheaply here by taking every snippet from compiled code -- a test, an example,
+or a header's own declarations quoted verbatim -- which tasks 4 and 6 require. That is a narrowing of the spec and is called out rather than
 hidden. Spelling checks are likewise omitted; link checking comes free with
 `mkdocs build --strict`.
 

@@ -230,8 +230,11 @@ template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env>
     return detail::present<Rep>(*negated);
 }
 
-/// Evaluates both operands -- always both, so an arithmetic error on one side
-/// is never hidden behind the other side's absence -- then applies `Op`.
+/// Evaluates the left operand, then the right, and only then considers
+/// absence -- so an arithmetic error is never hidden behind the other side's
+/// being absent. An error on the **left** returns at once: the right side
+/// cannot change an answer that is already an error, and evaluating it anyway
+/// would only choose which of two errors to report.
 template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(BinaryNode<Op, Left, Right> const& node,
                                                            Env const& environment) noexcept

@@ -114,20 +114,28 @@ inline constexpr PiNode pi {};
 template <typename Rep>
 struct RepFunctions;
 
-/// Exact rational powers, roots and pi -- errors (an inexact root, an overflow)
-/// are reported rather than silently approximated.
+/// Exact rational powers, roots and pi -- every failure (an inexact root, an
+/// overflow, a reciprocal of zero, a root with no real answer) is reported as an
+/// `ArithmeticError` rather than silently approximated.
 template <>
 struct RepFunctions<Rational>
 {
-    /// `base` raised to `exponent`, exactly; fails if the exact result would
-    /// overflow.
+    /// `base` raised to `exponent`, exactly. Fails with `Overflow` if the exact
+    /// result, or an intermediate on the way to it, exceeds `Rational`'s range,
+    /// and with `DivisionByZero` for a negative exponent of zero -- a negative
+    /// exponent inverts, and zero has no reciprocal.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> raise(Rational base, int exponent) noexcept
     {
         return checked_pow(base, exponent);
     }
 
-    /// The `degree`-th root of `value`, exactly; fails if that root is not itself
-    /// a rational number.
+    /// The `degree`-th root of `value`, exactly. Fails with `Inexact` if that
+    /// root is not itself a rational number, with `DomainError` for a degree
+    /// below 1 or an even root of a negative value, and with `Overflow` for the
+    /// one numerator whose magnitude `Rational::Int` cannot hold.
+    ///
+    /// `RootNode` rejects a degree below 1 at compile time, so that case is
+    /// reachable only by calling this directly.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> root(Rational value, int degree) noexcept
     {
         return checked_exact_nth_root(value, degree);
