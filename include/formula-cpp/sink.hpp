@@ -34,6 +34,14 @@ namespace formula
 /// two must tolerate an `entered` with no matching `produced` for the failing
 /// node's siblings. `RecordingSink` handles this by recording what actually
 /// arrived rather than what the node's arity predicts.
+///
+/// **A sink must not throw.** Every `checked_evaluate_si` overload that calls
+/// a sink is `noexcept`, so an exception escaping `entered` or `produced`
+/// does not propagate to the caller -- it calls `std::terminate`. This is not
+/// a hypothetical: `RecordingSink::produced` allocates on every call, and a
+/// sink is free to allocate too -- what it must do instead of throwing is
+/// catch, or otherwise avoid throwing, whatever an allocation failure or
+/// other error inside it would raise.
 template <typename S, typename N, typename V>
 concept SinkFor = requires(S sink, N const& node, V const& value) {
     sink.entered(node);

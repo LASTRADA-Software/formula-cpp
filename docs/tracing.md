@@ -93,6 +93,18 @@ storage (`trace.hpp`). `RecordingSink` is a **handle**, not an owner: the
 caller owns the `Trace` and it must outlive the walk. One pointer copies for
 free at every node; a `Trace` copied at every node would not.
 
+There is a second consequence, and it is not optional the way "keep it
+small" is a matter of degree: **a sink must not throw.** Every
+`checked_evaluate_si` overload that calls a sink is `noexcept`, so an
+exception thrown out of `entered` or `produced` does not become an exception
+the caller can catch -- it calls `std::terminate`. This is a real risk, not
+a theoretical one: `RecordingSink::produced` itself allocates on every call
+(`trace.hpp`), because growing a `Trace`'s `steps` is exactly what recording
+a derivation is. An allocating sink is fine; a sink that lets an allocation
+failure, or anything else, escape as an exception is not. Catch inside
+`entered` and `produced`, or otherwise guarantee they cannot throw, before
+handing a sink to the evaluator.
+
 ## Two ways to evaluate, and when to reach for each
 
 Both entry points walk the same tree with the same evaluator; only the sink
