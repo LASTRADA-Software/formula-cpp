@@ -20,6 +20,9 @@ struct BeamLength: formula::Quantity<BeamLength, "L", "beam length", formula::un
 struct AppliedForce: formula::Quantity<AppliedForce, "F", "applied force", formula::unit::Kilogram>
 {
 };
+struct Fraction: formula::Quantity<Fraction, "f", "a dimensionless fraction", formula::unit::One>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -27,6 +30,11 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 }
 
 using formula::var;
+
+using Coefficient = formula::ConstantNode<formula::unit::One>;
+
+template <formula::BinaryOperator Op, typename Left, typename Right>
+using Tree = formula::BinaryNode<Op, Left, Right>;
 
 } // namespace
 
@@ -93,17 +101,55 @@ TEST_CASE("expression: a dimensioned constant carries its unit's dimension", "[e
 
 TEST_CASE("expression: a Rational mixed into a formula becomes a dimensionless constant", "[expression]")
 {
-    constexpr auto scaledRight = var<BeamLength> * rat(1, 4);
-    constexpr auto scaledLeft = rat(1, 4) * var<BeamLength>;
+    // Addition and subtraction need a dimensionless operand: `var<BeamLength> -
+    // rat(1, 4)` is a length minus a bare number, and the additive dimension
+    // check refuses it, which is the correct behaviour and is pinned by its own
+    // negative-compile test.
+    constexpr auto addRight = var<Fraction> + rat(1, 4);
+    constexpr auto addLeft = rat(1, 4) + var<Fraction>;
+    constexpr auto subtractRight = var<Fraction> - rat(1, 4);
+    constexpr auto subtractLeft = rat(1, 4) - var<Fraction>;
 
-    STATIC_REQUIRE(decltype(scaledRight)::dimension == formula::dim::Length);
-    STATIC_REQUIRE(decltype(scaledLeft)::dimension == formula::dim::Length);
-    STATIC_REQUIRE(std::is_same_v<decltype(scaledRight),
-                                  formula::BinaryNode<formula::BinaryOperator::Multiply,
-                                                      formula::VarNode<BeamLength>,
-                                                      formula::ConstantNode<formula::unit::One>> const>);
-    // `scaledRight` is itself `constexpr`, so `decltype` of the *variable* does
-    // carry the const -- unlike `decltype(ratio.lhs)` above, which names a member.
+    constexpr auto multiplyRight = var<BeamLength> * rat(1, 4);
+    constexpr auto multiplyLeft = rat(1, 4) * var<BeamLength>;
+    constexpr auto divideRight = var<BeamLength> / rat(1, 4);
+    constexpr auto divideLeft = rat(1, 4) / var<BeamLength>;
+
+    // There is no evaluator yet, so a value cannot tell `a - b` from `b - a`.
+    // The tree type can, because the operand types are in it.
+    STATIC_REQUIRE(std::is_same_v<decltype(addRight),
+                                  Tree<formula::BinaryOperator::Add, formula::VarNode<Fraction>, Coefficient> const>);
+    STATIC_REQUIRE(std::is_same_v<decltype(addLeft),
+                                  Tree<formula::BinaryOperator::Add, Coefficient, formula::VarNode<Fraction>> const>);
+    STATIC_REQUIRE(std::is_same_v<decltype(subtractRight),
+                                  Tree<formula::BinaryOperator::Subtract, formula::VarNode<Fraction>, Coefficient> const>);
+    STATIC_REQUIRE(std::is_same_v<decltype(subtractLeft),
+                                  Tree<formula::BinaryOperator::Subtract, Coefficient, formula::VarNode<Fraction>> const>);
+    STATIC_REQUIRE(std::is_same_v<decltype(multiplyRight),
+                                  Tree<formula::BinaryOperator::Multiply, formula::VarNode<BeamLength>, Coefficient> const>);
+    STATIC_REQUIRE(std::is_same_v<decltype(multiplyLeft),
+                                  Tree<formula::BinaryOperator::Multiply, Coefficient, formula::VarNode<BeamLength>> const>);
+    STATIC_REQUIRE(std::is_same_v<decltype(divideRight),
+                                  Tree<formula::BinaryOperator::Divide, formula::VarNode<BeamLength>, Coefficient> const>);
+    STATIC_REQUIRE(std::is_same_v<decltype(divideLeft),
+                                  Tree<formula::BinaryOperator::Divide, Coefficient, formula::VarNode<BeamLength>> const>);
+
+    // The coefficient keeps its value and stays on the side it was written on.
+    STATIC_REQUIRE(addRight.rhs.number == rat(1, 4));
+    STATIC_REQUIRE(addLeft.lhs.number == rat(1, 4));
+    STATIC_REQUIRE(subtractRight.rhs.number == rat(1, 4));
+    STATIC_REQUIRE(subtractLeft.lhs.number == rat(1, 4));
+    STATIC_REQUIRE(multiplyRight.rhs.number == rat(1, 4));
+    STATIC_REQUIRE(multiplyLeft.lhs.number == rat(1, 4));
+    STATIC_REQUIRE(divideRight.rhs.number == rat(1, 4));
+    STATIC_REQUIRE(divideLeft.lhs.number == rat(1, 4));
+
+    // A number divided by a length is a reciprocal length; the rest keep the
+    // dimensioned operand's own dimension.
+    STATIC_REQUIRE(decltype(divideLeft)::dimension == formula::dim::Scalar / formula::dim::Length);
+    STATIC_REQUIRE(decltype(divideRight)::dimension == formula::dim::Length);
+    STATIC_REQUIRE(decltype(multiplyLeft)::dimension == formula::dim::Length);
+    STATIC_REQUIRE(formula::is_dimensionless(decltype(addLeft)::dimension));
 }
 
 TEST_CASE("expression: the tree keeps its shape and its operands", "[expression]")
