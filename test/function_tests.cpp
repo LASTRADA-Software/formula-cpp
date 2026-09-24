@@ -85,6 +85,91 @@ TEST_CASE("function: an exact root evaluates exactly", "[function]")
     STATIC_REQUIRE(computed->measurement().value() == rat(3, 20));
 }
 
+TEST_CASE("function: cbrt evaluates exactly, not merely a root of the right dimension", "[function]")
+{
+    // Only cbrt's dimension was ever asserted elsewhere; nothing checked the
+    // number. 27 m3 is an exact cube, so a degree silently substituted for 3
+    // (sqrt(27) is irrational) would turn this from a value into Inexact.
+    constexpr auto inputs = formula::environment(formula::Measured<Volume> { rat(27) });
+    constexpr auto computed = formula::checked_evaluate<Edge>(formula::cbrt(var<Volume>), inputs);
+
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(3));
+}
+
+TEST_CASE("function: the general root spelling reaches degrees sqrt and cbrt do not name", "[function]")
+{
+    // 16 m3 to the fourth root is 2, exactly. Using a constant rather than a
+    // variable operand also pins that the operand itself, not just the
+    // degree, is forwarded: a default-constructed operand would carry 0
+    // instead of 16.
+    constexpr auto rooted = formula::root<4>(formula::constant<formula::unit::CubicMetre>(rat(16)));
+    constexpr formula::Evaluated<formula::Rational> computed =
+        formula::checked_evaluate_si<formula::Rational>(rooted, formula::environment());
+
+    STATIC_REQUIRE(decltype(rooted)::degree == 4);
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->has_value());
+    STATIC_REQUIRE(**computed == rat(2));
+}
+
+TEST_CASE("function: a negative exponent inverts the value, not only the dimension", "[function]")
+{
+    // 4 mm is 1/250 m; raised to the power -1 that is exactly 250. Clamping a
+    // negative exponent to 1 -- so this would compute 1/250 instead -- left
+    // every existing test green, since only ::dimension was ever asserted for
+    // a negative exponent.
+    constexpr auto inputs = formula::environment(formula::Measured<Diameter> { rat(4) });
+    constexpr formula::Evaluated<formula::Rational> computed =
+        formula::checked_evaluate_si<formula::Rational>(formula::pow<-1>(var<Diameter>), inputs);
+
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->has_value());
+    STATIC_REQUIRE(**computed == rat(250));
+}
+
+TEST_CASE("function: the double representation raises to a power", "[function]")
+{
+    // Only the exact Rational representation's power evaluation was ever
+    // checked against a number; the double specialisation's raise() was
+    // exercised nowhere.
+    auto const inputs = formula::environment(formula::Measured<Diameter> { rat(200) });
+    auto const computed = formula::checked_evaluate_si<double>(formula::pow<2>(var<Diameter>), inputs);
+
+    // 200 mm is 0,2 m; squared is 0,04 m2.
+    REQUIRE(computed.has_value());
+    REQUIRE(computed->has_value());
+    CHECK(**computed > 0.0399999);
+    CHECK(**computed < 0.0400001);
+}
+
+TEST_CASE("function: the double representation roots a negative value at an odd degree", "[function]")
+{
+    // The sign branch of RepFunctions<double>::root is only reachable for a
+    // negative operand at an odd degree; cbrt(-8) is -2, and dropping the
+    // branch entirely (falling through to std::pow(-8, 1/3), which is NaN for
+    // a negative base) would leave every other test green.
+    auto const inputs = formula::environment(formula::Measured<Volume> { rat(-8) });
+    auto const computed = formula::checked_evaluate_si<double>(formula::cbrt(var<Volume>), inputs);
+
+    REQUIRE(computed.has_value());
+    REQUIRE(computed->has_value());
+    CHECK(**computed > -2.0000001);
+    CHECK(**computed < -1.9999999);
+}
+
+TEST_CASE("function: the double representation approximates pi", "[function]")
+{
+    // Pi is otherwise only ever evaluated in the exact Rational representation.
+    auto const inputs = formula::environment();
+    auto const computed = formula::checked_evaluate_si<double>(formula::pi, inputs);
+
+    REQUIRE(computed.has_value());
+    REQUIRE(computed->has_value());
+    CHECK(**computed > 3.14159265);
+    CHECK(**computed < 3.14159266);
+}
+
 TEST_CASE("function: an inexact root is refused by the exact representation", "[function]")
 {
     constexpr auto inputs = formula::environment(formula::Measured<Area> { rat(2) });

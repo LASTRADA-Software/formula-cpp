@@ -105,6 +105,27 @@ TEST_CASE("outcome: an absent manually entered value is not an override", "[outc
     STATIC_REQUIRE_FALSE(outcome.is_overridden());
 }
 
+TEST_CASE("outcome: is_verdict is true only for a verdict outcome", "[outcome]")
+{
+    constexpr formula::Outcome<Mass> verdict = formula::Outcome<Mass>::verdict(formula::Verdict { "repeat the test" });
+    constexpr formula::Outcome<Mass> value =
+        formula::Outcome<Mass>::value(formula::Measured<Mass> { rat(3) }, formula::ValueSource::Derived);
+
+    STATIC_REQUIRE(verdict.is_verdict());
+    STATIC_REQUIRE_FALSE(value.is_verdict());
+}
+
+TEST_CASE("outcome: is_invalid is true only for an invalid outcome", "[outcome]")
+{
+    constexpr formula::Outcome<Mass> invalid =
+        formula::Outcome<Mass>::invalid(formula::InvalidReason { "outlier rejection removed every specimen" });
+    constexpr formula::Outcome<Mass> value =
+        formula::Outcome<Mass>::value(formula::Measured<Mass> { rat(3) }, formula::ValueSource::Derived);
+
+    STATIC_REQUIRE(invalid.is_invalid());
+    STATIC_REQUIRE_FALSE(value.is_invalid());
+}
+
 TEST_CASE("outcome: the label of a non-verdict outcome is empty rather than stale", "[outcome]")
 {
     constexpr formula::Outcome<Mass> outcome =

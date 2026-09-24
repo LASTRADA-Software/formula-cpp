@@ -15,6 +15,9 @@ struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", fo
 struct TotalVolume: formula::Quantity<TotalVolume, "V", "total volume", formula::unit::Litre>
 {
 };
+struct VolumeDifference: formula::Quantity<VolumeDifference, "dV", "volume difference", formula::unit::Litre>
+{
+};
 struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
 {
 };
@@ -58,6 +61,51 @@ TEST_CASE("evaluate: a sum comes back in the result quantity's own unit", "[eval
 
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(480));
+}
+
+TEST_CASE("evaluate: a difference comes back in the result quantity's own unit", "[evaluate]")
+{
+    // 180 l - 300 l is -120 l. Nothing else in this suite builds a `-`
+    // expression and evaluates it -- rewiring the Subtract arm to add instead
+    // left every other test green.
+    constexpr auto difference = var<WaterVolume> - var<CementVolume>;
+    constexpr auto computed = formula::checked_evaluate<VolumeDifference>(difference, inputs);
+
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(-120));
+}
+
+TEST_CASE("evaluate: the double representation adds, subtracts, multiplies and negates", "[evaluate]")
+{
+    // The only `double` evaluation elsewhere in this suite is a division (the
+    // ratio below); add, subtract, multiply and negate are otherwise only
+    // exercised through the exact `Rational` representation.
+    // checked_evaluate_si answers in the coherent SI unit, cubic metres, not
+    // litres: 180 l and 300 l are 0,18 m3 and 0,3 m3 there. Bounded rather
+    // than compared for exact equality, like the rest of this suite's double
+    // arithmetic: binary floating point owes no promise of landing on the
+    // same bit pattern as a decimal literal.
+    constexpr formula::Evaluated<double> summed = formula::checked_evaluate_si<double>(total, inputs);
+    STATIC_REQUIRE(summed.has_value() && summed->has_value());
+    CHECK(**summed > 0.4799999);
+    CHECK(**summed < 0.4800001);
+
+    constexpr auto difference = var<WaterVolume> - var<CementVolume>;
+    constexpr formula::Evaluated<double> subtracted = formula::checked_evaluate_si<double>(difference, inputs);
+    STATIC_REQUIRE(subtracted.has_value() && subtracted->has_value());
+    CHECK(**subtracted > -0.1200001);
+    CHECK(**subtracted < -0.1199999);
+
+    constexpr auto product = var<WaterVolume> * var<CementVolume>;
+    constexpr formula::Evaluated<double> multiplied = formula::checked_evaluate_si<double>(product, inputs);
+    STATIC_REQUIRE(multiplied.has_value() && multiplied->has_value());
+    CHECK(**multiplied > 0.0539999);
+    CHECK(**multiplied < 0.0540001);
+
+    constexpr formula::Evaluated<double> negated = formula::checked_evaluate_si<double>(-total, inputs);
+    STATIC_REQUIRE(negated.has_value() && negated->has_value());
+    CHECK(**negated > -0.4800001);
+    CHECK(**negated < -0.4799999);
 }
 
 TEST_CASE("evaluate: the representation-agnostic core agrees with the exact one", "[evaluate]")
