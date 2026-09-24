@@ -39,6 +39,7 @@ add_executable(formula-cpp-tests
     measured_tests.cpp
     outcome_tests.cpp
     environment_tests.cpp
+    evaluate_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -129,6 +130,9 @@ formula_add_negative_test(environment_duplicate_quantity
 
 formula_add_negative_test(environment_missing_quantity
     "provides no value for this quantity")
+
+formula_add_negative_test(evaluate_result_dimension_mismatch
+    "does not measure the dimension this expression computes")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
