@@ -27,6 +27,23 @@ struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "specimen mass", formu
 struct MassInKilogram: formula::Quantity<MassInKilogram, "m", "mass", formula::unit::Kilogram>
 {
 };
+struct DistanceInKilometre: formula::Quantity<DistanceInKilometre, "s", "distance", formula::unit::Kilometre>
+{
+};
+struct TemperatureA: formula::Quantity<TemperatureA, "T1", "first temperature", formula::unit::Celsius>
+{
+};
+struct TemperatureB: formula::Quantity<TemperatureB, "T2", "second temperature", formula::unit::Celsius>
+{
+};
+struct TemperatureDeltaKelvin:
+    formula::Quantity<TemperatureDeltaKelvin, "dT_K", "temperature difference", formula::unit::Kelvin>
+{
+};
+struct TemperatureDeltaCelsius:
+    formula::Quantity<TemperatureDeltaCelsius, "dT_C", "temperature difference", formula::unit::Celsius>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -141,6 +158,21 @@ TEST_CASE("evaluate: division by zero is an error, never a number", "[evaluate]"
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DivisionByZero);
 }
 
+TEST_CASE("evaluate: the double representation also reports division by zero, not infinity", "[evaluate]")
+{
+    // RepTraits<double>::divide has its own zero guard, a deliberate
+    // divergence from this header's "a double says inf" doctrine (the doc
+    // comment above RepTraits<double> is about its ordinary arithmetic, not
+    // this one refusal). Falling through to lhs / 0.0 would silently answer
+    // with an infinity instead.
+    constexpr auto zeroed =
+        formula::environment(formula::Measured<WaterVolume> { rat(180) }, formula::Measured<CementVolume> { rat(0) });
+    constexpr formula::Evaluated<double> computed = formula::checked_evaluate_si<double>(ratio, zeroed);
+
+    STATIC_REQUIRE_FALSE(computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DivisionByZero);
+}
+
 TEST_CASE("evaluate: the throwing spelling throws what the checked one reports", "[evaluate]")
 {
     auto const zeroed =
@@ -202,6 +234,22 @@ TEST_CASE("evaluate: a constant enters the arithmetic in its own unit", "[evalua
     STATIC_REQUIRE(computed->measurement().value() == rat(980));
 }
 
+TEST_CASE("evaluate: a constant declared in a non-coherent unit still enters in its own unit", "[evaluate]")
+{
+    // CubicMetre, used by the test above, happens to be the coherent SI unit
+    // for volume, so that test cannot tell a constant evaluated in its own
+    // unit apart from one evaluated as though it were already stated in the
+    // coherent unit. Litre is not coherent (its magnitude is 1/1000), so
+    // this one can: 180 l + 300 l + 20 l is exactly 500 l. Under the
+    // coherent-unit mutation, the 20 would enter as 20 m3 -- 20000 l -- and
+    // the total would be 20480 l, not 500.
+    constexpr auto withConstant = total + formula::constant<formula::unit::Litre>(rat(20));
+    constexpr auto computed = formula::checked_evaluate<TotalVolume>(withConstant, inputs);
+
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(500));
+}
+
 TEST_CASE("evaluate: negation negates", "[evaluate]")
 {
     constexpr auto computed = formula::checked_evaluate<TotalVolume>(-total, inputs);
@@ -231,6 +279,21 @@ TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[eva
     auto const big =
         formula::environment(formula::Measured<WaterVolume> { rat(huge) }, formula::Measured<CementVolume> { rat(1, huge) });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, big);
+
+    REQUIRE_FALSE(computed.has_value());
+    CHECK(computed.error() == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("evaluate: the double representation still reports an overflow from the leaf conversion", "[evaluate]")
+{
+    // RepTraits<double>'s own arithmetic cannot overflow (the doc comment
+    // above it says so), but detail::in_si converts every leaf in exact
+    // Rational before handing it to RepTraits<Rep>::from, and that conversion
+    // can overflow on its own -- IntMax kilometres times a magnitude of 1000
+    // overflows the exact multiply long before any double arithmetic runs.
+    constexpr std::int64_t huge = formula::detail::IntMax;
+    auto const farInputs = formula::environment(formula::Measured<DistanceInKilometre> { rat(huge) });
+    auto const computed = formula::checked_evaluate_si<double>(var<DistanceInKilometre>, farInputs);
 
     REQUIRE_FALSE(computed.has_value());
     CHECK(computed.error() == formula::ArithmeticError::Overflow);
@@ -284,4 +347,28 @@ TEST_CASE("evaluate: an arithmetic error on one side outranks absence on the oth
 
     STATIC_REQUIRE_FALSE(computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DivisionByZero);
+}
+
+TEST_CASE("evaluate: an offset unit converts a point, not a difference", "[evaluate]")
+{
+    // checked_convert converts a POINT on the scale (unit.hpp says so): 20
+    // degC and 15 degC become 293,15 K and 288,15 K on the way in, so their
+    // difference in the coherent SI unit -- where the subtraction actually
+    // happens -- is exactly 5 K, and a result quantity declared in kelvin
+    // reports that. A result quantity declared in degrees Celsius instead
+    // asks a different question: it converts the computed 5 K as a point too,
+    // landing on -268,15, not on the 5-degree swing a reader might expect.
+    // This documents that behaviour rather than judging it -- it is this
+    // layer's documented semantics, faithfully propagated.
+    constexpr auto temperatures =
+        formula::environment(formula::Measured<TemperatureA> { rat(20) }, formula::Measured<TemperatureB> { rat(15) });
+    constexpr auto difference = var<TemperatureA> - var<TemperatureB>;
+
+    constexpr auto inKelvin = formula::checked_evaluate<TemperatureDeltaKelvin>(difference, temperatures);
+    STATIC_REQUIRE(inKelvin.has_value());
+    STATIC_REQUIRE(inKelvin->measurement().value() == rat(5));
+
+    constexpr auto inCelsius = formula::checked_evaluate<TemperatureDeltaCelsius>(difference, temperatures);
+    STATIC_REQUIRE(inCelsius.has_value());
+    STATIC_REQUIRE(inCelsius->measurement().value() == rat(-26815, 100));
 }

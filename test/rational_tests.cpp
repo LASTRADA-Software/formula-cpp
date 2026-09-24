@@ -376,6 +376,17 @@ TEST_CASE("rational: the root of the extreme negative is refused rather than ove
                    == formula::ArithmeticError::Overflow);
 }
 
+TEST_CASE("rational: a pathologically large degree is refused quickly, not searched for", "[rational]")
+{
+    // Not STATIC_REQUIRE: at this degree, the unguarded search takes long
+    // enough that a constant expression would hit the compiler's step limit
+    // and fail to compile rather than answer Inexact -- exactly why this is a
+    // runtime check instead. Degree is an ordinary int a caller controls, so
+    // 1e9 is reachable, not contrived.
+    REQUIRE(formula::checked_exact_nth_root(formula::Rational { 2 }, 1'000'000'000).error()
+            == formula::ArithmeticError::Inexact);
+}
+
 TEST_CASE("rational: Pi is a stated approximation, close enough to be useful", "[rational]")
 {
     // Deliberately asserted as a bound rather than an equality: the point is
@@ -385,4 +396,24 @@ TEST_CASE("rational: Pi is a stated approximation, close enough to be useful", "
     CHECK(squared.to_double() > 9.8696044010893);
     CHECK(squared.to_double() < 9.8696044010897);
     STATIC_REQUIRE(formula::Pi.denominator() > 1);
+}
+
+TEST_CASE("rational: Pi's documented error bound is pinned, exactly", "[rational]")
+{
+    // A double cannot pin an 8e-17 bound -- its ulp near 3.14 is about
+    // 4.44e-16, coarser than the bound itself -- so this compares Pi against
+    // two decimal rationals computed by hand from pi's known digits: pi minus
+    // 8e-17, rounded UP to 18 decimals so it stays no greater than the true
+    // threshold, and pi plus 8e-17, rounded DOWN so it stays no less than the
+    // true one. Pi landing strictly between them proves it is within 8e-17 of
+    // pi. Comparison rather than subtraction deliberately: Pi's denominator
+    // and these decimals' denominators share no common factor, so
+    // checked_sub's least-common-multiple scaling would overflow computing
+    // their difference directly, even though the true difference is tiny --
+    // Rational::operator<=> has no such limit, by its own documented design.
+    constexpr Rational belowPiBy8e17 = *Rational::from_decimal(3'141'592'653'589'793'159LL, -18);
+    constexpr Rational abovePiBy8e17 = *Rational::from_decimal(3'141'592'653'589'793'318LL, -18);
+
+    STATIC_REQUIRE(formula::Pi > belowPiBy8e17);
+    STATIC_REQUIRE(formula::Pi < abovePiBy8e17);
 }

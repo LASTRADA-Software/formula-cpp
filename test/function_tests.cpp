@@ -158,6 +158,19 @@ TEST_CASE("function: the double representation roots a negative value at an odd 
     CHECK(**computed < -1.9999999);
 }
 
+TEST_CASE("function: the double representation refuses an even root of a negative value", "[function]")
+{
+    // RepFunctions<double>::root's even-degree guard, beside the odd-degree
+    // sign branch tested above: sqrt(-4) has no real answer. Falling through
+    // to std::pow(4, 0.5) would silently answer 2.0, a wrong number wearing a
+    // right one's clothes.
+    auto const inputs = formula::environment(formula::Measured<Area> { rat(-4) });
+    auto const computed = formula::checked_evaluate_si<double>(formula::sqrt(var<Area>), inputs);
+
+    REQUIRE_FALSE(computed.has_value());
+    CHECK(computed.error() == formula::ArithmeticError::DomainError);
+}
+
 TEST_CASE("function: the double representation approximates pi", "[function]")
 {
     // Pi is otherwise only ever evaluated in the exact Rational representation.
