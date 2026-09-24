@@ -111,13 +111,19 @@ struct Trace
     /// Every step, in the order they completed -- children before parents.
     std::vector<Step<Rep>> steps {};
 
-    /// Bookkeeping written by `RecordingSink` during a walk. Meaningless once
-    /// the walk is over; kept here rather than in the sink because a sink is
-    /// copied by value at every node and must stay cheap.
-    /// @{
+    /// Where each node in progress found the arena when it was entered, so
+    /// that `produced` can tell which steps are its operands.
+    ///
+    /// Bookkeeping written by `RecordingSink` during a walk and meaningless
+    /// once the walk is over. It lives here rather than in the sink because a
+    /// sink is copied by value at every node and must stay cheap to copy.
     std::vector<std::size_t> marks {};
+
+    /// Steps recorded but not yet claimed as some other step's operand. After
+    /// a completed walk this holds exactly one entry: that walk's root.
+    ///
+    /// Bookkeeping, as `marks` is, and for the same reason.
     std::vector<std::size_t> unclaimed {};
-    /// @}
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///

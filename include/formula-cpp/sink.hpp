@@ -52,11 +52,15 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 /// path uses. Empty and stateless, so a by-value copy is free.
 struct NullSink
 {
+    /// Told that a node is about to be evaluated, and does nothing with it.
     template <Node N>
     constexpr void entered(N const&) noexcept
     {
     }
 
+    /// Told what a node produced, and does nothing with it. Empty on purpose:
+    /// the measurements behind the by-value sink design hold only because
+    /// there is nothing here for a compiler to keep.
     template <Node N, typename V>
     constexpr void produced(N const&, V const&) noexcept
     {

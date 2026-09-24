@@ -53,13 +53,20 @@ namespace formula
 /// and renders nothing at all.
 struct StepLimit
 {
+    /// Deleted, and that is the entire point of this type: it is what makes
+    /// `render_trace(trace, {})` ill-formed rather than a silent zero.
     StepLimit() = delete;
-    // Parameter named differently from the member it initialises: GCC's
-    // -Wshadow (part of this project's Linux CI leg) flags a constructor
-    // parameter that shares a member's name, even one used only in its own
-    // member-initialiser list.
+
+    /// Converts from a plain count, so `{ .maxSteps = 10 }` and `{ 25 }` both
+    /// read naturally at a call site.
+    ///
+    /// The parameter is named differently from the member it initialises
+    /// because GCC's `-Wshadow`, which this project's Linux CI leg runs with
+    /// warnings as errors, flags a constructor parameter sharing a member's
+    /// name even when it is used only in its own member-initialiser list.
     constexpr StepLimit(std::size_t steps) noexcept: value { steps } {}
 
+    /// The count itself.
     std::size_t value {};
 };
 
