@@ -262,9 +262,9 @@ TEST_CASE("render: a dimensionless constant as the base of a power needs no brac
 
 TEST_CASE("render: a decimal-places rounding node renders as round(... to N dp of unit)", "[render][rounding]")
 {
-    constexpr auto rounded = formula::rounded<formula::unit::Millimetre,
-                                              formula::DecimalPlaces { 1 },
-                                              formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+    constexpr auto rounded =
+        formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
 
     CHECK(formula::render<Dialect::Plain>(rounded) == "round(d to 1 dp of mm)");
     CHECK(formula::render<Dialect::Markdown>(rounded) == "round(`d` to 1 dp of mm)");
@@ -280,9 +280,9 @@ TEST_CASE("render: a decimal-places rounding node inside a power and inside a pr
     // A rounding node reads as a function call -- like sqrt(...) -- so it is
     // already fully delimited by its own parentheses and never needs a
     // bracket added around it, in either context.
-    constexpr auto rounded = formula::rounded<formula::unit::Millimetre,
-                                              formula::DecimalPlaces { 1 },
-                                              formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+    constexpr auto rounded =
+        formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
 
     CHECK(formula::render(formula::pow<2>(rounded)) == "round(d to 1 dp of mm)^2");
     CHECK(formula::render(rounded * rat(2)) == "round(d to 1 dp of mm) * 2");
@@ -323,8 +323,7 @@ TEST_CASE("render: a predicate renders as lhs comparison rhs", "[render][predica
     CHECK(formula::render(overFifty) == "f > 50 MPa");
 }
 
-TEST_CASE("render: every comparison spells correctly, and three of them get a LaTeX-specific symbol",
-          "[render][predicate]")
+TEST_CASE("render: every comparison spells correctly, and three of them get a LaTeX-specific symbol", "[render][predicate]")
 {
     // <, > and == read the same in every dialect; <=, >= and != get the
     // mathematical spelling in LaTeX, the same way BinaryNode's "*" becomes
@@ -404,8 +403,7 @@ TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][
 TEST_CASE("render: a numeric-value escape hatch renders as numeric(... in unit)", "[render][escape]")
 {
     constexpr auto numeric =
-        formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(
-            var<Strength>);
+        formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(var<Strength>);
 
     CHECK(formula::render<Dialect::Plain>(numeric) == "numeric(f in MPa)");
     CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(`f` in MPa)");
@@ -419,8 +417,7 @@ TEST_CASE("render: a numeric-value escape hatch inside a power and inside a prod
           "[render][escape]")
 {
     constexpr auto numeric =
-        formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(
-            var<Strength>);
+        formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(var<Strength>);
 
     CHECK(formula::render(formula::pow<2>(numeric)) == "numeric(f in MPa)^2");
     CHECK(formula::render(numeric * rat(2)) == "numeric(f in MPa) * 2");

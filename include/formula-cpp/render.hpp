@@ -325,8 +325,7 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
     std::string const digitsText = std::to_string(Digits.value);
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf},\\,\\mathrm{" + unitSymbol + "}}(" + inner
-               + ")";
+        return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf},\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
     else
         return "round(" + inner + " to " + digitsText + " sf of " + unitSymbol + ")";
 }
@@ -384,8 +383,8 @@ template <Dialect D, Node Inner>
 template <Dialect D, Comparison Op, Node Left, Node Right>
 [[nodiscard]] std::string render_node(PredicateNode<Op, Left, Right> const& node)
 {
-    constexpr detail::Precedence operandContext = static_cast<detail::Precedence>(
-        static_cast<int>(detail::PrecedenceOf<PredicateNode<Op, Left, Right>>::value) + 1);
+    constexpr detail::Precedence operandContext =
+        static_cast<detail::Precedence>(static_cast<int>(detail::PrecedenceOf<PredicateNode<Op, Left, Right>>::value) + 1);
     std::string const lhs = detail::render_operand<D>(node.lhs, operandContext);
     std::string const rhs = detail::render_operand<D>(node.rhs, operandContext);
 
