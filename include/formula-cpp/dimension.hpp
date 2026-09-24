@@ -28,12 +28,17 @@ namespace formula
 /// different objects, and as template arguments they name different types.
 struct Exponent
 {
-    /// The numerator, in lowest terms.
+    /// The numerator, in lowest terms as produced by `exponent()`. A public
+    /// field on a public aggregate: nothing stops a caller writing a
+    /// non-canonical value directly, as the file comment above warns.
     std::int32_t numerator = 0;
-    /// The denominator, in lowest terms and always positive.
+    /// The denominator: in lowest terms and positive, as produced by
+    /// `exponent()` -- again not enforced for a hand-built `Exponent`.
     std::int32_t denominator = 1;
 
-    /// Memberwise equality -- meaningful because both fields are always canonical.
+    /// Memberwise equality -- meaningful when both fields are canonical, which
+    /// is true of everything `exponent()` produces but not guaranteed for a
+    /// value built by aggregate initialisation instead.
     [[nodiscard]] constexpr bool operator==(Exponent const&) const noexcept = default;
 };
 

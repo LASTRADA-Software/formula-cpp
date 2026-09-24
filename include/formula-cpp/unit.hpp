@@ -35,10 +35,14 @@ inline constexpr std::size_t SymbolCapacity = 16;
 /// `Unit` a single non-template type, so every unit has the same type.
 struct Symbol
 {
-    /// The symbol's UTF-8 bytes, zero-terminated; build with `symbol()`, read with `view()`.
+    /// The symbol's UTF-8 bytes, zero-terminated as produced by `symbol()`;
+    /// read with `view()`, which does not assume that and scans instead of
+    /// trusting a terminator -- `Symbol` is a public aggregate, so a caller
+    /// can fill `characters` directly and leave no room for one.
     char characters[SymbolCapacity] {};
 
-    /// Memberwise equality -- the full `SymbolCapacity` bytes, terminator included.
+    /// Memberwise equality -- the full `SymbolCapacity` bytes, terminator
+    /// included when the value is one `symbol()` produced.
     [[nodiscard]] constexpr bool operator==(Symbol const&) const noexcept = default;
 };
 
