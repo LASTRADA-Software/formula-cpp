@@ -122,8 +122,11 @@ TEST_CASE("a rounding node rounds in the unit it names, not in coherent SI", "[r
     constexpr auto result = formula::checked_evaluate<Diameter>(node, environment);
     REQUIRE(result.has_value());
     REQUIRE(result->is_value());
-    // 12.34 mm -> 12.3 mm -> 0.0123 m in coherent SI.
-    CHECK(result->measurement().value() == formula::Rational { 123, 10000 });
+    // 12.34 mm rounds to 12.3 mm. An Outcome reports in the RESULT
+    // QUANTITY's declared unit -- Diameter is declared in millimetres -- not
+    // in the coherent SI unit the evaluator works in. Verified directly: a
+    // Volume declared in litres and measured at 180 l reports 180, not 9/50.
+    CHECK(result->measurement().value() == formula::Rational { 123, 10 });
 }
 
 TEST_CASE("rounding does not change the dimension of what it wraps", "[rounding-node]")
@@ -162,7 +165,7 @@ TEST_CASE("intermediate and final rounding are separately expressible", "[roundi
     constexpr auto result = formula::checked_evaluate<Diameter>(finalResult, environment);
     REQUIRE(result.has_value());
     REQUIRE(result->is_value());
-    CHECK(result->measurement().value() == formula::Rational { 26, 1000 });
+    CHECK(result->measurement().value() == formula::Rational { 26, 1 });
 }
 
 TEST_CASE("significant digits are available as a node too", "[rounding-node]")
@@ -175,7 +178,7 @@ TEST_CASE("significant digits are available as a node too", "[rounding-node]")
     constexpr auto result = formula::checked_evaluate<Diameter>(node, environment);
     REQUIRE(result.has_value());
     REQUIRE(result->is_value());
-    CHECK(result->measurement().value() == formula::Rational { 12, 1000 });
+    CHECK(result->measurement().value() == formula::Rational { 12, 1 });
 }
 ```
 
