@@ -625,7 +625,7 @@ git commit -m "docs(spec): state the zero-overhead claim the library can actuall
 - Create: `include/formula-cpp/trace.hpp`
 - Create: `test/trace_tests.cpp`
 - Modify: `test/CMakeLists.txt`
-- Modify: `cmake/CheckPublicHeaderIncludes.cmake` — add `trace.hpp` to `exemptHeaders` and `"trace.hpp=string,vector"` to `exemptAllowances`
+- Modify: `cmake/CheckPublicHeaderIncludes.cmake` — add `trace.hpp` to `exemptHeaders` and `"trace.hpp=vector"` to `exemptAllowances` (not `string,vector`: the header never includes `<string>`)
 
 **Interfaces:**
 - Consumes: `NullSink`'s shape from Task 1; the sink calls added in Task 2.
