@@ -8,7 +8,9 @@
 # consumer must ask for it by name to pay for what it pulls in. render.hpp
 # and document.hpp qualify -- they need <string>, <string_view> and, for
 # document.hpp, <vector>, to turn a formula into text. trace.hpp qualifies
-# too -- it needs <vector> for its arena, but deliberately not <string>.
+# too -- it needs <vector> for its arena, but deliberately not <string>, which
+# is what keeps trace_render.hpp -- the one that does need <string>, to turn a
+# recorded derivation into text -- separately optional from it.
 #
 # Being named here does not, by itself, permit anything: check 2 below
 # enforces that no other header may reach one of these, which is what stops
@@ -18,6 +20,7 @@ set(exemptHeaders
     "${SOURCE_DIR}/include/formula-cpp/render.hpp"
     "${SOURCE_DIR}/include/formula-cpp/document.hpp"
     "${SOURCE_DIR}/include/formula-cpp/trace.hpp"
+    "${SOURCE_DIR}/include/formula-cpp/trace_render.hpp"
 )
 
 file(GLOB_RECURSE headers "${SOURCE_DIR}/include/*.hpp")
@@ -119,6 +122,7 @@ set(exemptAllowances
     "render.hpp=string"
     "document.hpp=string,vector"
     "trace.hpp=vector"
+    "trace_render.hpp=string"
 )
 
 set(overreaches "")
