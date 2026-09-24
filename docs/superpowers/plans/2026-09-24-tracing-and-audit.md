@@ -21,7 +21,7 @@
 - **Open source, no company IP, as generic as possible.** This repository is public.
 - **No norm content.** Nothing from a real standard appears here: not its text, tables, equations, threshold or constant values, and not its identifiers, clause or table numbers — not even as a bare citation. Every citation you write is invented, of the form `Example Standard N:2020`. Examples use **generic physics only** (density, flow rate, mass, volume).
 - **No macros for traceability.** (§11's opening requirement.)
-- **`<string>`, `<vector>`, `<format>` and `<iostream>` must not reach `include/formula-cpp/formula.hpp`,** directly or through any header it includes. `render.hpp`, `document.hpp` and (new in this phase) `trace.hpp` are the declared opt-in exceptions, enforced by `cmake/CheckPublicHeaderIncludes.cmake`.
+- **`<string>`, `<vector>`, `<format>` and `<iostream>` must not reach `include/formula-cpp/formula.hpp`,** directly or through any header it includes. `render.hpp`, `document.hpp` and (new in this phase) `trace.hpp` and `trace_render.hpp` are the declared opt-in exceptions, enforced by `cmake/CheckPublicHeaderIncludes.cmake`. Each declares only the banned headers it actually uses, and the check fails if it uses another.
 - **A failed assertion must never open a Windows dialog.**
 - **The evaluator must never pre-render anything for the sink.** It hands over raw nodes and raw values; the recording sink does the formatting. (§11, and the measurements depend on it — see Task 3.)
 - **Never recurse on teardown.** (§11 scar: a chain of tens of thousands of nodes segfaulted on destruction in earlier work.)
@@ -37,7 +37,7 @@
 | `include/formula-cpp/evaluate.hpp` (modify) | Every `checked_evaluate_si` overload gains `Sink sink = {}`; recursion goes through `dispatch`. | Yes (already) |
 | `include/formula-cpp/function.hpp` (modify) | Same, for `PowerNode`, `RootNode`, `PiNode`. | Yes (already) |
 | `include/formula-cpp/citation.hpp` (modify) | Same, for `DocumentedNode`. | Yes (already) |
-| `include/formula-cpp/trace.hpp` (new) | `StepKind`, `Step`, `Trace`, `RecordingSink`, `explain`. Pulls `<vector>` and `<string>`. | **No — opt-in** |
+| `include/formula-cpp/trace.hpp` (new) | `StepKind`, `Step`, `Trace`, `RecordingSink`, `explain`. Pulls `<vector>` (not `<string>` — nothing here formats). | **No — opt-in** |
 | `include/formula-cpp/trace_render.hpp` (new) | Bounded rendering of a `Trace` to text. Pulls `<string>`. | **No — opt-in** |
 | `test/sink_tests.cpp` (new) | The seam: dispatch selects, fallback works, `NullSink` changes nothing. | — |
 | `test/trace_tests.cpp` (new) | Arena shape, operand indices, short-circuit, deep-tree teardown. | — |
@@ -770,9 +770,11 @@ Expected: `'formula-cpp/trace.hpp': No such file or directory`.
 /// A derivation, recorded: what the evaluator did, step by step.
 ///
 /// **This header is deliberately absent from `formula.hpp`.** It pulls
-/// `<vector>` and `<string>`, and a consumer who only evaluates numbers must
-/// not compile an arena into every translation unit. Include it when you want
-/// a derivation; include `trace_render.hpp` as well when you want to print one.
+/// `<vector>`, and a consumer who only evaluates numbers must not compile an
+/// arena into every translation unit. It does **not** pull `<string>`: nothing
+/// here formats anything, which is what keeps `trace_render.hpp` a separate,
+/// separately-optional header. Include this one to record a derivation, and
+/// that one as well to print it.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/evaluate.hpp>
