@@ -11,7 +11,14 @@
 # subdirectory, so Doxygen and MkDocs never have to know about each other
 # beyond that one path.
 #
-# Only settings that differ from Doxygen's own defaults are listed.
+# Most settings below differ from Doxygen's own defaults. A handful do not --
+# EXTRACT_ALL, EXTRACT_STATIC, EXTRACT_PRIVATE, HIDE_UNDOC_MEMBERS,
+# HIDE_UNDOC_CLASSES, WARN_IF_UNDOCUMENTED, WARN_IF_DOC_ERROR, GENERATE_HTML,
+# GENERATE_XML, GENERATE_MAN and GENERATE_RTF are Doxygen's own defaults
+# already -- and are stated here anyway, deliberately, so a reader does not
+# have to run `doxygen -g` to see that this project actually wants them: the
+# undocumented-entity-is-an-error policy and the HTML-only output are both
+# load-bearing choices, not accidents of leaving a setting untouched.
 
 PROJECT_NAME           = "@PROJECT_NAME@"
 PROJECT_NUMBER         = "@PROJECT_VERSION@"
@@ -57,5 +64,15 @@ GENERATE_LATEX         = NO
 GENERATE_XML           = NO
 GENERATE_MAN           = NO
 GENERATE_RTF           = NO
+
+# Defaults to YES in Doxygen, which makes every call/caller/include graph
+# depend on graphviz's `dot`. Nothing in this project's toolchain or CI
+# installs it, and on a machine without it Doxygen does not skip the graphs
+# quietly -- it exits non-zero with one "Problems running dot" error per
+# graph (187 of them, measured against this project's own headers). The site
+# needs no call graphs, so the fix is to not need `dot` at all, stated here
+# explicitly rather than left to a default a reader would have to already
+# know is the wrong one.
+HAVE_DOT               = NO
 
 QUIET                  = YES
