@@ -46,7 +46,7 @@ an audit trail, a LaTeX rendering and a documentation page.
 
 ## 3. Non-goals and hard constraints
 
-- **Open source, no company IP.** Apache-2.0, matching our other open-source C++ libraries.
+- **Open source, no company IP.** Apache-2.0.
 - **No norm content in this repository.** Standards are copyrighted and sold. Nothing from one
   appears here: not their text, tables, equations, threshold or constant values, and not their
   identifiers, clause or table numbers — not even as a bare citation. Public examples use
