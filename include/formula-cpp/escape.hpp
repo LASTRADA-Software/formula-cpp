@@ -37,6 +37,28 @@ namespace formula
 
 namespace detail
 {
+    /// Whether @p text actually says something, rather than merely occupying
+    /// bytes.
+    ///
+    /// A plain `size() > 0` check counts bytes, not content, so a single
+    /// space and a lone NUL both pass it -- and a justification nobody can
+    /// read defeats this escape hatch exactly as thoroughly as no
+    /// justification at all. The point of demanding one is that an audit
+    /// trail shows why a dimension was deliberately dropped; blank space
+    /// shows nothing.
+    ///
+    /// Deliberately not a general whitespace classifier: `std::isspace` is
+    /// locale-dependent and not `constexpr`, and this has to run during
+    /// translation. These are the characters a person types by accident,
+    /// plus NUL, which `FixedString` can carry because it is byte-oriented.
+    [[nodiscard]] constexpr bool saysSomething(std::string_view text) noexcept
+    {
+        for (char const character: text)
+            if (character != ' ' && character != '\t' && character != '\n' && character != '\r' && character != '\f' && character != '\v' && character != '\0')
+                return true;
+        return false;
+    }
+
     /// Fails to compile when a numeric-value escape hatch names a unit that
     /// does not measure the dimension of the expression it reads a number
     /// from -- "the numeric value of this mass in megapascals" is not a
@@ -59,10 +81,10 @@ namespace detail
 template <Unit U, detail::FixedString Justification, Node Operand>
 struct NumericValueNode: NodeBase
 {
-    static_assert(Justification.view().size() > 0,
+    static_assert(detail::saysSomething(Justification.view()),
                   "formula: numeric_value_of requires a justification saying why this rule is stated "
-                  "over a bare number rather than over a quantity; an empty one defeats the only "
-                  "safeguard this escape hatch has");
+                  "over a bare number rather than over a quantity; one that is empty, blank, or only "
+                  "NUL bytes defeats the only safeguard this escape hatch has");
     static_assert(detail::RequireEscapeUnitMatches<U, Operand>::value);
 
     /// The expression whose numeric value is taken.

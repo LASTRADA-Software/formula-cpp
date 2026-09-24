@@ -153,6 +153,9 @@ formula_add_negative_test(documented_dimension_mismatch
 formula_add_negative_test(escape_empty_justification
     "formula: numeric_value_of requires a justification saying why this rule is stated")
 
+formula_add_negative_test(escape_blank_justification
+    "formula: numeric_value_of requires a justification saying why this rule is stated")
+
 formula_add_negative_test(escape_unit_dimension_mismatch
     "formula: this numeric_value_of names a unit that does not measure the dimension")
 
