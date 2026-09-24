@@ -102,6 +102,13 @@ struct Trace
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
+    /// A `Trace` may hold more than one walk's steps: constructing a
+    /// `RecordingSink` over an existing `Trace` starts a new walk without
+    /// discarding the steps an earlier walk already recorded. `root()` always
+    /// names the **most recent** walk's root, since that is the one whose
+    /// bookkeeping `RecordingSink` just cleared -- an earlier walk's root is
+    /// simply some other step this one's arithmetic never reaches.
+    ///
     /// @pre `steps` is not empty.
     [[nodiscard]] std::size_t root() const noexcept { return steps.size() - 1; }
 
@@ -173,12 +180,28 @@ namespace detail
 /// node, so a sink that owned a `std::vector` would copy the whole arena each
 /// time. One pointer copies for free. See `sink.hpp` for the measurement that
 /// forces this.
+///
+/// Constructing a `RecordingSink` **begins a walk**: the constructor clears
+/// @p trace's `marks` and `unclaimed`, which belong to whichever walk is
+/// currently in flight and never to the ones before it. Without this, a
+/// second walk into the same `Trace` would find the first walk's root still
+/// sitting in `unclaimed` -- nothing left to claim it, since that walk is
+/// already over -- and it would linger there, unclaimed, for as long as the
+/// `Trace` lives. `steps` itself is left alone: several walks may accumulate
+/// their steps into one `Trace` on purpose, which is exactly why `root()`
+/// documents itself as naming the most recent walk's root rather than "the"
+/// root.
 template <typename Rep = Rational>
 class RecordingSink
 {
   public:
-    /// @p trace must outlive the evaluation.
-    explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace } {}
+    /// @p trace must outlive the evaluation. Begins a new walk: see the class
+    /// comment for why this clears `trace.marks` and `trace.unclaimed`.
+    explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace }
+    {
+        _trace->marks.clear();
+        _trace->unclaimed.clear();
+    }
 
     /// Remembers how much of the arena predates this node, so `produced` can
     /// tell which steps are its operands.

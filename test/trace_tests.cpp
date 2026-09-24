@@ -5,6 +5,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <vector>
+
 namespace
 {
 namespace unit = formula::unit;
@@ -148,6 +150,37 @@ TEST_CASE("a short-circuit two levels down does not let its ancestor steal a cou
     // Outer never short-circuits: it always dispatches both of its own two
     // children (var<Mass>, then the middle Divide), so it must have two.
     CHECK(outer.operands.size() == 2);
+}
+
+TEST_CASE("a second walk into the same Trace does not leave the first walk's root unclaimed forever",
+          "[trace]")
+{
+    constexpr auto density = formula::pow<2>(var<Mass>) / var<Volume>;
+
+    formula::Trace<> trace {};
+
+    {
+        formula::RecordingSink<> sink { trace };
+        auto const result = formula::checked_evaluate_si<formula::Rational>(density, environmentOf(6, 3), sink);
+        REQUIRE(result.has_value());
+    }
+    REQUIRE(trace.steps.size() == 4);
+    REQUIRE(trace.unclaimed == std::vector<std::size_t> { trace.root() });
+
+    // Constructing a second RecordingSink over the same Trace begins a new
+    // walk. Without clearing `unclaimed`, the first walk's root (index 3)
+    // would still be sitting there with nothing left to claim it, so it
+    // would accumulate forever across repeated reuse of one Trace.
+    {
+        formula::RecordingSink<> sink { trace };
+        auto const result = formula::checked_evaluate_si<formula::Rational>(density, environmentOf(10, 5), sink);
+        REQUIRE(result.has_value());
+    }
+
+    CHECK(trace.steps.size() == 8);
+    // Only the second walk's root remains unclaimed -- not both roots.
+    CHECK(trace.unclaimed == std::vector<std::size_t> { trace.root() });
+    CHECK(trace.root() == 7);
 }
 
 TEST_CASE("a deep tree is destroyed without recursing", "[trace]")
