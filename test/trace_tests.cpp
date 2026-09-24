@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -183,11 +184,25 @@ TEST_CASE("a second walk into the same Trace does not leave the first walk's roo
     CHECK(trace.root() == 7);
 }
 
-TEST_CASE("a deep tree is destroyed without recursing", "[trace]")
+// `Step::operands` holds indices into the owning `Trace`, never a child
+// `Step` by value or by pointer. That is the structural property that makes
+// destruction iterative rather than recursive: `std::vector<Step>`'s own
+// destructor just walks its elements in a loop, and destroying a `Step` never
+// destroys another `Step` -- there is nothing here for a recursive teardown
+// to even begin. It holds regardless of how many steps a `Trace` has or how
+// they were put there, so no runtime test of any size can exercise it any
+// more than this assertion already does.
+static_assert(std::is_same_v<decltype(formula::Step<> {}.operands), std::vector<std::size_t>>,
+              "formula: a Step's operands must be indices, not owned child steps, or teardown would "
+              "recurse");
+
+TEST_CASE("the arena holds a large number of steps without incident", "[trace]")
 {
-    // Build a long left-leaning chain at runtime by recording many steps
-    // directly: the concern is the arena's destructor, not the expression
-    // template, which is bounded by what a compiler will instantiate.
+    // This is a size/throughput smoke test, not a proof about recursion --
+    // that guarantee is established above, once, by construction. Pushing
+    // 200,000 steps directly (bypassing RecordingSink, whose own behaviour is
+    // covered elsewhere) merely shows that `Trace` has no hidden limit or
+    // quadratic behaviour at a size no real formula will ever reach.
     formula::Trace<> trace {};
     for (std::size_t i = 0; i < 200'000; ++i)
     {
@@ -198,7 +213,4 @@ TEST_CASE("a deep tree is destroyed without recursing", "[trace]")
         trace.steps.push_back(std::move(step));
     }
     CHECK(trace.steps.size() == 200'000);
-    // Destruction happens at the end of this scope. A tree of owning nodes
-    // would recurse 200'000 deep here and overflow the stack; a flat vector
-    // of index-referencing steps cannot.
 }
