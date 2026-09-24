@@ -176,6 +176,11 @@ add_test(NAME hygiene.headers
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckPublicHeaderIncludes.cmake")
 
+add_test(NAME hygiene.installed-headers
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckInstalledHeaders.cmake")
+
 add_test(NAME hygiene.testnames
     COMMAND "${CMAKE_COMMAND}"
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"

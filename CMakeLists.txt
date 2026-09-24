@@ -59,6 +59,9 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/render.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rational.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/sink.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace_render.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/unit.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp")
 
