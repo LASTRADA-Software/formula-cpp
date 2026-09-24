@@ -59,6 +59,7 @@ for it, in the mode the method specifies.
 | [Quantities and measurements](quantities.md) | Declaring a quantity, `Describe`, measurements that may be absent |
 | [Expressions and evaluation](expressions.md) | Operators, environments, outcomes, overrides |
 | [Citations and rendering](citations.md) | `documented()`, the three dialects, generated documentation |
+| [Tracing and audit trails](tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
 | [Gallery](gallery.md) | A documentation page the library generated about itself |
 
 New here? Read **[Expressions and evaluation](expressions.md)** first — it is the layer the library
@@ -88,7 +89,7 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Quantities, metadata, absent measurements | shipped |
 | Formulas, operators, environments, evaluation | shipped |
 | Citations, rendering dialects, generated documentation | shipped |
-| Calculation tracing and audit trails | in progress |
+| Calculation tracing and audit trails | shipped |
 | Conditionals, lookup tables, constraints, series, statistics | planned |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).
