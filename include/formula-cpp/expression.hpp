@@ -58,9 +58,12 @@ struct VarNode: NodeBase
 
 /// The spelling of a variable in a formula: `var<WaterVolume>`.
 ///
-/// `inline` matters and is not decoration. Without it each translation unit
-/// would get its own object, two of which are not the same variable; with it
-/// the whole program shares one, which `expression_cross_tu` pins.
+/// `inline` matters and is not decoration: it is what guarantees the whole
+/// program shares one object per `Q` rather than each translation unit
+/// getting its own. cl and clang-cl happen to give the specialisations
+/// external linkage even without it, so deleting `inline` breaks nothing on
+/// a Windows-only build; g++ does not, so the guarantee is enforced by the
+/// Linux-gcc CI leg and by `expression_cross_tu`.
 template <Described Q>
 inline constexpr VarNode<Q> var {};
 

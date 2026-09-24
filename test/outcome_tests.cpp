@@ -92,6 +92,19 @@ TEST_CASE("outcome: a verdict outcome is not overridden", "[outcome]")
     STATIC_REQUIRE_FALSE(outcome.is_overridden());
 }
 
+TEST_CASE("outcome: an absent manually entered value is not an override", "[outcome]")
+{
+    // Nothing was entered, so there is nothing to override with. Only the
+    // `is_value()` half of `is_overridden` distinguishes this from a real
+    // override, which is exactly what this test exists to pin.
+    constexpr formula::Outcome<Mass> outcome =
+        formula::Outcome<Mass>::value(formula::Measured<Mass>::absent(), formula::ValueSource::ManuallyEntered);
+
+    STATIC_REQUIRE(outcome.is_empty());
+    STATIC_REQUIRE(outcome.source() == formula::ValueSource::ManuallyEntered);
+    STATIC_REQUIRE_FALSE(outcome.is_overridden());
+}
+
 TEST_CASE("outcome: the label of a non-verdict outcome is empty rather than stale", "[outcome]")
 {
     constexpr formula::Outcome<Mass> outcome =
