@@ -55,14 +55,25 @@ struct Documentation
 
 namespace detail
 {
-    /// A compile-time-unique identity for @tparam Q: every instantiation of
-    /// `quantityIdentity<Q>` is one `inline` object, so its address is the
-    /// same in every translation unit for a given @p Q and different for
-    /// every other @p Q. Used to deduplicate the symbol table by quantity
-    /// *type* without reaching for RTTI (`typeid`, `<typeindex>`) -- this
-    /// library otherwise depends on neither, and a header-only library should
-    /// not make a consumer who builds with RTTI disabled pay for one bit of
-    /// bookkeeping inside a single opt-in header.
+    /// A distinct address per @tparam Q, used to deduplicate the symbol table
+    /// by quantity *type* without reaching for RTTI (`typeid`, `<typeindex>`).
+    /// This library depends on neither elsewhere, and a header-only library
+    /// should not make a consumer who builds with RTTI disabled pay for one
+    /// bit of bookkeeping inside a single opt-in header.
+    ///
+    /// What the deduplication relies on is narrow: within a single walk, the
+    /// address is stable for a given @p Q and different for every other one.
+    /// A `Walk` lives and dies inside one `document()` call, so those
+    /// comparisons never cross a translation unit.
+    ///
+    /// `inline` is here for a different reason, and it is not decoration.
+    /// `document()` is a function template and so is implicitly inline; if its
+    /// behaviour turned on an address that differed between translation units,
+    /// that would be one function with two behaviours. `inline` makes the
+    /// object one per program and the question moot -- measured on cl 19.51,
+    /// clang-cl 22 and g++ 13.3, which agree. Without it the object would be
+    /// one per translation unit on g++ and one per program on the other two,
+    /// a difference this library has already been bitten by once elsewhere.
     template <typename Q>
     inline constexpr bool quantityIdentity = false;
 
