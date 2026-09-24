@@ -1137,16 +1137,15 @@ populated in `RecordingSink::produced` alongside the existing fields:
         step.unit = coherent(N::dimension);
         if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
             step.unit = Describe<typename N::quantity>::unit;
-        else if constexpr (requires { N::unitOf; })
-            step.unit = N::unitOf;
+        else if constexpr (requires { N::unit; })
+            step.unit = N::unit;
 ```
 
-**Read `ConstantNode` in `expression.hpp` first and use whatever it actually
-names its unit** — it is a `Unit` non-type template parameter, so the member
-may be spelled differently from `unitOf` or may not exist as a member at all,
-in which case match on the `ConstantNode<U>` specialisation instead of a
-`requires`. Do not invent a name; the last three times this plan guessed one,
-one of the guesses was wrong.
+Verified against `expression.hpp`: `ConstantNode<U>` declares
+`static constexpr Unit unit = U;`, so `N::unit` is the right spelling and the
+`requires` selects exactly the constant case — `VarNode`, `PowerNode`,
+`RootNode`, `UnaryNode`, `BinaryNode`, `PiNode` and `DocumentedNode` declare no
+such member, so they all fall through to the coherent SI unit.
 
 Add a test pinning the declared unit for all three cases — a variable declared
 in litres, a constant, and a computed node — and a test that rendering shows
