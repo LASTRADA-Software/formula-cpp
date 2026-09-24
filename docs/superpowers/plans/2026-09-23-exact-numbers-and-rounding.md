@@ -16,7 +16,7 @@ Copied verbatim from the spec. Every task's requirements implicitly include this
 
 - **Open source, no company IP.** Apache-2.0. Every new source and build file starts with `// SPDX-License-Identifier: Apache-2.0` (or `# SPDX-License-Identifier: Apache-2.0` for CMake).
 - **No norm content in this repository.** No standard identifiers, clause or table numbers, transcribed text, equations or threshold values — not even as a bare citation. Public examples use **generic physics only** with fictional `Example Standard` citations.
-- **No third-party dependencies in the core.** Specifically **no glaze**.
+- **No third-party dependencies in the core**, and no serialization library in particular.
 - **No macros for traceability.**
 - **Compilers:** MSVC `cl`, `clang-cl`, `clang++`. GCC welcome if free.
 - **Must compile as C++23 everywhere.**

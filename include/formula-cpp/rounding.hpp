@@ -47,6 +47,7 @@ enum class RoundingMode : std::uint8_t
     AwayFromZero,
 };
 
+/// `mode` in prose, for a trace or an error message.
 [[nodiscard]] constexpr std::string_view describe(RoundingMode mode) noexcept
 {
     switch (mode)
@@ -73,14 +74,19 @@ enum class RoundingMode : std::uint8_t
 /// to whole tens, which norms do ask for.
 struct DecimalPlaces
 {
+    /// How many places past the decimal point to round to; negative rounds to
+    /// whole tens, hundreds, and so on.
     std::int32_t value {};
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(DecimalPlaces const&) const noexcept = default;
 };
 
 /// A count of significant digits. Must be at least 1.
 struct SignificantDigits
 {
+    /// How many significant digits to keep.
     std::int32_t value {};
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SignificantDigits const&) const noexcept = default;
 };
 
@@ -141,11 +147,13 @@ struct SignificantDigits
     return std::unexpected { ArithmeticError::DomainError };
 }
 
+/// Throwing spelling of `checked_round_to_int`.
 [[nodiscard]] constexpr Rational::Int round_to_int(Rational value, RoundingMode mode)
 {
     return detail::or_throw(checked_round_to_int(value, mode));
 }
 
+/// Rounds to a whole number under `mode`, as a `Rational` rather than a bare `Int`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_integer(Rational value,
                                                                                           RoundingMode mode) noexcept
 {
@@ -155,6 +163,7 @@ struct SignificantDigits
     return Rational { *rounded };
 }
 
+/// Throwing spelling of `checked_round_to_integer`.
 [[nodiscard]] constexpr Rational round_to_integer(Rational value, RoundingMode mode)
 {
     return detail::or_throw(checked_round_to_integer(value, mode));
@@ -185,6 +194,7 @@ struct SignificantDigits
     return checked_mul(Rational { *steps }, step);
 }
 
+/// Throwing spelling of `checked_round_to_multiple`.
 [[nodiscard]] constexpr Rational round_to_multiple(Rational value, Rational step, RoundingMode mode)
 {
     return detail::or_throw(checked_round_to_multiple(value, step, mode));
@@ -238,6 +248,7 @@ namespace detail
     return exponent;
 }
 
+/// Rounds `value` to `places` decimal places under `mode`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round(Rational value,
                                                                                DecimalPlaces places,
                                                                                RoundingMode mode) noexcept
@@ -252,11 +263,13 @@ namespace detail
     return checked_round_to_multiple(value, *step, mode);
 }
 
+/// Throwing spelling of `checked_round(Rational, DecimalPlaces, RoundingMode)`.
 [[nodiscard]] constexpr Rational round(Rational value, DecimalPlaces places, RoundingMode mode)
 {
     return detail::or_throw(checked_round(value, places, mode));
 }
 
+/// Rounds `value` to `digits` significant digits under `mode`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round(Rational value,
                                                                                SignificantDigits digits,
                                                                                RoundingMode mode) noexcept
@@ -279,6 +292,7 @@ namespace detail
     return checked_round(value, DecimalPlaces { static_cast<std::int32_t>(places) }, mode);
 }
 
+/// Throwing spelling of `checked_round(Rational, SignificantDigits, RoundingMode)`.
 [[nodiscard]] constexpr Rational round(Rational value, SignificantDigits digits, RoundingMode mode)
 {
     return detail::or_throw(checked_round(value, digits, mode));

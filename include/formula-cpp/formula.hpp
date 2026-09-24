@@ -2,10 +2,14 @@
 #pragma once
 
 /// @file
-/// Umbrella header. Deliberately pulls in no <string>, <vector> or <format>:
+/// Umbrella header. Deliberately pulls in no `<string>`, `<vector>` or `<format>`:
 /// a consumer that only evaluates numbers must not compile them in every
-/// translation unit.
+/// translation unit. `render.hpp` and `document.hpp` do require these headers
+/// for documentation generation; they are deliberately not included here, so
+/// that arithmetic-only consumers stay lean and pay nothing for text a
+/// consumer who wants it asks for by name.
 
+#include <formula-cpp/citation.hpp>
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/environment.hpp>

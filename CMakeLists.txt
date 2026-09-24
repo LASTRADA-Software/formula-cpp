@@ -18,6 +18,14 @@ option(FORMULA_BUILD_EXAMPLES "Build formula-cpp examples"   ${PROJECT_IS_TOP_LE
 option(FORMULA_INSTALL        "Generate install rules"       ${PROJECT_IS_TOP_LEVEL})
 option(FORMULA_PEDANTIC       "Compile with strict warnings" ON)
 option(FORMULA_WERROR         "Treat warnings as errors"     OFF)
+# Our own tooling (currently: the gallery generator under tools/gallery). A
+# consumer embedding this library as a subproject must not build it -- it
+# exists to maintain formula-cpp itself, not to be linked by anyone else.
+option(FORMULA_TOOLS          "Build formula-cpp's own tools" ${PROJECT_IS_TOP_LEVEL})
+# The Doxygen API reference published under /api by .github/workflows/pages.yml.
+# Same reasoning as FORMULA_TOOLS: a consumer embedding this library as a
+# subproject has no use for formula-cpp's own documentation target.
+option(FORMULA_BUILD_DOCS     "Configure the formula-cpp-docs-api target" ${PROJECT_IS_TOP_LEVEL})
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,7 +44,9 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/checked_int.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/fixed_string.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/citation.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/dimension.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/document.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/environment.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/error.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/evaluate.hpp"
@@ -46,6 +56,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/measured.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/outcome.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/quantity.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/render.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rational.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/unit.hpp"
@@ -114,4 +125,42 @@ endif()
 
 if(FORMULA_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+if(FORMULA_TOOLS)
+    add_subdirectory(tools/gallery)
+endif()
+
+if(FORMULA_BUILD_DOCS)
+    # QUIET: Doxygen is not installed on every machine that configures this
+    # project, and its absence must not fail configuration -- only whoever
+    # actually asks for the formula-cpp-docs-api target (in practice, just
+    # .github/workflows/pages.yml) needs it present.
+    find_package(Doxygen QUIET)
+
+    if(DOXYGEN_FOUND)
+        # A local build gets a build-tree default; the workflow overrides this
+        # with -DFORMULA_DOXYGEN_OUTPUT_DIR=<mkdocs site>/api so Doxygen writes
+        # its HTML straight into the already-built MkDocs site with no copy
+        # step. The default must not point inside the MkDocs site's own docs/
+        # directory (mkdocs build would then see stray HTML as source input).
+        set(FORMULA_DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs-api" CACHE PATH
+            "Where the formula-cpp-docs-api target writes the generated HTML")
+
+        configure_file(
+            "${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in"
+            "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile"
+            @ONLY)
+
+        # Not part of the default build (`cmake --build --preset ...` does not
+        # touch this target): none of the four development presets install
+        # Doxygen, and the API reference is only ever built by the publishing
+        # workflow, on demand, against the version of Doxygen it installs.
+        add_custom_target(formula-cpp-docs-api
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${FORMULA_DOXYGEN_OUTPUT_DIR}"
+            COMMAND "${DOXYGEN_EXECUTABLE}" "${CMAKE_CURRENT_BINARY_DIR}/Doxyfile"
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            COMMENT "formula-cpp: generating the Doxygen API reference"
+            VERBATIM)
+    endif()
 endif()

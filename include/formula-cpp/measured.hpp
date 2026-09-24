@@ -65,11 +65,16 @@ class Measured
     /// Not measured.
     constexpr Measured() noexcept = default;
 
+    /// A present value, in `Q`'s declared unit.
     constexpr explicit Measured(Rational value) noexcept: _value { value } {}
 
+    /// Not measured -- equivalent to the default constructor, but named for
+    /// readability at the call site.
     [[nodiscard]] static constexpr Measured absent() noexcept { return Measured {}; }
 
+    /// True when a value is present.
     [[nodiscard]] constexpr bool has_value() const noexcept { return _value.has_value(); }
+    /// True when no value is present.
     [[nodiscard]] constexpr bool is_absent() const noexcept { return !_value.has_value(); }
 
     /// The stored payload, for code that wants to branch on it directly.
@@ -102,16 +107,20 @@ class Measured
         return _value.value_or(fallback);
     }
 
+    /// Equal when both are absent, or both present with the same value.
     [[nodiscard]] constexpr bool operator==(Measured const&) const noexcept = default;
 
     /// Convenience readers for the quantity's own metadata, so a caller holding
     /// a value does not have to name `Describe<Q>` to label it.
     [[nodiscard]] static constexpr Unit quantity_unit() noexcept { return Describe<Q>::unit; }
+    /// `Q`'s symbol -- see `quantity_unit`.
     [[nodiscard]] static constexpr std::string_view quantity_symbol() noexcept { return Describe<Q>::symbol; }
+    /// `Q`'s description -- see `quantity_unit`.
     [[nodiscard]] static constexpr std::string_view quantity_description() noexcept
     {
         return Describe<Q>::description;
     }
+    /// `Q`'s dimension -- see `quantity_unit`.
     [[nodiscard]] static constexpr Dimension quantity_dimension() noexcept { return Describe<Q>::dimension; }
 
   private:

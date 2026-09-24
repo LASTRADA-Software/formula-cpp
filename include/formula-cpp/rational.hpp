@@ -48,6 +48,7 @@ namespace detail
 class Rational
 {
   public:
+    /// The signed integer type numerator and denominator are stored in.
     using Int = detail::Int;
 
     /// Zero.
@@ -189,24 +190,29 @@ class Rational
         return make(numerator, Int { 1 } << -shifted);
     }
 
+    /// The numerator, in lowest terms.
     [[nodiscard]] constexpr Int numerator() const noexcept
     {
         return _numerator;
     }
+    /// The denominator, in lowest terms and always positive.
     [[nodiscard]] constexpr Int denominator() const noexcept
     {
         return _denominator;
     }
 
+    /// True when the denominator is 1, i.e. this value is a whole number.
     [[nodiscard]] constexpr bool is_integer() const noexcept
     {
         return _denominator == 1;
     }
+    /// True for zero.
     [[nodiscard]] constexpr bool is_zero() const noexcept
     {
         return _numerator == 0;
     }
 
+    /// -1, 0 or 1, for negative, zero and positive respectively.
     [[nodiscard]] constexpr int sign() const noexcept
     {
         return _numerator == 0 ? 0 : (_numerator < 0 ? -1 : 1);
@@ -260,6 +266,8 @@ class Rational
         }
     }
 
+    /// Exact equality -- a componentwise comparison, valid because both operands
+    /// are always in canonical (lowest-terms, positive-denominator) form.
     [[nodiscard]] constexpr bool operator==(Rational const& other) const noexcept
     {
         // Canonical form makes this a componentwise comparison.
@@ -326,6 +334,8 @@ class Rational
     return Rational::make(*numerator, *denominator);
 }
 
+/// Exact subtraction. Implemented as negate-then-add, so it fails under
+/// exactly the same conditions as `checked_negate` and `checked_add`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_sub(Rational lhs, Rational rhs) noexcept
 {
     std::expected<Rational, ArithmeticError> const negated = checked_negate(rhs);
@@ -334,6 +344,8 @@ class Rational
     return checked_add(lhs, *negated);
 }
 
+/// Exact multiplication, cross-reducing before multiplying so that a product
+/// which is exactly representable does not overflow on the way there.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_mul(Rational lhs, Rational rhs) noexcept
 {
     // Cross-reduce before multiplying: (IntMax/3) * (3/IntMax) is exactly 1, but
@@ -360,6 +372,9 @@ class Rational
     return Rational::make(*numerator, *denominator);
 }
 
+/// Exact division. Implemented as reciprocal-then-multiply, so it fails under
+/// division by zero and under exactly the conditions `checked_reciprocal` and
+/// `checked_mul` do.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_div(Rational lhs, Rational rhs) noexcept
 {
     if (rhs.is_zero())
@@ -408,44 +423,56 @@ class Rational
 
 // ---- the operator layer: total-looking, but never silently wrong ----
 
+/// Throwing addition -- `ArithmeticException` on overflow. See `checked_add`.
 [[nodiscard]] constexpr Rational operator+(Rational lhs, Rational rhs)
 {
     return detail::or_throw(checked_add(lhs, rhs));
 }
+/// Throwing subtraction -- `ArithmeticException` on overflow. See `checked_sub`.
 [[nodiscard]] constexpr Rational operator-(Rational lhs, Rational rhs)
 {
     return detail::or_throw(checked_sub(lhs, rhs));
 }
+/// Throwing multiplication -- `ArithmeticException` on overflow. See `checked_mul`.
 [[nodiscard]] constexpr Rational operator*(Rational lhs, Rational rhs)
 {
     return detail::or_throw(checked_mul(lhs, rhs));
 }
+/// Throwing division -- `ArithmeticException` on division by zero or overflow.
+/// See `checked_div`.
 [[nodiscard]] constexpr Rational operator/(Rational lhs, Rational rhs)
 {
     return detail::or_throw(checked_div(lhs, rhs));
 }
 
+/// Throwing compound addition. See `operator+`.
 constexpr Rational& operator+=(Rational& lhs, Rational rhs)
 {
     return lhs = lhs + rhs;
 }
+/// Throwing compound subtraction. See `operator-`.
 constexpr Rational& operator-=(Rational& lhs, Rational rhs)
 {
     return lhs = lhs - rhs;
 }
+/// Throwing compound multiplication. See `operator*`.
 constexpr Rational& operator*=(Rational& lhs, Rational rhs)
 {
     return lhs = lhs * rhs;
 }
+/// Throwing compound division. See `operator/`.
 constexpr Rational& operator/=(Rational& lhs, Rational rhs)
 {
     return lhs = lhs / rhs;
 }
 
+/// Unary plus. A no-op; present for symmetry with unary minus.
 [[nodiscard]] constexpr Rational operator+(Rational value) noexcept
 {
     return value;
 }
+/// Throwing negation -- `ArithmeticException` for the one numerator whose sign
+/// cannot be flipped. See `checked_negate`.
 [[nodiscard]] constexpr Rational operator-(Rational value)
 {
     return detail::or_throw(checked_negate(value));
@@ -460,11 +487,13 @@ constexpr Rational& operator/=(Rational& lhs, Rational rhs)
     return checked_negate(value);
 }
 
+/// Throwing absolute value. See `checked_abs`.
 [[nodiscard]] constexpr Rational abs(Rational value)
 {
     return detail::or_throw(checked_abs(value));
 }
 
+/// Throwing integer power. See `checked_pow`.
 [[nodiscard]] constexpr Rational pow(Rational base, int exponent)
 {
     return detail::or_throw(checked_pow(base, exponent));

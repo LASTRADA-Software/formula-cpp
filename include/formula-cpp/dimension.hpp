@@ -28,9 +28,17 @@ namespace formula
 /// different objects, and as template arguments they name different types.
 struct Exponent
 {
+    /// The numerator, in lowest terms as produced by `exponent()`. A public
+    /// field on a public aggregate: nothing stops a caller writing a
+    /// non-canonical value directly, as the file comment above warns.
     std::int32_t numerator = 0;
+    /// The denominator: in lowest terms and positive, as produced by
+    /// `exponent()` -- again not enforced for a hand-built `Exponent`.
     std::int32_t denominator = 1;
 
+    /// Memberwise equality -- meaningful when both fields are canonical, which
+    /// is true of everything `exponent()` produces but not guaranteed for a
+    /// value built by aggregate initialisation instead.
     [[nodiscard]] constexpr bool operator==(Exponent const&) const noexcept = default;
 };
 
@@ -125,6 +133,7 @@ namespace detail
     return detail::reduced(numerator, denominator);
 }
 
+/// Adding exponents is what multiplying the dimensions they belong to does.
 [[nodiscard]] constexpr Exponent operator+(Exponent lhs, Exponent rhs) noexcept
 {
     return detail::reduced(static_cast<std::int64_t>(lhs.numerator) * rhs.denominator
@@ -132,6 +141,7 @@ namespace detail
                            static_cast<std::int64_t>(lhs.denominator) * rhs.denominator);
 }
 
+/// Subtracting exponents is what dividing the dimensions they belong to does.
 [[nodiscard]] constexpr Exponent operator-(Exponent lhs, Exponent rhs) noexcept
 {
     return detail::reduced(static_cast<std::int64_t>(lhs.numerator) * rhs.denominator
@@ -139,6 +149,7 @@ namespace detail
                            static_cast<std::int64_t>(lhs.denominator) * rhs.denominator);
 }
 
+/// Negation.
 [[nodiscard]] constexpr Exponent operator-(Exponent value) noexcept
 {
     return detail::reduced(-static_cast<std::int64_t>(value.numerator), value.denominator);
@@ -156,11 +167,13 @@ namespace detail
     return detail::reduced(value.numerator, static_cast<std::int64_t>(value.denominator) * divisor);
 }
 
+/// True for the exponent of a dimension a quantity does not depend on at all.
 [[nodiscard]] constexpr bool is_zero(Exponent value) noexcept
 {
     return value.numerator == 0;
 }
 
+/// True when the exponent is a whole number, not a genuine fraction such as one half.
 [[nodiscard]] constexpr bool is_integer(Exponent value) noexcept
 {
     return value.denominator == 1;
@@ -174,14 +187,22 @@ namespace detail
 /// including that two translation units agree on the mangling.
 struct Dimension
 {
+    /// Exponent on length (SI base unit: metre).
     Exponent length {};
+    /// Exponent on mass (SI base unit: kilogram).
     Exponent mass {};
+    /// Exponent on time (SI base unit: second).
     Exponent time {};
+    /// Exponent on electric current (SI base unit: ampere).
     Exponent current {};
+    /// Exponent on thermodynamic temperature (SI base unit: kelvin).
     Exponent temperature {};
+    /// Exponent on amount of substance (SI base unit: mole).
     Exponent amount {};
+    /// Exponent on luminous intensity (SI base unit: candela).
     Exponent luminosity {};
 
+    /// Memberwise equality across all seven exponents.
     [[nodiscard]] constexpr bool operator==(Dimension const&) const noexcept = default;
 };
 
@@ -209,6 +230,7 @@ struct Dimension
              lhs.luminosity - rhs.luminosity };
 }
 
+/// Raising a quantity to an integer power scales every exponent of its dimension.
 [[nodiscard]] constexpr Dimension power(Dimension value, std::int32_t exponentOfPower) noexcept
 {
     return { value.length * exponentOfPower,      value.mass * exponentOfPower,
@@ -226,6 +248,7 @@ struct Dimension
              value.temperature / degree, value.amount / degree, value.luminosity / degree };
 }
 
+/// True for a quantity with no dependence on any base dimension -- a pure ratio.
 [[nodiscard]] constexpr bool is_dimensionless(Dimension value) noexcept
 {
     return value == Dimension {};
@@ -235,23 +258,40 @@ struct Dimension
 /// keeps the representation swappable.
 namespace dim
 {
+    /// Dimensionless -- every exponent zero.
     inline constexpr Dimension Scalar {};
+    /// The base dimension of length.
     inline constexpr Dimension Length { .length = exponent(1) };
+    /// The base dimension of mass.
     inline constexpr Dimension Mass { .mass = exponent(1) };
+    /// The base dimension of time.
     inline constexpr Dimension Time { .time = exponent(1) };
+    /// The base dimension of electric current.
     inline constexpr Dimension Current { .current = exponent(1) };
+    /// The base dimension of thermodynamic temperature.
     inline constexpr Dimension Temperature { .temperature = exponent(1) };
+    /// The base dimension of amount of substance.
     inline constexpr Dimension Amount { .amount = exponent(1) };
+    /// The base dimension of luminous intensity.
     inline constexpr Dimension Luminosity { .luminosity = exponent(1) };
 
+    /// Length squared.
     inline constexpr Dimension Area = Length * Length;
+    /// Length cubed.
     inline constexpr Dimension Volume = Area * Length;
+    /// Mass per volume.
     inline constexpr Dimension Density = Mass / Volume;
+    /// Length per time.
     inline constexpr Dimension Velocity = Length / Time;
+    /// Velocity per time.
     inline constexpr Dimension Acceleration = Velocity / Time;
+    /// Mass times acceleration.
     inline constexpr Dimension Force = Mass * Acceleration;
+    /// Force per area.
     inline constexpr Dimension Pressure = Force / Area;
+    /// Force times length.
     inline constexpr Dimension Energy = Force * Length;
+    /// The reciprocal of time.
     inline constexpr Dimension Frequency = Scalar / Time;
 } // namespace dim
 
@@ -303,6 +343,9 @@ struct RequireSameDimension
                   "appear in this diagnostic as the template arguments of RequireSameDimension, in "
                   "the order length, mass, time, current, temperature, amount, luminosity");
 
+    /// Always `true` once reached -- the `static_assert` above already failed
+    /// compilation otherwise. Present so `::value` is the spelling that instantiates
+    /// the class template; see the class comment for why that spelling matters.
     static constexpr bool value = true;
 };
 

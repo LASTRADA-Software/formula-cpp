@@ -46,14 +46,14 @@ an audit trail, a LaTeX rendering and a documentation page.
 
 ## 3. Non-goals and hard constraints
 
-- **Open source, no company IP.** Apache-2.0, matching morph and Lightweight.
+- **Open source, no company IP.** Apache-2.0.
 - **No norm content in this repository.** Standards are copyrighted and sold. Nothing from one
   appears here: not their text, tables, equations, threshold or constant values, and not their
   identifiers, clause or table numbers — not even as a bare citation. Public examples use
   **generic physics only** (density, flow rate) with fictional `Example Standard` citations. Real
   norm content lives in downstream, possibly closed, libraries.
-- **No third-party dependencies in the core.** Specifically **no glaze**. Serialization belongs
-  to the consumer: morph adds its own `glz::meta` specialisations for our types.
+- **No third-party dependencies in the core**, and no serialization library in particular.
+  Serialization belongs to the consumer, which supplies its own adapters for our types.
 - **No macros for traceability.** (§11.)
 - **Compilers:** MSVC `cl`, `clang-cl`, `clang++`. GCC welcome if free.
 - **Must compile as C++23 everywhere.**
@@ -61,12 +61,12 @@ an audit trail, a LaTeX rendering and a documentation page.
 ## 4. Dependency direction
 
 ```
-Lastrada  ──►  morph  ──►  formula-cpp  ──►  (nothing)
+Lastrada  ──►  intermediate library  ──►  formula-cpp  ──►  (nothing)
 ```
 
-`formula-cpp` depends on nothing. `morph` will eventually **retire** its own rational, quantity and
-equation types and use ours instead. `Lastrada` consumes formula-cpp via vcpkg (directly today,
-transitively through morph later).
+`formula-cpp` depends on nothing. The intermediate library will eventually **retire** its own
+rational, quantity and equation types and use ours instead. `Lastrada` consumes formula-cpp via
+vcpkg (directly today, transitively later).
 
 This inverts the usual instinct and it constrains v1: the downstream codebase cannot drop its types
 unless ours **replace** them, so formula-cpp must *ship* an exact rational and a quantity, not
@@ -299,8 +299,11 @@ constexpr auto wc_ratio = formula::documented(
       .text      = "Ratio of the effective water content to the cement content." });
 ```
 
-`DocumentedNode` forwards dimension and precedence, so wrapping changes neither the arithmetic nor
-the rendering. Only the documentation walk and the trace sink notice it. Designated-initialiser
+`DocumentedNode` forwards dimension unconditionally and precedence in two layers: the type-level
+trait forwards for every node kind, and a runtime `precedence_of` overload forwards the data a
+wrapped node's bracketing can depend on (a constant's sign or unit symbol), so wrapping changes
+neither the arithmetic nor the rendering. Only the documentation walk and the trace sink notice it.
+Designated-initialiser
 binding into this non-deduced parameter was verified on all three compilers.
 
 ## 11. Traceability — composable, no macros
@@ -412,16 +415,15 @@ The decisive point is the third row: an `operator*` that *requires* a dimensiona
 library does not provide leaves every application to write its own. Filling that hole is precisely
 formula-cpp's job, and an adopting application can then delete what it wrote.
 
-## 15. morph migration path
+## 15. Downstream migration path
 
 Not a bootstrap step. The exact-rational and quantity types formula-cpp replaces are long
-established downstream and widely depended on there, and they are entangled with that codebase's
-serialization and logging choices — which is exactly why this library takes none of those
-dependencies (§3).
+established downstream and widely depended on there, and they carry dependencies this library
+deliberately takes none of (§3).
 
-Sequence: formula-cpp ships and stabilises → morph adds it as a dependency and supplies its own
-serialization and tagging adapters for our types → morph's own copies are deleted and their
-dependents migrate. Each step is independently reviewable.
+Sequence: formula-cpp ships and stabilises → the downstream library adds it as a dependency and
+supplies its own adapters for our types → its own copies are deleted and their dependents
+migrate. Each step is independently reviewable.
 
 ## 16. Norm-realism scope
 
@@ -623,7 +625,7 @@ in phase 5, rewriting `examples/simple.cpp` against the new API.
 - **vcpkg** is the primary consumption path; the port must stay trivial.
 - **Version:** a committed literal, **not** `git describe` — `vcpkg_from_github` extracts a tarball
   with no `.git`, which would silently install a `0.0.0` config.
-- **Dependencies:** Catch2 via a pinned, hash-checked CPM bootstrap (fastcached's).
+- **Dependencies:** Catch2 via a pinned, hash-checked CPM bootstrap.
 - **Presets:** `cl`, `clang-cl`, `clang++` (+ gcc), Ninja, OS-gated conditions.
 - **Warnings:** `/W4 /permissive- /utf-8 /Zc:__cplusplus` for the MSVC family; `-Wall -Wextra` for
   clang++. `-Werror` must be applied by **frontend variant**, not compiler id — `CMAKE_CXX_COMPILER_ID`

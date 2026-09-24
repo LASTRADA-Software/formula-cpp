@@ -29,8 +29,10 @@ namespace formula
 template <Described Q>
 struct Entered
 {
+    /// The value as the person stated it.
     Measured<Q> measurement {};
 
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(Entered const&) const noexcept = default;
 };
 

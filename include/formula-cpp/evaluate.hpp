@@ -47,6 +47,14 @@ namespace formula
 /// The primary template is deliberately undefined: a representation that has
 /// not been taught to the library fails at the point of use, naming itself,
 /// rather than silently selecting something plausible.
+///
+/// This is a **public extension point**, which is why it lives here rather
+/// than in `detail`. A consumer who wants the evaluator to work in a
+/// representation the library does not ship -- an arbitrary-precision
+/// rational, a fixed-point type, an interval -- specialises this and the
+/// evaluator uses it with no further change. The specialisations below for
+/// `Rational` and `double` are the two the library ships, not the two it
+/// permits.
 template <typename Rep>
 struct RepTraits;
 
@@ -55,26 +63,33 @@ struct RepTraits;
 template <>
 struct RepTraits<Rational>
 {
+    /// A value already in `Rational`, unchanged -- present so `detail::in_si`
+    /// can call `RepTraits<Rep>::from` uniformly for every representation.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from(Rational value) noexcept
     {
         return value;
     }
+    /// Exact addition; an overflowing sum is reported, never wrapped.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> add(Rational lhs, Rational rhs) noexcept
     {
         return checked_add(lhs, rhs);
     }
+    /// Exact subtraction; an overflowing difference is reported, never wrapped.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> subtract(Rational lhs, Rational rhs) noexcept
     {
         return checked_sub(lhs, rhs);
     }
+    /// Exact multiplication; an overflowing product is reported, never wrapped.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> multiply(Rational lhs, Rational rhs) noexcept
     {
         return checked_mul(lhs, rhs);
     }
+    /// Exact division; division by zero is reported, never a trap or an infinity.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> divide(Rational lhs, Rational rhs) noexcept
     {
         return checked_div(lhs, rhs);
     }
+    /// Exact negation.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> negate(Rational value) noexcept
     {
         return checked_negate(value);
@@ -91,28 +106,35 @@ struct RepTraits<Rational>
 template <>
 struct RepTraits<double>
 {
+    /// Converts an exact `Rational` (already in the coherent SI unit) to `double`.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> from(Rational value) noexcept
     {
         return value.to_double();
     }
+    /// Ordinary floating-point addition.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> add(double lhs, double rhs) noexcept
     {
         return lhs + rhs;
     }
+    /// Ordinary floating-point subtraction.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> subtract(double lhs, double rhs) noexcept
     {
         return lhs - rhs;
     }
+    /// Ordinary floating-point multiplication.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> multiply(double lhs, double rhs) noexcept
     {
         return lhs * rhs;
     }
+    /// Floating-point division, except that division by zero is reported as
+    /// `ArithmeticError::DivisionByZero` rather than becoming `inf` or `nan`.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> divide(double lhs, double rhs) noexcept
     {
         if (rhs == 0.0)
             return std::unexpected { ArithmeticError::DivisionByZero };
         return lhs / rhs;
     }
+    /// Ordinary floating-point negation.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> negate(double value) noexcept
     {
         return -value;
@@ -171,6 +193,8 @@ namespace detail
     }
 } // namespace detail
 
+/// Looks `Q` up in `environment` and, if present, converts it to the coherent
+/// SI unit of its dimension.
 template <typename Rep = Rational, Described Q, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(VarNode<Q> const&, Env const& environment) noexcept
 {
@@ -180,12 +204,15 @@ template <typename Rep = Rational, Described Q, typename Env>
     return detail::in_si<Rep>(*measured.stored(), Describe<Q>::unit);
 }
 
+/// A literal coefficient is always present; converts it to the coherent SI unit.
 template <typename Rep = Rational, Unit U, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ConstantNode<U> const& node, Env const&) noexcept
 {
     return detail::in_si<Rep>(node.number, U);
 }
 
+/// Evaluates the operand, then applies `Op` -- absence and arithmetic errors
+/// both propagate without applying the operator.
 template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(UnaryNode<Op, Operand> const& node,
                                                            Env const& environment) noexcept
@@ -203,6 +230,11 @@ template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env>
     return detail::present<Rep>(*negated);
 }
 
+/// Evaluates the left operand, then the right, and only then considers
+/// absence -- so an arithmetic error is never hidden behind the other side's
+/// being absent. An error on the **left** returns at once: the right side
+/// cannot change an answer that is already an error, and evaluating it anyway
+/// would only choose which of two errors to report.
 template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(BinaryNode<Op, Left, Right> const& node,
                                                            Env const& environment) noexcept
