@@ -25,6 +25,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
 
 #include <expected>
@@ -195,39 +196,64 @@ namespace detail
 
 /// Looks `Q` up in `environment` and, if present, converts it to the coherent
 /// SI unit of its dimension.
-template <typename Rep = Rational, Described Q, typename Env>
-[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(VarNode<Q> const&, Env const& environment) noexcept
+template <typename Rep = Rational, Described Q, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(VarNode<Q> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
 {
+    sink.entered(node);
     Measured<Q> const measured = environment.template get<Q>();
     if (measured.is_absent())
-        return detail::nothing<Rep>();
-    return detail::in_si<Rep>(*measured.stored(), Describe<Q>::unit);
+    {
+        Evaluated<Rep> const absent = detail::nothing<Rep>();
+        sink.produced(node, absent);
+        return absent;
+    }
+    Evaluated<Rep> const result = detail::in_si<Rep>(*measured.stored(), Describe<Q>::unit);
+    sink.produced(node, result);
+    return result;
 }
 
 /// A literal coefficient is always present; converts it to the coherent SI unit.
-template <typename Rep = Rational, Unit U, typename Env>
-[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ConstantNode<U> const& node, Env const&) noexcept
+template <typename Rep = Rational, Unit U, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ConstantNode<U> const& node,
+                                                           Env const&,
+                                                           Sink sink = {}) noexcept
 {
-    return detail::in_si<Rep>(node.number, U);
+    sink.entered(node);
+    Evaluated<Rep> const result = detail::in_si<Rep>(node.number, U);
+    sink.produced(node, result);
+    return result;
 }
 
 /// Evaluates the operand, then applies `Op` -- absence and arithmetic errors
 /// both propagate without applying the operator.
-template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env>
+template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(UnaryNode<Op, Operand> const& node,
-                                                           Env const& environment) noexcept
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
 {
-    Evaluated<Rep> const operand = checked_evaluate_si<Rep>(node.operand, environment);
+    sink.entered(node);
+    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
     if (!operand.has_value())
-        return std::unexpected { operand.error() };
+    {
+        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        sink.produced(node, failed);
+        return failed;
+    }
     if (!operand->has_value())
-        return detail::nothing<Rep>();
+    {
+        Evaluated<Rep> const absent = detail::nothing<Rep>();
+        sink.produced(node, absent);
+        return absent;
+    }
 
     static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
     std::expected<Rep, ArithmeticError> const negated = RepTraits<Rep>::negate(**operand);
-    if (!negated.has_value())
-        return std::unexpected { negated.error() };
-    return detail::present<Rep>(*negated);
+    Evaluated<Rep> const result =
+        negated.has_value() ? detail::present<Rep>(*negated) : Evaluated<Rep> { std::unexpected { negated.error() } };
+    sink.produced(node, result);
+    return result;
 }
 
 /// Evaluates the left operand, then the right, and only then considers
@@ -235,22 +261,36 @@ template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env>
 /// being absent. An error on the **left** returns at once: the right side
 /// cannot change an answer that is already an error, and evaluating it anyway
 /// would only choose which of two errors to report.
-template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typename Env>
+template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(BinaryNode<Op, Left, Right> const& node,
-                                                           Env const& environment) noexcept
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
 {
-    Evaluated<Rep> const lhs = checked_evaluate_si<Rep>(node.lhs, environment);
+    sink.entered(node);
+    Evaluated<Rep> const lhs = detail::dispatch<Rep>(node.lhs, environment, sink);
     if (!lhs.has_value())
-        return std::unexpected { lhs.error() };
-    Evaluated<Rep> const rhs = checked_evaluate_si<Rep>(node.rhs, environment);
+    {
+        Evaluated<Rep> const failed = std::unexpected { lhs.error() };
+        sink.produced(node, failed);
+        return failed;
+    }
+    Evaluated<Rep> const rhs = detail::dispatch<Rep>(node.rhs, environment, sink);
     if (!rhs.has_value())
-        return std::unexpected { rhs.error() };
+    {
+        Evaluated<Rep> const failed = std::unexpected { rhs.error() };
+        sink.produced(node, failed);
+        return failed;
+    }
 
     // Absence wins over arithmetic, but only after both sides have been asked:
     // an arithmetic error in the side that *is* present is still an error, and
     // hiding it behind the other side's absence would lose it.
     if (!lhs->has_value() || !rhs->has_value())
-        return detail::nothing<Rep>();
+    {
+        Evaluated<Rep> const absent = detail::nothing<Rep>();
+        sink.produced(node, absent);
+        return absent;
+    }
 
     std::expected<Rep, ArithmeticError> const combined = [&] {
         if constexpr (Op == BinaryOperator::Add)
@@ -262,9 +302,10 @@ template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typ
         else
             return RepTraits<Rep>::divide(**lhs, **rhs);
     }();
-    if (!combined.has_value())
-        return std::unexpected { combined.error() };
-    return detail::present<Rep>(*combined);
+    Evaluated<Rep> const result =
+        combined.has_value() ? detail::present<Rep>(*combined) : Evaluated<Rep> { std::unexpected { combined.error() } };
+    sink.produced(node, result);
+    return result;
 }
 
 /// Evaluates @p expression for quantity @p Result.
@@ -278,9 +319,10 @@ template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typ
 /// returned with `ValueSource::ManuallyEntered` and the expression is not
 /// evaluated at all. That is what an override is; a number a person typed in
 /// must never be reported as though the library derived it.
-template <Described Result, Node Expression, typename Env>
+template <Described Result, Node Expression, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr std::expected<Outcome<Result>, ArithmeticError> checked_evaluate(Expression const& expression,
-                                                                                         Env const& environment) noexcept
+                                                                                         Env const& environment,
+                                                                                         Sink sink = {}) noexcept
 {
     static_assert(detail::RequireResultDimension<Result, Expression>::value);
 
@@ -290,7 +332,7 @@ template <Described Result, Node Expression, typename Env>
     }
     else
     {
-        Evaluated<Rational> const computed = checked_evaluate_si<Rational>(expression, environment);
+        Evaluated<Rational> const computed = checked_evaluate_si<Rational>(expression, environment, sink);
         if (!computed.has_value())
             return std::unexpected { computed.error() };
         if (!computed->has_value())
@@ -306,10 +348,10 @@ template <Described Result, Node Expression, typename Env>
 }
 
 /// Throwing spelling of `checked_evaluate`, for callers who would only rethrow.
-template <Described Result, Node Expression, typename Env>
-[[nodiscard]] constexpr Outcome<Result> evaluate(Expression const& expression, Env const& environment)
+template <Described Result, Node Expression, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Outcome<Result> evaluate(Expression const& expression, Env const& environment, Sink sink = {})
 {
-    return detail::or_throw(checked_evaluate<Result>(expression, environment));
+    return detail::or_throw(checked_evaluate<Result>(expression, environment, sink));
 }
 
 } // namespace formula
