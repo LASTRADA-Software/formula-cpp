@@ -23,8 +23,10 @@ add_executable(formula-cpp-tests
     runtime_tests.cpp
     compile_time_tests.cpp
     cross_tu_a.cpp
+    expression_cross_tu_b.cpp
     checked_int_tests.cpp
     error_tests.cpp
+    expression_tests.cpp
     rational_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp
@@ -111,6 +113,15 @@ formula_add_negative_test(describe_missing_description
     "formula: this type does not declare any quantity metadata")
 formula_add_negative_test(describe_dimension_mismatch
     "formula: this type's declared dimension does not match its unit's dimension")
+
+formula_add_negative_test(expression_add_dimension_mismatch
+    "the two sides of this addition or subtraction measure different")
+
+formula_add_negative_test(expression_inconsistent_describe
+    "describes a dimension its own unit does not measure")
+
+formula_add_negative_test(expression_subtract_dimension_mismatch
+    "the two sides of this addition or subtraction measure different")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

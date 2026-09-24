@@ -36,6 +36,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/formula.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/evaluation.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/error.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/expression.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rational.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"
