@@ -58,17 +58,29 @@ int main()
     // symbol table and the citation.
     formula::Documentation const documentation = formula::document(ratio);
 
+    // entry.symbol and entry.description are std::string_view, not owning,
+    // null-terminated strings -- citation.hpp permits a Citation (and, the
+    // same way, a SymbolEntry) built from a runtime std::string, for which
+    // .data() handed to printf's "%s" would read past the view looking for a
+    // terminator that need not be there. "%.*s" with the view's own length
+    // is correct regardless of what the view was built from.
     for (formula::SymbolEntry const& entry: documentation.symbols)
-        std::printf("symbol: %s = %s [%s]\n",
+        std::printf("symbol: %.*s = %.*s [%s]\n",
+                    static_cast<int>(entry.symbol.size()),
                     entry.symbol.data(),
+                    static_cast<int>(entry.description.size()),
                     entry.description.data(),
                     std::string { formula::view(entry.unit.symbolText) }.c_str());
 
     formula::Citation const& citation = documentation.citations.at(0);
-    std::printf("citation: %s, %s, %s, %s\n",
+    std::printf("citation: %.*s, %.*s, %.*s, %.*s\n",
+                static_cast<int>(citation.title.size()),
                 citation.title.data(),
+                static_cast<int>(citation.reference.size()),
                 citation.reference.data(),
+                static_cast<int>(citation.section.size()),
                 citation.section.data(),
+                static_cast<int>(citation.equation.size()),
                 citation.equation.data());
 
     // Evaluating the wrapped formula: the number is exactly what the bare
@@ -77,7 +89,17 @@ int main()
     auto const inputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
                                              formula::Measured<CementVolume> { formula::Rational { 300 } });
     auto const result = formula::checked_evaluate<WaterCementRatio>(ratio, inputs);
-    std::printf("%s = %f (%s)\n",
+    // Checked before dereferencing: result is a std::expected, and calling
+    // operator-> on one that holds an error is undefined behaviour. Nothing
+    // in this program can make checked_evaluate fail here, but an example is
+    // teaching material, and the check costs nothing to show.
+    if (!result.has_value())
+    {
+        std::printf("evaluation failed\n");
+        return 1;
+    }
+    std::printf("%.*s = %f (%s)\n",
+                static_cast<int>(formula::Describe<WaterCementRatio>::symbol.size()),
                 formula::Describe<WaterCementRatio>::symbol.data(),
                 result->measurement().value().to_double(),
                 result->is_value() ? "computed" : "no value");
