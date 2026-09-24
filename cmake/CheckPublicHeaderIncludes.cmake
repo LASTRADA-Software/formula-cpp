@@ -3,11 +3,12 @@
 # <iostream>: a consumer that only evaluates numbers must not compile those
 # in every translation unit. Those belong in opt-in headers.
 #
-# Exception: render.hpp is deliberately not in the umbrella (formula.hpp) and
-# must include <string>.
+# Exception: render.hpp and document.hpp are deliberately not in the umbrella
+# (formula.hpp) and must include <string>, <string_view> and, for
+# document.hpp, <vector>.
 
 file(GLOB_RECURSE headers "${SOURCE_DIR}/include/*.hpp")
-list(FILTER headers EXCLUDE REGEX "render\\.hpp$")
+list(FILTER headers EXCLUDE REGEX "(render|document)\\.hpp$")
 
 list(LENGTH headers total)
 

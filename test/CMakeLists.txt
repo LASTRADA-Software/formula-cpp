@@ -26,6 +26,7 @@ add_executable(formula-cpp-tests
     expression_cross_tu_b.cpp
     checked_int_tests.cpp
     citation_tests.cpp
+    document_tests.cpp
     error_tests.cpp
     expression_tests.cpp
     rational_tests.cpp
