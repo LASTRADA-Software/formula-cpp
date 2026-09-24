@@ -299,8 +299,11 @@ constexpr auto wc_ratio = formula::documented(
       .text      = "Ratio of the effective water content to the cement content." });
 ```
 
-`DocumentedNode` forwards dimension and precedence, so wrapping changes neither the arithmetic nor
-the rendering. Only the documentation walk and the trace sink notice it. Designated-initialiser
+`DocumentedNode` forwards dimension unconditionally and precedence in two layers: the type-level
+trait forwards for every node kind, and a runtime `precedence_of` overload forwards the data a
+wrapped node's bracketing can depend on (a constant's sign or unit symbol), so wrapping changes
+neither the arithmetic nor the rendering. Only the documentation walk and the trace sink notice it.
+Designated-initialiser
 binding into this non-deduced parameter was verified on all three compilers.
 
 ## 11. Traceability — composable, no macros

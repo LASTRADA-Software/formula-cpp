@@ -250,8 +250,10 @@ appear in the rendered formula"`).
 Two further rules, true of every dialect, keep the rendering from bracketing
 a formula in a way a reader would find surprising. First, wrapping a formula
 in a citation changes none of its brackets -- `documented()` binds exactly
-as tightly as what it wraps -- so a documented sum inside a quotient is still
-bracketed exactly as the bare sum would be:
+as tightly as what it wraps, at both the type level and, for a wrapped node
+whose bracketing depends on data the type does not carry (a constant's sign
+or unit symbol), at the runtime level too -- so a documented sum inside a
+quotient is still bracketed exactly as the bare sum would be:
 
 ```cpp
 constexpr auto documented = formula::documented(var<WaterVolume> + var<CementVolume>, { .title = "Total volume" });
@@ -260,10 +262,13 @@ CHECK(formula::render(documented / var<Diameter>) == "(V_w + V_c) / d");
 ```
 
 (`test/render_tests.cpp`, `"render: a documented sum inside a quotient keeps
-its brackets"`.) Second, a negative constant is bracketed exactly where its
-leading `-` would otherwise be misread as a unary minus, and nowhere else: as
-the base of a power, where `-5^2` would mean `-(5^2)` to a reader while the
-tree means `(-5)^2`, it is bracketed --
+its brackets"`.) Second, a negative constant is bracketed wherever its
+leading `-` would otherwise be misread as a unary minus -- which is not
+quite everywhere that could happen: `-(-5)` renders as `--5`, not `-(-5)`,
+because a `UnaryNode` is not itself a context a `Unary`-precedence child
+needs bracketing against. As the base of a power, though, where `-5^2`
+would mean `-(5^2)` to a reader while the tree means `(-5)^2`, it is
+bracketed --
 
 ```cpp
 CHECK(formula::render(formula::pow<2>(formula::number(rat(-5)))) == "(-5)^2");
