@@ -1212,11 +1212,50 @@ git commit -m "feat(trace): render a derivation, bounded by a limit the caller m
 
 **Files:**
 - Modify: `include/formula-cpp/trace.hpp` (add `Explained` and `explain`)
-- Modify: `test/trace_tests.cpp`
+- Modify: `include/formula-cpp/evaluate.hpp` (route the two entry points through `detail::dispatch`)
+- Modify: `test/trace_tests.cpp`, `test/sink_tests.cpp`
 
 **Interfaces:**
-- Consumes: `Trace`, `RecordingSink` from Task 4; `evaluate<Result>` from phase 5.
+- Consumes: `Trace`, `RecordingSink` from Task 4; `evaluate<Result>` from phase 5; `detail::dispatch` from Task 1.
 - Produces: `formula::Explained<Result, Rep>` and `formula::explain<Result>(expression, environment)`.
+
+**Close the hole at the root, first.** Task 2's review found that
+`detail::dispatch` protects a consumer's phase-5-era two-parameter overload on
+every *recursive* call, but `checked_evaluate` and `evaluate` call
+`checked_evaluate_si` **directly** — so a custom node handed straight to
+`evaluate<Result>` as the root of an expression fails to compile, while the
+same node nested one level deep works fine. A compatibility guarantee with a
+hole at the root is not one anyone can rely on.
+
+Change both entry points to call `detail::dispatch<Rational>(expression,
+environment, sink)` instead of `checked_evaluate_si<Rational>(...)`, and add
+this test to `test/sink_tests.cpp`, beside the existing legacy-node test:
+
+```cpp
+TEST_CASE("a two-parameter custom node works as the root of an expression too", "[sink]")
+{
+    // Nested, this already worked -- every recursive call routes through
+    // dispatch. As the root it used to fail to compile, because the entry
+    // points called the evaluator directly.
+    int entered = 0;
+    int produced = 0;
+    CountingSink sink { &entered, &produced };
+
+    auto const result =
+        formula::checked_evaluate_si<formula::Rational>(LegacyNode {}, environmentOf(5, 1), sink);
+
+    REQUIRE(result.has_value());
+    REQUIRE(result->has_value());
+    CHECK(**result == formula::Rational { 7 });
+    // Untraced, because nothing told the library how to trace it -- but it
+    // evaluated, which is the point.
+    CHECK(entered == 0);
+    CHECK(produced == 0);
+}
+```
+
+`dispatch` is `if constexpr`, so this costs nothing at runtime. Confirm the
+existing 241 tests still pass unchanged.
 
 **On the name.** §11 writes the untraced entry point as `value_of`. The library shipped `evaluate<Result>` in phase 5, and every test, example and guide calls it. Renaming the whole surface for a synonym buys nothing, so `evaluate<Result>` stays and §11's prototype spelling is what gets corrected. `explain` is new and matches §11.
 
