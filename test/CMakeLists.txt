@@ -49,6 +49,7 @@ add_executable(formula-cpp-tests
     trace_render_tests.cpp
     rounding_node_tests.cpp
     predicate_tests.cpp
+    conditional_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
