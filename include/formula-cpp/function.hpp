@@ -106,6 +106,11 @@ inline constexpr PiNode pi {};
 /// Powers and roots per representation. Kept here rather than in `RepTraits`
 /// itself so that `evaluate.hpp` stays free of `<cmath>`: a consumer who never
 /// writes a root never compiles it.
+///
+/// Like `RepTraits`, this is a **public extension point** and belongs outside
+/// `detail` for the same reason: a consumer teaching the evaluator a new
+/// representation specialises both, and a specialisation of one without the
+/// other reaches only as far as the first power or root in a formula.
 template <typename Rep>
 struct RepFunctions;
 

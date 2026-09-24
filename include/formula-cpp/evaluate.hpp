@@ -47,6 +47,14 @@ namespace formula
 /// The primary template is deliberately undefined: a representation that has
 /// not been taught to the library fails at the point of use, naming itself,
 /// rather than silently selecting something plausible.
+///
+/// This is a **public extension point**, which is why it lives here rather
+/// than in `detail`. A consumer who wants the evaluator to work in a
+/// representation the library does not ship -- an arbitrary-precision
+/// rational, a fixed-point type, an interval -- specialises this and the
+/// evaluator uses it with no further change. The specialisations below for
+/// `Rational` and `double` are the two the library ships, not the two it
+/// permits.
 template <typename Rep>
 struct RepTraits;
 
