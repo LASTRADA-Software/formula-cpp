@@ -15,7 +15,7 @@ permissions:
 
 env:
   CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/CPM
-  # Matches Lightweight and fastcached, and the clang-cl 22.x on the Windows leg.
+  # Matches our other C++ projects, and the clang-cl 22.x on the Windows leg.
   CLANG_VERSION: "22"
 
 jobs:
@@ -54,7 +54,7 @@ jobs:
       # through the libstdc++ it picks up -- measured: every std::expected use
       # failed to compile while the GCC leg, on the same machine image, was fine.
       # Pull Clang ${{ env.CLANG_VERSION }} from the official LLVM apt source, as
-      # Lightweight and fastcached already do, which also lines this leg up with
+      # our other C++ projects already do, which also lines this leg up with
       # the clang-cl 22.x used on the Windows leg.
       - name: Install Clang ${{ env.CLANG_VERSION }}
         if: matrix.preset == 'clang-release' && runner.os == 'Linux'
