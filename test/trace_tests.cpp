@@ -19,6 +19,9 @@ struct Mass: formula::Quantity<Mass, "m", "specimen mass", unit::Kilogram>
 struct Volume: formula::Quantity<Volume, "V", "specimen volume", unit::CubicMetre>
 {
 };
+struct Density: formula::Quantity<Density, "rho", "bulk density", formula::coherent(formula::dim::Density)>
+{
+};
 
 [[nodiscard]] auto environmentOf(long long mass, long long volume)
 {
@@ -213,4 +216,25 @@ TEST_CASE("the arena holds a large number of steps without incident", "[trace]")
         trace.steps.push_back(std::move(step));
     }
     CHECK(trace.steps.size() == 200'000);
+}
+
+TEST_CASE("explain returns the same outcome evaluate would, plus the derivation", "[trace]")
+{
+    // Density is Mass / Volume (dim::Density, per dimension.hpp), so the
+    // expression has to be the plain ratio -- not the `pow<2>(var<Mass>) /
+    // var<Volume>` used elsewhere in this file for Task 4's arena tests,
+    // whose dimension is Mass^2 / Volume and does not match Density. Using
+    // that expression here fails RequireResultDimension's static_assert.
+    constexpr auto density = var<Mass> / var<Volume>;
+    auto const environment = environmentOf(6, 3);
+
+    auto const plain = formula::evaluate<Density>(density, environment);
+    auto const explained = formula::explain<Density>(density, environment);
+
+    // Memberwise equality across every Outcome alternative (kind, value,
+    // source, verdict and invalid-reason labels) -- not merely that both
+    // happen to hold a value. Tracing observes; it must not participate.
+    CHECK(explained.outcome == plain);
+    CHECK(explained.trace.steps.size() == 3);
+    CHECK(explained.trace.steps[explained.trace.root()].value == formula::Rational { 2 });
 }

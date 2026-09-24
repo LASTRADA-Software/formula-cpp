@@ -252,4 +252,28 @@ class RecordingSink
     Trace<Rep>* _trace;
 };
 
+/// An outcome together with the derivation that produced it.
+template <Described Result, typename Rep = Rational>
+struct Explained
+{
+    /// Exactly what `evaluate<Result>` would have returned.
+    Outcome<Result> outcome {};
+    /// How it was reached.
+    Trace<Rep> trace {};
+};
+
+/// Evaluates @p expression for @p Result and records how.
+///
+/// The outcome is identical to `evaluate<Result>(expression, environment)` --
+/// tracing observes, it does not participate. What `explain` adds is a
+/// `Trace` of every step the evaluator took to reach it.
+template <Described Result, typename Rep = Rational, Node Expression, typename Env>
+[[nodiscard]] Explained<Result, Rep> explain(Expression const& expression, Env const& environment)
+{
+    Explained<Result, Rep> explained {};
+    RecordingSink<Rep> sink { explained.trace };
+    explained.outcome = evaluate<Result>(expression, environment, sink);
+    return explained;
+}
+
 } // namespace formula
