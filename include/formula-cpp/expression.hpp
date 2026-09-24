@@ -51,8 +51,10 @@ struct VarNode: NodeBase
                   "no formula containing it can be trusted; the quantity appears in this "
                   "diagnostic as the template argument of VarNode");
 
+    /// The quantity this node names -- the key an `Environment` is asked with.
     using quantity = Q;
 
+    /// The dimension `Q` describes.
     static constexpr Dimension dimension = Describe<Q>::dimension;
 };
 
@@ -73,9 +75,12 @@ inline constexpr VarNode<Q> var {};
 template <Unit U>
 struct ConstantNode: NodeBase
 {
+    /// The coefficient, in terms of `unit`.
     Rational number {};
 
+    /// The unit the coefficient is stated in -- part of the type, not runtime state.
     static constexpr Unit unit = U;
+    /// The dimension of `unit`.
     static constexpr Dimension dimension = U.dimension;
 };
 
@@ -95,11 +100,13 @@ template <Unit U>
     return constant<unit::One>(value);
 }
 
+/// Which unary operation a `UnaryNode` performs.
 enum class UnaryOperator : std::uint8_t
 {
     Negate,
 };
 
+/// Which binary operation a `BinaryNode` performs.
 enum class BinaryOperator : std::uint8_t
 {
     Add,
@@ -164,24 +171,34 @@ namespace detail
     }
 } // namespace detail
 
+/// A node built by applying one `UnaryOperator` to a single child.
 template <UnaryOperator Op, Node Operand>
 struct UnaryNode: NodeBase
 {
+    /// The child expression the operator is applied to.
     Operand operand {};
 
+    /// Which operator this is.
     static constexpr UnaryOperator op = Op;
+    /// A unary operator never changes the dimension of its operand.
     static constexpr Dimension dimension = Operand::dimension;
 };
 
+/// A node built by applying one `BinaryOperator` to two children.
 template <BinaryOperator Op, Node Left, Node Right>
 struct BinaryNode: NodeBase
 {
     static_assert(detail::AdditiveDimensionsAgree<Op, Left, Right>::value);
 
+    /// The left-hand child expression.
     Left lhs {};
+    /// The right-hand child expression.
     Right rhs {};
 
+    /// Which operator this is.
     static constexpr BinaryOperator op = Op;
+    /// Add and subtract keep the (already agreeing) dimension; multiply and
+    /// divide combine the two operands' dimensions.
     static constexpr Dimension dimension = detail::combined_dimension<Op, Left::dimension, Right::dimension>();
 };
 
@@ -191,30 +208,39 @@ struct BinaryNode: NodeBase
 // is nothing to save by reference, and a reference into a temporary subtree is
 // a dangling read waiting to happen.
 
+/// Formula addition. Fails to compile if `lhs` and `rhs` measure different
+/// dimensions -- see `detail::RequireAddendsAgree`.
 template <Node Left, Node Right>
 [[nodiscard]] constexpr auto operator+(Left lhs, Right rhs) noexcept
 {
     return BinaryNode<BinaryOperator::Add, Left, Right> { {}, lhs, rhs };
 }
 
+/// Formula subtraction. Fails to compile if `lhs` and `rhs` measure different
+/// dimensions -- see `detail::RequireAddendsAgree`.
 template <Node Left, Node Right>
 [[nodiscard]] constexpr auto operator-(Left lhs, Right rhs) noexcept
 {
     return BinaryNode<BinaryOperator::Subtract, Left, Right> { {}, lhs, rhs };
 }
 
+/// Formula multiplication. The two operands need not share a dimension: the
+/// result's dimension is their product.
 template <Node Left, Node Right>
 [[nodiscard]] constexpr auto operator*(Left lhs, Right rhs) noexcept
 {
     return BinaryNode<BinaryOperator::Multiply, Left, Right> { {}, lhs, rhs };
 }
 
+/// Formula division. The two operands need not share a dimension: the
+/// result's dimension is their quotient.
 template <Node Left, Node Right>
 [[nodiscard]] constexpr auto operator/(Left lhs, Right rhs) noexcept
 {
     return BinaryNode<BinaryOperator::Divide, Left, Right> { {}, lhs, rhs };
 }
 
+/// Formula negation.
 template <Node Operand>
 [[nodiscard]] constexpr auto operator-(Operand operand) noexcept
 {
@@ -225,41 +251,49 @@ template <Node Operand>
 // per operator rather than through a converting constructor, so that a
 // `Rational` never silently becomes a node anywhere else.
 
+/// `lhs + rhs`, with `rhs` taken as a dimensionless coefficient.
 template <Node Left>
 [[nodiscard]] constexpr auto operator+(Left lhs, Rational rhs) noexcept
 {
     return lhs + number(rhs);
 }
+/// `lhs + rhs`, with `lhs` taken as a dimensionless coefficient.
 template <Node Right>
 [[nodiscard]] constexpr auto operator+(Rational lhs, Right rhs) noexcept
 {
     return number(lhs) + rhs;
 }
+/// `lhs - rhs`, with `rhs` taken as a dimensionless coefficient.
 template <Node Left>
 [[nodiscard]] constexpr auto operator-(Left lhs, Rational rhs) noexcept
 {
     return lhs - number(rhs);
 }
+/// `lhs - rhs`, with `lhs` taken as a dimensionless coefficient.
 template <Node Right>
 [[nodiscard]] constexpr auto operator-(Rational lhs, Right rhs) noexcept
 {
     return number(lhs) - rhs;
 }
+/// `lhs * rhs`, with `rhs` taken as a dimensionless coefficient.
 template <Node Left>
 [[nodiscard]] constexpr auto operator*(Left lhs, Rational rhs) noexcept
 {
     return lhs * number(rhs);
 }
+/// `lhs * rhs`, with `lhs` taken as a dimensionless coefficient.
 template <Node Right>
 [[nodiscard]] constexpr auto operator*(Rational lhs, Right rhs) noexcept
 {
     return number(lhs) * rhs;
 }
+/// `lhs / rhs`, with `rhs` taken as a dimensionless coefficient.
 template <Node Left>
 [[nodiscard]] constexpr auto operator/(Left lhs, Rational rhs) noexcept
 {
     return lhs / number(rhs);
 }
+/// `lhs / rhs`, with `lhs` taken as a dimensionless coefficient.
 template <Node Right>
 [[nodiscard]] constexpr auto operator/(Rational lhs, Right rhs) noexcept
 {

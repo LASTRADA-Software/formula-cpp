@@ -128,6 +128,7 @@ namespace detail
 // One overload per node kind. Each is found by argument-dependent lookup from
 // `render` below, exactly as the evaluator's overloads are.
 
+/// A variable renders as its quantity's symbol -- backtick-quoted in Markdown.
 template <Dialect D, Described Q>
 [[nodiscard]] std::string render_node(VarNode<Q> const&)
 {
@@ -138,6 +139,7 @@ template <Dialect D, Described Q>
         return symbol;
 }
 
+/// A constant renders as its number, followed by its unit's symbol when it has one.
 template <Dialect D, Unit U>
 [[nodiscard]] std::string render_node(ConstantNode<U> const& node)
 {
@@ -147,6 +149,8 @@ template <Dialect D, Unit U>
     return symbol.empty() ? text : text + " " + std::string { symbol };
 }
 
+/// A unary node renders as its operator followed by its (parenthesised if
+/// necessary) operand.
 template <Dialect D, UnaryOperator Op, Node Operand>
 [[nodiscard]] std::string render_node(UnaryNode<Op, Operand> const& node)
 {
@@ -154,6 +158,10 @@ template <Dialect D, UnaryOperator Op, Node Operand>
     return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary);
 }
 
+/// A binary node renders infix, bracketing each side only where its precedence
+/// against the parent operator requires it -- see the file comment. Division
+/// in `Dialect::LaTeX` renders as `\frac{}{}` instead, which needs no brackets
+/// at all because the fraction bar already groups both sides.
 template <Dialect D, BinaryOperator Op, Node Left, Node Right>
 [[nodiscard]] std::string render_node(BinaryNode<Op, Left, Right> const& node)
 {
@@ -181,6 +189,7 @@ template <Dialect D, BinaryOperator Op, Node Left, Node Right>
     }
 }
 
+/// A power renders as its base with the exponent superscript -- braced in LaTeX.
 template <Dialect D, int Exponent, Node Operand>
 [[nodiscard]] std::string render_node(PowerNode<Exponent, Operand> const& node)
 {
@@ -191,6 +200,8 @@ template <Dialect D, int Exponent, Node Operand>
         return base + "^" + std::to_string(Exponent);
 }
 
+/// A root renders as `\sqrt{}` (or `\sqrt[n]{}` for a degree other than 2) in
+/// LaTeX, and as `sqrt(...)` / `rootN(...)` in every other dialect.
 template <Dialect D, int Degree, Node Operand>
 [[nodiscard]] std::string render_node(RootNode<Degree, Operand> const& node)
 {
@@ -211,6 +222,7 @@ template <Dialect D, int Degree, Node Operand>
     }
 }
 
+/// Pi renders as `\pi` in LaTeX, and as `pi` in every other dialect.
 template <Dialect D>
 [[nodiscard]] inline std::string render_node(PiNode const&)
 {

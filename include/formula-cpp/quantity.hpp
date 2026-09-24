@@ -128,6 +128,9 @@ struct Describe
 {
 };
 
+/// The specialisation used automatically for a type declared through the
+/// `Quantity` CRTP base -- reads the metadata straight off that base rather
+/// than asking the type to repeat it.
 template <detail::DeclaresQuantity T>
 struct Describe<T>
 {
@@ -135,9 +138,13 @@ struct Describe<T>
     using Base = decltype(detail::quantity_base_of(std::declval<T const&>()));
 
   public:
+    /// How the quantity is written in a formula.
     static constexpr std::string_view symbol = Base::symbol;
+    /// What the quantity means, in words.
     static constexpr std::string_view description = Base::description;
+    /// The unit its values are expressed in.
     static constexpr Unit unit = Base::unit;
+    /// What the quantity measures.
     static constexpr Dimension dimension = Base::dimension;
 };
 
@@ -203,6 +210,10 @@ struct RequireDescribed
                   "disagrees mislabels every value read through it -- derive Describe<T>::dimension "
                   "from Describe<T>::unit.dimension instead of stating it independently");
 
+    /// Always `true` once reached -- both `static_assert`s above already failed
+    /// compilation otherwise. Present so `::value` is the spelling that
+    /// instantiates the class template; see the class comment for why that
+    /// spelling matters.
     static constexpr bool value = true;
 };
 

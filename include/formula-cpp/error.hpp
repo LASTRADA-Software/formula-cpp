@@ -75,11 +75,13 @@ class ArithmeticException: public std::exception
     {
     }
 
+    /// Which `ArithmeticError` this exception was thrown for.
     [[nodiscard]] ArithmeticError code() const noexcept
     {
         return _error;
     }
 
+    /// `code()` in prose -- see `describe(ArithmeticError)`.
     [[nodiscard]] char const* what() const noexcept override
     {
         return describe(_error).data();

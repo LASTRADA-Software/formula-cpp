@@ -45,6 +45,7 @@ struct Citation
     /// The definition in full, for a reader who has not got the document.
     std::string_view text {};
 
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(Citation const&) const noexcept = default;
 };
 
@@ -56,9 +57,12 @@ struct Citation
 template <Node Inner>
 struct DocumentedNode: NodeBase
 {
+    /// The wrapped expression.
     Inner inner {};
+    /// Where `inner` comes from.
     Citation citation {};
 
+    /// Forwarded from `Inner` unchanged -- wrapping never alters the dimension.
     static constexpr Dimension dimension = Inner::dimension;
 };
 

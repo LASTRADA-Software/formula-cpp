@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Publishes the MkDocs Material guides and the Doxygen API reference (under
+# /api) to GitHub Pages. On push to master only -- a PR preview of the
+# published site is not part of this phase, and publishing from anywhere but
+# the branch that just passed Build (build.yml) would let an unreviewed page
+# reach readers.
+#
+# This workflow only builds and deploys the site; it never touches the
+# repository's Pages configuration. GitHub Pages must already be set, in the
+# repository's own Settings > Pages, to deploy via "GitHub Actions" rather
+# than "Deploy from a branch" -- that is a one-time, manual repository
+# setting, not something a workflow file can express, and `deploy-pages`
+# below fails outright if it is not already in place.
+name: Pages
+on:
+  push:
+    branches: [ master ]
+
+# Only one Pages deployment should ever be in flight: two overlapping
+# `deploy-pages` runs racing for the same environment is exactly what this
+# group serialises against. cancel-in-progress is deliberately false, unlike
+# build.yml's -- a half-published site is worse than a queued one, so a
+# newer push waits for the current deployment to finish rather than
+# interrupting it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install MkDocs Material
+        run: pip install mkdocs-material
+
+      # Catches broken internal links -- see docs/javascripts/mathjax.js and
+      # mkdocs.yml's pymdownx.arithmatex entry for why the gallery's LaTeX
+      # renders at all. Builds into ./site, which the Doxygen step below adds
+      # its own api/ subdirectory to.
+      - name: Build the MkDocs site
+        run: mkdocs build --strict
+
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen
+
+      # No C++ is compiled here: FORMULA_BUILD_TESTS, FORMULA_BUILD_EXAMPLES
+      # and FORMULA_TOOLS are all off, so this configure step exists only to
+      # produce the formula-cpp-docs-api target (see CMakeLists.txt), pointed
+      # at the MkDocs site's own api/ subdirectory so Doxygen's HTML lands
+      # exactly where /api on the published site expects it, with no separate
+      # copy step.
+      - name: Configure
+        run: |
+          cmake -S . -B out/build/pages \
+            -DFORMULA_BUILD_TESTS=OFF \
+            -DFORMULA_BUILD_EXAMPLES=OFF \
+            -DFORMULA_TOOLS=OFF \
+            -DFORMULA_INSTALL=OFF \
+            -DFORMULA_BUILD_DOCS=ON \
+            -DFORMULA_DOXYGEN_OUTPUT_DIR="${{ github.workspace }}/site/api"
+
+      - name: Build the API reference
+        run: cmake --build out/build/pages --target formula-cpp-docs-api
+
+      - name: Upload the built site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

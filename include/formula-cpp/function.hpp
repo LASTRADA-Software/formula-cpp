@@ -25,9 +25,12 @@ namespace formula
 template <int Exponent, Node Operand>
 struct PowerNode: NodeBase
 {
+    /// The base expression.
     Operand operand {};
 
+    /// The power `operand` is raised to.
     static constexpr int exponent = Exponent;
+    /// `operand`'s dimension, scaled by `exponent`.
     static constexpr Dimension dimension = power(Operand::dimension, Exponent);
 };
 
@@ -51,36 +54,44 @@ struct RootNode: NodeBase
 {
     static_assert(detail::RequirePositiveRootDegree<Degree>::value);
 
+    /// The expression the root is taken of.
     Operand operand {};
 
+    /// Which root this is -- 2 for a square root, 3 for a cube root, and so on.
     static constexpr int degree = Degree;
+    /// `operand`'s dimension, divided by `degree` -- possibly fractional.
     static constexpr Dimension dimension = nth_root(Operand::dimension, Degree);
 };
 
 /// Pi, as a node, so that a formula containing it stays a formula.
 struct PiNode: NodeBase
 {
+    /// Pi is dimensionless.
     static constexpr Dimension dimension = dim::Scalar;
 };
 
+/// `operand` raised to the integer power `Exponent`: `pow<2>(var<Length>)`.
 template <int Exponent, Node Operand>
 [[nodiscard]] constexpr auto pow(Operand operand) noexcept
 {
     return PowerNode<Exponent, Operand> { {}, operand };
 }
 
+/// The square root of `operand`.
 template <Node Operand>
 [[nodiscard]] constexpr auto sqrt(Operand operand) noexcept
 {
     return RootNode<2, Operand> { {}, operand };
 }
 
+/// The cube root of `operand`.
 template <Node Operand>
 [[nodiscard]] constexpr auto cbrt(Operand operand) noexcept
 {
     return RootNode<3, Operand> { {}, operand };
 }
 
+/// The `Degree`-th root of `operand`: `root<5>(var<Volume>)`.
 template <int Degree, Node Operand>
 [[nodiscard]] constexpr auto root(Operand operand) noexcept
 {
@@ -98,33 +109,45 @@ inline constexpr PiNode pi {};
 template <typename Rep>
 struct RepFunctions;
 
+/// Exact rational powers, roots and pi -- errors (an inexact root, an overflow)
+/// are reported rather than silently approximated.
 template <>
 struct RepFunctions<Rational>
 {
+    /// `base` raised to `exponent`, exactly; fails if the exact result would
+    /// overflow.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> raise(Rational base, int exponent) noexcept
     {
         return checked_pow(base, exponent);
     }
 
+    /// The `degree`-th root of `value`, exactly; fails if that root is not itself
+    /// a rational number.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> root(Rational value, int degree) noexcept
     {
         return checked_exact_nth_root(value, degree);
     }
 
+    /// Pi, as the library's own rational approximation -- see `Pi`.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> pi_value() noexcept
     {
         return Pi;
     }
 };
 
+/// Binary floating-point powers, roots and pi.
 template <>
 struct RepFunctions<double>
 {
+    /// `base` raised to `exponent`, via `std::pow`.
     [[nodiscard]] static std::expected<double, ArithmeticError> raise(double base, int exponent) noexcept
     {
         return std::pow(base, static_cast<double>(exponent));
     }
 
+    /// The `degree`-th root of `value`. An even-degree root of a negative value
+    /// has no real result and is reported as `ArithmeticError::DomainError`; an
+    /// odd-degree root of a negative value returns the negative real root.
     [[nodiscard]] static std::expected<double, ArithmeticError> root(double value, int degree) noexcept
     {
         if (value < 0.0 && degree % 2 == 0)
@@ -134,12 +157,14 @@ struct RepFunctions<double>
         return std::pow(value, 1.0 / static_cast<double>(degree));
     }
 
+    /// Pi, to `double` precision.
     [[nodiscard]] static std::expected<double, ArithmeticError> pi_value() noexcept
     {
         return 3.141592653589793238462643383279502884;
     }
 };
 
+/// Evaluates the operand, then raises it to `Exponent` via `RepFunctions<Rep>`.
 template <typename Rep = Rational, int Exponent, Node Operand, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(PowerNode<Exponent, Operand> const& node,
                                                            Env const& environment) noexcept
@@ -156,6 +181,7 @@ template <typename Rep = Rational, int Exponent, Node Operand, typename Env>
     return detail::present<Rep>(*raised);
 }
 
+/// Evaluates the operand, then takes its `Degree`-th root via `RepFunctions<Rep>`.
 template <typename Rep = Rational, int Degree, Node Operand, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(RootNode<Degree, Operand> const& node,
                                                            Env const& environment) noexcept
@@ -172,6 +198,7 @@ template <typename Rep = Rational, int Degree, Node Operand, typename Env>
     return detail::present<Rep>(*rooted);
 }
 
+/// Pi is always present; produces it in `Rep` via `RepFunctions<Rep>::pi_value`.
 template <typename Rep = Rational, typename Env>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(PiNode const&, Env const&) noexcept
 {

@@ -2,7 +2,7 @@
 #pragma once
 
 /// @file
-/// Umbrella header. Deliberately pulls in no <string>, <vector> or <format>:
+/// Umbrella header. Deliberately pulls in no `<string>`, `<vector>` or `<format>`:
 /// a consumer that only evaluates numbers must not compile them in every
 /// translation unit. Later phases add `render.hpp` and `document.hpp`, which
 /// do require these headers for documentation generation; they are not included

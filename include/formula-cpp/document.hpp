@@ -31,10 +31,14 @@ namespace formula
 /// gets its own row rather than one silently standing in for the other.
 struct SymbolEntry
 {
+    /// How the variable is written in the formula.
     std::string_view symbol {};
+    /// What the variable means, in words.
     std::string_view description {};
+    /// The unit its values are expressed in.
     Unit unit {};
 
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
 };
 

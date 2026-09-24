@@ -56,16 +56,20 @@ enum class OutcomeKind : std::uint8_t
 /// A decision rather than a number: "reject the specimen", "repeat the test".
 struct Verdict
 {
+    /// What the decision is, in words: "reject the specimen".
     std::string_view label {};
 
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(Verdict const&) const noexcept = default;
 };
 
 /// Why a result was discarded entirely.
 struct InvalidReason
 {
+    /// Why, in words.
     std::string_view label {};
 
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(InvalidReason const&) const noexcept = default;
 };
 
@@ -73,9 +77,12 @@ struct InvalidReason
 template <Described Q>
 struct Value
 {
+    /// The number itself, possibly absent.
     Measured<Q> measurement {};
+    /// Where it came from.
     ValueSource source = ValueSource::Derived;
 
+    /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(Value const&) const noexcept = default;
 };
 
@@ -101,6 +108,7 @@ class Outcome
         return value(Measured<Q>::absent(), ValueSource::Derived);
     }
 
+    /// A decision in place of a number: "reject the specimen".
     [[nodiscard]] static constexpr Outcome verdict(Verdict decision) noexcept
     {
         Outcome result {};
@@ -109,6 +117,7 @@ class Outcome
         return result;
     }
 
+    /// The result is discarded entirely, for `reason`.
     [[nodiscard]] static constexpr Outcome invalid(InvalidReason reason) noexcept
     {
         Outcome result {};
@@ -117,23 +126,28 @@ class Outcome
         return result;
     }
 
+    /// Which alternative this outcome holds.
     [[nodiscard]] constexpr OutcomeKind kind() const noexcept
     {
         return _kind;
     }
 
+    /// True when `kind()` is `OutcomeKind::Value`.
     [[nodiscard]] constexpr bool is_value() const noexcept
     {
         return _kind == OutcomeKind::Value;
     }
+    /// True when `kind()` is `OutcomeKind::Empty`.
     [[nodiscard]] constexpr bool is_empty() const noexcept
     {
         return _kind == OutcomeKind::Empty;
     }
+    /// True when `kind()` is `OutcomeKind::Verdict`.
     [[nodiscard]] constexpr bool is_verdict() const noexcept
     {
         return _kind == OutcomeKind::Verdict;
     }
+    /// True when `kind()` is `OutcomeKind::Invalid`.
     [[nodiscard]] constexpr bool is_invalid() const noexcept
     {
         return _kind == OutcomeKind::Invalid;
@@ -170,6 +184,7 @@ class Outcome
         return _reason.label;
     }
 
+    /// Memberwise equality across every alternative.
     [[nodiscard]] constexpr bool operator==(Outcome const&) const noexcept = default;
 
   private:
