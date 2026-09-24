@@ -71,8 +71,12 @@ namespace detail
         static constexpr Precedence value = Precedence::Unary;
     };
 
-    /// A wrapper binds exactly as tightly as what it wraps, so a citation never
-    /// changes where a bracket falls.
+    /// Forwards the *type-level* precedence of what it wraps. That is correct
+    /// as far as it goes, but it is not what makes a citation invisible to
+    /// bracketing: a wrapped `ConstantNode` needs its *runtime* answer
+    /// forwarded too, which this trait cannot do -- see
+    /// `precedence_of(DocumentedNode<Inner> const&)` below, which is the
+    /// overload that actually closes the gap.
     template <Node Inner>
     struct PrecedenceOf<DocumentedNode<Inner>>
     {
@@ -95,10 +99,32 @@ namespace detail
         return PrecedenceOf<N>::value;
     }
 
+    /// A constant's rendered text is not always an atom in two data-dependent
+    /// ways the type does not carry: a negative number opens with a `-` that
+    /// reads like a unary minus, and a unit with a symbol renders as *two*
+    /// tokens ("150 mm") rather than one -- so `pow<2>` of it would otherwise
+    /// read as `150 mm^2`, i.e. `150 * mm^2`, when the tree means `(150 mm)^2`.
+    /// Both cases must bracket exactly where a `UnaryNode` would.
     template <Unit U>
     [[nodiscard]] constexpr Precedence precedence_of(ConstantNode<U> const& node) noexcept
     {
-        return node.number.sign() < 0 ? Precedence::Unary : Precedence::Atom;
+        constexpr Unit unit = U;
+        bool const hasUnitSymbol = !view(unit.symbolText).empty();
+        return node.number.sign() < 0 || hasUnitSymbol ? Precedence::Unary : Precedence::Atom;
+    }
+
+    /// A wrapper's *type* answer forwards correctly (`PrecedenceOf` above),
+    /// but bracketing is decided from the runtime answer, and the generic
+    /// `precedence_of(N const&)` overload would fall back to the type-level
+    /// trait -- exactly the answer that is wrong once the wrapped node is a
+    /// `ConstantNode`, whose bracketing depends on data the type never sees.
+    /// Forwarding the runtime call here, not just the type-level trait above,
+    /// is what makes wrapping a negative or unit-bearing constant in
+    /// `documented()` bracket the same way the bare constant would.
+    template <Node Inner>
+    [[nodiscard]] constexpr Precedence precedence_of(DocumentedNode<Inner> const& node) noexcept
+    {
+        return precedence_of(node.inner);
     }
 
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
