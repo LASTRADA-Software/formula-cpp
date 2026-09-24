@@ -18,6 +18,10 @@ option(FORMULA_BUILD_EXAMPLES "Build formula-cpp examples"   ${PROJECT_IS_TOP_LE
 option(FORMULA_INSTALL        "Generate install rules"       ${PROJECT_IS_TOP_LEVEL})
 option(FORMULA_PEDANTIC       "Compile with strict warnings" ON)
 option(FORMULA_WERROR         "Treat warnings as errors"     OFF)
+# Our own tooling (currently: the gallery generator under tools/gallery). A
+# consumer embedding this library as a subproject must not build it -- it
+# exists to maintain formula-cpp itself, not to be linked by anyone else.
+option(FORMULA_TOOLS          "Build formula-cpp's own tools" ${PROJECT_IS_TOP_LEVEL})
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -117,4 +121,8 @@ endif()
 
 if(FORMULA_BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+if(FORMULA_TOOLS)
+    add_subdirectory(tools/gallery)
 endif()

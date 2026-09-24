@@ -90,7 +90,14 @@ jobs:
           key: cpm-${{ runner.os }}-${{ hashFiles('test/CMakeLists.txt') }}
 
       - name: Build
+        # FORMULA_TOOLS defaults ON for this top-level checkout, same as
+        # FORMULA_BUILD_TESTS and FORMULA_BUILD_EXAMPLES, so this also builds
+        # formula-cpp-gallery -- no extra flag needed, and none is passed here
+        # deliberately, so a consumer configuring this same tree as a
+        # subproject sees the option default the other way.
         run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Test
+        # Includes gallery.is-current: it fails the build if docs/gallery.md
+        # has drifted from what tools/gallery/main.cpp currently generates.
         run: ctest --preset ${{ matrix.preset }}
