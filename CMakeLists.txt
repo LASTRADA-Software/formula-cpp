@@ -50,6 +50,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/document.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/environment.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/error.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/escape.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/evaluate.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/expression.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/formula.hpp"

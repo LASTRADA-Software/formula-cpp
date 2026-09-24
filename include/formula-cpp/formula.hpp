@@ -15,6 +15,7 @@
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/environment.hpp>
 #include <formula-cpp/error.hpp>
+#include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
