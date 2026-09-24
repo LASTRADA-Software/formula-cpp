@@ -12,11 +12,16 @@
 ///
 /// Two things this renderer refuses to do, both of them deliberate:
 ///
-///  - It has **no default limit**. `TraceRenderOptions::maxSteps` has no
-///    default member initialiser, so a caller who writes nothing does not
-///    compile. An unbounded render of a derivation with a hundred thousand
-///    steps is one unusable wall of text; a default limit is a limit someone
-///    forgets, and a required one is a limit someone chooses.
+///  - It has **no default limit**. `TraceRenderOptions::maxSteps` is a
+///    `StepLimit`, a type with no default constructor, so a caller who
+///    writes `render_trace(trace, {})` does not compile. That is stronger
+///    than "no default member initialiser": `TraceRenderOptions` is an
+///    aggregate, and a plain `std::size_t` member with no initialiser still
+///    lets `{}` value-initialise it to zero and render nothing at all,
+///    silently -- `StepLimit` exists to make that ill-formed instead. An
+///    unbounded render of a derivation with a hundred thousand steps is one
+///    unusable wall of text; a default limit is a limit someone forgets, and
+///    a required one is a limit someone chooses.
 ///  - It never shows a value in a unit nobody entered. Every `Step` holds its
 ///    value in the coherent SI unit of its dimension so that steps are
 ///    comparable, and remembers the unit it was *declared* in; this converts
@@ -39,16 +44,37 @@
 namespace formula
 {
 
+/// A step count that must be stated.
+///
+/// Not default-constructible, and that is the whole point: it is what makes
+/// `render_trace(trace, {})` ill-formed instead of a silent zero. A plain
+/// `std::size_t` member with no default initialiser does **not** achieve this
+/// -- `TraceRenderOptions` is an aggregate, so `{}` value-initialises it to 0
+/// and renders nothing at all.
+struct StepLimit
+{
+    StepLimit() = delete;
+    // Parameter named differently from the member it initialises: GCC's
+    // -Wshadow (part of this project's Linux CI leg) flags a constructor
+    // parameter that shares a member's name, even one used only in its own
+    // member-initialiser list.
+    constexpr StepLimit(std::size_t steps) noexcept: value { steps } {}
+
+    std::size_t value {};
+};
+
 /// How much of a derivation to show.
 struct TraceRenderOptions
 {
     /// The most steps to render; the rest are replaced by one line saying how
     /// many were left out.
     ///
-    /// **No default member initialiser, on purpose.** See the file comment:
-    /// the bound is the caller's decision, and omitting it is a compile error
-    /// rather than an unbounded render.
-    std::size_t maxSteps;
+    /// A `StepLimit`, not a plain `std::size_t`, on purpose: see `StepLimit`'s
+    /// own comment. `TraceRenderOptions` is an aggregate, and a `std::size_t`
+    /// member here -- default member initialiser or not -- would let
+    /// `render_trace(trace, {})` value-initialise it to zero and render
+    /// nothing at all, silently, rather than fail to compile.
+    StepLimit maxSteps;
 };
 
 namespace detail
@@ -62,11 +88,15 @@ namespace detail
 
     /// The infix spelling of a binary step.
     ///
-    /// Falls back to prefix form when fewer than two operands were recorded,
-    /// which happens whenever the evaluator short-circuited: the operand that
-    /// never ran produced no step, so there is no index to name and none is
-    /// invented. A `Divide` that failed before either side ran therefore
-    /// renders as a bare `/`.
+    /// Falls back to prefix form when fewer than two operands were recorded.
+    /// A genuine short circuit -- the left operand failed, so the evaluator
+    /// never dispatched the right one -- leaves exactly **one** recorded
+    /// operand, not zero: dividing by zero itself only happens after both
+    /// sides have run, so a real `Divide` that fails this way always has two.
+    /// Zero operands is rarer still: it takes both children being untraced
+    /// extension-point nodes (`sink.hpp`) that produced no step of their own
+    /// to consume. A `Divide` with nothing recorded therefore renders as a
+    /// bare `/`.
     template <typename Rep>
     [[nodiscard]] std::string binary_expression(Step<Rep> const& step, std::string_view operatorText)
     {
@@ -220,7 +250,8 @@ template <typename Rep = Rational>
                   "formula: only an exact Rational trace can be rendered -- see render_trace's "
                   "documentation for why a floating-point derivation has no printable form here");
 
-    std::size_t const shown = trace.steps.size() < options.maxSteps ? trace.steps.size() : options.maxSteps;
+    std::size_t const shown =
+        trace.steps.size() < options.maxSteps.value ? trace.steps.size() : options.maxSteps.value;
 
     std::string text;
     for (std::size_t index = 0; index < shown; ++index)

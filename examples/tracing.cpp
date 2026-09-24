@@ -60,9 +60,10 @@ int main()
     // reach it. Tracing observes; it does not change the answer.
     formula::Explained<WaterCementRatio> const explained = formula::explain<WaterCementRatio>(ratio, inputs);
 
-    // render_trace has no default for maxSteps: a caller who does not choose
-    // a bound does not compile, rather than risking an unbounded dump of a
-    // derivation many times this size.
+    // render_trace has no default for maxSteps: TraceRenderOptions::maxSteps
+    // is a StepLimit, which has no default constructor, so a caller who
+    // writes render_trace(explained.trace, {}) does not compile, rather than
+    // risking an unbounded dump of a derivation many times this size.
     std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 10 });
     std::printf("%s", trace.c_str());
 

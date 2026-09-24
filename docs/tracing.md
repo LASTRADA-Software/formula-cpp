@@ -233,9 +233,14 @@ of its own -- it's whatever the coherent SI unit of its dimension is, which
 ```
 
 (`test/trace_render_tests.cpp`, `"a derivation renders one line per step, in
-order"`.) `#1^2` and `#2 / #3` carry no unit symbol at all: `kg2` and `kg2/m3`
-are not units this library writes, so nothing is printed rather than
-inventing one.
+order"`.) `#1^2` and `#2 / #3` carry no unit symbol at all -- and the reason is
+not that `kg2` and `kg2/m3` are awkward to spell. `coherent()`
+(`evaluate.hpp`) hands **every** computed step a `Unit` with no symbol at all,
+whatever its dimension: a computed *mass* prints no `kg` either, nor a
+computed length its `m`. A compound dimension is simply the case where the
+absence is most obvious, since there is no everyday symbol to miss; the
+behaviour itself applies uniformly to anything the evaluator computed rather
+than declared.
 
 A step that failed shows why instead of a value, and a step with no value at
 all -- an absent measurement, which is not an error -- says so rather than
@@ -247,33 +252,50 @@ looking like one:
 ```
 
 (`test/trace_render_tests.cpp`, `"a failing step renders its error, and an
-absent one renders absence"`.) The failing `Divide` above names no operands at
-all: dividing by zero fails before either operand of that particular node ran,
-so there is no step index to reference and none is invented. `Step::operands`
-holds **exactly** what the evaluator actually dispatched, not what the node's
-arity would predict -- when an operand fails, its parent returns without
-evaluating the remaining ones, so a `Divide` may hold one recorded operand,
-or, as here, none.
+absent one renders absence"`.) The failing `Divide` above is a hand-built
+`Step`, not the recording of a real division by zero -- a real one runs both
+operands before the arithmetic fails, so it always records two. Zero operands
+is reachable from a real tree only when **both** children are untraced
+extension-point nodes (see below) that produce no step of their own for the
+outer node to claim. `Step::operands` holds **exactly** what the evaluator
+actually dispatched, not what the node's arity would predict -- when an
+operand fails, its parent returns without evaluating the remaining ones, so a
+`Divide` may hold one recorded operand, or, in the rare case above, none.
 
 ## The bound is a required argument, not a default
 
 ```cpp
+struct StepLimit
+{
+    StepLimit() = delete;
+    constexpr StepLimit(std::size_t steps) noexcept: value { steps } {}
+
+    std::size_t value {};
+};
+
 struct TraceRenderOptions
 {
-    std::size_t maxSteps;
+    StepLimit maxSteps;
 };
 ```
 
-`TraceRenderOptions::maxSteps` has no default member initialiser, on purpose:
-a caller who writes `render_trace(trace, {})` does not compile. Every other
-option this library exposes with a sensible default gets one; this one does
-not, because a sensible default does not exist. An unbounded render of a
-derivation with a hundred thousand steps once collapsed into one wall of text
-long enough to be practically unusable -- the same failure mode `trace.hpp`'s
-flat, index-addressed arena exists to make representable without recursion,
-just at the rendering end instead of the storage end. A default limit is a
-limit someone forgets to raise or lower for their own formula; a required one
-is a limit someone actually chose. When a trace is longer than the bound,
+`maxSteps` is a `StepLimit`, not a plain `std::size_t`, on purpose: a caller
+who writes `render_trace(trace, {})` does not compile. A plain `std::size_t`
+member with no default initialiser would not achieve that --
+`TraceRenderOptions` is an aggregate, so `{}` would still value-initialise it
+to zero and render nothing at all, silently, which is a worse outcome than
+either a diagnostic or an unbounded render. `StepLimit` has no default
+constructor, so there is no zero for `{}` to produce; `{.maxSteps = 10}` and
+`{25}` both still work, because `StepLimit`'s own constructor is not
+`explicit`. Every other option this library exposes with a sensible default
+gets one; this one does not, because a sensible default does not exist. An
+unbounded render of a derivation with a hundred thousand steps once collapsed
+into one wall of text long enough to be practically unusable -- the same
+failure mode `trace.hpp`'s flat, index-addressed arena exists to make
+representable without recursion, just at the rendering end instead of the
+storage end. A default limit is a limit someone forgets to raise or lower for
+their own formula; a required one is a limit someone actually chose. When a
+trace is longer than the bound,
 `render_trace` shows the first `maxSteps` lines and then exactly one line
 saying how many were left out -- never a silent truncation and never all of
 them:

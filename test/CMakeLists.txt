@@ -146,6 +146,15 @@ formula_add_negative_test(function_zero_root_degree
 formula_add_negative_test(documented_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
 
+# Same NAME-not-message shape as the exponent and symbol-length sentinels
+# above: there is no static_assert to quote here, only a deleted default
+# constructor, and every compiler's own wording for that differs (cl says
+# "attempting to reference a deleted function", clang says "call to deleted
+# constructor", GCC says "use of deleted function") -- but all three name the
+# type whose constructor is deleted, so that name is the one substring common
+# to all of them.
+formula_add_negative_test(render_trace_no_step_limit "StepLimit")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
