@@ -425,16 +425,33 @@ template <Dialect D, Comparison Op, Node Left, Node Right>
 
 /// A conditional renders as `if <predicate> then <then> else <else>` in every
 /// dialect but LaTeX, which spells it as a `\begin{cases}` block -- the usual
-/// way a case-defined quantity is typeset. The branches are rendered plainly,
-/// with no bracket check: each is already delimited on both sides by a
-/// keyword (`then` / `else`, or `&` / `\\` in the cases block), the same way
-/// a root's operand is delimited by its own parentheses, so nothing there can
-/// misread regardless of what the branch is.
+/// way a case-defined quantity is typeset. Both branches are unambiguous
+/// without a bracket at any nesting depth, in every dialect: every `when()`
+/// carries a mandatory `else`, so nested if-then-else has none of the
+/// dangling-else trouble an *optional* else would cause -- nearest-else-
+/// binds-nearest-if always recovers the tree correctly. That is a fact about
+/// what a parser can do, though, and this library's rendered text ends up in
+/// generated documentation a person checks against a standard; unambiguous
+/// to a parser is not the same bar as readable to a person.
+///
+/// So the **then** branch gets a bracket in Plain and Markdown when it is
+/// itself a `WhenNode` -- `if p then (if q then a else b) else c` -- because
+/// otherwise a reader has to count `else`s against `then`s to find where the
+/// inner conditional stops before "else c" is reached. The **else** branch
+/// does not: `if p then a else if q then b else c` is the ordinary else-if
+/// chain, already reads fine, and bracketing it would only add noise for
+/// nothing. This asymmetry is deliberate -- a future reader who "fixes" it
+/// to look symmetric would be undoing the actual readability improvement.
+/// LaTeX needs no bracket in either position: its `\begin{cases}` block is a
+/// visibly distinct construct nested inside a cell, not text a reader could
+/// mistake for a continuation of the outer one.
 template <Dialect D, Predicate P, Node Then, Node Else>
 [[nodiscard]] std::string render_node(WhenNode<P, Then, Else> const& node)
 {
     std::string const predicateText = render<D>(node.predicate);
-    std::string const thenText = render<D>(node.thenBranch);
+    std::string const thenText = D == Dialect::LaTeX
+                                     ? render<D>(node.thenBranch)
+                                     : detail::render_operand<D>(node.thenBranch, detail::Precedence::Additive);
     std::string const elseText = render<D>(node.elseBranch);
 
     if constexpr (D == Dialect::LaTeX)

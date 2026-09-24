@@ -499,11 +499,10 @@ TEST_CASE("render: a numeric-value escape hatch wrapping a conditional keeps the
     constexpr auto numeric = formula::numeric_value_of<formula::unit::Megapascal, "nested-conditional coverage">(chosen);
 
     CHECK(formula::render<Dialect::Plain>(numeric) == "numeric[in MPa](if f > 50 MPa then f * 2 else f * 4)");
-    CHECK(formula::render<Dialect::Markdown>(numeric)
-          == "numeric[in MPa](if `f` > 50 MPa then `f` * 2 else `f` * 4)");
-    CHECK(
-        formula::render<Dialect::LaTeX>(numeric)
-        == "\\{\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} \\end{cases}/\\mathrm{MPa}\\}");
+    CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric[in MPa](if `f` > 50 MPa then `f` * 2 else `f` * 4)");
+    CHECK(formula::render<Dialect::LaTeX>(numeric)
+          == "\\{\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} "
+             "\\end{cases}/\\mathrm{MPa}\\}");
 }
 
 TEST_CASE("render: a numeric-value escape hatch wrapping a rounding node needs no extra bracket",
@@ -537,8 +536,16 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
     // Every when() renders with a mandatory else, unlike an "if" whose else
     // is optional -- so nested if-then-else has no dangling-else problem:
     // nearest-else-binds-nearest-if recovers the tree correctly at any
-    // nesting depth, and no bracket is needed around a WhenNode used as
-    // another WhenNode's own then or else branch.
+    // nesting depth, in every dialect. That is true regardless of the
+    // bracket asserted below.
+    //
+    // The bracket itself (Plain/Markdown, then-position only) is for the
+    // reader, not the parser -- see the comment on WhenNode's render_node.
+    // Unambiguous under nearest-else-binds-nearest-if does not mean a person
+    // does not have to count "else"s against "then"s to find where a nested
+    // conditional in the *then* position stops; the *else* position needs no
+    // such help, because "if a then x else if b then y else z" is the
+    // ordinary else-if chain and already reads fine unbracketed.
     constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
     constexpr auto inner = formula::when(overFifty, var<Strength>, var<Strength> * rat(3));
 
@@ -546,17 +553,18 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
     constexpr auto nestedInElse = formula::when(overFifty, var<Strength> * rat(5), inner);
     constexpr auto nestedInBoth = formula::when(overFifty, inner, inner);
 
-    CHECK(formula::render<Dialect::Plain>(nestedInThen) == "if f > 50 MPa then if f > 50 MPa then f else f * 3 else f * 5");
+    CHECK(formula::render<Dialect::Plain>(nestedInThen)
+          == "if f > 50 MPa then (if f > 50 MPa then f else f * 3) else f * 5");
     CHECK(formula::render<Dialect::Plain>(nestedInElse) == "if f > 50 MPa then f * 5 else if f > 50 MPa then f else f * 3");
     CHECK(formula::render<Dialect::Plain>(nestedInBoth)
-          == "if f > 50 MPa then if f > 50 MPa then f else f * 3 else if f > 50 MPa then f else f * 3");
+          == "if f > 50 MPa then (if f > 50 MPa then f else f * 3) else if f > 50 MPa then f else f * 3");
 
     CHECK(formula::render<Dialect::Markdown>(nestedInThen)
-          == "if `f` > 50 MPa then if `f` > 50 MPa then `f` else `f` * 3 else `f` * 5");
+          == "if `f` > 50 MPa then (if `f` > 50 MPa then `f` else `f` * 3) else `f` * 5");
     CHECK(formula::render<Dialect::Markdown>(nestedInElse)
           == "if `f` > 50 MPa then `f` * 5 else if `f` > 50 MPa then `f` else `f` * 3");
     CHECK(formula::render<Dialect::Markdown>(nestedInBoth)
-          == "if `f` > 50 MPa then if `f` > 50 MPa then `f` else `f` * 3 else if `f` > 50 MPa then `f` else `f` * 3");
+          == "if `f` > 50 MPa then (if `f` > 50 MPa then `f` else `f` * 3) else if `f` > 50 MPa then `f` else `f` * 3");
 
     CHECK(formula::render<Dialect::LaTeX>(nestedInThen)
           == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f \\cdot 3 & \\text{otherwise} \\end{cases} & "
