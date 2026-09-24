@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+@PACKAGE_INIT@
+
+# Guarded so that two consumers in one build tree do not re-include the targets.
+if(NOT TARGET formula-cpp::formula-cpp)
+    include("${CMAKE_CURRENT_LIST_DIR}/formula-cpp-targets.cmake")
+endif()
+
+check_required_components(formula-cpp)

@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Build
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  merge_group:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CPM_SOURCE_CACHE: ${{ github.workspace }}/.cache/CPM
+  # Matches Lightweight and fastcached, and the clang-cl 22.x on the Windows leg.
+  CLANG_VERSION: "22"
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Windows-cl",       os: windows-2025, preset: cl-release }
+          - { name: "Windows-clang-cl", os: windows-2025, preset: clangcl-release }
+          - { name: "Linux-clang",      os: ubuntu-24.04, preset: clang-release }
+          - { name: "Linux-gcc",        os: ubuntu-24.04, preset: gcc-release }
+          - { name: "macOS-clang",      os: macos-15,     preset: clang-release }
+    steps:
+      - uses: actions/checkout@v4
+
+      # Split restore/save rather than a combined actions/cache: in a fan-out
+      # matrix a combined step makes every leg a writer of the same key at once.
+      - name: Restore CPM cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-${{ runner.os }}-${{ hashFiles('test/CMakeLists.txt') }}
+          restore-keys: cpm-${{ runner.os }}-
+
+      - uses: seanmiddleditch/gha-setup-ninja@v6
+
+      # ubuntu-24.04 defaults to GCC 13, whose libstdc++ lacks parts of C++23.
+      - name: Install GCC 14
+        if: matrix.preset == 'gcc-release'
+        run: sudo apt-get update && sudo apt-get install -y g++-14
+
+      # ubuntu-24.04's stock clang is 18, which does not expose std::expected
+      # through the libstdc++ it picks up -- measured: every std::expected use
+      # failed to compile while the GCC leg, on the same machine image, was fine.
+      # Pull Clang ${{ env.CLANG_VERSION }} from the official LLVM apt source, as
+      # Lightweight and fastcached already do, which also lines this leg up with
+      # the clang-cl 22.x used on the Windows leg.
+      - name: Install Clang ${{ env.CLANG_VERSION }}
+        if: matrix.preset == 'clang-release' && runner.os == 'Linux'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${{ env.CLANG_VERSION }}
+          sudo apt-get install -y clang-${{ env.CLANG_VERSION }}
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: bash
+        run: |
+          extra=()
+          [[ "${{ matrix.preset }}" == gcc-* ]] && extra+=(-DCMAKE_CXX_COMPILER=g++-14)
+          # Linux clang only: see the "Install Clang" step above. macOS clang is
+          # AppleClang with libc++ and needs no override.
+          if [[ "${{ matrix.preset }}" == clang-* && "${{ runner.os }}" == "Linux" ]]; then
+            extra+=(-DCMAKE_CXX_COMPILER=clang++-${{ env.CLANG_VERSION }})
+          fi
+          cmake --preset ${{ matrix.preset }} "${extra[@]}"
+
+      - name: Save CPM cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CPM_SOURCE_CACHE }}
+          key: cpm-${{ runner.os }}-${{ hashFiles('test/CMakeLists.txt') }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}

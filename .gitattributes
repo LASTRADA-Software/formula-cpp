@@ -1,0 +1,5 @@
+# Line endings are a property of the repository, not of each machine.
+# This must be in the first commit: added later, normalisation is retroactive
+# and produces a whole-tree diff.
+* text=auto eol=lf
+*.sh text eol=lf

@@ -1,0 +1,17 @@
+site_name: formula-cpp
+site_description: Declarative, traceable, self-documenting formulas for C++23
+repo_url: https://github.com/LASTRADA-Software/formula-cpp
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+nav:
+  - Home: index.md
+  - Numbers: numbers.md
+  - Dimensions and units: dimensions.md
+  - Quantities and measurements: quantities.md

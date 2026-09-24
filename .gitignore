@@ -1,0 +1,16 @@
+/out/
+/build*/
+/.cache/
+/.vs/
+/.vscode/
+/.idea/
+/stage/
+/html/
+/site/
+/Testing/
+/vcpkg_installed/
+CMakeUserPresets.json
+compile_commands.json
+*.user
+.claude/settings.local.json
+.claude/worktrees/

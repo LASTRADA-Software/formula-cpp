@@ -1,0 +1,81 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Package
+on: [push, pull_request, merge_group]
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-consume:
+    name: install+consume (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ windows-2025, ubuntu-24.04, macos-15 ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: seanmiddleditch/gha-setup-ninja@v6
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with: { arch: x64 }
+
+      # Configured exactly as the vcpkg port does: tests and examples OFF. If the
+      # library ever needs Catch2 in order to CONFIGURE, this step fails -- which
+      # is the point, because that failure is the port breaking, caught here.
+      - name: Configure as the port does
+        shell: bash
+        run: |
+          cmake -S . -B out/pkg -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DFORMULA_BUILD_TESTS=OFF \
+            -DFORMULA_BUILD_EXAMPLES=OFF \
+            -DFORMULA_INSTALL=ON \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage"
+
+      - name: Install
+        run: cmake --install out/pkg
+
+      - name: The installed package leaks nothing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cfgdir=stage/lib/cmake/formula-cpp
+          find stage -type f | sort
+          test -f "$cfgdir/formula-cpp-config.cmake"
+          test -f stage/include/formula-cpp/formula.hpp
+          if grep -REn 'Catch2|CPM|_deps|FORMULA_BUILD_' "$cfgdir"; then
+            echo "::error::installed package references test or dependency machinery"; exit 1
+          fi
+          # CMake writes generated files with forward slashes on every
+          # platform, but $GITHUB_WORKSPACE in bash on the Windows runner is
+          # backslash-separated -- a literal comparison never matches there,
+          # so this leg would silently assert nothing. Normalise the
+          # workspace path to forward slashes before comparing.
+          workspace_normalized="${GITHUB_WORKSPACE//\\//}"
+          if grep -RFn "$workspace_normalized" "$cfgdir"; then
+            echo "::error::installed package bakes in a build-machine path"; exit 1
+          fi
+
+      - name: Consume via find_package(CONFIG)
+        shell: bash
+        run: |
+          cmake -S test/package -B out/consume -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$PWD/stage"
+          cmake --build out/consume
+          ctest --test-dir out/consume --output-on-failure
+
+      # A Debug consumer against a Release install. Trivially fine for a
+      # header-only library -- which is exactly the claim being checked.
+      - name: Consume in a different configuration
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cmake -S test/package -B out/consume-dbg -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH="$PWD/stage"
+          cmake --build out/consume-dbg
