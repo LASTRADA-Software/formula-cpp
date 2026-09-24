@@ -1344,15 +1344,18 @@ Add to `test/trace_tests.cpp`:
 ```cpp
 TEST_CASE("explain returns the same outcome evaluate would, plus the derivation", "[trace]")
 {
-    constexpr auto density = formula::pow<2>(var<Mass>) / var<Volume>;
+    // Mass / Volume. NOT pow<2>(var<Mass>) / var<Volume>, which is
+    // Mass^2/Volume and is not a density -- the library's own
+    // RequireResultDimension static_assert rejects it, correctly.
+    constexpr auto density = var<Mass> / var<Volume>;
     auto const environment = environmentOf(6, 3);
 
     auto const plain = formula::evaluate<Density>(density, environment);
     auto const explained = formula::explain<Density>(density, environment);
 
     CHECK(explained.outcome == plain);
-    CHECK(explained.trace.steps.size() == 4);
-    CHECK(explained.trace.steps[explained.trace.root()].value == formula::Rational { 12 });
+    CHECK(explained.trace.steps.size() == 3);
+    CHECK(explained.trace.steps[explained.trace.root()].value == formula::Rational { 2 });
 }
 ```
 
