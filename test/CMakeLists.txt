@@ -25,6 +25,7 @@ add_executable(formula-cpp-tests
     cross_tu_a.cpp
     expression_cross_tu_b.cpp
     checked_int_tests.cpp
+    citation_tests.cpp
     error_tests.cpp
     expression_tests.cpp
     rational_tests.cpp
@@ -136,6 +137,9 @@ formula_add_negative_test(evaluate_result_dimension_mismatch
 
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
+
+formula_add_negative_test(documented_dimension_mismatch
+    "the two sides of this addition or subtraction measure different")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

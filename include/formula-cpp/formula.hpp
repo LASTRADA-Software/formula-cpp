@@ -4,8 +4,11 @@
 /// @file
 /// Umbrella header. Deliberately pulls in no <string>, <vector> or <format>:
 /// a consumer that only evaluates numbers must not compile them in every
-/// translation unit.
+/// translation unit. Later phases add `render.hpp` and `document.hpp`, which
+/// do require these headers for documentation generation; they are not included
+/// here so that arithmetic-only consumers stay lean.
 
+#include <formula-cpp/citation.hpp>
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/environment.hpp>
