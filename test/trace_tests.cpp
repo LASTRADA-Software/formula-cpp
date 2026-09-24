@@ -105,10 +105,13 @@ TEST_CASE("a step records the unit its value was declared in", "[trace]")
     CHECK(trace.steps[2].value == formula::Rational { 361, 2000 });
 }
 
-TEST_CASE("a short-circuited operand leaves the parent with one operand, not two", "[trace]")
+TEST_CASE("a parent records the error that reached it", "[trace]")
 {
-    // Dividing by zero fails in the right operand of the outer division, so
-    // that division's own right operand never produces a step.
+    // Dividing by zero fails in the right operand of the outer division. That
+    // operand does not short-circuit anything below itself -- its own two
+    // children both run -- so the outer division still gets both of its
+    // operands; what it must also do is carry the error the right side
+    // reported, rather than dropping it once the arithmetic itself never ran.
     constexpr auto bad = var<Mass> / (var<Volume> / formula::number(formula::Rational { 0 }));
 
     formula::Trace<> trace {};
