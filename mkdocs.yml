@@ -1,6 +1,12 @@
 site_name: formula-cpp
 site_description: Declarative, traceable, self-documenting formulas for C++23
 repo_url: https://github.com/LASTRADA-Software/formula-cpp
+# MkDocs builds every Markdown file under docs_dir, not only the ones listed
+# in nav below -- so without this, docs/superpowers/ (the design spec and the
+# implementation plans: internal planning documents, not site content) would
+# be built and published as public pages even though nav deliberately never
+# links to them.
+exclude_docs: superpowers/
 theme:
   name: material
   features:
