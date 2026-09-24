@@ -31,7 +31,11 @@ enum class StepKind : std::uint8_t
 {
     Variable,
     Constant,
-    Pi,
+    /// Spelled `PiConstant` rather than `Pi` because GCC's `-Wshadow` reports
+    /// an enumerator that shares a name with a global -- and `formula::Pi`,
+    /// the rational approximation, is one. The four Windows presets do not
+    /// flag it; the Linux CI leg does, with warnings as errors.
+    PiConstant,
     Negate,
     Add,
     Subtract,
@@ -137,7 +141,7 @@ namespace detail
     template <>
     struct StepKindOf<PiNode>
     {
-        static constexpr StepKind value = StepKind::Pi;
+        static constexpr StepKind value = StepKind::PiConstant;
     };
 
     template <UnaryOperator Op, Node Operand>

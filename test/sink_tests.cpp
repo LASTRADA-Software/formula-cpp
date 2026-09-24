@@ -169,3 +169,61 @@ TEST_CASE("a two-parameter extension-point node also works as the root of an exp
     REQUIRE(measurement.stored().has_value());
     CHECK(*measurement.stored() == formula::Rational { 7 });
 }
+
+// ---------------------------------------------------------------------------
+// Constant evaluation
+//
+// `evaluate` and `checked_evaluate` must remain usable in a constant
+// expression. Threading a sink through every overload in phase 7 could have
+// cost that -- a single non-constexpr step anywhere in the walk would -- and
+// nothing in the suite would have noticed, because every other test calls
+// them at runtime.
+//
+// These are `static_assert`s rather than `CHECK`s deliberately: the claim is
+// that the computation happens during translation, and a runtime assertion
+// cannot distinguish that from a computation that merely produced the same
+// answer later.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+struct Density: formula::Quantity<Density, "rho", "bulk density", formula::coherent(formula::dim::Density)>
+{
+};
+
+constexpr auto densityFormula = var<Mass> / var<Volume>;
+constexpr auto constantEnvironment = formula::environment(formula::Measured<Mass> { formula::Rational { 6 } },
+                                                          formula::Measured<Volume> { formula::Rational { 3 } });
+
+// checked_evaluate: the expected-returning entry point.
+constexpr auto checkedAtCompileTime = formula::checked_evaluate<Density>(densityFormula, constantEnvironment);
+static_assert(checkedAtCompileTime.has_value(), "formula: checked_evaluate must work in a constant expression");
+static_assert(checkedAtCompileTime->is_value());
+static_assert(checkedAtCompileTime->measurement().value() == formula::Rational { 2 });
+
+// evaluate: the throwing entry point. Throwing is fine in constant
+// evaluation as long as nothing actually throws -- a thrown exception would
+// make this ill-formed, which is exactly the diagnostic we want.
+constexpr auto evaluatedAtCompileTime = formula::evaluate<Density>(densityFormula, constantEnvironment);
+static_assert(evaluatedAtCompileTime.is_value(), "formula: evaluate must work in a constant expression");
+static_assert(evaluatedAtCompileTime.measurement().value() == formula::Rational { 2 });
+
+// The sink-carrying walk itself, with a sink named explicitly rather than
+// defaulted, so this covers the parameter phase 7 added and not just the
+// defaulted call.
+constexpr auto tracedAtCompileTime = [] {
+    formula::NullSink sink {};
+    return formula::checked_evaluate_si<formula::Rational>(densityFormula, constantEnvironment, sink);
+}();
+static_assert(tracedAtCompileTime.has_value(), "formula: a sink must not cost constant evaluation");
+static_assert(**tracedAtCompileTime == formula::Rational { 2 });
+} // namespace
+
+TEST_CASE("evaluation is available during translation, not only at run time", "[sink][constexpr]")
+{
+    // The static_asserts above are the test; this case exists so a reader
+    // scanning the suite sees the guarantee named, and so ctest reports it.
+    STATIC_REQUIRE(checkedAtCompileTime.has_value());
+    STATIC_REQUIRE(evaluatedAtCompileTime.is_value());
+    STATIC_REQUIRE(tracedAtCompileTime.has_value());
+}
