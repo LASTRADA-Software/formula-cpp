@@ -151,6 +151,32 @@ symbol table. [`docs/gallery.md`](docs/gallery.md) is a page generated that way
 from several formulas at once — checked into the repository, and a CI test
 fails if it ever stops matching what the generator produces.
 
+### Every number can show how it was reached
+
+`explain()` evaluates a formula exactly as `evaluate()` does and also returns
+a `Trace` — one step per node, each naming the earlier steps it consumed.
+`render_trace()` turns that into text, bounded by a limit you choose:
+
+```cpp
+formula::Explained<WaterCementRatio> const explained = formula::explain<WaterCementRatio>(ratio, inputs);
+std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 10 });
+```
+
+```
+1. V_w = 180 l
+2. V_c = 300 l
+3. #1 / #2 = 3/5
+4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
+```
+
+Every value is shown in the unit it was declared in, not the coherent SI unit
+the arithmetic actually ran on — that is `9/50` cubic metres above, and nobody
+typed cubic metres. Tracing costs nothing when nobody asks for it: a sink is
+passed by value, and the untraced path — `evaluate()`, `checked_evaluate()` —
+defaults to one that does nothing, adding no instruction the evaluator would
+not already emit once the call inlines, measured on all four compilers this
+library targets. See [the tracing guide](docs/tracing.md).
+
 ## What this is for
 
 Test-method standards are written as prose with formulas in them, and software
@@ -176,6 +202,7 @@ because all of it came from the same line of code.
 | [Quantities](docs/quantities.md) | Declaring a quantity, `Describe`, measurements that may be absent |
 | [Writing formulas](docs/expressions.md) | Operators, evaluation, environments, overrides |
 | [Citations and rendering](docs/citations.md) | `documented()`, the three dialects, generated documentation |
+| [Tracing and audit trails](docs/tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
 | [Gallery](docs/gallery.md) | A documentation page the library generated about itself |
 
 Every example in the documentation uses generic physics with invented `Example Standard`
@@ -194,7 +221,7 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Quantities, metadata, absent measurements | shipped |
 | Formulas, operators, environments, evaluation | shipped |
 | Citations, rendering dialects, generated documentation | shipped |
-| Calculation tracing and audit trails | in progress |
+| Calculation tracing and audit trails | shipped |
 | Conditionals, lookup tables, constraints, series, statistics | planned |
 
 ## Requirements
