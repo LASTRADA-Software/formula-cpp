@@ -24,6 +24,8 @@
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <cstdio>
 #include <fstream>
@@ -241,6 +243,24 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << "w/c = V_w / V_c = 180 l / 300 l = " << exact_text(result) << " = " << result.to_double() << "\n";
+    out << "```\n\n";
+
+    // ---- A worked derivation, so the page shows how a number was reached, not only what it is ----
+
+    out << "## Worked derivation: bulk density\n\n";
+    out << "`m` = 1200 kg, `V` = 0.5 m3, `formula::explain()` and `formula::render_trace()`:\n\n";
+
+    auto const densityInputs = formula::environment(formula::Measured<SpecimenMass> { formula::Rational { 1200 } },
+                                                     formula::Measured<SpecimenVolume> { formula::Rational { 1, 2 } });
+    formula::Explained<BulkDensity> const explained = formula::explain<BulkDensity>(density, densityInputs);
+    if (!explained.outcome.is_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked derivation did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(explained.trace, { .maxSteps = 20 });
     out << "```\n\n";
 
     out.flush();
