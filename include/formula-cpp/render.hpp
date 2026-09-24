@@ -284,25 +284,37 @@ template <Dialect D, int Degree, Node Operand>
     }
 }
 
-/// A rounding node renders as a function call, `round[to <places> dp of
-/// <unit>](<operand>)` -- braced onto a subscript in LaTeX, the same way a
-/// root's degree is. Like `sqrt` and `root` above, the parentheses it always
+/// A rounding node renders as a function call, `round(<operand>, to <places>
+/// dp of <unit>)` -- braced onto a subscript in LaTeX, the same way a root's
+/// degree is. Like `sqrt` and `root` above, the parentheses it always
 /// produces already group its own operand, so it needs no `PrecedenceOf`
 /// override: the primary template's `Atom` fallback is already the right
 /// answer, and unlike `ConstantNode` nothing about that answer depends on the
 /// data the node carries, so no runtime `precedence_of` overload either.
 ///
-/// The granularity sits in its own `[...]` *before* the operand's own
-/// parentheses, rather than trailing after the operand inside them
-/// (`round(<operand> to <places> dp of <unit>)`, the shape this rendered
-/// before a review caught it). That trailing shape reads fine for an operand
-/// that is a single token, but a `WhenNode` operand has no closing delimiter
-/// of its own in Plain or Markdown -- `round(if p then a else b to 1 dp of
-/// mm)` reads as if only `b` were "to 1 dp of mm", rounding the else branch
-/// alone, when the tree rounds whichever branch predicate `p` selects. Moving
-/// the suffix in front means nothing ever trails inside the operand's own
-/// parentheses to misattach, whatever the operand is -- the same reason
-/// LaTeX's subscript-before-group shape was never at risk.
+/// The granularity is a second, comma-separated argument -- `round(d, to 1 dp
+/// of mm)`, operand first, in the "value, then how" order `ROUND(value,
+/// digits)` already reads to an engineer -- rather than trailing after the
+/// operand with nothing between them (`round(<operand> to <places> dp of
+/// <unit>)`, the shape this rendered before a review caught it). That
+/// trailing shape reads fine for an operand that is a single token, but a
+/// `WhenNode` operand has no closing delimiter of its own in Plain or
+/// Markdown -- `round(if p then a else b to 1 dp of mm)` reads as if only `b`
+/// were "to 1 dp of mm", rounding the else branch alone, when the tree rounds
+/// whichever branch predicate `p` selects. A first fix moved the suffix into
+/// its own `[...]` in front of the operand's parentheses instead
+/// (`round[to 1 dp of mm](d)`), which fixed that misattachment but created a
+/// worse one: `[...](...)` right next to each other, with nothing between,
+/// is CommonMark link syntax -- a Markdown renderer displays only the link
+/// label (`to 1 dp of mm`), and the operand disappears from the visible text
+/// entirely rather than merely misattaching. The comma form is safe against
+/// both hazards at once: it is a single top-level separator no operand's own
+/// rendered text can ever produce (nothing trails into it from a branch with
+/// no closing delimiter of its own, the same property the `[...]`-prefix
+/// form had), and it contains no character that means anything to any
+/// Markdown flavour, unlike `[`, `]`, or `{`/`}` (the latter pair is inert in
+/// CommonMark but is consumed by the `attr_list` extension some downstream
+/// MkDocs Material setups enable).
 ///
 /// `RoundingMode` deliberately does not appear in this text. A formula's
 /// rendered text is what a reader checks against a standard, and a standard
@@ -321,14 +333,14 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Opera
     if constexpr (D == Dialect::LaTeX)
         return "\\operatorname{round}_{" + placesText + "\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
     else
-        return "round[to " + placesText + " dp of " + unitSymbol + "](" + inner + ")";
+        return "round(" + inner + ", to " + placesText + " dp of " + unitSymbol + ")";
 }
 
 /// A significant-digits rounding node, spelled the same way as `RoundNode`
 /// above but with "sf" (significant figures) in place of "dp" -- see that
 /// overload for why no precedence override is needed, why `RoundingMode` is
-/// left out, and why the granularity sits in `[...]` before the operand
-/// rather than trailing after it inside the parentheses.
+/// left out, and why the granularity is a comma-separated second argument
+/// rather than a trailing suffix or a `[...]` prefix.
 template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
 [[nodiscard]] std::string render_node(RoundSignificantNode<U, Digits, Mode, Operand> const& node)
 {
@@ -340,17 +352,17 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
     if constexpr (D == Dialect::LaTeX)
         return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf},\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
     else
-        return "round[to " + digitsText + " sf of " + unitSymbol + "](" + inner + ")";
+        return "round(" + inner + ", to " + digitsText + " sf of " + unitSymbol + ")";
 }
 
-/// The numeric-value escape hatch renders as `numeric[in <unit>](<operand>)`,
+/// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,
 /// or as a braced quotient in LaTeX. A function call like `RoundNode` above,
 /// so the same reasoning applies: no `PrecedenceOf` override needed, none of
-/// its data changes that answer, and the unit sits in `[...]` before the
-/// operand's own parentheses for the identical reason `RoundNode` does --
-/// `numeric(<operand> in <unit>)` let "in <unit>)" trail after a `WhenNode`
-/// operand's else branch with no closing delimiter of its own to stop it,
-/// misattaching the unit to that branch alone.
+/// its data changes that answer, and the unit is a comma-separated second
+/// argument for the identical reason `RoundNode` does -- see that overload's
+/// comment for both hazards this form avoids (a trailing suffix
+/// misattaching to a `WhenNode` operand's else branch, and a `[...]` prefix
+/// reading as a Markdown link).
 ///
 /// The justification does not appear here either. It is the compile-time
 /// record of *why* a rule needed a bare number instead of a quantity -- an
@@ -365,7 +377,7 @@ template <Dialect D, Unit U, detail::FixedString Justification, Node Operand>
     if constexpr (D == Dialect::LaTeX)
         return "\\{" + inner + "/\\mathrm{" + unitSymbol + "}\\}";
     else
-        return "numeric[in " + unitSymbol + "](" + inner + ")";
+        return "numeric(" + inner + ", in " + unitSymbol + ")";
 }
 
 /// Pi renders as `\pi` in LaTeX, and as `pi` in every other dialect.
