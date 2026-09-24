@@ -35,6 +35,7 @@ nav:
   - Quantities and measurements: quantities.md
   - Expressions and evaluation: expressions.md
   - Citations and rendering: citations.md
+  - Tracing and audit trails: tracing.md
   - Gallery: gallery.md
   # Doxygen output, dropped into the built site's api/ directory by
   # .github/workflows/pages.yml after `mkdocs build` runs -- not a page
