@@ -80,6 +80,17 @@ TEST_CASE("citation: the wrapper keeps the expression it wrapped", "[citation]")
                                                       formula::VarNode<CementVolume>>>);
 }
 
+TEST_CASE("citation: the wrapper keeps the expression's own state, not a fresh one", "[citation]")
+{
+    // `is_same_v` on the inner type is not enough: every node in the tree used
+    // by the test above is stateless, so a wrapper that discarded its argument
+    // and stored `Inner {}` would pass that check. A constant carries a number.
+    constexpr auto wrapped =
+        formula::documented(formula::constant<formula::unit::Millimetre>(rat(150)), { .title = "A declared span" });
+
+    STATIC_REQUIRE(wrapped.inner.number == rat(150));
+}
+
 TEST_CASE("citation: a documented expression is still an expression", "[citation]")
 {
     STATIC_REQUIRE(formula::Node<decltype(ratio)>);
