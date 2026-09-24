@@ -169,5 +169,7 @@ endif()
 
 message(STATUS
     "no <string>, <vector>, <format> or <iostream> in any of ${scannedTotal} public headers, "
-    "none of them reach ${exemptNamePattern} either, and each opt-in header uses only the "
-    "standard headers it declares")
+    "none of them reach ${exemptNamePattern} either, and each opt-in header uses none of those "
+    "same four banned headers beyond what it declares in exemptAllowances -- check 3 does not "
+    "examine any other standard header, so an opt-in header may also reach one undeclared, as "
+    "render.hpp does with <string_view>")
