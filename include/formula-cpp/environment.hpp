@@ -82,6 +82,18 @@ namespace detail
     template <typename Entry>
     concept EnvironmentEntry = requires { typename EntryTraits<Entry>::quantity; };
 
+    /// Is @p Entry the one that carries @p Q?
+    ///
+    /// `Environment::provides`, `Environment::is_entered` and `Environment::index_of`
+    /// each need exactly this test against every entry. Three independently
+    /// written copies of one predicate are three chances for them to drift
+    /// apart, and a drift would be invisible to tests: it would only widen
+    /// `index_of`'s out-of-range sentinel into a reachable path, which no test
+    /// can reach either, by construction. Naming the predicate once makes the
+    /// three agree structurally instead of by care.
+    template <typename Q, typename Entry>
+    inline constexpr bool entry_is_for = std::is_same_v<Q, typename EntryTraits<Entry>::quantity>;
+
     /// Fails to compile when one quantity is supplied twice. First-wins and
     /// last-wins are equally arbitrary, and the caller meant exactly one of
     /// them, so neither is guessed.
@@ -135,7 +147,7 @@ class Environment
 
     /// Does this environment hold a value for @p Q?
     template <Described Q>
-    static constexpr bool provides = (std::is_same_v<Q, typename detail::EntryTraits<Entries>::quantity> || ...);
+    static constexpr bool provides = (detail::entry_is_for<Q, Entries> || ...);
 
     /// Was the value for @p Q typed in by a person rather than measured?
     ///
@@ -146,8 +158,7 @@ class Environment
     /// stay private and below.
     template <Described Q>
     static constexpr bool is_entered =
-        (...
-         || (std::is_same_v<Q, typename detail::EntryTraits<Entries>::quantity> && detail::EntryTraits<Entries>::isEntered));
+        (... || (detail::entry_is_for<Q, Entries> && detail::EntryTraits<Entries>::isEntered));
 
     /// The value held for @p Q. Asking for a quantity this environment does not
     /// hold is a compile error naming it -- never a zero, and never a silent
@@ -156,6 +167,15 @@ class Environment
     [[nodiscard]] constexpr Measured<Q> get() const noexcept
     {
         static_assert(detail::RequireProvided<Q, Environment>::value);
+        // The `else` below -- and its counterpart in `source_of()` further down --
+        // is unreachable by construction: `RequireProvided`'s static_assert above
+        // has already failed whenever `provides<Q>` is false. It stays rather than
+        // being deleted because a failed static_assert does not stop compilation,
+        // so the body below still gets instantiated against the same `Q`. Without
+        // this guard that instantiation runs into code written for a provided
+        // quantity, and the reader gets our one clean diagnostic followed by a
+        // cascade of consequential errors from the mismatch: eight from cl where
+        // one would do, three from clang-cl where one would do.
         if constexpr (provides<Q>)
         {
             constexpr std::size_t index = index_of<Q>();
@@ -186,8 +206,7 @@ class Environment
     {
         std::size_t found = sizeof...(Entries);
         std::size_t position = 0;
-        (((std::is_same_v<Q, typename detail::EntryTraits<Entries>::quantity> ? (found = position) : found), ++position),
-         ...);
+        (((detail::entry_is_for<Q, Entries> ? (found = position) : found), ++position), ...);
         return found;
     }
 

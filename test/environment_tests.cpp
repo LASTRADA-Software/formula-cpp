@@ -81,3 +81,16 @@ TEST_CASE("environment: entries keep their identity whatever order they are give
     STATIC_REQUIRE(reversed.get<WaterVolume>().value() == rat(180));
     STATIC_REQUIRE(reversed.get<CementVolume>().value() == rat(300));
 }
+
+TEST_CASE("environment: Entered compares by the measurement it carries", "[environment]")
+{
+    constexpr auto low = formula::entered(formula::Measured<Ratio> { rat(45, 100) });
+    constexpr auto sameAsLow = formula::entered(formula::Measured<Ratio> { rat(45, 100) });
+    constexpr auto high = formula::entered(formula::Measured<Ratio> { rat(50, 100) });
+    constexpr auto absent = formula::entered(formula::Measured<Ratio>::absent());
+
+    STATIC_REQUIRE(low == sameAsLow);
+    STATIC_REQUIRE_FALSE(low == high);
+    STATIC_REQUIRE_FALSE(low == absent);
+    STATIC_REQUIRE(absent == formula::entered(formula::Measured<Ratio>::absent()));
+}
