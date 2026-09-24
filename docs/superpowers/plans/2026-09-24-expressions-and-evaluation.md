@@ -1772,15 +1772,35 @@ TEST_CASE("evaluate: a value in a different unit converts exactly", "[evaluate]"
     STATIC_REQUIRE(computed->measurement().value() == rat(5, 2));
 }
 
-TEST_CASE("evaluate: an overflowing intermediate is reported, not wrapped", "[evaluate]")
+TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[evaluate]")
 {
-    constexpr std::int64_t huge = 3'000'000'000LL;
+    // Anything above the square root of the representable range cannot be
+    // squared, and sqrt(int64 max) is about 3,04e9. 4e9 squared is 1,6e19,
+    // comfortably over, so the test does not sit on the boundary.
+    constexpr std::int64_t huge = 4'000'000'000LL;
     auto const big = formula::environment(formula::Measured<WaterVolume> { rat(huge) },
                                           formula::Measured<CementVolume> { rat(1, huge) });
     auto const computed = formula::checked_evaluate<Ratio>(ratio, big);
 
     REQUIRE_FALSE(computed.has_value());
     CHECK(computed.error() == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("evaluate: a result at the edge of the range is computed, not refused", "[evaluate]")
+{
+    // The companion to the test above: together they say where the edge is.
+    // 3e9 litres over 1/3e9 litres is exactly 9e18, which fits in a 64-bit
+    // integer with room to spare -- and it fits only because `checked_mul`
+    // cross-reduces before multiplying. A naive implementation would overflow
+    // on the way to a perfectly representable answer.
+    constexpr std::int64_t large = 3'000'000'000LL;
+    auto const inputs = formula::environment(formula::Measured<WaterVolume> { rat(large) },
+                                             formula::Measured<CementVolume> { rat(1, large) });
+    auto const computed = formula::checked_evaluate<Ratio>(ratio, inputs);
+
+    REQUIRE(computed.has_value());
+    REQUIRE(computed->is_value());
+    CHECK(computed->measurement().value() == rat(9'000'000'000'000'000'000LL));
 }
 ```
 
@@ -2170,6 +2190,15 @@ as written, on **cl 19.51** (`/std:c++latest /W4 /WX /EHsc /permissive- /utf-8`)
 | a zero denominator | `DivisionByZero`, no value |
 | an `entered` result over a formula that divides by zero | the entered value, no error |
 | the four new `static_assert`s | each names the user's own source line |
+
+**One claim in task 4's tests was never run and was wrong.** The overflow test
+originally used 3e9, whose result is exactly 9e18 -- about 2,5% *under* the
+64-bit limit, so the computation succeeds and the test asserted the opposite of
+what happens. It was a runtime `auto const` case rather than a `static_assert`,
+so it is absent from the table above, which is exactly why it escaped. Measured
+against the landed headers: 3e9 succeeds at 9000000000000000000/1, 3,1e9
+overflows, 4e9 overflows. The test now uses 4e9 and has gained a companion that
+pins the succeeding side of the boundary.
 
 The three programs printed identical output. Two things the check found and this
 plan already reflects: `decltype(node.lhs)` is **not** const-qualified even when
