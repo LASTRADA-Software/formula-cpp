@@ -703,9 +703,19 @@ TEST_CASE("a trace records one step per node, children before parents", "[trace]
 
 TEST_CASE("a short-circuited operand leaves the parent with one operand, not two", "[trace]")
 {
-    // Dividing by zero fails in the right operand of the outer division, so
-    // that division's own right operand never produces a step.
-    constexpr auto bad = var<Mass> / (var<Volume> / formula::number(formula::Rational { 0 }));
+    // The failing subtree must be a **left** operand, and must sit below a
+    // node that does not itself short-circuit. `BinaryNode` returns early only
+    // when its OWN left operand errors; a right-operand error is discovered
+    // after both operands have already been dispatched, so nothing is skipped
+    // and a wrong arity-based implementation would agree with the right answer
+    // by coincidence.
+    //
+    // Here the middle `Divide`'s own left operand fails, so its right
+    // `var<Mass>` is genuinely never dispatched, while the outer `Multiply`
+    // dispatches both of its children normally. Multiply rather than a sum
+    // because a sum would require both sides to share a dimension, which is
+    // not what this test is about.
+    constexpr auto bad = var<Mass> * ((var<Volume> / formula::number(formula::Rational { 0 })) / var<Mass>);
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1059,9 +1069,22 @@ Expected: PASS -- every test that passed before, plus the 5 added here. If any *
 
 - [ ] **Step 6: Prove the short-circuit test is not vacuous**
 
-Change `RecordingSink::produced` to claim a fixed operand count based on node arity instead of the mark. Rebuild.
+Change `RecordingSink::produced` to claim a fixed operand count based on node
+arity instead of the mark — 0 for `Variable`/`Constant`/`Pi`, 1 for
+`Negate`/`Power`/`Root`/`Documented`, 2 for the binary kinds — popping from the
+tail of `unclaimed` and clamping to its size. Rebuild.
 
-Expected: the short-circuit test **fails**. Restore the mark-based version and confirm it passes. Record both results — the whole reason for the mark is that arity lies when an operand fails.
+Expected: the short-circuit test **fails**, with the outer node's
+`operands.size()` reported as **1** rather than 2. Under the mutation the
+middle `Divide` claims two operands because its arity says so, reaches past
+itself, and steals the outer node's own left child.
+
+Restore the mark-based version and confirm it passes. Record both directions.
+
+**If the mutation does not break anything, the test is wrong, not the design.**
+Say so rather than reporting a pass: an earlier draft of this test put the
+failing subtree on the *right*, where nothing is ever skipped, and it passed
+under the mutation it was written to catch.
 
 - [ ] **Step 7: All four presets, then commit**
 
