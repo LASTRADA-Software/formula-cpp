@@ -139,15 +139,23 @@ foreach(exempt IN LISTS exemptHeaders)
             "what this check exists to prevent.")
     endif()
 
-    file(STRINGS "${exempt}" bannedLines
-         REGEX "^[ 	]*#[ 	]*include[ 	]*<(string|vector|format|iostream)>")
-    foreach(line IN LISTS bannedLines)
-        string(REGEX REPLACE "^.*<(string|vector|format|iostream)>.*$" "\\1" used "${line}")
-        if(NOT used IN_LIST allowed)
-            file(RELATIVE_PATH rel "${SOURCE_DIR}" "${exempt}")
-            string(APPEND overreaches "
+    # Asked one banned header at a time, rather than by extracting "which one
+    # did this line use" from a capture group. A greedy `^.*<(...)>` picks the
+    # LAST match on a line, so a line naming two banned headers would be judged
+    # by the wrong one and could pass while the other is forbidden. Measured:
+    # a line reading `#include <iostream>` followed by `#include <string>` was
+    # reported as `string`, which is allowed, and the check passed.
+    foreach(banned IN ITEMS string vector format iostream)
+        list(FIND allowed "${banned}" allowedIndex)
+        if(allowedIndex EQUAL -1)
+            file(STRINGS "${exempt}" bannedLines
+                 REGEX "^[ 	]*#[ 	]*include[ 	]*<${banned}>")
+            foreach(line IN LISTS bannedLines)
+                file(RELATIVE_PATH rel "${SOURCE_DIR}" "${exempt}")
+                string(APPEND overreaches "
   ${rel}: ${line}")
-            math(EXPR overreachCount "${overreachCount}+1")
+                math(EXPR overreachCount "${overreachCount}+1")
+            endforeach()
         endif()
     endforeach()
 endforeach()
