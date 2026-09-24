@@ -149,3 +149,23 @@ TEST_CASE("a node written against the two-parameter extension point still evalua
     CHECK(entered == 2);
     CHECK(produced == 2);
 }
+
+TEST_CASE("a two-parameter extension-point node also works as the root of an expression, "
+          "not only nested inside one",
+          "[sink]")
+{
+    // The test above nests LegacyNode inside a BinaryNode, where
+    // detail::dispatch already tries the two-parameter overload as a
+    // fallback. checked_evaluate<Result> and evaluate<Result> used to call
+    // checked_evaluate_si<Rational>(expression, environment, sink) directly
+    // instead of through detail::dispatch, which has no matching overload
+    // when `expression`'s own type only ever learned about two parameters --
+    // so a consumer's node worked everywhere in a formula except as the
+    // formula itself.
+    auto const outcome = formula::evaluate<Mass>(LegacyNode {}, environmentOf(5, 1));
+
+    REQUIRE(outcome.is_value());
+    auto const measurement = outcome.measurement();
+    REQUIRE(measurement.stored().has_value());
+    CHECK(*measurement.stored() == formula::Rational { 7 });
+}

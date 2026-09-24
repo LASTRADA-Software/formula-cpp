@@ -332,7 +332,7 @@ template <Described Result, Node Expression, typename Env, typename Sink = NullS
     }
     else
     {
-        Evaluated<Rational> const computed = checked_evaluate_si<Rational>(expression, environment, sink);
+        Evaluated<Rational> const computed = detail::dispatch<Rational>(expression, environment, sink);
         if (!computed.has_value())
             return std::unexpected { computed.error() };
         if (!computed->has_value())
