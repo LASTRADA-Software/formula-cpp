@@ -660,15 +660,90 @@ Invert the selection in the evaluator. Expected: the first test fails on both as
 - and it appears in the trace as its own step, with the justification, so a reader of an audit trail sees exactly where the type system was deliberately stepped around.
 
 ```cpp
-constexpr auto n = formula::numeric_value_of<unit::Megapascal>(
-    var<Strength>, "Example Standard 9:2020 states this coefficient over the numeric value in MPa");
+constexpr auto n = formula::numeric_value_of<unit::Megapascal,
+                                             "Example Standard 9:2020 states this coefficient over "
+                                             "the numeric value in MPa">(var<Strength>);
 ```
 
-**The justification is mandatory at compile time**, not merely documented. Verify there is no way to construct the node without one, and add a negative-compile test in `test/negative/` proving it — read an existing case there for the harness shape.
+**The justification is a `detail::FixedString` non-type template parameter, not
+a runtime string, and that is a deliberate choice.** A function parameter would
+already make it impossible to *omit* — but it would still be possible to pass
+`""`, and a mandatory-but-empty justification is a defeated safeguard rather
+than a satisfied one. As an NTTP it can be checked:
 
-- [ ] **Step 1: Write the failing test** — covering: the value is the operand's number in the stated unit; the result is dimensionless; the justification is carried; an absent operand stays absent; and a `static_assert` that the node is not constructible without a justification.
+```cpp
+template <Unit U, detail::FixedString Justification, Node Operand>
+struct NumericValueNode: NodeBase
+{
+    static_assert(Justification.view().size() > 0,
+                  "formula: numeric_value_of requires a justification saying why this rule is stated "
+                  "over a bare number rather than over a quantity; an empty one defeats the only "
+                  "safeguard this escape hatch has");
+    static_assert(detail::RequireEscapeUnitMatches<U, Operand>::value);
 
-- [ ] **Step 2–5:** as the other tasks. Include a negative-compile test for the missing justification, and prove the unit is load-bearing by mutating it to coherent SI and watching the value change.
+    /// The expression whose numeric value is taken.
+    Operand operand {};
+
+    /// The unit the number must be read in. The coefficients of the rule this
+    /// escape hatch exists for only work for this one unit; that is what makes
+    /// the rule dimensionally inconsistent and this node necessary.
+    static constexpr Unit unit = U;
+
+    /// Why the dimension is being dropped here. Part of the type, so it cannot
+    /// be omitted, cannot be empty, and costs no storage.
+    static constexpr std::string_view justification = Justification.view();
+
+    /// Dimensionless, by construction. That is the whole point: what comes out
+    /// is a bare number, and the type system now says so honestly rather than
+    /// carrying a dimension that the rule downstream will contradict.
+    static constexpr Dimension dimension = dim::Scalar;
+};
+```
+
+Verified before this was written: `detail::FixedString` works as an NTTP (the
+library already uses it for `Quantity`'s symbol and description), and
+`static_assert(Justification.view().size() > 0, ...)` rejects `""` with a
+readable diagnostic — measured on clang++, quoting the offending empty string
+back at the author.
+
+`RequireEscapeUnitMatches` mirrors task 1's `RequireRoundingUnitMatches`: the
+named unit must measure the operand's dimension, because "the numeric value of
+this mass in megapascals" is not a thing.
+
+- [ ] **Step 1: Write the failing test**, covering:
+  - the value is the operand's number **in the stated unit** — a `Strength` of
+    60 MPa taken in `unit::Megapascal` gives 60, and taken in `unit::Pascal`
+    gives 60000000, and these must differ in the test so the unit is
+    load-bearing;
+  - the result is dimensionless (`STATIC_REQUIRE(decltype(n)::dimension == dim::Scalar)`);
+  - the justification is carried and readable;
+  - an absent operand stays absent rather than becoming a bare zero;
+  - the result composes — a `numeric_value_of` multiplied by a dimensionless
+    constant is still dimensionless and still evaluates.
+
+- [ ] **Step 2: Run to verify it fails.**
+
+- [ ] **Step 3: Write `escape.hpp`**, including the evaluator overload. It
+  follows task 1's `RoundNode` shape exactly — `sink.entered(node)`,
+  `detail::dispatch` for the operand, convert into `U` with `checked_convert`,
+  and `sink.produced(node, result)` on **every** return path. The converted
+  number is returned as a scalar; there is no second conversion back, because
+  the whole point is that the dimension is gone.
+
+- [ ] **Step 4: Two negative-compile tests.** `test/negative/` is how this
+  project pins "this must not compile" claims — read an existing case for the
+  harness shape. One for an empty justification, one for a unit that does not
+  measure the operand's dimension. A claim the plan makes about what will not
+  compile, with no test, is a claim nobody has checked.
+
+- [ ] **Step 5: Prove the unit is load-bearing.** Mutate the node to convert
+  into `coherent(Operand::dimension)` instead of `U` and confirm the megapascal
+  test fails. Restore, confirm. Report both directions. **If the mutation
+  breaks nothing, the test is wrong, not the design** — and note that a
+  `STATIC_REQUIRE` failure is a *build* error, so check the build result rather
+  than re-running ctest against a stale binary.
+
+- [ ] **Step 6: All four presets and GCC, add to the install `FILE_SET`, then commit.**
 
 ---
 
