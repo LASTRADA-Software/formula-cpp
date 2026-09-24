@@ -12,6 +12,12 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
 {
 };
 
+/// A second quantity of the same dimension, so a test can put absence on the
+/// right-hand side of a comparison rather than only on the left.
+struct Threshold: formula::Quantity<Threshold, "f_lim", "strength threshold", unit::Megapascal>
+{
+};
+
 [[nodiscard]] constexpr auto strengthOf(long long value)
 {
     return formula::environment(formula::Measured<Strength> { formula::Rational { value } });
@@ -71,4 +77,72 @@ TEST_CASE("an arithmetic failure in a predicate is an error, not a verdict", "[p
     constexpr auto result = formula::checked_evaluate_predicate(divideByZero, strengthOf(60));
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == formula::ArithmeticError::DivisionByZero);
+}
+
+TEST_CASE("every comparison operator is correct at its own boundary", "[predicate]")
+{
+    // Four of the six operators had no committed test. Each `if constexpr`
+    // arm is independent, so a copy-paste swap in one -- Less implemented as
+    // LessOrEqual, say -- would pass every test that never lands exactly on
+    // the threshold. Thresholds in test methods fall on round numbers people
+    // aim at, so the boundary is the common case, not the rare one.
+    constexpr auto fifty = formula::constant<unit::Megapascal>(formula::Rational { 50 });
+
+    constexpr auto less = var<Strength> < fifty;
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(less, strengthOf(49)) == true);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(less, strengthOf(50)) == false);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(less, strengthOf(51)) == false);
+
+    constexpr auto lessOrEqual = var<Strength> <= fifty;
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(lessOrEqual, strengthOf(49)) == true);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(lessOrEqual, strengthOf(50)) == true);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(lessOrEqual, strengthOf(51)) == false);
+
+    constexpr auto greater = var<Strength> > fifty;
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(greater, strengthOf(49)) == false);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(greater, strengthOf(50)) == false);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(greater, strengthOf(51)) == true);
+
+    constexpr auto greaterOrEqual = var<Strength> >= fifty;
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(greaterOrEqual, strengthOf(49)) == false);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(greaterOrEqual, strengthOf(50)) == true);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(greaterOrEqual, strengthOf(51)) == true);
+
+    constexpr auto equal = var<Strength> == fifty;
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(equal, strengthOf(49)) == false);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(equal, strengthOf(50)) == true);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(equal, strengthOf(51)) == false);
+
+    constexpr auto notEqual = var<Strength> != fifty;
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(notEqual, strengthOf(49)) == true);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(notEqual, strengthOf(50)) == false);
+    STATIC_REQUIRE(**formula::checked_evaluate_predicate(notEqual, strengthOf(51)) == true);
+}
+
+TEST_CASE("absence on either side, or both, gives absence", "[predicate]")
+{
+    // The committed suite covered only an absent left operand. Each position
+    // is a separate branch in the evaluator.
+    constexpr auto compared = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+
+    constexpr auto absentLeft = formula::checked_evaluate_predicate(
+        compared, formula::environment(formula::Measured<Strength>::absent()));
+    STATIC_REQUIRE(absentLeft.has_value());
+    STATIC_REQUIRE_FALSE(absentLeft->has_value());
+
+    // A variable on the right, so absence can be put there instead.
+    constexpr auto bothSides = var<Strength> > var<Threshold>;
+
+    constexpr auto absentRight = formula::checked_evaluate_predicate(
+        bothSides,
+        formula::environment(formula::Measured<Strength> { formula::Rational { 60 } },
+                             formula::Measured<Threshold>::absent()));
+    STATIC_REQUIRE(absentRight.has_value());
+    STATIC_REQUIRE_FALSE(absentRight->has_value());
+
+    constexpr auto absentBoth = formula::checked_evaluate_predicate(
+        bothSides,
+        formula::environment(formula::Measured<Strength>::absent(), formula::Measured<Threshold>::absent()));
+    STATIC_REQUIRE(absentBoth.has_value());
+    STATIC_REQUIRE_FALSE(absentBoth->has_value());
 }
