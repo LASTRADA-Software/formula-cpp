@@ -16,6 +16,7 @@
 
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/sink.hpp>
 
 #include <string_view>
 
@@ -80,11 +81,15 @@ template <Node Inner>
 /// Evaluating a documented expression evaluates what it documents. The wrapper
 /// is invisible to arithmetic; only the documentation walk and, from phase 7,
 /// the trace sink will notice it.
-template <typename Rep = Rational, Node Inner, typename Env>
+template <typename Rep = Rational, Node Inner, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(DocumentedNode<Inner> const& node,
-                                                           Env const& environment) noexcept
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
 {
-    return checked_evaluate_si<Rep>(node.inner, environment);
+    sink.entered(node);
+    Evaluated<Rep> const result = detail::dispatch<Rep>(node.inner, environment, sink);
+    sink.produced(node, result);
+    return result;
 }
 
 } // namespace formula

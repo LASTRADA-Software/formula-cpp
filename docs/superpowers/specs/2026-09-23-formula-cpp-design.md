@@ -314,18 +314,42 @@ The evaluator is parameterised on a **sink**. `NullSink` is stateless and its me
 `RecordingSink` builds a derivation. Same tree, same evaluator, different composition:
 
 ```cpp
-auto v         = formula::value_of(expr, env);   // number only
-auto explained = formula::explain(expr, env);    // number + derivation
+auto outcome   = formula::evaluate<Density>(expr, env);   // number only
+auto explained = formula::explain<Density>(expr, env);    // number + derivation
 ```
 
-**Verified zero-overhead** (clang 22.1.3, `-O2`): the untraced path emits *byte-identical* machine
-code to a hand-written expression.
+The untraced spelling is `evaluate<Result>`, the name the library shipped. An
+earlier draft of this section called it `value_of`; that was a prototype name
+and the library's is the real one.
 
-```
-hand-written  ref_div : ['divsd xmm0, xmm1', 'ret']
-formula (NullSink)    : ['divsd xmm0, xmm1', 'ret']
-IDENTICAL CODEGEN: True
-```
+**Zero-overhead, with its boundary stated.** The claim worth making is not that
+the untraced path matches a hand-written expression — it cannot, and an earlier
+draft of this section said it did on the strength of a prototype that evaluated
+bare `double`s. The shipped library stores exact `Rational` in `Measured<Q>` and
+returns `std::expected<std::optional<Rep>, ArithmeticError>`, so there is no
+arrangement of sinks under which an evaluation is two instructions.
+
+The claim that holds, and is checkable, is that **adding a sink does not change
+what the evaluator emits** — measured against the sinkless evaluator as the
+baseline, at `-O2`/`/O2`, counting instructions in the compiled probe body:
+
+| Compiler | Sink passed | Base | With `NullSink` | Difference |
+|---|---|---|---|---|
+| clang++ 22.1.3 | by reference | 176 | 177 | one `leaq`, materialising an address nothing reads |
+| clang++ 22.1.3 | by value | 176 | 176 | callee's mangled name only |
+| clang-cl 22.1.3 | by value | 189 | 189 | callee's mangled name only |
+| cl 19.51 | by value | 80 | 81 | one `xor r9d, r9d`, never read |
+| g++ 13.3 | by value | 126 | 126 | nothing |
+
+The `cl` row is the boundary, and it is narrow: when the evaluator does **not**
+inline, MSVC materialises a zero for the empty parameter. When it does inline —
+the ordinary case — every compiler measured emits identical code, MSVC included,
+with not even a symbol-name difference; the same probe with a formula small
+enough to inline is 162 instructions on `cl` with and without a sink.
+
+The by-reference row is why the sink is a **by-value** parameter, and why
+`RecordingSink` is a handle onto a `Trace` the caller owns rather than an owner
+of one: a by-value sink that owned its arena would copy the arena at every node.
 
 This removes the preprocessor-gated provenance macro and its call sites that the prior approach
 needed, and the two-ABI problem that comes with them.

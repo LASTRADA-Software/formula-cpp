@@ -34,6 +34,7 @@ add_executable(formula-cpp-tests
     rounding_tests.cpp
     dimension_tests.cpp
     dimension_cross_tu_b.cpp
+    sink_tests.cpp
     unit_tests.cpp
     unit_cross_tu_b.cpp
     fixed_string_tests.cpp
@@ -44,6 +45,8 @@ add_executable(formula-cpp-tests
     environment_tests.cpp
     evaluate_tests.cpp
     function_tests.cpp
+    trace_tests.cpp
+    trace_render_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -142,6 +145,15 @@ formula_add_negative_test(function_zero_root_degree
 
 formula_add_negative_test(documented_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
+
+# Same NAME-not-message shape as the exponent and symbol-length sentinels
+# above: there is no static_assert to quote here, only a deleted default
+# constructor, and every compiler's own wording for that differs (cl says
+# "attempting to reference a deleted function", clang says "call to deleted
+# constructor", GCC says "use of deleted function") -- but all three name the
+# type whose constructor is deleted, so that name is the one substring common
+# to all of them.
+formula_add_negative_test(render_trace_no_step_limit "StepLimit")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

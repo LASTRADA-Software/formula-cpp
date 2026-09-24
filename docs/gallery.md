@@ -92,3 +92,14 @@ Ratio of the effective water content to the cement content of a batch.
 w/c = V_w / V_c = 180 l / 300 l = 3/5 = 0.6
 ```
 
+## Worked derivation: bulk density
+
+`m` = 1200 kg, `V` = 0.5 m3, `formula::explain()` and `formula::render_trace()`:
+
+```
+1. m = 1200 kg
+2. V = 1/2 m3
+3. #1 / #2 = 2400
+4. #3 = 2400 [Bulk density of a compacted specimen, Example Standard 1:2020, 4.2, (3)]
+```
+

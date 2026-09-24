@@ -85,11 +85,15 @@ static constexpr Dimension dimension = Inner::dimension;
 and evaluating one evaluates what it wraps and nothing else:
 
 ```cpp
-template <typename Rep = Rational, Node Inner, typename Env>
+template <typename Rep = Rational, Node Inner, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(DocumentedNode<Inner> const& node,
-                                                           Env const& environment) noexcept
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
 {
-    return checked_evaluate_si<Rep>(node.inner, environment);
+    sink.entered(node);
+    Evaluated<Rep> const result = detail::dispatch<Rep>(node.inner, environment, sink);
+    sink.produced(node, result);
+    return result;
 }
 ```
 

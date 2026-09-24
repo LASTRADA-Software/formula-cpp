@@ -14,6 +14,7 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/sink.hpp>
 
 #include <cmath>
 
@@ -178,47 +179,71 @@ struct RepFunctions<double>
 };
 
 /// Evaluates the operand, then raises it to `Exponent` via `RepFunctions<Rep>`.
-template <typename Rep = Rational, int Exponent, Node Operand, typename Env>
+template <typename Rep = Rational, int Exponent, Node Operand, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(PowerNode<Exponent, Operand> const& node,
-                                                           Env const& environment) noexcept
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
 {
-    Evaluated<Rep> const operand = checked_evaluate_si<Rep>(node.operand, environment);
+    sink.entered(node);
+    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
     if (!operand.has_value())
-        return std::unexpected { operand.error() };
+    {
+        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        sink.produced(node, failed);
+        return failed;
+    }
     if (!operand->has_value())
-        return detail::nothing<Rep>();
+    {
+        Evaluated<Rep> const absent = detail::nothing<Rep>();
+        sink.produced(node, absent);
+        return absent;
+    }
 
     std::expected<Rep, ArithmeticError> const raised = RepFunctions<Rep>::raise(**operand, Exponent);
-    if (!raised.has_value())
-        return std::unexpected { raised.error() };
-    return detail::present<Rep>(*raised);
+    Evaluated<Rep> const result =
+        raised.has_value() ? detail::present<Rep>(*raised) : Evaluated<Rep> { std::unexpected { raised.error() } };
+    sink.produced(node, result);
+    return result;
 }
 
 /// Evaluates the operand, then takes its `Degree`-th root via `RepFunctions<Rep>`.
-template <typename Rep = Rational, int Degree, Node Operand, typename Env>
+template <typename Rep = Rational, int Degree, Node Operand, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(RootNode<Degree, Operand> const& node,
-                                                           Env const& environment) noexcept
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
 {
-    Evaluated<Rep> const operand = checked_evaluate_si<Rep>(node.operand, environment);
+    sink.entered(node);
+    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
     if (!operand.has_value())
-        return std::unexpected { operand.error() };
+    {
+        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        sink.produced(node, failed);
+        return failed;
+    }
     if (!operand->has_value())
-        return detail::nothing<Rep>();
+    {
+        Evaluated<Rep> const absent = detail::nothing<Rep>();
+        sink.produced(node, absent);
+        return absent;
+    }
 
     std::expected<Rep, ArithmeticError> const rooted = RepFunctions<Rep>::root(**operand, Degree);
-    if (!rooted.has_value())
-        return std::unexpected { rooted.error() };
-    return detail::present<Rep>(*rooted);
+    Evaluated<Rep> const result =
+        rooted.has_value() ? detail::present<Rep>(*rooted) : Evaluated<Rep> { std::unexpected { rooted.error() } };
+    sink.produced(node, result);
+    return result;
 }
 
 /// Pi is always present; produces it in `Rep` via `RepFunctions<Rep>::pi_value`.
-template <typename Rep = Rational, typename Env>
-[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(PiNode const&, Env const&) noexcept
+template <typename Rep = Rational, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(PiNode const& node, Env const&, Sink sink = {}) noexcept
 {
+    sink.entered(node);
     std::expected<Rep, ArithmeticError> const value = RepFunctions<Rep>::pi_value();
-    if (!value.has_value())
-        return std::unexpected { value.error() };
-    return detail::present<Rep>(*value);
+    Evaluated<Rep> const result =
+        value.has_value() ? detail::present<Rep>(*value) : Evaluated<Rep> { std::unexpected { value.error() } };
+    sink.produced(node, result);
+    return result;
 }
 
 } // namespace formula
