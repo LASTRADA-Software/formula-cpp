@@ -364,6 +364,18 @@ TEST_CASE("rational: a root near the integer limit is found, not overflowed past
                    == formula::ArithmeticError::Inexact);
 }
 
+TEST_CASE("rational: the root of the extreme negative is refused rather than overflowed to", "[rational]")
+{
+    // IntMin has no positive counterpart representable in Int: its magnitude is
+    // IntMax + 1. Negating the numerator to reach a positive intermediate is
+    // signed overflow, undefined behaviour, even though the true cube root
+    // (-2^21) is representable. This must come back Overflow, not Inexact and
+    // not a value.
+    constexpr formula::Rational::Int extremeNegative = std::numeric_limits<formula::Rational::Int>::min();
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { extremeNegative }, 3).error()
+                   == formula::ArithmeticError::Overflow);
+}
+
 TEST_CASE("rational: Pi is a stated approximation, close enough to be useful", "[rational]")
 {
     // Deliberately asserted as a bound rather than an equality: the point is

@@ -539,6 +539,20 @@ namespace detail
     if (value.sign() < 0 && degree % 2 == 0)
         return std::unexpected { ArithmeticError::DomainError };
 
+    // IntMin has no positive counterpart Int can hold -- its magnitude is
+    // IntMax + 1 -- so negating it to reach a positive intermediate is signed
+    // overflow, undefined behaviour. checked_negate refuses the same numerator
+    // for the same reason; this follows that precedent rather than inventing a
+    // second rule for it. Overflow is the honest answer here, not Inexact:
+    // Inexact means no exact root exists, but IntMin's cube root, -2^21, both
+    // exists and is representable -- it is only the magnitude of the
+    // intermediate numerator that is not. Reworking the search onto an
+    // unsigned magnitude to rescue this one input would add new numeric code
+    // at the end of a phase to save a single edge case, which risks a worse
+    // bug than the one it fixes.
+    if (value.numerator() == detail::IntMin)
+        return std::unexpected { ArithmeticError::Overflow };
+
     bool const negative = value.sign() < 0;
     Rational::Int const numerator = negative ? -value.numerator() : value.numerator();
 
