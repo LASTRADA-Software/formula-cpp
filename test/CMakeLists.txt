@@ -64,7 +64,6 @@ endfunction()
 # The expected text is the library's OWN static_assert message. All three
 # compilers echo it verbatim (MSVC wraps it as `error C2338: static assertion
 # failed: '<message>'`), so one literal substring matches on every leg.
-formula_add_negative_test(duplicate_producer "formula: two or more functors return the same type")
 formula_add_negative_test(rational_from_floating_point
     "formula: a floating-point value is not an exact rational")
 formula_add_negative_test(rational_from_wide_unsigned

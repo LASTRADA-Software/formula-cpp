@@ -1,36 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
+/// The shortest complete formula this library can express: two measured inputs,
+/// one formula, one traceable result.
+
 #include <formula-cpp/formula.hpp>
 
-#include <iostream>
+#include <cstdio>
 
-// Named tag types, NOT `decltype([]{})`. A lambda in a default template argument
-// gives the closure internal linkage, so the quantity type differs in every
-// translation unit -- verified to fail at link time on cl, clang-cl and clang++.
-template <typename T, typename Tag>
-struct Quantity
+/// A quantity is a type. It carries its own symbol, its own description and the
+/// unit its values are stated in, and it is distinct from every other quantity
+/// even when the unit is the same.
+struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
 {
-    T value {};
+};
+struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
+{
+};
+struct WaterCementRatio: formula::Quantity<WaterCementRatio, "w/c", "ratio of water to cement", formula::unit::One>
+{
 };
 
-struct FirstTag;
-struct SecondTag;
-struct ThirdTag;
-
-using First = Quantity<int, FirstTag>;
-using Second = Quantity<int, SecondTag>;
-using Third = Quantity<int, ThirdTag>;
-
-using Calculation =
-    formula::Evaluation<formula::EvaluationArguments<First, Second, Third>,
-                        formula::EvaluationFunctors {
-                            [](auto const& ctx) -> Second { return Second { formula::get<First>(ctx).value + 1 }; },
-                            [](auto const& ctx) -> Third {
-                                return Third { formula::get<First>(ctx).value + formula::get<Second>(ctx).value };
-                            } }>;
+/// The formula is written once, with ordinary operators, and is a compile-time
+/// entity: this line builds a type, not a computation.
+inline constexpr auto waterCementRatio = formula::var<WaterVolume> / formula::var<CementVolume>;
 
 int main()
 {
-    auto const result = Calculation().set(First { 1 }).calculate(Third {});
-    std::cout << "Third = " << result.value << '\n'; // prints 3
+    auto const batch = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
+                                            formula::Measured<CementVolume> { formula::Rational { 300 } });
+
+    formula::Outcome<WaterCementRatio> const result = formula::evaluate<WaterCementRatio>(waterCementRatio, batch);
+
+    std::printf("%s = %f (%s)\n",
+                formula::Describe<WaterCementRatio>::symbol.data(),
+                result.measurement().value().to_double(),
+                result.is_value() ? "computed" : "no value");
     return 0;
 }

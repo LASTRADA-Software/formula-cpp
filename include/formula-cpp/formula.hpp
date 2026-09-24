@@ -7,11 +7,14 @@
 /// translation unit.
 
 #include <formula-cpp/detail/checked_int.hpp>
-#include <formula-cpp/detail/type_list.hpp>
 #include <formula-cpp/dimension.hpp>
+#include <formula-cpp/environment.hpp>
 #include <formula-cpp/error.hpp>
-#include <formula-cpp/evaluation.hpp>
+#include <formula-cpp/evaluate.hpp>
+#include <formula-cpp/expression.hpp>
+#include <formula-cpp/function.hpp>
 #include <formula-cpp/measured.hpp>
+#include <formula-cpp/outcome.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>

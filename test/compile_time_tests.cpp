@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <formula-cpp/formula.hpp>
+// `formula.hpp` no longer pulls this header in -- it is `detail`, and the only
+// thing left using it is this test of the utility itself, so it is included
+// directly rather than dragged through the umbrella for one TEST_CASE.
+#include <formula-cpp/detail/type_list.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <tuple>
-#include <type_traits>
 
 namespace
 {
@@ -29,16 +31,4 @@ TEST_CASE("index_in_tuple locates each type", "[type_list]")
     STATIC_REQUIRE(formula::detail::index_in_tuple_v<Alpha, Bag> == 0);
     STATIC_REQUIRE(formula::detail::index_in_tuple_v<Beta, Bag> == 1);
     STATIC_REQUIRE(formula::detail::index_in_tuple_v<Gamma, Bag> == 2);
-}
-
-TEST_CASE("a dependent quantity is derived, not supplied", "[evaluation]")
-{
-    using Calculation =
-        formula::Evaluation<formula::EvaluationArguments<Alpha, Beta>,
-                            formula::EvaluationFunctors { [](auto const& ctx) -> Beta {
-                                return Beta { formula::get<Alpha>(ctx).value * 2 };
-                            } }>;
-
-    auto const result = Calculation().set(Alpha { 21 }).calculate(Beta {});
-    CHECK(result.value == 42);
 }
