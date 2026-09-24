@@ -19,6 +19,7 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/outcome.hpp>
+#include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
