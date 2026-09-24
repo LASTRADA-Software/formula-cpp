@@ -143,3 +143,19 @@ TEST_CASE("document: two quantities that share a symbol both get a row", "[docum
     CHECK(documentation.symbols[1].description == std::string_view { "excavation depth" });
     CHECK(documentation.symbols[1].unit == formula::unit::Metre);
 }
+
+TEST_CASE("document: a negated variable still appears in the symbol table", "[document]")
+{
+    formula::Documentation const documentation = formula::document(-var<Diameter>);
+
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
+}
+
+TEST_CASE("document: a variable under a root still appears in the symbol table", "[document]")
+{
+    formula::Documentation const documentation = formula::document(formula::sqrt(var<WaterVolume>));
+
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+}
