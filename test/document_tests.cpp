@@ -54,6 +54,18 @@ TEST_CASE("document: the rendered formula follows the requested dialect", "[docu
     CHECK(latex.formula == "\\frac{V_w}{V_c}");
 }
 
+TEST_CASE("document: the rendered formula follows the Markdown dialect too", "[document]")
+{
+    // Dialect::LaTeX above and Dialect::Plain (the default, exercised by the
+    // very first test in this file) were the only dialects document<D>() was
+    // ever asked to produce -- Dialect::Markdown was untested here even
+    // though render<Markdown> exists and tools/gallery/main.cpp never
+    // exercises it (it only reads .symbols, which is dialect-independent).
+    formula::Documentation const markdown = formula::document<formula::Dialect::Markdown>(ratio);
+
+    CHECK(markdown.formula == "`V_w` / `V_c`");
+}
+
 TEST_CASE("document: citations come back outermost first", "[document]")
 {
     formula::Documentation const documentation = formula::document(perCent);
