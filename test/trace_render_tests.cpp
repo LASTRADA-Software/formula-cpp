@@ -145,3 +145,33 @@ TEST_CASE("a value that cannot be shown in its recorded unit is refused, not res
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
           == "1. L = (not shown: argument outside the domain of the operation)\n");
 }
+
+TEST_CASE("a citation carrying only an equation number still identifies itself", "[trace-render]")
+{
+    // Every identifying field is optional. A step cited with nothing but an
+    // equation number used to render with no citation clause at all, which is
+    // indistinguishable from an uncited step -- the one thing a provenance
+    // feature must never be.
+    formula::Trace<> trace {};
+
+    formula::Step<> equationOnly {};
+    equationOnly.kind = formula::StepKind::Documented;
+    equationOnly.value = formula::Rational { 3 };
+    equationOnly.unit = formula::unit::One;
+    equationOnly.dimension = formula::dim::Scalar;
+    equationOnly.citation = formula::Citation { .equation = "(7)" };
+    trace.steps.push_back(std::move(equationOnly));
+
+    formula::Step<> uncited {};
+    uncited.kind = formula::StepKind::Documented;
+    uncited.value = formula::Rational { 3 };
+    uncited.unit = formula::unit::One;
+    uncited.dimension = formula::dim::Scalar;
+    trace.steps.push_back(std::move(uncited));
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    CHECK(text.find("[(7)]") != std::string::npos);
+    // The genuinely uncited step still adds no trailing noise.
+    CHECK(text.find("2.  = 3 []") == std::string::npos);
+}

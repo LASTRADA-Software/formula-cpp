@@ -125,13 +125,24 @@ namespace detail
         return "unknown step kind";
     }
 
-    /// What a citation says, in one bracketed clause: `[title, reference 4.1]`.
+    /// What a citation says, in one bracketed clause:
+    /// `[Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]`.
+    ///
     /// Empty when the citation names nothing, so a `Documented` step with a
-    /// blank citation adds no trailing noise.
+    /// blank citation adds no trailing noise. "Names nothing" means all four
+    /// identifying fields are empty -- a citation carrying only an equation
+    /// number still identifies itself and must not render as though it had no
+    /// citation at all.
+    ///
+    /// `Citation::text` is deliberately **not** included. It is the definition
+    /// in full, written for a reader who does not have the document; a
+    /// derivation is a line-per-step record, and a paragraph inside one line
+    /// would defeat the bound the caller chose. A page that wants the full
+    /// text has the `Citation` itself, through `document()`.
     [[nodiscard]] inline std::string citation_suffix(Citation const& citation)
     {
         std::string text;
-        for (std::string_view const part: { citation.title, citation.reference, citation.section })
+        for (std::string_view const part: { citation.title, citation.reference, citation.section, citation.equation })
         {
             if (part.empty())
                 continue;
