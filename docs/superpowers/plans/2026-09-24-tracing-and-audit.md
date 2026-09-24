@@ -540,7 +540,21 @@ TEST_CASE("a node written against the two-parameter extension point still evalua
 
 This is the check that makes Step 6 meaningful. Temporarily change `dispatch`'s `if constexpr (requires { ... })` to `if constexpr (false)`. Rebuild.
 
-Expected: the `CountingSink` test from Task 1 **fails** with `entered == 0`, and the legacy test still passes. Restore the condition, rebuild, confirm both pass. **Record both results in your report** — a dispatcher that always took the fallback would compile, produce every correct number, and trace nothing.
+Expected: **both** `CountingSink` tests fail, each reporting `entered == 1`
+rather than their expected 4 and 2, while every computed value stays correct.
+
+One, not zero, and both tests rather than one: the tests call
+`checked_evaluate_si` directly at the top level, naming the sink themselves, so
+the root node is entered and produced whatever `dispatch` does. Only *recursive*
+calls go through `dispatch`, so under the mutation every node below the root
+loses its tracing — including `VarNode<Mass>` in the legacy test, which has a
+perfectly good three-parameter overload. The legacy node itself was never traced
+either way; what the mutation destroys is the tracing of everything around it.
+
+Restore the condition, rebuild, confirm both pass at 4 and 2. **Record both
+directions in your report.** A dispatcher that always took the fallback would
+compile, produce every correct number, and trace almost nothing — no codegen
+comparison and no green test suite can see that.
 
 - [ ] **Step 8: All four presets, then commit**
 
