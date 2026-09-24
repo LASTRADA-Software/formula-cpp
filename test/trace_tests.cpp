@@ -276,5 +276,29 @@ TEST_CASE("explain returns the same outcome evaluate would, plus the derivation"
     // happen to hold a value. Tracing observes; it must not participate.
     CHECK(explained.outcome == plain);
     CHECK(explained.trace.steps.size() == 3);
+    REQUIRE_FALSE(explained.trace.empty());
     CHECK(explained.trace.steps[explained.trace.root()].value == formula::Rational { 2 });
+}
+
+TEST_CASE("explain returns an empty trace when the result is a manual override", "[trace]")
+{
+    // An override answers the question outright: checked_evaluate returns it
+    // without ever dispatching the expression, so nothing runs and nothing
+    // is recorded. That is correct, not a gap -- an overridden number was
+    // not derived, so there is nothing to trace -- but it means root() is out
+    // of bounds on the trace this produces, which is exactly why callers must
+    // check empty() before reading it (see the test above, and trace.hpp).
+    constexpr auto density = var<Mass> / var<Volume>;
+    auto const overridden =
+        formula::environment(formula::Measured<Mass> { formula::Rational { 6 } },
+                             formula::Measured<Volume> { formula::Rational { 3 } },
+                             formula::entered(formula::Measured<Density> { formula::Rational { 999 } }));
+
+    auto const explained = formula::explain<Density>(density, overridden);
+
+    REQUIRE(explained.outcome.is_value());
+    CHECK(explained.outcome.is_overridden());
+    CHECK(explained.outcome.measurement().value() == formula::Rational { 999 });
+    CHECK(explained.trace.empty());
+    CHECK(explained.trace.steps.size() == 0);
 }

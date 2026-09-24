@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -126,6 +127,12 @@ struct Trace
     /// names the **most recent** walk's root, since that is the one whose
     /// bookkeeping `RecordingSink` just cleared -- an earlier walk's root is
     /// simply some other step this one's arithmetic never reaches.
+    ///
+    /// A `Trace` is empty whenever the walk that would have filled it never
+    /// ran at all -- `explain` leaves it empty for a result the environment
+    /// overrides, since the expression is never dispatched. Check `empty()`
+    /// before calling this; on an empty `Trace`, `steps.size() - 1` underflows
+    /// and the returned index names no step.
     ///
     /// @pre `steps` is not empty.
     [[nodiscard]] std::size_t root() const noexcept { return steps.size() - 1; }
@@ -298,7 +305,8 @@ struct Explained
 {
     /// Exactly what `evaluate<Result>` would have returned.
     Outcome<Result> outcome {};
-    /// How it was reached.
+    /// How it was reached -- **empty** when `outcome` is a manual override.
+    /// See `explain`'s own comment for why.
     Trace<Rep> trace {};
 };
 
@@ -307,9 +315,31 @@ struct Explained
 /// The outcome is identical to `evaluate<Result>(expression, environment)` --
 /// tracing observes, it does not participate. What `explain` adds is a
 /// `Trace` of every step the evaluator took to reach it.
+///
+/// **`explained.trace` can come back empty.** When `environment` carries a
+/// manual override for `Result`, `checked_evaluate` returns that value
+/// without ever dispatching @p expression -- correctly: an overridden number
+/// was not derived, so there is nothing to trace -- and nothing is recorded.
+/// Check `explained.trace.empty()` before indexing into `steps` with `root()`;
+/// on an empty `Trace`, `root()` names no step at all.
+///
+/// Only `Rep = Rational` is supported. `evaluate<Result>` computes in
+/// `Rational` internally and hands the sink an `Evaluated<Rational>`
+/// regardless of @p Rep, so a `RecordingSink<Rep>` built for any other @p Rep
+/// cannot receive what the evaluator actually passes it -- the `static_assert`
+/// below turns that mismatch into one sentence instead of a template-frame
+/// dump. Call `checked_evaluate_si<Rep>` directly with your own
+/// `RecordingSink<Rep>` to trace a `double` computation.
 template <Described Result, typename Rep = Rational, Node Expression, typename Env>
 [[nodiscard]] Explained<Result, Rep> explain(Expression const& expression, Env const& environment)
 {
+    static_assert(std::is_same_v<Rep, Rational>,
+                  "formula: explain only supports Rep = Rational -- evaluate<Result> always computes "
+                  "in Rational internally and hands its sink an Evaluated<Rational>, so a "
+                  "RecordingSink<Rep> built for a different Rep cannot receive it. Call "
+                  "checked_evaluate_si<Rep> directly with your own RecordingSink<Rep> to trace a "
+                  "double computation.");
+
     Explained<Result, Rep> explained {};
     RecordingSink<Rep> sink { explained.trace };
     explained.outcome = evaluate<Result>(expression, environment, sink);

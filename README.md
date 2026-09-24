@@ -151,7 +151,7 @@ symbol table. [`docs/gallery.md`](docs/gallery.md) is a page generated that way
 from several formulas at once — checked into the repository, and a CI test
 fails if it ever stops matching what the generator produces.
 
-### Every number can show how it was reached
+### A derived number can show how it was reached
 
 `explain()` evaluates a formula exactly as `evaluate()` does and also returns
 a `Trace` — one step per node, each naming the earlier steps it consumed.
@@ -171,7 +171,13 @@ std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 1
 
 Every value is shown in the unit it was declared in, not the coherent SI unit
 the arithmetic actually ran on — that is `9/50` cubic metres above, and nobody
-typed cubic metres. Tracing costs nothing when nobody asks for it: a sink is
+typed cubic metres. When the environment overrides the result instead of
+letting the formula derive it, `explained.trace` comes back empty — nothing
+ran, so nothing was recorded — and `explained.outcome.is_overridden()` says
+so instead: an overridden number shows *that a person entered it*, a
+different fact from how it was reached and arguably a more important one.
+See [the tracing guide](docs/tracing.md) for the detail. Tracing costs
+nothing when nobody asks for it: a sink is
 passed by value, and the untraced path — `evaluate()`, `checked_evaluate()` —
 defaults to one that does nothing, adding no instruction the evaluator would
 not already emit once the call inlines, measured on all four compilers this

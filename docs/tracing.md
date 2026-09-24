@@ -108,6 +108,9 @@ auto const explained = formula::explain<Density>(density, environment);
 // happen to hold a value. Tracing observes; it must not participate.
 CHECK(explained.outcome == plain);
 CHECK(explained.trace.steps.size() == 3);
+// Check empty() before indexing with root() -- see below for when a Trace
+// can be empty even though outcome holds a value.
+REQUIRE_FALSE(explained.trace.empty());
 CHECK(explained.trace.steps[explained.trace.root()].value == formula::Rational { 2 });
 ```
 
@@ -124,6 +127,8 @@ evaluates through it:
 template <Described Result, typename Rep = Rational, Node Expression, typename Env>
 [[nodiscard]] Explained<Result, Rep> explain(Expression const& expression, Env const& environment)
 {
+    static_assert(std::is_same_v<Rep, Rational>, /* ... */);
+
     Explained<Result, Rep> explained {};
     RecordingSink<Rep> sink { explained.trace };
     explained.outcome = evaluate<Result>(expression, environment, sink);
@@ -139,13 +144,30 @@ anyone; reach for `explain` at the point a derivation needs to be shown to a
 person -- a report, a review, a place where "here is the number" is not
 enough and "here is how" is what is actually being asked for.
 
+`explained.trace` is not always populated, though. `evaluate<Result>` returns
+a manual override outright, without dispatching `expression` at all, when
+`environment` carries one for `Result` -- see [Writing formulas](expressions.md),
+"The outcome". Nothing runs, so nothing is recorded:
+`explained.outcome.is_overridden()` is true and
+`explained.trace.empty()` is true at the same time. That is correct, not a
+bug -- an overridden number was not derived, so there is nothing to trace --
+but it means `explained.trace.steps[explained.trace.root()]`, the pattern the
+snippet above uses, reads past the end of an empty vector whenever the result
+happens to be an override. Check `empty()` before reading `root()`, the way
+the snippet above now does.
+
 One difference is not about cost but about **where** the call can happen.
 `evaluate` and `checked_evaluate` are `constexpr` and remain usable in a
 constant expression -- `test/sink_tests.cpp`'s constant-evaluation section
 pins this with `static_assert`, including the sink-carrying overload with an
-explicit `NullSink`. `explain` is not `constexpr`, because `Trace` owns a
-`std::vector`, and a `std::vector` cannot be built during translation.
-Writing
+explicit `NullSink`. `explain` is simply not declared `constexpr`, and could
+not usefully be. A `std::vector` *can* be built and grown during constant
+evaluation -- that has been allowed since C++20 -- but what it builds there
+cannot survive past that evaluation into a runtime object: the standard
+requires every allocation a constant expression makes to be released again
+before the expression finishes. `explain`'s whole purpose is to hand back a
+`Trace` that keeps its steps, which is exactly the kind of surviving
+allocation a constant expression is not allowed to produce. Writing
 
 ```cpp
 constexpr auto explained = formula::explain<Density>(densityFormula, env);
