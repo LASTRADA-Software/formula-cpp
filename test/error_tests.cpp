@@ -16,14 +16,17 @@ static_assert(describe(ArithmeticError::DivisionByZero) == std::string_view { "d
 static_assert(!describe(ArithmeticError::Overflow).empty());
 static_assert(!describe(ArithmeticError::NotFinite).empty());
 static_assert(!describe(ArithmeticError::DomainError).empty());
+static_assert(describe(ArithmeticError::Inexact) == std::string_view { "no exact rational result exists" });
 
 static_assert(or_throw(std::expected<int, ArithmeticError> { 42 }) == 42);
 
 TEST_CASE("every error code has a distinct, non-empty description", "[error]")
 {
-    ArithmeticError const codes[] = {
-        ArithmeticError::DivisionByZero, ArithmeticError::Overflow, ArithmeticError::NotFinite, ArithmeticError::DomainError
-    };
+    ArithmeticError const codes[] = { ArithmeticError::DivisionByZero,
+                                      ArithmeticError::Overflow,
+                                      ArithmeticError::NotFinite,
+                                      ArithmeticError::DomainError,
+                                      ArithmeticError::Inexact };
 
     for (std::size_t i = 0; i < std::size(codes); ++i)
     {

@@ -47,6 +47,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/outcome.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/environment.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/evaluate.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/function.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/checked_int.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/fixed_string.hpp")

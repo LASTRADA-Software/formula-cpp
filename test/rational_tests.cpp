@@ -316,3 +316,61 @@ TEST_CASE("integer types that cannot wrap still convert implicitly", "[rational]
     CHECK(Rational { IntMin }.numerator() == IntMin);
     CHECK(Rational { IntMax }.numerator() == IntMax);
 }
+
+TEST_CASE("rational: an exact root comes back exactly", "[rational]")
+{
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 4 }, 2).value() == formula::Rational { 2 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 9, 4 }, 2).value() == formula::Rational { 3, 2 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 27, 8 }, 3).value() == formula::Rational { 3, 2 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { -27 }, 3).value() == formula::Rational { -3 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 1 }, 5).value() == formula::Rational { 1 });
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational {}, 2).value() == formula::Rational {});
+}
+
+TEST_CASE("rational: an inexact root is refused rather than approximated", "[rational]")
+{
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 2 }, 2).error() == formula::ArithmeticError::Inexact);
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 10 }, 3).error()
+                   == formula::ArithmeticError::Inexact);
+}
+
+TEST_CASE("rational: a root outside the domain is refused", "[rational]")
+{
+    // An even root of a negative number is not a real number.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { -4 }, 2).error()
+                   == formula::ArithmeticError::DomainError);
+    // Degree zero describes no root at all.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 4 }, 0).error()
+                   == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("rational: a root near the integer limit is found, not overflowed past", "[rational]")
+{
+    // 3037000000^2 = 9223369000000000000, an exact square a whisker under
+    // IntMax (within 0.00004% of it). The search starts with candidates whose
+    // square vastly exceeds what Int can hold, so it must detect that overflow
+    // and narrow down toward the true root -- never let an intermediate
+    // product silently exceed the target and send the search the wrong way,
+    // which would report this exact root as Inexact instead of finding it.
+    // Measured: dropping the early-abort guard in exact_integer_root makes
+    // this exact case come back Inexact, which is precisely the bug this
+    // test exists to catch.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { 9223369000000000000LL }, 2).value()
+                   == formula::Rational { 3037000000LL });
+
+    // Genuinely inexact and near the limit: IntMax itself is not a perfect
+    // square, so this must still come back Inexact rather than a wrong root.
+    STATIC_REQUIRE(formula::checked_exact_nth_root(formula::Rational { IntMax }, 2).error()
+                   == formula::ArithmeticError::Inexact);
+}
+
+TEST_CASE("rational: Pi is a stated approximation, close enough to be useful", "[rational]")
+{
+    // Deliberately asserted as a bound rather than an equality: the point is
+    // that the documented error bound holds, not that the fraction is memorised
+    // in two places.
+    constexpr formula::Rational squared = formula::Pi * formula::Pi;
+    CHECK(squared.to_double() > 9.8696044010893);
+    CHECK(squared.to_double() < 9.8696044010897);
+    STATIC_REQUIRE(formula::Pi.denominator() > 1);
+}
