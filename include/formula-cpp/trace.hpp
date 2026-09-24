@@ -71,6 +71,20 @@ struct Step
     /// The dimension of what this step produced.
     Dimension dimension {};
 
+    /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
+    /// for a variable, the constant's own unit for a constant, and the
+    /// coherent SI unit of `dimension` for anything computed, which has no
+    /// declared unit of its own.
+    ///
+    /// `value` is always in the coherent SI unit, so that steps are
+    /// comparable; this is what a renderer converts back to before showing a
+    /// number to a person. Without it a derivation restates every input in a
+    /// unit nobody typed: someone who entered 180 l reads `9/50`, which is
+    /// the same volume and a worse record. The renderer cannot recover this
+    /// on its own -- by the time a `Step` exists the quantity type is erased,
+    /// so the recorder captures it here.
+    Unit unit {};
+
     /// What the step produced, in the coherent SI unit of `dimension`. Empty
     /// when the value was **absent** -- which is not an error and must not be
     /// rendered as one.
@@ -195,12 +209,22 @@ namespace detail
 /// their steps into one `Trace` on purpose, which is exactly why `root()`
 /// documents itself as naming the most recent walk's root rather than "the"
 /// root.
+///
+/// A `Trace` may therefore be walked repeatedly **in sequence, but never by
+/// two sinks at once**: constructing a second `RecordingSink` on a `Trace`
+/// whose walk is still in progress clears the bookkeeping that walk is using,
+/// and the outer walk's next `produced` then reads `marks.back()` on an empty
+/// vector -- undefined behaviour. Nothing in this library does that; only a
+/// consumer sharing one `Trace` with an evaluation already under way can, and
+/// no runtime guard is levied on every walk to prevent it.
 template <typename Rep = Rational>
 class RecordingSink
 {
   public:
     /// @p trace must outlive the evaluation. Begins a new walk: see the class
     /// comment for why this clears `trace.marks` and `trace.unclaimed`.
+    ///
+    /// @pre no other `RecordingSink` is part-way through a walk of @p trace.
     explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace }
     {
         _trace->marks.clear();
@@ -226,6 +250,18 @@ class RecordingSink
         Step<Rep> step {};
         step.kind = detail::StepKindOf<N>::value;
         step.dimension = N::dimension;
+
+        // Anything computed has no declared unit, so the coherent SI one is
+        // the truthful answer; a variable and a constant each override it
+        // with the unit they were written in. `requires { N::unit; }` selects
+        // exactly `ConstantNode<U>`, the only node kind that declares such a
+        // member -- `VarNode` carries its unit on `Describe<quantity>`
+        // instead, and the rest carry none at all.
+        step.unit = coherent(N::dimension);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
+            step.unit = Describe<typename N::quantity>::unit;
+        else if constexpr (requires { N::unit; })
+            step.unit = N::unit;
 
         if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
             step.symbol = Describe<typename N::quantity>::symbol;

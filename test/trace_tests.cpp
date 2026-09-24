@@ -22,6 +22,9 @@ struct Volume: formula::Quantity<Volume, "V", "specimen volume", unit::CubicMetr
 struct Density: formula::Quantity<Density, "rho", "bulk density", formula::coherent(formula::dim::Density)>
 {
 };
+struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "water volume", unit::Litre>
+{
+};
 
 [[nodiscard]] auto environmentOf(long long mass, long long volume)
 {
@@ -63,6 +66,43 @@ TEST_CASE("a trace records one step per node, children before parents", "[trace]
 
     // The root is the last step: nothing claimed it.
     CHECK(trace.root() == 3);
+}
+
+TEST_CASE("a step records the unit its value was declared in", "[trace]")
+{
+    // 180 l and 500 ml are both volumes, so both are stored as cubic metres --
+    // the coherent SI unit of their dimension, and the only scale on which the
+    // addition means anything. `unit` is what remembers that nobody typed
+    // cubic metres.
+    constexpr auto mix = var<WaterVolume> + formula::constant<unit::Millilitre>(formula::Rational { 500 });
+    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::checked_evaluate_si<formula::Rational>(mix, environment, sink);
+
+    REQUIRE(result.has_value());
+    REQUIRE(trace.steps.size() == 3);
+
+    // A variable: the unit its quantity is declared in. The value beside it is
+    // the same volume in the coherent SI unit -- 180 l *is* 9/50 m3 -- which is
+    // exactly why the unit has to be recorded separately.
+    CHECK(trace.steps[0].kind == formula::StepKind::Variable);
+    CHECK(trace.steps[0].unit == unit::Litre);
+    CHECK(trace.steps[0].value == formula::Rational { 9, 50 });
+
+    // A constant: its own unit, which need not be the variable's.
+    CHECK(trace.steps[1].kind == formula::StepKind::Constant);
+    CHECK(trace.steps[1].unit == unit::Millilitre);
+    CHECK(trace.steps[1].value == formula::Rational { 1, 2000 });
+
+    // Anything computed has no declared unit of its own, so the coherent SI
+    // unit of its dimension is the truthful answer -- not the unit of either
+    // operand, which a sum of litres and millilitres shows there is no
+    // defensible way to pick.
+    CHECK(trace.steps[2].kind == formula::StepKind::Add);
+    CHECK(trace.steps[2].unit == formula::coherent(formula::dim::Volume));
+    CHECK(trace.steps[2].value == formula::Rational { 361, 2000 });
 }
 
 TEST_CASE("a short-circuited operand leaves the parent with one operand, not two", "[trace]")
