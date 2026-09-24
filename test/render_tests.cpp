@@ -160,3 +160,29 @@ TEST_CASE("render: a deep tree renders without losing a bracket", "[render]")
     CHECK(formula::render(circularArea) == "pi * d^2 / 4");
     CHECK(formula::render<Dialect::LaTeX>(circularArea) == "\\frac{\\pi \\cdot d^{2}}{4}");
 }
+
+TEST_CASE("render: a negative constant as the base of a power keeps its bracket", "[render]")
+{
+    // A trait alone cannot answer this: ConstantNode is Precedence::Atom by
+    // type, but a negative number's rendered text opens with a "-" that reads
+    // like a unary minus. Without the bracket, "-5^2" means "-(5^2)" to a
+    // reader, while the tree means (-5)^2 -- these evaluate to different
+    // numbers, so this is not a cosmetic bracket.
+    CHECK(formula::render(formula::pow<2>(formula::number(rat(-5)))) == "(-5)^2");
+    CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(formula::number(rat(-5)))) == "(-5)^{2}");
+}
+
+TEST_CASE("render: a positive constant as the base of a power needs no bracket", "[render]")
+{
+    // Confirms the fix is keyed on sign, not a blanket bracket around every
+    // constant that sits at the base of a power.
+    CHECK(formula::render(formula::pow<2>(formula::number(rat(5)))) == "5^2");
+}
+
+TEST_CASE("render: a negative constant as a factor stays unbracketed", "[render]")
+{
+    // Multiplication cannot misread the leading "-" the way a power's base
+    // can (there is no "-5 * d" reading other than the one intended), so a
+    // negative constant here is left exactly as before.
+    CHECK(formula::render(formula::number(rat(-5)) * var<Diameter>) == "-5 * d");
+}

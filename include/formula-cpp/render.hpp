@@ -79,6 +79,28 @@ namespace detail
         static constexpr Precedence value = PrecedenceOf<Inner>::value;
     };
 
+    /// The precedence a node binds at, as a runtime value rather than a type.
+    ///
+    /// `PrecedenceOf` alone cannot bracket a negative constant correctly: it is
+    /// a trait keyed on the node's *type*, and `ConstantNode<U>` is one type
+    /// whether the number it holds is `5` or `-5`. But the sign is *data*, held
+    /// in the `Rational` at runtime, not something the type system ever sees.
+    /// A negative constant's rendered text opens with `-`, which reads like a
+    /// unary minus, so it must bracket exactly where a `UnaryNode` would --
+    /// `precedence_of` gives every node kind that same runtime answer, falling
+    /// back to the type-level trait everywhere the trait is already correct.
+    template <Node N>
+    [[nodiscard]] constexpr Precedence precedence_of(N const&) noexcept
+    {
+        return PrecedenceOf<N>::value;
+    }
+
+    template <Unit U>
+    [[nodiscard]] constexpr Precedence precedence_of(ConstantNode<U> const& node) noexcept
+    {
+        return node.number.sign() < 0 ? Precedence::Unary : Precedence::Atom;
+    }
+
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
     [[nodiscard]] inline std::string number_text(Rational value)
     {
@@ -97,7 +119,7 @@ namespace detail
     [[nodiscard]] std::string render_operand(Child const& child, Precedence context)
     {
         std::string text = render<D>(child);
-        if (static_cast<int>(PrecedenceOf<Child>::value) < static_cast<int>(context))
+        if (static_cast<int>(precedence_of(child)) < static_cast<int>(context))
             return "(" + text + ")";
         return text;
     }
