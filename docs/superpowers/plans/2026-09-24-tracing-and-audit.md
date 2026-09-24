@@ -297,7 +297,19 @@ git commit -m "feat(sink): the seam a tracing observer plugs into"
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `test/sink_tests.cpp`:
+Add to `test/sink_tests.cpp`. First the environment helper — Task 1's file does
+**not** define it (an unused helper there fails `-Wunused-function -Werror` on
+clang-cl), so add it inside the existing anonymous namespace:
+
+```cpp
+[[nodiscard]] auto environmentOf(long long mass, long long volume)
+{
+    return formula::environment(formula::Measured<Mass> { formula::Rational { mass } },
+                                formula::Measured<Volume> { formula::Rational { volume } });
+}
+```
+
+Then the tests:
 
 ```cpp
 TEST_CASE("a sink is told about every node of the tree", "[sink]")
