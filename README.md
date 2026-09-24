@@ -263,9 +263,11 @@ target_link_libraries(your_target PRIVATE formula-cpp::formula-cpp)
 
 `include/` is self-contained and depends on nothing outside the standard library.
 
-`formula.hpp` is the umbrella header. `render.hpp` and `document.hpp` are deliberately left out
-of it: they need `<string>` and `<vector>`, and a consumer who only evaluates numbers should not
-compile those in every translation unit. Include them by name when you want text.
+`formula.hpp` is the umbrella header. `render.hpp`, `document.hpp`, `trace.hpp` and
+`trace_render.hpp` are deliberately left out of it: they need `<string>` and/or `<vector>`, and a
+consumer who only evaluates numbers should not compile those into every translation unit. Include
+them by name when you want text, or a trace, or both — see
+[the tracing guide](docs/tracing.md) for `trace.hpp` and `trace_render.hpp` specifically.
 
 ## Build options
 
