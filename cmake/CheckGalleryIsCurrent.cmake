@@ -3,7 +3,16 @@
 # that a reader browsing GitHub sees the page without building anything, and a
 # diff shows when a formula's rendering changes. This test is what keeps that
 # promise honest: it regenerates the page into a temporary file and compares
-# it, byte for byte, against the checked-in copy.
+# it against the checked-in copy.
+#
+# The comparison is line-ending-insensitive, not byte for byte: CMake's
+# file(READ) normalises CRLF to LF, and the generator (tools/gallery/main.cpp)
+# opens its output stream in text mode, so a Windows build writes CRLF while
+# the checked-in file is LF (.gitattributes: `* text=auto eol=lf`). That is
+# the right comparison here -- the content this check exists to keep honest
+# is the Markdown text, not its line endings, and git already normalises a
+# Windows regeneration back to LF on commit, so a byte-for-byte check would
+# fail a rebuild that changed nothing a reader or a diff would ever see.
 
 execute_process(
     COMMAND "${GALLERY_EXE}" "${BINARY_DIR}/gallery-regenerated.md"
