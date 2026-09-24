@@ -751,15 +751,61 @@ this mass in megapascals" is not a thing.
 
 **Files:** modify `include/formula-cpp/render.hpp`, `test/render_tests.cpp`
 
-Three dialects each. Suggested spellings, to be confirmed against what reads well in the guide:
+**Interfaces — the real member names, read from the headers, not guessed:**
+
+| Node | Template parameters | Members |
+|---|---|---|
+| `RoundNode` | `<Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>` | `operand`; `static constexpr` `unit`, `places`, `mode`, `dimension` |
+| `RoundSignificantNode` | `<Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>` | `operand`; `unit`, `digits`, `mode`, `dimension` |
+| `WhenNode` | `<typename P, Node Then, Node Else>` | `predicate`, `thenBranch`, `elseBranch`; `dimension` |
+| `NumericValueNode` | `<Unit U, detail::FixedString Justification, Node Operand>` | `operand`; `unit`, `justification`, `dimension` |
+| `PredicateNode` | `<Comparison Op, Node Left, Node Right>` | `lhs`, `rhs`; `comparison`. **Not a `Node`** — no `dimension`. |
+
+**The precedence ladder gains a rung at the bottom.** It is currently
+`Additive = 1, Multiplicative = 2, Unary = 3, Atom = 4`. A conditional binds
+looser than any of them — `when(p, a, b) * 2` rendered without brackets reads
+as `when(p, a, b * 2)`, which is a different formula — so add
+`Conditional = 0` below `Additive` and renumber nothing else.
+
+This is the third time in two phases that a rendering precedence bug would have
+produced text meaning a different number than the tree; phase 6 shipped two, a
+negative constant and a unit-bearing constant, each under a power. **Test every
+new node inside a power and inside a product, not only standalone.**
+
+**Suggested spellings**, to be confirmed against what reads well when the guide
+is written in task 8:
 
 | Node | Plain | LaTeX |
 |---|---|---|
-| `RoundNode` | `round(d, 1 mm)` | `\operatorname{round}_{1}(d)` |
-| `WhenNode` | `if f > 50 then A else B` | a `\begin{cases}` block |
-| `NumericValueNode` | `numeric(f / MPa)` | `\{f/\mathrm{MPa}\}` |
+| `RoundNode` | `round(d to 1 dp of mm)` | `\operatorname{round}_{1\,\mathrm{mm}}(d)` |
+| `RoundSignificantNode` | `round(d to 2 sf of mm)` | `\operatorname{round}_{2\mathrm{sf},\,\mathrm{mm}}(d)` |
+| `PredicateNode` | `f > 50 MPa` | `f > 50\,\mathrm{MPa}` |
+| `WhenNode` | `if f > 50 MPa then A else B` | a `\begin{cases}` block |
+| `NumericValueNode` | `numeric(f in MPa)` | `\{f/\mathrm{MPa}\}` |
 
-**Precedence matters here and is the part most likely to go wrong.** Phase 6 shipped two bugs of exactly this kind — a negative constant and a unit-bearing constant each rendering text that meant a different number than the tree. A `WhenNode` rendered inline inside a product without brackets would be read wrongly by anyone. Add `precedence_of` overloads and test each new node **inside a power and inside a product**, not only standalone.
+`PredicateNode` needs rendering even though it is not a `Node`, because a
+`WhenNode` contains one. Give it its own `render_node` overload and its own
+precedence.
+
+**`RoundingMode` does not appear in the rendered text** in these spellings, and
+that is a decision rather than an omission: a formula's *text* is what a reader
+checks against the standard, and standards write "rounded to one decimal place"
+without naming a tie rule. The mode is in the type, in the trace, and in
+`document()`. Put that in a comment, because the next reader will wonder.
+
+- [ ] **Step 1: Write the failing tests** — each node in three dialects, then
+  each node inside `pow<2>(...)` and inside a product, checking brackets appear
+  where the meaning needs them and do not appear where it does not.
+- [ ] **Step 2: Run to verify failure.**
+- [ ] **Step 3: Add `PrecedenceOf` specialisations and `render_node` overloads.**
+  Follow the existing overloads' shape. Note `detail::precedence_of` has both a
+  type-level trait and a runtime overload set — phase 6's bug was a node whose
+  *text* binds more loosely than its *type* suggests, so work out which you need
+  for each new kind rather than copying one blindly.
+- [ ] **Step 4: Prove the bracketing is load-bearing.** Remove the `Conditional`
+  rung so a `WhenNode` reports `Additive`, and confirm the inside-a-product test
+  fails. Restore, confirm. Report both directions.
+- [ ] **Step 5: All four presets and GCC, then commit.**
 
 ---
 
@@ -767,13 +813,43 @@ Three dialects each. Suggested spellings, to be confirmed against what reads wel
 
 **Files:** modify `include/formula-cpp/trace.hpp`, `include/formula-cpp/trace_render.hpp`, `test/trace_tests.cpp`, `test/trace_render_tests.cpp`
 
-New `StepKind`s: `Round`, `RoundSignificant`, `Conditional`, `NumericValue`.
+**This closes a gap that exists right now.** No phase-8 node kind has a
+`detail::StepKindOf` specialisation, so `RecordingSink` fails to compile the
+moment a real sink meets any of them. Task 3's reviewer confirmed the gap is
+systemic across all four rather than specific to one. Close all four together.
 
-**A `Conditional` step must record which branch it took** — that is the single most valuable thing a trace can say about a conditional, and "why that formula" is what §11 exists for. Record the predicate's truth value on the step.
+New `StepKind` enumerators: `Round`, `RoundSignificant`, `Conditional`,
+`NumericValue`.
 
-**A `NumericValue` step must render its justification**, not merely carry it. The whole point of the escape hatch is that it is visible in the audit trail.
+**Check each new enumerator against the names in namespace `formula`.** Phase 7
+shipped `StepKind::Pi`, which shadowed the global `formula::Pi`; GCC's
+`-Wshadow` rejected it while all four Windows presets passed. `Round` is the one
+to watch, because `formula::round` exists in `rounding.hpp`.
 
-Beware the enumerator-shadowing trap: phase 7's `StepKind::Pi` shadowed the global `formula::Pi` and broke GCC while passing all four Windows presets. Check any new enumerator against the names in `formula::`.
+**A `Conditional` step must record which branch it took.** That is the single
+most valuable thing a trace can say about a conditional, and §11 exists so a
+trace can answer "why that formula". `PredicateNode` is not a `Node`, so the
+sink cannot be told about it directly and the branch taken goes on the
+`WhenNode`'s own step. A `bool` is not enough: a predicate can be **absent**, in
+which case neither branch ran.
+
+**A `NumericValue` step must render its justification**, not merely carry it.
+The entire point of that node is that an audit trail shows where the dimension
+was deliberately dropped and why. A step that records it silently is the failure
+mode the node exists to prevent.
+
+**A `Round` step should make the change visible**, or a reader sees a number
+change with no explanation. Decide whether that means storing the pre-rounding
+value on the step or relying on the operand's own step being adjacent, and say
+which you chose and why.
+
+- [ ] **Step 1: Write the failing tests** — a trace over a formula containing
+  each of the four, checking the step kind, the operand indices, and for
+  `Conditional` the branch recorded; then `render_trace` output for each.
+- [ ] **Step 2–4:** as the other tasks, including a mutation proving the
+  branch-taken field is load-bearing: record the wrong branch, confirm a test
+  fails, restore.
+- [ ] **Step 5: All four presets and GCC, then commit.**
 
 ---
 
@@ -781,9 +857,20 @@ Beware the enumerator-shadowing trap: phase 7's `StepKind::Pi` shadowed the glob
 
 **Files:** modify `include/formula-cpp/document.hpp`, `test/document_tests.cpp`
 
-A `collect` overload per node kind. `WhenNode` must walk **both** branches and the predicate — unlike evaluation, documentation describes the whole formula, including the path not taken on this occasion. Say this in a comment, because it is the opposite of what task 3 does and a reader will wonder.
+A `collect` overload per node kind: `RoundNode`, `RoundSignificantNode`,
+`WhenNode`, `NumericValueNode`, and `PredicateNode`, which a `WhenNode`
+contains.
 
-Phase 6's review found the walk had no test for one overload; enumerate all four here and name the test covering each.
+**`WhenNode` must walk both branches and the predicate.** This is the opposite
+of what evaluation does, and deliberately so: evaluation answers what happened
+this time, documentation describes the formula — including the path not taken on
+this occasion, whose variables still belong in the symbol table. **Say this in a
+comment**, because a reader who has just read task 3 will assume it is a bug.
+
+Phase 6's review found the walk had an overload with no test. **Enumerate all
+five here and name the test covering each**, in your report.
+
+- [ ] **Steps 1–5:** as the other tasks.
 
 ---
 
@@ -793,9 +880,22 @@ Phase 6's review found the walk had no test for one overload; enumerate all four
 
 Every snippet from compiled code; every output block pasted from a real run.
 
-The guide must make the intermediate-versus-final rounding point with **two numbers that differ**, because that is the argument for the whole feature and prose alone does not make it.
+**The guide must make the intermediate-versus-final rounding point with two
+numbers that differ**, because that is the argument for the whole feature and
+prose alone does not make it. Task 1's test already has the shape: rounding an
+input to whole millimetres before doubling gives one answer, rounding only at
+the end gives another — same formula, same input.
 
-Add a worked derivation to the gallery showing a conditional's trace naming the branch it took.
+**Say plainly what `numeric_value_of` is for, and that reaching for it should
+feel wrong.** A reader who meets it without that framing will use it to silence
+a dimensional error, which is exactly the use it must not have.
+
+Add a worked derivation to the gallery showing a conditional's trace naming the
+branch it took.
+
+Update `README.md`'s and `docs/index.md`'s status tables: rounding nodes and
+conditionals move from *planned* to *shipped*; lookup tables, constraints,
+series and statistics stay planned.
 
 ---
 
