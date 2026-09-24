@@ -104,6 +104,62 @@ if(leakCount GREATER 0)
         "check 1 looks:${leaks}")
 endif()
 
+# --- Check 3: an exempt header is exempt for the includes it needs, not for all.
+#
+# Naming a header on `exemptHeaders` skips it in check 1 entirely, which is one
+# blunt instrument too many: render.hpp needs <string>, but nothing should let
+# it quietly acquire <iostream> as well. Each exempt header therefore declares
+# exactly which banned includes it may use, and using any other one fails here.
+#
+# Written as "<file name>=<comma-separated includes>" because a CMake list is
+# semicolon-separated and cannot nest.
+set(exemptAllowances
+    "render.hpp=string"
+    "document.hpp=string,vector"
+)
+
+set(overreaches "")
+set(overreachCount 0)
+foreach(exempt IN LISTS exemptHeaders)
+    get_filename_component(exemptName "${exempt}" NAME)
+
+    set(allowed "")
+    set(declared FALSE)
+    foreach(allowance IN LISTS exemptAllowances)
+        if(allowance MATCHES "^${exemptName}=(.*)$")
+            string(REPLACE "," ";" allowed "${CMAKE_MATCH_1}")
+            set(declared TRUE)
+        endif()
+    endforeach()
+
+    if(NOT declared)
+        message(FATAL_ERROR
+            "${exemptName} is on exemptHeaders but declares no allowance in exemptAllowances. "
+            "An exemption without a declared list is an exemption from everything, which is "
+            "what this check exists to prevent.")
+    endif()
+
+    file(STRINGS "${exempt}" bannedLines
+         REGEX "^[ 	]*#[ 	]*include[ 	]*<(string|vector|format|iostream)>")
+    foreach(line IN LISTS bannedLines)
+        string(REGEX REPLACE "^.*<(string|vector|format|iostream)>.*$" "\\1" used "${line}")
+        if(NOT used IN_LIST allowed)
+            file(RELATIVE_PATH rel "${SOURCE_DIR}" "${exempt}")
+            string(APPEND overreaches "
+  ${rel}: ${line}")
+            math(EXPR overreachCount "${overreachCount}+1")
+        endif()
+    endforeach()
+endforeach()
+
+if(overreachCount GREATER 0)
+    message(FATAL_ERROR
+        "an opt-in header includes a banned standard header it was not exempted for -- add it "
+        "to that header's entry in exemptAllowances only if it is genuinely "
+        "needed:${overreaches}")
+endif()
+
 message(STATUS
     "no <string>, <vector>, <format> or <iostream> in any of ${scannedTotal} public headers, "
-    "and none of them reach ${exemptNamePattern} either")
+    "none of them reach ${exemptNamePattern} either, and each opt-in header uses only the "
+    "standard headers it declares")
