@@ -473,7 +473,7 @@ constexpr Rational& operator/=(Rational& lhs, Rational rhs)
 /// A rational that is **not** pi.
 ///
 /// 245 850 922 / 78 256 779 is a convergent of pi's continued fraction; it
-/// differs from pi by less than 6e-17, which is finer than a `double` can
+/// differs from pi by less than 8e-17, which is finer than a `double` can
 /// distinguish, and both halves fit comfortably in 64 bits. It is the one
 /// deliberate approximation in the exact layer, and it is written here rather
 /// than computed so that every caller gets the same number and the trace can
@@ -555,6 +555,24 @@ namespace detail
 
     bool const negative = value.sign() < 0;
     Rational::Int const numerator = negative ? -value.numerator() : value.numerator();
+
+    // At degree 63 or higher, exact_integer_root's binary search is
+    // pathological rather than merely slow: once it probes middle == 1, power
+    // stays 1 for the rest of that probe's inner loop, so the loop runs the
+    // full `degree` multiplications of 1 by 1 before concluding "too small" --
+    // and degree is an ordinary int a caller controls, so nothing bounds how
+    // long that takes. The search is also unnecessary at this degree: 2^63
+    // alone exceeds IntMax, so no numerator or denominator magnitude of 2 or
+    // more could have an exact root here -- reaching it would need at least
+    // 2^63, which Int cannot hold. That leaves only magnitude 0 and 1, both
+    // fixed points of every power, so the answer is read off directly instead
+    // of searched for.
+    if (degree >= 63)
+    {
+        if (numerator > 1 || value.denominator() > 1)
+            return std::unexpected { ArithmeticError::Inexact };
+        return value;
+    }
 
     std::optional<Rational::Int> const rootedNumerator = detail::exact_integer_root(numerator, degree);
     std::optional<Rational::Int> const rootedDenominator = detail::exact_integer_root(value.denominator(), degree);
