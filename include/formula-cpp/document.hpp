@@ -16,6 +16,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace formula
@@ -23,6 +24,11 @@ namespace formula
 
 /// One row of a formula's symbol table: how a variable is written, what it
 /// means, and the unit its values are expressed in.
+///
+/// Deduplicated by quantity type, not by this rendered symbol. Two distinct
+/// quantities are free to share a spelling -- whether that is wise is a
+/// judgement for whoever writes the formula -- and when they do, each still
+/// gets its own row rather than one silently standing in for the other.
 struct SymbolEntry
 {
     std::string_view symbol {};
@@ -49,91 +55,116 @@ struct Documentation
 
 namespace detail
 {
+    /// A compile-time-unique identity for @tparam Q: every instantiation of
+    /// `quantityIdentity<Q>` is one `inline` object, so its address is the
+    /// same in every translation unit for a given @p Q and different for
+    /// every other @p Q. Used to deduplicate the symbol table by quantity
+    /// *type* without reaching for RTTI (`typeid`, `<typeindex>`) -- this
+    /// library otherwise depends on neither, and a header-only library should
+    /// not make a consumer who builds with RTTI disabled pay for one bit of
+    /// bookkeeping inside a single opt-in header.
+    template <typename Q>
+    inline constexpr bool quantityIdentity = false;
+
+    /// The walk's own state: the `Documentation` being assembled, plus which
+    /// quantities have already contributed a row, tracked in parallel because
+    /// a `std::vector<SymbolEntry>` holds no type to check against. Not part
+    /// of the published surface -- `document()` unwraps `documentation` before
+    /// returning it.
+    struct Walk
+    {
+        Documentation documentation {};
+        std::vector<void const*> seenQuantities {};
+    };
+
     // Forward declared so that a node whose children may themselves be any
     // node kind -- BinaryNode, DocumentedNode -- can recurse into a child
     // before every overload below has been declared.
 
     template <Described Q>
-    void collect(Documentation& documentation, VarNode<Q> const& node);
+    void collect(Walk& walk, VarNode<Q> const& node);
 
     template <Unit U>
-    void collect(Documentation& documentation, ConstantNode<U> const& node);
+    void collect(Walk& walk, ConstantNode<U> const& node);
 
-    void collect(Documentation& documentation, PiNode const& node);
+    void collect(Walk& walk, PiNode const& node);
 
     template <UnaryOperator Op, Node Operand>
-    void collect(Documentation& documentation, UnaryNode<Op, Operand> const& node);
+    void collect(Walk& walk, UnaryNode<Op, Operand> const& node);
 
     template <int Exponent, Node Operand>
-    void collect(Documentation& documentation, PowerNode<Exponent, Operand> const& node);
+    void collect(Walk& walk, PowerNode<Exponent, Operand> const& node);
 
     template <int Degree, Node Operand>
-    void collect(Documentation& documentation, RootNode<Degree, Operand> const& node);
+    void collect(Walk& walk, RootNode<Degree, Operand> const& node);
 
     template <BinaryOperator Op, Node Left, Node Right>
-    void collect(Documentation& documentation, BinaryNode<Op, Left, Right> const& node);
+    void collect(Walk& walk, BinaryNode<Op, Left, Right> const& node);
 
     template <Node Inner>
-    void collect(Documentation& documentation, DocumentedNode<Inner> const& node);
+    void collect(Walk& walk, DocumentedNode<Inner> const& node);
 
-    /// A variable contributes one row to the symbol table -- unless a row for
-    /// the same symbol is already there, in which case the second use of a
-    /// quantity adds nothing.
+    /// A variable contributes one row to the symbol table -- unless its
+    /// quantity type has already contributed one, in which case the second
+    /// use of that quantity adds nothing. A different quantity that merely
+    /// renders the same symbol is not caught by this check and gets its own
+    /// row; see the note on `SymbolEntry`.
     template <Described Q>
-    void collect(Documentation& documentation, VarNode<Q> const&)
+    void collect(Walk& walk, VarNode<Q> const&)
     {
-        std::string_view const symbol = Describe<Q>::symbol;
-        for (SymbolEntry const& entry: documentation.symbols)
-            if (entry.symbol == symbol)
+        void const* const key = &quantityIdentity<Q>;
+        for (void const* seen: walk.seenQuantities)
+            if (seen == key)
                 return;
-        documentation.symbols.push_back(
-            SymbolEntry { .symbol = symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+        walk.seenQuantities.push_back(key);
+        walk.documentation.symbols.push_back(SymbolEntry {
+            .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
     }
 
     /// A literal coefficient names no variable.
     template <Unit U>
-    void collect(Documentation&, ConstantNode<U> const&)
+    void collect(Walk&, ConstantNode<U> const&)
     {
     }
 
     /// Pi is a constant, not a variable.
-    inline void collect(Documentation&, PiNode const&) {}
+    inline void collect(Walk&, PiNode const&) {}
 
     template <UnaryOperator Op, Node Operand>
-    void collect(Documentation& documentation, UnaryNode<Op, Operand> const& node)
+    void collect(Walk& walk, UnaryNode<Op, Operand> const& node)
     {
-        collect(documentation, node.operand);
+        collect(walk, node.operand);
     }
 
     template <int Exponent, Node Operand>
-    void collect(Documentation& documentation, PowerNode<Exponent, Operand> const& node)
+    void collect(Walk& walk, PowerNode<Exponent, Operand> const& node)
     {
-        collect(documentation, node.operand);
+        collect(walk, node.operand);
     }
 
     template <int Degree, Node Operand>
-    void collect(Documentation& documentation, RootNode<Degree, Operand> const& node)
+    void collect(Walk& walk, RootNode<Degree, Operand> const& node)
     {
-        collect(documentation, node.operand);
+        collect(walk, node.operand);
     }
 
     /// Left before right -- what makes first-appearance order match reading
     /// order, rather than some incidental order of construction.
     template <BinaryOperator Op, Node Left, Node Right>
-    void collect(Documentation& documentation, BinaryNode<Op, Left, Right> const& node)
+    void collect(Walk& walk, BinaryNode<Op, Left, Right> const& node)
     {
-        collect(documentation, node.lhs);
-        collect(documentation, node.rhs);
+        collect(walk, node.lhs);
+        collect(walk, node.rhs);
     }
 
     /// Pushing the citation before recursing is what makes the citation list
     /// outermost-first: the node closest to the root of the tree is visited,
     /// and therefore pushed, first.
     template <Node Inner>
-    void collect(Documentation& documentation, DocumentedNode<Inner> const& node)
+    void collect(Walk& walk, DocumentedNode<Inner> const& node)
     {
-        documentation.citations.push_back(node.citation);
-        collect(documentation, node.inner);
+        walk.documentation.citations.push_back(node.citation);
+        collect(walk, node.inner);
     }
 } // namespace detail
 
@@ -142,9 +173,9 @@ namespace detail
 template <Dialect D = Dialect::Plain, Node N>
 [[nodiscard]] Documentation document(N const& node)
 {
-    Documentation documentation { .formula = render<D>(node) };
-    detail::collect(documentation, node);
-    return documentation;
+    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
 }
 
 } // namespace formula

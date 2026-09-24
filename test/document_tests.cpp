@@ -15,6 +15,12 @@ struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water conte
 struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", formula::unit::Litre>
 {
 };
+// Shares Diameter's symbol on purpose, with a different description and a
+// different unit, so a formula using both proves deduplication keys on the
+// quantity, not on the rendered letter.
+struct ExcavationDepth: formula::Quantity<ExcavationDepth, "d", "excavation depth", formula::unit::Metre>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -120,4 +126,20 @@ TEST_CASE("document: a constant contributes no symbol", "[document]")
 
     REQUIRE(documentation.symbols.size() == 1);
     CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
+}
+
+TEST_CASE("document: two quantities that share a symbol both get a row", "[document]")
+{
+    // Diameter is millimetres, ExcavationDepth is metres: two unrelated
+    // quantities that happen to render the same letter. Collapsing them would
+    // silently attribute one's description and unit to the other's uses.
+    formula::Documentation const documentation = formula::document(var<Diameter> + var<ExcavationDepth>);
+
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
+    CHECK(documentation.symbols[0].description == std::string_view { "specimen diameter" });
+    CHECK(documentation.symbols[0].unit == formula::unit::Millimetre);
+    CHECK(documentation.symbols[1].symbol == std::string_view { "d" });
+    CHECK(documentation.symbols[1].description == std::string_view { "excavation depth" });
+    CHECK(documentation.symbols[1].unit == formula::unit::Metre);
 }
