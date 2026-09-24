@@ -54,6 +54,15 @@ inputs (`formula::Environment`), and evaluation into a traceable `formula::Outco
 absence, or a manual override, never a silent zero -- are also available now. See
 [`docs/expressions.md`](docs/expressions.md) and the worked example in `examples/expressions.cpp`.
 
+A formula can carry where it comes from (`formula::documented`, attaching a `formula::Citation`,
+invisible to arithmetic and to dimensional checking alike), be rendered back to text in three
+dialects (`formula::render`, `formula::Dialect`), and be walked for its rendered text, its
+citations and its symbol table together (`formula::document`) -- all available now, in the two
+opt-in headers `render.hpp` and `document.hpp`, which the umbrella deliberately does not include.
+See [`docs/citations.md`](docs/citations.md) and the worked example in `examples/citations.cpp`,
+and [`docs/gallery.md`](docs/gallery.md) for a documentation page generated this way from several
+formulas at once.
+
 ## Requirements
 
 - C++23
