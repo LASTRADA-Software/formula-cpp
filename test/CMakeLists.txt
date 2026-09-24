@@ -45,6 +45,7 @@ add_executable(formula-cpp-tests
     environment_tests.cpp
     evaluate_tests.cpp
     function_tests.cpp
+    trace_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
