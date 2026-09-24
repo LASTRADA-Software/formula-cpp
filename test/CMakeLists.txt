@@ -34,6 +34,7 @@ add_executable(formula-cpp-tests
     rounding_tests.cpp
     dimension_tests.cpp
     dimension_cross_tu_b.cpp
+    sink_tests.cpp
     unit_tests.cpp
     unit_cross_tu_b.cpp
     fixed_string_tests.cpp
