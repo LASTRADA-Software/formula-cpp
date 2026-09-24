@@ -1097,6 +1097,61 @@ git commit -m "feat(trace): a flat arena a derivation records into"
 
 ## Task 5: Bounded rendering — `trace_render.hpp`
 
+**This task now also owns a change to `Step`, decided after task 4 shipped.**
+Running the recorder on `documented(var<WaterVolume> / var<CementVolume>)` with
+180 l and 300 l produced this:
+
+```
+  #1  variable    V_w  = 9/50
+  #2  variable    V_c  = 3/10
+  #3  divide           = 3/5   from #1 #2
+  #4  documented       = 3/5   from #3   [Water/cement ratio, Example Standard 1:2020]
+```
+
+`9/50` is correct — 180 l *is* 9/50 m3, because a step records its value in the
+coherent SI unit of its dimension. It is also close to useless in an audit
+trail. A person checking a report entered 180 litres and needs to see 180
+litres; a derivation that silently restates every input in a unit nobody typed
+is a worse record than the calculation it documents.
+
+The renderer cannot recover the declared unit on its own: by the time a `Step`
+exists, the quantity type is erased. So the recorder must capture it.
+
+**`Step<Rep>` gains one field:**
+
+```cpp
+    /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
+    /// for a variable, the constant's own unit for a constant, and the
+    /// coherent SI unit of `dimension` for anything computed, which has no
+    /// declared unit of its own.
+    ///
+    /// `value` is always in the coherent SI unit, so that steps are
+    /// comparable; this is what a renderer converts back to before showing a
+    /// number to a person.
+    Unit unit {};
+```
+
+populated in `RecordingSink::produced` alongside the existing fields:
+
+```cpp
+        step.unit = coherent(N::dimension);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
+            step.unit = Describe<typename N::quantity>::unit;
+        else if constexpr (requires { N::unitOf; })
+            step.unit = N::unitOf;
+```
+
+**Read `ConstantNode` in `expression.hpp` first and use whatever it actually
+names its unit** — it is a `Unit` non-type template parameter, so the member
+may be spelled differently from `unitOf` or may not exist as a member at all,
+in which case match on the `ConstantNode<U>` specialisation instead of a
+`requires`. Do not invent a name; the last three times this plan guessed one,
+one of the guesses was wrong.
+
+Add a test pinning the declared unit for all three cases — a variable declared
+in litres, a constant, and a computed node — and a test that rendering shows
+`180 l` rather than `9/50`.
+
 **Files:**
 - Create: `include/formula-cpp/trace_render.hpp`
 - Create: `test/trace_render_tests.cpp`
