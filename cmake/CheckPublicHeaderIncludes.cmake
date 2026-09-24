@@ -2,8 +2,12 @@
 # Public headers must not pull in <string>, <vector>, <format> or
 # <iostream>: a consumer that only evaluates numbers must not compile those
 # in every translation unit. Those belong in opt-in headers.
+#
+# Exception: render.hpp is deliberately not in the umbrella (formula.hpp) and
+# must include <string>.
 
 file(GLOB_RECURSE headers "${SOURCE_DIR}/include/*.hpp")
+list(FILTER headers EXCLUDE REGEX "render\\.hpp$")
 
 list(LENGTH headers total)
 

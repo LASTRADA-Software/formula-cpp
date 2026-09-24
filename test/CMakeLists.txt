@@ -29,6 +29,7 @@ add_executable(formula-cpp-tests
     error_tests.cpp
     expression_tests.cpp
     rational_tests.cpp
+    render_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp
     dimension_cross_tu_b.cpp
