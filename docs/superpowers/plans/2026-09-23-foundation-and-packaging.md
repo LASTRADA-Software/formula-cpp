@@ -17,7 +17,7 @@ Copied verbatim from the spec. Every task's requirements implicitly include thes
 - **Licence:** Apache-2.0. Every `.hpp`, `.cpp`, `.cmake`, `CMakeLists.txt` and `*.cmake.in` starts with `SPDX-License-Identifier: Apache-2.0` (`#` comment for CMake, `//` for C++).
 - **C++23 everywhere.** `target_compile_features(... INTERFACE cxx_std_23)`.
 - **Compilers that must work:** MSVC `cl`, `clang-cl`, `clang++`. GCC welcome if free.
-- **No third-party dependencies in the core.** Specifically **no glaze**. Catch2 is a test-only dependency and must not appear in the installed package config.
+- **No third-party dependencies in the core**, and no serialization library in particular. Catch2 is a test-only dependency and must not appear in the installed package config.
 - **No norm content in this repository, and no citations either.** Never name a standard, and never transcribe its text, equations, tables, clause numbers or threshold values. Published standards are copyrighted and sold, and this repository is public. Public examples use **generic physics only**, with fictional `Example Standard` citations where a citation's *shape* has to be demonstrated.
 - **No macros for traceability.**
 - **`NOLINT` is banned in-tree.** Suppressions belong in `.clang-tidy`, where they are reviewable.
