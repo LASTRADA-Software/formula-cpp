@@ -175,3 +175,58 @@ TEST_CASE("a citation carrying only an equation number still identifies itself",
     // The genuinely uncited step still adds no trailing noise.
     CHECK(text.find("2.  = 3 []") == std::string::npos);
 }
+
+TEST_CASE("the bound's exact boundaries render without an elision line", "[trace-render]")
+{
+    // A trace of exactly `maxSteps` must render whole, with no "further steps"
+    // line -- the off-by-one that would show "... 0 further steps not shown"
+    // is invisible until someone hits the boundary exactly.
+    formula::Trace<> trace {};
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        formula::Step<> step {};
+        step.kind = formula::StepKind::Constant;
+        step.value = formula::Rational { static_cast<long long>(i) };
+        step.unit = formula::unit::One;
+        step.dimension = formula::dim::Scalar;
+        trace.steps.push_back(std::move(step));
+    }
+
+    SECTION("exactly the limit")
+    {
+        std::string const text = formula::render_trace(trace, { .maxSteps = 3 });
+        CHECK(text == "1. 0\n2. 1\n3. 2\n");
+        CHECK(text.find("further steps") == std::string::npos);
+    }
+
+    SECTION("one under the limit")
+    {
+        std::string const text = formula::render_trace(trace, { .maxSteps = 4 });
+        CHECK(text == "1. 0\n2. 1\n3. 2\n");
+        CHECK(text.find("further steps") == std::string::npos);
+    }
+
+    SECTION("one over the limit")
+    {
+        std::string const text = formula::render_trace(trace, { .maxSteps = 2 });
+        CHECK(text == "1. 0\n2. 1\n... 1 further step not shown\n");
+    }
+}
+
+TEST_CASE("an explicit limit of zero is allowed, and says what it hid", "[trace-render]")
+{
+    // Only the *implicit* zero from `render_trace(trace, {})` is forbidden --
+    // that one is a caller who forgot. A caller who writes 0 deliberately gets
+    // what they asked for, and is still told what was left out rather than
+    // silently handed an empty string.
+    formula::Trace<> trace {};
+    formula::Step<> step {};
+    step.kind = formula::StepKind::Constant;
+    step.value = formula::Rational { 7 };
+    step.unit = formula::unit::One;
+    step.dimension = formula::dim::Scalar;
+    trace.steps.push_back(std::move(step));
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 0 });
+    CHECK(text == "... 1 further step not shown\n");
+}

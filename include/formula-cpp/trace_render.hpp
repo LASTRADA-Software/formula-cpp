@@ -266,7 +266,12 @@ template <typename Rep = Rational>
     {
         text += "... ";
         text += std::to_string(trace.steps.size() - shown);
-        text += " further steps not shown\n";
+        // Singular when there is one. A derivation is read by a person
+        // checking a number they are about to sign off on; "1 further
+        // steps" reads as carelessness, and carelessness is the last
+        // impression an audit trail should give.
+        text += (trace.steps.size() - shown) == 1 ? " further step not shown\n"
+                                                 : " further steps not shown\n";
     }
 
     return text;
