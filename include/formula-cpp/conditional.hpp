@@ -27,9 +27,18 @@
 /// node. Its own predicate is not a `Node` -- see `predicate.hpp` for why --
 /// so only the two branches are dispatched as subtrees; the predicate is
 /// evaluated through `checked_evaluate_predicate` directly, with the sink
-/// threaded through so the predicate's own operands still trace. Recording
-/// *which branch was taken* on `WhenNode`'s own trace step is not built here;
-/// that is left for the sink to add when it is taught to.
+/// threaded through so the predicate's own operands still trace.
+///
+/// **Which branch was taken** is reported through one optional hook,
+/// `sink.branch_taken(node, thenTaken)`, called below only once the
+/// predicate has actually resolved and only when the sink defines one --
+/// `if constexpr (requires {...})`, the same pattern `sink.hpp`'s `dispatch`
+/// uses to find a sink-aware `checked_evaluate_si` overload. A sink with no
+/// use for it, `NullSink` included, defines nothing and pays nothing for the
+/// check. `RecordingSink` (`trace.hpp`) is the one sink that defines it,
+/// because it is the only place a step exists to record the branch onto --
+/// `PredicateNode` is not a `Node` and so never gets a step of its own to
+/// carry it instead.
 
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
@@ -113,8 +122,11 @@ template <typename Rep = Rational, Predicate P, Node Then, Node Else, typename E
         return absent;
     }
 
-    Evaluated<Rep> const result = **verdict ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
+    bool const thenTaken = **verdict;
+    Evaluated<Rep> const result = thenTaken ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
                                              : detail::dispatch<Rep>(node.elseBranch, environment, sink);
+    if constexpr (requires { sink.branch_taken(node, thenTaken); })
+        sink.branch_taken(node, thenTaken);
     sink.produced(node, result);
     return result;
 }

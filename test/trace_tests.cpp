@@ -25,11 +25,28 @@ struct Density: formula::Quantity<Density, "rho", "bulk density", formula::coher
 struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "water volume", unit::Litre>
 {
 };
+struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
+{
+};
+struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Megapascal>
+{
+};
 
 [[nodiscard]] auto environmentOf(long long mass, long long volume)
 {
     return formula::environment(formula::Measured<Mass> { formula::Rational { mass } },
                                 formula::Measured<Volume> { formula::Rational { volume } });
+}
+
+// The predicate every phase-8 conditional test below shares: strength over 50
+// MPa. Kept at namespace scope so the mutation test (further down) can name
+// its exact type.
+constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+
+[[nodiscard]] auto strengthOf(formula::Rational value)
+{
+    return formula::environment(formula::Measured<Strength> { value });
 }
 } // namespace
 
@@ -304,4 +321,167 @@ TEST_CASE("explain returns an empty trace when the result is a manual override",
     CHECK(explained.outcome.measurement().value() == formula::Rational { 999 });
     CHECK(explained.trace.empty());
     CHECK(explained.trace.steps.size() == 0);
+}
+
+// --------------------------------------------------------------- phase 8
+
+TEST_CASE("a Round step records its own declared unit and granularity, and the pre-rounding value stays "
+          "visible on its operand's own step",
+          "[trace]")
+{
+    // 12.34 mm to one decimal place, half away from zero, is 12.3 mm -- the
+    // same example rounding_node_tests.cpp verifies directly against
+    // checked_evaluate. The Round step does not duplicate the pre-rounding
+    // value onto itself: it is already visible on operand #1, the same way a
+    // Negate or Power step never restates its own operand's value either --
+    // that is Task 6's answer to "how does a Round step make the change of
+    // value visible" (see the report for the reasoning).
+    constexpr auto node =
+        formula::rounded<unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
+    auto const environment = formula::environment(formula::Measured<Diameter> { formula::Rational { 1234, 100 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+
+    REQUIRE(result.has_value());
+    REQUIRE(trace.steps.size() == 2);
+
+    CHECK(trace.steps[0].kind == formula::StepKind::Variable);
+    CHECK(trace.steps[0].value == formula::Rational { 617, 50000 });   // 12.34 mm, in coherent SI (m)
+
+    CHECK(trace.steps[1].kind == formula::StepKind::Round);
+    // The node's own declared unit, not the coherent SI one: "rounded to 1
+    // dp" means nothing without saying 1 dp of what.
+    CHECK(trace.steps[1].unit == unit::Millimetre);
+    CHECK(trace.steps[1].granularity == 1);
+    CHECK(trace.steps[1].value == formula::Rational { 123, 10000 });   // 12.3 mm, in coherent SI (m)
+    REQUIRE(trace.steps[1].operands.size() == 1);
+    CHECK(trace.steps[1].operands[0] == 0);
+}
+
+TEST_CASE("a RoundSignificant step records its own declared unit and granularity", "[trace]")
+{
+    // 12.34 mm to two significant digits is 12 mm -- the same example
+    // rounding_node_tests.cpp verifies directly.
+    constexpr auto node = formula::rounded_to_digits<unit::Millimetre, formula::SignificantDigits { 2 },
+                                                     formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+    auto const environment = formula::environment(formula::Measured<Diameter> { formula::Rational { 1234, 100 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+
+    REQUIRE(result.has_value());
+    REQUIRE(trace.steps.size() == 2);
+
+    CHECK(trace.steps[1].kind == formula::StepKind::RoundSignificant);
+    CHECK(trace.steps[1].unit == unit::Millimetre);
+    CHECK(trace.steps[1].granularity == 2);
+    CHECK(trace.steps[1].value == formula::Rational { 3, 250 });   // 12 mm, in coherent SI (m)
+    REQUIRE(trace.steps[1].operands.size() == 1);
+    CHECK(trace.steps[1].operands[0] == 0);
+}
+
+TEST_CASE("a Conditional step records the then branch it took, and every operand along the way", "[trace]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result =
+        formula::checked_evaluate_si<formula::Rational>(chosen, strengthOf(formula::Rational { 60 }), sink);
+
+    REQUIRE(result.has_value());
+    REQUIRE(trace.steps.size() == 4);
+
+    // Post-order: the predicate's two sides, then the branch it selected.
+    CHECK(trace.steps[0].kind == formula::StepKind::Variable);   // predicate lhs: f
+    CHECK(trace.steps[1].kind == formula::StepKind::Constant);   // predicate rhs: 50 MPa
+    CHECK(trace.steps[2].kind == formula::StepKind::Variable);   // thenBranch: f
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Conditional);
+    CHECK(root.branch == formula::Branch::Then);
+    REQUIRE(root.operands.size() == 3);
+    CHECK(root.operands[0] == 0);
+    CHECK(root.operands[1] == 1);
+    CHECK(root.operands[2] == 2);
+    CHECK(root.value == formula::Rational { 60'000'000 });   // 60 MPa, in coherent SI (Pa)
+}
+
+TEST_CASE("a Conditional step records the else branch it took", "[trace]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result =
+        formula::checked_evaluate_si<formula::Rational>(chosen, strengthOf(formula::Rational { 40 }), sink);
+
+    REQUIRE(result.has_value());
+    // Predicate lhs, predicate rhs, the elseBranch's own var, its constant 2,
+    // and the Multiply that combines them, then the Conditional itself.
+    REQUIRE(trace.steps.size() == 6);
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Conditional);
+    CHECK(root.branch == formula::Branch::Else);
+    // The elseBranch's own root (the Multiply) already claimed its own two
+    // children, so the Conditional's operands are the predicate's two sides
+    // plus that one Multiply step -- not five.
+    REQUIRE(root.operands.size() == 3);
+    CHECK(root.operands[0] == 0);
+    CHECK(root.operands[1] == 1);
+    CHECK(root.operands[2] == 4);
+    CHECK(root.value == formula::Rational { 80'000'000 });   // 80 MPa, in coherent SI (Pa)
+}
+
+TEST_CASE("a Conditional step records no branch when the predicate is absent -- not the else branch",
+          "[trace]")
+{
+    // A bool cannot distinguish this state from "the predicate held false" --
+    // exactly why Branch has three states rather than two.
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::checked_evaluate_si<formula::Rational>(
+        chosen, formula::environment(formula::Measured<Strength>::absent()), sink);
+
+    REQUIRE(result.has_value());
+    CHECK_FALSE(result->has_value());
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Conditional);
+    CHECK(root.branch == formula::Branch::Neither);
+    // Neither branch ran, so only the predicate's own two operands were
+    // claimed -- not three.
+    REQUIRE(root.operands.size() == 2);
+    CHECK_FALSE(root.value.has_value());
+}
+
+TEST_CASE("a NumericValue step records its justification and the unit it read from", "[trace]")
+{
+    constexpr auto node = formula::numeric_value_of<unit::Megapascal, "empirical fit only valid in MPa">(var<Strength>);
+    auto const environment = strengthOf(formula::Rational { 70 });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+
+    REQUIRE(result.has_value());
+    REQUIRE(trace.steps.size() == 2);
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::NumericValue);
+    CHECK(root.justification == "empirical fit only valid in MPa");
+    // The unit it read from, kept separate from `unit` -- see trace.hpp's
+    // comment on `Step::sourceUnit` for why folding the two together would
+    // break rendering.
+    CHECK(root.sourceUnit == unit::Megapascal);
+    // Its OWN `unit` stays the coherent SI of its (scalar) dimension: a
+    // NumericValueNode's dimension is always Scalar, and the unit it names
+    // measures its operand's dimension instead, which is not the same thing.
+    CHECK(root.unit == formula::coherent(formula::dim::Scalar));
+    CHECK(root.dimension == formula::dim::Scalar);
+    // The bare number itself: 70 MPa read in MPa is just 70, no conversion.
+    CHECK(root.value == formula::Rational { 70 });
+    REQUIRE(root.operands.size() == 1);
+    CHECK(root.operands[0] == 0);
 }

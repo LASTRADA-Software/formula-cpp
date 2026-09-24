@@ -158,6 +158,35 @@ namespace detail
                                           : "root" + std::to_string(step.exponent) + "(" + sole_operand(step) + ")";
             case StepKind::Documented:
                 return sole_operand(step);
+            case StepKind::Round:
+                return "round[to " + std::to_string(step.granularity) + " dp of " + std::string { view(step.unit.symbolText) }
+                       + "](" + sole_operand(step) + ")";
+            case StepKind::RoundSignificant:
+                return "round[to " + std::to_string(step.granularity) + " sf of "
+                       + std::string { view(step.unit.symbolText) } + "](" + sole_operand(step) + ")";
+            case StepKind::NumericValue:
+                return "numeric[in " + std::string { view(step.sourceUnit.symbolText) } + "](" + sole_operand(step)
+                       + ")";
+            case StepKind::Conditional:
+            {
+                // Unlike `binary_expression` above, every recorded operand is
+                // shown -- there can be two (the predicate's sides, when
+                // neither branch ran) or three (those two, plus whichever
+                // branch did) -- so a fixed arity would misname the third
+                // slot. Which branch ran, if any, is not this function's
+                // business: it is a fact about the step, not about what it
+                // consumed, and `step_line` below appends it as a suffix the
+                // same way it already does for `Documented`'s citation.
+                std::string text = "when(";
+                for (std::size_t index = 0; index < step.operands.size(); ++index)
+                {
+                    if (index > 0)
+                        text += ", ";
+                    text += operand_reference(step.operands[index]);
+                }
+                text += ")";
+                return text;
+            }
         }
         return "unknown step kind";
     }
@@ -221,12 +250,35 @@ namespace detail
         return text;
     }
 
+    /// A `NumericValue` step's justification, in one bracketed clause. Empty
+    /// when the step carries none -- reachable only for a hand-built `Step`,
+    /// since `NumericValueNode` itself refuses an empty one at compile time
+    /// -- so a blank justification adds no trailing noise, the same guard
+    /// `citation_suffix` above applies for the same reason.
+    ///
+    /// Rendered, not merely carried: the whole point of `numeric_value_of` is
+    /// that a number left a named unit for a stated reason, and a step that
+    /// recorded the reason without ever showing it would be exactly the
+    /// silent failure mode the node exists to prevent.
+    [[nodiscard]] inline std::string justification_suffix(std::string_view justification)
+    {
+        return justification.empty() ? std::string {} : " (" + std::string { justification } + ")";
+    }
+
     /// One step's line, without its number: the expression, an `=`, the value,
-    /// and a citation when the step carries one.
+    /// and a trailing clause for the three kinds that need one -- a citation
+    /// for `Documented`, a justification for `NumericValue`, and which branch
+    /// ran for `Conditional`.
     [[nodiscard]] inline std::string step_line(Step<Rational> const& step)
     {
         std::string const value = step_value_text(step);
-        std::string const suffix = step.kind == StepKind::Documented ? citation_suffix(step.citation) : std::string {};
+        std::string suffix;
+        if (step.kind == StepKind::Documented)
+            suffix = citation_suffix(step.citation);
+        else if (step.kind == StepKind::NumericValue)
+            suffix = justification_suffix(step.justification);
+        else if (step.kind == StepKind::Conditional)
+            suffix = " [" + std::string { describe(step.branch) } + "]";
 
         if (step.kind == StepKind::Constant)
             return value + suffix;
