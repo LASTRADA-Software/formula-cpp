@@ -802,9 +802,16 @@ without naming a tie rule. The mode is in the type, in the trace, and in
   type-level trait and a runtime overload set — phase 6's bug was a node whose
   *text* binds more loosely than its *type* suggests, so work out which you need
   for each new kind rather than copying one blindly.
-- [ ] **Step 4: Prove the bracketing is load-bearing.** Remove the `Conditional`
-  rung so a `WhenNode` reports `Additive`, and confirm the inside-a-product test
-  fails. Restore, confirm. Report both directions.
+- [ ] **Step 4: Prove the bracketing is load-bearing — and use the right
+  mutation.** Demoting `Conditional` to `Additive` is **not** sufficient: it
+  still leaves a `WhenNode` binding looser than `Multiplicative` and `Atom`, so
+  the inside-a-power and inside-a-product tests keep passing and the mutation
+  appears harmless while proving nothing. Measured, not reasoned.
+
+  Remove the `WhenNode` specialisation **entirely**, so it falls back to the
+  default `Atom`. That reproduces the real bug — `if p then a else b * 2`
+  rendered where the tree means `(if p then a else b) * 2` — and fails all
+  three tests. Restore, confirm. Report both directions.
 - [ ] **Step 5: All four presets and GCC, then commit.**
 
 ---
