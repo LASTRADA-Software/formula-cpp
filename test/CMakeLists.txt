@@ -38,6 +38,7 @@ add_executable(formula-cpp-tests
     quantity_cross_tu_b.cpp
     measured_tests.cpp
     outcome_tests.cpp
+    environment_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -122,6 +123,12 @@ formula_add_negative_test(expression_inconsistent_describe
 
 formula_add_negative_test(expression_subtract_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
+
+formula_add_negative_test(environment_duplicate_quantity
+    "supplies the same quantity more than once")
+
+formula_add_negative_test(environment_missing_quantity
+    "provides no value for this quantity")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
