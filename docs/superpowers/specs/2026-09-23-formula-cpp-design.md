@@ -211,10 +211,13 @@ declared.
 Node types: variable, binary op, unary op, function call, constant, documented-wrapper,
 conditional, and the series nodes of §12.
 
-Structure nodes are **empty** — all information is in the type — so the whole tree is a compile-time
-entity and traversals cost nothing at runtime. `Constant` and the documentation payload carry
-`constexpr` state, because a coefficient may come from a runtime table lookup and a citation is
-data.
+A structure node **declares no members of its own** — its whole shape is in the type — so the tree
+is a compile-time entity and every traversal inlines away. It is not literally an empty class: a
+node holds its children by value, and an empty child still occupies a byte, so a tree costs roughly
+one byte per leaf and nothing per level. Measured on the phase-5 prototype, a five-leaf tree was 5
+bytes on cl and clang-cl and 9 on g++; no test asserts a size, because none of that is portable.
+`Constant` and the documentation payload carry real `constexpr` state, because a coefficient may
+come from a runtime table lookup and a citation is data.
 
 Each node exposes `static constexpr Dimension dimension`, computed at class scope, so a
 dimensional error fires **where the formula is written**, not where it is evaluated.
