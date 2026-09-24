@@ -43,6 +43,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/unit.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/quantity.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/measured.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/outcome.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/checked_int.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/fixed_string.hpp")
