@@ -193,11 +193,19 @@ TEST_CASE("a method applies its own rounding rule to the variant it selects", "[
 {
     // The selection test above lands on 6 and 4 MPa, which rounding to one
     // decimal leaves alone, so it cannot tell a method that rounds from one
-    // that does not. This one can: 60500 N over 100 mm * 100 mm is 6.05 MPa,
-    // and every axis of the rule moves it somewhere else. Ignored, it stays
-    // 6.05; rounded in pascals rather than megapascals, likewise; to zero or
-    // two places, 6 or 6.05; half-even, half-toward-zero, floor or toward
-    // zero, 6.0. Only the declared rule gives 6.1.
+    // that does not. This one can, with two points on the same variant.
+    //
+    // 60500 N over 100 mm * 100 mm is 6.05 MPa, a tie at one place. Ignored,
+    // the rule leaves it 6.05; rounded in pascals rather than megapascals,
+    // likewise; to zero or two places, 6 or 6.05; half-even,
+    // half-toward-zero, floor or toward zero, 6.0. That leaves three modes
+    // giving 6.1: the declared half-away-from-zero, and ceiling and
+    // away-from-zero, which round every non-zero remainder up.
+    //
+    // 60400 N is 6.04 MPa, not a tie, and separates those three: ceiling and
+    // away-from-zero give 6.1, half-away-from-zero 6.0. Of the seven modes,
+    // only half-away-from-zero gives 6.1 on the first point AND 6.0 on the
+    // second.
     constexpr auto m = formula::method(
         formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
                           formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
@@ -216,4 +224,9 @@ TEST_CASE("a method applies its own rounding rule to the variant it selects", "[
     STATIC_REQUIRE(cylinder.has_value());
     STATIC_REQUIRE(cylinder->has_value());
     STATIC_REQUIRE(cylinder->value() == formula::Rational { 6'100'000 });
+
+    constexpr auto notATie = formula::evaluate_method<Cylinder>(m, specimen(60'400, 100, 999));
+    STATIC_REQUIRE(notATie.has_value());
+    STATIC_REQUIRE(notATie->has_value());
+    STATIC_REQUIRE(notATie->value() == formula::Rational { 6'000'000 });
 }
