@@ -79,6 +79,54 @@ TEST_CASE("an arithmetic failure in a predicate is an error, not a verdict", "[p
     CHECK(result.error() == formula::ArithmeticError::DivisionByZero);
 }
 
+TEST_CASE("an arithmetic failure on a predicate's right-hand side is an error too", "[predicate]")
+{
+    // The case above puts the failing expression on the LEFT. "Drop one side"
+    // has two directions, and reporting a right-hand error as absence instead
+    // -- which would silently turn a formula that cannot be evaluated into a
+    // formula nobody measured -- passed the whole suite until this case
+    // existed. The same asymmetry was found and fixed one level up, in
+    // collect(PredicateNode); nobody had checked the evaluator.
+    constexpr auto divideByZeroOnTheRight =
+        formula::constant<unit::Megapascal>(formula::Rational { 1 })
+        > (var<Strength> / formula::number(formula::Rational { 0 }));
+    constexpr auto result = formula::checked_evaluate_predicate(divideByZeroOnTheRight, strengthOf(60));
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == formula::ArithmeticError::DivisionByZero);
+}
+
+TEST_CASE("an error on one side is not hidden behind absence on the other", "[predicate]")
+{
+    // The ordering guarantee checked_evaluate_predicate's own documentation
+    // makes: "absence is considered only once both sides have actually been
+    // evaluated, so a real error on the present side is never hidden behind
+    // the other side's absence." Until this case, that was claimed and never
+    // verified in either direction.
+    //
+    // Absent on the left, erroring on the right: an implementation that
+    // checked absence as soon as it had the left side would answer "no
+    // verdict" and never discover the error at all.
+    constexpr auto absentLeftErroringRight =
+        var<Threshold> > (var<Strength> / formula::number(formula::Rational { 0 }));
+    constexpr auto errorWins = formula::checked_evaluate_predicate(
+        absentLeftErroringRight,
+        formula::environment(formula::Measured<Threshold>::absent(),
+                             formula::Measured<Strength> { formula::Rational { 60 } }));
+    REQUIRE_FALSE(errorWins.has_value());
+    CHECK(errorWins.error() == formula::ArithmeticError::DivisionByZero);
+
+    // And the mirror: erroring on the left, absent on the right. Here the
+    // error is returned before the right side is dispatched at all.
+    constexpr auto erroringLeftAbsentRight =
+        (var<Strength> / formula::number(formula::Rational { 0 })) > var<Threshold>;
+    constexpr auto errorWinsAgain = formula::checked_evaluate_predicate(
+        erroringLeftAbsentRight,
+        formula::environment(formula::Measured<Strength> { formula::Rational { 60 } },
+                             formula::Measured<Threshold>::absent()));
+    REQUIRE_FALSE(errorWinsAgain.has_value());
+    CHECK(errorWinsAgain.error() == formula::ArithmeticError::DivisionByZero);
+}
+
 TEST_CASE("every comparison operator is correct at its own boundary", "[predicate]")
 {
     // Four of the six operators had no committed test. Each `if constexpr`
