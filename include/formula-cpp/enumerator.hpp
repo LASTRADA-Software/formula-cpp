@@ -17,9 +17,9 @@
 /// other (`trace.hpp` must not pull `<string>`), and because an author
 /// customizing a spelling is describing their enumeration -- a fact that
 /// belongs beside the type, in a header that costs nothing to include --
-/// not asking for text. It pulls only `<concepts>`, `<cstddef>`, `<string_view>` and
-/// `<type_traits>`, and `lookup.hpp` includes it, so anyone who can declare
-/// an exact lookup already has it.
+/// not asking for text. It pulls only `<concepts>`, `<cstddef>`,
+/// `<string_view>` and `<type_traits>`, and `lookup.hpp` includes it, so
+/// anyone who can declare an exact lookup already has it.
 
 #include <formula-cpp/detail/enum_name.hpp>
 
@@ -74,20 +74,49 @@ namespace detail
 /// misspelt `of` that silently fell back to the reflected name would be the
 /// author's wording quietly not appearing anywhere.
 ///
+/// **Declare the specialization next to the enumeration, before anything uses
+/// it, and on the unqualified type.** That promise covers a specialization the
+/// library can see; it cannot cover one it cannot. Like every trait, a
+/// specialization declared after the first `render()` or trace that asks for
+/// the name -- or in a header that translation unit does not include -- is
+/// simply not there when the name is computed, and the enumerator's own name
+/// is used instead, with nothing to say so. (A specialization declared after
+/// an implicit instantiation is ill-formed, no diagnostic required.) The
+/// cv-qualified form, `EnumeratorName<Shape const>`, is refused with this
+/// library's message: the library only ever asks about the unqualified type,
+/// so such a specialization could never take effect.
+///
 /// **Return an empty view to leave an enumerator alone.** A specialization
 /// may cover some enumerators and return `{}` for the rest; those fall back
 /// to the enumerator's own name. A `switch` with no `default` that falls off
 /// its end is not usable in a constant expression, and is refused rather than
 /// read as empty.
 ///
-/// **What `of` returns must have static storage duration** -- a string
-/// literal, or a view of a `static constexpr` array. A trace keeps the view
-/// (`Step::lookupKeyName`, `trace.hpp`) for as long as the trace lives, which
-/// may be long after the formula that recorded it is gone. This is enforced,
-/// not merely requested: the library reads every character of the view in a
-/// constant expression, and a view of a local buffer, of a `std::string`
-/// that has been destroyed, or of a mutable static is not readable there, so
-/// it is refused with the same message as an `of` that is not `constexpr`.
+/// **What `of` returns must be readable at compile time, and so have static
+/// storage duration** -- a string literal, or a view of a `constexpr` array.
+/// A trace keeps the view (`Step::lookupKeyName`, `trace.hpp`) for as long as
+/// the trace lives, which may be long after the formula that recorded it is
+/// gone. This is enforced, not merely requested, by three independent gates,
+/// any one of which refuses a view it cannot vouch for:
+///
+///   1. `RequireEnumeratorName` reads every character of the view in a
+///      constant expression, and refuses in this library's words when it
+///      cannot. A view of a local buffer, of a `std::string` returned by
+///      value, of a mutable static, or of an immutable but non-`constexpr`
+///      array (`const char name[]` at namespace scope, whose characters are
+///      not usable in a constant expression) all fail it on cl, clang-cl and
+///      clang.
+///   2. `enumerator_name` is `consteval`, so its result must be a permitted
+///      result of a constant expression: a pointer into an object with static
+///      storage duration. The compiler refuses anything else in its own
+///      words. g++ 13 lets the local-buffer case through gate 1 -- it reads
+///      the dead buffer as a constant -- and refuses it here instead, as
+///      "is not a constant expression".
+///   3. The table of a lookup's key names (`detail::keyNames`, `lookup.hpp`)
+///      is itself a `constexpr` variable, so its initializer is held to the
+///      same rule again, on the path `render()` and a trace actually take.
+///
+/// The refusal is always safe; what differs is whose words it is in.
 template <typename Enum>
 struct EnumeratorName: detail::EnumeratorNameNotCustomized
 {
@@ -138,8 +167,11 @@ namespace detail
     }
 
     /// True when `EnumeratorName`'s spelling of @p E can be computed at
-    /// compile time and every character of it read there -- which is also
-    /// what establishes that it has static storage duration.
+    /// compile time and every character of it read there. Gate 1 of the three
+    /// described on `EnumeratorName`: on cl, clang-cl and clang it refuses
+    /// every view without static storage duration that was measured, but g++
+    /// 13 lets a view of a dead local buffer through, which gate 2 then
+    /// refuses.
     template <auto E>
     concept ConstantEnumeratorName = EnumeratorNameCustomization<decltype(E)> && requires {
         typename std::bool_constant<every_character_readable(customized_enumerator_name<E>())>;
@@ -149,8 +181,8 @@ namespace detail
 /// Fails to compile when `EnumeratorName<decltype(E)>` is specialized but the
 /// library cannot read a spelling of @p E out of it: the specialization has
 /// the wrong shape (no static `of`, a misspelt one, a return type that is not
-/// a string), or its `of(E)` is not usable in a constant expression, or what
-/// it returns does not have static storage duration.
+/// a string), or its `of(E)` is not usable in a constant expression, or the
+/// characters of what it returns cannot be read at compile time.
 ///
 /// Instantiated by `enumerator_name` whenever a specialization exists, so a
 /// broken one is refused the first time anything asks for a name -- in
@@ -167,13 +199,38 @@ struct RequireEnumeratorName
                   "cannot silently drop the author's wording");
 
     // `!EnumeratorNameCustomization || ...` so a wrongly shaped specialization
-    // gets the message above and not this one as well.
+    // gets the message above and not this one as well --
+    // `enumerator_name_misspelt_of.cpp` REJECTs this message to pin that.
     static_assert(!EnumeratorNameCustomization<decltype(E)> || detail::ConstantEnumeratorName<E>,
                   "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression for this "
-                  "enumerator, or returns a view whose characters do not have static storage duration; "
-                  "the enumerator appears in this diagnostic as template argument E of "
-                  "RequireEnumeratorName -- make of() constexpr, return a string literal, and return an "
-                  "empty string_view for an enumerator it does not spell");
+                  "enumerator, or returns a view whose characters cannot be read at compile time -- a "
+                  "string literal or a constexpr array can be, a local buffer, a std::string returned by "
+                  "value or a non-constexpr array cannot, and a trace keeps the view; the enumerator "
+                  "appears in this diagnostic as template argument E of RequireEnumeratorName -- make of() "
+                  "constexpr, return a string literal, and return an empty string_view for an enumerator "
+                  "it does not spell");
+
+    /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
+    static constexpr bool value = true;
+};
+
+/// Fails to compile when `EnumeratorName` is specialized for a cv-qualified
+/// @p Enum -- `EnumeratorName<Shape const>`. The library only ever asks
+/// `EnumeratorName<Shape>`, so that specialization could never take effect,
+/// and the author's wording would be silently absent.
+///
+/// Instantiated by `enumerator_name` for every enumerator it names,
+/// customized or not, since the point is to catch a specialization that
+/// otherwise looks like no customization at all.
+template <typename Enum>
+struct RequireUnqualifiedEnumeratorName
+{
+    static_assert(!detail::customizesEnumeratorName<Enum const> && !detail::customizesEnumeratorName<Enum volatile>
+                      && !detail::customizesEnumeratorName<Enum const volatile>,
+                  "formula: EnumeratorName is specialised for a const- or volatile-qualified enumeration, "
+                  "which the library never asks about, so it would silently never be used; the enumeration "
+                  "appears in this diagnostic as template argument Enum of RequireUnqualifiedEnumeratorName "
+                  "-- specialise EnumeratorName for the unqualified enumeration instead");
 
     /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
     static constexpr bool value = true;
@@ -186,8 +243,11 @@ struct RequireEnumeratorName
 ///
 /// Every view this returns has static storage duration: a reflected name
 /// points into the compiler's function-signature literal, and a customized
-/// one has passed `RequireEnumeratorName`. It is therefore safe to keep for
-/// as long as the program runs.
+/// one has passed the gates described on `EnumeratorName`. It is therefore
+/// safe to keep for as long as the image that computed it stays loaded --
+/// for an ordinary program, until it exits. A view recorded by code in a
+/// shared library or plugin points into that library's read-only data, and
+/// dangles once the library is unloaded.
 ///
 /// Compile time only, and deliberately so. Every enumerator this library
 /// shows is a key of a table fixed at compile time, so the set is always
@@ -200,11 +260,15 @@ template <auto E>
 [[nodiscard]] consteval std::string_view enumerator_name() noexcept
 {
     using Enum = decltype(E);
+    static_assert(RequireUnqualifiedEnumeratorName<Enum>::value);
     if constexpr (detail::customizesEnumeratorName<Enum>)
     {
         static_assert(RequireEnumeratorName<E>::value);
         // Guarded again so a refused specialization is reported once, in the
-        // library's words, and not followed by the raw error from calling it.
+        // library's words, and not followed by the raw error from calling it
+        // -- `enumerator_name_misspelt_of.cpp` and
+        // `enumerator_name_not_constexpr.cpp` REJECT each compiler's raw
+        // wording to pin that.
         if constexpr (detail::ConstantEnumeratorName<E>)
         {
             std::string_view const customized = detail::customized_enumerator_name<E>();

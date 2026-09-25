@@ -374,11 +374,27 @@ formula_add_negative_test(exact_lookup_duplicate_key_no_factory
 formula_add_negative_test(exact_lookup_unscoped_key
     "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
 
+# The REJECTs pin the two "report it once" guards in enumerator.hpp. The
+# first REJECT of the misspelt case is the constant-expression message, which
+# `!EnumeratorNameCustomization || ...` keeps from following the shape
+# message. The rest are each compiler's own wording for the raw call that the
+# `if constexpr (detail::ConstantEnumeratorName<E>)` guard keeps from
+# following either message -- measured with that guard removed, on cl,
+# clang-cl, clang and GCC, each of which emits exactly one of them.
 formula_add_negative_test(enumerator_name_misspelt_of
-    "formula: this EnumeratorName specialisation does not have the shape the library reads")
+    "formula: this EnumeratorName specialisation does not have the shape the library reads"
+    REJECT "is not usable in a constant expression"
+           "no matching function for call to"
+           "no matching overloaded function found")
 
 formula_add_negative_test(enumerator_name_not_constexpr
-    "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression")
+    "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression"
+    REJECT "must be initialized by a constant expression"
+           "called in a constant expression"
+           "expression did not evaluate to a constant")
+
+formula_add_negative_test(enumerator_name_cv_qualified
+    "formula: EnumeratorName is specialised for a const- or volatile-qualified enumeration")
 
 formula_add_negative_test(enumerator_name_dangling_view
     "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression")
