@@ -127,12 +127,20 @@ A specimen compacted below the reference density is corrected upward by a fixed 
 `V_w` = 180 l, `V_c` = 300 l:
 
 ```
-w/c = V_w / V_c = 180 l / 300 l = 3/5 = 0.6
+V_w / V_c
+```
+
+```
+with V_w = 180 l and V_c = 300 l: 3/5 = 0.6
 ```
 
 ## Worked derivation: bulk density
 
 `m` = 1200 kg, `V` = 0.5 m3, `formula::explain()` and `formula::render_trace()`:
+
+```
+m / V
+```
 
 ```
 1. m = 1200 kg
@@ -144,6 +152,10 @@ w/c = V_w / V_c = 180 l / 300 l = 3/5 = 0.6
 ## Worked derivation: compaction-adjusted bulk density
 
 `rho_m` = 1500 kg/m3 -- below the 1800 kg/m3 reference density, so the predicate holds and the correction factor is applied:
+
+```
+if rho_m < 1800 kg/m3 then rho_m * 11/10 else rho_m
+```
 
 ```
 1. rho_m = 1500 kg/m3
@@ -158,6 +170,14 @@ w/c = V_w / V_c = 180 l / 300 l = 3/5 = 0.6
 ## Worked derivation: maximum specimen diameter, alongside the circular area it validates
 
 `d` = 200 mm -- above the 150 mm tolerance, so the constraint is violated and its verdict appears in the trace, `formula::check()` and `formula::render_trace()`:
+
+```
+require d <= 150 mm
+```
+
+```
+pi * d^2 / 4
+```
 
 ```
 1. d = 200 mm

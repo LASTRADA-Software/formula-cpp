@@ -30,6 +30,7 @@ jobs:
           - { name: "Windows-clang-cl", os: windows-2025, preset: clangcl-release }
           - { name: "Linux-clang",      os: ubuntu-24.04, preset: clang-release }
           - { name: "Linux-gcc",        os: ubuntu-24.04, preset: gcc-release }
+          - { name: "Linux-clang-ubsan", os: ubuntu-24.04, preset: clang-ubsan }
           - { name: "macOS-clang",      os: macos-15,     preset: clang-release }
     steps:
       - uses: actions/checkout@v4
@@ -55,14 +56,30 @@ jobs:
       # failed to compile while the GCC leg, on the same machine image, was fine.
       # Pull Clang ${{ env.CLANG_VERSION }} from the official LLVM apt source, as
       # our other C++ projects already do, which also lines this leg up with
-      # the clang-cl 22.x used on the Windows leg.
+      # the clang-cl 22.x used on the Windows leg. Also covers clang-ubsan,
+      # which is Linux-only and needs the same compiler.
       - name: Install Clang ${{ env.CLANG_VERSION }}
-        if: matrix.preset == 'clang-release' && runner.os == 'Linux'
+        if: (matrix.preset == 'clang-release' || matrix.preset == 'clang-ubsan') && runner.os == 'Linux'
         run: |
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh ${{ env.CLANG_VERSION }}
-          sudo apt-get install -y clang-${{ env.CLANG_VERSION }}
+          # apt.llvm.org intermittently fails to resolve on a fresh runner --
+          # observed once as "Temporary failure in name resolution", which
+          # failed this step before a single file was compiled and painted a
+          # red X on a commit that was fine. A red leg that means nothing is
+          # worse than no leg: it costs someone an investigation and teaches
+          # everyone to skim past failures.
+          #
+          # Retry the install as a whole rather than any single command. wget's
+          # own --tries does not cover a DNS failure, and llvm.sh and apt-get
+          # can each fail transiently for their own reasons.
+          for attempt in 1 2 3; do
+            if wget -q https://apt.llvm.org/llvm.sh                && chmod +x llvm.sh                && sudo ./llvm.sh ${{ env.CLANG_VERSION }}                && sudo apt-get install -y clang-${{ env.CLANG_VERSION }}; then
+              exit 0
+            fi
+            echo "::warning::Clang install attempt $attempt failed; retrying"
+            sleep $((attempt * 15))
+          done
+          echo "::error::Clang ${{ env.CLANG_VERSION }} could not be installed after 3 attempts"
+          exit 1
 
       - name: Set up MSVC environment
         if: runner.os == 'Windows'

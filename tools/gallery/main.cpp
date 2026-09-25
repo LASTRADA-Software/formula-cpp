@@ -313,6 +313,21 @@ template <formula::Predicate P>
 
 } // namespace
 
+/// A worked section shows the expression it is working, not only the trace
+/// of having worked it. A reader who lands on one directly -- which is what
+/// a deep link into this page does -- otherwise has to reconstruct the
+/// formula from its own numbered steps.
+///
+/// Rendered, never hand-typed. A literal spelling here would be a second
+/// source for the formula, free to drift from what `render()` actually
+/// produces -- and a page that exists to prove its snippets came from a real
+/// run is the worst place in the repository to keep one.
+template <typename N>
+void write_worked_formula(std::ofstream& out, N const& node)
+{
+    out << "```\n" << formula::render(node) << "\n```\n\n";
+}
+
 int main(int argc, char** argv)
 {
     if (argc != 2)
@@ -360,14 +375,18 @@ int main(int argc, char** argv)
     }
     formula::Rational const result = outcome->measurement().value();
 
+    write_worked_formula(out, waterCementRatio);
+
     out << "```\n";
-    out << "w/c = V_w / V_c = 180 l / 300 l = " << exact_text(result) << " = " << result.to_double() << "\n";
+    out << "with V_w = 180 l and V_c = 300 l: " << exact_text(result) << " = " << result.to_double() << "\n";
     out << "```\n\n";
 
     // ---- A worked derivation, so the page shows how a number was reached, not only what it is ----
 
     out << "## Worked derivation: bulk density\n\n";
     out << "`m` = 1200 kg, `V` = 0.5 m3, `formula::explain()` and `formula::render_trace()`:\n\n";
+
+    write_worked_formula(out, density);
 
     auto const densityInputs = formula::environment(formula::Measured<SpecimenMass> { formula::Rational { 1200 } },
                                                      formula::Measured<SpecimenVolume> { formula::Rational { 1, 2 } });
@@ -388,6 +407,8 @@ int main(int argc, char** argv)
     out << "`rho_m` = 1500 kg/m3 -- below the 1800 kg/m3 reference density, so the predicate holds "
            "and the correction factor is applied:\n\n";
 
+    write_worked_formula(out, compactionAdjustedDensity);
+
     auto const compactionInputs = formula::environment(formula::Measured<MeasuredDensity> { formula::Rational { 1500 } });
     formula::Explained<AdjustedBulkDensity> const explainedCompaction =
         formula::explain<AdjustedBulkDensity>(compactionAdjustedDensity, compactionInputs);
@@ -406,6 +427,11 @@ int main(int argc, char** argv)
     out << "## Worked derivation: maximum specimen diameter, alongside the circular area it validates\n\n";
     out << "`d` = 200 mm -- above the 150 mm tolerance, so the constraint is violated and its verdict "
            "appears in the trace, `formula::check()` and `formula::render_trace()`:\n\n";
+
+    // Both, because the heading promises both: the constraint that was
+    // checked, and the formula it guards.
+    write_worked_formula(out, maximumDiameter);
+    write_worked_formula(out, circularArea);
 
     auto const oversizedSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 200 } });
     formula::Trace<> constraintTrace {};

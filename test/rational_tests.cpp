@@ -157,6 +157,12 @@ static_assert(-exact(1, 2) == exact(-1, 2));
 static_assert(+exact(1, 2) == exact(1, 2));
 static_assert(-Rational { 0 } == Rational { 0 });
 
+// The one numerator negation cannot flip: IntMin has no representable
+// positive counterpart. checked_negate reports it instead of invoking
+// undefined signed negation -- morph PR #561 negated unguarded at exactly
+// this point.
+static_assert(formula::checked_negate(Rational { IntMin }).error() == ArithmeticError::Overflow);
+
 static_assert(formula::abs(exact(-3, 4)) == exact(3, 4));
 static_assert(formula::abs(exact(3, 4)) == exact(3, 4));
 static_assert(formula::abs(Rational { 0 }) == Rational { 0 });
@@ -177,6 +183,12 @@ static_assert(formula::pow(Rational { 10 }, 18) == Rational { 100000000000000000
 static_assert(formula::checked_reciprocal(exact(2, 3)) == exact(3, 2));
 static_assert(formula::checked_reciprocal(exact(-2, 3)) == exact(-3, 2));
 static_assert(!formula::checked_reciprocal(Rational { 0 }).has_value());
+// The reciprocal of n/d is d/n; when n is IntMin the result would need a
+// denominator of magnitude 2^63, one past IntMax. make() grants that extra
+// headroom to numerators only, since only a numerator carries the sign --
+// denominators are always positive. So this is refused by make()'s own
+// bound, with no negation anywhere in the path.
+static_assert(formula::checked_reciprocal(Rational { IntMin }).error() == ArithmeticError::Overflow);
 
 static_assert(!formula::checked_div(Rational { 1 }, Rational { 0 }).has_value());
 static_assert(formula::checked_div(Rational { 1 }, Rational { 0 }).error() == ArithmeticError::DivisionByZero);
@@ -187,6 +199,14 @@ static_assert(!formula::checked_pow(Rational { 10 }, 19).has_value());
 // Cross-reduction must make this succeed: the naive product of the numerators
 // would overflow, but the canonical result is simply 1.
 static_assert(exact(IntMax, 3) * exact(3, IntMax) == Rational { 1 });
+
+// checked_mul cross-reduces with detail::magnitude(), not raw negation, so an
+// IntMin numerator is an ordinary operand -- on either side of the
+// multiplication. "Simplifying" the cross-reduction to `n < 0 ? -n : n` is
+// exactly morph PR #561's bug. Both sides are checked: this project has lost
+// coverage before to testing only one side of a two-sided operation.
+static_assert(formula::checked_mul(Rational { IntMin }, exact(1, 2)) == exact(IntMin, 2));
+static_assert(formula::checked_mul(exact(1, 2), Rational { IntMin }) == exact(IntMin, 2));
 
 TEST_CASE("addition is exact where binary floating point is not", "[rational]")
 {
@@ -223,6 +243,40 @@ TEST_CASE("abs throws where checked_abs reports Overflow", "[rational]")
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == ArithmeticError::Overflow);
     CHECK_THROWS_AS(formula::abs(Rational { IntMin }), ArithmeticException);
+}
+
+TEST_CASE("negate throws where checked_negate reports Overflow", "[rational]")
+{
+    auto const result = formula::checked_negate(Rational { IntMin });
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ArithmeticError::Overflow);
+    CHECK_THROWS_AS(-Rational { IntMin }, ArithmeticException);
+}
+
+TEST_CASE("reciprocal of IntMin is refused by make's bound, not by negating it", "[rational]")
+{
+    auto const result = formula::checked_reciprocal(Rational { IntMin });
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == ArithmeticError::Overflow);
+    // checked_reciprocal has no throwing counterpart of its own -- division
+    // uses it internally, so this exercises the same refusal through operator/.
+    CHECK_THROWS_AS(Rational { 1 } / Rational { IntMin }, ArithmeticException);
+}
+
+TEST_CASE("multiplying by IntMin cross-reduces without negating it, on either side", "[rational]")
+{
+    CHECK(Rational { IntMin } * exact(1, 2) == exact(IntMin, 2));
+    CHECK(exact(1, 2) * Rational { IntMin } == exact(IntMin, 2));
+
+    auto const leftOverflow = formula::checked_mul(Rational { IntMin }, Rational { 2 });
+    REQUIRE_FALSE(leftOverflow.has_value());
+    CHECK(leftOverflow.error() == ArithmeticError::Overflow);
+    CHECK_THROWS_AS(Rational { IntMin } * Rational { 2 }, ArithmeticException);
+
+    auto const rightOverflow = formula::checked_mul(Rational { 2 }, Rational { IntMin });
+    REQUIRE_FALSE(rightOverflow.has_value());
+    CHECK(rightOverflow.error() == ArithmeticError::Overflow);
+    CHECK_THROWS_AS(Rational { 2 } * Rational { IntMin }, ArithmeticException);
 }
 
 TEST_CASE("cross-reduction keeps representable results representable", "[rational]")

@@ -270,16 +270,24 @@ template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typ
     Evaluated<Rep> const lhs = detail::dispatch<Rep>(node.lhs, environment, sink);
     if (!lhs.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { lhs.error() };
-        sink.produced(node, failed);
-        return failed;
+        // Built twice rather than held in a named local: GCC 13 reports a
+        // false -Wmaybe-uninitialized on returning a named std::expected that
+        // has been passed to the sink by reference. The error is a plain
+        // enumerator, so constructing it twice costs nothing.
+        auto const failure = lhs.error();
+        sink.produced(node, Evaluated<Rep> { std::unexpected { failure } });
+        return Evaluated<Rep> { std::unexpected { failure } };
     }
     Evaluated<Rep> const rhs = detail::dispatch<Rep>(node.rhs, environment, sink);
     if (!rhs.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { rhs.error() };
-        sink.produced(node, failed);
-        return failed;
+        // Built twice rather than held in a named local: GCC 13 reports a
+        // false -Wmaybe-uninitialized on returning a named std::expected that
+        // has been passed to the sink by reference. The error is a plain
+        // enumerator, so constructing it twice costs nothing.
+        auto const failure = rhs.error();
+        sink.produced(node, Evaluated<Rep> { std::unexpected { failure } });
+        return Evaluated<Rep> { std::unexpected { failure } };
     }
 
     // Absence wins over arithmetic, but only after both sides have been asked:
