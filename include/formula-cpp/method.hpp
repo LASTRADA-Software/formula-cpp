@@ -507,8 +507,10 @@ namespace detail
     /// variants that disagree is already refused by `Variants`: asking this
     /// rule as well would add a second error -- measured against whichever
     /// variant happened to be first -- to the one that names the mistake.
-    /// `method_rounding_rule_gated.cpp` pins that half. Both pin it by
-    /// refusing any output that names this rule.
+    /// `method_rounding_rule_gated.cpp` pins that half, and
+    /// `method_rounding_rule_gated_not_a_variant.cpp` pins the same gate for a
+    /// pack that holds a non-variant. Each case pins its route by refusing
+    /// any output that names this rule.
     template <typename Vs, typename Rounding>
     inline constexpr bool canAskRoundingRule = IsRoundingRule<Rounding>::value && VariantsDimension<Vs>::known;
 

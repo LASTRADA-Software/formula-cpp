@@ -480,6 +480,12 @@ formula_add_negative_test(method_rounding_rule_gated
     "formula: two variants of this method measure different dimensions"
     REJECT "RequireRoundingRuleMeasuresVariants")
 
+# The same gate on its other route: a pack holding a non-variant, which has no
+# agreed dimension because one of its members has no dimension at all.
+formula_add_negative_test(method_rounding_rule_gated_not_a_variant
+    "formula: this argument of variants(...) is not a variant of a method"
+    REJECT "RequireRoundingRuleMeasuresVariants")
+
 # Each part of a method must be the kind of thing its factory builds. The
 # first case passes the variants and the rounding rule in each other's place,
 # which compiled before this rule and failed only at `evaluate_method`, in the
