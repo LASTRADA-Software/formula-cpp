@@ -214,7 +214,14 @@ at all — and while the member was a raw array, that route bypassed the check
 entirely and the untyped rows evaluated to `0` on all three kinds. The factory's
 parameter cannot see a call that never happens. A consequence worth knowing:
 a lookup node has no default constructor, because `{}` for a table of three
-rows is a count of zero, which is exactly the mistake being refused.
+rows is a count of zero, which is exactly the mistake being refused. The
+standard traits say so (`std::is_default_constructible_v` and
+`std::default_initializable` are `false`), and so they do for anything holding
+a lookup, which is what lets a method's variants and constraints, each kept in
+a `std::tuple`, hold one. An explicitly empty list is refused in the
+compiler's own words ("no matching constructor") rather than in the sentence
+naming both counts, because an empty list and that trait question are one and
+the same request.
 
 ## A miss is not a value
 

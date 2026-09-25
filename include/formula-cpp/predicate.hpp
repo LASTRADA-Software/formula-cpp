@@ -73,9 +73,12 @@ struct PredicateNode
     static_assert(detail::RequireComparandsAgree<Left, Right>::value);
 
     /// The left-hand child expression.
-    Left lhs {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Left lhs;
     /// The right-hand child expression.
-    Right rhs {};
+    Right rhs;
 
     /// Which comparison this is.
     static constexpr Comparison comparison = Op;

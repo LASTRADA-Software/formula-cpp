@@ -88,7 +88,10 @@ struct NumericValueNode: NodeBase
     static_assert(detail::RequireEscapeUnitMatches<U, Operand>::value);
 
     /// The expression whose numeric value is taken.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Operand operand;
 
     /// The unit the number must be read in. The coefficients of the rule this
     /// escape hatch exists for only work for this one unit; that is what makes

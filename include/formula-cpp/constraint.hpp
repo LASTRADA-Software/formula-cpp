@@ -185,7 +185,10 @@ template <Predicate P>
 struct Constraint
 {
     /// The condition that must hold for this constraint to be satisfied.
-    P predicate {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    P predicate;
     /// What the outcome is when `predicate` does not hold.
     Verdict verdict {};
     /// Where this constraint comes from.
@@ -277,7 +280,10 @@ struct ConstraintSet
     /// `check_all()` reports one `ConstraintOutcome` per element of this
     /// tuple, at the same index -- see `check_all()` for why that order is
     /// part of the contract.
-    std::tuple<Constraint<Ps>...> items {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    std::tuple<Constraint<Ps>...> items;
 };
 
 /// Builds a constraint set: `constraints(a, b, c)`. See `ConstraintSet`.

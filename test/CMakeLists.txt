@@ -57,6 +57,7 @@ add_executable(formula-cpp-tests
     enumerator_tests.cpp
     tag_tests.cpp
     method_tests.cpp
+    method_lookup_tests.cpp
     overlay_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
@@ -334,6 +335,19 @@ formula_add_negative_test(exact_lookup_short_corrections_no_factory
 
 formula_add_negative_test(interpolating_lookup_short_corrections_no_factory
     "this lookup table was given a different number of corrections than it has rows")
+
+# An EMPTY list is the one wrong count the sentence above does not reach, on
+# purpose: `{}` is what a default-constructibility probe asks for, and a
+# refusal reachable from it stopped a method holding a lookup from compiling on
+# clang++ with libstdc++ -- see `Corrections` in lookup.hpp. It is refused by
+# the wrong-count constructor's constraint instead, in the compiler's words,
+# which every compiler spells with the type's name. The REJECT pins the route:
+# an empty list that reached the constructor body again would print the
+# sentence, and fail this case on every compiler, not only the one that shows
+# the method defect.
+formula_add_negative_test(lookup_empty_corrections_no_factory
+    "Corrections<"
+    REJECT "this lookup table was given a different number of corrections than it has rows")
 
 # The key-unit guard is shared by every lookup kind that HAS a key unit -- the
 # banded and the interpolating one -- for the same reason the corrections-count

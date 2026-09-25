@@ -27,7 +27,10 @@ template <int Exponent, Node Operand>
 struct PowerNode: NodeBase
 {
     /// The base expression.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Operand operand;
 
     /// The power `operand` is raised to.
     static constexpr int exponent = Exponent;
@@ -56,7 +59,10 @@ struct RootNode: NodeBase
     static_assert(detail::RequirePositiveRootDegree<Degree>::value);
 
     /// The expression the root is taken of.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Operand operand;
 
     /// Which root this is -- 2 for a square root, 3 for a cube root, and so on.
     static constexpr int degree = Degree;

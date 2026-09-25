@@ -76,11 +76,14 @@ struct WhenNode: NodeBase
     static_assert(detail::RequireBranchesAgree<Then, Else>::value);
 
     /// The condition that selects a branch.
-    P predicate {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    P predicate;
     /// Evaluated, and only evaluated, when `predicate` holds.
-    Then thenBranch {};
+    Then thenBranch;
     /// Evaluated, and only evaluated, when `predicate` does not hold.
-    Else elseBranch {};
+    Else elseBranch;
 
     /// The two branches already agree; this is that (shared) dimension.
     static constexpr Dimension dimension = Then::dimension;

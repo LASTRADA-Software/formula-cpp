@@ -51,7 +51,10 @@ struct RoundNode: NodeBase
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
 
     /// The expression being rounded.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Operand operand;
 
     /// The unit the rounding happens in.
     static constexpr Unit unit = U;
@@ -70,7 +73,10 @@ struct RoundSignificantNode: NodeBase
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
 
     /// The expression being rounded.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Operand operand;
 
     /// The unit the rounding happens in.
     static constexpr Unit unit = U;

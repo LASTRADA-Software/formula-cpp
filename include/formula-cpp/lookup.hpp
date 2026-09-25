@@ -628,21 +628,31 @@ namespace detail
 /// `node.corrections[index]` meaning what it always meant in the renderer, the
 /// tracer and the evaluator alike.
 ///
-/// **Neither the trait nor the concept will tell you a node is not
-/// default-constructible, and they fail differently.** The refusal is a
-/// `static_assert` in a constructor *body*, so
-/// `std::is_default_constructible_v<SomeLookupNode>` answers **`true`** -- a
-/// trait only asks whether a constructor is viable, and never instantiates one
-/// to find out. `std::default_initializable` and `std::semiregular` do
-/// instantiate it, and so do not answer at all: they **hard-error**. Measured
-/// on cl 19.51 and clang-cl 22, with a deleted-default-constructor control
-/// that both traits and both concepts answer `false` for cleanly, so the
-/// instruments are shown able to say it. The error text is this library's own
-/// sentence naming both counts (`0` and `3`), which is the good message -- but
-/// it arrives from inside `<concepts>`, at a line the caller never wrote, and
-/// **a concept that hard-errors cannot be used as a predicate**: it will not
-/// constrain an overload, pick a branch or SFINAE anything. Generic code over
-/// nodes must not ask. The honest check is whether a factory was called.
+/// **Asked whether a node is default-constructible, the traits and the
+/// concepts answer `false`, cleanly**, and so does anything holding a lookup
+/// node: a `BinaryNode` around one, a `VariantCase`, a `Constraint`. That
+/// takes two things, and both are load bearing:
+///
+///  - A count of zero is refused by the wrong-count constructor's
+///    *constraint*, not by its body -- see that constructor below. With
+///    `{}` reaching a `static_assert` in a body instead, the traits answered
+///    `true` and the concepts hard-errored; and clang++ 20 with libstdc++ 14
+///    instantiated that body from inside `std::tuple<VariantCase<...>>`,
+///    whose default constructor asks `__is_implicitly_default_constructible`
+///    of each element, so **a method could not hold a lookup at all**. g++,
+///    cl and clang-cl did not instantiate the body and accepted it, which is
+///    why only that one toolchain showed it.
+///  - Every member of every node, variant and constraint that holds a child
+///    expression is declared **without** a `{}` default member initialiser
+///    (`Operand operand;`, `Left lhs;`, `Expr expression;` and so on). An
+///    omitted member is still copy-initialised from `{}` by aggregate
+///    initialisation, so nothing that initialises a node changes -- but a
+///    `{}` written as a *default member initialiser* is instantiated on its
+///    own, outside the probe's immediate context, and clang reports a child
+///    that cannot be built from `{}` there as a hard error rather than as
+///    the probe's answer. Putting `{}` back on any one of them re-breaks a
+///    method holding a lookup under that member, on clang++ with libstdc++
+///    only; `method_lookup_tests.cpp` pins it.
 ///
 /// **`corrections` is no longer a range, and `operator[]` is const and returns
 /// by value.** So `for (auto& correction: node.corrections)`,
@@ -660,6 +670,19 @@ namespace detail
 /// and its `static_assert` (through `RequireCorrectionCountMatches`) names
 /// both counts -- rather than the compiler's own generic "no matching
 /// constructor for call", which names neither.
+///
+/// **Except a count of zero, and that is a trade-off, not an oversight.**
+/// `{}` is value-initialisation, and value-initialisation is exactly what a
+/// default-constructibility probe performs, so no route can refuse an empty
+/// list in this library's words without also refusing every probe -- the
+/// defect described above. An empty list for a table with rows therefore
+/// selects no constructor at all, and is refused in the compiler's own words
+/// ("no matching constructor", "no appropriate default constructor"), which
+/// still name `Corrections<N>`; `lookup_empty_corrections_no_factory.cpp`
+/// pins that it is refused. Every *non-empty* wrong count -- the list with a
+/// row forgotten, which is the mistake anybody actually makes -- still gets
+/// the sentence naming both counts. A table of no rows takes `{}` through the
+/// matching-arity constructor, as it always did.
 ///
 /// Each element is constrained by `std::convertible_to<Rational>`, not
 /// `std::same_as<Rational>`: the arity check is what closes the actual hole
@@ -686,10 +709,12 @@ struct Corrections
     {
     }
 
-    /// Every other count: fails to compile, naming both counts through
-    /// `RequireCorrectionCountMatches`'s template arguments.
+    /// Every other non-zero count: fails to compile, naming both counts
+    /// through `RequireCorrectionCountMatches`'s template arguments. Zero is
+    /// left out by the constraint rather than refused in the body -- see the
+    /// class comment for why a body reachable from `{}` breaks `std::tuple`.
     template <typename... Rs>
-        requires(sizeof...(Rs) != N) && (std::convertible_to<Rs, Rational> && ...)
+        requires(sizeof...(Rs) != N) && (sizeof...(Rs) != 0) && (std::convertible_to<Rs, Rational> && ...)
     constexpr Corrections(Rs...) noexcept
     {
         static_assert(detail::RequireCorrectionCountMatches<sizeof...(Rs), N>::value);
@@ -745,7 +770,10 @@ struct BandedLookupNode: NodeBase
     Corrections<Bands.size()> corrections;
 
     /// The expression whose evaluated value selects a band.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// for the clang++/libstdc++ defect one causes.
+    Operand operand;
 
     /// The unit band boundaries are declared in, and the unit `operand`'s
     /// value is compared against them in -- part of the table's *structure*.
@@ -1705,7 +1733,10 @@ struct InterpolatingLookupNode: NodeBase
     Corrections<Points.size()> corrections;
 
     /// The expression whose evaluated value is located against `breakpoints`.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// for the clang++/libstdc++ defect one causes.
+    Operand operand;
 
     /// The unit breakpoints are declared in, and the unit `operand`'s value is
     /// compared against them in -- part of the table's *structure*. The

@@ -59,7 +59,10 @@ template <Node Inner>
 struct DocumentedNode: NodeBase
 {
     /// The wrapped expression.
-    Inner inner {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Inner inner;
     /// Where `inner` comes from.
     Citation citation {};
 

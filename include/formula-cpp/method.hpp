@@ -173,7 +173,10 @@ struct VariantCase
     using tag = Tag;
 
     /// The expression evaluated when this variant is the one selected.
-    Expr expression {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Expr expression;
 
     /// The dimension this variant reports. Every variant of one method must
     /// publish the same one -- see `detail::RequireVariantsAgree`.
@@ -535,7 +538,10 @@ struct Variants
     /// The variants, in the order `variants(...)` was called with them. That
     /// order is part of the contract: selection reports which index fired,
     /// and a reader matches it back to the declaration by counting.
-    std::tuple<Cs...> cases {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    std::tuple<Cs...> cases;
 };
 
 /// Builds a method's variants pack: `variants(a, b, c)`. See the file comment
@@ -737,11 +743,14 @@ struct Method
                                                   std::remove_cv_t<Constraints>>::value);
 
     /// The variants, as `variants(...)` built them.
-    Vs variantSet {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`
+    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    Vs variantSet;
     /// The rule applied to the selected variant's result.
     Rounding rounding {};
     /// The constraints, as `constraints(...)` built them.
-    Constraints constraintSet {};
+    Constraints constraintSet;
 };
 
 namespace detail
