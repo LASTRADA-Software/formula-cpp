@@ -66,6 +66,15 @@ constexpr auto replicateAgreement =
 constexpr auto uncitedAgreement = formula::constraint(var<ReplicateA> > var<ReplicateB>,
                                                      formula::Verdict { "repeat the test" });
 
+// Cited by clause number alone, with no title -- an ordinary input for a
+// rule that has a section but no name of its own. Deliberately a field
+// other than `title`: it distinguishes collect()'s actual guard, "every
+// field of the citation is blank", from a guard that only happened to
+// check `title`, which this fixture would not catch.
+constexpr auto sectionOnlyAgreement =
+    formula::constraint(var<ReplicateA> > var<ReplicateB>, formula::Verdict { "repeat the test" },
+                        { .section = "9.4" });
+
 } // namespace
 
 TEST_CASE("document: the documentation carries the rendered formula", "[document]")
@@ -331,6 +340,22 @@ TEST_CASE("document: an uncited constraint contributes no citation row", "[docum
     formula::Documentation const documentation = formula::document(uncitedAgreement);
 
     CHECK(documentation.citations.empty());
+}
+
+TEST_CASE("document: a constraint cited by only one field still contributes a citation row", "[document]")
+{
+    // The all-empty and all-populated cases above do not pin *why* the
+    // guard in collect(Walk&, Constraint<P> const&) is correct -- a guard
+    // written as `!node.citation.title.empty()` passes both of those tests
+    // too, and title is not what the guard actually checks. This is the
+    // case that tells them apart: a citation with title blank and section
+    // filled in must still contribute a row, because it is not blank --
+    // only title is.
+    formula::Documentation const documentation = formula::document(sectionOnlyAgreement);
+
+    REQUIRE(documentation.citations.size() == 1);
+    CHECK(documentation.citations[0].title.empty());
+    CHECK(documentation.citations[0].section == std::string_view { "9.4" });
 }
 
 TEST_CASE("document: a constraint predicate's left-hand side reaches the symbol table", "[document]")
