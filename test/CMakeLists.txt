@@ -197,8 +197,20 @@ formula_add_negative_test(lookup_short_corrections
 formula_add_negative_test(exact_lookup_short_corrections
     "this lookup table was given a different number of corrections than it has rows")
 
+formula_add_negative_test(interpolating_lookup_short_corrections
+    "this lookup table was given a different number of corrections than it has rows")
+
+# The key-unit guard is shared by every lookup kind that HAS a key unit -- the
+# banded and the interpolating one -- for the same reason the corrections-count
+# guard is shared: one rule, one mistake, one sentence. (The exact lookup has no
+# key unit; its key is a discriminator, not a quantity.) Both cases assert the
+# same string, and both exist, because deleting the guard from one node kind
+# leaves the other kind's case failing exactly as before.
 formula_add_negative_test(lookup_key_dimension_mismatch
-    "this banded lookup's key unit does not measure the dimension of the expression whose value selects a band")
+    "this lookup table's key unit does not measure the dimension of the expression whose value selects a row")
+
+formula_add_negative_test(interpolating_lookup_key_dimension_mismatch
+    "this lookup table's key unit does not measure the dimension of the expression whose value selects a row")
 
 # Three duplicate-key cases, asserting one string, because each pins a
 # different way the check can be broken while the other two still pass:
@@ -243,6 +255,38 @@ formula_add_negative_test(lookup_rep_not_rational
 
 formula_add_negative_test(exact_lookup_rep_not_rational
     "formula: an exact lookup node can only be evaluated with Rep = Rational")
+
+formula_add_negative_test(interpolating_lookup_rep_not_rational
+    "formula: an interpolating lookup node can only be evaluated with Rep = Rational")
+
+# An interpolating table's own well-formedness, in its two independent rules.
+#
+# The ordering rule has three cases asserting one string, because each pins a
+# different way it can be broken while the other two still pass:
+#   - _duplicate_breakpoint states the same key twice, which is what survives a
+#     comparison relaxed from `<` to `<=`;
+#   - _descending_breakpoint types two rows out of order, which survives the
+#     opposite mistake -- a check that only rejected equality;
+#   - _no_factory declares the node directly, which is the ONLY case that tells
+#     a class-body `static_assert` from one in the factory, since the factory
+#     returns the node by value and so completes the class either way.
+# Each puts its defect in the MIDDLE pair of four rows, which kills a sweep
+# confined to the first pair or to the last.
+formula_add_negative_test(interpolating_lookup_duplicate_breakpoint
+    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+
+formula_add_negative_test(interpolating_lookup_descending_breakpoint
+    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+
+formula_add_negative_test(interpolating_lookup_descending_breakpoint_no_factory
+    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+
+# The other rule: a row whose key is not a rational number at all. Separate from
+# the ordering rule because a one-row table has no pair for the ordering sweep
+# to look at, and because "not ascending" would be a true statement about the
+# wrong mistake.
+formula_add_negative_test(interpolating_lookup_malformed_breakpoint
+    "formula: this interpolating lookup table has a row whose key is not a rational number")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this banded lookup's key unit does not measure the dimension of the expression whose value selects a band
+// EXPECT: formula: this lookup table's key unit does not measure the dimension of the expression whose value selects a row
 //
 // A kilogram key over a millimetre (length) operand: looking a mass up in a
 // table of length bands is not a lookup miss, it is a category error, and it
 // must be caught here rather than surfacing as a confusing checked_convert
-// failure at evaluation time. This must not compile.
+// failure at evaluation time.
+//
+// The guard is `RequireLookupKeyMatches`, shared with the interpolating lookup
+// -- one rule, one sentence -- so its message names a "row" rather than one
+// kind's own word for one, exactly as the corrections-count guard does. The
+// interpolating kind has its own file asserting this same string, because
+// deleting the guard from either node alone would leave the other's case
+// failing exactly as before. This must not compile.
 #include <formula-cpp/lookup.hpp>
 
 namespace

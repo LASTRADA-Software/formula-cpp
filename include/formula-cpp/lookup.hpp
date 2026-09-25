@@ -3,7 +3,7 @@
 
 /// @file
 /// Lookup tables: a method publishes rows, and something about the specimen
-/// selects one of them. Two kinds live here, and they share one vocabulary
+/// selects one of them. Three kinds live here, and they share one vocabulary
 /// for everything they have in common:
 ///
 ///  - **Banded lookup** (`BandedLookupNode`): a measured value falls in an
@@ -11,13 +11,16 @@
 ///  - **Exact lookup** (`ExactLookupNode`): a category key -- a discriminator
 ///    such as a specimen shape or an apparatus variant, which is *not* a
 ///    quantity -- names a row directly.
+///  - **Interpolating lookup** (`InterpolatingLookupNode`): a measured value
+///    sits between two rows, and the answer is the value those two rows imply
+///    at that point -- a number that appears in no row of the table.
 ///
-/// The two report a miss identically, split structure from contents
-/// identically, and share one `Corrections<N>` wrapper. Everything below
-/// about a miss, about `documented()` carrying a table's identity, and about
-/// what is left to a later task is written once and binds both; the
-/// exact-lookup section near the end of this comment adds only what is
-/// genuinely particular to a key.
+/// All three report a miss identically, split structure from contents
+/// identically, and share one `Corrections<N>` wrapper and one key-unit guard.
+/// Everything below about a miss, about `documented()` carrying a table's
+/// identity, and about what is left to a later task is written once and binds
+/// all three; the exact-lookup and interpolating-lookup sections near the end
+/// of this comment add only what is genuinely particular to each.
 ///
 /// A method's own algebra sometimes needs a coefficient no formula computes --
 /// a size-correction factor for a specimen's diameter, say -- that the
@@ -291,6 +294,147 @@
 /// neither lookup node today, so both are equally untraceable right now; the
 /// asymmetry is written down here so the later task does not discover it
 /// after designing for the banded case alone.
+///
+/// ===========================================================================
+///
+/// **Interpolating lookup: a value between two rows.** The third table kind in
+/// this file, and the only one whose answer is a number the table does not
+/// contain. A published curve states a value at a handful of key points --
+/// 0, 10, 20, 30 mm, say -- and a specimen measured at 15 mm is not "in the
+/// 10-20 row": the method means the value the two surrounding rows imply at
+/// 15 mm. A band table cannot express that, because a band selects one stored
+/// correction for its whole interval; this node computes.
+///
+/// **The table is points, not intervals, and that is why `BandTable` is not
+/// reused.** A band carries a low and a high bound and the correction belongs
+/// to the interval between them. An interpolating row carries one key and the
+/// value stated *at* that key, and the interval between two rows is implied by
+/// the rows rather than declared. So `Breakpoint` is a single
+/// numerator/denominator pair -- `std::int64_t` rather than `Rational`, for
+/// exactly the reason `Band` is (`band.hpp`: `Rational` keeps its members
+/// private, so it is not structural and cannot be a non-type template
+/// parameter) -- and `BreakpointTable<N>` is an alias over `std::array`, for
+/// the reason `BandTable` and `KeyTable` are.
+///
+/// The structure/contents split is `BandedLookupNode`'s, unchanged: `KeyUnit`,
+/// `Points` and `ResultUnit` are the table's *structure* and live in the type;
+/// `corrections` -- the value stated at each breakpoint -- are its *contents*
+/// and arrive at runtime, through the same `Corrections<N>` wrapper, closing
+/// the same short-braced-list hole.
+///
+/// **A table's own well-formedness is that its breakpoints strictly ascend.**
+/// Two rows at the same key state two different values at one key and leave a
+/// segment of zero width to divide by; two rows out of order make "between
+/// these two rows" meaningless. One rule -- `first < second` -- and therefore
+/// one diagnostic, the same judgement `band.hpp` makes in treating an inverted
+/// band and a zero-width band as one failure of one rule.
+/// `RequireBreakpointsAscend` refuses it at compile time and names both
+/// offending breakpoints; `breakpoint_table_is_well_formed` is the same
+/// question for a curve that only arrives at runtime, built on the same
+/// `breakpoints_ascend` predicate, so the two cannot drift -- the arrangement
+/// `band.hpp` and the exact lookup both use.
+///
+/// **Only neighbouring pairs are compared, and that is a proof rather than an
+/// optimisation.** If every adjacent pair ascends then the whole table ascends
+/// by transitivity, so no two rows anywhere in the table can share a key or sit
+/// out of order -- the same chaining argument `band_table_is_well_formed`'s own
+/// comment sets out. This is the one place the interpolating table differs from
+/// the *exact* table, which must compare every pair because its keys have no
+/// order for transitivity to run along.
+///
+/// Alongside that, `breakpoint_is_well_formed` asks the separate question of
+/// whether a row's key is a rational number at all -- a zero denominator, or a
+/// pair that cannot be reduced without overflow. It is separate for the reason
+/// `band_is_well_formed` is separate from `bands_are_adjacent`: a one-row table
+/// has no pair, so the ordering sweep never runs and only a per-row check can
+/// catch a malformed key there; and where both apply, an author reading "this
+/// breakpoint is not a number" is better served than one reading "these
+/// breakpoints are not in ascending order".
+///
+/// An empty table validates and always misses, and a **one-row** table
+/// validates and answers at exactly its own key and nowhere else -- both for
+/// the reason `BandTable<0>` validates (`band.hpp`'s file comment). Neither is
+/// malformed; both are merely narrow, and a table that leaves part of the
+/// domain undefined is a thing this library can say honestly. A one-row table
+/// is explicitly **not** refused for "having nothing to interpolate between":
+/// it states a value at one key, and reporting that value at that key is not
+/// interpolation, but it is not a lie either.
+///
+/// **The domain is closed at BOTH ends -- `first` through `last`, both
+/// included -- and this is a deliberate difference from a band table, not an
+/// inconsistency.** A band's high bound is exclusive because it is shared with
+/// the next band's low bound and a value sitting on it must belong to exactly
+/// one of them. A breakpoint is not a boundary between rows, it *is* a row: the
+/// table states a value there. So the last breakpoint is a hit, and excluding
+/// it would make the table's own final row unreachable -- the table would
+/// answer for every input except the one it states most directly.
+/// `lookup_tests.cpp` asserts the two kinds' top ends against each other in one
+/// test, so that "harmonising" them in either direction fails there rather than
+/// in a consumer.
+///
+/// **A value exactly on a row returns that row, and is not interpolated.**
+/// Stated as a rule because it is one, even though it is observable in exactly
+/// one place: interpolating across the segment a row begins would return that
+/// row's own value anyway, since the weight is exactly zero. The place it is
+/// observable is the table's **last** row, which begins no segment at all. It
+/// also means a hit on a row performs no arithmetic, so a row whose value is
+/// perfectly representable can never be reported as an overflow on the way to
+/// being returned -- that second property is not pinned by a test, because
+/// provoking it needs numerators near the end of `Rational`'s range that no
+/// published table contains.
+///
+/// **There is no extrapolation.** A value below the first row or above the last
+/// one is a miss -- `ArithmeticError::DomainError` through `Evaluated<Rep>`,
+/// the identical mechanism and the identical reason as every other miss in this
+/// file, and deliberately not a third spelling for "found nothing".
+/// Interpolation between two rows yields a value the table's author *implied*;
+/// running the final segment's slope onwards, or clamping to the final row,
+/// yields one the document never defined -- invented from the slope of the last
+/// segment, which is an artefact of where the table happened to stop. That is
+/// the same lie this file refuses in having no default-value parameter, no
+/// nearest-band fallback and no first-row fallback. **A method that genuinely
+/// says "hold the last value beyond the final row" is a clamp its author writes
+/// explicitly, in the formula, where a reader can see it** -- never a default
+/// this library applies silently.
+///
+/// **The result is exact, and where it cannot be, it says so.** Every step is
+/// `Rational`'s own checked arithmetic -- `checked_sub` for the span and the
+/// rise, `checked_mul` and `checked_div` for the share of the rise, and
+/// `checked_add` onto the lower row -- so
+/// `y0 + (x - x0)(y1 - y0)/(x1 - x0)` is computed with no rounding anywhere,
+/// and a result no finite decimal can hold (14/15, say) comes back as exactly
+/// 14/15. Nothing here reaches for phase 8's rounding, and nothing here loses
+/// precision silently: the *only* way the answer is not the exact rational the
+/// two rows imply is that some intermediate lies outside `Rational`'s
+/// representable range, and that is reported as `ArithmeticError::Overflow`
+/// through the same channel a miss uses, never approximated away. `x1 - x0`
+/// cannot be zero -- strictly ascending breakpoints are enforced at compile
+/// time -- so the division is guarded by the table's own validation rather than
+/// by a runtime test.
+///
+/// **`Rep` is closed to `Rational`, and here the arithmetic reason is the true
+/// one.** The banded node's guard gives an arithmetic reason (band selection
+/// really is arithmetic) and the exact node's deliberately does not (comparing
+/// two enumerators is exact in every representation). This node has the banded
+/// node's ground and one of its own that is stronger: locating the segment is
+/// the same comparison band selection is, and the answer is then *computed*, so
+/// a representation that rounds would hand back a number that is not the one
+/// the table's own rows imply -- the precise defect this task exists to avoid.
+/// As with both other kinds the message says "this representation" rather than
+/// naming a type the instantiation backtrace already names, and no
+/// `RepInterpolation<Rep>` seam is built, mirroring the decision not to build
+/// `RepBandSelection`.
+///
+/// **What a later task is owed.** Everything the banded lookup's own note above
+/// says applies unchanged: a miss carries `DomainError` and nothing else, the
+/// value that missed is the operand's own evaluated result, and the table's
+/// identity comes from `documented()`. One thing is new, and belongs to task 6
+/// rather than here: this node can produce `ArithmeticError::Overflow` *of its
+/// own*, from the interpolation, where the other two kinds only ever propagate
+/// one they were handed. A trace that wants to say "the interpolation
+/// overflowed" rather than "something below this overflowed" needs this node's
+/// own step to say so; nothing here loses the information, and nothing here
+/// composes a sentence that would make saying it harder.
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -301,6 +445,7 @@
 #include <array>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <optional>
 #include <type_traits>
@@ -311,21 +456,29 @@ namespace formula
 
 namespace detail
 {
-    /// Fails to compile when a banded lookup's key unit does not measure the
-    /// dimension of the expression whose value selects a band -- the same
+    /// Fails to compile when a lookup's key unit does not measure the
+    /// dimension of the expression whose value selects a row -- the same
     /// shape and the same reason as `RequireRoundingUnitMatches`
-    /// (`rounding_node.hpp`): looking a mass up in a table of length bands is
+    /// (`rounding_node.hpp`): looking a mass up in a table of length rows is
     /// not a lookup miss, it is a category error, and it is caught here
     /// rather than surfacing as a confusing `checked_convert` failure at
     /// evaluation time.
+    ///
+    /// **Worded for every table kind that has a key unit at all**, which is
+    /// the banded and the interpolating lookup -- for the same reason
+    /// `RequireCorrectionCountMatches` just below is: the rule, the mistake
+    /// and the mechanism are one and the same, and only the word for a row
+    /// differs. A second guard saying this in the interpolating lookup's own
+    /// words is precisely how two surfaces that must agree start to disagree.
+    /// (The exact lookup has no key unit: its key is a discriminator, not a
+    /// quantity, so there is nothing to compare a dimension against.)
     template <Unit KeyUnit, typename Operand>
-    struct RequireBandedLookupKeyMatches
+    struct RequireLookupKeyMatches
     {
         static_assert(KeyUnit.dimension == Operand::dimension,
-                      "formula: this banded lookup's key unit does not measure the dimension of the "
-                      "expression whose value selects a band; the unit's dimension and the operand "
-                      "appear in this diagnostic as the template arguments of "
-                      "RequireBandedLookupKeyMatches");
+                      "formula: this lookup table's key unit does not measure the dimension of the "
+                      "expression whose value selects a row; the unit's dimension and the operand "
+                      "appear in this diagnostic as the template arguments of RequireLookupKeyMatches");
 
         static constexpr bool value = true;
     };
@@ -341,12 +494,13 @@ namespace detail
     /// rest, and `Rational{} == 0/1` is a perfectly legitimate correction --
     /// indistinguishable from a forgotten one.
     ///
-    /// **Worded for both table kinds on purpose.** A banded lookup's rows are
-    /// its bands and an exact lookup's rows are its keys, but the hole, the
-    /// mechanism that closes it and the mistake an author makes are one and
-    /// the same, so there is one guard and one sentence. A second guard
-    /// saying the same thing in the exact lookup's own words is precisely how
-    /// two surfaces that must agree start to disagree.
+    /// **Worded for every table kind on purpose.** A banded lookup's rows are
+    /// its bands, an exact lookup's rows are its keys and an interpolating
+    /// lookup's rows are its breakpoints, but the hole, the mechanism that
+    /// closes it and the mistake an author makes are one and the same, so
+    /// there is one guard and one sentence. A second guard saying the same
+    /// thing in another table kind's own words is precisely how two surfaces
+    /// that must agree start to disagree.
     template <std::size_t Given, std::size_t Expected>
     struct RequireCorrectionCountMatches
     {
@@ -403,7 +557,7 @@ template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
 struct BandedLookupNode: NodeBase
 {
     static_assert(RequireValidBandTable<Bands>::value);
-    static_assert(detail::RequireBandedLookupKeyMatches<KeyUnit, Operand>::value);
+    static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
 
     /// One correction per band, stated in `unit` -- the table's *contents*,
     /// runtime state for the same reason `ConstantNode::number` is. See the
@@ -430,15 +584,18 @@ struct BandedLookupNode: NodeBase
 };
 
 /// Exactly `N` corrections, one per row of a lookup table -- no more and no
-/// fewer. Shared by both table kinds in this file: `N` is the band count for
-/// `banded_lookup` and the key count for `exact_lookup`, because the hole
-/// being closed is the same hole. Handed to either factory in place of a bare
+/// fewer. Shared by every table kind in this file: `N` is the band count for
+/// `banded_lookup`, the key count for `exact_lookup` and the breakpoint count
+/// for `interpolating_lookup`, because the hole being closed is the same
+/// hole. Handed to any of those factories in place of a bare
 /// `std::array<Rational, N>`, whose own aggregate initialisation from a short
 /// braced list is exactly the "every answer is a lie" failure the rest of this
 /// file refuses on the *miss* side, reappearing on the *hit* side: the
-/// unwritten elements value-initialise to `Rational{} == 0/1`, and a band --
-/// or a key -- whose correction the author forgot to type then answers `0`,
-/// confidently, as a value, indistinguishable from a deliberate zero.
+/// unwritten elements value-initialise to `Rational{} == 0/1`, and a band, a
+/// key or a breakpoint whose correction the author forgot to type then answers
+/// `0`, confidently, as a value, indistinguishable from a deliberate zero --
+/// and for the interpolating table, a forgotten row drags the whole segment
+/// either side of it down with it.
 ///
 /// A named type with two arity-disjoint constructor templates rather than
 /// one constrained by `requires` alone: the *matching*-arity constructor
@@ -483,7 +640,8 @@ struct Corrections
     }
 
     /// One correction per row, in the table's own declared order -- per band
-    /// for a banded lookup, per key for an exact one.
+    /// for a banded lookup, per key for an exact one, per breakpoint for an
+    /// interpolating one.
     std::array<Rational, N> values {};
 };
 
@@ -932,6 +1090,470 @@ template <typename Rep = Rational, KeyTable Keys, Unit ResultUnit, typename Env,
         }
 
         Evaluated<Rep> const result = detail::in_si<Rep>(node.corrections[*index], ResultUnit);
+        sink.produced(node, result);
+        return result;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Interpolating lookup: a value between two rows. See the file comment's
+// "Interpolating lookup" section for why the table is points rather than
+// intervals, why its domain is closed at both ends where a band table's is
+// half-open, why there is no extrapolation, and what stays exact.
+// ---------------------------------------------------------------------------
+
+/// One row of an interpolating table: the key at which the table states a
+/// value, as an exact rational stated numerator over denominator -- see the
+/// file comment for why this is not a `Rational`, which is `band.hpp`'s reason
+/// unchanged.
+///
+/// Only the key lives here. The value stated at this key is runtime state on
+/// the node, exactly as a band's correction is: which rows exist is the method,
+/// and what each row says is the customer's registered table.
+struct Breakpoint
+{
+    /// Numerator of the declared key.
+    std::int64_t numerator = 0;
+    /// Denominator of the declared key.
+    std::int64_t denominator = 1;
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(Breakpoint const&) const noexcept = default;
+};
+
+/// Builds a `Breakpoint` from its key as a numerator/denominator pair. The
+/// denominator defaults to 1 -- unlike `band()`, which takes both bounds as
+/// explicit pairs -- because a breakpoint is one number rather than two, and a
+/// curve stated at whole-numbered keys then reads
+/// `{ breakpoint(0), breakpoint(10), breakpoint(20) }` rather than carrying a
+/// column of `1`s that says nothing.
+[[nodiscard]] constexpr Breakpoint breakpoint(std::int64_t numerator, std::int64_t denominator = 1) noexcept
+{
+    return { numerator, denominator };
+}
+
+/// A table of breakpoints, declared in strictly ascending order. An alias
+/// template over `std::array`, for the reason `BandTable` (`band.hpp`) and
+/// `KeyTable` above are: a spike compiled `template <BandTable Bands>` with
+/// both the element type and `N` deduced on all four compilers, so a wrapping
+/// struct would add a name to unwrap and nothing else.
+template <std::size_t N>
+using BreakpointTable = std::array<Breakpoint, N>;
+
+/// One of the two predicates an interpolating table's well-formedness is built
+/// on (the other is `breakpoints_ascend` just below), used both by the
+/// `static_assert` wiring and by any runtime loader -- so the two checks cannot
+/// drift, the arrangement `band.hpp` and `key_table_is_well_formed` both use.
+///
+/// True when this row's key is a rational number at all: its denominator is
+/// non-zero and the pair reduces without overflow. Nothing about a pair of
+/// rows -- a single `Breakpoint` either names a number or it does not, and
+/// `breakpoints_ascend` alone cannot answer this for a one-row table, where
+/// there is no pair for it to look at.
+[[nodiscard]] constexpr bool breakpoint_is_well_formed(Breakpoint const& value) noexcept
+{
+    return Rational::make(value.numerator, value.denominator).has_value();
+}
+
+/// The other predicate, alongside `breakpoint_is_well_formed`: true when
+/// `first`'s key is **strictly** below `second`'s. Strictly, because two rows
+/// at one key state two different values there and leave a segment of zero
+/// width for the interpolation to divide by -- see the file comment.
+///
+/// Compares through `Rational::make`, which reduces to lowest terms and reports
+/// overflow, rather than cross-multiplying the raw pairs -- the same overflow
+/// `bands_are_adjacent` avoids the same way, and what makes `1/2 < 2/3` answer
+/// the question about the numbers rather than about the digits. A key that is
+/// not a representable rational is treated as not ascending with anything, in
+/// either position: a malformed row is exactly the kind of typo this validation
+/// exists to catch, not a case to silently wave through.
+[[nodiscard]] constexpr bool breakpoints_ascend(Breakpoint const& first, Breakpoint const& second) noexcept
+{
+    auto const lower = Rational::make(first.numerator, first.denominator);
+    auto const upper = Rational::make(second.numerator, second.denominator);
+    if (!lower || !upper)
+        return false;
+    return *lower < *upper;
+}
+
+/// True when `table` is well-formed: every row's key is a rational number, AND
+/// every adjacent pair strictly ascends. The runtime half of the same question
+/// `RequireValidBreakpointTable` asks at compile time, on the same two
+/// predicates.
+///
+/// **Only neighbouring pairs are compared, and that is a proof rather than an
+/// optimisation** -- unlike the exact table just above, which must compare
+/// every pair. `key_i < key_(i+1)` for every consecutive pair chains into
+/// `key_0 < key_1 < ... < key_(N-1)`, so no two rows anywhere in the table can
+/// share a key or sit out of order. An exact table has no such chain available:
+/// its keys are discriminators with no ordering, so transitivity has nothing to
+/// run along and every pair really must be visited.
+///
+/// An empty table and a one-row table both validate -- neither has a pair that
+/// could fail, and a one-row table has only its own key's well-formedness left
+/// to check. See the file comment for why a table that answers nowhere, or
+/// almost nowhere, is treated as narrow rather than malformed.
+template <std::size_t N>
+[[nodiscard]] constexpr bool breakpoint_table_is_well_formed(BreakpointTable<N> const& table) noexcept
+{
+    for (std::size_t index = 0; index < N; ++index)
+        if (!breakpoint_is_well_formed(table[index]))
+            return false;
+    for (std::size_t index = 0; index + 1 < N; ++index)
+        if (!breakpoints_ascend(table[index], table[index + 1]))
+            return false;
+    return true;
+}
+
+/// Fails to compile when a row's key is not a rational number -- its
+/// denominator is zero, or its numerator and denominator cannot be reduced
+/// without overflow -- so the row names no point on the curve at all.
+///
+/// Same shape and same reason as `RequireBandWellFormed` (`band.hpp`):
+/// instantiating a named template on the value makes the compiler print the
+/// offending breakpoint, and the wording is ours so the negative-compile
+/// harness can assert the reason rather than merely the failure. Reached
+/// through `::value`, for the same reason `RequireBandsAdjacent` is.
+template <Breakpoint B>
+struct RequireBreakpointWellFormed
+{
+    static_assert(breakpoint_is_well_formed(B),
+                  "formula: this interpolating lookup table has a row whose key is not a rational "
+                  "number; its denominator is zero, or its numerator and denominator cannot be "
+                  "reduced without overflow; the offending Breakpoint value appears in this "
+                  "diagnostic as the template argument B of RequireBreakpointWellFormed");
+
+    /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
+    static constexpr bool value = true;
+};
+
+/// Fails to compile when two adjacent rows do not strictly ascend -- they
+/// either state the same key twice, so the table claims two different values at
+/// one key and leaves a segment of zero width to interpolate across, or they
+/// are declared out of order, so "between these two rows" names nothing.
+///
+/// One diagnostic for one rule, deliberately, exactly as `band.hpp` gives an
+/// inverted band and a zero-width band one message: both are `first < second`
+/// failing, and the message names the two offending keys, so an author can see
+/// at a glance which case they have. Reached through `::value`, for the same
+/// reason `RequireBandsAdjacent` is.
+template <Breakpoint First, Breakpoint Second>
+struct RequireBreakpointsAscend
+{
+    static_assert(breakpoints_ascend(First, Second),
+                  "formula: this interpolating lookup table's breakpoints do not strictly ascend; two "
+                  "adjacent rows either state the same key twice or are declared out of order, and the "
+                  "two offending Breakpoint values appear in this diagnostic as the template arguments "
+                  "First and Second of RequireBreakpointsAscend");
+
+    /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
+    static constexpr bool value = true;
+};
+
+namespace detail
+{
+    /// Expands to one `RequireBreakpointWellFormed<Points[i]>::value` per row,
+    /// `&&`-folded together. Every operand of a fold expression is instantiated
+    /// to form the expression, independent of the runtime short-circuit `&&`
+    /// also performs -- so every row is checked and each bad one reports on its
+    /// own. The same reasoning as `require_all_bands_well_formed` (`band.hpp`).
+    template <BreakpointTable Points, std::size_t... Index>
+    [[nodiscard]] constexpr bool require_all_breakpoints_well_formed(std::index_sequence<Index...>) noexcept
+    {
+        return (RequireBreakpointWellFormed<Points[Index]>::value && ...);
+    }
+
+    /// Same idea, one index per adjacent pair rather than per row, so every
+    /// pair is checked and reported independently of every other.
+    template <BreakpointTable Points, std::size_t... Index>
+    [[nodiscard]] constexpr bool require_all_breakpoints_ascend(std::index_sequence<Index...>) noexcept
+    {
+        return (RequireBreakpointsAscend<Points[Index], Points[Index + 1]>::value && ...);
+    }
+
+    /// Split out of `RequireValidBreakpointTable` so that `Points.size() - 1` --
+    /// which underflows for an empty table -- sits behind `if constexpr` and is
+    /// therefore never instantiated for `N < 2`. Guarding with `&&` instead
+    /// would not be enough, for the reason `band_table_is_valid`'s own comment
+    /// gives: that operator's short circuit applies to *evaluation*, not to
+    /// forming the type of its right-hand operand. The per-row fold has no such
+    /// hazard (it indexes 0..N-1, not 0..N-2) and always runs, so a one-row
+    /// table with a malformed key -- no pair to speak of -- is still caught.
+    template <BreakpointTable Points>
+    [[nodiscard]] constexpr bool breakpoint_table_is_valid() noexcept
+    {
+        bool const wellFormed = require_all_breakpoints_well_formed<Points>(std::make_index_sequence<Points.size()> {});
+        if constexpr (Points.size() < 2)
+            return wellFormed;
+        else
+            return wellFormed && require_all_breakpoints_ascend<Points>(std::make_index_sequence<Points.size() - 1> {});
+    }
+} // namespace detail
+
+/// The static_assert wiring for an interpolating table: instantiating this with
+/// a `BreakpointTable` that is a compile-time constant enforces, right there,
+/// that every row names a number and that the rows strictly ascend -- reusing
+/// `breakpoint_is_well_formed` and `breakpoints_ascend`, the same two
+/// predicates `breakpoint_table_is_well_formed` uses for a curve that only
+/// arrives at runtime. Reached through `::value`, for the same reason
+/// `RequireValidBandTable` is.
+template <BreakpointTable Points>
+struct RequireValidBreakpointTable
+{
+    static constexpr bool value = detail::breakpoint_table_is_valid<Points>();
+};
+
+namespace detail
+{
+    /// The interpolation itself, on two rows already reduced to plain
+    /// rationals: `lowValue + (key - lowKey)(highValue - lowValue) /
+    /// (highKey - lowKey)`.
+    ///
+    /// Every step is `Rational`'s own checked arithmetic, so the result is the
+    /// **exact** rational the two rows imply and nothing is rounded anywhere on
+    /// the way to it; the only failure is an intermediate outside `Rational`'s
+    /// representable range, reported as `ArithmeticError::Overflow` rather than
+    /// approximated away. See the file comment.
+    ///
+    /// The rise is multiplied in before the span is divided out, rather than
+    /// dividing first: `checked_mul` cross-reduces its operands before
+    /// multiplying, so the product of two table-sized numbers is the cheap
+    /// order, whereas `(key - lowKey) / (highKey - lowKey)` first would build a
+    /// fraction with both spans' denominators in it and only then multiply. The
+    /// answer is identical either way -- exact arithmetic has no rounding for
+    /// an order of operations to change -- so this is purely about which order
+    /// overflows later.
+    ///
+    /// `highKey - lowKey` cannot be zero: `RequireValidBreakpointTable` has
+    /// already refused a table whose rows do not strictly ascend, so there is
+    /// no runtime test for it here. `checked_div` would report
+    /// `DivisionByZero` rather than trap if that guarantee were ever broken.
+    [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> interpolate_between(
+        Rational lowKey, Rational lowValue, Rational highKey, Rational highValue, Rational key) noexcept
+    {
+        std::expected<Rational, ArithmeticError> const span = checked_sub(highKey, lowKey);
+        if (!span.has_value())
+            return span;
+        std::expected<Rational, ArithmeticError> const rise = checked_sub(highValue, lowValue);
+        if (!rise.has_value())
+            return rise;
+        std::expected<Rational, ArithmeticError> const offset = checked_sub(key, lowKey);
+        if (!offset.has_value())
+            return offset;
+        std::expected<Rational, ArithmeticError> const scaled = checked_mul(*offset, *rise);
+        if (!scaled.has_value())
+            return scaled;
+        std::expected<Rational, ArithmeticError> const share = checked_div(*scaled, *span);
+        if (!share.has_value())
+            return share;
+        return checked_add(lowValue, *share);
+    }
+
+    /// Answers @p key against @p Points and @p corrections: the row's own value
+    /// when the key sits exactly on a row, the interpolation of the two
+    /// surrounding rows when it sits between them, and
+    /// `ArithmeticError::DomainError` when it sits outside the table
+    /// altogether -- below the first row, above the last, or anywhere at all
+    /// for an empty table.
+    ///
+    /// `DomainError` is this function's spelling for a **miss**, and is
+    /// unambiguous here: the only other errors it can return come from
+    /// `interpolate_between`, which reports `Overflow` (or, unreachably,
+    /// `DivisionByZero`) and never `DomainError`.
+    ///
+    /// A single forward scan, not a binary search, for the reason `find_band`
+    /// is one: a method's own published curve is rows, not big data. It leans
+    /// on the ascending order `RequireValidBreakpointTable` has already
+    /// enforced -- the first row whose key is **not** below @p key is where the
+    /// answer is, and everything after it can be ignored.
+    ///
+    /// The equality test comes first, so that a key sitting exactly on a row
+    /// returns that row rather than interpolating a segment to it. That is
+    /// observable at the table's **last** row, which begins no segment; at
+    /// every other row interpolating would give the same number, because the
+    /// weight is exactly zero. See the file comment.
+    template <BreakpointTable Points>
+    [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> interpolate(
+        Rational key, std::array<Rational, Points.size()> const& corrections) noexcept
+    {
+        for (std::size_t index = 0; index < Points.size(); ++index)
+        {
+            std::expected<Rational, ArithmeticError> const here =
+                Rational::make(Points[index].numerator, Points[index].denominator);
+            // Unreachable for a `Points` that reached this point: every
+            // `InterpolatingLookupNode` instantiates
+            // `RequireValidBreakpointTable<Points>`, which already refuses a
+            // malformed key at compile time. Guarded anyway, for the same
+            // reason `find_band` guards its own: reporting nothing is better
+            // than interpolating against a number that was never there.
+            if (!here.has_value())
+                return std::unexpected { ArithmeticError::DomainError };
+
+            if (*here == key)
+                return corrections[index];
+
+            if (key < *here)
+            {
+                // Below the table's first row: a miss, never an extrapolation
+                // backwards along the first segment's slope.
+                if (index == 0)
+                    return std::unexpected { ArithmeticError::DomainError };
+
+                std::expected<Rational, ArithmeticError> const previous =
+                    Rational::make(Points[index - 1].numerator, Points[index - 1].denominator);
+                if (!previous.has_value())
+                    return std::unexpected { ArithmeticError::DomainError };
+
+                return interpolate_between(*previous, corrections[index - 1], *here, corrections[index], key);
+            }
+        }
+        // Past the table's last row -- or an empty table, which is past its
+        // last row vacuously. A miss, never a clamp to the final row and never
+        // an extrapolation onwards along the final segment's slope.
+        return std::unexpected { ArithmeticError::DomainError };
+    }
+} // namespace detail
+
+/// A measured value sits between two rows, and the answer is the value those
+/// two rows imply at that point -- see the file comment's "Interpolating
+/// lookup" section for the domain, the refusal to extrapolate, and what stays
+/// exact.
+///
+/// The same structure/contents split as `BandedLookupNode`, not a parallel one
+/// invented here: `KeyUnit`, `Points` and `ResultUnit` live in the type,
+/// `corrections` and `operand` are runtime state.
+///
+/// Both `static_assert`s sit in the class body rather than in the factory, for
+/// the reason `ExactLookupNode`'s comment sets out at length:
+/// `InterpolatingLookupNode` is a public aggregate with public members, so a
+/// caller can declare one **without ever calling the factory**, and only a
+/// class-body assert refuses that.
+/// `interpolating_lookup_descending_breakpoint_no_factory.cpp` is exactly that
+/// declaration and exists to pin this.
+template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+struct InterpolatingLookupNode: NodeBase
+{
+    static_assert(RequireValidBreakpointTable<Points>::value);
+    static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
+
+    /// The value this table states at each breakpoint, in `unit`, in the same
+    /// order `breakpoints` declares -- the table's *contents*, runtime state
+    /// for the same reason `BandedLookupNode::corrections` and
+    /// `ConstantNode::number` are.
+    std::array<Rational, Points.size()> corrections {};
+
+    /// The expression whose evaluated value is located against `breakpoints`.
+    Operand operand {};
+
+    /// The unit breakpoints are declared in, and the unit `operand`'s value is
+    /// compared against them in -- part of the table's *structure*. The
+    /// interpolation is carried out in this unit, which is the unit the
+    /// published curve is stated in.
+    static constexpr Unit keyUnit = KeyUnit;
+    /// The breakpoints themselves, already validated above.
+    static constexpr BreakpointTable<Points.size()> breakpoints = Points;
+    /// The unit each entry of `corrections` is stated in, and this node's own
+    /// declared unit -- the same role `ConstantNode::unit` plays. An
+    /// interpolated value is a weighted combination of two entries of
+    /// `corrections`, so it is stated in their unit too.
+    static constexpr Unit unit = ResultUnit;
+    /// The dimension of `unit`: what this node itself produces. Independent of
+    /// `keyUnit`'s dimension on purpose, exactly as a banded lookup's is.
+    static constexpr Dimension dimension = ResultUnit.dimension;
+};
+
+/// Declares an interpolating lookup: `interpolating_lookup<unit::Millimetre,
+/// Points, unit::One>(var<Diameter>, { rat(9, 10), rat(1), rat(12, 10) })`.
+///
+/// `KeyUnit`, `Points` and `ResultUnit` are deliberately not deduced, for the
+/// reason `banded_lookup` leaves its structural parameters unstated at the
+/// argument list: a table's structure is the author's declared intent, not
+/// something inferred from whatever the values happen to look like.
+///
+/// `corrections` is the same `Corrections<N>` both other kinds take, so a short
+/// braced list is refused identically -- see that type for why a bare
+/// `std::array<Rational, N>` would not be.
+template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+[[nodiscard]] constexpr InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> interpolating_lookup(
+    Operand operand, Corrections<Points.size()> corrections) noexcept
+{
+    return InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> { {}, corrections.values, operand };
+}
+
+/// Evaluates the operand, converts its value into `KeyUnit`, and answers from
+/// the table: the row's own value when the value sits exactly on a row, the
+/// interpolation of the two surrounding rows when it sits between them.
+/// Absence propagates, same as every other node; a value outside the table's
+/// own first and last row is reported as `ArithmeticError::DomainError` --
+/// never an extrapolation, never a clamp to the nearest row -- and an
+/// interpolation whose exact answer is not representable is reported as
+/// `ArithmeticError::Overflow` rather than rounded. See the file comment.
+template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand,
+          typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(
+    InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node,
+    Env const& environment,
+    Sink sink = {}) noexcept
+{
+    sink.entered(node);
+    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!operand.has_value())
+    {
+        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        sink.produced(node, failed);
+        return failed;
+    }
+    if (!operand->has_value())
+    {
+        Evaluated<Rep> const absent = detail::nothing<Rep>();
+        sink.produced(node, absent);
+        return absent;
+    }
+
+    if constexpr (!std::is_same_v<Rep, Rational>)
+    {
+        // See the file comment: this node has the banded node's ground for
+        // refusing an inexact representation and one of its own that is
+        // stronger -- the answer is *computed*, not selected, so a
+        // representation that rounds hands back a number the table's own rows
+        // do not imply. The message says "this representation" rather than
+        // naming a type the instantiation backtrace already names. Dependent on
+        // `Rep` so this fires only when this function is actually instantiated
+        // with a non-`Rational` `Rep`, not merely declared -- the same trick
+        // `RepRounding<double>::round_in` uses.
+        static_assert(sizeof(Rep) == 0,
+                      "formula: an interpolating lookup node can only be evaluated with Rep = Rational -- "
+                      "locating the two rows a value sits between needs exact comparison, and the value "
+                      "between them is then computed rather than selected, so a representation that "
+                      "rounds would answer with a number this table's own rows do not imply; evaluate "
+                      "this formula with Rep = Rational instead (checked_evaluate<Result> always does)");
+        return std::unexpected { ArithmeticError::DomainError };
+    }
+    else
+    {
+        std::expected<Rational, ArithmeticError> const valueInKey =
+            checked_convert(**operand, coherent(KeyUnit.dimension), KeyUnit);
+        if (!valueInKey.has_value())
+        {
+            Evaluated<Rep> const failed = std::unexpected { valueInKey.error() };
+            sink.produced(node, failed);
+            return failed;
+        }
+
+        std::expected<Rational, ArithmeticError> const interpolated =
+            detail::interpolate<Points>(*valueInKey, node.corrections);
+        if (!interpolated.has_value())
+        {
+            // Either a miss (`DomainError` -- no default, no clamp, no
+            // extrapolation) or an interpolation whose exact answer is not
+            // representable (`Overflow` -- reported, never rounded). Both are
+            // already the right enumerator; nothing is rewritten here.
+            Evaluated<Rep> const failed = std::unexpected { interpolated.error() };
+            sink.produced(node, failed);
+            return failed;
+        }
+
+        Evaluated<Rep> const result = detail::in_si<Rep>(*interpolated, ResultUnit);
         sink.produced(node, result);
         return result;
     }

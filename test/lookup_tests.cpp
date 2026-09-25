@@ -554,3 +554,432 @@ TEST_CASE("keys_match is exact equality, with no ordering and no conversion", "[
     STATIC_REQUIRE(formula::keys_match(SpecimenShape::Cube150, SpecimenShape::Cube150));
     STATIC_REQUIRE(!formula::keys_match(SpecimenShape::Cube150, SpecimenShape::Cube100));
 }
+
+// ---------------------------------------------------------------------------
+// Interpolating lookup: a value between two rows produces a value appearing in
+// no row. See the file comment's "Interpolating lookup" section for why the
+// domain is closed at both ends where a band table's is half-open, and for why
+// there is no extrapolation.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+using formula::breakpoint;
+using formula::BreakpointTable;
+using formula::interpolating_lookup;
+
+/// Four breakpoints, declared in **centimetres** -- deliberately not
+/// millimetres, the unit `Diameter` itself is declared in -- so evaluating this
+/// curve exercises a real unit conversion on the key side, exactly as
+/// `SizeBands` does for the banded table. In millimetres these rows sit at 0,
+/// 10, 20 and 30: a first row, two middle rows and a last row.
+inline constexpr BreakpointTable<4> CurvePoints {
+    breakpoint(0),
+    breakpoint(1),
+    breakpoint(2),
+    breakpoint(3),
+};
+
+/// The value stated at each breakpoint, in **percent** -- again deliberately
+/// not `SizeCorrection`'s own unit (`One`) -- so the result side is converted
+/// too. The middle segment descends (100 -> 96) on purpose: a slope this
+/// library computes with `checked_sub` must be allowed to be negative, and an
+/// implementation that took a magnitude somewhere would answer 102 % instead of
+/// 98 % halfway along it.
+[[nodiscard]] constexpr auto curve()
+{
+    return interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
+        var<Diameter>, { rat(90), rat(100), rat(96), rat(120) });
+}
+
+/// An always-empty curve: the interpolating analogue of `EmptyTable` and
+/// `NoShapes`, valid for the same reason and always missing for the same one.
+inline constexpr BreakpointTable<0> NoPoints {};
+
+/// A one-row curve. There is nothing to interpolate *between*, and the table is
+/// still well-formed: it states a value at exactly one key and says nothing
+/// about any other, which is a thing this library can report honestly.
+inline constexpr BreakpointTable<1> OnePoint { breakpoint(1) };
+
+/// Two rows -- the smallest curve that can interpolate at all, and the smallest
+/// that can be malformed at all.
+inline constexpr BreakpointTable<2> TwoPoints { breakpoint(0), breakpoint(2) };
+} // namespace
+
+TEST_CASE("an interpolating lookup is a Node and produces the result quantity's own dimension", "[lookup]")
+{
+    STATIC_REQUIRE(formula::Node<decltype(curve())>);
+    STATIC_REQUIRE(decltype(curve())::dimension == formula::Describe<SizeCorrection>::dimension);
+}
+
+TEST_CASE("a value exactly on the table's first row returns that row, not an interpolation", "[lookup]")
+{
+    // 0 mm == 0 cm: `CurvePoints[0]` itself, with no row below it to
+    // interpolate from. The table's own lower end, where in-range-versus-miss
+    // is decided rather than which pair to interpolate between.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(0));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(90, 100));
+}
+
+TEST_CASE("a value exactly on a middle row returns that row, not an interpolation", "[lookup]")
+{
+    // 10 mm == 1 cm, `CurvePoints[1]`: interior, so both neighbouring segments
+    // exist and either could have been used by mistake.
+    constexpr auto atOneCentimetre = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(10));
+    STATIC_REQUIRE(atOneCentimetre.has_value());
+    STATIC_REQUIRE(atOneCentimetre->is_value());
+    STATIC_REQUIRE(atOneCentimetre->measurement().value() == rat(1));
+
+    // 20 mm == 2 cm, `CurvePoints[2]` -- the other interior row, so a scan that
+    // answered a fixed interior index cannot pass this case by accident.
+    constexpr auto atTwoCentimetres = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(20));
+    STATIC_REQUIRE(atTwoCentimetres.has_value());
+    STATIC_REQUIRE(atTwoCentimetres->is_value());
+    STATIC_REQUIRE(atTwoCentimetres->measurement().value() == rat(96, 100));
+}
+
+TEST_CASE("a value exactly on the table's last row returns that row -- the domain is closed at the top",
+          "[lookup]")
+{
+    // 30 mm == 3 cm: `CurvePoints[3]` itself, the table's own highest
+    // breakpoint. THIS is the case the exactly-on-a-row rule is actually
+    // observable in: everywhere else, interpolating across the segment a row
+    // begins would return that row's own value anyway, because the weight is
+    // exactly zero. Here there is no segment above, so an implementation whose
+    // segments were half-open at the top -- the band table's rule, copied
+    // across where it does not belong -- would report a miss for the table's
+    // own last row.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(30));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(120, 100));
+}
+
+TEST_CASE("a value between the first two rows is interpolated", "[lookup]")
+{
+    // 5 mm == 0.5 cm, halfway along [0, 1] cm: 90 % + (1/2)(100 - 90) % = 95 %.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(5));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(95, 100));
+}
+
+TEST_CASE("a value between two middle rows is interpolated, and a descending segment descends", "[lookup]")
+{
+    // 12.5 mm == 1.25 cm, a QUARTER of the way along [1, 2] cm, whose value
+    // FALLS from 100 % to 96 %: 100 % + (1/4)(96 - 100) % = 99 %. An
+    // implementation that took the magnitude of the slope, or subtracted in the
+    // wrong order, answers 101 % here and still answers correctly on every
+    // ascending segment.
+    //
+    // A quarter rather than the midpoint, deliberately. Measured: pairing each
+    // row's VALUE with the other row's KEY -- an ordinary off-by-one in the
+    // scan -- is invisible at the midpoint of any segment, because the mirror
+    // of a line about its own midpoint passes through the same point there.
+    // Every halfway assertion in this file is blind to it; this one is not.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(25, 2));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(99, 100));
+}
+
+TEST_CASE("a value between the last two rows is interpolated", "[lookup]")
+{
+    // 27.5 mm == 2.75 cm, three quarters of the way along [2, 3] cm:
+    // 96 % + (3/4)(120 - 96) % = 114 %. Off the midpoint for the reason the
+    // middle-segment case above gives, and on the far side of it, so the two
+    // asymmetric cases do not share a weight either.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(55, 2));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(114, 100));
+}
+
+TEST_CASE("an interpolated value stays exact, even when no finite decimal could hold it", "[lookup]")
+{
+    // 10/3 mm == 1/3 cm, one third of the way along [0, 1] cm:
+    // 90 % + (1/3)(100 - 90) % = 280/3 %, which is 14/15 once the percent is
+    // converted away -- 0.9333... in decimal, a number no rounding of any
+    // fixed precision holds exactly.
+    //
+    // This is this task's exactness question, asserted rather than asserted
+    // about: the answer is the exact rational the two rows imply, and nothing
+    // anywhere rounded it to get there. The denominator is checked as well as
+    // the value, because an implementation that computed in a fixed decimal
+    // precision could still compare equal to a rounded literal while having
+    // thrown the remainder away.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(10, 3));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(14, 15));
+    STATIC_REQUIRE(computed->measurement().value().denominator() == 15);
+}
+
+TEST_CASE("a value below the table's first row is a miss -- interpolation does not extrapolate", "[lookup]")
+{
+    // -5 mm == -0.5 cm, below `CurvePoints[0]`. An implementation that ran the
+    // first segment's slope backwards would answer 85 % here, confidently, for
+    // an input the table never defined -- which is the one thing this phase
+    // refuses everywhere. A miss, not a value.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(-5));
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("a value above the table's last row is a miss -- interpolation does not extrapolate", "[lookup]")
+{
+    // 35 mm == 3.5 cm, above `CurvePoints[3]`. Running the last segment's
+    // slope onwards would answer 132 %; clamping to the last row would answer
+    // 120 %. Both are values the published table never stated, invented from
+    // where the table happened to stop.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(35));
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("an interpolating table's own last row is a hit where a banded table's own top bound is a miss",
+          "[lookup]")
+{
+    // The two table kinds disagree about their own top end, deliberately, and
+    // this is the test that keeps the disagreement intentional rather than
+    // accidental. A band's high bound is EXCLUSIVE, so 30 mm falls off the top
+    // of `SizeBands` and misses; an interpolating table's last breakpoint is a
+    // ROW, so 30 mm hits it exactly. Harmonising the two -- in either
+    // direction -- fails here rather than in a consumer.
+    constexpr auto banded = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(30));
+    constexpr auto interpolated = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(30));
+
+    STATIC_REQUIRE(!banded.has_value());
+    STATIC_REQUIRE(banded.error() == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(interpolated.has_value());
+    STATIC_REQUIRE(interpolated->is_value());
+    STATIC_REQUIRE(interpolated->measurement().value() == rat(120, 100));
+}
+
+TEST_CASE("an interpolated value of exactly zero is a value, never a miss", "[lookup]")
+{
+    // The hit side of the distinction the whole file is built on, in the one
+    // form only this table kind has: zero here is not a row the author typed,
+    // it is a number the interpolation PRODUCED, so an implementation that
+    // treated a zero result as "nothing found" would fail only here.
+    constexpr BreakpointTable<2> Crossing { breakpoint(0), breakpoint(2) };
+    constexpr auto node =
+        interpolating_lookup<unit::Centimetre, Crossing, unit::One>(var<Diameter>, { rat(-1), rat(1) });
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(10));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(0));
+}
+
+TEST_CASE("a two-row curve interpolates between its only pair and misses outside it", "[lookup]")
+{
+    // Two rows is the smallest table that can interpolate at all. Both rows and
+    // the point between them, so neither a first-only nor a last-only scan
+    // passes, plus both directions of miss.
+    constexpr auto node =
+        interpolating_lookup<unit::Centimetre, TwoPoints, unit::One>(var<Diameter>, { rat(1, 4), rat(3, 4) });
+
+    constexpr auto atFirst = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(0));
+    STATIC_REQUIRE(atFirst.has_value());
+    STATIC_REQUIRE(atFirst->measurement().value() == rat(1, 4));
+
+    constexpr auto between = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(10));
+    STATIC_REQUIRE(between.has_value());
+    STATIC_REQUIRE(between->measurement().value() == rat(1, 2));
+
+    constexpr auto atLast = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(20));
+    STATIC_REQUIRE(atLast.has_value());
+    STATIC_REQUIRE(atLast->measurement().value() == rat(3, 4));
+
+    constexpr auto below = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(-1));
+    STATIC_REQUIRE(!below.has_value());
+    STATIC_REQUIRE(below.error() == formula::ArithmeticError::DomainError);
+
+    constexpr auto above = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(21));
+    STATIC_REQUIRE(!above.has_value());
+    STATIC_REQUIRE(above.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("a one-row curve states a value at exactly one key and misses every other", "[lookup]")
+{
+    // A single row is well-formed for interpolation and is NOT special-cased:
+    // there is no pair, so nothing is ever interpolated, and the table answers
+    // only where it actually states something. Refusing it would be refusing a
+    // table that is merely narrow rather than wrong -- the same judgement
+    // `band.hpp` makes for an empty band table.
+    constexpr auto node = interpolating_lookup<unit::Centimetre, OnePoint, unit::One>(var<Diameter>, { rat(3, 4) });
+
+    constexpr auto onTheRow = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(10));
+    STATIC_REQUIRE(onTheRow.has_value());
+    STATIC_REQUIRE(onTheRow->is_value());
+    STATIC_REQUIRE(onTheRow->measurement().value() == rat(3, 4));
+
+    constexpr auto below = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(5));
+    STATIC_REQUIRE(!below.has_value());
+    STATIC_REQUIRE(below.error() == formula::ArithmeticError::DomainError);
+
+    constexpr auto above = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(15));
+    STATIC_REQUIRE(!above.has_value());
+    STATIC_REQUIRE(above.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("an empty curve always misses -- the same not-a-value outcome, not a special case", "[lookup]")
+{
+    constexpr auto node = interpolating_lookup<unit::Millimetre, NoPoints, unit::One>(var<Diameter>, {});
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(5));
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("an absent operand stays absent for an interpolating lookup too", "[lookup]")
+{
+    // Never measured is a different fact from measured-but-outside-the-curve,
+    // exactly as it is for a band table.
+    constexpr auto environment = formula::environment(formula::Measured<Diameter>::absent());
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(curve(), environment);
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_empty());
+}
+
+TEST_CASE("an interpolating lookup composes with other nodes, exactly like any other Node", "[lookup]")
+{
+    // D5 for the third table kind.
+    constexpr auto corrected = var<NominalSize> * curve();
+    STATIC_REQUIRE(decltype(corrected)::dimension == formula::Describe<CorrectedSize>::dimension);
+
+    constexpr auto environment =
+        formula::environment(formula::Measured<Diameter> { rat(15) }, formula::Measured<NominalSize> { rat(200) });
+    // 15 mm interpolates to 98 % == 49/50, and 200 mm times 49/50 is 196 mm.
+    constexpr auto computed = formula::checked_evaluate<CorrectedSize>(corrected, environment);
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(196));
+}
+
+TEST_CASE("an interpolating miss propagates through composition too", "[lookup]")
+{
+    constexpr auto corrected = var<NominalSize> * curve();
+    constexpr auto environment =
+        formula::environment(formula::Measured<Diameter> { rat(35) }, formula::Measured<NominalSize> { rat(200) });
+    constexpr auto computed = formula::checked_evaluate<CorrectedSize>(corrected, environment);
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("an integer literal is accepted as an interpolating lookup's row value, not only a Rational",
+          "[lookup]")
+{
+    // The same guard both other kinds carry, for the same reason: all three
+    // factories take the same `Corrections<N>`, whose element constraint is
+    // convertible_to<Rational> rather than same_as<Rational>.
+    constexpr auto node =
+        interpolating_lookup<unit::Centimetre, CurvePoints, unit::One>(var<Diameter>, { 1, 1, 1, 1 });
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(5));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(1));
+}
+
+TEST_CASE("breakpoints_ascend is strict, and refuses a bound that is not a rational number", "[lookup]")
+{
+    STATIC_REQUIRE(formula::breakpoints_ascend(breakpoint(1), breakpoint(2)));
+    // Equal is NOT ascending: two rows at one key state two values there and
+    // leave a segment of zero width to divide by.
+    STATIC_REQUIRE(!formula::breakpoints_ascend(breakpoint(2), breakpoint(2)));
+    STATIC_REQUIRE(!formula::breakpoints_ascend(breakpoint(3), breakpoint(2)));
+    // Compared as rationals, not as numerator/denominator pairs: 1/2 < 2/3.
+    STATIC_REQUIRE(formula::breakpoints_ascend(breakpoint(1, 2), breakpoint(2, 3)));
+    // A bound that is not a representable rational is not ascending with
+    // anything, in either position -- the same judgement `bands_are_adjacent`
+    // makes, so a malformed row is never waved through.
+    STATIC_REQUIRE(!formula::breakpoints_ascend(breakpoint(1, 0), breakpoint(2)));
+    STATIC_REQUIRE(!formula::breakpoints_ascend(breakpoint(1), breakpoint(2, 0)));
+}
+
+TEST_CASE("breakpoint_is_well_formed asks only whether the row's key is a number at all", "[lookup]")
+{
+    STATIC_REQUIRE(formula::breakpoint_is_well_formed(breakpoint(0)));
+    STATIC_REQUIRE(formula::breakpoint_is_well_formed(breakpoint(-7, 2)));
+    STATIC_REQUIRE(!formula::breakpoint_is_well_formed(breakpoint(1, 0)));
+}
+
+TEST_CASE("breakpoint_table_is_well_formed answers for a curve that only arrives at runtime", "[lookup]")
+{
+    // The runtime half of the same question `RequireValidBreakpointTable` asks
+    // at compile time, built on the same two predicates so the two cannot
+    // drift. A loader reading a customer's registered curve has no
+    // static_assert available to it and needs this.
+    STATIC_REQUIRE(formula::breakpoint_table_is_well_formed(CurvePoints));
+    STATIC_REQUIRE(formula::breakpoint_table_is_well_formed(NoPoints));
+    STATIC_REQUIRE(formula::breakpoint_table_is_well_formed(OnePoint));
+    STATIC_REQUIRE(formula::breakpoint_table_is_well_formed(TwoPoints));
+
+    // A repeated key in the MIDDLE pair of four rows -- neither the first pair
+    // nor the last -- which is what fails when the sweep is confined to either
+    // end.
+    constexpr BreakpointTable<4> RepeatedInTheMiddle {
+        breakpoint(0),
+        breakpoint(1),
+        breakpoint(1), // the same key as the row above
+        breakpoint(3),
+    };
+    STATIC_REQUIRE(!formula::breakpoint_table_is_well_formed(RepeatedInTheMiddle));
+
+    // Two middle rows in the wrong ORDER, which the same rule catches: 2 is
+    // not strictly below 1.
+    constexpr BreakpointTable<4> DescendingInTheMiddle {
+        breakpoint(0),
+        breakpoint(2),
+        breakpoint(1),
+        breakpoint(3),
+    };
+    STATIC_REQUIRE(!formula::breakpoint_table_is_well_formed(DescendingInTheMiddle));
+
+    // The table's own FINAL pair, which the middle cases above cannot catch: a
+    // sweep whose bound stopped one pair early passes both of them.
+    constexpr BreakpointTable<3> DescendingAtTheEnd { breakpoint(0), breakpoint(2), breakpoint(1) };
+    STATIC_REQUIRE(!formula::breakpoint_table_is_well_formed(DescendingAtTheEnd));
+
+    // And the table's own FIRST pair, which a sweep starting at index 1 would
+    // step over.
+    constexpr BreakpointTable<3> DescendingAtTheStart { breakpoint(2), breakpoint(0), breakpoint(3) };
+    STATIC_REQUIRE(!formula::breakpoint_table_is_well_formed(DescendingAtTheStart));
+
+    // Two rows: the smallest table that can be malformed at all, in both
+    // directions, so a predicate answering `false` for every two-row table
+    // would fail here rather than look correct.
+    constexpr BreakpointTable<2> TwoRepeated { breakpoint(5), breakpoint(5) };
+    STATIC_REQUIRE(!formula::breakpoint_table_is_well_formed(TwoRepeated));
+    STATIC_REQUIRE(formula::breakpoint_table_is_well_formed(TwoPoints));
+
+    // A row whose key is not a rational number at all, in the middle, where the
+    // ordering sweep alone would report it as merely out of order.
+    constexpr BreakpointTable<3> MalformedInTheMiddle { breakpoint(0), breakpoint(1, 0), breakpoint(3) };
+    STATIC_REQUIRE(!formula::breakpoint_table_is_well_formed(MalformedInTheMiddle));
+
+    // A SINGLE row whose key is not a rational number: there is no pair here,
+    // so only the per-row half of well-formedness can catch it.
+    constexpr BreakpointTable<1> LoneMalformed { breakpoint(1, 0) };
+    STATIC_REQUIRE(!formula::breakpoint_table_is_well_formed(LoneMalformed));
+}
+
+TEST_CASE("all three lookup kinds report finding nothing the same way", "[lookup]")
+{
+    // The one test that pins this phase's stated drift risk across every table
+    // kind at once. Three different tables, three different reasons nothing was
+    // found, and exactly one vocabulary for "found nothing" -- so a later change
+    // that gives any kind its own spelling fails here rather than in a consumer.
+    constexpr auto bandedMiss = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(35));
+    constexpr auto exactMiss =
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::Prism), formula::environment());
+    constexpr auto interpolatingMiss = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(35));
+
+    STATIC_REQUIRE(!bandedMiss.has_value());
+    STATIC_REQUIRE(!exactMiss.has_value());
+    STATIC_REQUIRE(!interpolatingMiss.has_value());
+    STATIC_REQUIRE(bandedMiss.error() == exactMiss.error());
+    STATIC_REQUIRE(exactMiss.error() == interpolatingMiss.error());
+    STATIC_REQUIRE(interpolatingMiss.error() == formula::ArithmeticError::DomainError);
+}
