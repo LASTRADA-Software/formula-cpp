@@ -60,6 +60,7 @@ for it, in the mode the method specifies.
 | [Expressions and evaluation](expressions.md) | Operators, environments, outcomes, overrides |
 | [Citations and rendering](citations.md) | `documented()`, the three dialects, generated documentation |
 | [Tracing and audit trails](tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
+| [Rounding and conditionals](rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Gallery](gallery.md) | A documentation page the library generated about itself |
 
 New here? Read **[Expressions and evaluation](expressions.md)** first — it is the layer the library
@@ -90,6 +91,7 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Formulas, operators, environments, evaluation | shipped |
 | Citations, rendering dialects, generated documentation | shipped |
 | Calculation tracing and audit trails | shipped |
-| Conditionals, lookup tables, constraints, series, statistics | planned |
+| Rounding nodes (decimal places, significant digits), conditionals (`when()`) | shipped |
+| Lookup tables, constraints, series, statistics | planned |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).
