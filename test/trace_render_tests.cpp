@@ -743,7 +743,35 @@ inline constexpr BandTable<3> SizeBands {
 /// A signed underlying type with a negative enumerator, so that a renderer
 /// reading a recorded key as unsigned writes 65533 where `render()` writes
 /// -3. Declared out of numeric order for `render_tests.cpp`'s reason.
-enum class SpecimenShape : std::int16_t
+///
+/// **Named differently from `trace_tests.cpp`'s otherwise identical enumeration
+/// on purpose, and it must stay that way.** Both are internal-linkage types in
+/// an anonymous namespace, so `KeyTable<..., 3>` in each file is a *different*
+/// specialisation -- but clang spells an anonymous namespace `_GLOBAL__N_1`
+/// with no per-translation-unit discriminator, so the template parameter object
+/// for both mangles to one name and lands in a COMDAT group keyed by it. The
+/// linker keeps one group, discards the other, and the local symbol left in the
+/// discarded translation unit points at a section that is no longer there:
+///
+///     `.rodata._ZTAXtlSt5arrayIN12_GLOBAL__N_113SpecimenShapeELm3EE...'
+///     referenced in section `.text' ... defined in discarded section
+///
+/// Measured on clang 20.1.8, and it is an outright link failure rather than
+/// anything subtler: while the two enumerations shared a name and their tables
+/// shared their values, `formula-cpp-tests` would not link on either posix
+/// clang preset, though cl, clang-cl and g++ 14.2 all linked it without
+/// complaint. Renaming this one turned both clang legs green.
+///
+/// **The trigger is narrower than "two files spell it the same", which is why
+/// two other files get away with it today.** `nm` over the four objects that
+/// declare a key enumeration: `lookup_tests.cpp.o` carries no `_ZTA` symbol at
+/// all, so its tables can collide with nothing; and the mangled name encodes
+/// the element values as well as the type name and the size, so
+/// `render_tests.cpp`'s `{3, 7, 5}` never met `trace_tests.cpp`'s `{4, -3, 7}`.
+/// Both of those still spell theirs `SpecimenShape`. That is a property of what
+/// they happen to contain, not a rule -- so give a new test file's key
+/// enumeration a name of its own rather than rely on it.
+enum class RenderedShape : std::int16_t
 {
     Undercut = -3,
     Cube = 4,
@@ -751,13 +779,13 @@ enum class SpecimenShape : std::int16_t
     Beam = 11,
 };
 
-inline constexpr KeyTable<SpecimenShape, 3> ShapeKeys {
-    SpecimenShape::Cube,     // key 4
-    SpecimenShape::Undercut, // key -3 -- the middle row, and negative
-    SpecimenShape::Cylinder, // key 7
+inline constexpr KeyTable<RenderedShape, 3> ShapeKeys {
+    RenderedShape::Cube,     // key 4
+    RenderedShape::Undercut, // key -3 -- the middle row, and negative
+    RenderedShape::Cylinder, // key 7
 };
 
-[[nodiscard]] constexpr auto shapeLookup(SpecimenShape shape)
+[[nodiscard]] constexpr auto shapeLookup(RenderedShape shape)
 {
     return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4), rat(13, 10) });
 }
@@ -813,7 +841,7 @@ inline constexpr BandTable<2> InnerBands {
 
 /// An exact table whose corrections are stated in kilometres, so that a row
 /// that IS found still fails converting out of the result unit.
-inline constexpr KeyTable<SpecimenShape, 2> FarKeys { SpecimenShape::Cube, SpecimenShape::Cylinder };
+inline constexpr KeyTable<RenderedShape, 2> FarKeys { RenderedShape::Cube, RenderedShape::Cylinder };
 
 /// Two rows in centimetres whose values are stated in kilometres: 0 cm sits
 /// exactly on the first row, so the interpolation does no arithmetic and the
@@ -983,12 +1011,12 @@ TEST_CASE("a derivation renders an exact lookup's key, which is its whole subjec
     // The key sits where the other two kinds' operand reference sits, because
     // it plays that part -- and it has to be on this step, since an exact
     // lookup has no operand and so no step below it that could carry the key.
-    CHECK(derivationOf(shapeLookup(SpecimenShape::Undercut), formula::environment())
+    CHECK(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment())
           == "1. lookup(key -3) = 4 MPa\n");
 
     // A key that is a perfectly legitimate enumerator of the author's own
     // enumeration, and simply names no row of this table.
-    CHECK(derivationOf(shapeLookup(SpecimenShape::Beam), formula::environment())
+    CHECK(derivationOf(shapeLookup(RenderedShape::Beam), formula::environment())
           == "1. lookup(key 11) = argument outside the domain of the operation [no row has this key]\n");
 }
 
@@ -1116,9 +1144,9 @@ TEST_CASE("a derivation spells a lookup the way render() does", "[trace-render][
     // The key: render() writes it as the exact lookup's subject, and so does
     // the trace. A negative key is what separates the two casts `key_text`
     // spells separately from one that reads every key as unsigned.
-    std::string const renderedKey = callSubject(formula::render(shapeLookup(SpecimenShape::Undercut)));
+    std::string const renderedKey = callSubject(formula::render(shapeLookup(RenderedShape::Undercut)));
     std::vector<std::string> const tracedKey =
-        lines(derivationOf(shapeLookup(SpecimenShape::Undercut), formula::environment()));
+        lines(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment()));
     REQUIRE(tracedKey.size() == 1);
     CHECK(callSubject(tracedKey[0]) == renderedKey);
 
@@ -1132,7 +1160,7 @@ TEST_CASE("a derivation spells a lookup the way render() does", "[trace-render][
     };
 
     CHECK(tracedHead(traced[1]) == headName(formula::render(sizeLookup())));
-    CHECK(tracedHead(tracedKey[0]) == headName(formula::render(shapeLookup(SpecimenShape::Undercut))));
+    CHECK(tracedHead(tracedKey[0]) == headName(formula::render(shapeLookup(RenderedShape::Undercut))));
 
     std::vector<std::string> const tracedCurve = lines(derivationOf(curveLookup(), diameterOf(60)));
     REQUIRE(tracedCurve.size() == 2);
@@ -1172,7 +1200,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // The same state on the exact kind, which has no operand and no
     // interpolation -- so nothing else in this file would notice the clause
     // going missing entirely.
-    constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(SpecimenShape::Cylinder, { rat(1), rat(Huge) });
+    constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(RenderedShape::Cylinder, { rat(1), rat(Huge) });
     CHECK(derivationOf(far, formula::environment())
           == "1. lookup(key 7) = overflow in exact arithmetic"
              " [this lookup's own unit conversion failed, not anything below it]\n");
