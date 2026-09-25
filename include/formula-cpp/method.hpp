@@ -111,11 +111,12 @@ namespace detail
     /// `RequireVariantsAgree<First, Rest>::value` requires that class to be
     /// complete, so every one of them is instantiated when the expression is
     /// formed rather than only up to the first failure. Measured on a pack
-    /// whose second AND third variants disagree: clang-cl 22.1.3, clang++
-    /// 20.1.8 and g++ 13.3 each report the refusal twice, naming both
-    /// offenders. cl 19.51 reports it once -- the instantiations all happen,
-    /// but cl prints one diagnostic per `static_assert` SITE rather than per
-    /// failure, so a cl user fixes the second disagreement on a second build.
+    /// whose second AND third variants disagree, in two different ways:
+    /// clang-cl 22.1.3, clang++ 20.1.8 and g++ 13.3 each report the refusal
+    /// twice, naming both offenders. cl 19.51 reports it once; fixing that
+    /// offender and rebuilding then reports the other, so a cl user is told
+    /// about both, one build at a time. Why cl collapses them was not
+    /// established, only that it does.
     template <typename First, typename... Rest>
     struct RequireAllVariantsAgree<First, Rest...>
     {
