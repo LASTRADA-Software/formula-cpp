@@ -153,3 +153,65 @@ TEST_CASE("four variants that agree in dimension without agreeing in type are ac
     STATIC_REQUIRE(std::tuple_element_t<0, decltype(pack.cases)>::dimension
                    == std::tuple_element_t<2, decltype(pack.cases)>::dimension);
 }
+
+TEST_CASE("a method selects the variant matching the tag", "[method]")
+{
+    constexpr auto m = formula::method(
+        formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                          formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
+        formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+
+    constexpr auto inputs = formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
+                                                 formula::Measured<EdgeX> { formula::Rational { 150 } },
+                                                 formula::Measured<EdgeY> { formula::Rational { 100 } });
+
+    // `evaluate_method` answers in the coherent SI unit, as every
+    // `Evaluated<Rep>` in this library does -- so 6 MPa is 6'000'000 Pa.
+    //
+    // Cube: 90000 N / (150 mm * 100 mm) = 6 MPa
+    constexpr auto cube = formula::evaluate_method<Cube>(m, inputs);
+    STATIC_REQUIRE(cube.has_value());
+    STATIC_REQUIRE(cube->has_value());
+    STATIC_REQUIRE(cube->value() == formula::Rational { 6'000'000 });
+
+    // Cylinder uses EdgeX twice: 90000 / (150*150) = 4 MPa -- a DIFFERENT
+    // number, so this test cannot pass if selection picked the wrong variant.
+    constexpr auto cylinder = formula::evaluate_method<Cylinder>(m, inputs);
+    STATIC_REQUIRE(cylinder.has_value());
+    STATIC_REQUIRE(cylinder->has_value());
+    STATIC_REQUIRE(cylinder->value() == formula::Rational { 4'000'000 });
+
+    // The constraint set is held as it was given, not unpacked -- see
+    // `ConstraintSet` in `constraint.hpp` for why `check_all()` wants it whole.
+    STATIC_REQUIRE(std::is_same_v<decltype(m.constraintSet), formula::ConstraintSet<>>);
+}
+
+TEST_CASE("a method applies its own rounding rule to the variant it selects", "[method]")
+{
+    // The selection test above lands on 6 and 4 MPa, which rounding to one
+    // decimal leaves alone, so it cannot tell a method that rounds from one
+    // that does not. This one can: 60500 N over 100 mm * 100 mm is 6.05 MPa,
+    // and every axis of the rule moves it somewhere else. Ignored, it stays
+    // 6.05; rounded in pascals rather than megapascals, likewise; to zero or
+    // two places, 6 or 6.05; half-even, half-toward-zero, floor or toward
+    // zero, 6.0. Only the declared rule gives 6.1.
+    constexpr auto m = formula::method(
+        formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                          formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
+        formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+
+    // The unrounded figure, measured through the variant's own expression, so
+    // that the fixture's premise is checked rather than asserted in a comment.
+    constexpr auto unrounded = formula::checked_evaluate<Strength>(std::get<1>(m.variantSet.cases).expression,
+                                                                   specimen(60'500, 100, 999));
+    STATIC_REQUIRE(unrounded->measurement().value() == formula::Rational { 605, 100 });
+
+    // Cylinder, the second variant rather than the first, so that a method
+    // rounding only its first variant would not pass either.
+    constexpr auto cylinder = formula::evaluate_method<Cylinder>(m, specimen(60'500, 100, 999));
+    STATIC_REQUIRE(cylinder.has_value());
+    STATIC_REQUIRE(cylinder->has_value());
+    STATIC_REQUIRE(cylinder->value() == formula::Rational { 6'100'000 });
+}

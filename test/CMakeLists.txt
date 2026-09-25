@@ -381,6 +381,20 @@ formula_add_negative_test(method_variants_agreement_gated
     "formula: this argument of variants(...) is not a variant of a method"
     REJECT "RequireVariantsAgree")
 
+# Selecting a tag no variant declares. There is no fallback variant and no
+# "first match wins", so a method asked for a Prism it does not have is
+# refused at compile time rather than answered with another variant's number.
+formula_add_negative_test(method_no_matching_variant
+    "formula: this method declares no variant for that tag")
+
+# A selection tag obeys the rule a declared tag obeys, through the same guard,
+# and that rule is asked FIRST: `evaluate_method<const Cube>` is refused as a
+# malformed tag, not as an undeclared one. Both messages would be true, so
+# EXPECT alone cannot see the order; REJECT pins it.
+formula_add_negative_test(method_selection_tag_cv_qualified
+    "formula: the tag of this variant is not a plain class type"
+    REJECT "formula: this method declares no variant for that tag")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

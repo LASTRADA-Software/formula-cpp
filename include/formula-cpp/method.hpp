@@ -13,9 +13,10 @@
 /// gets no answer. Since the audit trail is the product, the decision has to
 /// be **declared**, not merely executed.
 ///
-/// This header is the declaration half: the variants, and the tags they apply
-/// to. What selects among them, and what records that selection as a trace
-/// step, are built on top of these.
+/// This header declares the variants and the tags they apply to, bundles them
+/// with a rounding rule and a constraint set into a `Method`, and selects a
+/// variant by tag in `evaluate_method`. What records that selection as a
+/// trace step is built on top of these.
 ///
 /// **Why `variant<Tag>` and not the spec's own `when<Tag>`.** Spec section
 /// 9.1 sketches the selector as `formula::when<Cube>(expr)`. This library
@@ -77,7 +78,13 @@
 /// and the dimension half is enforced here, where the variants are.
 
 #include <formula-cpp/dimension.hpp>
+#include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/rational.hpp>
+#include <formula-cpp/rounding.hpp>
+#include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/sink.hpp>
+#include <formula-cpp/unit.hpp>
 
 #include <cstddef>
 #include <tuple>
@@ -356,6 +363,153 @@ template <typename... Cs>
 [[nodiscard]] constexpr Variants<Cs...> variants(Cs... cases) noexcept
 {
     return Variants<Cs...> { std::tuple<Cs...> { cases... } };
+}
+
+/// A method's rounding rule, declared rather than applied after the fact, so
+/// the trace can say which rule fired and where it came from (spec section
+/// 9.1). Carries no operand: it is applied to whichever variant is selected.
+template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+struct RoundingRule
+{
+    /// The unit the rounding happens in -- see `rounding_node.hpp` for why a
+    /// rounding that does not name one means nothing.
+    static constexpr Unit unit = U;
+    /// How many decimal places of `unit` to keep.
+    static constexpr DecimalPlaces places = Places;
+    /// Which way to break ties, and which way to go.
+    static constexpr RoundingMode mode = Mode;
+};
+
+/// The spelling of a method's rounding rule:
+/// `rounding_rule<unit::Megapascal, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero>()`.
+template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+[[nodiscard]] constexpr RoundingRule<U, Places, Mode> rounding_rule() noexcept
+{
+    return {};
+}
+
+/// One method: the variants it chooses between, the rounding rule it applies
+/// to whichever one is chosen, and the constraints it checks.
+///
+/// `constraintSet` is the `ConstraintSet` exactly as `constraints(...)` built
+/// it, held as an ordinary member and never unpacked, so that it can be
+/// handed straight to `check_all()`; `ConstraintSet` in `constraint.hpp` says
+/// why that is the shape.
+template <typename Vs, typename Rounding, typename Constraints>
+struct Method
+{
+    /// The variants, as `variants(...)` built them.
+    Vs variantSet {};
+    /// The rule applied to the selected variant's result.
+    Rounding rounding {};
+    /// The constraints, as `constraints(...)` built them.
+    Constraints constraintSet {};
+};
+
+/// Builds a method:
+/// `method(variants(...), rounding_rule<...>(), constraints(...))`.
+template <typename Vs, typename Rounding, typename Constraints>
+[[nodiscard]] constexpr Method<Vs, Rounding, Constraints> method(Vs variantSet, Rounding rounding,
+                                                                 Constraints constraintSet) noexcept
+{
+    return Method<Vs, Rounding, Constraints> { variantSet, rounding, constraintSet };
+}
+
+namespace detail
+{
+    /// Refuses a tag no variant declares. There is no fallback variant and no
+    /// "first match wins": a specimen matching no variant has no result, the
+    /// same ruling phase 9 made for `bool satisfied()` and phase 10 made for a
+    /// lookup miss. An author who wants a catch-all writes one.
+    template <typename Tag, typename... Cs>
+    struct RequireVariantForTag
+    {
+        static_assert((std::is_same_v<Tag, typename Cs::tag> || ...),
+                      "formula: this method declares no variant for that tag; a method that matches "
+                      "nothing has no result, so add a variant for it or select a tag it declares");
+
+        static constexpr bool value = true;
+    };
+
+    /// Whether @p Tag passes `RequirePlainClassTag`, asked without firing it.
+    template <typename Tag>
+    inline constexpr bool isPlainClassTag = std::is_class_v<Tag> && std::is_same_v<Tag, std::remove_cv_t<Tag>>;
+
+    /// The two rules a selection tag obeys, asked in an order that matters.
+    ///
+    /// A tag selected with is held to the rule a declared tag is held to,
+    /// through the same guard, so `evaluate_method<const Cube>` is told what
+    /// is wrong with `const Cube` rather than that no variant declares it --
+    /// true, but it sends the author looking at the variants instead of at
+    /// the tag. The match is therefore asked only once the tag is well
+    /// formed, gated through `std::conditional_t` for the reason
+    /// `RequireWellFormedVariants` gives. `method_selection_tag_cv_qualified.cpp`
+    /// pins the gate by refusing any output that carries the no-match text.
+    template <typename Tag, typename... Cs>
+    struct RequireSelectableTag
+    {
+        static_assert(RequirePlainClassTag<Tag>::value);
+        static_assert(
+            std::conditional_t<isPlainClassTag<Tag>, RequireVariantForTag<Tag, Cs...>, std::true_type>::value);
+
+        static constexpr bool value = true;
+    };
+
+    /// The position of the variant tagged @p Tag.
+    ///
+    /// Answers 0 when there is none. That answer is never used --
+    /// `RequireSelectableTag` has already refused the build -- and it is 0
+    /// rather than `sizeof...(Cs)` so that the `std::get` it feeds stays in
+    /// range and adds no error of the standard library's to our refusal.
+    template <typename Tag, typename... Cs>
+    [[nodiscard]] consteval std::size_t variant_index() noexcept
+    {
+        constexpr bool matches[] = { std::is_same_v<Tag, typename Cs::tag>... };
+        for (std::size_t index = 0; index < sizeof...(Cs); ++index)
+            if (matches[index])
+                return index;
+        return 0;
+    }
+
+    /// Selects the variant tagged `Tag` from a variants pack.
+    template <typename Tag, typename Vs>
+    struct SelectVariant;
+
+    /// The only specialisation: a `Variants` pack, whose variants' tags are
+    /// what selection compares against.
+    template <typename Tag, typename... Cs>
+    struct SelectVariant<Tag, Variants<Cs...>>
+    {
+        static_assert(RequireSelectableTag<Tag, Cs...>::value);
+
+        /// Where in `Variants::cases` the selected variant sits.
+        static constexpr std::size_t index = variant_index<Tag, Cs...>();
+    };
+} // namespace detail
+
+/// Evaluates the variant of @p m tagged `Tag`, rounded by @p m's own rounding
+/// rule, in the coherent SI unit of its dimension -- the same unit every
+/// `Evaluated<Rep>` in this library is in.
+///
+/// `Tag` is never deduced: which variant applies is a property of the
+/// specimen, stated by the caller, never inferred from a number. A tag no
+/// variant declares is refused at compile time rather than answered with a
+/// fallback -- see `detail::RequireVariantForTag`.
+///
+/// The rounding is the ordinary rounding node wrapped around the selected
+/// expression, so it rounds in the rule's unit exactly as
+/// `rounded<U, Places, Mode>(...)` does, and a sink sees the steps it would
+/// see for that node. That is also why `Rep = double` is refused here as it
+/// is there -- see `RepRounding<double>`.
+template <typename Tag, typename Rep = Rational, typename M, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> evaluate_method(M const& m, Env const& environment, Sink sink = {}) noexcept
+{
+    using Selection = detail::SelectVariant<Tag, std::remove_cvref_t<decltype(m.variantSet)>>;
+    using Rule = std::remove_cvref_t<decltype(m.rounding)>;
+
+    auto const& selected = std::get<Selection::index>(m.variantSet.cases);
+    return detail::dispatch<Rep>(rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression), environment,
+                                 sink);
 }
 
 } // namespace formula
