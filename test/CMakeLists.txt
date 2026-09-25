@@ -467,8 +467,8 @@ formula_add_negative_test(method_variants_not_a_variant_position "RequireVariant
 
 # An empty pack passes the every-argument-is-a-variant gate vacuously, so
 # the rules behind that gate are asked about it too, and must say nothing:
-# the distinct-tag rule has an empty-pack specialisation for exactly that,
-# and the REJECT pins it.
+# the distinct-tag rule's primary template answers for the empty pack, and
+# the REJECT pins it.
 formula_add_negative_test(method_variants_empty
     "formula: this method declares no variants at all"
     REJECT "RequireDistinctVariantTags")
@@ -505,6 +505,14 @@ formula_add_negative_test(method_duplicate_tag
     "formula: this method declares two variants for the same tag")
 
 formula_add_negative_test(method_duplicate_tag_position "RequireTagDeclaredOnce<1,")
+
+# Two `variant<int>`: a repeated tag that is not a plain class type either.
+# Fixing the tag clears both, so only the tag rule may report it -- the
+# distinct-tag rule is gated on every tag being plain, and the REJECT pins
+# that gate.
+formula_add_negative_test(method_duplicate_tag_not_plain
+    "formula: this tag is not a plain class type"
+    REJECT "RequireTagDeclaredOnce")
 
 # Selecting a tag no variant declares. There is no fallback variant and no
 # "first match wins", so a method asked for a Prism it does not have is

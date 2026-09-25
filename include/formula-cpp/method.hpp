@@ -206,6 +206,19 @@ namespace detail
     {
     };
 
+    /// Whether a type is a `VariantCase` whose tag passes the tag rule, asked
+    /// without firing it. False for anything that is not a variant, so it
+    /// never reads a `tag` that is not there.
+    template <typename T>
+    struct CaseTagIsPlain: std::false_type
+    {
+    };
+
+    template <typename Tag, Node Expr>
+    struct CaseTagIsPlain<VariantCase<Tag, Expr>>: std::bool_constant<isPlainClassTag<Tag>>
+    {
+    };
+
     /// Fails to compile when something that is not a variant was handed to
     /// `variants(...)`.
     ///
@@ -391,10 +404,14 @@ namespace detail
     /// the tags where the template-id is formed, gate or no gate.
     ///
     /// The primary template is the empty pack, vacuously true, for the reason
-    /// `RequireAllVariantsAgree` has one: `variants()` passes the
-    /// every-argument-is-a-variant gate, and must be told only that it is
-    /// empty. Without it, the tag lookup below would ask for the tag at
-    /// position 0 of nothing.
+    /// `RequireAllVariantsAgree` has one: `variants()` passes the gate in
+    /// `RequireWellFormedVariants`, and must be told only that it is empty.
+    /// Only the partial specialisation below reads a tag, and it needs a
+    /// `First` to read one from, which an empty pack cannot supply -- so the
+    /// empty pack lands here. Were this primary template only declared, the
+    /// empty pack would land on an undefined template instead, and the
+    /// compiler would add its own error for that to the one message that
+    /// matters.
     template <typename... Cs>
     struct RequireDistinctVariantTags
     {
@@ -451,10 +468,21 @@ namespace detail
     /// That is a likelier mistake than the constraint trap just above.
     ///
     /// The distinct-tag rule reads `Cs::tag`, so it sits behind that gate,
-    /// and `method_variants_agreement_gated` rejects its name too. It is
-    /// deliberately NOT gated on the agreement rule, nor the agreement rule
-    /// on it: the two are independent, and a pack that breaks both is told
-    /// about both.
+    /// and `method_variants_agreement_gated` rejects its name too. It sits
+    /// behind a second gate as well: every tag is a plain class type. Two
+    /// `variant<int>` would otherwise be refused twice for one mistake -- once
+    /// by the tag rule and once as a repeated tag -- and fixing the tag clears
+    /// both, so only the tag rule's message says what to fix.
+    /// `RequireSelectableTag` gates its match on `isPlainClassTag` for the
+    /// same reason; `method_duplicate_tag_not_plain.cpp` pins this gate.
+    ///
+    /// It is deliberately NOT gated on the agreement rule, nor the agreement
+    /// rule on it: the two are independent. Measured with
+    /// `variants(variant<Cube>(pressure), variant<Cube>(length))` on cl
+    /// 19.51, clang-cl 22.1.3, clang++ 20.1.8 and g++ 13.3: all four report
+    /// both refusals in one build. cl included -- it collapses two failures
+    /// of the SAME rule, as `RequireAllVariantsAgree` records, but not
+    /// failures of two different rules.
     template <typename... Cs>
     struct RequireWellFormedVariants
     {
@@ -465,8 +493,13 @@ namespace detail
         /// can ask about.
         static constexpr bool everyArgumentIsAVariant = (IsVariantCase<Cs>::value && ...);
 
+        /// Whether every argument is a variant whose tag passes the tag rule.
+        static constexpr bool everyTagIsPlain = (CaseTagIsPlain<Cs>::value && ...);
+
         static_assert(std::conditional_t<everyArgumentIsAVariant, RequireAllVariantsAgree<Cs...>, std::true_type>::value);
-        static_assert(std::conditional_t<everyArgumentIsAVariant, RequireDistinctVariantTags<Cs...>, std::true_type>::value);
+        static_assert(std::conditional_t<everyArgumentIsAVariant && everyTagIsPlain,
+                                         RequireDistinctVariantTags<Cs...>,
+                                         std::true_type>::value);
 
         static constexpr bool value = true;
     };
