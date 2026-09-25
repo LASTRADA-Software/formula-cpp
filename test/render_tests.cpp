@@ -1058,9 +1058,14 @@ TEST_CASE("render: a LaTeX lookup can be broken across lines, and never breaks i
     // The other half of the display-math decision: a lookup never emits `\\`.
     // `\\` is the only thing that would break a DISPLAY, and it is a hard
     // LaTeX error in `$...$` and `\[...\]` -- so a caller who needs a wide
-    // table broken in a display reaches for breqn's `dmath` (measured: zero
-    // overfull boxes), and this library emits nothing that could break their
-    // build to get there. See `detail::lookup_separator`.
+    // table broken in a display reaches for breqn's `dmath`, which leaves 5
+    // small boxes where a plain display leaves 16, and does so *because* the
+    // separator above is there: stripped out, `dmath` is no better than the
+    // plain display. This library emits nothing that could break their build
+    // to get there. See `detail::lookup_separator` -- and note that neither
+    // that number nor any other in it is pinned here. They are properties of
+    // a TeX engine, so this case pins only the emitted string; if the
+    // mechanism ever stops being the right one, these assertions still pass.
     CHECK(banded.find("\\\\") == std::string::npos);
     CHECK(exact.find("\\\\") == std::string::npos);
     CHECK(curve.find("\\\\") == std::string::npos);

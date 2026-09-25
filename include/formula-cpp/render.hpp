@@ -341,13 +341,38 @@ namespace detail
     /// claimed `multline` fixed it; it does not, and the claim was reasoned
     /// rather than measured.
     ///
-    /// What does work, for a caller who genuinely needs a wide table in a
-    /// display, is `breqn`'s `dmath`: **0 overfull boxes** on the same
-    /// renderings -- and 0 with `\allowbreak` stripped out too, so that is
-    /// entirely the caller's package doing the work and owes nothing to this
-    /// function. `render_tests.cpp` pins both halves of the decision: that
-    /// every field separator carries `\allowbreak`, and that a lookup never
-    /// emits `\\`.
+    /// What does help, for a caller who genuinely needs a wide table in a
+    /// display, is `breqn`'s `dmath`: 5 overfull boxes over the same 22
+    /// renderings against a plain display's 16, worst 13.3pt against 549pt.
+    ///
+    /// **And it helps *because of* this separator, not despite it.** With
+    /// `\allowbreak` stripped out, `dmath` falls straight back to 16 boxes
+    /// worst 549.0pt -- the plain display's number to the decimal. So the
+    /// separator is what makes the caller's remedy available at all, and
+    /// deleting it as tidy-up would quietly take the remedy away with it.
+    ///
+    /// The residual is named rather than rounded off to "clean": all 5 boxes
+    /// that survive `dmath` are **exact** lookups, 8.3pt to 13.3pt. An earlier
+    /// measurement of `dmath` sampled four renderings and happened to include
+    /// no exact lookup at all, which is the degenerate-fixture rule landing on
+    /// a measurement set rather than on a test fixture.
+    ///
+    /// **This paragraph has been wrong twice, both times the same way, and
+    /// that is the useful thing in it.** The first draft said amsmath's
+    /// `multline` was the remedy; typesetting it gave 571pt, slightly *worse*
+    /// than a plain display, because `multline` also breaks only at an
+    /// explicit `\\`. The draft that replaced it said `dmath` owed nothing to
+    /// `\allowbreak` -- measured against a "control" that turned out to be
+    /// byte-identical to the treatment, because the strip silently never
+    /// applied. An instrument that cannot report a difference will report no
+    /// difference. Anything added here comes from two files diffed before they
+    /// are trusted.
+    ///
+    /// `render_tests.cpp` pins what a unit test can pin: that every field
+    /// separator carries `\allowbreak`, and that a lookup never emits `\\`. It
+    /// cannot pin any of the numbers above -- those are properties of a TeX
+    /// engine, not of the emitted string -- so the stripped case is measured
+    /// here and nowhere else.
     template <Dialect D>
     [[nodiscard]] std::string lookup_separator()
     {
