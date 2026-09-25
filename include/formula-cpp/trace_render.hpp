@@ -159,13 +159,13 @@ namespace detail
             case StepKind::Documented:
                 return sole_operand(step);
             case StepKind::Round:
-                return "round[to " + std::to_string(step.granularity) + " dp of " + std::string { view(step.unit.symbolText) }
-                       + "](" + sole_operand(step) + ")";
+                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp of "
+                       + std::string { view(step.unit.symbolText) } + ")";
             case StepKind::RoundSignificant:
-                return "round[to " + std::to_string(step.granularity) + " sf of "
-                       + std::string { view(step.unit.symbolText) } + "](" + sole_operand(step) + ")";
+                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf of "
+                       + std::string { view(step.unit.symbolText) } + ")";
             case StepKind::NumericValue:
-                return "numeric[in " + std::string { view(step.sourceUnit.symbolText) } + "](" + sole_operand(step)
+                return "numeric(" + sole_operand(step) + ", in " + std::string { view(step.sourceUnit.symbolText) }
                        + ")";
             case StepKind::Conditional:
             {

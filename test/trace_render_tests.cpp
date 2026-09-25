@@ -239,7 +239,7 @@ TEST_CASE("an explicit limit of zero is allowed, and says what it hid", "[trace-
 
 // --------------------------------------------------------------- phase 8
 
-TEST_CASE("a derivation renders a Round step as round[to N dp of unit](...)", "[trace-render]")
+TEST_CASE("a derivation renders a Round step as round(..., to N dp of unit)", "[trace-render]")
 {
     // 12.34 mm to one decimal place, half away from zero, is 12.3 mm -- the
     // same example rounding_node_tests.cpp verifies directly.
@@ -259,10 +259,10 @@ TEST_CASE("a derivation renders a Round step as round[to N dp of unit](...)", "[
     // value visible", not a duplicated field on the Round step itself.
     CHECK(text
           == "1. d = 617/50 mm\n"
-             "2. round[to 1 dp of mm](#1) = 123/10 mm\n");
+             "2. round(#1, to 1 dp of mm) = 123/10 mm\n");
 }
 
-TEST_CASE("a derivation renders a RoundSignificant step as round[to N sf of unit](...)", "[trace-render]")
+TEST_CASE("a derivation renders a RoundSignificant step as round(..., to N sf of unit)", "[trace-render]")
 {
     // 12.34 mm to two significant digits is 12 mm.
     constexpr auto node = formula::rounded_to_digits<unit::Millimetre, formula::SignificantDigits { 2 },
@@ -277,7 +277,7 @@ TEST_CASE("a derivation renders a RoundSignificant step as round[to N sf of unit
 
     CHECK(text
           == "1. d = 617/50 mm\n"
-             "2. round[to 2 sf of mm](#1) = 12 mm\n");
+             "2. round(#1, to 2 sf of mm) = 12 mm\n");
 }
 
 TEST_CASE("a derivation renders a NumericValue step's justification, and the unit it read from",
@@ -295,10 +295,10 @@ TEST_CASE("a derivation renders a NumericValue step's justification, and the uni
 
     // The bare number (70) carries no unit suffix of its own -- it is
     // dimensionless by construction -- but "in MPa" is not lost: it is
-    // rendered, not merely carried, in the numeric[in ...] prefix.
+    // rendered, not merely carried, in the numeric(..., in ...) suffix.
     CHECK(text
           == "1. f = 70 MPa\n"
-             "2. numeric[in MPa](#1) = 70 (empirical fit only valid in MPa)\n");
+             "2. numeric(#1, in MPa) = 70 (empirical fit only valid in MPa)\n");
 }
 
 TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-render]")
