@@ -541,6 +541,22 @@ formula_add_negative_test(method_arguments_out_of_order_rule_last
 formula_add_negative_test(method_constraints_not_a_constraint_set
     "formula: this method's constraints are not a constraint set")
 
+# A malformed method declared AND evaluated. The declaration is refused, and
+# `evaluate_method` must add nothing to that refusal: it gates its body on the
+# method being well formed. Without that gate, measured on clang-cl 22,
+# clang++ 20 and g++ 13, the first case also got the rounding node's own
+# message for the same mistake, and the second the compiler's error for the
+# undefined `SelectVariant` its body names. Each REJECT refuses that second
+# report. cl 19.51 reported neither even without the gate, so these two pass
+# on cl either way; the other three legs are what pin it.
+formula_add_negative_test(method_evaluate_rounding_rule_dimension_mismatch
+    "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report"
+    REJECT "formula: this rounding node names a unit that does not measure")
+
+formula_add_negative_test(method_evaluate_arguments_out_of_order
+    "formula: this method's variants are not a variants pack"
+    REJECT "SelectVariant")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

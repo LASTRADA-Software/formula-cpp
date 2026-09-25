@@ -591,6 +591,64 @@ struct Method
     Constraints constraintSet {};
 };
 
+namespace detail
+{
+    /// Whether a type is a `Method`, well formed or not.
+    template <typename M>
+    struct IsMethod: std::false_type
+    {
+    };
+
+    template <typename Vs, typename Rounding, typename Constraints>
+    struct IsMethod<Method<Vs, Rounding, Constraints>>: std::true_type
+    {
+    };
+
+    /// Whether every variant in a pack has a tag the tag rule accepts, asked
+    /// without firing it.
+    template <typename Vs>
+    struct VariantTagsArePlain: std::false_type
+    {
+    };
+
+    template <typename... Tags, Node... Exprs>
+    struct VariantTagsArePlain<Variants<VariantCase<Tags, Exprs>...>>: std::bool_constant<(isPlainClassTag<Tags> && ...)>
+    {
+    };
+
+    /// Whether a rounding rule's unit measures a pack's agreed dimension,
+    /// asked without firing `RequireRoundingRuleMeasuresVariants`. Only ever
+    /// instantiated behind the checks that give both sides a meaning -- see
+    /// `IsWellFormedMethod`.
+    template <typename Vs, typename Rounding>
+    struct RoundingRuleMeasuresVariants: std::bool_constant<Rounding::unit.dimension == VariantsDimension<Vs>::dimension>
+    {
+    };
+
+    /// Whether a `Method` passes every rule its class body asks, and every
+    /// rule its variants ask, asked without firing any of them.
+    ///
+    /// `std::conjunction` rather than `&&`, because it stops instantiating at
+    /// the first false member: `RoundingRuleMeasuresVariants` reads
+    /// `Rounding::unit`, which only a `RoundingRule` has, so it must not be
+    /// instantiated for a method whose parts are in the wrong order.
+    template <typename M>
+    struct IsWellFormedMethod: std::false_type
+    {
+    };
+
+    template <typename Vs, typename Rounding, typename Constraints>
+    struct IsWellFormedMethod<Method<Vs, Rounding, Constraints>>:
+        std::conjunction<IsVariants<std::remove_cv_t<Vs>>,
+                         IsRoundingRule<std::remove_cv_t<Rounding>>,
+                         IsConstraintSet<std::remove_cv_t<Constraints>>,
+                         std::bool_constant<VariantsDimension<std::remove_cv_t<Vs>>::known>,
+                         VariantTagsArePlain<std::remove_cv_t<Vs>>,
+                         RoundingRuleMeasuresVariants<std::remove_cv_t<Vs>, std::remove_cv_t<Rounding>>>
+    {
+    };
+} // namespace detail
+
 /// Builds a method:
 /// `method(variants(...), rounding_rule<...>(), constraints(...))`.
 template <typename Vs, typename Rounding, typename Constraints>
@@ -682,14 +740,43 @@ namespace detail
 /// `rounded<U, Places, Mode>(...)` does, and a sink sees the steps it would
 /// see for that node. That is also why `Rep = double` is refused here as it
 /// is there -- see `RepRounding<double>`.
+///
+/// A malformed `Method` is refused where it is declared, and this body is
+/// then not instantiated at all, so that evaluating one adds nothing to that
+/// refusal. Without the gate, measured on clang-cl 22, clang++ 20 and g++ 13:
+/// a rounding rule of the wrong dimension was reported a second time by the
+/// rounding node this body builds, and parts in the wrong order added the
+/// compiler's own error for the undefined `SelectVariant` it names. cl 19.51
+/// reported neither, gate or no gate -- it did not go on into this body once
+/// the class had failed -- so on cl the gate is invisible and the two cases
+/// below pass either way.
+/// `method_evaluate_rounding_rule_dimension_mismatch.cpp` and
+/// `method_evaluate_arguments_out_of_order.cpp` pin the gate by refusing
+/// that second message and that template's name. `if constexpr` rather than
+/// the `std::conditional_t` the class bodies above use, because this is a
+/// function body, where a discarded statement is exactly what is wanted.
+///
+/// Anything that is not a `Method` at all still reaches the body, and is
+/// refused there in the compiler's own words, as it always was.
 template <typename Tag, typename Rep = Rational, typename M, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> evaluate_method(M const& m, Env const& environment, Sink sink = {}) noexcept
 {
-    using Selection = detail::SelectVariant<Tag, std::remove_cvref_t<decltype(m.variantSet)>>;
-    using Rule = std::remove_cvref_t<decltype(m.rounding)>;
+    if constexpr (detail::IsMethod<M>::value && !detail::IsWellFormedMethod<M>::value)
+    {
+        // Unreachable: the declaration of `M` has already failed to compile.
+        static_cast<void>(m);
+        static_cast<void>(environment);
+        static_cast<void>(sink);
+        return {};
+    }
+    else
+    {
+        using Selection = detail::SelectVariant<Tag, std::remove_cvref_t<decltype(m.variantSet)>>;
+        using Rule = std::remove_cvref_t<decltype(m.rounding)>;
 
-    auto const& selected = std::get<Selection::index>(m.variantSet.cases);
-    return detail::dispatch<Rep>(rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression), environment, sink);
+        auto const& selected = std::get<Selection::index>(m.variantSet.cases);
+        return detail::dispatch<Rep>(rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression), environment, sink);
+    }
 }
 
 } // namespace formula
