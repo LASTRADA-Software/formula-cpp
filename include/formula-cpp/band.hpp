@@ -283,9 +283,12 @@ namespace detail
 /// reusing `band_is_well_formed` and `bands_are_adjacent`, the same two
 /// predicates `band_table_is_well_formed` uses for a table that only arrives
 /// at runtime, through `RequireBandWellFormed` and `RequireBandsAdjacent`
-/// above. Consumed by phase 10 tasks 2-4, which declare a banded lookup's
-/// bands as a `BandTable` template argument. Reached through `::value`, for
-/// the same reason `RequireBandsAdjacent` is.
+/// above. Consumed by phase 10 tasks 2-3, which declare a banded lookup's
+/// bands as a `BandTable` template argument. **Not** by the interpolating
+/// lookup (task 4): its rows are points rather than intervals, so it declares
+/// its own `BreakpointTable` and its own validation -- see `lookup.hpp`'s file
+/// comment for why a band table cannot express a curve. Reached through
+/// `::value`, for the same reason `RequireBandsAdjacent` is.
 template <BandTable Bands>
 struct RequireValidBandTable
 {

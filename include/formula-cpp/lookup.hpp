@@ -376,12 +376,20 @@
 /// Stated as a rule because it is one, even though it is observable in exactly
 /// one place: interpolating across the segment a row begins would return that
 /// row's own value anyway, since the weight is exactly zero. The place it is
-/// observable is the table's **last** row, which begins no segment at all. It
-/// also means a hit on a row performs no arithmetic, so a row whose value is
-/// perfectly representable can never be reported as an overflow on the way to
-/// being returned -- that second property is not pinned by a test, because
-/// provoking it needs numerators near the end of `Rational`'s range that no
-/// published table contains.
+/// observable is the table's **last** row, which begins no segment at all.
+///
+/// It also means the **interpolation** does no arithmetic on a row hit, so no
+/// row can be reported as an overflow *of the interpolation*. That is the whole
+/// of the guarantee, and an earlier revision of this comment claimed more: that
+/// a row whose value is representable can never come back as an `Overflow` at
+/// all. It can. `checked_evaluate_si` still hands the answer to
+/// `detail::in_si`, which converts it out of `ResultUnit` into the coherent SI
+/// unit, and **a unit conversion is arithmetic** -- a row stating `2^62`
+/// kilometres is a perfectly representable `Rational` that overflows on the way
+/// to metres. That path is shared with the banded and the exact lookup, which
+/// have it for exactly the same reason, and nothing about it is particular to
+/// interpolation. `lookup_tests.cpp` pins both halves: a row hit that overflows
+/// in the conversion, and an interpolation that overflows in the interpolation.
 ///
 /// **There is no extrapolation.** A value below the first row or above the last
 /// one is a miss -- `ArithmeticError::DomainError` through `Evaluated<Rep>`,
@@ -407,10 +415,11 @@
 /// precision silently: the *only* way the answer is not the exact rational the
 /// two rows imply is that some intermediate lies outside `Rational`'s
 /// representable range, and that is reported as `ArithmeticError::Overflow`
-/// through the same channel a miss uses, never approximated away. `x1 - x0`
-/// cannot be zero -- strictly ascending breakpoints are enforced at compile
-/// time -- so the division is guarded by the table's own validation rather than
-/// by a runtime test.
+/// through the same channel a miss uses, never approximated away -- asserted
+/// on a table whose exact answer genuinely does not fit, rather than only
+/// reasoned about. `x1 - x0` cannot be zero -- strictly ascending breakpoints
+/// are enforced at compile time -- so the division is guarded by the table's
+/// own validation rather than by a runtime test.
 ///
 /// **`Rep` is closed to `Rational`, and here the arithmetic reason is the true
 /// one.** The banded node's guard gives an arithmetic reason (band selection
@@ -1306,8 +1315,8 @@ struct RequireValidBreakpointTable
 namespace detail
 {
     /// The interpolation itself, on two rows already reduced to plain
-    /// rationals: `lowValue + (key - lowKey)(highValue - lowValue) /
-    /// (highKey - lowKey)`.
+    /// rationals: `lowValue + ((key - lowKey) / (highKey - lowKey)) *
+    /// (highValue - lowValue)`.
     ///
     /// Every step is `Rational`'s own checked arithmetic, so the result is the
     /// **exact** rational the two rows imply and nothing is rounded anywhere on
@@ -1315,14 +1324,35 @@ namespace detail
     /// representable range, reported as `ArithmeticError::Overflow` rather than
     /// approximated away. See the file comment.
     ///
-    /// The rise is multiplied in before the span is divided out, rather than
-    /// dividing first: `checked_mul` cross-reduces its operands before
-    /// multiplying, so the product of two table-sized numbers is the cheap
-    /// order, whereas `(key - lowKey) / (highKey - lowKey)` first would build a
-    /// fraction with both spans' denominators in it and only then multiply. The
-    /// answer is identical either way -- exact arithmetic has no rounding for
-    /// an order of operations to change -- so this is purely about which order
-    /// overflows later.
+    /// **The span is divided out first, and the rise multiplied in after.** In
+    /// exact arithmetic the answer is identical either way -- there is no
+    /// rounding for an order of operations to change -- so the only thing this
+    /// choice affects is how large the intermediates get, which is to say how
+    /// far the computation gets before it has to report `Overflow`.
+    ///
+    /// **Neither order dominates**, and the comment that used to stand here
+    /// claimed one did. Measured, both directions:
+    ///
+    ///  - keys `{0, 10}` with values `{0, 2^62}`, asked at 5: dividing first
+    ///    answers `2^61` exactly; multiplying first reports `Overflow`.
+    ///  - keys `{0, 4e9}` with values `{0, 4e9}`, asked at `1/4e9`: multiplying
+    ///    first answers `1/4e9` exactly; dividing first reports `Overflow`.
+    ///
+    /// Dividing first is chosen because it is the better order for the tables
+    /// this library is actually for. A published curve states its rows on a
+    /// common grid -- 0, 10, 20 mm -- so `offset` and `span` share their
+    /// denominator, `offset / span` cancels to a weight strictly below 1, and
+    /// the key scale never meets the value scale. Multiplying first forms the
+    /// one product in the whole computation that mixes key magnitude with value
+    /// magnitude, and nothing cancels it. The shape dividing first is worse for
+    /// is the opposite one: a key so fine that `offset / span` cannot cancel,
+    /// against a value that would have cancelled against the offset instead.
+    ///
+    /// Both of those tables are in `lookup_tests.cpp`, asserted as behaviour --
+    /// one showing the chosen order returning a value the rejected order could
+    /// not, one showing the chosen order refusing a table the rejected order
+    /// could have answered. The order was previously pinned by nothing at all:
+    /// the entire suite compiled unchanged under either.
     ///
     /// `highKey - lowKey` cannot be zero: `RequireValidBreakpointTable` has
     /// already refused a table whose rows do not strictly ascend, so there is
@@ -1340,10 +1370,10 @@ namespace detail
         std::expected<Rational, ArithmeticError> const offset = checked_sub(key, lowKey);
         if (!offset.has_value())
             return offset;
-        std::expected<Rational, ArithmeticError> const scaled = checked_mul(*offset, *rise);
-        if (!scaled.has_value())
-            return scaled;
-        std::expected<Rational, ArithmeticError> const share = checked_div(*scaled, *span);
+        std::expected<Rational, ArithmeticError> const weight = checked_div(*offset, *span);
+        if (!weight.has_value())
+            return weight;
+        std::expected<Rational, ArithmeticError> const share = checked_mul(*weight, *rise);
         if (!share.has_value())
             return share;
         return checked_add(lowValue, *share);

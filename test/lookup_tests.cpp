@@ -983,3 +983,167 @@ TEST_CASE("all three lookup kinds report finding nothing the same way", "[lookup
     STATIC_REQUIRE(exactMiss.error() == interpolatingMiss.error());
     STATIC_REQUIRE(interpolatingMiss.error() == formula::ArithmeticError::DomainError);
 }
+
+namespace
+{
+/// A curve whose segments are **unequal** (2 cm then 3 cm) and **none of whose
+/// keys equals its own row index**. `CurvePoints` above is neither: it is
+/// `{0, 1, 2, 3}` cm, so every segment is the same width and every key happens
+/// to equal its index, and two real defects are invisible against it -- taking
+/// the span from the table's first pair rather than from the bracketing one,
+/// and reading a row's key as its row number. Both survive a suite whose only
+/// multi-segment table is evenly spaced.
+///
+/// This is the lesson the off-centre probes taught, one level up: a probe must
+/// not sit at a point of symmetry, and neither must the **table**. Uniform
+/// spacing makes span-from-the-first-pair indistinguishable from
+/// span-per-segment; keys equal to indices make a key indistinguishable from an
+/// index. Vary the fixture's shape, not only the probe's position.
+inline constexpr BreakpointTable<3> UnevenPoints {
+    breakpoint(0),
+    breakpoint(2),
+    breakpoint(5),
+};
+
+/// Two rows whose values are far enough apart that the order the interpolation
+/// divides and multiplies in decides whether it can answer at all. Not a table
+/// anyone would publish -- that is the point: this is the manufactured extreme
+/// that pins a choice ordinary tables cannot distinguish, the way
+/// `rational_tests.cpp` pins `IntMin`.
+inline constexpr BreakpointTable<2> WideValueRange { breakpoint(0), breakpoint(10) };
+
+/// The opposite shape: keys so coarse, and a probe so fine, that the weight
+/// `offset / span` cannot cancel. See `SteepKeyRange`'s test for what it
+/// records.
+inline constexpr BreakpointTable<2> SteepKeyRange { breakpoint(0), breakpoint(4000000000) };
+
+/// A quarter of the way along, against a value whose scale leaves no room for
+/// the product. See the overflow test for what makes this one different from
+/// the two above.
+inline constexpr BreakpointTable<2> UnrepresentableAnswer { breakpoint(0), breakpoint(4) };
+
+/// `2^62`, an ordinary representable `Rational`, used as a row value where the
+/// scale rather than the arithmetic is the point.
+constexpr std::int64_t Huge = std::int64_t { 1 } << 62;
+} // namespace
+
+TEST_CASE("an unevenly spaced curve interpolates against the bracketing pair, not the first one", "[lookup]")
+{
+    // Segments of 2 cm and 3 cm, and no key equal to its own row index. 30 mm
+    // == 3 cm is a THIRD of the way along the 2..5 cm segment -- neither a
+    // breakpoint nor a midpoint -- so 100 % + (1/3)(130 - 100) % = 110 %.
+    //
+    // Measured: against `CurvePoints` alone, two defects pass the whole suite.
+    // Taking the span from the table's FIRST pair is indistinguishable from
+    // taking it from the bracketing pair when every segment is the same width;
+    // reading the lower row's key as its ROW INDEX is indistinguishable from
+    // reading its key when the keys are 0, 1, 2, 3. Here the first-pair span is
+    // 2 where the real one is 3, and the lower row's index is 1 where its key
+    // is 2, so each answers 115 % instead of 110 %.
+    constexpr auto node = interpolating_lookup<unit::Centimetre, UnevenPoints, unit::Percent>(
+        var<Diameter>, { rat(90), rat(100), rat(130) });
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(30));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(110, 100));
+
+    // The first segment of the same table, so an implementation that got the
+    // uneven case right only by reaching for a fixed second pair is caught too.
+    // 10 mm == 1 cm is halfway along the 0..2 cm segment: 90 % + (1/2)(10) % = 95 %.
+    constexpr auto inTheFirstSegment =
+        formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(10));
+    STATIC_REQUIRE(inTheFirstSegment.has_value());
+    STATIC_REQUIRE(inTheFirstSegment->measurement().value() == rat(95, 100));
+}
+
+TEST_CASE("the interpolation divides the span out before multiplying the rise in", "[lookup]")
+{
+    // The order is a real choice with observable consequences, and until this
+    // test existed nothing pinned it: the entire suite compiled unchanged under
+    // either order.
+    //
+    // Keys on a common grid (0 and 10) and a value at the top of `Rational`'s
+    // range. Dividing first cancels `5/10` to the weight `1/2` before the value
+    // is ever touched, and answers 2^61 exactly. Multiplying first forms
+    // `5 * 2^62`, the one product that mixes key magnitude with value
+    // magnitude, and reports Overflow -- for a table whose exact answer is a
+    // plain integer.
+    //
+    // Common-grid keys are what published curves actually have, which is why
+    // this direction was chosen. The other direction exists and is asserted in
+    // the test just below.
+    constexpr auto node =
+        interpolating_lookup<unit::Millimetre, WideValueRange, unit::One>(var<Diameter>, { rat(0), rat(Huge) });
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(5));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(Huge / 2));
+}
+
+TEST_CASE("dividing the span out first is a trade-off, and this is the table it loses on", "[lookup]")
+{
+    // The honest other half of the test above: neither order dominates, and a
+    // comment saying so is worth less than a table saying so.
+    //
+    // Keys 0 and 4e9 with a probe at 1/4e9 mm: the weight `(1/4e9) / 4e9`
+    // cannot cancel, and forming it overflows -- where multiplying first would
+    // have cancelled the offset against the rise and answered 1/4e9 exactly.
+    // The library refuses rather than approximating, which is the property that
+    // matters; that it refuses here at all is the price of the order chosen
+    // above.
+    //
+    // If this assertion ever starts failing because the answer came back, that
+    // is not a regression -- it means the order changed, and the test above is
+    // where to look.
+    constexpr auto node = interpolating_lookup<unit::Millimetre, SteepKeyRange, unit::One>(
+        var<Diameter>, { rat(0), rat(4000000000) });
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(1, 4000000000));
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("an interpolation whose exact answer is not representable is reported, never rounded", "[lookup]")
+{
+    // The claim this whole table kind rests on, asserted rather than reasoned
+    // about: where the exact rational the two rows imply does not exist inside
+    // `Rational`, the library says so and hands back nothing.
+    //
+    // Keys 0 and 4, values 0 and 2^62 - 1 (odd, so nothing cancels), probed at
+    // 3. The exact answer is 3(2^62 - 1)/4, whose reduced numerator is
+    // 13835058055282163709 -- above `Rational`'s maximum, so the answer is not
+    // merely awkward to reach, it does not exist. A representation that rounded
+    // would hand back something near it and say nothing; this reports
+    // `Overflow`, which is the only honest answer.
+    //
+    // `Overflow`, not `DomainError`: the value is inside the table's domain and
+    // was found. Confusing the two would misreport an arithmetic limit as a
+    // curve that does not cover the specimen. Both orders of the interpolation
+    // overflow here, so this test says nothing about that choice -- deliberately.
+    constexpr auto node = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
+        var<Diameter>, { rat(0), rat(Huge - 1) });
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(3));
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("a row hit can still overflow in the result-unit conversion, and says so", "[lookup]")
+{
+    // The half of the overflow story that is NOT about interpolation, pinned
+    // because the header used to claim it could not happen.
+    //
+    // 0 mm sits exactly on the first row, so the interpolation performs no
+    // arithmetic at all and cannot overflow. The value is then converted out of
+    // the node's result unit (kilometres) into the coherent SI unit (metres) --
+    // and 2^62 km is a perfectly representable `Rational` that does not survive
+    // being multiplied by 1000.
+    //
+    // This path is shared with the banded and the exact lookup, which convert
+    // their selected row the same way for the same reason; nothing about it is
+    // particular to interpolation. It is asserted here because this is the file
+    // where the claim was made.
+    constexpr auto node = interpolating_lookup<unit::Centimetre, TwoPoints, unit::Kilometre>(
+        var<Diameter>, { rat(Huge), rat(1) });
+    constexpr auto computed = formula::checked_evaluate<CorrectedSize>(node, millimetresOfDiameter(0));
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::Overflow);
+}
