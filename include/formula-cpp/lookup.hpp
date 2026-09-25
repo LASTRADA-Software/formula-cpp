@@ -621,6 +621,31 @@ namespace detail
 /// `node.corrections[index]` meaning what it always meant in the renderer, the
 /// tracer and the evaluator alike.
 ///
+/// **Neither the trait nor the concept will tell you a node is not
+/// default-constructible, and they fail differently.** The refusal is a
+/// `static_assert` in a constructor *body*, so
+/// `std::is_default_constructible_v<SomeLookupNode>` answers **`true`** -- a
+/// trait only asks whether a constructor is viable, and never instantiates one
+/// to find out. `std::default_initializable` and `std::semiregular` do
+/// instantiate it, and so do not answer at all: they **hard-error**. Measured
+/// on cl 19.51 and clang-cl 22, with a deleted-default-constructor control
+/// that both traits and both concepts answer `false` for cleanly, so the
+/// instruments are shown able to say it. The error text is this library's own
+/// sentence naming both counts (`0` and `3`), which is the good message -- but
+/// it arrives from inside `<concepts>`, at a line the caller never wrote, and
+/// **a concept that hard-errors cannot be used as a predicate**: it will not
+/// constrain an overload, pick a branch or SFINAE anything. Generic code over
+/// nodes must not ask. The honest check is whether a factory was called.
+///
+/// **`corrections` is no longer a range, and `operator[]` is const and returns
+/// by value.** So `for (auto& correction: node.corrections)`,
+/// `auto& correction = node.corrections[index]` and
+/// `node.corrections[index] = ...` no longer compile, where they did while the
+/// member was a `std::array`. `values` stays public and is the route for all
+/// three -- this is a transparent aggregate of a table's contents, not an
+/// encapsulation. Written down because **no in-tree consumer needed changing**,
+/// which is exactly why nothing in this repository will remind anybody.
+///
 /// A named type with two arity-disjoint constructor templates rather than
 /// one constrained by `requires` alone: the *matching*-arity constructor
 /// does the real construction, and the *every-other*-arity constructor is
