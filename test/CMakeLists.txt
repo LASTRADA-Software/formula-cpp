@@ -63,7 +63,11 @@ catch_discover_tests(formula-cpp-tests)
 
 # Each negative case is its own EXCLUDE_FROM_ALL target, so a normal build stays
 # green while `ctest` drives the failing compile deliberately.
+#
+# An optional `REJECT "text"` names a literal substring that must NOT appear in
+# the output as well -- see RunNegativeCompileTest.cmake for what that buys.
 function(formula_add_negative_test name expected)
+    cmake_parse_arguments(PARSE_ARGV 2 arg "" "REJECT" "")
     add_executable(negative-${name} EXCLUDE_FROM_ALL "negative/${name}.cpp")
     target_link_libraries(negative-${name} PRIVATE formula-cpp::formula-cpp)
     add_test(NAME negative.${name}
@@ -72,6 +76,7 @@ function(formula_add_negative_test name expected)
                 -D "CONFIG=$<CONFIG>"
                 -D "TARGET=negative-${name}"
                 -D "EXPECT=${expected}"
+                -D "REJECT=${arg_REJECT}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/RunNegativeCompileTest.cmake")
 endfunction()
 
