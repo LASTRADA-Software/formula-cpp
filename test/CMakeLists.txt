@@ -186,8 +186,13 @@ formula_add_negative_test(band_zero_width
 formula_add_negative_test(lookup_band_gap
     "formula: this band table has a gap or overlap between two adjacent bands")
 
+# The corrections-count guard is shared by every lookup table in lookup.hpp,
+# so its message names a table's "rows" rather than one kind's own word for
+# them, and every case that trips it asserts this same string. A second
+# wording per table kind is how two surfaces that must agree begin to
+# disagree -- see `RequireCorrectionCountMatches`.
 formula_add_negative_test(lookup_short_corrections
-    "this banded lookup was given a different number of corrections than it has bands")
+    "this lookup table was given a different number of corrections than it has rows")
 
 formula_add_negative_test(lookup_key_dimension_mismatch
     "this banded lookup's key unit does not measure the dimension of the expression whose value selects a band")

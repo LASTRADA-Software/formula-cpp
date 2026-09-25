@@ -172,24 +172,31 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// Fails to compile when a banded lookup is given a different number of
-    /// corrections than it has bands -- the same shape as `RequireBandsAdjacent`
-    /// (`band.hpp`): instantiating a named template on the two counts makes
-    /// the compiler print both as template arguments, so the diagnostic
-    /// names the mismatch rather than falling through to the compiler's own
-    /// "no matching constructor". See `Corrections`, just below, for why this
-    /// exists: a short braced list handed to `std::array`'s own aggregate
-    /// initialisation silently zero-fills the rest, and `Rational{} == 0/1`
-    /// is a perfectly legitimate correction -- indistinguishable from a
-    /// forgotten one.
+    /// Fails to compile when a lookup is given a different number of
+    /// corrections than its table has rows -- the same shape as
+    /// `RequireBandsAdjacent` (`band.hpp`): instantiating a named template on
+    /// the two counts makes the compiler print both as template arguments, so
+    /// the diagnostic names the mismatch rather than falling through to the
+    /// compiler's own "no matching constructor". See `Corrections`, just
+    /// below, for why this exists: a short braced list handed to
+    /// `std::array`'s own aggregate initialisation silently zero-fills the
+    /// rest, and `Rational{} == 0/1` is a perfectly legitimate correction --
+    /// indistinguishable from a forgotten one.
+    ///
+    /// **Worded for every table kind in this file on purpose.** A banded
+    /// lookup's rows are its bands, and another kind's rows are whatever that
+    /// kind selects by; the hole, the mechanism that closes it and the mistake
+    /// an author makes are one and the same, so there is one guard and one
+    /// sentence. A second guard saying the same thing in a second kind's own
+    /// words is precisely how two surfaces that must agree start to disagree.
     template <std::size_t Given, std::size_t Expected>
     struct RequireCorrectionCountMatches
     {
         static_assert(Given == Expected,
-                      "formula: this banded lookup was given a different number of corrections than it "
-                      "has bands; the two counts appear in this diagnostic as the template arguments "
+                      "formula: this lookup table was given a different number of corrections than it "
+                      "has rows; the two counts appear in this diagnostic as the template arguments "
                       "Given and Expected of RequireCorrectionCountMatches -- make the corrections list "
-                      "exactly as long as the band table");
+                      "exactly as long as the table it belongs to, one correction per row");
 
         static constexpr bool value = true;
     };
@@ -264,14 +271,16 @@ struct BandedLookupNode: NodeBase
     static constexpr Dimension dimension = ResultUnit.dimension;
 };
 
-/// Exactly `N` corrections, one per band -- no more and no fewer. Handed to
-/// `banded_lookup` in place of a bare `std::array<Rational, N>`, whose own
-/// aggregate initialisation from a short braced list is exactly the "every
-/// answer is a lie" failure the rest of this file refuses on the *miss*
-/// side, reappearing on the *hit* side: the unwritten elements
-/// value-initialise to `Rational{} == 0/1`, and a band whose correction the
-/// author forgot to type then answers `0` -- confidently, as a value,
-/// indistinguishable from a deliberate zero.
+/// Exactly `N` corrections, one per row of a lookup table -- no more and no
+/// fewer. Not specific to bands: `N` is whatever row count the table it
+/// belongs to has, because the hole being closed is the same hole for every
+/// table kind in this file. Handed to a lookup's factory in place of a bare
+/// `std::array<Rational, N>`, whose own aggregate initialisation from a short
+/// braced list is exactly the "every answer is a lie" failure the rest of this
+/// file refuses on the *miss* side, reappearing on the *hit* side: the
+/// unwritten elements value-initialise to `Rational{} == 0/1`, and a row whose
+/// correction the author forgot to type then answers `0`, confidently, as a
+/// value, indistinguishable from a deliberate zero.
 ///
 /// A named type with two arity-disjoint constructor templates rather than
 /// one constrained by `requires` alone: the *matching*-arity constructor
@@ -315,7 +324,7 @@ struct Corrections
         static_assert(detail::RequireCorrectionCountMatches<sizeof...(Rs), N>::value);
     }
 
-    /// One correction per band, in the table's own declared order.
+    /// One correction per row, in the table's own declared order.
     std::array<Rational, N> values {};
 };
 

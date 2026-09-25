@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: this banded lookup was given a different number of corrections than it has bands
+// EXPECT: this lookup table was given a different number of corrections than it has rows
 //
 // Three bands, but only two corrections. `std::array`'s own aggregate
 // initialisation would silently value-initialise the missing third entry to
