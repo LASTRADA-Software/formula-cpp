@@ -115,17 +115,25 @@
 /// whose *high* bound it is; `lookup_tests.cpp` exercises this concretely
 /// rather than only asserting it.
 ///
-/// **Why `Rep = double` is refused, not merely inexact.** Deciding which
-/// band a value falls in is exactly the operation binary floating point is
-/// unreliable at, for the same reason `rounding_node.hpp`'s
-/// `RepRounding<double>` refuses rather than silently rounding some values
-/// the wrong way: a value a few ULPs off an intended exact boundary would
-/// pick the wrong band, silently, with no `ArithmeticError` to report. So
-/// this node's own `checked_evaluate_si` refuses to compile for
-/// `Rep = double`, naming itself in the diagnostic, the same way and for the
-/// same reason. `checked_evaluate<Result>` -- the entry point every test in
-/// this file uses -- always computes in `Rational` internally, so this
-/// restriction is never reached from there.
+/// **Band selection is `Rational`-only by construction, not a
+/// `double`-specific refusal.** Deciding which band a value falls in is
+/// exactly the operation binary floating point is unreliable at: a value a
+/// few ULPs off an intended exact boundary would pick the wrong band,
+/// silently, with no `ArithmeticError` to report. So this node's own
+/// `checked_evaluate_si` refuses to compile for any `Rep` other than
+/// `Rational` -- not only `double` -- and says so as "this representation",
+/// leaving the instantiation backtrace to name whatever type the caller
+/// actually asked for, rather than asserting a specific one that may be
+/// wrong. This is unlike `rounding_node.hpp`'s `RepRounding<double>`, which
+/// refuses *by specialisation* and leaves `RepRounding<MyRep>` open to any
+/// representation a consumer teaches it: `RepTraits` is a documented public
+/// extension point (`evaluate.hpp`), and a `RepBandSelection<Rep>` seam
+/// mirroring `RepRounding` would be the way to open the same door here.
+/// **Deliberately not built in this task** -- it is additive and this task
+/// should not absorb it -- so today every representation but `Rational` is
+/// closed, full stop, until that seam exists. `checked_evaluate<Result>` --
+/// the entry point every test in this file uses -- always computes in
+/// `Rational` internally, so this restriction is never reached from there.
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -134,6 +142,7 @@
 #include <formula-cpp/unit.hpp>
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <expected>
 #include <optional>
@@ -159,6 +168,28 @@ namespace detail
                       "expression whose value selects a band; the unit's dimension and the operand "
                       "appear in this diagnostic as the template arguments of "
                       "RequireBandedLookupKeyMatches");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a banded lookup is given a different number of
+    /// corrections than it has bands -- the same shape as `RequireBandsAdjacent`
+    /// (`band.hpp`): instantiating a named template on the two counts makes
+    /// the compiler print both as template arguments, so the diagnostic
+    /// names the mismatch rather than falling through to the compiler's own
+    /// "no matching constructor". See `Corrections`, just below, for why this
+    /// exists: a short braced list handed to `std::array`'s own aggregate
+    /// initialisation silently zero-fills the rest, and `Rational{} == 0/1`
+    /// is a perfectly legitimate correction -- indistinguishable from a
+    /// forgotten one.
+    template <std::size_t Given, std::size_t Expected>
+    struct RequireCorrectionCountMatches
+    {
+        static_assert(Given == Expected,
+                      "formula: this banded lookup was given a different number of corrections than it "
+                      "has bands; the two counts appear in this diagnostic as the template arguments "
+                      "Given and Expected of RequireCorrectionCountMatches -- make the corrections list "
+                      "exactly as long as the band table");
 
         static constexpr bool value = true;
     };
@@ -233,6 +264,46 @@ struct BandedLookupNode: NodeBase
     static constexpr Dimension dimension = ResultUnit.dimension;
 };
 
+/// Exactly `N` corrections, one per band -- no more and no fewer. Handed to
+/// `banded_lookup` in place of a bare `std::array<Rational, N>`, whose own
+/// aggregate initialisation from a short braced list is exactly the "every
+/// answer is a lie" failure the rest of this file refuses on the *miss*
+/// side, reappearing on the *hit* side: the unwritten elements
+/// value-initialise to `Rational{} == 0/1`, and a band whose correction the
+/// author forgot to type then answers `0` -- confidently, as a value,
+/// indistinguishable from a deliberate zero.
+///
+/// A named type with two arity-disjoint constructor templates rather than
+/// one constrained by `requires` alone: the *matching*-arity constructor
+/// does the real construction, and the *every-other*-arity constructor is
+/// the only one left viable when the count is wrong, so its body is reached
+/// and its `static_assert` (through `RequireCorrectionCountMatches`) names
+/// both counts -- rather than the compiler's own generic "no matching
+/// constructor for call", which names neither.
+template <std::size_t N>
+struct Corrections
+{
+    /// The `N`-correction case: the one path that actually builds `values`.
+    template <typename... Rs>
+        requires(sizeof...(Rs) == N) && (std::same_as<Rs, Rational> && ...)
+    constexpr Corrections(Rs... rs) noexcept:
+        values { rs... }
+    {
+    }
+
+    /// Every other count: fails to compile, naming both counts through
+    /// `RequireCorrectionCountMatches`'s template arguments.
+    template <typename... Rs>
+        requires(sizeof...(Rs) != N) && (std::same_as<Rs, Rational> && ...)
+    constexpr Corrections(Rs...) noexcept
+    {
+        static_assert(detail::RequireCorrectionCountMatches<sizeof...(Rs), N>::value);
+    }
+
+    /// One correction per band, in the table's own declared order.
+    std::array<Rational, N> values {};
+};
+
 /// Declares a banded lookup: `banded_lookup<unit::Millimetre, Bands,
 /// unit::One>(var<Diameter>, { rat(95, 100), rat(1), rat(105, 100) })`.
 ///
@@ -240,12 +311,18 @@ struct BandedLookupNode: NodeBase
 /// same reason `rounded<U, Places, Mode>` (`rounding_node.hpp`) leaves its
 /// three non-operand parameters unstated at the call site's argument list:
 /// a table's structure is the author's declared intent, not something
-/// inferred from whatever `corrections` happens to look like.
+/// inferred from whatever `corrections` happens to look like. The braced
+/// list at the call site still reads exactly as it did before `Corrections`
+/// existed -- only its target type changed, from `std::array<Rational, N>`
+/// to `Corrections<N>` -- because the call site's target type is already
+/// known from the explicit template arguments, so list-initialisation finds
+/// `Corrections`'s constructor the same way it found `std::array`'s
+/// aggregate initialisation before.
 template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
 [[nodiscard]] constexpr BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> banded_lookup(
-    Operand operand, std::array<Rational, Bands.size()> corrections) noexcept
+    Operand operand, Corrections<Bands.size()> corrections) noexcept
 {
-    return BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> { {}, corrections, operand };
+    return BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> { {}, corrections.values, operand };
 }
 
 /// Evaluates the operand, converts its value into `KeyUnit`, and looks up the
@@ -276,19 +353,20 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
 
     if constexpr (!std::is_same_v<Rep, Rational>)
     {
-        // See the file comment: deciding which band a value falls in needs
-        // exact comparison against an exact boundary, which `double` cannot
-        // make good on -- the same reason `RepRounding<double>`
-        // (`rounding_node.hpp`) refuses rather than silently rounding some
-        // values the wrong way. Dependent on `Rep` so this fires only when
-        // this function is actually instantiated with `Rep = double`, not
-        // merely declared -- the same trick `RepRounding<double>::round_in`
-        // uses.
+        // See the file comment: band selection is Rational-only by
+        // construction, refusing every representation but Rational rather
+        // than only double, so the message says "this representation"
+        // rather than naming a specific type it might be wrong about --
+        // the instantiation backtrace already names whatever `Rep` the
+        // caller actually asked for. Dependent on `Rep` so this fires only
+        // when this function is actually instantiated with a non-`Rational`
+        // `Rep`, not merely declared -- the same trick
+        // `RepRounding<double>::round_in` uses.
         static_assert(sizeof(Rep) == 0,
-                      "formula: a banded lookup node cannot be evaluated with Rep = double -- deciding "
-                      "which band a value falls in needs the exact arithmetic double cannot give; "
-                      "evaluate this formula with Rep = Rational instead (checked_evaluate<Result> "
-                      "always does)");
+                      "formula: a banded lookup node can only be evaluated with Rep = Rational -- "
+                      "deciding which band a value falls in needs exact arithmetic this representation "
+                      "may not give; evaluate this formula with Rep = Rational instead "
+                      "(checked_evaluate<Result> always does)");
         return std::unexpected { ArithmeticError::DomainError };
     }
     else

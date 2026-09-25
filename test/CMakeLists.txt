@@ -186,6 +186,9 @@ formula_add_negative_test(band_zero_width
 formula_add_negative_test(lookup_band_gap
     "formula: this band table has a gap or overlap between two adjacent bands")
 
+formula_add_negative_test(lookup_short_corrections
+    "this banded lookup was given a different number of corrections than it has bands")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

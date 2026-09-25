@@ -121,6 +121,34 @@ TEST_CASE("a value exactly on a shared boundary belongs to the higher band -- ha
     STATIC_REQUIRE(atTwentyMillimetres->measurement().value() == rat(105, 100));
 }
 
+TEST_CASE("exactly the table's own lowest bound is a hit -- the low bound is inclusive", "[lookup]")
+{
+    // 0 mm == 0 cm: SizeBands[0]'s own low bound, with no neighbouring band
+    // below it to share the boundary with. [0, 1) includes it. Distinct from
+    // the shared-boundary test above: that one exercises an *internal*
+    // boundary two bands agree on, this one the table's own outer edge,
+    // which a half-open mutation confined to just that edge would not
+    // otherwise be caught by.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(0));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(95, 100));
+}
+
+TEST_CASE("exactly the table's own highest bound is a miss -- the high bound is exclusive", "[lookup]")
+{
+    // 30 mm == 3 cm: SizeBands[2]'s own high bound, with no neighbouring band
+    // above it. [2, 3) excludes it, and there is no band above, so this is a
+    // miss -- not the last band's value. This is also the concrete proof
+    // behind band.hpp's own instruction to authors: a table whose last row
+    // means "up to and including the maximum" must state its high bound as
+    // the next tick past it, and that instruction is only trustworthy if the
+    // library actually excludes the top bound.
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(30));
+    STATIC_REQUIRE(!computed.has_value());
+    STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
+}
+
 TEST_CASE("a value below the lowest band is reported as a miss, not a value", "[lookup]")
 {
     // -5 mm == -0.5 cm, below SizeBands[0]'s low bound (0). A lazy
