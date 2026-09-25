@@ -97,9 +97,13 @@ TEST_CASE("the expression a variant was given is the expression it stores", "[me
     // spike compiled this pack and never ran it, so nothing until now had
     // established that a stored variant still evaluates at all.
     //
-    // `ConstantNode` because it is the one node carrying runtime state: with
-    // every other node kind the bytes are empty and there is nothing for a
-    // round trip to lose.
+    // `ConstantNode` because it is the node with runtime state reachable from
+    // the operators THIS fixture uses: a `VarNode` holds no bytes, and a
+    // `BinaryNode`'s bytes are only its children. That is a property of this
+    // fixture and not of node kinds in general -- lookups carry their
+    // corrections as runtime state for the same reason `ConstantNode` carries
+    // its number, and they are exactly what a method's variants are likely to
+    // hold, so a round-trip probe over one of those would not be pointless.
     constexpr auto pack = formula::variants(
         formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
         formula::variant<Cylinder>(var<Force> / (formula::number(formula::Rational { 1, 2 }) * var<EdgeX> * var<EdgeX>) ));

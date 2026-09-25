@@ -47,7 +47,8 @@
 /// **What a pack refuses, and why here rather than later.** Three rules, all
 /// enforced by `Variants` itself:
 ///
-///  1. every argument is a variant -- something `variant<Tag>(...)` returned;
+///  1. every argument is a variant -- a `VariantCase`, which is what
+///     `variant<Tag>(...)` returns;
 ///  2. there is at least one of them;
 ///  3. they all report the same dimension.
 ///
@@ -255,12 +256,19 @@ namespace detail
     /// 19.51 before this gate existed, `variants(42, 43)` reported six errors
     /// -- `C2825`, `C2510` and `C2065`, once for `First` and once for `Other`
     /// -- every one of them the compiler's own wording for "that has no such
-    /// member", and not one of them ours.
+    /// member", and not one of them ours. `method_variants_agreement_gated.cpp`
+    /// pins the gate, by refusing any output that names `RequireVariantsAgree`.
     ///
-    /// `std::conditional_t` and not `if constexpr`, because this is a
-    /// constant initialiser rather than a statement; naming
+    /// `std::conditional_t` and not `if constexpr`, because the gated line is
+    /// a `static_assert` declaration in a class body, where no statement --
+    /// `if constexpr` included -- can appear. Naming
     /// `RequireAllVariantsAgree<Cs...>` as a template argument does not
-    /// instantiate it, and only the selected branch's `value` does.
+    /// instantiate it, and only the selected branch's `value` does -- **but
+    /// only while `RequireAllVariantsAgree`'s template parameters stay
+    /// unconstrained.** A constraint is checked when the template-id is
+    /// formed, not when it is used, so a constrained pack there
+    /// (`template <VariantLike... Cs>`) makes the unselected branch a hard
+    /// error and silently ends the laziness this gate relies on.
     template <typename... Cs>
     struct RequireWellFormedVariants
     {

@@ -347,8 +347,10 @@ formula_add_negative_test(method_variants_disagree
 # VarNode publishes a `dimension` exactly as a variant does, which is the
 # whole reason a separate rule is needed rather than a stricter one.
 #
-# The non-variant sits third of four, for the same reason the disagreeing
-# variant above does.
+# The non-variant sits third of four, but only out of habit: this rule is an
+# unordered fold with no first or last comparison to mutate, so position buys
+# it nothing. Its strength is that IsVariantCase matches the VariantCase
+# specialisation rather than duck-typing tag/expression/dimension.
 formula_add_negative_test(method_variants_not_a_variant
     "formula: this argument of variants(...) is not a variant of a method")
 

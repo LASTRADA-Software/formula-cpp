@@ -11,9 +11,15 @@
 // `Variants<...>` with no tags anywhere in it, which no selection could ever
 // use.
 //
-// The offender sits THIRD OF FOUR, for the reason spelled out in
-// `method_variants_disagree.cpp`: a guard mutated to inspect only the first
-// argument, or only the last, must make this file compile.
+// The offender sits third of four, but its position is not what gives this
+// case its strength -- unlike the agreement rule in
+// `method_variants_disagree.cpp`, which compares the first variant against
+// each later one and so has a first and a last comparison to mutate, this
+// rule is an unordered fold over every argument, and every argument's check
+// is instantiated wherever the offender sits. What makes the guard strong is
+// that `IsVariantCase` recognises a `VariantCase` specialisation rather than
+// duck-typing its members, so a look-alike struct that carries `tag`,
+// `expression` and `dimension` still does not pass.
 //
 // This must not compile.
 #include <formula-cpp/method.hpp>
