@@ -23,9 +23,12 @@
 # pinned by rejecting that rule's name, because its absence is the only
 # observable difference.
 #
-# The REJECT values arrive in REJECT_FILE, which formula_add_negative_test in
-# test/CMakeLists.txt writes as `REJECT_COUNT` plus `REJECT_0`, `REJECT_1`, ...
-# -- see that function for why not `-D`.
+# EXPECT and the REJECT values arrive in EXPECTATIONS_FILE, which
+# formula_add_negative_test in test/CMakeLists.txt writes as `EXPECT`,
+# `REJECT_COUNT` and `REJECT_0`, `REJECT_1`, ... -- see that function for why
+# not `-D`. The file must define `EXPECT` and `REJECT_COUNT` itself; nothing
+# here defaults either, so an empty or half-written file fails the test
+# rather than reading as "no REJECT".
 #
 # Both EXPECT and REJECT are matched against the COMBINED build output, which
 # is more than the compiler's diagnostics: it includes the build tool's own
@@ -34,6 +37,18 @@
 # path or target name -- "method", say, or "negative" -- fails every build,
 # for no reason of the compiler's. Choose text that only a diagnostic can
 # contain, such as a template name or a message of the library's own.
+
+if(NOT DEFINED EXPECTATIONS_FILE OR NOT EXISTS "${EXPECTATIONS_FILE}")
+    message(FATAL_ERROR
+        "negative test ${TARGET}: no expectations file was given, or it does not exist: "
+        "${EXPECTATIONS_FILE}")
+endif()
+include("${EXPECTATIONS_FILE}")
+if(NOT DEFINED EXPECT OR "${EXPECT}" STREQUAL "" OR NOT DEFINED REJECT_COUNT)
+    message(FATAL_ERROR
+        "negative test ${TARGET}: ${EXPECTATIONS_FILE} does not define a non-empty EXPECT and a "
+        "REJECT_COUNT, so it is empty or half-written; reconfigure to regenerate it.")
+endif()
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" --build "${BUILD_DIR}" --config "${CONFIG}" --target "${TARGET}"
@@ -56,16 +71,12 @@ string(REPLACE "’" "'" combined "${combined}")
 string(REPLACE "‘" "'" EXPECT "${EXPECT}")
 string(REPLACE "’" "'" EXPECT "${EXPECT}")
 
-set(REJECT_COUNT 0)
-if(DEFINED REJECT_FILE)
-    include("${REJECT_FILE}")
-endif()
 if(REJECT_COUNT GREATER 0)
     math(EXPR _lastReject "${REJECT_COUNT} - 1")
     foreach(_index RANGE 0 ${_lastReject})
         if(NOT DEFINED REJECT_${_index})
             message(FATAL_ERROR
-                "negative test ${TARGET}: ${REJECT_FILE} declares ${REJECT_COUNT} REJECT values but "
+                "negative test ${TARGET}: ${EXPECTATIONS_FILE} declares ${REJECT_COUNT} REJECT values but "
                 "does not define REJECT_${_index}.")
         endif()
         string(REPLACE "‘" "'" REJECT_${_index} "${REJECT_${_index}}")

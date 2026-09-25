@@ -72,18 +72,45 @@ catch_discover_tests(formula-cpp-tests)
 # A malformed call is refused at configure time rather than tolerated. Each of
 # these used to go green while checking nothing: a third string with the
 # keyword forgotten, a misspelt keyword, a `REJECT` with no value, and -- while
-# REJECT was single-value -- a second `REJECT`, which silently replaced the
-# first. An empty value is refused too, because an empty needle is found in
-# every output.
+# REJECT was single-value -- a second `REJECT`. That last one is measured, not
+# assumed: `cmake_parse_arguments(PARSE_ARGV 2 arg "" "REJECT" "")` over
+# `REJECT "A" REJECT "B"` leaves `arg_REJECT` as `B` alone, with nothing
+# unparsed, on cmake 3.28.3 and 4.3.1. An empty EXPECT or REJECT is refused
+# too, because an empty needle is found in every output.
 #
-# The values reach the script through a generated file of bracket arguments
-# (`REJECT_COUNT`, `REJECT_0`, `REJECT_1`, ...) rather than through `-D` on the
-# test's command line. That command line is assembled as a CMake list, and a
-# value holding a `;` would be split in two there; escaping the `;` is not
-# enough either, because an unbalanced `[` in one value suppresses the list
-# splitting of every argument after it. A static_assert message is free to
-# contain both. Each value is taken from its own `ARGV<n>` for the same reason,
-# not from the list `cmake_parse_arguments` builds.
+# EXPECT and the REJECT values reach the script through a generated file of
+# bracket arguments (`EXPECT`, `REJECT_COUNT`, `REJECT_0`, `REJECT_1`, ...)
+# rather than through `-D` on the test's command line. A variable number of
+# REJECT values would have to be collected into a CMake list and expanded onto
+# that command line, and a value holding a `;` would be split in two there;
+# escaping the `;` is not enough either, because an unbalanced `[` in one value
+# suppresses the list splitting of every argument after it. A static_assert
+# message is free to contain both -- the tag rule's already has a `;`. Each
+# REJECT value is taken from its own `ARGV<n>` for the same reason, not from
+# the list `cmake_parse_arguments` builds.
+#
+# EXPECT is a single quoted argument, never a list, and a `;` in it did survive
+# `-D` intact -- measured on cmake 4.3.1 with Ninja. It travels in the file all
+# the same, so that the two kinds of text reach the script one way and a
+# future change to how the command line is built cannot treat them apart.
+#
+# The file is rewritten only when its content changes, and then through a
+# temporary file renamed over it, so that a reconfigure racing a running test
+# under `ctest -j` cannot hand the script an empty or half-written file.
+# Not `file(CONFIGURE)` or `configure_file`: both substitute `@VAR@` in the
+# content, and the content here is text the library's messages choose.
+function(formula_negative_test_quote out value)
+    # A bracket argument holds any text literally, provided its closing bracket
+    # does not occur in it; lengthen the `=` run until it does not.
+    set(equals "")
+    string(FIND "${value}]" "]${equals}]" clash)
+    while(NOT clash EQUAL -1)
+        string(APPEND equals "=")
+        string(FIND "${value}]" "]${equals}]" clash)
+    endwhile()
+    set(${out} "[${equals}[${value}]${equals}]" PARENT_SCOPE)
+endfunction()
+
 function(formula_add_negative_test name expected)
     cmake_parse_arguments(PARSE_ARGV 2 arg "" "" "REJECT")
     if(arg_UNPARSED_ARGUMENTS)
@@ -96,9 +123,15 @@ function(formula_add_negative_test name expected)
         message(FATAL_ERROR
             "formula_add_negative_test(${name}): ${arg_KEYWORDS_MISSING_VALUES} was given no value.")
     endif()
+    if("${expected}" STREQUAL "")
+        message(FATAL_ERROR
+            "formula_add_negative_test(${name}): the expected text is empty; an empty text is "
+            "found in every output, so any failed build would pass.")
+    endif()
 
+    formula_negative_test_quote(quoted "${expected}")
+    set(content "set(EXPECT ${quoted})\n")
     set(rejectCount 0)
-    set(rejectFileContent "")
     if(ARGC GREATER 2)
         math(EXPR lastArgument "${ARGC} - 1")
         foreach(index RANGE 2 ${lastArgument})
@@ -111,21 +144,22 @@ function(formula_add_negative_test name expected)
                     "formula_add_negative_test(${name}): a REJECT value is empty; an empty text is "
                     "found in every output, so it would refuse every build.")
             endif()
-            # A bracket argument holds any text literally, provided its closing
-            # bracket does not occur in it; lengthen the `=` run until it does not.
-            set(equals "")
-            string(FIND "${value}]" "]${equals}]" clash)
-            while(NOT clash EQUAL -1)
-                string(APPEND equals "=")
-                string(FIND "${value}]" "]${equals}]" clash)
-            endwhile()
-            string(APPEND rejectFileContent "set(REJECT_${rejectCount} [${equals}[${value}]${equals}])\n")
+            formula_negative_test_quote(quoted "${value}")
+            string(APPEND content "set(REJECT_${rejectCount} ${quoted})\n")
             math(EXPR rejectCount "${rejectCount} + 1")
         endforeach()
     endif()
+    string(APPEND content "set(REJECT_COUNT ${rejectCount})\n")
 
-    set(rejectFile "${CMAKE_CURRENT_BINARY_DIR}/negative/${name}.reject.cmake")
-    file(WRITE "${rejectFile}" "set(REJECT_COUNT ${rejectCount})\n${rejectFileContent}")
+    set(expectationsFile "${CMAKE_CURRENT_BINARY_DIR}/negative/${name}.expect.cmake")
+    set(previous "")
+    if(EXISTS "${expectationsFile}")
+        file(READ "${expectationsFile}" previous)
+    endif()
+    if(NOT previous STREQUAL content)
+        file(WRITE "${expectationsFile}.tmp" "${content}")
+        file(RENAME "${expectationsFile}.tmp" "${expectationsFile}")
+    endif()
 
     add_executable(negative-${name} EXCLUDE_FROM_ALL "negative/${name}.cpp")
     target_link_libraries(negative-${name} PRIVATE formula-cpp::formula-cpp)
@@ -134,8 +168,7 @@ function(formula_add_negative_test name expected)
                 -D "BUILD_DIR=${CMAKE_BINARY_DIR}"
                 -D "CONFIG=$<CONFIG>"
                 -D "TARGET=negative-${name}"
-                -D "EXPECT=${expected}"
-                -D "REJECT_FILE=${rejectFile}"
+                -D "EXPECTATIONS_FILE=${expectationsFile}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/RunNegativeCompileTest.cmake")
 endfunction()
 
