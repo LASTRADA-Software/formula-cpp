@@ -249,17 +249,26 @@ using formula::KeyTable;
 /// An invented specimen-shape discriminator -- no real published standard's
 /// shapes, names or factors appear anywhere in this file. A scoped
 /// enumeration, per `lookup.hpp`'s "How a key is spelled": a misspelled
-/// `SpecimenShape::Cylindr` is then a compile error from the language itself
+/// `SpecimenVariant::Cylindr` is then a compile error from the language itself
 /// rather than a silent runtime miss.
 ///
 /// The underlying type is fixed deliberately. Without it a scoped
 /// enumeration's value range is only as wide as its enumerators require, so
-/// `static_cast<SpecimenShape>(99)` -- which the "not an enumerator at all"
+/// `static_cast<SpecimenVariant>(99)` -- which the "not an enumerator at all"
 /// test below needs -- would be undefined behaviour and, in a constant
 /// expression, a compile error. Fixing the underlying type makes every
-/// `std::uint8_t` value a well-defined `SpecimenShape`, which is also what a
+/// `std::uint8_t` value a well-defined `SpecimenVariant`, which is also what a
 /// key deserialised from stored data really is.
-enum class SpecimenShape : std::uint8_t
+///
+/// **Named for this file rather than generically, and that is a rule not a
+/// preference.** Two translation units whose anonymous-namespace key
+/// enumerations share a name and whose tables share their element values fail
+/// to link under clang, with a dangling relocation and no diagnostic naming the
+/// key type. This file spelled its `SpecimenShape` and got away with it only
+/// because none of its tables needed an address at all. See
+/// `trace_render_tests.cpp`'s `RenderedShape` for the measured mechanism, and
+/// `lookup.hpp`'s file comment for what it costs a consumer.
+enum class SpecimenVariant : std::uint8_t
 {
     Cube100,
     Cube150,
@@ -272,35 +281,35 @@ enum class SpecimenShape : std::uint8_t
 /// that exists in the enumeration and not in this table, which is the
 /// realistic "absent key" -- an enumeration the method grew and a registered
 /// table that did not -- rather than a value nobody could have written.
-inline constexpr KeyTable<SpecimenShape, 4> ShapeKeys {
-    SpecimenShape::Cube100,
-    SpecimenShape::Cube150,
-    SpecimenShape::CylinderShort,
-    SpecimenShape::CylinderTall,
+inline constexpr KeyTable<SpecimenVariant, 4> ShapeKeys {
+    SpecimenVariant::Cube100,
+    SpecimenVariant::Cube150,
+    SpecimenVariant::CylinderShort,
+    SpecimenVariant::CylinderTall,
 };
 
 /// The correction each shape selects, declared in **percent** -- deliberately
 /// not `SizeCorrection`'s own unit (`One`) -- so the result side of the table
 /// is converted rather than merely passed through, exactly as the banded
 /// table above does it.
-[[nodiscard]] constexpr auto shapeLookup(SpecimenShape shape)
+[[nodiscard]] constexpr auto shapeLookup(SpecimenVariant shape)
 {
     return exact_lookup<ShapeKeys, unit::Percent>(shape, { rat(106), rat(100), rat(97), rat(92) });
 }
 
 /// An always-empty table: the exact-lookup analogue of `EmptyTable` above,
 /// valid for the same reason and always missing for the same reason.
-inline constexpr KeyTable<SpecimenShape, 0> NoShapes {};
+inline constexpr KeyTable<SpecimenVariant, 0> NoShapes {};
 
 /// A one-row table: the other degenerate shape, where the only row is
 /// simultaneously the first and the last.
-inline constexpr KeyTable<SpecimenShape, 1> OnlyPrism { SpecimenShape::Prism };
+inline constexpr KeyTable<SpecimenVariant, 1> OnlyPrism { SpecimenVariant::Prism };
 } // namespace
 
 TEST_CASE("an exact lookup is a Node and produces the result quantity's own dimension", "[lookup]")
 {
-    STATIC_REQUIRE(formula::Node<decltype(shapeLookup(SpecimenShape::Cube100))>);
-    STATIC_REQUIRE(decltype(shapeLookup(SpecimenShape::Cube100))::dimension
+    STATIC_REQUIRE(formula::Node<decltype(shapeLookup(SpecimenVariant::Cube100))>);
+    STATIC_REQUIRE(decltype(shapeLookup(SpecimenVariant::Cube100))::dimension
                    == formula::Describe<SizeCorrection>::dimension);
 }
 
@@ -310,7 +319,7 @@ TEST_CASE("the first key in an exact table selects its own row", "[lookup]")
     // started at 1 to "skip the header" -- would miss while every interior
     // row still answered correctly.
     constexpr auto computed =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::Cube100), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::Cube100), formula::environment());
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(106, 100));
@@ -321,7 +330,7 @@ TEST_CASE("a middle key in an exact table selects its own row", "[lookup]")
     // Neither first nor last: the position task 1's review established as
     // strictly stronger, here on the hit side.
     constexpr auto computed =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::CylinderShort), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::CylinderShort), formula::environment());
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(97, 100));
@@ -329,7 +338,7 @@ TEST_CASE("a middle key in an exact table selects its own row", "[lookup]")
     // The other interior row, so that a scan returning a fixed interior index
     // cannot pass this test case by accident.
     constexpr auto second =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::Cube150), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::Cube150), formula::environment());
     STATIC_REQUIRE(second.has_value());
     STATIC_REQUIRE(second->is_value());
     STATIC_REQUIRE(second->measurement().value() == rat(1));
@@ -340,7 +349,7 @@ TEST_CASE("the last key in an exact table selects its own row", "[lookup]")
     // The table's own last row: a scan whose bound was `index + 1 < size`
     // would miss exactly this one and nothing else.
     constexpr auto computed =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::CylinderTall), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::CylinderTall), formula::environment());
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());
     STATIC_REQUIRE(computed->measurement().value() == rat(92, 100));
@@ -348,12 +357,12 @@ TEST_CASE("the last key in an exact table selects its own row", "[lookup]")
 
 TEST_CASE("a key the table does not declare is reported as a miss, not a value", "[lookup]")
 {
-    // `Prism` is a perfectly good `SpecimenShape` that this table has no row
+    // `Prism` is a perfectly good `SpecimenVariant` that this table has no row
     // for. An implementation that fell back to the first row would answer
     // 106/100 here; one that fell back to a default would answer 0. Both are
     // lies, and the honest answer is that nothing was found.
     constexpr auto computed =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::Prism), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::Prism), formula::environment());
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
 }
@@ -365,7 +374,7 @@ TEST_CASE("a key that is not an enumerator at all is a miss, not an index", "[lo
     // implementation that treated the key as an offset into the table would
     // do.
     constexpr auto computed =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(static_cast<SpecimenShape>(99)), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(static_cast<SpecimenVariant>(99)), formula::environment());
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
 }
@@ -378,7 +387,7 @@ TEST_CASE("an exact miss and a banded miss are the same failure, reported the sa
     // either kind its own spelling fails here rather than in a consumer.
     constexpr auto bandedMiss = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(35));
     constexpr auto exactMiss =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::Prism), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::Prism), formula::environment());
 
     STATIC_REQUIRE(!bandedMiss.has_value());
     STATIC_REQUIRE(!exactMiss.has_value());
@@ -388,7 +397,7 @@ TEST_CASE("an exact miss and a banded miss are the same failure, reported the sa
 
 TEST_CASE("an empty exact table always misses -- the same not-a-value outcome, not a special case", "[lookup]")
 {
-    constexpr auto node = exact_lookup<NoShapes, unit::One>(SpecimenShape::Cube100, {});
+    constexpr auto node = exact_lookup<NoShapes, unit::One>(SpecimenVariant::Cube100, {});
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, formula::environment());
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
@@ -399,13 +408,13 @@ TEST_CASE("a one-row exact table hits its only key and misses every other", "[lo
     // The degenerate table where the only row is both the first and the last,
     // so a bound that is off by one in either direction shows up here.
     constexpr auto hit = formula::checked_evaluate<SizeCorrection>(
-        exact_lookup<OnlyPrism, unit::One>(SpecimenShape::Prism, { rat(3, 4) }), formula::environment());
+        exact_lookup<OnlyPrism, unit::One>(SpecimenVariant::Prism, { rat(3, 4) }), formula::environment());
     STATIC_REQUIRE(hit.has_value());
     STATIC_REQUIRE(hit->is_value());
     STATIC_REQUIRE(hit->measurement().value() == rat(3, 4));
 
     constexpr auto miss = formula::checked_evaluate<SizeCorrection>(
-        exact_lookup<OnlyPrism, unit::One>(SpecimenShape::Cube100, { rat(3, 4) }), formula::environment());
+        exact_lookup<OnlyPrism, unit::One>(SpecimenVariant::Cube100, { rat(3, 4) }), formula::environment());
     STATIC_REQUIRE(!miss.has_value());
     STATIC_REQUIRE(miss.error() == formula::ArithmeticError::DomainError);
 }
@@ -418,7 +427,7 @@ TEST_CASE("a row whose correction is zero is a hit worth zero, never a miss", "[
     // was found". Placed on a middle row, so neither a first-row nor a
     // last-row special case can produce it.
     constexpr auto node =
-        exact_lookup<ShapeKeys, unit::One>(SpecimenShape::CylinderShort, { rat(1), rat(1), rat(0), rat(1) });
+        exact_lookup<ShapeKeys, unit::One>(SpecimenVariant::CylinderShort, { rat(1), rat(1), rat(0), rat(1) });
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, formula::environment());
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());
@@ -430,7 +439,7 @@ TEST_CASE("an exact lookup composes with other nodes, exactly like any other Nod
     // D5 again, for the second table kind: a lookup produces a quantity, so
     // it stands where a number stands and combines with `*` the same way a
     // `ConstantNode` would.
-    constexpr auto corrected = var<NominalSize> * shapeLookup(SpecimenShape::Cube150);
+    constexpr auto corrected = var<NominalSize> * shapeLookup(SpecimenVariant::Cube150);
     STATIC_REQUIRE(decltype(corrected)::dimension == formula::Describe<CorrectedSize>::dimension);
 
     constexpr auto environment = formula::environment(formula::Measured<NominalSize> { rat(200) });
@@ -444,7 +453,7 @@ TEST_CASE("an exact lookup composes with other nodes, exactly like any other Nod
 TEST_CASE("an exact miss propagates through composition too, not only when the lookup is the whole formula",
           "[lookup]")
 {
-    constexpr auto corrected = var<NominalSize> * shapeLookup(SpecimenShape::Prism);
+    constexpr auto corrected = var<NominalSize> * shapeLookup(SpecimenVariant::Prism);
     constexpr auto environment = formula::environment(formula::Measured<NominalSize> { rat(200) });
     constexpr auto computed = formula::checked_evaluate<CorrectedSize>(corrected, environment);
     STATIC_REQUIRE(!computed.has_value());
@@ -457,7 +466,7 @@ TEST_CASE("an absent operand beside a hitting exact lookup stays absent, and is 
     // exact lookup that hits must not turn one into the other. The lookup
     // itself succeeds here; the missing measurement is what makes the result
     // empty.
-    constexpr auto corrected = var<NominalSize> * shapeLookup(SpecimenShape::Cube150);
+    constexpr auto corrected = var<NominalSize> * shapeLookup(SpecimenVariant::Cube150);
     constexpr auto environment = formula::environment(formula::Measured<NominalSize>::absent());
     constexpr auto computed = formula::checked_evaluate<CorrectedSize>(corrected, environment);
     STATIC_REQUIRE(computed.has_value());
@@ -470,7 +479,7 @@ TEST_CASE("an integer literal is accepted as an exact lookup's correction, not o
     // factories take the same `Corrections<N>`, whose element constraint is
     // convertible_to<Rational> rather than same_as<Rational>, and a table
     // whose rows are all unity is the common case.
-    constexpr auto node = exact_lookup<ShapeKeys, unit::One>(SpecimenShape::Cube100, { 1, 1, 1, 1 });
+    constexpr auto node = exact_lookup<ShapeKeys, unit::One>(SpecimenVariant::Cube100, { 1, 1, 1, 1 });
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, formula::environment());
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());
@@ -490,12 +499,12 @@ TEST_CASE("key_table_is_well_formed answers for a table that only arrives at run
     // A duplicate in the middle of the table, neither first nor last, and not
     // in adjacent rows either: an exact table has no declared order, so a
     // check that only compared neighbours would pass this.
-    constexpr KeyTable<SpecimenShape, 5> Repeated {
-        SpecimenShape::Cube100,
-        SpecimenShape::Cube150,
-        SpecimenShape::CylinderShort,
-        SpecimenShape::Cube150, // already declared two rows above
-        SpecimenShape::Prism,
+    constexpr KeyTable<SpecimenVariant, 5> Repeated {
+        SpecimenVariant::Cube100,
+        SpecimenVariant::Cube150,
+        SpecimenVariant::CylinderShort,
+        SpecimenVariant::Cube150, // already declared two rows above
+        SpecimenVariant::Prism,
     };
     STATIC_REQUIRE(!formula::key_table_is_well_formed(Repeated));
 
@@ -504,10 +513,10 @@ TEST_CASE("key_table_is_well_formed answers for a table that only arrives at run
     // 5, so rows 3 and 4 never need to be compared for it to be found.
     // Measured: widening the outer bound from `first + 1 < N` to
     // `first + 2 < N` leaves every other assertion in this file green.
-    constexpr KeyTable<SpecimenShape, 3> RepeatedAtTheEnd {
-        SpecimenShape::Cube100,
-        SpecimenShape::Cube150,
-        SpecimenShape::Cube150, // the last pair, and nothing after it
+    constexpr KeyTable<SpecimenVariant, 3> RepeatedAtTheEnd {
+        SpecimenVariant::Cube100,
+        SpecimenVariant::Cube150,
+        SpecimenVariant::Cube150, // the last pair, and nothing after it
     };
     STATIC_REQUIRE(!formula::key_table_is_well_formed(RepeatedAtTheEnd));
 
@@ -515,8 +524,8 @@ TEST_CASE("key_table_is_well_formed answers for a table that only arrives at run
     // boundary between "no pair to compare" (a one-row table, above) and "one
     // pair to compare". Both directions, so a predicate that answered `false`
     // for every two-row table would fail here too rather than look correct.
-    constexpr KeyTable<SpecimenShape, 2> TwoRowsRepeated { SpecimenShape::Prism, SpecimenShape::Prism };
-    constexpr KeyTable<SpecimenShape, 2> TwoRowsDistinct { SpecimenShape::Prism, SpecimenShape::Cube100 };
+    constexpr KeyTable<SpecimenVariant, 2> TwoRowsRepeated { SpecimenVariant::Prism, SpecimenVariant::Prism };
+    constexpr KeyTable<SpecimenVariant, 2> TwoRowsDistinct { SpecimenVariant::Prism, SpecimenVariant::Cube100 };
     STATIC_REQUIRE(!formula::key_table_is_well_formed(TwoRowsRepeated));
     STATIC_REQUIRE(formula::key_table_is_well_formed(TwoRowsDistinct));
 }
@@ -527,23 +536,23 @@ TEST_CASE("a two-row exact table selects each of its rows and misses everything 
     // just above: two rows is the smallest table with a pair, and the phase
     // otherwise only ever uses 0, 1, 4 and 5. Both rows, so neither a
     // first-only nor a last-only scan passes.
-    constexpr KeyTable<SpecimenShape, 2> TwoShapes { SpecimenShape::Cube100, SpecimenShape::Prism };
+    constexpr KeyTable<SpecimenVariant, 2> TwoShapes { SpecimenVariant::Cube100, SpecimenVariant::Prism };
 
     constexpr auto first = formula::checked_evaluate<SizeCorrection>(
-        exact_lookup<TwoShapes, unit::One>(SpecimenShape::Cube100, { rat(1, 2), rat(1, 4) }),
+        exact_lookup<TwoShapes, unit::One>(SpecimenVariant::Cube100, { rat(1, 2), rat(1, 4) }),
         formula::environment());
     STATIC_REQUIRE(first.has_value());
     STATIC_REQUIRE(first->is_value());
     STATIC_REQUIRE(first->measurement().value() == rat(1, 2));
 
     constexpr auto second = formula::checked_evaluate<SizeCorrection>(
-        exact_lookup<TwoShapes, unit::One>(SpecimenShape::Prism, { rat(1, 2), rat(1, 4) }), formula::environment());
+        exact_lookup<TwoShapes, unit::One>(SpecimenVariant::Prism, { rat(1, 2), rat(1, 4) }), formula::environment());
     STATIC_REQUIRE(second.has_value());
     STATIC_REQUIRE(second->is_value());
     STATIC_REQUIRE(second->measurement().value() == rat(1, 4));
 
     constexpr auto absent = formula::checked_evaluate<SizeCorrection>(
-        exact_lookup<TwoShapes, unit::One>(SpecimenShape::Cube150, { rat(1, 2), rat(1, 4) }),
+        exact_lookup<TwoShapes, unit::One>(SpecimenVariant::Cube150, { rat(1, 2), rat(1, 4) }),
         formula::environment());
     STATIC_REQUIRE(!absent.has_value());
     STATIC_REQUIRE(absent.error() == formula::ArithmeticError::DomainError);
@@ -551,8 +560,8 @@ TEST_CASE("a two-row exact table selects each of its rows and misses everything 
 
 TEST_CASE("keys_match is exact equality, with no ordering and no conversion", "[lookup]")
 {
-    STATIC_REQUIRE(formula::keys_match(SpecimenShape::Cube150, SpecimenShape::Cube150));
-    STATIC_REQUIRE(!formula::keys_match(SpecimenShape::Cube150, SpecimenShape::Cube100));
+    STATIC_REQUIRE(formula::keys_match(SpecimenVariant::Cube150, SpecimenVariant::Cube150));
+    STATIC_REQUIRE(!formula::keys_match(SpecimenVariant::Cube150, SpecimenVariant::Cube100));
 }
 
 // ---------------------------------------------------------------------------
@@ -973,7 +982,7 @@ TEST_CASE("all three lookup kinds report finding nothing the same way", "[lookup
     // that gives any kind its own spelling fails here rather than in a consumer.
     constexpr auto bandedMiss = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(35));
     constexpr auto exactMiss =
-        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenShape::Prism), formula::environment());
+        formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::Prism), formula::environment());
     constexpr auto interpolatingMiss = formula::checked_evaluate<SizeCorrection>(curve(), millimetresOfDiameter(35));
 
     STATIC_REQUIRE(!bandedMiss.has_value());

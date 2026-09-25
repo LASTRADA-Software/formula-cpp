@@ -702,7 +702,15 @@ inline constexpr BandTable<3> SizeBands {
 /// so that a renderer sorting the rows, or reading them off the enumeration
 /// rather than off the table, is visible too. An exact table has no order, so
 /// an out-of-order table is not malformed -- it is just a table.
-enum class SpecimenShape : std::uint8_t
+///
+/// **Named for this file rather than generically, and that is a rule not a
+/// preference.** Two translation units whose anonymous-namespace key
+/// enumerations share a name and whose tables share their element values fail
+/// to link under clang, with a dangling relocation and no diagnostic naming the
+/// key type. This file spelled its `SpecimenShape` and got away with it only
+/// because its values happened to differ from another file's. See
+/// `trace_render_tests.cpp`'s `RenderedShape` for the measured mechanism.
+enum class MouldShape : std::uint8_t
 {
     Cube = 3,
     Prism = 5,
@@ -710,10 +718,10 @@ enum class SpecimenShape : std::uint8_t
     Beam = 11,
 };
 
-inline constexpr KeyTable<SpecimenShape, 3> ShapeKeys {
-    SpecimenShape::Cube,     // key 3
-    SpecimenShape::Cylinder, // key 7
-    SpecimenShape::Prism,    // key 5
+inline constexpr KeyTable<MouldShape, 3> ShapeKeys {
+    MouldShape::Cube,     // key 3
+    MouldShape::Cylinder, // key 7
+    MouldShape::Prism,    // key 5
 };
 
 /// Three breakpoints, spaced unequally (11/2 then 23/2), with no key equal to
@@ -728,13 +736,13 @@ inline constexpr BreakpointTable<3> CurvePoints {
 };
 
 inline constexpr BandTable<0> NoBands {};
-inline constexpr KeyTable<SpecimenShape, 0> NoShapes {};
+inline constexpr KeyTable<MouldShape, 0> NoShapes {};
 inline constexpr BreakpointTable<0> NoPoints {};
 
 /// The other degenerate shape: a table whose only row is simultaneously its
 /// first and its last, and which needs no separator between rows at all.
 inline constexpr BandTable<1> OneBand { band(2, 1, 10, 4) };
-inline constexpr KeyTable<SpecimenShape, 1> OneShape { SpecimenShape::Cylinder };
+inline constexpr KeyTable<MouldShape, 1> OneShape { MouldShape::Cylinder };
 inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) };
 
 /// Key unit `mm` (a symbol), result unit `One` (no symbol) -- so this fixture
@@ -749,7 +757,7 @@ inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) };
 /// have a symbol, so the two fixtures above and below cover both sides.
 /// `Cylinder` is the **middle** row, the position a defect is hardest to see
 /// from either end.
-[[nodiscard]] constexpr auto shapeLookup(SpecimenShape shape = SpecimenShape::Cylinder)
+[[nodiscard]] constexpr auto shapeLookup(MouldShape shape = MouldShape::Cylinder)
 {
     // The middle correction is a whole number, so that `number_text`'s
     // whole-number branch is reached through a lookup and not only through a
@@ -858,9 +866,9 @@ TEST_CASE("render: an exact lookup's subject is the key it holds, not a row of i
     // the subject off `Keys[0]`, or off the middle row -- which is what the
     // fixture's own default selects, so that mistake would pass the test above
     // -- is caught here and nowhere else.
-    CHECK(formula::render(shapeLookup(SpecimenShape::Cube))
+    CHECK(formula::render(shapeLookup(MouldShape::Cube))
           == "lookup(key 3, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
-    CHECK(formula::render(shapeLookup(SpecimenShape::Prism))
+    CHECK(formula::render(shapeLookup(MouldShape::Prism))
           == "lookup(key 5, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
 }
 
@@ -978,7 +986,7 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
     // the operand a published page dropped in phase 8.
     CHECK(formula::render(banded_lookup<unit::Millimetre, NoBands, unit::One>(var<Diameter>, {}))
           == "lookup(d, no rows)");
-    CHECK(formula::render(exact_lookup<NoShapes, unit::One>(SpecimenShape::Beam, {}))
+    CHECK(formula::render(exact_lookup<NoShapes, unit::One>(MouldShape::Beam, {}))
           == "lookup(key 11, no rows)");
     CHECK(formula::render(interpolating_lookup<unit::Millimetre, NoPoints, unit::One>(var<Diameter>, {}))
           == "interpolate(d, no rows)");
@@ -992,7 +1000,7 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
     // "say so when empty" branch from a "say so when fewer than two" one.
     CHECK(formula::render(banded_lookup<unit::Millimetre, OneBand, unit::One>(var<Diameter>, { rat(19, 20) }))
           == "lookup(d, 2 to under 5/2 mm gives 19/20)");
-    CHECK(formula::render(exact_lookup<OneShape, unit::One>(SpecimenShape::Cylinder, { rat(19, 20) }))
+    CHECK(formula::render(exact_lookup<OneShape, unit::One>(MouldShape::Cylinder, { rat(19, 20) }))
           == "lookup(key 7, key 7 gives 19/20)");
     CHECK(formula::render(interpolating_lookup<unit::Millimetre, OnePoint, unit::One>(var<Diameter>, { rat(19, 20) }))
           == "interpolate(d, at 15/2 mm gives 19/20)");
@@ -1000,12 +1008,12 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
 
 TEST_CASE("render: a lookup states the expression, never that the expression found something", "[render][lookup]")
 {
-    // `Beam` is a perfectly good `SpecimenShape` that this table has no row
+    // `Beam` is a perfectly good `MouldShape` that this table has no row
     // for: evaluating it is `ArithmeticError::DomainError`. The rendered text
     // is unchanged by that, and says nothing that implies a value was found --
     // it shows the reader the key and the rows and lets them see there is no
     // match, which is exactly what a rendered formula is for.
-    CHECK(formula::render(shapeLookup(SpecimenShape::Beam))
+    CHECK(formula::render(shapeLookup(MouldShape::Beam))
           == "lookup(key 11, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
 }
 

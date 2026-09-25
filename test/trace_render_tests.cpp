@@ -762,15 +762,23 @@ inline constexpr BandTable<3> SizeBands {
 /// clang preset, though cl, clang-cl and g++ 14.2 all linked it without
 /// complaint. Renaming this one turned both clang legs green.
 ///
-/// **The trigger is narrower than "two files spell it the same", which is why
-/// two other files get away with it today.** `nm` over the four objects that
-/// declare a key enumeration: `lookup_tests.cpp.o` carries no `_ZTA` symbol at
-/// all, so its tables can collide with nothing; and the mangled name encodes
-/// the element values as well as the type name and the size, so
-/// `render_tests.cpp`'s `{3, 7, 5}` never met `trace_tests.cpp`'s `{4, -3, 7}`.
-/// Both of those still spell theirs `SpecimenShape`. That is a property of what
-/// they happen to contain, not a rule -- so give a new test file's key
-/// enumeration a name of its own rather than rely on it.
+/// **The trigger is narrower than "two files spell it the same", and knowing
+/// which part of it is not a rule is the point.** `nm` over the four objects
+/// that declare a key enumeration, measured while this was fixed:
+/// `lookup_tests.cpp.o` carried no `_ZTA` symbol at all, so its tables could
+/// collide with nothing; and the mangled name encodes the element values as
+/// well as the type name and the size, so `render_tests.cpp`'s `{3, 7, 5}`
+/// never met `trace_tests.cpp`'s `{4, -3, 7}`. Both of those spelled theirs
+/// `SpecimenShape` too, and got away with it because of what they happened to
+/// contain rather than because of anything enforced -- an author copying an
+/// existing table's values into a new test would have brought the link failure
+/// back, with a dangling relocation and no diagnostic naming the key type.
+///
+/// So they were renamed as well, to `MouldShape` and `SpecimenVariant`, and the
+/// rule now holds by construction rather than by coincidence: **each
+/// translation unit's key enumeration carries a name of its own.** Follow it in
+/// a new test file. `lookup.hpp`'s file comment says the same thing to a
+/// consumer, who has no clang leg of their own to catch them.
 enum class RenderedShape : std::int16_t
 {
     Undercut = -3,
