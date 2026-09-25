@@ -257,6 +257,12 @@ namespace unit
                                     .symbolText = symbol("\xc2\xb0" "C"),
                                     .decimals = 1 };
 
+    /// The coherent SI unit of force. One decimal rather than `Pascal`'s
+    /// none: a newton is a coarse enough unit that reporting a tenth of one is
+    /// ordinary, where a tenth of a pascal is not. An engineering default like
+    /// every other in this namespace, not a requirement from any standard.
+    inline constexpr Unit Newton { .dimension = dim::Force, .symbolText = symbol("N"), .decimals = 1 };
+
     /// The coherent SI unit of pressure.
     inline constexpr Unit Pascal { .dimension = dim::Pressure, .symbolText = symbol("Pa"), .decimals = 0 };
     /// One million pascals.

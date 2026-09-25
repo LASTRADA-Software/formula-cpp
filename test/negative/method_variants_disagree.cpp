@@ -46,11 +46,7 @@ struct Core
 {
 };
 
-inline constexpr formula::Unit Newton { .dimension = formula::dim::Force,
-                                        .symbolText = formula::symbol("N"),
-                                        .decimals = 1 };
-
-struct Force: formula::Quantity<Force, "F", "applied force", Newton>
+struct Force: formula::Quantity<Force, "F", "applied force", formula::unit::Newton>
 {
 };
 struct EdgeX: formula::Quantity<EdgeX, "x_m", "measured edge", formula::unit::Millimetre>

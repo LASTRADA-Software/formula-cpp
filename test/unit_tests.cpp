@@ -146,7 +146,7 @@ TEST_CASE("every named unit carries a plausible declared precision", "[unit]")
 
 TEST_CASE("every named unit's dimension, magnitude and declared decimals match the physics", "[unit]")
 {
-    // The loop above enumerates only 12 of the 20 named units, and even that
+    // The loop above enumerates only 12 of the 21 named units, and even that
     // one checks general sanity (decimals in range, denominators positive),
     // never a specific value. Centimetre, SquareMetre and Millilitre in
     // particular appear in no test, no example and no documentation code
@@ -188,10 +188,11 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
         { unit::Hour, dim::Time, 3600, 1, 2 },
         { unit::Kelvin, dim::Temperature, 1, 1, 2 },
         { unit::Celsius, dim::Temperature, 1, 1, 1 },
+        { unit::Newton, dim::Force, 1, 1, 1 },
         { unit::Pascal, dim::Pressure, 1, 1, 0 },
         { unit::Megapascal, dim::Pressure, 1000000, 1, 1 },
     };
-    CHECK(std::size(table) == 20); // every named unit, not a subset
+    CHECK(std::size(table) == 21); // every named unit, not a subset
 
     for (Expected const& row: table)
     {

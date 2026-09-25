@@ -11,16 +11,6 @@ namespace
 namespace unit = formula::unit;
 using formula::var;
 
-// The coherent SI unit of force. Declared here rather than taken from
-// `unit.hpp`, which has no Newton: `dim::Force` exists, the unit does not, and
-// adding one to the published unit table is a decision about this library's
-// surface that belongs to whoever wants a Newton for its own sake -- not to
-// the first test that happens to need a force. `measured_tests.cpp` and
-// `examples/composition.cpp` declare their own units the same way.
-inline constexpr formula::Unit Newton { .dimension = formula::dim::Force,
-                                        .symbolText = formula::symbol("N"),
-                                        .decimals = 1 };
-
 // The discriminators. Empty tags, never instantiated: what a variant applies
 // to is a type, so that selecting one is a compile-time fact the type system
 // can state rather than a runtime string nobody checks.
@@ -37,7 +27,7 @@ struct Core
 {
 };
 
-struct Force: formula::Quantity<Force, "F", "applied force", Newton>
+struct Force: formula::Quantity<Force, "F", "applied force", unit::Newton>
 {
 };
 struct EdgeX: formula::Quantity<EdgeX, "x_m", "measured edge", unit::Millimetre>

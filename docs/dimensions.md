@@ -124,10 +124,10 @@ here, with the convenient types (`Rational`, `std::string_view`) appearing
 only at the point of use, via `formula::view()` and the conversion functions
 below.
 
-The `formula::unit::` namespace declares twenty of these: the coherent SI
-units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Pascal`, ...) alongside scaled
-ones (`Millimetre`, `Tonne`, `Hour`, `Megapascal`, ...) and the two dimensionless
-units, `One` and `Percent`. Their `decimals` values are ordinary engineering
+The `formula::unit::` namespace declares twenty-one of these: the coherent SI
+units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Newton`, `Pascal`, ...) alongside
+scaled ones (`Millimetre`, `Tonne`, `Hour`, `Megapascal`, ...) and the two
+dimensionless units, `One` and `Percent`. Their `decimals` values are ordinary engineering
 defaults, not a requirement taken from any standard -- a caller that needs a
 different precision states it at the point of use.
 
