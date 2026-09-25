@@ -696,12 +696,14 @@ inline constexpr BandTable<3> SizeBands {
 };
 
 /// The underlying type is fixed and the enumerators are numbered by hand, both
-/// deliberately. Numbered by hand because a renderer printing a row's *index*
-/// rather than its key is invisible against an enumeration left to default,
-/// where the two coincide; and declared here **out of numeric order** (3, 7, 5)
-/// so that a renderer sorting the rows, or reading them off the enumeration
-/// rather than off the table, is visible too. An exact table has no order, so
-/// an out-of-order table is not malformed -- it is just a table.
+/// deliberately. A key renders as its name, and as its underlying value only
+/// when it names no row -- `Beam`, which the table below leaves out, is that
+/// case. Numbered by hand because a renderer printing a row's *index* rather
+/// than its key's value there is invisible against an enumeration left to
+/// default, where the two coincide; and declared here **out of numeric order**
+/// (3, 7, 5) so that a renderer sorting the rows, or reading them off the
+/// enumeration rather than off the table, is visible too. An exact table has no
+/// order, so an out-of-order table is not malformed -- it is just a table.
 ///
 /// **Named for this file rather than generically, and that is a rule not a
 /// preference.** Two translation units whose anonymous-namespace key
@@ -845,19 +847,20 @@ TEST_CASE("render: a banded lookup renders its operand and one field per band", 
 TEST_CASE("render: an exact lookup renders the key it selects with and one field per row", "[render][lookup]")
 {
     CHECK(formula::render<Dialect::Plain>(shapeLookup())
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
     // Nothing here is a variable, so Markdown has nothing to backtick and the
     // two dialects coincide. That is a fact about this node kind, not an
     // accident: an exact lookup has no operand.
     CHECK(formula::render<Dialect::Markdown>(shapeLookup())
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
-    // `key 7` is words, not mathematics, so LaTeX sets the subject as text too
+          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+    // `key Cylinder` is words, not mathematics, so LaTeX sets the subject as text too
     // -- unlike the other two kinds, whose subject is a real sub-expression.
     CHECK(formula::render<Dialect::LaTeX>(shapeLookup())
-          == "\\operatorname{lookup}(\\text{key 7},\\allowbreak \\text{key 3 gives 31/25 MPa},\\allowbreak \\text{key 7 "
-             "gives 4 MPa},\\allowbreak \\text{key 5 gives 13/10 MPa})");
+          == "\\operatorname{lookup}(\\text{key Cylinder},\\allowbreak \\text{key Cube gives 31/25 MPa},\\allowbreak "
+             "\\text{key Cylinder "
+             "gives 4 MPa},\\allowbreak \\text{key Prism gives 13/10 MPa})");
     CHECK(formula::render(shapeLookup())
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
 }
 
 TEST_CASE("render: an exact lookup's subject is the key it holds, not a row of its table", "[render][lookup]")
@@ -867,9 +870,9 @@ TEST_CASE("render: an exact lookup's subject is the key it holds, not a row of i
     // fixture's own default selects, so that mistake would pass the test above
     // -- is caught here and nowhere else.
     CHECK(formula::render(shapeLookup(MouldShape::Cube))
-          == "lookup(key 3, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key Cube, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
     CHECK(formula::render(shapeLookup(MouldShape::Prism))
-          == "lookup(key 5, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key Prism, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
 }
 
 TEST_CASE("render: an interpolating lookup renders its operand and one field per breakpoint", "[render][lookup]")
@@ -959,9 +962,9 @@ TEST_CASE("render: every lookup kind nests inside a product and a power without 
           == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)^2");
 
     CHECK(formula::render(var<Strength> * shapeLookup())
-          == "f * lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
+          == "f * lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
     CHECK(formula::render(formula::pow<2>(shapeLookup()))
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)^2");
+          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)^2");
 
     CHECK(formula::render(var<Strength> * curveLookup())
           == "f * interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
@@ -974,8 +977,9 @@ TEST_CASE("render: every lookup kind nests inside a product and a power without 
     CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(curveLookup()))
           == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)^2");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(shapeLookup()))
-          == "\\operatorname{lookup}(\\text{key 7},\\allowbreak \\text{key 3 gives 31/25 MPa},\\allowbreak \\text{key 7 "
-             "gives 4 MPa},\\allowbreak \\text{key 5 gives 13/10 MPa})^{2}");
+          == "\\operatorname{lookup}(\\text{key Cylinder},\\allowbreak \\text{key Cube gives 31/25 MPa},\\allowbreak "
+             "\\text{key Cylinder "
+             "gives 4 MPa},\\allowbreak \\text{key Prism gives 13/10 MPa})^{2}");
 }
 
 TEST_CASE("render: a table with no rows says so, and a table with one row renders it", "[render][lookup]")
@@ -1001,7 +1005,7 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
     CHECK(formula::render(banded_lookup<unit::Millimetre, OneBand, unit::One>(var<Diameter>, { rat(19, 20) }))
           == "lookup(d, 2 to under 5/2 mm gives 19/20)");
     CHECK(formula::render(exact_lookup<OneShape, unit::One>(MouldShape::Cylinder, { rat(19, 20) }))
-          == "lookup(key 7, key 7 gives 19/20)");
+          == "lookup(key Cylinder, key Cylinder gives 19/20)");
     CHECK(formula::render(interpolating_lookup<unit::Millimetre, OnePoint, unit::One>(var<Diameter>, { rat(19, 20) }))
           == "interpolate(d, at 15/2 mm gives 19/20)");
 }
@@ -1013,8 +1017,80 @@ TEST_CASE("render: a lookup states the expression, never that the expression fou
     // is unchanged by that, and says nothing that implies a value was found --
     // it shows the reader the key and the rows and lets them see there is no
     // match, which is exactly what a rendered formula is for.
+    //
+    // `key 11`, not `key Beam`: a key is named only among the keys its own
+    // table declares (`detail::key_name`), and this one is not among them.
+    // The value is the fallback, and 11 is neither Beam's index in its
+    // enumeration nor any row's index. Kills a renderer that names the key
+    // from anywhere but the table, and one that falls back to an index.
     CHECK(formula::render(shapeLookup(MouldShape::Beam))
-          == "lookup(key 11, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key 11, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+}
+
+namespace
+{
+/// A key enumeration with one enumerator spelled by its author and one left
+/// to its own name -- and that own name has an underscore, which LaTeX will
+/// not accept bare even inside `\text{...}`. The author's spelling holds a
+/// bracket pair, an asterisk pair and a percent sign, every one of which
+/// means something to Markdown or to LaTeX.
+enum class MouldFinish : std::uint8_t
+{
+    Hollow_Core = 2,
+    Polished = 4,
+};
+
+inline constexpr KeyTable<MouldFinish, 2> FinishKeys { MouldFinish::Polished, MouldFinish::Hollow_Core };
+
+[[nodiscard]] constexpr auto finishLookup(MouldFinish finish)
+{
+    return exact_lookup<FinishKeys, unit::One>(finish, { rat(1), rat(2) });
+}
+} // namespace
+
+template <>
+struct formula::EnumeratorName<MouldFinish>
+{
+    static constexpr std::string_view of(MouldFinish finish) noexcept
+    {
+        return finish == MouldFinish::Polished ? "polished *[A]* 100% & oiled" : "";
+    }
+};
+
+TEST_CASE("render: an exact lookup shows the author's own spelling of a key when there is one", "[render][lookup]")
+{
+    // The customized row and the subject both take the author's spelling,
+    // and the uncustomized row still takes its reflected name. Kills a
+    // renderer that ignores `EnumeratorName`, and one that applies it to the
+    // subject but not to the rows or the other way round.
+    CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Polished))
+          == "lookup(key polished *[A]* 100% & oiled, key polished *[A]* 100% & oiled gives 1, key Hollow_Core gives 2)");
+}
+
+TEST_CASE("render: a key's name is shown literally in every dialect, whatever characters it holds",
+          "[render][lookup][markdown][latex]")
+{
+    // The one piece of text in a rendering this library did not write. In
+    // Markdown, `*[A]*` unescaped is an emphasised link label, `_` can open
+    // emphasis and `&` can start an entity; in LaTeX, `_` and `&` are errors
+    // and `%` silently eats the rest of the line, even inside `\text{...}`.
+    // So each dialect escapes the name the way an author writing in it by
+    // hand would, and the words around it -- `key`, `gives` -- are untouched.
+    // Kills a renderer that puts the name in unescaped, and one that escapes
+    // for the wrong dialect.
+    //
+    // Both measured rather than reasoned: the LaTeX string compiles with
+    // tectonic 0.17.0 inside `$...$` and shows the name as written, and the
+    // Markdown string does the same through python-markdown and pandoc's
+    // CommonMark and GFM readers.
+    CHECK(formula::render<Dialect::Markdown>(finishLookup(MouldFinish::Hollow_Core))
+          == "lookup(key Hollow\\_Core, key polished \\*\\[A\\]\\* 100% &amp; oiled gives 1, key Hollow\\_Core gives 2)");
+    CHECK(formula::render<Dialect::LaTeX>(finishLookup(MouldFinish::Hollow_Core))
+          == "\\operatorname{lookup}(\\text{key Hollow\\_Core},\\allowbreak \\text{key polished *[A]* 100\\% \\& oiled "
+             "gives 1},\\allowbreak \\text{key Hollow\\_Core gives 2})");
+    // Plain is for a terminal, where nothing is markup, so nothing is escaped.
+    CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Hollow_Core))
+          == "lookup(key Hollow_Core, key polished *[A]* 100% & oiled gives 1, key Hollow_Core gives 2)");
 }
 
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")

@@ -229,21 +229,119 @@ namespace detail
                                 keySymbol);
     }
 
-    /// A category key as text: `key 2`.
+    /// Author-supplied words -- a key's name -- made literal in dialect @p D,
+    /// so that whatever characters they hold are shown rather than obeyed.
     ///
-    /// **What this costs, stated rather than hidden.** An enumerator's *name*
-    /// does not exist at run time in C++ -- there is no portable way to get
-    /// `Cylinder` back out of a `Shape` -- so what a reader is given is the
-    /// enumerator's underlying value, which is the only thing that does
-    /// survive. A reader reconciling this against a published table therefore
-    /// has to carry the author's own `enum class` declaration across: `key 2`
-    /// says which row, not which *variant*. The alternative would be per-row
-    /// labels on the node, and `lookup.hpp` declines those deliberately ("Per-
-    /// row labels are not modelled here and are not smuggled into the node"),
-    /// because a table's identity is `documented()`'s job. A later task that
-    /// wants names has one honest seam: a `Describe`-style trait over the
-    /// author's enumeration, opted into the way `Quantity` already is -- not a
-    /// field on the node.
+    /// Needed because a key's name is the one piece of text in a rendering
+    /// that this library did not write. A reflected name is an identifier,
+    /// and an identifier's underscore is already enough to break LaTeX:
+    /// `\text{key Hollow_Core}` is a "Missing $ inserted" error, because `_`
+    /// is a math-mode character even inside `\text`. A customized spelling
+    /// (`EnumeratorName`, `enumerator.hpp`) may hold anything at all --
+    /// `[150 mm]`, `*` -- which in Markdown is exactly the link and emphasis
+    /// syntax this file's ruling and the guard test in `render_tests.cpp`
+    /// exist to keep out.
+    ///
+    /// LaTeX escapes its ten special characters the way a text-mode author
+    /// would. Markdown backslash-escapes the six characters that open inline
+    /// markup -- a backslash, a backtick, `*`, `_`, `[`, `]` -- and writes `<`, `>`
+    /// and `&` as entities, because those three are HTML's rather than
+    /// Markdown's, and a backslash before them is shown literally by
+    /// python-markdown (MkDocs' engine) where CommonMark would drop it.
+    /// Measured: this exact set renders as the original text through
+    /// python-markdown, pandoc's CommonMark reader and pandoc's GFM reader
+    /// alike, and the LaTeX set through tectonic 0.17.0. Plain changes
+    /// nothing. Text with none of these characters is the same in all three
+    /// dialects, which is what the cross-dialect test relies on.
+    template <Dialect D>
+    [[nodiscard]] std::string literal_words_in_dialect(std::string_view words)
+    {
+        if constexpr (D == Dialect::Plain)
+            return std::string { words };
+        else
+        {
+            std::string text;
+            text.reserve(words.size());
+            for (char const c: words)
+            {
+                if constexpr (D == Dialect::LaTeX)
+                {
+                    switch (c)
+                    {
+                        case '\\':
+                            text += "\\textbackslash{}";
+                            break;
+                        case '^':
+                            text += "\\^{}";
+                            break;
+                        case '~':
+                            text += "\\~{}";
+                            break;
+                        case '{':
+                        case '}':
+                        case '$':
+                        case '&':
+                        case '#':
+                        case '_':
+                        case '%':
+                            text += '\\';
+                            text += c;
+                            break;
+                        default:
+                            text += c;
+                            break;
+                    }
+                }
+                else
+                {
+                    switch (c)
+                    {
+                        case '<':
+                            text += "&lt;";
+                            break;
+                        case '>':
+                            text += "&gt;";
+                            break;
+                        case '&':
+                            text += "&amp;";
+                            break;
+                        case '\\':
+                        case '`':
+                        case '*':
+                        case '_':
+                        case '[':
+                        case ']':
+                            text += '\\';
+                            text += c;
+                            break;
+                        default:
+                            text += c;
+                            break;
+                    }
+                }
+            }
+            return text;
+        }
+    }
+
+    /// A category key as text: `key Cylinder`, in dialect @p D.
+    ///
+    /// The key's name is `key_name` (`lookup.hpp`): the name of the row of
+    /// @p Keys that @p key selects, which is the enumerator's own name as
+    /// written in the author's source unless the author spelled it
+    /// differently through `EnumeratorName` (`enumerator.hpp`). A reader
+    /// reconciling this against a published table reads the author's word for
+    /// the row, not a number they would have to look up in the author's code.
+    /// The name is made literal in the dialect by `literal_words_in_dialect`.
+    ///
+    /// **The underlying value is the fallback, and only the fallback**: `key
+    /// 9` for a key that names no row of the table, which is exactly the key
+    /// a missing lookup holds. It may even be a real enumerator the table
+    /// has no row for; `key_name` answers only among the table's own keys,
+    /// so this does too. The spelling is the one this function used before it
+    /// had names, so a miss reads the same as it always has. A reflected name
+    /// is an identifier and cannot begin with a digit, so the two spellings
+    /// cannot be confused unless an author customizes a name into a number.
     ///
     /// The underlying value, not the row's index: the two coincide only for an
     /// enumeration whose enumerators were left to default, and an author who
@@ -251,10 +349,14 @@ namespace detail
     /// numbers that appear nowhere in their own code. The signed and unsigned
     /// casts are spelled separately because an underlying type may be
     /// `unsigned long long`, whose top half no signed type can hold.
-    template <typename Key>
-    [[nodiscard]] std::string key_text(Key key)
+    template <Dialect D, KeyTable Keys>
+    [[nodiscard]] std::string key_text(KeyOf<Keys> key)
     {
-        using Underlying = std::underlying_type_t<Key>;
+        std::string_view const name = key_name<Keys>(key);
+        if (!name.empty())
+            return "key " + literal_words_in_dialect<D>(name);
+
+        using Underlying = std::underlying_type_t<KeyOf<Keys>>;
         if constexpr (std::is_signed_v<Underlying>)
             return "key " + std::to_string(static_cast<long long>(key));
         else
@@ -739,9 +841,10 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
 /// as text like the rows are, where the other two kinds' operands stay in math
 /// mode because they really are expressions.
 ///
-/// **A key renders as its underlying value, not its name.** See
-/// `detail::key_text` for why no library can do better without help from the
-/// author's own enumeration, and for what it costs a reader.
+/// **A key renders as its name** -- `key Cylinder`, or the author's own
+/// spelling of it through `EnumeratorName` (`enumerator.hpp`) -- and as its
+/// underlying value only when it names no row of the table. See
+/// `detail::key_text`.
 template <Dialect D, KeyTable Keys, Unit ResultUnit>
 [[nodiscard]] std::string render_node(ExactLookupNode<Keys, ResultUnit> const& node)
 {
@@ -751,13 +854,10 @@ template <Dialect D, KeyTable Keys, Unit ResultUnit>
     for (std::size_t index = 0; index < Keys.size(); ++index)
         rows += detail::lookup_separator<D>()
                 + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    detail::key_text(Keys[index]),
-                    detail::number_with_unit(detail::number_text(node.corrections[index]),
-                                             view(resultUnit.symbolText))));
+                    detail::key_text<D, Keys>(Keys[index]),
+                    detail::number_with_unit(detail::number_text(node.corrections[index]), view(resultUnit.symbolText))));
 
-    return detail::lookup_call<D>("lookup",
-                                 detail::lookup_words_in_dialect<D>(detail::key_text(node.key)),
-                                 rows);
+    return detail::lookup_call<D>("lookup", detail::lookup_words_in_dialect<D>(detail::key_text<D, Keys>(node.key)), rows);
 }
 
 /// An interpolating lookup renders as `interpolate(<operand>, at <key> gives

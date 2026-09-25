@@ -264,21 +264,24 @@ namespace detail
         return text;
     }
 
-    /// An exact lookup's key, spelled the way `render()` spells it: `key 7`.
+    /// An exact lookup's key, spelled the way `render()` spells it in its
+    /// plain dialect: `key Cylinder`, or `key 9` for a key that names no row.
     ///
-    /// The underlying value rather than the enumerator's name, for the reason
-    /// `detail::key_text` (`render.hpp`) sets out in full: a C++ enumerator
-    /// has no name at run time. This cannot call that function -- it is a
-    /// template on the author's enumeration, and a `Step` has erased the type
-    /// -- so the two spellings are independent and the cross-surface test in
-    /// `trace_render_tests.cpp` is what ties them together, exactly as it
-    /// does for the six comparison tokens.
+    /// The name is the one the step recorded (`Step::lookupKeyName`), and the
+    /// underlying value is the fallback for an empty one, for the reasons
+    /// `detail::key_text` (`render.hpp`) gives. This cannot call that
+    /// function -- it is a template on the author's enumeration, and a `Step`
+    /// has erased the type -- so the two spellings are independent and the
+    /// cross-surface test in `trace_render_tests.cpp` is what ties them
+    /// together, exactly as it does for the six comparison tokens.
     ///
     /// The two casts are spelled separately for `key_text`'s own reason: an
     /// enumeration's underlying type may be `unsigned long long`, whose top
     /// half no signed type can hold.
     [[nodiscard]] inline std::string lookup_key_text(Step<Rational> const& step)
     {
+        if (!step.lookupKeyName.empty())
+            return "key " + std::string { step.lookupKeyName };
         return "key "
                + (step.lookupKeyIsSigned ? std::to_string(static_cast<long long>(step.lookupKey))
                                          : std::to_string(step.lookupKey));

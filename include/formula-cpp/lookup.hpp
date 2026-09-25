@@ -194,7 +194,12 @@
 /// documentation facts -- `documented()`/`Citation` (`citation.hpp`) -- which
 /// is where a table's identity belongs for the exact lookup for exactly the
 /// same reason it does for the banded one. Per-row labels are not modelled
-/// here and are not smuggled into the node.
+/// here and are not smuggled into the node. What a key is *called* when it
+/// is shown is a fact about the author's enumeration, not about any one
+/// table, so it lives with the enumeration: `render()` and a trace show the
+/// enumerator's own name (`key Cylinder`), and an author whose published
+/// table words the row differently specializes `EnumeratorName`
+/// (`enumerator.hpp`) once for the type, and every table keyed on it follows.
 ///
 /// `std::is_scoped_enum_v` is required -- not enumerations generally, and not
 /// `int`. An unscoped enumeration and an integer both convert to and from
@@ -467,6 +472,7 @@
 /// composes a sentence that would make saying it harder.
 
 #include <formula-cpp/band.hpp>
+#include <formula-cpp/enumerator.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
@@ -478,6 +484,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -1051,6 +1058,45 @@ namespace detail
             if (keys_match(Keys[index], key))
                 return index;
         return std::nullopt;
+    }
+
+    /// The spelling of every key of @p Keys, in row order, each computed by
+    /// `enumerator_name` at compile time. See `key_name`.
+    template <KeyTable Keys, std::size_t... Index>
+    [[nodiscard]] consteval std::array<std::string_view, Keys.size()> key_names(std::index_sequence<Index...>) noexcept
+    {
+        return { enumerator_name<Keys[Index]>()... };
+    }
+
+    /// `key_names`, computed once per table.
+    template <KeyTable Keys>
+    inline constexpr std::array<std::string_view, Keys.size()> keyNames =
+        key_names<Keys>(std::make_index_sequence<Keys.size()> {});
+
+    /// The spelling of @p key -- a value only known at run time -- **among the
+    /// keys @p Keys declares, and nowhere else**: the row's key's
+    /// `enumerator_name` when @p key names a row, and an empty view when it
+    /// names none.
+    ///
+    /// A key that names no row is exactly how an exact lookup misses, and it
+    /// may be a perfectly good enumerator of the author's type that the table
+    /// simply has no row for. It is still answered with an empty view: this
+    /// function knows the names of a table's keys, which were fixed at
+    /// compile time, and knows nothing about values outside that set. A
+    /// general value-to-name scan would need a range of values to search, and
+    /// nothing gives this library one.
+    ///
+    /// Which row "names" @p key is decided by `find_key`, the one predicate
+    /// the evaluator also selects with, so a name shown for a key is always
+    /// the name of the row that key selected. Every view returned has static
+    /// storage duration -- see `enumerator_name`.
+    template <KeyTable Keys>
+    [[nodiscard]] constexpr std::string_view key_name(KeyOf<Keys> key) noexcept
+    {
+        std::optional<std::size_t> const index = find_key<Keys>(key);
+        if (!index.has_value())
+            return {};
+        return keyNames<Keys>[*index];
     }
 } // namespace detail
 

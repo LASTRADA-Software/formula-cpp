@@ -226,12 +226,11 @@ inline constexpr formula::BandTable<3> GallerySizeBands {
 // (`lookup.hpp` measures the mechanism). Hence `GalleryMould` and not `Mould`.
 //
 // **Numbered explicitly, and not contiguously, on purpose.** An exact lookup
-// renders its rows as `key <underlying value>` -- a C++ enumerator has no name
-// at run time, so the value is the only thing that survives into the rendered
-// formula. Leaving these to default would print 0, 1, 2, which a reader could
-// just as easily take for row indices; 3, 7 and 11 can only be the
-// enumerators' own values, so the page demonstrates the rule rather than
-// leaving docs/lookup-tables.md to assert it in prose alone.
+// renders a key by its enumerator's name -- `key Cylinder` -- recovered at
+// compile time (`enumerator.hpp`), and falls back to the underlying value only
+// for a key that names no row. Numbered anyway so that a renderer printing a
+// number where a name belongs would put 3, 7 or 11 on the page, which cannot
+// pass for anything, rather than a plausible 0, 1, 2.
 enum class GalleryMould : std::uint8_t
 {
     Cube = 3,
@@ -285,10 +284,9 @@ constexpr auto mouldFactor =
                         { .title = "Mould factor by specimen mould",
                           .reference = "Example Standard 7:2020",
                           .section = "8.3",
-                          .text = "A category key names a row directly. The key renders as its underlying value, "
-                                  "not the enumerator's name, because a C++ enumerator has no name at run time -- "
-                                  "a reader reconciling this against a published table carries the author's own "
-                                  "enum class across." });
+                          .text = "A category key names a row directly, and renders under its enumerator's name. "
+                                  "An author whose published table words a row differently spells it once, for "
+                                  "the whole enumeration, through formula::EnumeratorName." });
 
 constexpr auto maturityFactor =
     formula::documented(maturityFactorTable,
@@ -615,10 +613,9 @@ int main(int argc, char** argv)
 
     out << "## Worked derivation: size- and age-corrected crushing strength\n\n";
     // The key is written out of the enumerator rather than typed, so this
-    // sentence cannot drift from the row the lookup below actually selects --
-    // which is the whole hazard of an enumerator whose value is not its index.
-    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key "
-        << static_cast<int>(GalleryMould::Cylinder)
+    // sentence cannot drift from the row the lookup below actually selects,
+    // nor from the spelling render() and the trace give it.
+    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key " << formula::enumerator_name<GalleryMould::Cylinder>()
         << "`. Each table names the row it answered "
            "from: the banded one its interval, the interpolating one the two rows it drew on. The exact "
            "lookup adds nothing there -- its key is already the subject of its own line.\n\n";

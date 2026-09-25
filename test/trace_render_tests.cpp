@@ -740,9 +740,11 @@ inline constexpr BandTable<3> SizeBands {
     return banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(var<Diameter>, { rat(95), rat(112), rat(105) });
 }
 
-/// A signed underlying type with a negative enumerator, so that a renderer
-/// reading a recorded key as unsigned writes 65533 where `render()` writes
-/// -3. Declared out of numeric order for `render_tests.cpp`'s reason.
+/// A signed underlying type with two negative enumerators: `Undercut`, a row
+/// of the table and so rendered by name, and `Overcut`, which the table leaves
+/// out and so is rendered by its value -- where a renderer reading a recorded
+/// key as unsigned writes 65531 and `render()` writes -5. Declared out of
+/// numeric order for `render_tests.cpp`'s reason.
 ///
 /// **Named differently from `trace_tests.cpp`'s otherwise identical enumeration
 /// on purpose, and it must stay that way.** Both are internal-linkage types in
@@ -781,6 +783,7 @@ inline constexpr BandTable<3> SizeBands {
 /// consumer, who has no clang leg of their own to catch them.
 enum class RenderedShape : std::int16_t
 {
+    Overcut = -5,
     Undercut = -3,
     Cube = 4,
     Cylinder = 7,
@@ -850,6 +853,29 @@ inline constexpr BandTable<2> InnerBands {
 /// An exact table whose corrections are stated in kilometres, so that a row
 /// that IS found still fails converting out of the result unit.
 inline constexpr KeyTable<RenderedShape, 2> FarKeys { RenderedShape::Cube, RenderedShape::Cylinder };
+
+/// A key enumeration its author spells, for the cross-surface test: the
+/// middle row is customized and the others are not, and the customized
+/// spelling holds characters Markdown and LaTeX would read as markup, which a
+/// derivation -- plain text only -- must show exactly as `render()`'s plain
+/// dialect does.
+enum class RenderedFinish : std::uint8_t
+{
+    Rough = 1,
+    Polished = 2,
+    Oiled = 3,
+};
+
+inline constexpr KeyTable<RenderedFinish, 3> FinishKeys {
+    RenderedFinish::Rough,
+    RenderedFinish::Polished,
+    RenderedFinish::Oiled,
+};
+
+[[nodiscard]] constexpr auto finishLookup(RenderedFinish finish)
+{
+    return exact_lookup<FinishKeys, unit::One>(finish, { rat(1), rat(2), rat(3) });
+}
 
 /// Two rows in centimetres whose values are stated in kilometres: 0 cm sits
 /// exactly on the first row, so the interpolation does no arithmetic and the
@@ -947,6 +973,15 @@ template <typename Rep = Rational, typename Env>
 {
     return std::unexpected { ArithmeticError::DivisionByZero };
 }
+
+template <>
+struct EnumeratorName<RenderedFinish>
+{
+    static constexpr std::string_view of(RenderedFinish finish) noexcept
+    {
+        return finish == RenderedFinish::Polished ? "polished *[A]*" : "";
+    }
+};
 } // namespace formula
 
 TEST_CASE("a derivation names the band a banded lookup's value fell in", "[trace-render][lookup]")
@@ -1019,13 +1054,24 @@ TEST_CASE("a derivation renders an exact lookup's key, which is its whole subjec
     // The key sits where the other two kinds' operand reference sits, because
     // it plays that part -- and it has to be on this step, since an exact
     // lookup has no operand and so no step below it that could carry the key.
-    CHECK(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment())
-          == "1. lookup(key -3) = 4 MPa\n");
+    //
+    // By name, and the name of the MIDDLE row: kills a recorder that names
+    // the first or the last row whatever the key, and a renderer that ignores
+    // the recorded name and prints the value.
+    CHECK(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment()) == "1. lookup(key Undercut) = 4 MPa\n");
 
     // A key that is a perfectly legitimate enumerator of the author's own
-    // enumeration, and simply names no row of this table.
+    // enumeration, and simply names no row of this table. It has a name in
+    // the author's source, but not among this table's keys, so the step
+    // carries none and the value is shown instead.
     CHECK(derivationOf(shapeLookup(RenderedShape::Beam), formula::environment())
           == "1. lookup(key 11) = argument outside the domain of the operation [no row has this key]\n");
+
+    // The same on a negative value: the fallback reads the recorded bit
+    // pattern as signed, which kills one that reads every key as unsigned
+    // (65531) now that no key in the table is shown by value.
+    CHECK(derivationOf(shapeLookup(RenderedShape::Overcut), formula::environment())
+          == "1. lookup(key -5) = argument outside the domain of the operation [no row has this key]\n");
 }
 
 TEST_CASE("a derivation renders an interpolation's own overflow differently from one it is relaying",
@@ -1150,13 +1196,23 @@ TEST_CASE("a derivation spells a lookup the way render() does", "[trace-render][
     CHECK(bracketed(traced[1]) == renderedBand);
 
     // The key: render() writes it as the exact lookup's subject, and so does
-    // the trace. A negative key is what separates the two casts `key_text`
-    // spells separately from one that reads every key as unsigned.
-    std::string const renderedKey = callSubject(formula::render(shapeLookup(RenderedShape::Undercut)));
+    // the trace -- by name when the key names a row, by the author's own
+    // spelling when there is one, and by value when it names no row. Each of
+    // the three is its own branch on each surface, so each is compared.
+    auto const keysAgree = [](auto const& node) {
+        std::string const renderedKey = callSubject(formula::render(node));
+        std::vector<std::string> const tracedKey = lines(derivationOf(node, formula::environment()));
+        REQUIRE(tracedKey.size() == 1);
+        CHECK(callSubject(tracedKey[0]) == renderedKey);
+    };
+    keysAgree(shapeLookup(RenderedShape::Undercut));
+    keysAgree(finishLookup(RenderedFinish::Polished));
+    // A negative key naming no row is what separates the two casts
+    // `key_text` spells separately from one that reads every key as
+    // unsigned.
+    keysAgree(shapeLookup(RenderedShape::Overcut));
     std::vector<std::string> const tracedKey =
         lines(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment()));
-    REQUIRE(tracedKey.size() == 1);
-    CHECK(callSubject(tracedKey[0]) == renderedKey);
 
     // The head names, all three: the two selecting kinds share one and the
     // computing kind has its own, and a reader checking a derivation against
@@ -1210,7 +1266,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // going missing entirely.
     constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(RenderedShape::Cylinder, { rat(1), rat(Huge) });
     CHECK(derivationOf(far, formula::environment())
-          == "1. lookup(key 7) = overflow in exact arithmetic"
+          == "1. lookup(key Cylinder) = overflow in exact arithmetic"
              " [this lookup's own unit conversion failed, not anything below it]\n");
 
     // And on the interpolating kind, where it is one enumerator away from

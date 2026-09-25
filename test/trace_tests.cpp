@@ -1042,6 +1042,10 @@ TEST_CASE("an exact lookup step records the key it selected with, which no other
     CHECK(hit.steps[0].operands.empty());
     CHECK(hit.steps[0].lookupKeyIsSigned);
     CHECK(static_cast<long long>(hit.steps[0].lookupKey) == -3);
+    // The middle row's name, recorded while the key's type was still known.
+    // Kills a recorder that leaves the name empty, and one that names the
+    // first or last row whatever the key.
+    CHECK(hit.steps[0].lookupKeyName == "Undercut");
     CHECK(hit.steps[0].lookupFailure == formula::LookupFailure::None);
     CHECK(hit.steps[0].unit == unit::Megapascal);
     CHECK(hit.steps[0].value == rat(4000000)); // 4 MPa, in pascals
@@ -1061,6 +1065,10 @@ TEST_CASE("an exact lookup step records the key it selected with, which no other
     CHECK(miss.steps[0].error == formula::ArithmeticError::DomainError);
     CHECK(miss.steps[0].lookupFailure == formula::LookupFailure::Missed);
     CHECK(static_cast<long long>(miss.steps[0].lookupKey) == 11);
+    // `Beam` has a name in the author's source, but the table has no row for
+    // it, and a step's name comes from matching against the table's own keys.
+    // Kills a recorder that names a missed key anyway.
+    CHECK(miss.steps[0].lookupKeyName.empty());
     // Nothing to cover: an exact table's domain is a set of keys, not an
     // interval, so there is no range to report and none is invented.
     CHECK(!miss.steps[0].coveredRange.has_value());
@@ -1080,6 +1088,7 @@ TEST_CASE("an exact lookup step records an unsigned key that no signed type coul
     REQUIRE(trace.steps.size() == 1);
     CHECK(!trace.steps[0].lookupKeyIsSigned);
     CHECK(trace.steps[0].lookupKey == 18446744073709551615ULL);
+    CHECK(trace.steps[0].lookupKeyName == "Legacy");
     CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::None);
 }
 

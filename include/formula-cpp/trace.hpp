@@ -469,7 +469,8 @@ struct Step
     std::optional<LookupRange> coveredRange {};
 
     /// For `ExactLookup`: the key this lookup selected with, as the
-    /// underlying value of the author's enumerator.
+    /// underlying value of the author's enumerator. Its name, when it has
+    /// one, is `lookupKeyName` below.
     ///
     /// Recorded here because there is nowhere else it could survive. An
     /// exact lookup has **no operand**, so unlike a banded or an
@@ -477,11 +478,9 @@ struct Step
     /// sitting in the operand's own step -- a key that names no row would
     /// otherwise appear in no step of the derivation at all.
     ///
-    /// The underlying **value**, not the enumerator's name: a C++ enumerator
-    /// has no name at run time, so the value is the only part of it that
-    /// survives to a trace. The cost is real and is stated in full by
-    /// `detail::key_text` (`render.hpp`), which shows the same number for the
-    /// same reason.
+    /// The value is recorded even when the key has a name, because it is the
+    /// only thing a key that names no row still has: a miss is exactly a key
+    /// the table does not declare, and `lookupKeyName` is empty for it.
     ///
     /// Stored as the bit pattern with `lookupKeyIsSigned` beside it rather
     /// than as one signed integer, because an enumeration's underlying type
@@ -492,6 +491,31 @@ struct Step
     /// Whether `lookupKey` above is to be read as a signed value. Meaningful
     /// only when `kind` is `ExactLookup`, exactly as `lookupKey` itself is.
     bool lookupKeyIsSigned {};
+
+    /// For `ExactLookup`: the name of the key this lookup selected with --
+    /// `Cylinder`, or the author's own spelling of it through
+    /// `EnumeratorName` (`enumerator.hpp`) -- and empty when the key names no
+    /// row of the table, which is to say when the lookup missed.
+    ///
+    /// **Carried here because nothing downstream can compute it.** A `Step`
+    /// has erased the key's type, so `trace_render.hpp` cannot ask the
+    /// author's enumeration for a name the way `render()` does; the name has
+    /// to be captured while the type is still known, at record time. It is
+    /// matched against the table's declared keys by `detail::key_name`
+    /// (`lookup.hpp`), using the same predicate the evaluator selects with,
+    /// so it is always the name of the row the lookup actually selected. A
+    /// key outside the table has no name here even if it is a real
+    /// enumerator of the author's type.
+    ///
+    /// **A view, and safe to keep for the life of the trace and beyond.**
+    /// Every name `enumerator_name` produces has static storage duration: a
+    /// reflected name points into the compiler's function-signature literal,
+    /// and a customized one is refused at compile time unless every character
+    /// of it can be read in a constant expression, which a view of anything
+    /// shorter-lived cannot be (`RequireEnumeratorName`, `enumerator.hpp`).
+    /// So a trace outliving the formula, the table and the environment that
+    /// produced it still holds a valid name.
+    std::string_view lookupKeyName {};
 
     /// Indices of the steps this one consumed, in evaluation order.
     ///
@@ -838,6 +862,7 @@ namespace detail
                        std::vector<Step<Rep>> const&)
     {
         using Underlying = std::underlying_type_t<KeyOf<Keys>>;
+        step.lookupKeyName = key_name<Keys>(node.key);
         step.lookupKeyIsSigned = std::is_signed_v<Underlying>;
         step.lookupKey = step.lookupKeyIsSigned ? static_cast<std::uint64_t>(static_cast<long long>(node.key))
                                                 : static_cast<std::uint64_t>(static_cast<unsigned long long>(node.key));

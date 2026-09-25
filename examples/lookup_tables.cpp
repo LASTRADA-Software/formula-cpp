@@ -97,11 +97,12 @@ inline constexpr formula::BandTable<1> TopRowInclusive {
 // external linkage instead and the question does not arise.
 //
 // **Numbered explicitly, and not contiguously, on purpose.** An exact lookup
-// renders its rows as `key <underlying value>`, and enumerators left to
-// default would print 0, 1, 2 -- which a reader could just as easily take for
-// row indices. 3, 7, 11 and 13 can only be the enumerators' own values, so the
-// rendering below demonstrates the rule rather than merely being consistent
-// with it.
+// renders a key by its name -- `key Cylinder` -- and falls back to the
+// underlying value only for a key that names no row, which `DrilledCore`
+// below is. Enumerators left to default would print that fallback as 0, 1, 2
+// -- which a reader could just as easily take for row indices. 13 can only be
+// the enumerator's own value, so the miss below demonstrates the rule rather
+// than merely being consistent with it.
 enum class LookupExampleShape : std::uint8_t
 {
     Cube = 3,
@@ -117,6 +118,54 @@ inline constexpr formula::KeyTable<LookupExampleShape, 3> ShapeKeys {
     LookupExampleShape::Cube,
     LookupExampleShape::Cylinder,
     LookupExampleShape::Prism,
+};
+
+// ---- An exact table whose rows the published method words its own way -------
+//
+// A key is shown under its enumerator's name by default. Where the published
+// table words a row differently, say so once, for the enumeration, by
+// specializing `formula::EnumeratorName` -- every table keyed on it, and every
+// trace of one, then follows. `of` is read at compile time, returns a string
+// literal (a trace keeps the view), and returns an empty view to leave an
+// enumerator under its own name: `Air` below.
+enum class LookupExampleCuring : std::uint8_t
+{
+    Water = 1,
+    Sealed = 2,
+    Air = 3,
+};
+} // namespace
+
+// A specialization is declared outside the anonymous namespace, where the
+// primary template's namespace encloses it.
+template <>
+struct formula::EnumeratorName<LookupExampleCuring>
+{
+    static constexpr std::string_view of(LookupExampleCuring curing) noexcept
+    {
+        switch (curing)
+        {
+            case LookupExampleCuring::Water:
+                return "water bath";
+            case LookupExampleCuring::Sealed:
+                return "sealed in foil";
+            case LookupExampleCuring::Air:
+                return {};
+        }
+        return {};
+    }
+};
+
+// Constant expressions, so a spelling can be checked where it is declared.
+static_assert(formula::enumerator_name<LookupExampleCuring::Sealed>() == "sealed in foil");
+static_assert(formula::enumerator_name<LookupExampleCuring::Air>() == "Air");
+
+namespace
+{
+inline constexpr formula::KeyTable<LookupExampleCuring, 3> CuringKeys {
+    LookupExampleCuring::Water,
+    LookupExampleCuring::Sealed,
+    LookupExampleCuring::Air,
 };
 
 // ---- The interpolating table ------------------------------------------------
@@ -163,6 +212,11 @@ inline constexpr formula::BandTable<3> ClassBands {
 [[nodiscard]] constexpr auto shapeFactor(LookupExampleShape shape)
 {
     return formula::exact_lookup<ShapeKeys, unit::Percent>(shape, { rat(100), rat(97), rat(92) });
+}
+
+[[nodiscard]] constexpr auto curingFactor(LookupExampleCuring curing)
+{
+    return formula::exact_lookup<CuringKeys, unit::Percent>(curing, { rat(100), rat(96), rat(90) });
 }
 
 [[nodiscard]] constexpr auto sizeCurveFactor()
@@ -309,11 +363,15 @@ int main()
 
     // ---- 5. An exact lookup: a category key names a row ---------------------
     //
-    // A key renders as its UNDERLYING VALUE (`key 1`), not the enumerator's
-    // name: a C++ enumerator has no name at run time. A reader reconciling
-    // this against a published table carries the author's own `enum class`
-    // across.
+    // A key renders as its enumerator's NAME (`key Cylinder`), recovered at
+    // compile time. Only a key that names no row of the table -- the miss --
+    // falls back to its underlying value (`key 13`), and a trace of the miss
+    // says the same.
     std::printf("exact:         %s\n", formula::render(shapeFactor(LookupExampleShape::Cylinder)).c_str());
+    std::printf("exact miss:    %s\n", formula::render(shapeFactor(LookupExampleShape::DrilledCore)).c_str());
+    std::printf(
+        "%s",
+        tracedEvaluation<SizeCorrection>(shapeFactor(LookupExampleShape::DrilledCore), formula::environment()).c_str());
 
     std::optional<formula::Rational> const cylinder =
         valueOf<SizeCorrection>(shapeFactor(LookupExampleShape::Cylinder), formula::environment());
@@ -324,6 +382,17 @@ int main()
     std::printf("DrilledCore:   %.*s (a key no row of the table names)\n",
                 static_cast<int>(coreMissText.size()),
                 coreMissText.data());
+
+    // ---- 5a. An exact lookup whose keys the author spells ---------------------
+    //
+    // `EnumeratorName<LookupExampleCuring>` words two rows the way the
+    // published table does and leaves `Air` under its own name. render() and
+    // the trace both follow it.
+    std::printf("customized:    %s\n", formula::render(curingFactor(LookupExampleCuring::Sealed)).c_str());
+    std::printf("%s",
+                tracedEvaluation<SizeCorrection>(curingFactor(LookupExampleCuring::Sealed), formula::environment()).c_str());
+    std::optional<formula::Rational> const sealed =
+        valueOf<SizeCorrection>(curingFactor(LookupExampleCuring::Sealed), formula::environment());
 
     // ---- 6. A lookup nested inside another lookup's operand ------------------
     //
@@ -401,6 +470,7 @@ int main()
     bool const noExtrapolation = curveAt220 == formula::ArithmeticError::DomainError;
     bool const exactSelects = cylinder == rat(97, 100);
     bool const absentKeyMisses = core == formula::ArithmeticError::DomainError;
+    bool const customizedSelects = sealed == rat(24, 25);
     bool const nestedComposes = nestedAt120 == rat(19, 20) && nestedDocumentation.symbols.size() == 1;
     bool const methodEvaluates = corrected == rat(194, 5);
 
@@ -409,8 +479,8 @@ int main()
     bool const domainsDisagreeOnPurpose = topBoundExcluded && curveTopIncluded;
 
     bool const allChecksPassed = bandedSelects && markdownCarriesNoBracket && topBoundExcluded && nextTickReachesIt
-                                 && curveComputes && curveTopIncluded && noExtrapolation && exactSelects
-                                 && absentKeyMisses && nestedComposes && methodEvaluates && domainsDisagreeOnPurpose;
+                                 && curveComputes && curveTopIncluded && noExtrapolation && exactSelects && absentKeyMisses
+                                 && customizedSelects && nestedComposes && methodEvaluates && domainsDisagreeOnPurpose;
     std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

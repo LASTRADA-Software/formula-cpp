@@ -68,10 +68,14 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #    itself does not drift.
 #  - `at 100 mm gives 95 %` -- the interpolating table's point spelling, which
 #    must NOT read as an interval: a breakpoint is a row, not a boundary.
-#  - `key 7 gives 97 %` -- an exact key renders as its underlying value, not
-#    its name (an enumerator has none at run time) and not its row index. The
-#    example numbers its enumerators 3, 7, 11 and 13 precisely so a value and
-#    an index cannot be confused, which is why this pins 7 and not 1.
+#  - `key Cylinder gives 97 %` -- an exact key renders as its enumerator's
+#    name, recovered at compile time, not as a number of any kind.
+#  - `lookup(key 13)` -- the trace of a key that names no row, which falls
+#    back to the underlying value. The example numbers its enumerators 3, 7,
+#    11 and 13 precisely so a value and an index cannot be confused, which is
+#    why this pins 13 and not 3.
+#  - `key sealed in foil gives 96 %` -- a key its author spelled through
+#    `EnumeratorName`, rendered that way.
 #  - `[between 100 and 150 mm]`, `[90 to under 100 %]` and
 #    `[on the row at 200 mm]` -- the trace clauses that say where an answer
 #    came from, in the order the program prints them. Three rather than two:
@@ -91,4 +95,4 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #
 # A `[==[ ... ]==]` bracket argument for the reason the constraints entry
 # gives: the regex needs literal backslash escapes around `[` and `]`.
-formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key 7 gives 97 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])
+formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key Cylinder gives 97 %.*lookup\(key 13\).*key sealed in foil gives 96 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])
