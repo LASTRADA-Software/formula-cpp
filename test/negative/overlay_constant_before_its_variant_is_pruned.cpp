@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses; an override nobody
-// reads would silently do nothing
+// EXPECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 //
-// `with_constant<Density>` on a method whose variants and constraints never
-// read a density. The override would change nothing, and the likeliest reason
-// is that it names the wrong quantity.
+// Fix the shape factor, then prune `Cube`, the only variant that reads it. When
+// the constant is applied, `Cube` still reads it; in the method the overlay
+// produces, nothing does. The rule is judged of that method, so this is refused
+// exactly as the opposite order is -- the case that pins it, since a check made
+// per operation accepts this order.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -35,9 +36,6 @@ struct EdgeY: formula::Quantity<EdgeY, "y_m", "measured edge", formula::unit::Mi
 struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", formula::unit::One>
 {
 };
-struct Density: formula::Quantity<Density, "rho", "density", formula::unit::KilogramPerCubicMetre>
-{
-};
 
 using formula::var;
 
@@ -53,7 +51,8 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::with_constant<Density>(formula::Rational { 2400 })), m);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }), formula::prune_variant<Cube>()),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 0 ? 1 : 0;
 }

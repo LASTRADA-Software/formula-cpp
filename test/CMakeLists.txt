@@ -661,14 +661,43 @@ formula_add_negative_test(overlay_prune_tag_cv_qualified
     "formula: this tag is not a plain class type"
     REJECT "formula: this overlay pins or prunes a variant the method does not declare")
 
-# Fixing a quantity the method never reads. The second case reaches the same
-# refusal only because operations apply in order: it prunes the one variant
-# that reads the quantity before fixing it, and the reverse order compiles.
+# Fixing a quantity the method never reads. "Never" is judged of the method
+# the overlay PRODUCES, so the answer does not depend on operation order: each
+# pair below lists the same two operations both ways round, and both are
+# refused. In each pair, the order where the quantity is still read at the
+# moment the constant is applied is the one a per-operation check would miss.
+# The first case pins the message past its first clause.
 formula_add_negative_test(overlay_constant_unused
-    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses; an override nobody reads would silently do nothing")
 
 formula_add_negative_test(overlay_constant_after_its_variant_is_pruned
     "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_constant_before_its_variant_is_pruned
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_constant_after_pin
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_constant_before_pin
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+# One overlay both pinning and pruning, in either order. The REJECTs pin that
+# `apply` is not instantiated over the refused overlay.
+formula_add_negative_test(overlay_pins_then_prunes
+    "formula: this overlay both pins a variant and prunes one"
+    REJECT "formula: this overlay pins or prunes a variant the method does not declare")
+
+formula_add_negative_test(overlay_prunes_then_pins
+    "formula: this overlay both pins a variant and prunes one"
+    REJECT "formula: this overlay pins or prunes a variant the method does not declare")
+
+# A refused pin leaves the method as it was. The REJECT refuses the false
+# "nothing reads it" a later constant would get if the pin carried on with
+# the variant at position 0 instead.
+formula_add_negative_test(overlay_pin_absent_then_constant
+    "formula: this overlay pins or prunes a variant the method does not declare"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 # One overlay listing an operation twice. The REJECT pins `apply`'s gate on the
 # overlay being well formed: ungated, the second prune is refused as well.

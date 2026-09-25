@@ -36,13 +36,17 @@
 /// that is the base method under a jurisdiction's name. So each of these is a
 /// build error, in words of this library's own:
 ///
-///  - `with_constant<Q>` for a `Q` no variant or constraint of the method uses;
+///  - `with_constant<Q>` for a `Q` no variant or constraint of the method the
+///    overlay **produces** uses -- judged of the result, so that the answer
+///    never depends on the order the operations are listed in;
 ///  - `pin_variant` or `prune_variant` of a tag no variant declares;
 ///  - pruning every variant -- refused here, before the empty pack would be,
 ///    because the empty pack's own message says the author declared no
 ///    variants, which is false of the author's method;
 ///  - one overlay listing the same operation twice, which leaves the first
 ///    silently overridden by the second;
+///  - one overlay that both pins and prunes: a pin already states the whole
+///    selection, so a prune beside it either does nothing or contradicts it;
 ///  - `with_constant` over an expression holding a node kind this header cannot
 ///    see inside, where a use of `Q` would silently keep reading the
 ///    environment.
@@ -54,9 +58,12 @@
 /// variant is that one.
 ///
 /// Operations apply **in the order the overlay lists them**, each to the method
-/// the previous one produced. So `overlay(pin_variant<Cube>(),
-/// with_constant<Q>(v))` refuses a `Q` only the pinned-away variants used: by
-/// the time the constant is applied, nothing that reads it is left.
+/// the previous one produced. "Nothing" in the rule above is nothing in the
+/// method the overlay produces, not in the method as it stood when one
+/// operation was applied. So `overlay(pin_variant<Cube>(), with_constant<Q>(v))`
+/// and `overlay(with_constant<Q>(v), prune_variant<Cylinder>())` are both
+/// refused when only the variant that goes away reads `Q`: in either order,
+/// the method produced never reads it.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
@@ -311,21 +318,68 @@ namespace detail
                                        std::tuple_element_t<repeated.first, std::tuple<First, Rest...>>>::value;
     };
 
-    /// The rules an overlay's list obeys. The repeat rule is asked only once
-    /// every argument is an operation, for the reason `RequireWellFormedVariants`
-    /// gates its own: `overlay(42, 42)` is two arguments that are not
-    /// operations, and saying also that it lists one operation twice would
-    /// bury the message that matters.
+    /// Whether an operation is a pin.
+    template <typename T>
+    struct IsVariantPin: std::false_type
+    {
+    };
+
+    template <typename Tag>
+    struct IsVariantPin<VariantPin<Tag>>: std::true_type
+    {
+    };
+
+    /// Whether an operation is a prune.
+    template <typename T>
+    struct IsVariantPrune: std::false_type
+    {
+    };
+
+    template <typename Tag>
+    struct IsVariantPrune<VariantPrune<Tag>>: std::true_type
+    {
+    };
+
+    /// Whether an overlay both pins and prunes -- a combination refused by
+    /// `RequireNoPruneBesidePin`, in whichever order the two are listed.
+    template <typename... Ops>
+    inline constexpr bool pinsAndPrunes = (IsVariantPin<Ops>::value || ...) && (IsVariantPrune<Ops>::value || ...);
+
+    /// Fails to compile when one overlay both pins a variant and prunes one.
+    ///
+    /// A pin already states the whole selection: the method keeps that one
+    /// variant and nothing else. A prune beside it can then only do nothing
+    /// -- pruning a variant the pin drops anyway -- or contradict it -- pruning
+    /// the variant pinned. Neither is a jurisdiction's intent, and which of the
+    /// two it is should not depend on the order the author listed them in, so
+    /// the combination is refused whatever the order.
+    template <bool PinsAndPrunes>
+    struct RequireNoPruneBesidePin
+    {
+        static_assert(!PinsAndPrunes,
+                      "formula: this overlay both pins a variant and prunes one; a pin already keeps exactly one "
+                      "variant, so a prune beside it either removes a variant the pin drops anyway or removes the "
+                      "one it pins -- list the pin alone, or the prunes alone");
+
+        static constexpr bool value = true;
+    };
+
+    /// The rules an overlay's list obeys. The repeat rule and the pin-or-prune
+    /// rule are asked only once every argument is an operation, for the reason
+    /// `RequireWellFormedVariants` gates its own: `overlay(42, 42)` is two
+    /// arguments that are not operations, and saying also that it lists one
+    /// operation twice would bury the message that matters.
     template <typename... Ops>
     struct RequireWellFormedOverlay
     {
         static_assert(RequireEveryArgumentIsAnOperation<std::index_sequence_for<Ops...>, Ops...>::value);
 
-        /// Whether the repeat rule has operations to compare.
+        /// Whether the rules that compare operations have operations to compare.
         static constexpr bool everyArgumentIsAnOperation = (IsOverlayOperation<Ops>::value && ...);
 
         static_assert(
             std::conditional_t<everyArgumentIsAnOperation, RequireDistinctOperations<Ops...>, std::true_type>::value);
+        static_assert(RequireNoPruneBesidePin<everyArgumentIsAnOperation && pinsAndPrunes<Ops...>>::value);
 
         static constexpr bool value = true;
     };
@@ -333,7 +387,8 @@ namespace detail
     /// Whether an overlay's list passes every rule `RequireWellFormedOverlay`
     /// asks, asked without firing any of them.
     template <typename... Ops>
-    inline constexpr bool isWellFormedOverlay = (IsOverlayOperation<Ops>::value && ...) && all_distinct<Ops...>();
+    inline constexpr bool isWellFormedOverlay =
+        (IsOverlayOperation<Ops>::value && ...) && all_distinct<Ops...>() && !pinsAndPrunes<Ops...>;
 } // namespace detail
 
 /// One jurisdiction's changes to a method, in the order they apply.
@@ -418,6 +473,23 @@ namespace detail
             return node;
         }
     };
+
+    /// How `with_constant<Q>` rewrites a child of type @p N, whatever its cv
+    /// qualification.
+    ///
+    /// A node aggregate declared off the factory path takes its child types
+    /// from wherever the author took them, and `decltype` of a `constexpr`
+    /// variable is `const`: `DocumentedNode<decltype(sub)> { {}, sub, ... }`
+    /// holds a `const` child, which `Node` accepts and the evaluator, the
+    /// renderer and `document()` all handle. No partial specialisation of
+    /// `ConstantRewrite` matches a `const` type, so every child is rewritten
+    /// through this, and never through `ConstantRewrite` directly -- otherwise
+    /// the overlay would refuse a node kind it knows as one it cannot see
+    /// inside. `Method` strips the same qualifier from its parts, for the same
+    /// reason. The rewritten child is unqualified: a new node holds it by
+    /// value.
+    template <typename Q, typename N>
+    using ConstantRewriteOf = ConstantRewrite<Q, std::remove_cv_t<N>>;
 
     /// A variable: replaced when it names `Q`, and left alone otherwise.
     template <typename Q, Described P>
@@ -512,7 +584,7 @@ namespace detail
     struct ConstantRewriteOperand
     {
         /// How the operand is rewritten.
-        using Inner = ConstantRewrite<Q, Operand>;
+        using Inner = ConstantRewriteOf<Q, Operand>;
 
         /// Whether the operand is a kind this header knows, all the way down.
         static constexpr bool known = Inner::known;
@@ -531,37 +603,39 @@ namespace detail
 
     template <typename Q, UnaryOperator Op, Node Operand>
     struct ConstantRewrite<Q, UnaryNode<Op, Operand>>:
-        ConstantRewriteOperand<Q, Operand, UnaryNode<Op, typename ConstantRewrite<Q, Operand>::type>>
+        ConstantRewriteOperand<Q, Operand, UnaryNode<Op, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
     template <typename Q, int Exponent, Node Operand>
     struct ConstantRewrite<Q, PowerNode<Exponent, Operand>>:
-        ConstantRewriteOperand<Q, Operand, PowerNode<Exponent, typename ConstantRewrite<Q, Operand>::type>>
+        ConstantRewriteOperand<Q, Operand, PowerNode<Exponent, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
     template <typename Q, int Degree, Node Operand>
     struct ConstantRewrite<Q, RootNode<Degree, Operand>>:
-        ConstantRewriteOperand<Q, Operand, RootNode<Degree, typename ConstantRewrite<Q, Operand>::type>>
+        ConstantRewriteOperand<Q, Operand, RootNode<Degree, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
     template <typename Q, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
     struct ConstantRewrite<Q, RoundNode<U, Places, Mode, Operand>>:
-        ConstantRewriteOperand<Q, Operand, RoundNode<U, Places, Mode, typename ConstantRewrite<Q, Operand>::type>>
+        ConstantRewriteOperand<Q, Operand, RoundNode<U, Places, Mode, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
     template <typename Q, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
     struct ConstantRewrite<Q, RoundSignificantNode<U, Digits, Mode, Operand>>:
-        ConstantRewriteOperand<Q, Operand, RoundSignificantNode<U, Digits, Mode, typename ConstantRewrite<Q, Operand>::type>>
+        ConstantRewriteOperand<Q,
+                               Operand,
+                               RoundSignificantNode<U, Digits, Mode, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
     template <typename Q, Unit U, FixedString Justification, Node Operand>
     struct ConstantRewrite<Q, NumericValueNode<U, Justification, Operand>>:
-        ConstantRewriteOperand<Q, Operand, NumericValueNode<U, Justification, typename ConstantRewrite<Q, Operand>::type>>
+        ConstantRewriteOperand<Q, Operand, NumericValueNode<U, Justification, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
@@ -575,7 +649,7 @@ namespace detail
         template <typename N>
         [[nodiscard]] static constexpr Rebuilt apply(N const& node, ConstantOverride<Q> const& overriding) noexcept
         {
-            return Rebuilt { {}, node.corrections, ConstantRewrite<Q, Operand>::apply(node.operand, overriding) };
+            return Rebuilt { {}, node.corrections, ConstantRewriteOf<Q, Operand>::apply(node.operand, overriding) };
         }
     };
 
@@ -583,7 +657,7 @@ namespace detail
     struct ConstantRewrite<Q, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>:
         ConstantRewriteLookup<Q,
                               Operand,
-                              BandedLookupNode<KeyUnit, Bands, ResultUnit, typename ConstantRewrite<Q, Operand>::type>>
+                              BandedLookupNode<KeyUnit, Bands, ResultUnit, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
@@ -592,7 +666,7 @@ namespace detail
         ConstantRewriteLookup<
             Q,
             Operand,
-            InterpolatingLookupNode<KeyUnit, Points, ResultUnit, typename ConstantRewrite<Q, Operand>::type>>
+            InterpolatingLookupNode<KeyUnit, Points, ResultUnit, typename ConstantRewriteOf<Q, Operand>::type>>
     {
     };
 
@@ -602,7 +676,7 @@ namespace detail
     struct ConstantRewrite<Q, DocumentedNode<Inner>>
     {
         /// How the wrapped formula is rewritten.
-        using Wrapped = ConstantRewrite<Q, Inner>;
+        using Wrapped = ConstantRewriteOf<Q, Inner>;
 
         /// Whether the wrapped formula is known all the way down.
         static constexpr bool known = Wrapped::known;
@@ -623,9 +697,9 @@ namespace detail
     struct ConstantRewrite<Q, BinaryNode<Op, Left, Right>>
     {
         /// How the left side is rewritten.
-        using LeftRewrite = ConstantRewrite<Q, Left>;
+        using LeftRewrite = ConstantRewriteOf<Q, Left>;
         /// How the right side is rewritten.
-        using RightRewrite = ConstantRewrite<Q, Right>;
+        using RightRewrite = ConstantRewriteOf<Q, Right>;
 
         /// Whether both sides are known all the way down.
         static constexpr bool known = LeftRewrite::known && RightRewrite::known;
@@ -648,9 +722,9 @@ namespace detail
     struct ConstantRewrite<Q, PredicateNode<Op, Left, Right>>
     {
         /// How the left side is rewritten.
-        using LeftRewrite = ConstantRewrite<Q, Left>;
+        using LeftRewrite = ConstantRewriteOf<Q, Left>;
         /// How the right side is rewritten.
-        using RightRewrite = ConstantRewrite<Q, Right>;
+        using RightRewrite = ConstantRewriteOf<Q, Right>;
 
         /// Whether both sides are known all the way down.
         static constexpr bool known = LeftRewrite::known && RightRewrite::known;
@@ -671,11 +745,11 @@ namespace detail
     struct ConstantRewrite<Q, WhenNode<P, Then, Else>>
     {
         /// How the condition is rewritten.
-        using PredicateRewrite = ConstantRewrite<Q, P>;
+        using PredicateRewrite = ConstantRewriteOf<Q, P>;
         /// How the branch taken when it holds is rewritten.
-        using ThenRewrite = ConstantRewrite<Q, Then>;
+        using ThenRewrite = ConstantRewriteOf<Q, Then>;
         /// How the branch taken when it does not is rewritten.
-        using ElseRewrite = ConstantRewrite<Q, Else>;
+        using ElseRewrite = ConstantRewriteOf<Q, Else>;
 
         /// Whether all three are known all the way down.
         static constexpr bool known = PredicateRewrite::known && ThenRewrite::known && ElseRewrite::known;
@@ -703,14 +777,14 @@ namespace detail
     {
         static_assert(Used,
                       "formula: this overlay overrides a quantity that no variant or constraint of the method "
-                      "uses; an overriding nobody reads would silently do nothing, most likely because it names "
+                      "uses; an override nobody reads would silently do nothing, most likely because it names "
                       "the wrong quantity -- the quantity appears in this diagnostic as the template argument "
                       "Q of RequireConstantUsed");
 
         static constexpr bool value = true;
     };
 
-    /// What `with_constant<Q>` asks of a method before rewriting it.
+    /// What `with_constant<Q>` asks of the method an overlay produces.
     ///
     /// Whether `Q` is used is asked only once every node is a kind the
     /// rewrite knows. An unknown node may be exactly where `Q` is used, so the
@@ -723,10 +797,11 @@ namespace detail
     struct RequireConstantApplies<Q, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>
     {
         /// Whether every variant and constraint is known all the way down.
-        static constexpr bool known = (ConstantRewrite<Q, Exprs>::known && ...) && (ConstantRewrite<Q, Ps>::known && ...);
+        static constexpr bool known =
+            (ConstantRewriteOf<Q, Exprs>::known && ...) && (ConstantRewriteOf<Q, Ps>::known && ...);
         /// Whether any variant or constraint uses `Q`.
         static constexpr bool used =
-            (ConstantRewrite<Q, Exprs>::mentions || ...) || (ConstantRewrite<Q, Ps>::mentions || ...);
+            (ConstantRewriteOf<Q, Exprs>::mentions || ...) || (ConstantRewriteOf<Q, Ps>::mentions || ...);
 
         static_assert(std::conditional_t<known, RequireConstantUsed<Q, used>, std::true_type>::value);
 
@@ -738,7 +813,7 @@ namespace detail
     [[nodiscard]] constexpr auto rewrite_variant(VariantCase<Tag, Expr> const& original,
                                                  ConstantOverride<Q> const& overriding) noexcept
     {
-        using Rewrite = ConstantRewrite<Q, Expr>;
+        using Rewrite = ConstantRewriteOf<Q, Expr>;
         return VariantCase<Tag, typename Rewrite::type> { Rewrite::apply(original.expression, overriding) };
     }
 
@@ -748,7 +823,7 @@ namespace detail
     [[nodiscard]] constexpr auto rewrite_constraint(Constraint<P> const& original,
                                                     ConstantOverride<Q> const& overriding) noexcept
     {
-        using Rewrite = ConstantRewrite<Q, P>;
+        using Rewrite = ConstantRewriteOf<Q, P>;
         return Constraint<typename Rewrite::type> { Rewrite::apply(original.predicate, overriding),
                                                     original.verdict,
                                                     original.citation };
@@ -822,14 +897,16 @@ namespace detail
     }
 
     /// `with_constant<Q>`: every variant and constraint, with `Q` fixed.
+    ///
+    /// Whether anything reads `Q` is not asked here, against the method as it
+    /// stands at this step, but once, of the method the whole overlay
+    /// produces -- see `RequireOverridesRead`.
     template <typename Q, typename... Cs, typename Rounding, Predicate... Ps>
     [[nodiscard]] constexpr auto apply_operation(ConstantOverride<Q> const& overriding,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
                                                  ConstraintSet<Ps...> const& constraintSet) noexcept
     {
-        static_assert(RequireConstantApplies<Q, Variants<Cs...>, ConstraintSet<Ps...>>::value);
-
         return formula::method(
             std::apply([&](auto const&... cases) { return formula::variants(rewrite_variant(cases, overriding)...); },
                        pack.cases),
@@ -839,6 +916,12 @@ namespace detail
     }
 
     /// `pin_variant<Tag>`: the variant tagged `Tag`, alone.
+    ///
+    /// Answers with the method unchanged when the pin has been refused, as the
+    /// prune below does. `variant_index` falls back to position 0 for a tag no
+    /// variant declares, and a method built from that fallback is one the
+    /// author never wrote: the operations after the pin would be judged
+    /// against it, and could be refused for what it lacks.
     template <typename Tag, typename... Cs, typename Rounding, Predicate... Ps>
     [[nodiscard]] constexpr auto apply_operation(VariantPin<Tag> const&,
                                                  Variants<Cs...> const& pack,
@@ -848,8 +931,11 @@ namespace detail
         static_assert(
             std::conditional_t<isPlainClassTag<Tag>, RequireOverlayNamesDeclaredVariant<Tag, Cs...>, std::true_type>::value);
 
-        return formula::method(
-            formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)), rounding, constraintSet);
+        if constexpr (namesDeclaredVariant<Tag, Cs...>)
+            return formula::method(
+                formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)), rounding, constraintSet);
+        else
+            return formula::method(pack, rounding, constraintSet);
     }
 
     /// `prune_variant<Tag>`: every variant but the one tagged `Tag`.
@@ -875,6 +961,37 @@ namespace detail
         else
             return formula::method(pack, rounding, constraintSet);
     }
+
+    /// Whether one operation of an overlay still does something in the method
+    /// @p M the overlay produced. Only `with_constant` can stop doing
+    /// something after it has been applied -- a later pin or prune can remove
+    /// every variant that reads its quantity -- so every other operation is
+    /// true here; theirs are refused where they are applied.
+    template <typename M, typename Operation>
+    struct RequireOperationRead: std::true_type
+    {
+    };
+
+    template <typename Vs, typename Rounding, typename Constraints, typename Q>
+    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, ConstantOverride<Q>>:
+        std::bool_constant<RequireConstantApplies<Q, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>::value>
+    {
+    };
+
+    /// Fails to compile when some `with_constant<Q>` of an overlay fixes a
+    /// quantity nothing in the method it produced reads.
+    ///
+    /// Asked of the **result**, never of the method as it stands when the
+    /// constant is applied. The rule is that an override doing nothing in the
+    /// method the overlay produces is refused, and asked per step it would
+    /// depend on order: `overlay(with_constant<Q>(v), pin_variant<Cube>())`
+    /// and `overlay(pin_variant<Cube>(), with_constant<Q>(v))` produce the same
+    /// method, and a per-step check refused only the second.
+    template <typename M, typename... Ops>
+    struct RequireOverridesRead
+    {
+        static constexpr bool value = (RequireOperationRead<M, Ops>::value && ...);
+    };
 
     /// Applies the operations of an overlay from position @p Index onwards,
     /// each to the method the one before it produced.
@@ -911,7 +1028,11 @@ template <typename... Ops, typename Vs, typename Rounding, typename Constraints>
         return m;
     }
     else
-        return detail::apply_from<0>(o.operations, m);
+    {
+        auto const result = detail::apply_from<0>(o.operations, m);
+        static_assert(detail::RequireOverridesRead<std::remove_cv_t<decltype(result)>, Ops...>::value);
+        return result;
+    }
 }
 
 } // namespace formula

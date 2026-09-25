@@ -255,6 +255,27 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
     STATIC_REQUIRE(withRatioFixedAtFour(r * f::pi) == Rational { 4 } * f::Pi);
 }
 
+TEST_CASE("an overlay fixes a constant under a const child type", "[overlay]")
+{
+    // Off the factory path, a node declared with `decltype` of a `constexpr`
+    // variable holds a `const` child. The rewrite must see through the
+    // qualifier -- a const `VarNode` is still a variable, and a const
+    // `DocumentedNode` still a wrapper -- rather than refuse either as a node
+    // kind it cannot see inside.
+    constexpr auto factor = var<ShapeFactor>;
+    constexpr auto cited = formula::DocumentedNode<decltype(factor)> { {}, factor, nationalAnnex };
+    constexpr auto pressure = cited * var<Force> / (var<EdgeX> * var<EdgeY>);
+    STATIC_REQUIRE(std::is_const_v<decltype(cited.inner)>);
+
+    constexpr auto m = formula::method(formula::variants(formula::VariantCase<Cube, decltype(pressure)> { pressure }),
+                                       OneDecimalOfMegapascal {},
+                                       formula::constraints());
+    constexpr auto overlaid = formula::apply(national, m);
+
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(overlaid, inputsWithoutShapeFactor)->value()
+                   == formula::Rational { 5'800'000 });
+}
+
 TEST_CASE("pin_variant keeps only the variant it names", "[overlay]")
 {
     // The middle variant, so that keeping the first or the last would not pass.

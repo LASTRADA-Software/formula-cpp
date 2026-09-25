@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 //
-// Prune `Cube`, then fix the shape factor, which only `Cube` reads. Operations
-// apply in the order the overlay lists them, so by the time the constant is
-// applied nothing that reads it is left. Listed the other way round, the same
-// two operations are accepted -- which is what this case pins: an `apply` that
-// ran them in reverse, or each against the original method, compiles it.
+// Prune `Cube`, then fix the shape factor, which only `Cube` reads. The method
+// the overlay produces never reads the constant, so the override does nothing
+// and is refused. `overlay_constant_before_its_variant_is_pruned` lists the
+// same two operations the other way round and must be refused the same way:
+// the rule is judged of the method produced, not of the method as it stood
+// when the constant was applied.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>

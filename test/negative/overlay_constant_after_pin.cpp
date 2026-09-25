@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses; an override nobody
-// reads would silently do nothing
+// EXPECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 //
-// `with_constant<Density>` on a method whose variants and constraints never
-// read a density. The override would change nothing, and the likeliest reason
-// is that it names the wrong quantity.
+// Pin `Cylinder`, then fix the shape factor, which only the pinned-away `Cube`
+// reads: `overlay_constant_before_pin` in the other order, refused the same way
+// and with one message.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -35,9 +34,6 @@ struct EdgeY: formula::Quantity<EdgeY, "y_m", "measured edge", formula::unit::Mi
 struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", formula::unit::One>
 {
 };
-struct Density: formula::Quantity<Density, "rho", "density", formula::unit::KilogramPerCubicMetre>
-{
-};
 
 using formula::var;
 
@@ -54,6 +50,8 @@ inline constexpr auto m =
 int main()
 {
     constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::with_constant<Density>(formula::Rational { 2400 })), m);
+        formula::apply(formula::overlay(formula::pin_variant<Cylinder>(),
+                                        formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 })),
+                       m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 0 ? 1 : 0;
 }
