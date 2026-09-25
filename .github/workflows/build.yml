@@ -30,6 +30,7 @@ jobs:
           - { name: "Windows-clang-cl", os: windows-2025, preset: clangcl-release }
           - { name: "Linux-clang",      os: ubuntu-24.04, preset: clang-release }
           - { name: "Linux-gcc",        os: ubuntu-24.04, preset: gcc-release }
+          - { name: "Linux-clang-ubsan", os: ubuntu-24.04, preset: clang-ubsan }
           - { name: "macOS-clang",      os: macos-15,     preset: clang-release }
     steps:
       - uses: actions/checkout@v4
@@ -55,9 +56,10 @@ jobs:
       # failed to compile while the GCC leg, on the same machine image, was fine.
       # Pull Clang ${{ env.CLANG_VERSION }} from the official LLVM apt source, as
       # our other C++ projects already do, which also lines this leg up with
-      # the clang-cl 22.x used on the Windows leg.
+      # the clang-cl 22.x used on the Windows leg. Also covers clang-ubsan,
+      # which is Linux-only and needs the same compiler.
       - name: Install Clang ${{ env.CLANG_VERSION }}
-        if: matrix.preset == 'clang-release' && runner.os == 'Linux'
+        if: (matrix.preset == 'clang-release' || matrix.preset == 'clang-ubsan') && runner.os == 'Linux'
         run: |
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
