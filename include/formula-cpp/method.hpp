@@ -45,13 +45,15 @@
 /// two concepts. So the departure rests on readability plus a neighbouring
 /// silent mis-binding -- not on the spec's own spelling being broken.
 ///
-/// **What a pack refuses, and why here rather than later.** Three rules, all
-/// enforced by `Variants` itself:
+/// **What a pack refuses, and why here rather than later.** Four rules, the
+/// first three enforced by `Variants` itself and the fourth by each
+/// `VariantCase` it holds:
 ///
 ///  1. every argument is a variant -- a `VariantCase`, which is what
 ///     `variant<Tag>(...)` returns;
 ///  2. there is at least one of them;
-///  3. they all report the same dimension.
+///  3. they all report the same dimension;
+///  4. every variant's tag is a plain class type.
 ///
 /// The first two exist because `variants(...)` over a bare pack accepted
 /// nonsense in silence. Measured on cl 19.51 at `/W4 /WX`, **exit 0, no
@@ -165,7 +167,8 @@ template <typename Tag, Node Expr>
 
 namespace detail
 {
-    /// Whether a type is something `variant<Tag>(...)` produced.
+    /// Whether a type is a `VariantCase` -- whatever produced it, whether
+    /// `variant<Tag>(...)` or a directly initialised `VariantCase<Tag, Expr>`.
     ///
     /// A trait rather than a concept, because the refusal below wants to name
     /// the offending type in a message of ours. A concept on `variants()`
@@ -289,7 +292,8 @@ namespace detail
         static constexpr bool value = (RequireVariantsAgree<First, Rest>::value && ...);
     };
 
-    /// The three rules a variants pack obeys, asked in an order that matters.
+    /// Three of the four rules a variants pack obeys, asked in an order that
+    /// matters. The fourth, the tag rule, is each `VariantCase`'s own.
     ///
     /// One `static_assert` in `Variants` rather than three, so that the rules
     /// can be sequenced. The agreement rule is asked **only once every
@@ -311,6 +315,17 @@ namespace detail
     /// formed, not when it is used, so a constrained pack there
     /// (`template <VariantLike... Cs>`) makes the unselected branch a hard
     /// error and silently ends the laziness this gate relies on.
+    ///
+    /// **Adding a rule here.** Any new rule that reads a member of `Cs` --
+    /// `Cs::tag`, `Cs::dimension`, anything a `VariantCase` publishes and a
+    /// non-variant does not -- must sit behind the same
+    /// `everyArgumentIsAVariant` gate, AND its template name must be added to
+    /// the `REJECT` list of `method_variants_agreement_gated` in
+    /// `test/CMakeLists.txt`. Miss the gate and
+    /// `variants(variant<Cube>(...), 42)` grows a fresh cascade of the
+    /// compiler's own errors under the new rule's name; miss the `REJECT` and
+    /// nothing notices, because that case rejects only the names it lists.
+    /// That is a likelier mistake than the constraint trap just above.
     template <typename... Cs>
     struct RequireWellFormedVariants
     {
@@ -357,8 +372,8 @@ struct Variants
     std::tuple<Cs...> cases {};
 };
 
-/// Builds a method's variants pack: `variants(a, b, c)`. See `Variants` for
-/// the three rules a pack has to satisfy.
+/// Builds a method's variants pack: `variants(a, b, c)`. See the file comment
+/// for the four rules a pack has to satisfy.
 template <typename... Cs>
 [[nodiscard]] constexpr Variants<Cs...> variants(Cs... cases) noexcept
 {

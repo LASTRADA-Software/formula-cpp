@@ -2,10 +2,15 @@
 // EXPECT: formula: this argument of variants(...) is not a variant of a method
 // REJECT: RequireVariantsAgree
 //
-// Pins the ORDER of the rules, not a rule: the dimension-agreement rule must
-// not be asked about a pack that holds a non-variant, because a non-variant
-// has no `dimension` and asking anyway buries our message under the
-// compiler's own "no such member" errors.
+// Pins that the dimension-agreement rule is GATED: it must not be asked about
+// a pack that holds a non-variant, because a non-variant has no `dimension`
+// and asking anyway buries our message under the compiler's own "no such
+// member" errors. It pins nothing about the order of any other rule.
+//
+// Any rule added behind the same gate -- anything that reads a member of a
+// variant -- must add its own template name to this case's REJECT list in
+// test/CMakeLists.txt, or this case goes on passing while the new rule's
+// cascade appears; see `RequireWellFormedVariants` in method.hpp.
 //
 // The offender is a bare `int` for exactly that reason. It genuinely has no
 // `dimension`, which is what `method_variants_not_a_variant.cpp` deliberately
@@ -15,9 +20,11 @@
 //
 // The REJECT is what makes this a test. Our refusal fires whether or not the
 // agreement rule is also asked, so EXPECT alone passes either way; only the
-// ABSENCE of `RequireVariantsAgree` -- which appears in the instantiation
-// stack on every compiler once the rule is asked -- tells the two apart. The
-// template name rather than an error code, because the codes are cl's own.
+// ABSENCE of `RequireVariantsAgree` tells the two apart. That name appears in
+// the instantiation stack once the rule is asked on each of the four
+// toolchains measured locally -- cl 19.51, clang-cl 22, clang++ 20 and g++ 13;
+// CI's g++-14 and Apple clang legs were not measured. The template name rather
+// than an error code, because the codes are cl's own.
 //
 // This must not compile.
 #include <formula-cpp/method.hpp>

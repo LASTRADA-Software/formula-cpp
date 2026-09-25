@@ -430,12 +430,17 @@ formula_add_negative_test(method_variants_empty
 formula_add_negative_test(method_variant_tag_cv_qualified
     "formula: the tag of this variant is not a plain class type")
 
-# Pins the order of the rules rather than any one of them. The agreement rule
-# is asked only once every argument is a variant, so that a non-variant is
-# never asked for a `dimension` it has not got; this case hands over a bare
-# `int`, which genuinely has none. Our refusal fires either way, so EXPECT
-# alone cannot see the gate -- REJECT can: `RequireVariantsAgree` appears in
-# the instantiation stack on every compiler whenever the rule is asked.
+# Pins that the agreement rule is gated, not the order of the rules in
+# general. The agreement rule is asked only once every argument is a variant,
+# so that a non-variant is never asked for a `dimension` it has not got; this
+# case hands over a bare `int`, which genuinely has none. Our refusal fires
+# either way, so EXPECT alone cannot see the gate -- REJECT can:
+# `RequireVariantsAgree` appears in the instantiation stack whenever the rule
+# is asked, on each of the four toolchains measured locally (cl 19.51,
+# clang-cl 22, clang++ 20, g++ 13; CI's g++-14 and Apple clang were not).
+#
+# A rule added behind the same gate adds its template name to this REJECT
+# list, or its own cascade goes unnoticed -- see `RequireWellFormedVariants`.
 formula_add_negative_test(method_variants_agreement_gated
     "formula: this argument of variants(...) is not a variant of a method"
     REJECT "RequireVariantsAgree")

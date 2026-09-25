@@ -90,7 +90,9 @@ TEST_CASE("a variant's tag need not be a complete type", "[method]")
     // The tag rule refuses what can never be selected -- `void`, `int`, a
     // reference, a cv-qualified class -- and deliberately stops short of
     // `std::is_empty_v`, which would demand a complete type. This is what
-    // pins that choice: a rule tightened to `is_empty_v` refuses this file.
+    // pins that choice: a rule tightened to `is_empty_v` refuses this file --
+    // measured on cl 19.51, clang-cl 22, clang++ 20 and g++ 13, each of which
+    // rejects `is_empty_v` of the incomplete `Unfinished` outright.
     constexpr auto only = formula::variant<Unfinished>(var<Force> / (var<EdgeX> * var<EdgeY>) );
 
     STATIC_REQUIRE(std::is_same_v<decltype(only)::tag, Unfinished>);
