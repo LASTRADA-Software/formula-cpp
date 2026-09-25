@@ -92,9 +92,17 @@ namespace detail
         std::vector<void const*> seenQuantities {};
     };
 
-    // Forward declared so that a node whose children may themselves be any
-    // node kind -- BinaryNode, DocumentedNode -- can recurse into a child
-    // before every overload below has been declared.
+    // Forward declared for consistency with this convention, not because
+    // two-phase lookup strictly requires it here: every collect() call's
+    // first argument is a `Walk&` -- `formula::detail::Walk` -- so
+    // `formula::detail` is always part of that call's argument-dependent
+    // lookup, and by the time document() is ever instantiated the whole
+    // header, every overload below included, has already been parsed. ADL
+    // then finds each one regardless of declaration order -- verified by
+    // removing all of the forward declarations below at once and finding
+    // the suite still compiled and passed. Declaring them anyway costs
+    // nothing and stops the whole scheme from resting on Walk's namespace
+    // being the one thing that happens to rescue every call.
 
     template <Described Q>
     void collect(Walk& walk, VarNode<Q> const& node);

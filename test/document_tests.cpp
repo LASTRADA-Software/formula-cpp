@@ -234,6 +234,24 @@ TEST_CASE("document: a WhenNode's predicate contributes to the symbol table", "[
     CHECK(documentation.symbols[0].description == std::string_view { "measured strength" });
 }
 
+TEST_CASE("document: a WhenNode's predicate's right-hand side contributes to the symbol table", "[document]")
+{
+    // Every other predicate in this file compares a variable against an
+    // inert constant, so nothing ever reached PredicateNode::collect()'s
+    // walk of node.rhs -- dropping that one line left the entire suite
+    // green. A predicate comparing two quantities closes that gap, and is
+    // also the more realistic shape: a formula guarded on one measurement
+    // exceeding another, not on a fixed number.
+    constexpr auto node = formula::when(var<WaterVolume> > var<CementVolume>, var<Diameter>, var<ExcavationDepth>);
+    formula::Documentation const documentation = formula::document(node);
+
+    // First-appearance order: predicate lhs, predicate rhs, thenBranch,
+    // elseBranch.
+    REQUIRE(documentation.symbols.size() == 4);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
+}
+
 TEST_CASE("document: a WhenNode documents both branches, not just the one that would be taken", "[document]")
 {
     // This is the opposite of evaluation, deliberately: checked_evaluate_si
