@@ -292,6 +292,11 @@ namespace detail
 template <BandTable Bands>
 struct RequireValidBandTable
 {
+    /// Always `true` once reached -- every `static_assert` this instantiates
+    /// has already failed compilation otherwise. Present so `::value` is the
+    /// spelling that instantiates the class template; see the class comment
+    /// for why that spelling matters, and `RequireBandsAdjacent::value` for
+    /// the same member playing the same part one level down.
     static constexpr bool value = detail::band_table_is_valid<Bands>();
 };
 

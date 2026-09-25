@@ -970,6 +970,10 @@ namespace detail
 template <KeyTable Keys>
 struct RequireValidKeyTable
 {
+    /// Always `true` once reached -- every `static_assert` this instantiates
+    /// has already failed compilation otherwise. Present so `::value` is the
+    /// spelling that instantiates the class template, exactly as
+    /// `RequireValidBandTable::value` (`band.hpp`) is.
     static constexpr bool value = detail::key_table_is_valid<Keys>();
 };
 
@@ -1356,6 +1360,10 @@ namespace detail
 template <BreakpointTable Points>
 struct RequireValidBreakpointTable
 {
+    /// Always `true` once reached -- every `static_assert` this instantiates
+    /// has already failed compilation otherwise. Present so `::value` is the
+    /// spelling that instantiates the class template, exactly as
+    /// `RequireValidBandTable::value` (`band.hpp`) is.
     static constexpr bool value = detail::breakpoint_table_is_valid<Points>();
 };
 
