@@ -21,6 +21,9 @@ struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", fo
 struct ExcavationDepth: formula::Quantity<ExcavationDepth, "d", "excavation depth", formula::unit::Metre>
 {
 };
+struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::unit::Megapascal>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -170,4 +173,83 @@ TEST_CASE("document: a variable under a root still appears in the symbol table",
 
     REQUIRE(documentation.symbols.size() == 1);
     CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+}
+
+TEST_CASE("document: a variable inside a RoundNode still appears in the symbol table, "
+          "even nested under a BinaryNode",
+          "[document]")
+{
+    // The RoundNode sits as the right operand of a BinaryNode, not at the
+    // root -- exactly the shape the collect() forward declarations exist
+    // for. An overload that is only *defined*, and never forward declared,
+    // compiles for a formula where RoundNode sits at the top and fails to
+    // find an overload here, where BinaryNode's collect() must recurse into
+    // it before RoundNode's own collect() has been declared.
+    constexpr auto node =
+        var<CementVolume>
+        + formula::rounded<formula::unit::Litre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<WaterVolume>);
+    formula::Documentation const documentation = formula::document(node);
+
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "V_c" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "V_w" });
+}
+
+TEST_CASE("document: a variable inside a RoundSignificantNode still appears in the symbol table", "[document]")
+{
+    constexpr auto node = formula::rounded_to_digits<formula::unit::Millimetre,
+                                                      formula::SignificantDigits { 3 },
+                                                      formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+    formula::Documentation const documentation = formula::document(node);
+
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
+}
+
+TEST_CASE("document: a variable read through numeric_value_of still appears in the symbol table", "[document]")
+{
+    // Invented, as every justification in this repository is.
+    constexpr auto node = formula::numeric_value_of<formula::unit::Litre,
+                                                     "Example Standard 1:2020 states this coefficient over the "
+                                                     "numeric value in litres">(var<WaterVolume>);
+    formula::Documentation const documentation = formula::document(node);
+
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+}
+
+TEST_CASE("document: a WhenNode's predicate contributes to the symbol table", "[document]")
+{
+    // Strength appears only in the predicate -- not in either branch -- so
+    // this fails if collect(WhenNode) walks the branches but forgets the
+    // predicate, or if PredicateNode's own collect() forgets one of its
+    // sides.
+    constexpr auto node =
+        formula::when(var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50)), var<Diameter>, var<ExcavationDepth>);
+    formula::Documentation const documentation = formula::document(node);
+
+    REQUIRE(documentation.symbols.size() == 3);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "f" });
+    CHECK(documentation.symbols[0].description == std::string_view { "measured strength" });
+}
+
+TEST_CASE("document: a WhenNode documents both branches, not just the one that would be taken", "[document]")
+{
+    // This is the opposite of evaluation, deliberately: checked_evaluate_si
+    // for WhenNode dispatches only the selected branch, but document() has no
+    // input to select with, and a formula's documentation must not depend on
+    // which branch some particular evaluation happened to take. If
+    // collect(WhenNode) only walked thenBranch (mirroring evaluation),
+    // ExcavationDepth would be missing below.
+    constexpr auto node =
+        formula::when(var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50)), var<Diameter>, var<ExcavationDepth>);
+    formula::Documentation const documentation = formula::document(node);
+
+    REQUIRE(documentation.symbols.size() == 3);
+    // First-appearance order: predicate, then thenBranch, then elseBranch.
+    CHECK(documentation.symbols[1].symbol == std::string_view { "d" });
+    CHECK(documentation.symbols[1].description == std::string_view { "specimen diameter" });
+    CHECK(documentation.symbols[2].symbol == std::string_view { "d" });
+    CHECK(documentation.symbols[2].description == std::string_view { "excavation depth" });
 }
