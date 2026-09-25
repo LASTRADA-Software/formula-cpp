@@ -55,6 +55,7 @@ add_executable(formula-cpp-tests
     band_tests.cpp
     lookup_tests.cpp
     method_tests.cpp
+    overlay_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -583,6 +584,75 @@ formula_add_negative_test(method_evaluate_rounding_rule_dimension_mismatch
 formula_add_negative_test(method_evaluate_arguments_out_of_order
     "formula: this method's variants are not a variants pack"
     REJECT "SelectVariant")
+
+# The overlay. Each case below is an override that would otherwise silently do
+# nothing -- see the file comment of `overlay.hpp` -- or a gate between two
+# refusals, pinned by a REJECT.
+#
+# Pinning or pruning a tag no variant declares. Two cases, because the pin and
+# the prune each ask the rule in a place of their own.
+formula_add_negative_test(overlay_pins_absent_variant
+    "formula: this overlay pins or prunes a variant the method does not declare")
+
+formula_add_negative_test(overlay_prunes_absent_variant
+    "formula: this overlay pins or prunes a variant the method does not declare")
+
+# Pruning every variant is refused by the overlay before the empty pack could
+# be built, because the empty pack's own message says the author declared no
+# variants -- false of the author's method. The REJECT pins that only the
+# overlay's message fires.
+formula_add_negative_test(overlay_prunes_every_variant
+    "formula: this overlay prunes every variant of the method"
+    REJECT "formula: this method declares no variants at all")
+
+# A pinned or pruned tag obeys the tag rule, through the same guard a variant's
+# tag does, and that rule is asked FIRST -- the REJECT pins the order, once for
+# each operation, because each gates the declared-variant rule separately.
+formula_add_negative_test(overlay_pin_tag_cv_qualified
+    "formula: this tag is not a plain class type"
+    REJECT "formula: this overlay pins or prunes a variant the method does not declare")
+
+formula_add_negative_test(overlay_prune_tag_cv_qualified
+    "formula: this tag is not a plain class type"
+    REJECT "formula: this overlay pins or prunes a variant the method does not declare")
+
+# Fixing a quantity the method never reads. The second case reaches the same
+# refusal only because operations apply in order: it prunes the one variant
+# that reads the quantity before fixing it, and the reverse order compiles.
+formula_add_negative_test(overlay_constant_unused
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_constant_after_its_variant_is_pruned
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+# One overlay listing an operation twice. The REJECT pins `apply`'s gate on the
+# overlay being well formed: ungated, the second prune is refused as well.
+formula_add_negative_test(overlay_operation_twice
+    "formula: this overlay lists the same operation twice"
+    REJECT "formula: this overlay pins or prunes a variant the method does not declare")
+
+# An argument that is not an operation. Two REJECTs, two gates: the repeat rule
+# waits for every argument to be an operation, and `apply` is not instantiated
+# over a malformed overlay at all.
+formula_add_negative_test(overlay_argument_not_an_operation
+    "formula: this argument of overlay(...) is not an overlay operation"
+    REJECT "RequireOperationListedOnce" "apply_operation")
+
+# A constant fixed in a formula holding a node kind the rewrite cannot see
+# inside. The REJECT pins that the unused-quantity rule waits until every node
+# is known: the only use here is inside the unknown node, where it cannot be
+# seen, and "unused" would be false.
+formula_add_negative_test(overlay_constant_unknown_node
+    "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+# An overlay applied to a malformed method. The method is refused where it is
+# declared, and `apply` gates its body on the method being well formed, as
+# `evaluate_method` does; the REJECT refuses the compiler's own error for the
+# `apply_operation` an ungated body would call with the parts out of order.
+formula_add_negative_test(overlay_apply_arguments_out_of_order
+    "formula: this method's variants are not a variants pack"
+    REJECT "apply_operation")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
