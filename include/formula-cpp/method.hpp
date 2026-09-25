@@ -98,8 +98,10 @@ namespace formula
 
 namespace detail
 {
-    /// Fails to compile when a variant's tag is not a class type free of
-    /// `const` and `volatile`.
+    /// Fails to compile when a tag is not a class type free of `const` and
+    /// `volatile` -- whether a variant declares it or `evaluate_method` is
+    /// asked to select by it, which is why its message says "this tag" and
+    /// not "the tag of this variant": a selection tag belongs to no variant.
     ///
     /// `void`, `int` and `Cube&` name nothing a specimen can be, so a variant
     /// tagged with one can never be selected -- the same author's mistake an
@@ -115,8 +117,8 @@ namespace detail
     struct RequirePlainClassTag
     {
         static_assert(std::is_class_v<Tag> && std::is_same_v<Tag, std::remove_cv_t<Tag>>,
-                      "formula: the tag of this variant is not a plain class type; a tag names what "
-                      "a variant applies to, so it must be a class type without const or volatile "
+                      "formula: this tag is not a plain class type; a tag names what a variant "
+                      "applies to, so it must be a class type without const or volatile "
                       "-- not void, a fundamental type or a reference, and not const Cube where "
                       "Cube is meant -- and the offending tag appears in this diagnostic as the "
                       "template argument of RequirePlainClassTag");

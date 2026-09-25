@@ -428,7 +428,7 @@ formula_add_negative_test(method_variants_empty
 # one a duplicate-tag check comparing tags with is_same_v would otherwise
 # miss, since `const Cube` and `Cube` are different types.
 formula_add_negative_test(method_variant_tag_cv_qualified
-    "formula: the tag of this variant is not a plain class type")
+    "formula: this tag is not a plain class type")
 
 # Pins that the agreement rule is gated, not the order of the rules in
 # general. The agreement rule is asked only once every argument is a variant,
@@ -456,7 +456,7 @@ formula_add_negative_test(method_no_matching_variant
 # malformed tag, not as an undeclared one. Both messages would be true, so
 # EXPECT alone cannot see the order; REJECT pins it.
 formula_add_negative_test(method_selection_tag_cv_qualified
-    "formula: the tag of this variant is not a plain class type"
+    "formula: this tag is not a plain class type"
     REJECT "formula: this method declares no variant for that tag")
 
 add_test(NAME hygiene.version

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: the tag of this variant is not a plain class type
+// EXPECT: formula: this tag is not a plain class type
 //
 // A variant tagged `const Cylinder` where `Cylinder` is meant.
 //

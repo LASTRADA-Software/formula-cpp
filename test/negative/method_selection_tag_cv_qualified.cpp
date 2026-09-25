@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: the tag of this variant is not a plain class type
+// EXPECT: formula: this tag is not a plain class type
 // REJECT: formula: this method declares no variant for that tag
 //
 // `evaluate_method<const Cube>` on a method that declares a `Cube` variant.
