@@ -480,6 +480,28 @@ formula_add_negative_test(method_rounding_rule_gated
     "formula: two variants of this method measure different dimensions"
     REJECT "RequireRoundingRuleMeasuresVariants")
 
+# Each part of a method must be the kind of thing its factory builds. The
+# first case passes the variants and the rounding rule in each other's place,
+# which compiled before this rule and failed only at `evaluate_method`, in the
+# compiler's own words. The second swaps the rounding rule and the
+# constraints: its variants agree, so there is a dimension to compare, and its
+# REJECT pins that the dimension rule is gated behind the shape rule rather
+# than reading a `unit` from a `ConstraintSet`. The first case cannot pin that
+# gate -- with no variants pack there is no dimension, so the rule is quiet
+# either way.
+formula_add_negative_test(method_arguments_out_of_order
+    "formula: this method's variants are not a variants pack")
+
+formula_add_negative_test(method_arguments_out_of_order_rule_last
+    "formula: this method's rounding rule is not a rounding rule"
+    REJECT "RequireRoundingRuleMeasuresVariants")
+
+# The third part alone wrong. Both cases above have a wrong part ahead of the
+# constraints and expect that part's message, so neither notices the
+# constraint-set rule going missing -- measured: deleting it left both green.
+formula_add_negative_test(method_constraints_not_a_constraint_set
+    "formula: this method's constraints are not a constraint set")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

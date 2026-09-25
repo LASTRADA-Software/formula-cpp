@@ -79,6 +79,7 @@
 /// own. So the unit half is enforced where the reported quantity is named,
 /// and the dimension half is enforced here, where the variants are.
 
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
@@ -417,6 +418,28 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 
 namespace detail
 {
+    /// Whether a type is a `Variants` pack.
+    template <typename T>
+    struct IsVariants: std::false_type
+    {
+    };
+
+    template <typename... Cs>
+    struct IsVariants<Variants<Cs...>>: std::true_type
+    {
+    };
+
+    /// Whether a type is a `ConstraintSet`.
+    template <typename T>
+    struct IsConstraintSet: std::false_type
+    {
+    };
+
+    template <Predicate... Ps>
+    struct IsConstraintSet<ConstraintSet<Ps...>>: std::true_type
+    {
+    };
+
     /// Whether a type is a `RoundingRule`.
     template <typename T>
     struct IsRoundingRule: std::false_type
@@ -477,15 +500,59 @@ namespace detail
     /// Whether `RequireRoundingRuleMeasuresVariants` has anything true to ask.
     ///
     /// Gated for the reason `RequireWellFormedVariants` gates its agreement
-    /// rule: a pack of variants that disagree, or that is not a pack of
-    /// variants at all, is already refused by `Variants`, and asking this rule
-    /// as well would add a second error -- measured against whichever variant
-    /// happened to be first -- to the one that names the mistake.
-    /// `method_rounding_rule_gated.cpp` pins that by refusing any output that
-    /// names this rule. A `Rounding` that is not a `RoundingRule` is not
-    /// refused here either; it has no `unit` to compare.
+    /// rule, twice over. A `Rounding` that is not a `RoundingRule` has no
+    /// `unit`, and a `Vs` that is not a `Variants` has no dimension; the shape
+    /// rules in `RequireWellFormedMethod` refuse both, by name.
+    /// `method_arguments_out_of_order_rule_last.cpp` pins that half. And a pack of
+    /// variants that disagree is already refused by `Variants`: asking this
+    /// rule as well would add a second error -- measured against whichever
+    /// variant happened to be first -- to the one that names the mistake.
+    /// `method_rounding_rule_gated.cpp` pins that half. Both pin it by
+    /// refusing any output that names this rule.
     template <typename Vs, typename Rounding>
     inline constexpr bool canAskRoundingRule = IsRoundingRule<Rounding>::value && VariantsDimension<Vs>::known;
+
+    /// The rules a method obeys, asked in an order that matters.
+    ///
+    /// First its shape: the variants, the rounding rule and the constraints,
+    /// each the kind of thing its factory builds. `method(...)` takes three
+    /// arguments of unrelated types, so nothing stops an author passing them
+    /// in the wrong order. Before these rules,
+    /// `method(rounding_rule<...>(), variants(...), constraints())` compiled
+    /// on cl 19.51 and clang-cl 22, and failed only at `evaluate_method`, with
+    /// the compiler's own words for it: cl's `C2027: use of undefined type
+    /// SelectVariant<...>`, clang-cl's "implicit instantiation of undefined
+    /// template". Each rule names the
+    /// part it refuses, so a swapped pair is reported as the two parts that
+    /// are wrong.
+    ///
+    /// Then the rounding rule's dimension, only once there is a rule and an
+    /// agreed dimension to compare -- see `canAskRoundingRule`.
+    template <typename Vs, typename Rounding, typename Constraints>
+    struct RequireWellFormedMethod
+    {
+        static_assert(IsVariants<Vs>::value,
+                      "formula: this method's variants are not a variants pack; a method is "
+                      "method(variants(...), rounding_rule<...>(), constraints(...)), in that order -- "
+                      "the offending type appears in this diagnostic as the template argument Vs of "
+                      "RequireWellFormedMethod");
+        static_assert(IsRoundingRule<Rounding>::value,
+                      "formula: this method's rounding rule is not a rounding rule; a method is "
+                      "method(variants(...), rounding_rule<...>(), constraints(...)), in that order -- "
+                      "the offending type appears in this diagnostic as the template argument Rounding "
+                      "of RequireWellFormedMethod");
+        static_assert(IsConstraintSet<Constraints>::value,
+                      "formula: this method's constraints are not a constraint set; a method is "
+                      "method(variants(...), rounding_rule<...>(), constraints(...)), in that order -- "
+                      "the offending type appears in this diagnostic as the template argument "
+                      "Constraints of RequireWellFormedMethod");
+
+        static_assert(std::conditional_t<canAskRoundingRule<Vs, Rounding>,
+                                         RequireRoundingRuleMeasuresVariants<Vs, Rounding>,
+                                         std::true_type>::value);
+
+        static constexpr bool value = true;
+    };
 } // namespace detail
 
 /// One method: the variants it chooses between, the rounding rule it applies
@@ -496,21 +563,23 @@ namespace detail
 /// handed straight to `check_all()`; `ConstraintSet` in `constraint.hpp` says
 /// why that is the shape.
 ///
-/// The rounding rule's unit must measure the variants' dimension. That is
-/// checked in this class body rather than only in `method()` below, for the
-/// reason `Variants` gives for its own checks: this is a public aggregate, so
-/// a `Method<...>` can be declared with no factory call.
+/// Each part must be the kind of thing its factory builds, and the rounding
+/// rule's unit must measure the variants' dimension -- see
+/// `detail::RequireWellFormedMethod`. That is checked in this class body
+/// rather than only in `method()` below, for the reason `Variants` gives for
+/// its own checks: this is a public aggregate, so a `Method<...>` can be
+/// declared with no factory call.
 template <typename Vs, typename Rounding, typename Constraints>
 struct Method
 {
-    // `remove_cv_t` because `Method<decltype(pack), ...>` over a `constexpr`
-    // pack names a `const Variants<...>`, which no specialisation of
-    // `VariantsDimension` matches -- and an unmatched pack reads as "nothing
-    // to ask", which would switch the rule off without a word.
-    static_assert(
-        std::conditional_t<detail::canAskRoundingRule<std::remove_cv_t<Vs>, std::remove_cv_t<Rounding>>,
-                           detail::RequireRoundingRuleMeasuresVariants<std::remove_cv_t<Vs>, std::remove_cv_t<Rounding>>,
-                           std::true_type>::value);
+    // `remove_cv_t` because `Method<decltype(pack), ...>` over `constexpr`
+    // parts names `const Variants<...>` and the like, which no specialisation
+    // of the shape traits or of `VariantsDimension` matches: the shape rules
+    // would refuse a well-formed method, and the dimension rule would read an
+    // unmatched pack as "nothing to ask" and switch off without a word.
+    static_assert(detail::RequireWellFormedMethod<std::remove_cv_t<Vs>,
+                                                  std::remove_cv_t<Rounding>,
+                                                  std::remove_cv_t<Constraints>>::value);
 
     /// The variants, as `variants(...)` built them.
     Vs variantSet {};
