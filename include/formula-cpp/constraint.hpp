@@ -215,23 +215,39 @@ template <Predicate P>
 /// catch a parameter shadowing a function, so nothing would fail to build,
 /// but it is the same kind of name collision that shipped a `StepKind::Pi`
 /// enumerator shadowing `formula::Pi` in phase 7 and broke GCC alone.
+///
+/// **Recorded in the trace as its own step**, the way spec sections 9 and
+/// 9.1 require. A constraint is not a `Node`, so it cannot go through
+/// `sink.entered`/`sink.produced` -- both constrained on `Node` -- the same
+/// problem phase 8 solved for a `WhenNode`'s branch with an optional
+/// `sink.branch_taken(...)` hook. The two calls below follow that
+/// established shape: a sink that defines `constraint_entered`/
+/// `constraint_produced` -- `RecordingSink` (`trace.hpp`) is the one that
+/// does -- gets a step; `NullSink`, which defines neither, pays nothing.
 template <typename Rep = Rational, typename P, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr ConstraintOutcome check(Constraint<P> const& subject, Env const& environment,
                                                 Sink sink = {}) noexcept
 {
+    if constexpr (requires { sink.constraint_entered(subject); })
+        sink.constraint_entered(subject);
+
     std::expected<std::optional<bool>, ArithmeticError> const result =
         checked_evaluate_predicate<Rep>(subject.predicate, environment, sink);
 
+    ConstraintOutcome outcome {};
     if (!result.has_value())
-        return ConstraintOutcome::invalid(result.error());
+        outcome = ConstraintOutcome::invalid(result.error());
+    else if (!result->has_value())
+        outcome = ConstraintOutcome::not_checked();
+    else if (**result)
+        outcome = ConstraintOutcome::satisfied();
+    else
+        outcome = ConstraintOutcome::violated(subject.verdict);
 
-    if (!result->has_value())
-        return ConstraintOutcome::not_checked();
+    if constexpr (requires { sink.constraint_produced(subject, outcome); })
+        sink.constraint_produced(subject, outcome);
 
-    if (**result)
-        return ConstraintOutcome::satisfied();
-
-    return ConstraintOutcome::violated(subject.verdict);
+    return outcome;
 }
 
 /// A set of constraints checked together, in declaration order:

@@ -214,6 +214,49 @@ namespace detail
         return text;
     }
 
+    /// A `Constraint` step's expression, in a shape that borrows no name from
+    /// the public API: `require #1 >= #2`.
+    ///
+    /// The public factory is `constraint(predicate, verdict)`, two positions,
+    /// and a reader who knows it would map a two-slot call onto exactly
+    /// those two things. This step means something else -- (predicate lhs,
+    /// predicate rhs) -- so a call-shaped spelling here would repeat the
+    /// mistake `Conditional`'s withdrawn `when(#1, #2, #3)` made, decoded
+    /// only by a reader who happened to already distrust it. `require` names
+    /// no public function, so there is nothing to misread it as, and the
+    /// comparison operator between its two operand references is the one
+    /// `render()` already writes for the predicate this step came from.
+    ///
+    /// **Two arities, not three.** A constraint has no branch, so nothing is
+    /// dispatched once the predicate resolves -- unlike `Conditional`, whose
+    /// own predicate is exactly this same shape plus a branch appended.
+    /// `checked_evaluate_predicate` (`predicate.hpp`) dispatches the left
+    /// side, and only if that succeeds does it dispatch the right, so:
+    ///
+    ///  - two operands: both sides were dispatched, whether or not the
+    ///    predicate went on to resolve -- `require #1 >= #2`
+    ///  - one operand: the left side raised an arithmetic error, so the
+    ///    right was never dispatched and nothing was ever compared --
+    ///    `require #1`, with no comparison token, for the same reason
+    ///    `conditional_expression` above leaves one out in its own
+    ///    one-operand case.
+    ///
+    /// The verdict reached checking it -- satisfied, violated, not checked,
+    /// invalid -- is deliberately not part of this expression; `step_line`
+    /// appends it as a suffix instead, because it is what checking the step
+    /// *concluded*, not part of what the step computed.
+    template <typename Rep>
+    [[nodiscard]] std::string constraint_expression(Step<Rep> const& step)
+    {
+        std::string text = "require";
+        if (!step.operands.empty())
+            text += " " + operand_reference(step.operands[0]);
+        if (step.operands.size() >= 2)
+            text += " " + std::string { comparison_symbol(step.comparison) } + " "
+                    + operand_reference(step.operands[1]);
+        return text;
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -258,6 +301,8 @@ namespace detail
                        + ")";
             case StepKind::Conditional:
                 return conditional_expression(step);
+            case StepKind::Constraint:
+                return constraint_expression(step);
         }
         return "unknown step kind";
     }
@@ -359,13 +404,63 @@ namespace detail
         return " [" + std::string { describe(mode) } + "]";
     }
 
+    /// A `Constraint` step's outcome, in one clause: ` -- satisfied`,
+    /// ` -- reject the specimen`, ` -- not checked`, or the arithmetic error
+    /// that made it impossible to check at all.
+    ///
+    /// Present for **every** outcome, unlike the bracketed suffixes above.
+    /// `Conditional` needs `[no branch]` only for the one case its body
+    /// cannot already say, because the other three name the branch in the
+    /// keyword itself (`then #3`, `else #5`). A constraint's body never
+    /// names its outcome: `require #1 >= #2` reads identically whether the
+    /// requirement held, failed, was never checked, or could not be checked
+    /// -- so unlike `Conditional`, nothing elsewhere in the line carries that
+    /// distinction for any of the four states, and this suffix is the only
+    /// place it is ever said.
+    ///
+    /// A plain `--` rather than the bracket convention `citation_suffix`,
+    /// `justification_suffix` and `rounding_mode_suffix` above use for a
+    /// trailing fact: those three sit alongside an expression that already
+    /// has its own value (`round(#1, to 1 dp of mm) = 13 mm [nearest, ...]`),
+    /// so the bracket marks "also true, but secondary" next to a value the
+    /// line already gave. A constraint's line has no value to sit next to --
+    /// this suffix **is** the line's answer, not a secondary fact about a
+    /// number it already showed -- so it reads as the sentence's own ending
+    /// rather than a parenthetical the reader could skip.
+    [[nodiscard]] inline std::string constraint_outcome_suffix(ConstraintOutcome const& outcome)
+    {
+        switch (outcome.kind())
+        {
+            case ConstraintOutcomeKind::Satisfied:
+                return " -- satisfied";
+            case ConstraintOutcomeKind::Violated:
+                // `verdict()` is guaranteed present here -- `kind()` just
+                // said `Violated`, the only state it is set for.
+                return " -- " + std::string { outcome.verdict()->label };
+            case ConstraintOutcomeKind::NotChecked:
+                return " -- not checked";
+            case ConstraintOutcomeKind::Invalid:
+                // Likewise guaranteed present for `Invalid`.
+                return " -- " + std::string { describe(*outcome.error()) };
+        }
+        return " -- unknown outcome";
+    }
+
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the four kinds that need one -- a citation
     /// for `Documented`, a justification for `NumericValue`, the tie-breaking
     /// rule for the two rounding kinds, and, for a `Conditional` whose
     /// predicate never resolved, `[no branch]`.
+    ///
+    /// `Constraint` is handled separately, first: a constraint produces a
+    /// verdict, not a quantity (`constraint.hpp`'s own file comment explains
+    /// why), so there is no value at all for `step_value_text` to convert or
+    /// print. The expression and the outcome suffix are the whole line.
     [[nodiscard]] inline std::string step_line(Step<Rational> const& step)
     {
+        if (step.kind == StepKind::Constraint)
+            return constraint_expression(step) + constraint_outcome_suffix(step.outcome);
+
         std::string const value = step_value_text(step);
         std::string suffix;
         if (step.kind == StepKind::Documented)

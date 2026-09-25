@@ -48,6 +48,35 @@ constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * 
 {
     return formula::environment(formula::Measured<Strength> { value });
 }
+
+// The constraint every Constraint-step test below shares: strength at least
+// 30 MPa, phrased the way a standard's rejection rule reads. Kept at
+// namespace scope for the same reason `overFifty`/`chosen` above are.
+constexpr auto atLeastThirty =
+    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+                        formula::Verdict { "reject the specimen" });
+
+// The one-operand arity: the predicate's left side divides by a measured
+// zero, so its right side is never dispatched -- the same shape
+// trace_render_tests.cpp's own one-operand Conditional case uses.
+constexpr auto leftSideErrors =
+    formula::constraint((var<Strength> / formula::number(formula::Rational { 0 }))
+                             > formula::constant<unit::Megapascal>(formula::Rational { 0 }),
+                        formula::Verdict { "result is unusable" });
+
+// The two-operand arity that is still Invalid: the left side resolves, so
+// the right side is dispatched, and the right side is the one that divides
+// by a measured zero.
+constexpr auto rightSideErrors =
+    formula::constraint(var<Strength> > (var<Strength> / formula::number(formula::Rational { 0 })),
+                        formula::Verdict { "result is unusable" });
+
+// A second constraint over the independent Diameter quantity, so a set of
+// two checked together can fail differently on each -- the only way to tell
+// which Constraint step swallowed which operands.
+constexpr auto diameterAtMost100 =
+    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 100 }),
+                        formula::Verdict { "specimen exceeds diameter tolerance" });
 } // namespace
 
 TEST_CASE("a trace records one step per node, children before parents", "[trace]")
@@ -498,4 +527,170 @@ TEST_CASE("a NumericValue step records its justification and the unit it read fr
     CHECK(root.value == formula::Rational { 70 });
     REQUIRE(root.operands.size() == 1);
     CHECK(root.operands[0] == 0);
+}
+
+// ------------------------------------------------------- Constraint steps
+
+TEST_CASE("a Constraint step records a satisfied verdict and both predicate operands", "[trace]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const outcome = formula::check(atLeastThirty, strengthOf(formula::Rational { 45 }), sink);
+
+    CHECK(outcome.is_satisfied());
+    REQUIRE(trace.steps.size() == 3);
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Constraint);
+    CHECK(root.comparison == formula::Comparison::GreaterOrEqual);
+    CHECK(root.outcome.is_satisfied());
+    CHECK_FALSE(root.outcome.verdict().has_value());
+    // The predicate's own two sides -- f, then 30 MPa -- exactly as a
+    // Conditional step claims its predicate's two sides.
+    REQUIRE(root.operands.size() == 2);
+    CHECK(root.operands[0] == 0);
+    CHECK(root.operands[1] == 1);
+}
+
+TEST_CASE("a Constraint step records a violated verdict, carrying it", "[trace]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const outcome = formula::check(atLeastThirty, strengthOf(formula::Rational { 20 }), sink);
+
+    CHECK(outcome.is_violated());
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Constraint);
+    CHECK(root.comparison == formula::Comparison::GreaterOrEqual);
+    CHECK(root.outcome.is_violated());
+    REQUIRE(root.outcome.verdict().has_value());
+    CHECK(root.outcome.verdict()->label == std::string_view { "reject the specimen" });
+    REQUIRE(root.operands.size() == 2);
+}
+
+TEST_CASE("a Constraint step records not-checked when the predicate is absent -- not satisfied", "[trace]")
+{
+    // A bool cannot distinguish this state from "the predicate held true" --
+    // exactly why check() reports four states rather than two, and why the
+    // step must record which of the four it was, not merely a value.
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const outcome =
+        formula::check(atLeastThirty, formula::environment(formula::Measured<Strength>::absent()), sink);
+
+    CHECK(outcome.is_not_checked());
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Constraint);
+    // Recorded even though it never resolved -- both sides were still
+    // dispatched, so the comparison is still named, exactly as a Conditional
+    // step's `comparison` is recorded for a predicate that never resolved.
+    CHECK(root.comparison == formula::Comparison::GreaterOrEqual);
+    CHECK(root.outcome.is_not_checked());
+    CHECK_FALSE(root.outcome.is_satisfied());
+    CHECK_FALSE(root.outcome.verdict().has_value());
+    // Both sides were dispatched even though the left one came back absent --
+    // not one operand, which is reserved for a left side that raised an
+    // arithmetic error and so was never followed by a dispatch of the right.
+    REQUIRE(root.operands.size() == 2);
+}
+
+TEST_CASE("a Constraint step records Invalid with one operand when the predicate's left side errors", "[trace]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const outcome = formula::check(leftSideErrors, strengthOf(formula::Rational { 60 }), sink);
+
+    CHECK(outcome.is_invalid());
+    // Strength's Variable, the Constant 0, the Divide that fails, then the
+    // Constraint itself -- the right side of the predicate (the constant
+    // 0 MPa it compares against) is never reached at all.
+    REQUIRE(trace.steps.size() == 4);
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Constraint);
+    CHECK(root.outcome.is_invalid());
+    REQUIRE(root.outcome.error().has_value());
+    CHECK(root.outcome.error() == formula::ArithmeticError::DivisionByZero);
+    // One operand, not two: the Divide that failed, claimed as the
+    // predicate's left side. Nothing was ever compared.
+    REQUIRE(root.operands.size() == 1);
+    CHECK(root.operands[0] == 2);
+}
+
+TEST_CASE("a Constraint step records Invalid with two operands when the predicate's right side errors", "[trace]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const outcome = formula::check(rightSideErrors, strengthOf(formula::Rational { 60 }), sink);
+
+    CHECK(outcome.is_invalid());
+    // The left side's own Variable, then the right side's Variable, Constant
+    // 0 and the Divide that fails, then the Constraint itself.
+    REQUIRE(trace.steps.size() == 5);
+
+    auto const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::Constraint);
+    CHECK(root.outcome.is_invalid());
+    REQUIRE(root.outcome.error().has_value());
+    CHECK(root.outcome.error() == formula::ArithmeticError::DivisionByZero);
+    // Two operands: the left side succeeded and so was dispatched before the
+    // right side's own failure, unlike the one-operand case above.
+    REQUIRE(root.operands.size() == 2);
+    CHECK(root.operands[0] == 0);
+    CHECK(root.operands[1] == 3);
+}
+
+TEST_CASE("a trace records one Constraint step per constraint checked via check_all, "
+          "each claiming only its own operands",
+          "[trace]")
+{
+    // Two independent constraints over two independent quantities, checked
+    // into one shared trace -- so a Constraint step that wrongly claims
+    // steps outside its own mark (its predecessor's, or its own again) is
+    // visible regardless of which constraint runs first. Declared both ways
+    // round, the same reason constraint_tests.cpp's own set tests are.
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 20 } },
+                                                   formula::Measured<Diameter> { formula::Rational { 150 } });
+
+    {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        auto const outcomes =
+            formula::check_all(formula::constraints(atLeastThirty, diameterAtMost100), environment, sink);
+
+        REQUIRE(outcomes[0].is_violated());
+        REQUIRE(outcomes[1].is_violated());
+        // f, 30 MPa, Constraint; d, 100 mm, Constraint.
+        REQUIRE(trace.steps.size() == 6);
+        CHECK(trace.steps[2].kind == formula::StepKind::Constraint);
+        REQUIRE(trace.steps[2].operands.size() == 2);
+        CHECK(trace.steps[2].operands[0] == 0);
+        CHECK(trace.steps[2].operands[1] == 1);
+        CHECK(trace.steps[5].kind == formula::StepKind::Constraint);
+        REQUIRE(trace.steps[5].operands.size() == 2);
+        CHECK(trace.steps[5].operands[0] == 3);
+        CHECK(trace.steps[5].operands[1] == 4);
+    }
+
+    {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        auto const outcomes =
+            formula::check_all(formula::constraints(diameterAtMost100, atLeastThirty), environment, sink);
+
+        REQUIRE(outcomes[0].is_violated());
+        REQUIRE(outcomes[1].is_violated());
+        // Same shape, reversed: d, 100 mm, Constraint; f, 30 MPa, Constraint.
+        REQUIRE(trace.steps.size() == 6);
+        CHECK(trace.steps[2].kind == formula::StepKind::Constraint);
+        REQUIRE(trace.steps[2].operands.size() == 2);
+        CHECK(trace.steps[2].operands[0] == 0);
+        CHECK(trace.steps[2].operands[1] == 1);
+        CHECK(trace.steps[5].kind == formula::StepKind::Constraint);
+        REQUIRE(trace.steps[5].operands.size() == 2);
+        CHECK(trace.steps[5].operands[0] == 3);
+        CHECK(trace.steps[5].operands[1] == 4);
+    }
 }

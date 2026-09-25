@@ -502,3 +502,134 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
     bothSurfaces(var<Strength> == fifty, "==");
     bothSurfaces(var<Strength> != fifty, "!=");
 }
+
+// ------------------------------------------------------- Constraint steps
+
+TEST_CASE("a derivation renders a satisfied Constraint step", "[trace-render]")
+{
+    constexpr auto atLeastThirty =
+        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+                            formula::Verdict { "reject the specimen" });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 45 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::check(atLeastThirty, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    // `require #1 >= #2`, not `constraint(#1, #2)`: the public factory is
+    // `constraint(predicate, verdict, citation)`, and a call-shaped spelling
+    // here would let a reader map its slots onto the wrong meaning, the same
+    // mistake `Conditional`'s withdrawn `when(#1, #2, #3)` made.
+    CHECK(text
+          == "1. f = 45 MPa\n"
+             "2. 30 MPa\n"
+             "3. require #1 >= #2 -- satisfied\n");
+    CHECK(text.find("constraint(") == std::string::npos);
+}
+
+TEST_CASE("a derivation renders a violated Constraint step, carrying the verdict", "[trace-render]")
+{
+    constexpr auto atLeastThirty =
+        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+                            formula::Verdict { "reject the specimen" });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 20 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::check(atLeastThirty, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    CHECK(text
+          == "1. f = 20 MPa\n"
+             "2. 30 MPa\n"
+             "3. require #1 >= #2 -- reject the specimen\n");
+}
+
+TEST_CASE("a derivation renders a Constraint step as not checked when the predicate is absent -- not satisfied",
+          "[trace-render]")
+{
+    // A satisfied and a not-checked constraint must not read the same way:
+    // that would be exactly the safety property `ConstraintOutcome` exists
+    // to protect, silently lost at the one surface an inspector actually
+    // reads.
+    constexpr auto atLeastThirty =
+        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+                            formula::Verdict { "reject the specimen" });
+    auto const environment = formula::environment(formula::Measured<Strength>::absent());
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::check(atLeastThirty, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    CHECK(text
+          == "1. f = (not measured)\n"
+             "2. 30 MPa\n"
+             "3. require #1 >= #2 -- not checked\n");
+}
+
+TEST_CASE("a derivation renders a Constraint step with one operand when the predicate's left side errors",
+          "[trace-render]")
+{
+    // The one arity below two that arises in practice, the same shape
+    // trace_render_tests.cpp already pins for Conditional: the predicate's
+    // left side fails, so the evaluator never dispatches the right one and
+    // no step is ever recorded for it. The line must still say what was
+    // being checked and must not pretend the recorded operand was both
+    // sides.
+    constexpr auto leftSideErrors =
+        formula::constraint((var<Strength> / formula::number(formula::Rational { 0 }))
+                                 > formula::constant<unit::Megapascal>(formula::Rational { 0 }),
+                            formula::Verdict { "result is unusable" });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::check(leftSideErrors, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    // One operand, and no comparison token: the left side failed before the
+    // right was ever dispatched, so nothing was compared. Writing
+    // `require #3 >` beside a side that does not exist would claim a
+    // comparison that never happened.
+    CHECK(text
+          == "1. f = 60 MPa\n"
+             "2. 0\n"
+             "3. #1 / #2 = division by zero\n"
+             "4. require #3 -- division by zero\n");
+}
+
+TEST_CASE("a derivation renders a Constraint step with two operands when the predicate's right side errors",
+          "[trace-render]")
+{
+    // The other arity that reaches Invalid: the left side resolves, so the
+    // right side is dispatched, and it is the right side that fails. Two
+    // operands, unlike the case above.
+    constexpr auto rightSideErrors =
+        formula::constraint(var<Strength> > (var<Strength> / formula::number(formula::Rational { 0 })),
+                            formula::Verdict { "result is unusable" });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::check(rightSideErrors, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    // Two operands, and the comparison token is shown even though it was
+    // never actually evaluated -- `comparison` is a compile-time property of
+    // the predicate's type, recorded regardless of whether the runtime
+    // comparison ever ran, exactly as `conditional_expression`'s own
+    // documented exception is the *one*-operand case only, not this one.
+    CHECK(text
+          == "1. f = 60 MPa\n"
+             "2. f = 60 MPa\n"
+             "3. 0\n"
+             "4. #2 / #3 = division by zero\n"
+             "5. require #1 > #4 -- division by zero\n");
+}

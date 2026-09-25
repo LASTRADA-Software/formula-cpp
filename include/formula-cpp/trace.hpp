@@ -13,6 +13,7 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>
@@ -59,6 +60,12 @@ enum class StepKind : std::uint8_t
     Conditional,
     /// A `NumericValueNode`: the traced escape hatch.
     NumericValue,
+    /// A `Constraint`'s verdict. Checked against `formula::Constraint` the
+    /// same way `PiConstant` above was checked against `formula::Pi` -- same
+    /// spelling this time, not merely the same risk -- and confirmed clean on
+    /// GCC under `-Wshadow` rather than assumed clean because the Windows
+    /// presets raised nothing.
+    Constraint,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -137,7 +144,10 @@ struct Step
     /// zero value is already the correct default for every other kind.
     Branch branch {};
 
-    /// For `Conditional`: which way the predicate compared its two sides.
+    /// For `Conditional` and `Constraint`: which way the predicate compared
+    /// its two sides. Both kinds wrap a `PredicateNode` and neither is one
+    /// themselves, so this is where each puts the comparison its own
+    /// predicate made.
     ///
     /// Recorded because a derivation that says two values were compared but
     /// not *how* is not an audit trail: the trace is the artefact that
@@ -147,16 +157,18 @@ struct Step
     ///
     /// Unlike `branch` above, this field's zero value (`Comparison::Less`) is
     /// **not** a neutral "not applicable": it is a real comparison. It is
-    /// meaningful only when `kind` is `Conditional`, exactly as `exponent`
-    /// and `granularity` above are meaningful only for the kinds that set
-    /// them, and no renderer may read it without checking `kind` first.
+    /// meaningful only when `kind` is `Conditional` or `Constraint`, exactly
+    /// as `exponent` and `granularity` above are meaningful only for the
+    /// kinds that set them, and no renderer may read it without checking
+    /// `kind` first.
     ///
     /// It is recorded even when the predicate never resolved, because what a
     /// step could not decide is still a comparison a reader needs named --
     /// with one exception in the rendering, not here: a predicate whose left
     /// side errored never dispatched its right one and so never compared
-    /// anything at all. See `detail::conditional_expression`
-    /// (`trace_render.hpp`).
+    /// anything at all. See `detail::conditional_expression` and
+    /// `detail::constraint_expression` (`trace_render.hpp`), which share the
+    /// exact same exception for the same reason.
     Comparison comparison {};
 
     /// For `Round` and `RoundSignificant`: the tie-breaking rule the node
@@ -219,12 +231,36 @@ struct Step
     /// neither (absent); never both.
     std::optional<ArithmeticError> error {};
 
+    /// For `Constraint`: the verdict reached checking it.
+    ///
+    /// The whole `ConstraintOutcome` rather than a kind plus a separate label
+    /// and a separate error field of its own: `ConstraintOutcome` already
+    /// carries exactly those three things behind one safe interface, and
+    /// splitting it back out here would be the identical duplication phase 8
+    /// undid when it removed the member it had added to `WhenNode` to expose
+    /// a comparison already reachable another way. `check()` (`constraint.hpp`)
+    /// hands this to `RecordingSink::constraint_produced` verbatim.
+    ///
+    /// Default-constructs to `ConstraintOutcomeKind::NotChecked` -- see
+    /// `ConstraintOutcome`'s own comment for why that default, not
+    /// `Satisfied`, is the safe one -- which doubles as the correct default
+    /// for every step that is *not* a `Constraint`, exactly as `branch` and
+    /// `comparison` above default to values that are harmless when `kind`
+    /// says they do not apply.
+    ConstraintOutcome outcome {};
+
     /// Indices of the steps this one consumed, in evaluation order.
     ///
     /// **Not necessarily as many as the node kind suggests.** When an operand
     /// fails, the evaluator returns without evaluating the remaining ones, so
     /// a `Divide` may hold one operand rather than two. What is recorded is
-    /// what actually ran.
+    /// what actually ran. A `Constraint` step is the same shape as
+    /// `Conditional`'s own predicate: two operands whenever both sides of it
+    /// were dispatched -- whether or not the predicate went on to resolve --
+    /// and one when the left side raised an arithmetic error before the
+    /// right was ever dispatched. Never three: unlike `Conditional`, nothing
+    /// is dispatched after the predicate, because a constraint has no
+    /// branch.
     std::vector<std::size_t> operands {};
 };
 
@@ -522,6 +558,57 @@ class RecordingSink
             step.value = **result;
 
         // Everything unclaimed from `mark` onwards belongs to this node.
+        auto first = _trace->unclaimed.begin();
+        while (first != _trace->unclaimed.end() && *first < mark)
+            ++first;
+        step.operands.assign(first, _trace->unclaimed.end());
+        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+
+        _trace->steps.push_back(std::move(step));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a `Constraint` is about to be checked. Remembers where the
+    /// arena stood, exactly as `entered` above does for a `Node`, so
+    /// `constraint_produced` below can tell which steps are the predicate's
+    /// own operands.
+    ///
+    /// A constraint is not a `Node` -- it produces a verdict, not a value --
+    /// so it cannot go through `entered` itself, which is constrained on
+    /// `Node`. Called instead from `Constraint::check` (`constraint.hpp`)
+    /// through `if constexpr (requires {...})`, the same optional-hook shape
+    /// `branch_taken` above uses for the same reason: a sink with no use for
+    /// it -- `NullSink` included -- simply does not define it and pays
+    /// nothing.
+    template <Predicate P>
+    void constraint_entered(Constraint<P> const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Told what checking a `Constraint` produced. Claims as its operands
+    /// every step recorded at or after the matching `constraint_entered`
+    /// that nothing else has claimed -- the predicate's own left and right
+    /// sides -- exactly as `produced` above claims a node's.
+    template <Predicate P>
+    void constraint_produced(Constraint<P> const& constraint, ConstraintOutcome const& outcome)
+    {
+        std::size_t const mark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> step {};
+        step.kind = StepKind::Constraint;
+        // Read straight off the constraint's own predicate, the same way
+        // `produced` above reads a `Conditional` step's comparison off
+        // `node.predicate` -- `PredicateNode::comparison` is a public
+        // `static constexpr`, so this needs no member added to `Constraint`
+        // to expose it.
+        step.comparison = std::remove_cvref_t<decltype(constraint.predicate)>::comparison;
+        step.outcome = outcome;
+
+        // Everything unclaimed from `mark` onwards belongs to this
+        // constraint -- see `produced` above for why this is a `while`
+        // rather than an index computed from `mark` directly.
         auto first = _trace->unclaimed.begin();
         while (first != _trace->unclaimed.end() && *first < mark)
             ++first;
