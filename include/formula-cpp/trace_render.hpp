@@ -321,6 +321,33 @@ namespace detail
                                 keySymbol);
     }
 
+    /// The two rows an interpolating answer came from: `between 7/2 and 8 cm`,
+    /// or `on the row at 30 mm` when the value sat exactly on one.
+    ///
+    /// Two clauses rather than one with a degenerate arm, because the two say
+    /// genuinely different things. Between two rows the answer appears in
+    /// neither of them and the reader has to check an interpolation; on a row
+    /// the table stated the number directly and there is nothing to check. At
+    /// the curve's **last** row that distinction is the whole behaviour
+    /// `lookup.hpp` pins -- a breakpoint is a row, not a boundary, so the last
+    /// one is reached -- and a derivation that spelled it as a segment would
+    /// describe the table as doing something it does not.
+    ///
+    /// Neither spelling is an interval: `between 7/2 and 8 cm` names two rows
+    /// and claims nothing about either end being included or excluded, which
+    /// is why it needs neither `band_text`'s `to under` nor
+    /// `closed_range_text`'s `to`. The numbers go through
+    /// `declared_number_text` like every other declared bound, so a row typed
+    /// `14/4` reads `7/2` here exactly as it does in `render()`.
+    [[nodiscard]] inline std::string segment_text(Segment const& segment, std::string_view keySymbol)
+    {
+        std::string const low = declared_number_text(segment.low.numerator, segment.low.denominator);
+        std::string const high = declared_number_text(segment.high.numerator, segment.high.denominator);
+        if (low == high)
+            return "on the row at " + number_with_unit(low, keySymbol);
+        return "between " + number_with_unit(low + " and " + high, keySymbol);
+    }
+
     /// Why a lookup found nothing, in one clause -- the clause that stops
     /// `describe(ArithmeticError::DomainError)` from being read as a claim
     /// about something it does not know.
@@ -379,14 +406,22 @@ namespace detail
         switch (step.lookupFailure)
         {
             case LookupFailure::None:
-                // Nothing failed. A banded lookup names the band its value
-                // fell in, which is the one fact its derivation is for; the
-                // other two kinds have nothing to add that the line does not
-                // already carry -- an exact lookup's key is its subject, and
-                // an interpolating lookup selects no row at all.
-                return step.selectedBand.has_value()
-                           ? " [" + band_text(*step.selectedBand, keySymbol) + "]"
-                           : std::string {};
+                // Nothing failed, so the clause names where the answer came
+                // from: the band a banded lookup's value fell in, or the two
+                // rows an interpolating one drew on. An exact lookup adds
+                // nothing here -- its key is already the subject of the line,
+                // and the key is the row.
+                //
+                // Either may be absent even on a hit, and then the line says
+                // nothing rather than guessing: the recorder locates a value
+                // in the operand's own step, and an operand evaluated through
+                // the two-parameter extension point (`sink.hpp`) contributes
+                // none.
+                if (step.selectedBand.has_value())
+                    return " [" + band_text(*step.selectedBand, keySymbol) + "]";
+                if (step.selectedSegment.has_value())
+                    return " [" + segment_text(*step.selectedSegment, keySymbol) + "]";
+                return {};
             case LookupFailure::Missed:
                 return " [" + lookup_miss_text(step, keySymbol) + "]";
             case LookupFailure::Computation:

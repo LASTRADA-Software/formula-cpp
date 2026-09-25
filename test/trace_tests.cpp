@@ -738,14 +738,19 @@ using formula::KeyTable;
 ///    an index;
 ///  - the two shared boundaries (5/2 and 5) differ from each other, so
 ///    "always report the first band" is visible on every row;
-///  - one bound is declared **unreduced** (`10/2`), so that reducing it is a
+///  - three bounds are declared **unreduced**, so that reducing them is a
 ///    decision a reader can see being made rather than one no fixture can
-///    tell was taken;
+///    tell was taken -- and crucially the table's **outer** bounds (`2/2` and
+///    `18/2`) are among them, because those are the only two a covered-range
+///    rendering ever reads. A first revision of this fixture left the outer
+///    bounds in lowest terms and put the unreduced ones in the middle, and
+///    with that fixture `closed_range_text` could stop reducing altogether
+///    and the whole suite still passed;
 ///  - the three corrections are distinct and equal to no index and no bound.
 inline constexpr BandTable<3> SizeBands {
-    band(1, 1, 5, 2),  // 1 to under 5/2 cm
+    band(2, 2, 5, 2),  // 1 to under 5/2 cm -- 2/2 declared, and it is the table's low end
     band(5, 2, 10, 2), // 5/2 to under 5 cm -- 10/2 declared, so reduction shows
-    band(5, 1, 9, 1),  // 5 to under 9 cm
+    band(5, 1, 18, 2), // 5 to under 9 cm -- 18/2 declared, and it is the table's high end
 };
 
 /// The corrections are stated in **percent**, again not the coherent SI unit
@@ -793,13 +798,14 @@ enum class ApparatusVariant : unsigned long long
 
 inline constexpr KeyTable<ApparatusVariant, 2> ApparatusKeys { ApparatusVariant::Modern, ApparatusVariant::Legacy };
 
-/// Three breakpoints in centimetres, unequally spaced (5/2 then 9/2), with
-/// the middle key neither whole nor reduced -- every reason `SizeBands` above
-/// gives, unchanged.
+/// Three breakpoints in centimetres, unequally spaced (5/2 then 9/2), none of
+/// them reduced -- every reason `SizeBands` above gives, unchanged, including
+/// that the **outer** rows are unreduced because they are the only two a
+/// covered-range rendering ever reads.
 inline constexpr BreakpointTable<3> CurvePoints {
-    breakpoint(1),
+    breakpoint(4, 4),  // 1 cm -- the curve's low end, declared unreduced
     breakpoint(14, 4), // 7/2 cm -- declared unreduced, and in the middle
-    breakpoint(8),
+    breakpoint(24, 3), // 8 cm -- the curve's high end, declared unreduced
 };
 
 [[nodiscard]] constexpr auto curveLookup()
@@ -831,9 +837,24 @@ inline constexpr BandTable<1> WideBand { band(0, 1, 100, 1) };
 /// lookup -- the one arrangement in which two steps of a derivation carry the
 /// identical `DomainError` for entirely different reasons.
 inline constexpr BandTable<2> InnerBands {
-    band(1, 1, 3, 1), // 1 to under 3 cm
-    band(3, 1, 6, 1), // 3 to under 6 cm
+    band(2, 2, 3, 1),  // 1 to under 3 cm
+    band(3, 1, 12, 2), // 3 to under 6 cm
 };
+
+/// An exact table whose corrections are stated in **kilometres**, so that a
+/// row that IS found can still fail on the way out: 2^62 km is a perfectly
+/// representable `Rational` that does not survive being multiplied by 1000.
+/// That is the one failure an exact lookup can have which is not a miss, and
+/// the exact lookup is a kind where no other own-failure state exists to
+/// confuse it with -- which is precisely why nothing else pins it.
+inline constexpr KeyTable<SpecimenShape, 2> FarKeys { SpecimenShape::Cube, SpecimenShape::Cylinder };
+
+/// Two rows in centimetres whose values are stated in **kilometres**. 0 cm
+/// sits exactly on the first row, so the interpolation performs no arithmetic
+/// at all and cannot overflow -- and the row's own 2^62 km then does not
+/// survive the conversion into metres. The one table that separates "the
+/// interpolation overflowed" from "the conversion after it did".
+inline constexpr BreakpointTable<2> FarValues { breakpoint(0), breakpoint(5) };
 
 /// A consumer's own node kind, written against the two-parameter extension
 /// point (`sink.hpp`) exactly as `sink_tests.cpp`'s `LegacyNode` is. The
@@ -896,6 +917,8 @@ TEST_CASE("a banded lookup step records the band its value fell in", "[trace][lo
     CHECK(*step.selectedBand == band(5, 2, 10, 2));
     // Nothing about the table's extent is claimed on a hit.
     CHECK(!step.coveredRange.has_value());
+    // A banded lookup selects a band and not a segment.
+    CHECK(!step.selectedSegment.has_value());
 
     // Three units, all different, and a step that confused any two of them
     // would state a number in a scale nobody declared it in: the value is
@@ -908,6 +931,27 @@ TEST_CASE("a banded lookup step records the band its value fell in", "[trace][lo
     REQUIRE(step.operands.size() == 1);
     CHECK(step.operands[0] == 0);
     CHECK(trace.steps[0].value == rat(3, 100)); // 30 mm, in metres
+
+    // The first and the last band as well, because a recorder that reported a
+    // fixed row would be invisible against the middle one alone in one
+    // direction and against either end alone in the other. The last band in
+    // particular is where the table's own high bound sits, so it is the row a
+    // recorder confusing "the band found" with "what the table covers" would
+    // land on by accident.
+    // The locals are named apart from the enclosing test's, because GCC's
+    // `-Wshadow` -- which this project's Linux leg runs with warnings as
+    // errors -- flags a lambda capturing nothing whose own locals share a
+    // name with one in the enclosing scope.
+    auto const bandAt = [](std::int64_t millimetres) {
+        formula::Trace<> probe {};
+        formula::RecordingSink<> probeSink { probe };
+        (void) formula::checked_evaluate_si<formula::Rational>(sizeLookup(), diameterOf(millimetres), probeSink);
+        REQUIRE(probe.steps.size() == 2);
+        return probe.steps[1].selectedBand;
+    };
+
+    CHECK(bandAt(15) == std::optional { band(2, 2, 5, 2) });  // 1.5 cm, the first band
+    CHECK(bandAt(70) == std::optional { band(5, 1, 18, 2) }); // 7 cm, the last band
 }
 
 TEST_CASE("a banded lookup step that missed records the miss and what its bands cover", "[trace][lookup]")
@@ -929,8 +973,11 @@ TEST_CASE("a banded lookup step that missed records the miss and what its bands 
     // `RequireValidBandTable` has already refused a gap and an overlap -- and
     // which is neither the first band nor the last, so a recorder reporting
     // either of those instead is visible here.
+    // Repeated back as the table declared them (2/2 and 18/2), not reduced --
+    // reducing is the renderer's decision, made in the one place that already
+    // reduces every other declared bound.
     REQUIRE(step.coveredRange.has_value());
-    CHECK(*step.coveredRange == formula::LookupRange { 1, 1, 9, 1 });
+    CHECK(*step.coveredRange == formula::LookupRange { 2, 2, 18, 2 });
     CHECK(step.sourceUnit == unit::Centimetre);
 }
 
@@ -1083,12 +1130,12 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     CHECK(trace.steps[1].error == formula::ArithmeticError::DomainError);
     CHECK(trace.steps[1].lookupFailure == formula::LookupFailure::Missed);
     REQUIRE(trace.steps[1].coveredRange.has_value());
-    CHECK(*trace.steps[1].coveredRange == formula::LookupRange { 1, 1, 8, 1 });
+    CHECK(*trace.steps[1].coveredRange == formula::LookupRange { 4, 4, 24, 3 });
     CHECK(trace.steps[1].sourceUnit == unit::Centimetre);
 
     // A value inside the curve is not a miss, and an interpolating lookup
-    // selects no band on the way: it computes a number that appears in no row
-    // of its own table.
+    // selects no band on the way: it names the two rows its answer came from
+    // instead, because between them the answer appears in neither.
     formula::Trace<> inside {};
     {
         formula::RecordingSink<> insideSink { inside };
@@ -1098,6 +1145,90 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     CHECK(inside.steps[1].lookupFailure == formula::LookupFailure::None);
     CHECK(!inside.steps[1].selectedBand.has_value());
     CHECK(!inside.steps[1].coveredRange.has_value());
+    // 6 cm sits in the SECOND segment, so a recorder reaching for a fixed
+    // pair -- the first, or the one whose index matches -- is visible. The
+    // keys come back as the table declared them, unreduced.
+    REQUIRE(inside.steps[1].selectedSegment.has_value());
+    CHECK(*inside.steps[1].selectedSegment == formula::Segment { breakpoint(14, 4), breakpoint(24, 3) });
+
+    // And a value sitting exactly ON a row reports that row twice, which is
+    // this type's spelling for "the table stated this number directly" -- the
+    // behaviour `lookup.hpp` pins at a curve's last row, where interpolating
+    // is not merely equivalent but impossible.
+    formula::Trace<> onRow {};
+    {
+        formula::RecordingSink<> rowSink { onRow };
+        (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(35), rowSink);
+    }
+    REQUIRE(onRow.steps.size() == 2);
+    REQUIRE(onRow.steps[1].selectedSegment.has_value());
+    CHECK(*onRow.steps[1].selectedSegment == formula::Segment { breakpoint(14, 4), breakpoint(14, 4) });
+}
+
+TEST_CASE("an exact lookup that found its row can still fail converting it out", "[trace][lookup]")
+{
+    // The one own-failure an exact lookup has that is not a miss. Its own kind
+    // is where that confusion is hardest to catch -- an exact lookup cannot
+    // interpolate, so there is no `Computation` state to mix it up with, and
+    // nothing else here would notice the recorder leaving the field alone.
+    constexpr auto node = exact_lookup<FarKeys, unit::Kilometre>(SpecimenShape::Cylinder, { rat(1), rat(Huge) });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, formula::environment(), sink);
+
+    REQUIRE(trace.steps.size() == 1);
+    CHECK(trace.steps[0].error == formula::ArithmeticError::Overflow);
+    // The row WAS found: `Cylinder` is row 1 of this table, and 2^62 km is a
+    // perfectly good `Rational` until it is asked to become metres.
+    CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::Conversion);
+    CHECK(static_cast<long long>(trace.steps[0].lookupKey) == 7);
+}
+
+TEST_CASE("an interpolating lookup separates its own overflow from the conversion after it",
+          "[trace][lookup]")
+{
+    // Both are this node's **own** failures, both carry `Overflow`, and only
+    // one of them is the interpolation. Reporting the conversion as
+    // `Computation` would print "the interpolation itself overflowed" about an
+    // interpolation that performed no arithmetic at all -- the euphemism this
+    // whole field exists to refuse, one enumerator to the left of where it was
+    // refused.
+    constexpr auto node =
+        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1) });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, diameterOf(0), sink);
+
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(trace.steps[1].error == formula::ArithmeticError::Overflow);
+    CHECK(trace.steps[1].lookupFailure == formula::LookupFailure::Conversion);
+    // The curve answered, so no row is claimed to be missing and no segment is
+    // claimed to have been used.
+    CHECK(!trace.steps[1].coveredRange.has_value());
+    CHECK(!trace.steps[1].selectedSegment.has_value());
+}
+
+TEST_CASE("an interpolating lookup whose key conversion failed never consulted its curve",
+          "[trace][lookup]")
+{
+    // The third own-failure, on the other side of the curve: converting 2^62
+    // metres into the table's centimetres overflows before any row is looked
+    // at. Reporting it as a miss would print "the curve declares no rows"
+    // about a three-row curve.
+    constexpr auto node = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
+        formula::constant<unit::Metre>(rat(Huge)), { rat(90), rat(-115), rat(120) });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, formula::environment(), sink);
+
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(!trace.steps[0].error.has_value()); // the operand itself was fine
+    CHECK(trace.steps[1].error == formula::ArithmeticError::Overflow);
+    CHECK(trace.steps[1].lookupFailure == formula::LookupFailure::Conversion);
+    CHECK(!trace.steps[1].coveredRange.has_value());
 }
 
 TEST_CASE("a lookup whose own unit conversion failed is not recorded as a miss", "[trace][lookup]")
@@ -1156,6 +1287,20 @@ TEST_CASE("a lookup whose operand recorded no step cannot say whose failure it i
     CHECK(trace.steps[0].operands.empty());
     CHECK(trace.steps[0].error == formula::ArithmeticError::DivisionByZero);
     CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::Undetermined);
+
+    // The interpolating kind reaches the same state by the same route, and it
+    // is a separate block of code rather than a shared one -- so asserting it
+    // only for the banded kind would leave a copy nothing enters.
+    constexpr auto curve = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
+        UntracedLength {}, { rat(90), rat(-115), rat(120) });
+
+    formula::Trace<> curveTrace {};
+    formula::RecordingSink<> curveSink { curveTrace };
+    (void) formula::checked_evaluate_si<formula::Rational>(curve, formula::environment(), curveSink);
+
+    REQUIRE(curveTrace.steps.size() == 1);
+    CHECK(curveTrace.steps[0].error == formula::ArithmeticError::DivisionByZero);
+    CHECK(curveTrace.steps[0].lookupFailure == formula::LookupFailure::Undetermined);
 }
 
 TEST_CASE("a lookup whose operand recorded no step names no band even when it hits", "[trace][lookup]")

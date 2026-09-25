@@ -1149,6 +1149,32 @@ struct Breakpoint
 template <std::size_t N>
 using BreakpointTable = std::array<Breakpoint, N>;
 
+/// Where a value sat in an interpolating table: the two rows its answer came
+/// from, as the table **declared** them.
+///
+/// The declared keys and not their row indices, because the reader this exists
+/// for is reconciling a derivation against a published table on paper, where
+/// rows are named by the key they state a value at and an array offset appears
+/// nowhere. It is also why these are `Breakpoint`s rather than `Rational`s:
+/// they are repeated back exactly as typed, and reducing them is the rendering
+/// layer's decision, made in the one place that already reduces every other
+/// declared bound.
+///
+/// `low == high` means the value sat exactly **on** a row -- the rule
+/// `detail::locate_and_interpolate`'s equality-first test implements, and a
+/// state worth distinguishing because at the table's last row it is the only
+/// way an answer can be produced at all.
+struct Segment
+{
+    /// The row at or below the value.
+    Breakpoint low {};
+    /// The row above it, or `low` again when the value sat on a row.
+    Breakpoint high {};
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(Segment const&) const noexcept = default;
+};
+
 /// One of the two predicates an interpolating table's well-formedness is built
 /// on (the other is `breakpoints_ascend` just below), used both by the
 /// `static_assert` wiring and by any runtime loader -- so the two checks cannot
@@ -1379,12 +1405,22 @@ namespace detail
         return checked_add(lowValue, *share);
     }
 
-    /// Answers @p key against @p Points and @p corrections: the row's own value
-    /// when the key sits exactly on a row, the interpolation of the two
-    /// surrounding rows when it sits between them, and
-    /// `ArithmeticError::DomainError` when it sits outside the table
+    /// Answers @p key against @p Points and @p corrections **and says where the
+    /// answer came from**: the row's own value when the key sits exactly on a
+    /// row, the interpolation of the two surrounding rows when it sits between
+    /// them, and `ArithmeticError::DomainError` when it sits outside the table
     /// altogether -- below the first row, above the last, or anywhere at all
     /// for an empty table.
+    ///
+    /// **The location is returned rather than discarded because this scan
+    /// already computes it.** It has exactly three exits -- on row `i`,
+    /// between `i - 1` and `i`, or a miss -- and a derivation that wants to
+    /// say which two rows an answer came from would otherwise have to find
+    /// them again with a second scan somewhere else. Two scans of one table
+    /// against one rule is the pair-of-surfaces-that-must-agree defect this
+    /// phase keeps refusing; returning what is already known costs one
+    /// `std::pair` and cannot drift from itself. `interpolate` just below
+    /// drops the location for the evaluation path, which has no use for it.
     ///
     /// `DomainError` is this function's spelling for a **miss**, and is
     /// unambiguous here: the only other errors it can return come from
@@ -1401,9 +1437,11 @@ namespace detail
     /// returns that row rather than interpolating a segment to it. That is
     /// observable at the table's **last** row, which begins no segment; at
     /// every other row interpolating would give the same number, because the
-    /// weight is exactly zero. See the file comment.
+    /// weight is exactly zero. See the file comment. It is also what makes the
+    /// returned `Segment`'s `low == high` mean "on a row" rather than "a
+    /// segment of zero width", which a well-formed table cannot contain.
     template <BreakpointTable Points>
-    [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> interpolate(
+    [[nodiscard]] constexpr std::expected<std::pair<Rational, Segment>, ArithmeticError> locate_and_interpolate(
         Rational key, std::array<Rational, Points.size()> const& corrections) noexcept
     {
         for (std::size_t index = 0; index < Points.size(); ++index)
@@ -1420,7 +1458,7 @@ namespace detail
                 return std::unexpected { ArithmeticError::DomainError };
 
             if (*here == key)
-                return corrections[index];
+                return std::pair<Rational, Segment> { corrections[index], Segment { Points[index], Points[index] } };
 
             if (key < *here)
             {
@@ -1434,13 +1472,33 @@ namespace detail
                 if (!previous.has_value())
                     return std::unexpected { ArithmeticError::DomainError };
 
-                return interpolate_between(*previous, corrections[index - 1], *here, corrections[index], key);
+                std::expected<Rational, ArithmeticError> const answered =
+                    interpolate_between(*previous, corrections[index - 1], *here, corrections[index], key);
+                if (!answered.has_value())
+                    return std::unexpected { answered.error() };
+
+                return std::pair<Rational, Segment> { *answered,
+                                                      Segment { Points[index - 1], Points[index] } };
             }
         }
         // Past the table's last row -- or an empty table, which is past its
         // last row vacuously. A miss, never a clamp to the final row and never
         // an extrapolation onwards along the final segment's slope.
         return std::unexpected { ArithmeticError::DomainError };
+    }
+
+    /// The answer alone, for the evaluation path, which has no use for the
+    /// two rows it came from. A wrapper and not a second scan, deliberately:
+    /// see `locate_and_interpolate` above for why there is exactly one.
+    template <BreakpointTable Points>
+    [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> interpolate(
+        Rational key, std::array<Rational, Points.size()> const& corrections) noexcept
+    {
+        std::expected<std::pair<Rational, Segment>, ArithmeticError> const answered =
+            locate_and_interpolate<Points>(key, corrections);
+        if (!answered.has_value())
+            return std::unexpected { answered.error() };
+        return answered->first;
     }
 } // namespace detail
 

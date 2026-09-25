@@ -724,13 +724,15 @@ using formula::KeyTable;
 
 /// The same table `trace_tests.cpp` records against, and non-degenerate for
 /// the same reasons: bands of unequal width, stated in a key unit that is
-/// neither the operand's declared unit nor the coherent SI one, no bound
-/// equal to its own index, one bound declared unreduced so that reducing it
-/// is visibly a decision, and three distinct corrections.
+/// neither the operand's declared unit nor the coherent SI one, no bound equal
+/// to its own index, three distinct corrections, and three bounds declared
+/// unreduced so that reducing them is visibly a decision -- including the
+/// table's **outer** two, which are the only bounds a covered-range rendering
+/// ever reads.
 inline constexpr BandTable<3> SizeBands {
-    band(1, 1, 5, 2),  // 1 to under 5/2 cm
+    band(2, 2, 5, 2),  // 1 to under 5/2 cm -- 2/2 declared, and the table's low end
     band(5, 2, 10, 2), // 5/2 to under 5 cm -- 10/2 declared, so reduction shows
-    band(5, 1, 9, 1),  // 5 to under 9 cm
+    band(5, 1, 18, 2), // 5 to under 9 cm -- 18/2 declared, and the table's high end
 };
 
 [[nodiscard]] constexpr auto sizeLookup()
@@ -760,12 +762,13 @@ inline constexpr KeyTable<SpecimenShape, 3> ShapeKeys {
     return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4), rat(13, 10) });
 }
 
-/// Three breakpoints in centimetres, unequally spaced, the middle key neither
-/// whole nor reduced.
+/// Three breakpoints in centimetres, unequally spaced, none of them reduced --
+/// the outer two because they are the only rows a covered-range rendering
+/// reads, the middle one because it is the row a segment rendering reads.
 inline constexpr BreakpointTable<3> CurvePoints {
-    breakpoint(1),
+    breakpoint(4, 4),  // 1 cm -- the curve's low end, declared unreduced
     breakpoint(14, 4), // 7/2 cm -- declared unreduced, and in the middle
-    breakpoint(8),
+    breakpoint(24, 3), // 8 cm -- the curve's high end, declared unreduced
 };
 
 [[nodiscard]] constexpr auto curveLookup()
@@ -779,8 +782,11 @@ inline constexpr BreakpointTable<3> CurvePoints {
 /// against each other at 30 mm and `render_tests.cpp` pins the two spellings
 /// inside a formula; a derivation is the third surface, and it is pinned on
 /// the same number for the same reason.
-inline constexpr BandTable<2> TopBands { band(9, 1, 20, 1), band(20, 1, 30, 1) };
-inline constexpr BreakpointTable<2> TopPoints { breakpoint(20), breakpoint(30) };
+/// Both top ends are declared unreduced (`60/2`), so that a rendering which
+/// stopped reducing a covered range or a row would print `60/2 mm` here
+/// instead of `30 mm` rather than passing unchanged.
+inline constexpr BandTable<2> TopBands { band(9, 1, 20, 1), band(20, 1, 60, 2) };
+inline constexpr BreakpointTable<2> TopPoints { breakpoint(20), breakpoint(60, 2) };
 
 /// The degenerate tables: one that covers nothing at all, and one whose only
 /// row is simultaneously its first and its last.
@@ -801,9 +807,18 @@ inline constexpr BandTable<1> WideBand { band(0, 1, 100, 1) };
 /// The inner table of the nested pair, whose corrections are lengths so that
 /// a lookup can stand where another lookup's operand stands.
 inline constexpr BandTable<2> InnerBands {
-    band(1, 1, 3, 1), // 1 to under 3 cm
-    band(3, 1, 6, 1), // 3 to under 6 cm
+    band(2, 2, 3, 1),  // 1 to under 3 cm
+    band(3, 1, 12, 2), // 3 to under 6 cm
 };
+
+/// An exact table whose corrections are stated in kilometres, so that a row
+/// that IS found still fails converting out of the result unit.
+inline constexpr KeyTable<SpecimenShape, 2> FarKeys { SpecimenShape::Cube, SpecimenShape::Cylinder };
+
+/// Two rows in centimetres whose values are stated in kilometres: 0 cm sits
+/// exactly on the first row, so the interpolation does no arithmetic and the
+/// failure that follows belongs to the conversion alone.
+inline constexpr BreakpointTable<2> FarValues { breakpoint(0), breakpoint(5) };
 
 /// A consumer's own node kind, written against the two-parameter extension
 /// point, so the library never hands it to a sink and it contributes no step.
@@ -1012,11 +1027,23 @@ TEST_CASE("a derivation renders an interpolating miss as outside the curve, not 
              "2. interpolate(#1) = argument outside the domain of the operation"
              " [outside the curve, which runs 1 to 8 cm]\n");
 
-    // A value inside the curve is a value, and the step carries no clause at
-    // all: an interpolating table selects no row, so there is none to name.
+    // A value inside the curve names the two rows its answer came from --
+    // which is what an auditor reconciles against a published curve, and the
+    // honest equivalent of "which band" for a table that selects no single
+    // row. 6 cm is in the second segment, not the first, so a renderer
+    // reaching for a fixed pair is visible; and the rows are reduced on the
+    // way out, as every other declared bound in this library is.
     CHECK(derivationOf(curveLookup(), diameterOf(60))
           == "1. d = 60 mm\n"
-             "2. interpolate(#1) = 140/9 %\n");
+             "2. interpolate(#1) = 140/9 % [between 7/2 and 8 cm]\n");
+
+    // A value sitting exactly on a row says so instead. The two clauses mean
+    // different things -- between two rows a reader has an interpolation to
+    // check, on a row the table stated the number itself -- and at the curve's
+    // last row it is the only way an answer can be produced at all.
+    CHECK(derivationOf(curveLookup(), diameterOf(35))
+          == "1. d = 35 mm\n"
+             "2. interpolate(#1) = -115 % [on the row at 7/2 cm]\n");
 }
 
 TEST_CASE("a derivation spells a band's excluded top and a curve's included one differently",
@@ -1034,10 +1061,11 @@ TEST_CASE("a derivation spells a band's excluded top and a curve's included one 
     REQUIRE(banded.size() == 2);
     CHECK(bracketed(banded[1]) == "in no band; the bands cover 9 to under 30 mm");
 
-    // The same number, reached rather than excluded.
+    // The same number, reached rather than excluded -- and the line says so:
+    // 30 mm is a row of this curve, and the clause names it as one.
     CHECK(derivationOf(curve, diameterOf(30))
           == "1. d = 30 mm\n"
-             "2. interpolate(#1) = 2\n");
+             "2. interpolate(#1) = 2 [on the row at 30 mm]\n");
 
     // And the curve's own extent, spelled without the word that makes a band
     // half-open -- on the same number the band table excluded.
@@ -1126,6 +1154,33 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
           == "1. d = 30 mm\n"
              "2. lookup(#1) = overflow in exact arithmetic"
              " [this lookup's own unit conversion failed, not anything below it]\n");
+
+    // The same state on the exact kind, which has no operand and no
+    // interpolation -- so nothing else in this file would notice the clause
+    // going missing entirely.
+    constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(SpecimenShape::Cylinder, { rat(1), rat(Huge) });
+    CHECK(derivationOf(far, formula::environment())
+          == "1. lookup(key 7) = overflow in exact arithmetic"
+             " [this lookup's own unit conversion failed, not anything below it]\n");
+
+    // And on the interpolating kind, where it is one enumerator away from
+    // claiming "the interpolation itself overflowed" about an interpolation
+    // that did no arithmetic at all: 0 cm sits exactly on the first row.
+    constexpr auto afterCurve =
+        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1) });
+    CHECK(derivationOf(afterCurve, diameterOf(0))
+          == "1. d = 0 mm\n"
+             "2. interpolate(#1) = overflow in exact arithmetic"
+             " [this lookup's own unit conversion failed, not anything below it]\n");
+
+    // And on the other side of the curve, where it is one enumerator away
+    // from claiming a three-row curve declares no rows: converting 2^62 metres
+    // into centimetres overflows before any row is looked at.
+    constexpr auto beforeCurve = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
+        formula::constant<unit::Metre>(rat(Huge)), { rat(90), rat(-115), rat(120) });
+    std::vector<std::string> const keySide = lines(derivationOf(beforeCurve, formula::environment()));
+    REQUIRE(keySide.size() == 2);
+    CHECK(bracketed(keySide[1]) == "this lookup's own unit conversion failed, not anything below it");
 }
 
 TEST_CASE("a derivation renders a miss against a table that covers nothing at all",

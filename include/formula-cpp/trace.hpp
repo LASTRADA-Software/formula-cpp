@@ -411,6 +411,29 @@ struct Step
     /// reasoning is `granularity`'s, above, unchanged.
     std::optional<Band> selectedBand {};
 
+    /// For `InterpolatingLookup` when the curve answered: the two rows the
+    /// answer came from, as the table declared them -- `low == high` when the
+    /// value sat exactly **on** a row, and the surrounding pair when it sat
+    /// between two.
+    ///
+    /// The interpolating counterpart of `selectedBand` above, and set under
+    /// the same rule: only when the step produced a value. An interpolating
+    /// table selects no single row -- between two rows its answer appears in
+    /// neither of them -- so the honest equivalent of "which band" is "which
+    /// two rows", which is what an auditor reconciles against the published
+    /// curve.
+    ///
+    /// Empty for every other kind, for a miss, for any failure, for an absent
+    /// operand, and when the operand contributed no step for the recorder to
+    /// read its value from -- the same silences `selectedBand` keeps, for the
+    /// same reason.
+    ///
+    /// The segment comes back from `detail::locate_and_interpolate`
+    /// (`lookup.hpp`), the single scan that also produced the value, rather
+    /// than from a second scan here: two scans of one table against one rule
+    /// are two surfaces obliged to agree.
+    std::optional<Segment> selectedSegment {};
+
     /// For `BandedLookup` and `InterpolatingLookup` when this lookup
     /// **missed**: the interval the table covers as a whole, stated in
     /// `sourceUnit`. What a reader needs in order to see *why* nothing
@@ -646,6 +669,15 @@ namespace detail
     /// one, so an operand step carrying an error and a lookup step carrying
     /// an error are the same error, and there is no third possibility in
     /// which the operand failed and the lookup did not.
+    ///
+    /// **It cannot false-positive, and that is provable rather than merely
+    /// plausible.** The worry would be a claimed operand step that failed
+    /// while the parent went on to succeed -- an evaluated-then-abandoned
+    /// child. No node in this library produces one: the only kind that
+    /// chooses between children is `WhenNode`, and `conditional.hpp`
+    /// dispatches **only** the branch it took, so an abandoned branch is
+    /// never evaluated and contributes no step to abandon. A failed claimed
+    /// operand therefore always is the error this step is carrying.
     template <typename Rep>
     [[nodiscard]] bool an_operand_failed(std::vector<Step<Rep>> const& steps, Step<Rep> const& step)
     {
@@ -810,17 +842,19 @@ namespace detail
     /// Fills in an interpolating lookup step's `lookupFailure`.
     ///
     /// The one kind that can fail **three** ways of its own, so the one that
-    /// needs `interpolate` re-asked rather than a rule of thumb: it is the
-    /// function that decides whether a value is on the curve at all, and its
-    /// `DomainError` is documented there as unambiguously a miss, every other
-    /// error it returns coming from the arithmetic. Re-asking it is what
-    /// separates "the interpolation overflowed" from "the table does not
-    /// reach this specimen" without this file re-deciding either.
+    /// needs `locate_and_interpolate` re-asked rather than a rule of thumb: it
+    /// is the function that decides whether a value is on the curve at all,
+    /// and its `DomainError` is documented there as unambiguously a miss,
+    /// every other error it returns coming from the arithmetic. Re-asking it
+    /// is what separates "the interpolation overflowed" from "the table does
+    /// not reach this specimen" without this file re-deciding either -- and
+    /// the same call hands back the two rows the answer came from, so the
+    /// derivation names them without a second scan.
     ///
-    /// No band is recorded: an interpolating table selects nothing. Between
-    /// two rows the answer is a number that appears in no row of it, and on a
-    /// row the answer is that row's own value -- which the step's value
-    /// already is.
+    /// No band is recorded: an interpolating table selects no single row.
+    /// Between two rows its answer appears in neither of them, and on a row
+    /// the answer is that row's own value -- which the step's value already
+    /// is. `selectedSegment` is the honest equivalent, and it names both rows.
     template <typename Rep, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
     void record_lookup(InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node,
                        Step<Rep>& step,
@@ -852,7 +886,8 @@ namespace detail
                 return;
             }
 
-            std::expected<Rational, ArithmeticError> const answered = interpolate<Points>(*valueInKey, node.corrections);
+            std::expected<std::pair<Rational, Segment>, ArithmeticError> const answered =
+                locate_and_interpolate<Points>(*valueInKey, node.corrections);
             if (!answered.has_value())
             {
                 if (answered.error() == ArithmeticError::DomainError)
@@ -869,6 +904,8 @@ namespace detail
             // converting that answer out of the table's result unit.
             if (step.error.has_value())
                 step.lookupFailure = LookupFailure::Conversion;
+            else
+                step.selectedSegment = answered->second;
         }
     }
 } // namespace detail
