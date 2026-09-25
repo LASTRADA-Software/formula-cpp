@@ -12,6 +12,7 @@
 /// itself.
 
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/render.hpp>
 
 #include <string>
@@ -137,6 +138,9 @@ namespace detail
     template <Predicate P, Node Then, Node Else>
     void collect(Walk& walk, WhenNode<P, Then, Else> const& node);
 
+    template <Predicate P>
+    void collect(Walk& walk, Constraint<P> const& node);
+
     /// A variable contributes one row to the symbol table -- unless its
     /// quantity type has already contributed one, in which case the second
     /// use of that quantity adds nothing. A different quantity that merely
@@ -248,12 +252,69 @@ namespace detail
         collect(walk, node.thenBranch);
         collect(walk, node.elseBranch);
     }
+
+    /// A constraint carries its own `Citation` instead of being wrapped by
+    /// `documented()` -- see `constraint.hpp`'s file comment for why it
+    /// cannot be: `DocumentedNode` requires `Node Inner`, and a constraint is
+    /// deliberately not a `Node`. So this pushes onto the same citation list
+    /// `collect(Walk&, DocumentedNode<Inner> const&)` above pushes onto,
+    /// rather than opening a second path into it, then walks the predicate
+    /// for the variables both its sides read.
+    ///
+    /// **Only when the citation is not blank.** `constraint(predicate,
+    /// verdict, citation = {})` (`constraint.hpp`) makes `citation` optional
+    /// -- the two-argument call is an ordinary, supported way to declare a
+    /// constraint, used by this project's own guide, example and several
+    /// tests -- so `node.citation` is not always something a caller meant to
+    /// cite. `DocumentedNode` has no equivalent guard because
+    /// `documented(expr, citation)` requires the citation argument; nothing
+    /// here has ever been able to construct a `DocumentedNode` with a blank
+    /// one to compare against. Pushing unconditionally would turn
+    /// `documentation.citations.empty()` from "this formula cites nothing"
+    /// into "this formula cites nothing, unless it read an uncited
+    /// constraint", and would render a bare, five-blank-field citation entry
+    /// on a generated page. `Citation`'s memberwise `operator==` against a
+    /// value-initialised `Citation {}` is exactly "every field empty".
+    template <Predicate P>
+    void collect(Walk& walk, Constraint<P> const& node)
+    {
+        if (!(node.citation == Citation {}))
+            walk.documentation.citations.push_back(node.citation);
+        collect(walk, node.predicate);
+    }
 } // namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
 /// citations and symbol table a documentation page needs.
 template <Dialect D = Dialect::Plain, Node N>
 [[nodiscard]] Documentation document(N const& node)
+{
+    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents @p node: renders it in dialect @p D and walks it for the
+/// citation and symbol table a documentation page needs.
+///
+/// A second overload, not the one above, for the identical reason
+/// `render()` (`render.hpp`) carries a separate overload for `Constraint`
+/// rather than reusing its `Node` one: a `Constraint` is not a `Node` --
+/// `constraint.hpp`'s file comment explains why -- so it cannot reach the
+/// overload above at all. This is **not** the same gap `documented()`
+/// leaves. `documented()` still cannot wrap a constraint, and should not:
+/// `DocumentedNode` requires `Node Inner`, and a constraint carries its own
+/// `Citation` precisely so that it never needs wrapping in the first place.
+/// This overload is the other half -- the one that lets a constraint be
+/// documented directly, the way it is already rendered directly -- and it
+/// does so through the exact same machinery: `render<D>(node)` dispatches
+/// to `render.hpp`'s own `Constraint` overload, and `detail::collect(walk,
+/// node)` dispatches to `collect(Walk&, Constraint<P> const&)` above, which
+/// pushes the constraint's citation and walks its predicate for the symbol
+/// table. Nothing here is new machinery; this overload is what makes that
+/// existing machinery reachable from the public API at all.
+template <Dialect D = Dialect::Plain, Predicate P>
+[[nodiscard]] Documentation document(Constraint<P> const& node)
 {
     detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
     detail::collect(walk, node);

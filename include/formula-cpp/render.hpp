@@ -17,6 +17,7 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
@@ -174,6 +175,12 @@ template <Dialect D, Node N>
 /// above; `WhenNode::render_node` calls this one to render its predicate.
 template <Dialect D, Predicate P>
 [[nodiscard]] std::string render(P const& node);
+
+/// Renders @p node in dialect @p D. A `Constraint` is not a `Node` either,
+/// nor is it itself a `Predicate` -- see `constraint.hpp` -- so it needs
+/// this third overload, for the identical reason the second one above does.
+template <Dialect D, Predicate P>
+[[nodiscard]] std::string render(Constraint<P> const& node);
 
 namespace detail
 {
@@ -446,6 +453,57 @@ template <Dialect D, Comparison Op, Node Left, Node Right>
     return lhs + " " + symbol + " " + rhs;
 }
 
+/// A constraint renders as its rule alone -- `require <lhs> <comparison>
+/// <rhs>` -- never its `Verdict`.
+///
+/// `require` is not a name borrowed from the public API: `constraint(predicate,
+/// verdict, citation)` is a three-argument call, so nothing here reads as a
+/// mis-spelled invocation of it. It is the same keyword `constraint_expression`
+/// (`trace_render.hpp`) already spells a `Constraint` trace step with, reused
+/// here on purpose -- a reader who has seen a constraint in one surface
+/// recognises it in the other, and a rendered constraint that agreed with the
+/// standard but disagreed with its own trace would be its own kind of
+/// misleading text.
+///
+/// **The verdict stays out**, for the same reason `RoundingMode` stays out of
+/// `RoundNode`'s text above, and closer still to why `NumericValueNode`'s
+/// justification stays out of both its text and `document()`: this function
+/// states the condition a standard asks a reader to check, and a verdict is
+/// not part of that condition, it is what a checker does once the condition
+/// has already been decided. Unlike a rounding tie rule -- which can be the
+/// entire reason a computed number came out as it did -- a verdict never
+/// changes whether the predicate holds; `check()` (`constraint.hpp`) reaches
+/// `Satisfied` or `Violated` from the predicate alone, and only *attaches*
+/// the verdict after that is already settled. That makes it a label on an
+/// outcome, not an ingredient of one -- the exact role `NumericValueNode`'s
+/// justification plays, and that one is excluded even from `document()`; see
+/// its own comment above.
+///
+/// This project's own two illustrative constraints (`constraint.hpp`'s file
+/// comment) do not settle it by prose alone, and are not cited here as if
+/// they did: "the two replicates shall agree within 5%" names no consequence
+/// at all, while "reject the specimen below 30 MPa" folds one in. A standard
+/// is read either way in practice, which is exactly why the deciding fact
+/// has to be what `Verdict` structurally *is* on this type, not which of two
+/// quoted sentences sounds more natural.
+///
+/// Where the verdict does appear is the trace: `Constraint::check`
+/// (`constraint.hpp`) records a `ConstraintOutcome` carrying it, and
+/// `constraint_outcome_suffix` (`trace_render.hpp`) writes it as a bracketed
+/// clause on the step, `require #1 >= #2 [reject the specimen]` -- the one
+/// place a verdict is a fact about what actually happened, not a rule stated
+/// in the abstract. Leaving it out of this text is a decision; leaving it
+/// out of the trace would be a defect.
+template <Dialect D, Predicate P>
+[[nodiscard]] std::string render_node(Constraint<P> const& node)
+{
+    std::string const predicateText = render<D>(node.predicate);
+    if constexpr (D == Dialect::LaTeX)
+        return "\\text{require } " + predicateText;
+    else
+        return "require " + predicateText;
+}
+
 /// A conditional renders as `if <predicate> then <then> else <else>` in every
 /// dialect but LaTeX, which spells it as a `\begin{cases}` block -- the usual
 /// way a case-defined quantity is typeset. Both branches are unambiguous
@@ -509,6 +567,22 @@ template <Dialect D, Predicate P>
 /// Renders @p node as plain text.
 template <Predicate P>
 [[nodiscard]] std::string render(P const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+/// Renders @p node in dialect @p D. See the forward declaration above for why
+/// this overload -- for `Constraint`, not `Node` or `Predicate` -- exists
+/// separately.
+template <Dialect D, Predicate P>
+[[nodiscard]] std::string render(Constraint<P> const& node)
+{
+    return render_node<D>(node);
+}
+
+/// Renders @p node as plain text.
+template <Predicate P>
+[[nodiscard]] std::string render(Constraint<P> const& node)
 {
     return render<Dialect::Plain>(node);
 }

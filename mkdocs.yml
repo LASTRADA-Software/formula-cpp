@@ -37,6 +37,7 @@ nav:
   - Citations and rendering: citations.md
   - Tracing and audit trails: tracing.md
   - Rounding and conditionals: rounding-and-conditionals.md
+  - Constraints and verdicts: constraints.md
   - Gallery: gallery.md
   # Doxygen output, dropped into the built site's api/ directory by
   # .github/workflows/pages.yml after `mkdocs build` runs -- not a page

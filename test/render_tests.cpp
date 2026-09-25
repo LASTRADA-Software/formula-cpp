@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/render.hpp>
 
@@ -588,6 +589,64 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
              "\\end{cases} & \\text{otherwise} \\end{cases}");
 }
 
+// --------------------------------------------------- phase 9: constraints
+
+TEST_CASE("render: a constraint renders as its rule, never its verdict", "[render][constraint]")
+{
+    constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
+    constexpr auto rule = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
+
+    CHECK(formula::render<Dialect::Plain>(rule) == "require V_w <= V_c");
+    CHECK(formula::render<Dialect::Markdown>(rule) == "require `V_w` <= `V_c`");
+    CHECK(formula::render<Dialect::LaTeX>(rule) == "\\text{require } V_w \\leq V_c");
+    // The default dialect for a Constraint is plain, exactly as for a Node
+    // and for a Predicate.
+    CHECK(formula::render(rule) == "require V_w <= V_c");
+
+    // The verdict's own label appears nowhere above, in any dialect -- see
+    // render_node(Constraint...)'s comment for why that is the decision,
+    // not an oversight: it is what checking concludes, not part of the rule
+    // a standard asks a reader to check.
+    std::string const label { rejectSpecimen.label };
+    CHECK(formula::render<Dialect::Plain>(rule).find(label) == std::string::npos);
+    CHECK(formula::render<Dialect::Markdown>(rule).find(label) == std::string::npos);
+    CHECK(formula::render<Dialect::LaTeX>(rule).find(label) == std::string::npos);
+}
+
+TEST_CASE("render: a constraint keeps the predicate's own side order, tested in both arrangements",
+          "[render][constraint]")
+{
+    // The Global Constraint about testing both sides of a two-sided
+    // operation: a predicate has two sides, so build the same two variables
+    // into it both ways and confirm the rendered order actually follows the
+    // tree, rather than a bug that always printed (say) the alphabetically
+    // first symbol regardless of which side it was declared on.
+    constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
+    constexpr auto waterFirst = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
+    constexpr auto cementFirst = formula::constraint(var<CementVolume> <= var<WaterVolume>, rejectSpecimen);
+
+    CHECK(formula::render(waterFirst) == "require V_w <= V_c");
+    CHECK(formula::render(cementFirst) == "require V_c <= V_w");
+}
+
+TEST_CASE("render: a constraint's predicate brackets a nested conditional exactly as it would bare",
+          "[render][constraint]")
+{
+    // Constraint's render_node forwards to the same render<D>(predicate)
+    // PredicateNode itself uses, so a WhenNode on either side still brackets
+    // for the identical reason it does for a bare predicate (see "render: a
+    // conditional nested as a predicate's operand keeps its bracket" above)
+    // -- this is not re-derived, only confirmed still true through the new
+    // entry point.
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * rat(2));
+    constexpr auto guarded = chosen > formula::constant<formula::unit::Megapascal>(rat(10));
+    constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
+    constexpr auto rule = formula::constraint(guarded, rejectSpecimen);
+
+    CHECK(formula::render(rule) == "require (if f > 50 MPa then f else f * 2) > 10 MPa");
+}
+
 // --------------------------------------------- phase 8 fix round 3: guard
 // against the whole class of bug review round 3 found, not just this one
 // instance. `"](" `is CommonMark's inline-link syntax -- a Markdown renderer
@@ -619,6 +678,8 @@ TEST_CASE("render: Markdown output never contains CommonMark link syntax, for an
     constexpr auto numeric = formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(var<Strength>);
     constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
     constexpr auto citedDiameter = formula::documented(var<Diameter>, { .title = "Diameter, cited" });
+    constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
+    constexpr auto rule = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
 
     hasNoLinkSyntax(formula::render<Dialect::Markdown>(var<Strength>));                                    // VarNode
     hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(150)))); // ConstantNode
@@ -633,6 +694,7 @@ TEST_CASE("render: Markdown output never contains CommonMark link syntax, for an
     hasNoLinkSyntax(formula::render<Dialect::Markdown>(numeric));                                          // NumericValueNode
     hasNoLinkSyntax(formula::render<Dialect::Markdown>(chosen));                                           // WhenNode
     hasNoLinkSyntax(formula::render<Dialect::Markdown>(overFifty));                                        // PredicateNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(rule));                                              // Constraint
 
     // And a formula nesting several of the above, since a guard that only
     // ever sees one node kind in isolation could still miss an interaction

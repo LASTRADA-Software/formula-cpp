@@ -90,6 +90,22 @@ constexpr auto circularArea =
                           .section = "5.1",
                           .text = "The area of a circular cross-section computed from its diameter." });
 
+// ---- 2a: a constraint, alongside the circular area it validates ------------
+//
+// Not every relationship a standard states computes something -- some exist
+// purely to validate a measured input before it ever reaches a formula like
+// circularArea above. A specimen wider than the die diameter cannot be
+// tested at all, so the method rejects it outright rather than reporting an
+// area for it.
+constexpr auto maximumDiameter =
+    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 150 }),
+                        formula::Verdict { "specimen exceeds diameter tolerance" },
+                        { .title = "Maximum specimen diameter",
+                          .reference = "Example Standard 6:2020",
+                          .section = "4.1",
+                          .text = "A specimen wider than the die diameter cannot be tested and is rejected "
+                                  "outright." });
+
 // ---- 3: a flow rate ----------------------------------------------------------
 
 struct DischargedVolume: formula::Quantity<DischargedVolume, "V", "volume discharged", unit::Litre>
@@ -222,6 +238,79 @@ void write_formula(std::ofstream& out, N const& node)
         out << citation.text << "\n\n";
 }
 
+/// Writes one constraint's section: its citation's title as a heading, the
+/// plain and LaTeX renderings of its rule -- never its verdict, which
+/// belongs to the trace, not the rule (docs/constraints.md explains why) --
+/// and its symbol table.
+///
+/// Not `write_formula` above only because a `Constraint` is not a `Node`
+/// (`constraint.hpp`'s file comment) and so cannot be passed to the
+/// `Node`-constrained `document<D>()` overload; it goes through
+/// `document()`'s other overload, for `Constraint`, instead, added
+/// alongside the `Node` one in `document.hpp` for exactly this reason.
+/// Everything downstream of that call is identical to `write_formula`'s own
+/// shape, including the symbol table -- a constraint documents exactly the
+/// way a formula does, and this page should not read as though it doesn't.
+///
+/// Returns false, with a message on stderr, rather than assuming a citation
+/// the way `write_formula` above assumes one: `write_formula`'s own
+/// `citations.front()` leans on every `Node` here being wrapped by
+/// `documented(inner, citation)`, whose `citation` parameter has no
+/// default, so a wrapped node always contributes one citation regardless of
+/// what it says. `constraint(predicate, verdict, citation = {})`
+/// (`constraint.hpp`) has no such backstop -- its citation is optional by
+/// design, used uncited in this project's own guide, example and tests --
+/// so nothing here can lean on the type system the way `write_formula` can;
+/// "every gallery constraint is cited" is a convention this file happens to
+/// follow today, not a guarantee. `.front()` on an empty vector is
+/// undefined behaviour, and on an MSVC debug build that means an assertion
+/// dialog, not a clean crash -- exactly the modal-dialog failure mode
+/// `examples/CMakeLists.txt`'s own comment warns about, and this tool is
+/// run from `ctest` (`gallery.is-current`) just as an example is. Checking
+/// first and failing loudly costs one `if`.
+template <formula::Predicate P>
+[[nodiscard]] bool write_constraint(std::ofstream& out, formula::Constraint<P> const& node)
+{
+    formula::Documentation const plain = formula::document(node);
+    formula::Documentation const markdown = formula::document<formula::Dialect::Markdown>(node);
+    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(node);
+
+    if (plain.citations.empty())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: a gallery constraint must be cited, and this one is not\n");
+        return false;
+    }
+    formula::Citation const& citation = plain.citations.front();
+
+    out << "## " << citation.title << "\n\n";
+
+    out << "```\n" << plain.formula << "\n```\n\n";
+
+    out << "$$\n" << latex.formula << "\n$$\n\n";
+
+    out << "| Symbol | Description | Unit |\n";
+    out << "| --- | --- | --- |\n";
+    for (formula::SymbolEntry const& row: markdown.symbols)
+        out << "| " << row.symbol << " | " << row.description << " | " << unit_cell(row.unit) << " |\n";
+    out << "\n";
+
+    bool const hasBibliographicFields =
+        !citation.reference.empty() || !citation.section.empty() || !citation.equation.empty();
+    if (!citation.reference.empty())
+        out << "- Reference: " << citation.reference << "\n";
+    if (!citation.section.empty())
+        out << "- Section: " << citation.section << "\n";
+    if (!citation.equation.empty())
+        out << "- Equation: " << citation.equation << "\n";
+    if (hasBibliographicFields)
+        out << "\n";
+
+    if (!citation.text.empty())
+        out << citation.text << "\n\n";
+
+    return true;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -250,6 +339,8 @@ int main(int argc, char** argv)
 
     write_formula(out, density);
     write_formula(out, circularArea);
+    if (!write_constraint(out, maximumDiameter))
+        return 1;
     write_formula(out, flowRate);
     write_formula(out, waterCementRatio);
     write_formula(out, compactionAdjustedDensity);
@@ -308,6 +399,27 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << formula::render_trace(explainedCompaction.trace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    // ---- A worked constraint, so the page shows a verdict as its own trace step ----
+
+    out << "## Worked derivation: maximum specimen diameter, alongside the circular area it validates\n\n";
+    out << "`d` = 200 mm -- above the 150 mm tolerance, so the constraint is violated and its verdict "
+           "appears in the trace, `formula::check()` and `formula::render_trace()`:\n\n";
+
+    auto const oversizedSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 200 } });
+    formula::Trace<> constraintTrace {};
+    formula::RecordingSink<> constraintSink { constraintTrace };
+    formula::ConstraintOutcome const diameterOutcome =
+        formula::check(maximumDiameter, oversizedSpecimen, constraintSink);
+    if (!diameterOutcome.is_violated())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked constraint did not violate as expected\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(constraintTrace, { .maxSteps = 5 });
     out << "```\n\n";
 
     out.flush();

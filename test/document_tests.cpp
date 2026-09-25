@@ -24,6 +24,15 @@ struct ExcavationDepth: formula::Quantity<ExcavationDepth, "d", "excavation dept
 struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::unit::Megapascal>
 {
 };
+// Two distinct quantities appearing nowhere else in this file, so a
+// constraint's symbol-table test can tell which side of its predicate
+// contributed a given row.
+struct ReplicateA: formula::Quantity<ReplicateA, "R_a", "first replicate reading", formula::unit::Megapascal>
+{
+};
+struct ReplicateB: formula::Quantity<ReplicateB, "R_b", "second replicate reading", formula::unit::Megapascal>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -40,6 +49,31 @@ constexpr auto ratio =
 constexpr auto perCent = formula::documented(
     ratio * rat(100),
     { .title = "Water/cement ratio, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
+
+// A two-variable predicate -- var<ReplicateA> against var<ReplicateB>, not a
+// variable against an inert constant -- so a symbol-table test can tell
+// whether each side was walked. Invented, as every citation and verdict in
+// this repository must be.
+constexpr auto replicateAgreement =
+    formula::constraint(var<ReplicateA> > var<ReplicateB>,
+                        formula::Verdict { "repeat the test" },
+                        { .title = "Replicate agreement", .reference = "Example Standard 1:2020", .section = "6.2" });
+
+// The two-argument call -- constraint(predicate, verdict), citation left at
+// its default -- is an ordinary, supported way to declare a constraint, used
+// by this project's own guide, example and several tests. So a constraint
+// with no citation at all is not a hypothetical input.
+constexpr auto uncitedAgreement = formula::constraint(var<ReplicateA> > var<ReplicateB>,
+                                                     formula::Verdict { "repeat the test" });
+
+// Cited by clause number alone, with no title -- an ordinary input for a
+// rule that has a section but no name of its own. Deliberately a field
+// other than `title`: it distinguishes collect()'s actual guard, "every
+// field of the citation is blank", from a guard that only happened to
+// check `title`, which this fixture would not catch.
+constexpr auto sectionOnlyAgreement =
+    formula::constraint(var<ReplicateA> > var<ReplicateB>, formula::Verdict { "repeat the test" },
+                        { .section = "9.4" });
 
 } // namespace
 
@@ -270,4 +304,82 @@ TEST_CASE("document: a WhenNode documents both branches, not just the one that w
     CHECK(documentation.symbols[1].description == std::string_view { "specimen diameter" });
     CHECK(documentation.symbols[2].symbol == std::string_view { "d" });
     CHECK(documentation.symbols[2].description == std::string_view { "excavation depth" });
+}
+
+TEST_CASE("document: a constraint's citation reaches the documentation", "[document]")
+{
+    // A Constraint is deliberately not a Node (constraint.hpp's file
+    // comment) and so cannot be wrapped by documented() -- it carries its
+    // own Citation instead. document() itself DOES accept a Constraint
+    // directly, through the overload below the Node one in document.hpp;
+    // going through formula::document(...) here, exactly as every other
+    // test in this file does, is what proves that public path reachable
+    // rather than only proving detail::collect's internals work.
+    formula::Documentation const documentation = formula::document(replicateAgreement);
+
+    // Proves the render() half of this overload too, not only the walk:
+    // document(Constraint<P> const&) dispatches render<D>(node) to
+    // render.hpp's own Constraint overload exactly as the Node overload
+    // does for everything else.
+    CHECK(documentation.formula == "require R_a > R_b");
+    REQUIRE(documentation.citations.size() == 1);
+    CHECK(documentation.citations[0].title == std::string_view { "Replicate agreement" });
+    CHECK(documentation.citations[0].section == std::string_view { "6.2" });
+}
+
+TEST_CASE("document: an uncited constraint contributes no citation row", "[document]")
+{
+    // constraint(predicate, verdict, citation = {}) makes the citation
+    // optional, so collect(Walk&, Constraint<P> const&) must check before
+    // pushing node.citation onto the list -- pushing unconditionally would
+    // turn documentation.citations.empty() from "this formula cites
+    // nothing" into "this formula cites nothing, unless it read an uncited
+    // constraint", and would render a bare, five-blank-field citation entry
+    // on a generated page. The test above proves the cited direction still
+    // contributes exactly one row; this is the other direction.
+    formula::Documentation const documentation = formula::document(uncitedAgreement);
+
+    CHECK(documentation.citations.empty());
+}
+
+TEST_CASE("document: a constraint cited by only one field still contributes a citation row", "[document]")
+{
+    // The all-empty and all-populated cases above do not pin *why* the
+    // guard in collect(Walk&, Constraint<P> const&) is correct -- a guard
+    // written as `!node.citation.title.empty()` passes both of those tests
+    // too, and title is not what the guard actually checks. This is the
+    // case that tells them apart: a citation with title blank and section
+    // filled in must still contribute a row, because it is not blank --
+    // only title is.
+    formula::Documentation const documentation = formula::document(sectionOnlyAgreement);
+
+    REQUIRE(documentation.citations.size() == 1);
+    CHECK(documentation.citations[0].title.empty());
+    CHECK(documentation.citations[0].section == std::string_view { "9.4" });
+}
+
+TEST_CASE("document: a constraint predicate's left-hand side reaches the symbol table", "[document]")
+{
+    formula::Documentation const documentation = formula::document(replicateAgreement);
+
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "R_a" });
+    CHECK(documentation.symbols[0].description == std::string_view { "first replicate reading" });
+}
+
+TEST_CASE("document: a constraint predicate's right-hand side reaches the symbol table, as a separate case",
+          "[document]")
+{
+    // A second, independent case from the one above -- not a second CHECK in
+    // the same test -- because the task-7 review of phase 8 found
+    // collect(walk, node.rhs) completely uncovered: every predicate in this
+    // file put its variable on the left and a constant on the right, so
+    // deleting that line left the whole suite green. This is the same
+    // two-variable predicate as the left-hand test, but the assertion below
+    // targets the right side specifically.
+    formula::Documentation const documentation = formula::document(replicateAgreement);
+
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[1].symbol == std::string_view { "R_b" });
+    CHECK(documentation.symbols[1].description == std::string_view { "second replicate reading" });
 }

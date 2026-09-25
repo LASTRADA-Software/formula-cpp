@@ -49,6 +49,7 @@ add_executable(formula-cpp-tests
     trace_render_tests.cpp
     rounding_node_tests.cpp
     predicate_tests.cpp
+    constraint_tests.cpp
     conditional_tests.cpp
     escape_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")

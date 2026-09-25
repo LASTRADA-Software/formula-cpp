@@ -11,6 +11,7 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/environment.hpp>
