@@ -6,9 +6,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -693,4 +697,457 @@ TEST_CASE("a derivation renders a Constraint step with two operands when the pre
              "3. 0\n"
              "4. #2 / #3 = division by zero\n"
              "5. require #1 > #4 [division by zero]\n");
+}
+
+// ------------------------------------------------------- phase 10: lookups
+
+namespace
+{
+using formula::band;
+using formula::BandTable;
+using formula::banded_lookup;
+using formula::breakpoint;
+using formula::BreakpointTable;
+using formula::exact_lookup;
+using formula::interpolating_lookup;
+using formula::KeyTable;
+
+[[nodiscard]] constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
+{
+    return formula::Rational { numerator, denominator };
+}
+
+[[nodiscard]] auto diameterOf(std::int64_t numerator, std::int64_t denominator = 1)
+{
+    return formula::environment(formula::Measured<Diameter> { rat(numerator, denominator) });
+}
+
+/// The same table `trace_tests.cpp` records against, and non-degenerate for
+/// the same reasons: bands of unequal width, stated in a key unit that is
+/// neither the operand's declared unit nor the coherent SI one, no bound
+/// equal to its own index, one bound declared unreduced so that reducing it
+/// is visibly a decision, and three distinct corrections.
+inline constexpr BandTable<3> SizeBands {
+    band(1, 1, 5, 2),  // 1 to under 5/2 cm
+    band(5, 2, 10, 2), // 5/2 to under 5 cm -- 10/2 declared, so reduction shows
+    band(5, 1, 9, 1),  // 5 to under 9 cm
+};
+
+[[nodiscard]] constexpr auto sizeLookup()
+{
+    return banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(var<Diameter>, { rat(95), rat(112), rat(105) });
+}
+
+/// A signed underlying type with a negative enumerator, so that a renderer
+/// reading a recorded key as unsigned writes 65533 where `render()` writes
+/// -3. Declared out of numeric order for `render_tests.cpp`'s reason.
+enum class SpecimenShape : std::int16_t
+{
+    Undercut = -3,
+    Cube = 4,
+    Cylinder = 7,
+    Beam = 11,
+};
+
+inline constexpr KeyTable<SpecimenShape, 3> ShapeKeys {
+    SpecimenShape::Cube,     // key 4
+    SpecimenShape::Undercut, // key -3 -- the middle row, and negative
+    SpecimenShape::Cylinder, // key 7
+};
+
+[[nodiscard]] constexpr auto shapeLookup(SpecimenShape shape)
+{
+    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4), rat(13, 10) });
+}
+
+/// Three breakpoints in centimetres, unequally spaced, the middle key neither
+/// whole nor reduced.
+inline constexpr BreakpointTable<3> CurvePoints {
+    breakpoint(1),
+    breakpoint(14, 4), // 7/2 cm -- declared unreduced, and in the middle
+    breakpoint(8),
+};
+
+[[nodiscard]] constexpr auto curveLookup()
+{
+    return interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(var<Diameter>,
+                                                                              { rat(90), rat(-115), rat(120) });
+}
+
+/// The two domains ending on the same number, so that a renderer spelling
+/// them the same way fails here. `lookup.hpp` pins the two *behaviours*
+/// against each other at 30 mm and `render_tests.cpp` pins the two spellings
+/// inside a formula; a derivation is the third surface, and it is pinned on
+/// the same number for the same reason.
+inline constexpr BandTable<2> TopBands { band(9, 1, 20, 1), band(20, 1, 30, 1) };
+inline constexpr BreakpointTable<2> TopPoints { breakpoint(20), breakpoint(30) };
+
+/// The degenerate tables: one that covers nothing at all, and one whose only
+/// row is simultaneously its first and its last.
+inline constexpr BandTable<0> NoBands {};
+inline constexpr BreakpointTable<0> NoPoints {};
+inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) }; // 15/2 cm
+
+constexpr std::int64_t Huge = std::int64_t { 1 } << 62;
+
+/// Keys 0 and 4 mm against values 0 and 2^62 - 1: at 3 mm the exact answer
+/// does not exist inside `Rational`, so the interpolation itself overflows.
+inline constexpr BreakpointTable<2> UnrepresentableAnswer { breakpoint(0), breakpoint(4) };
+
+/// A band that is hit, whose correction is stated in kilometres and does not
+/// survive the conversion into metres -- an own failure that is not a miss.
+inline constexpr BandTable<1> WideBand { band(0, 1, 100, 1) };
+
+/// The inner table of the nested pair, whose corrections are lengths so that
+/// a lookup can stand where another lookup's operand stands.
+inline constexpr BandTable<2> InnerBands {
+    band(1, 1, 3, 1), // 1 to under 3 cm
+    band(3, 1, 6, 1), // 3 to under 6 cm
+};
+
+/// A consumer's own node kind, written against the two-parameter extension
+/// point, so the library never hands it to a sink and it contributes no step.
+struct UntracedLength: formula::NodeBase
+{
+    static constexpr formula::Dimension dimension = formula::dim::Length;
+};
+
+/// Every line of a rendered derivation, with the trailing newline of each
+/// already removed.
+[[nodiscard]] std::vector<std::string> lines(std::string const& text)
+{
+    std::vector<std::string> result;
+    std::size_t start = 0;
+    for (std::size_t at = text.find('\n'); at != std::string::npos; at = text.find('\n', start))
+    {
+        result.push_back(text.substr(start, at - start));
+        start = at + 1;
+    }
+    return result;
+}
+
+/// One rendered derivation, for a node evaluated against @p environment.
+template <typename Node, typename Env>
+[[nodiscard]] std::string derivationOf(Node const& node, Env const& environment)
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+    return formula::render_trace(trace, { .maxSteps = 10 });
+}
+
+/// The head name of a call -- everything before its first `(`. Located by
+/// position and by nothing else, so that the cross-surface test below
+/// compares the two surfaces to each other rather than each to a literal of
+/// its own.
+[[nodiscard]] std::string headName(std::string const& text)
+{
+    return text.substr(0, text.find('('));
+}
+
+/// The subject of a call -- its first argument, up to the first `, ` or the
+/// closing `)`. Valid only where the subject itself contains neither.
+[[nodiscard]] std::string callSubject(std::string const& text)
+{
+    std::size_t const open = text.find('(');
+    REQUIRE(open != std::string::npos);
+    std::size_t const end = std::min(text.find(", ", open), text.find(')', open));
+    REQUIRE(end != std::string::npos);
+    return text.substr(open + 1, end - open - 1);
+}
+
+/// The fields of a rendered call's argument list, split on `, ` -- the Plain
+/// dialect's own separator.
+[[nodiscard]] std::vector<std::string> callFields(std::string const& text)
+{
+    std::size_t const open = text.find('(');
+    std::size_t const close = text.rfind(')');
+    REQUIRE(open != std::string::npos);
+    REQUIRE(close != std::string::npos);
+
+    std::string const inside = text.substr(open + 1, close - open - 1);
+    std::vector<std::string> fields;
+    std::size_t start = 0;
+    for (std::size_t at = inside.find(", "); at != std::string::npos; at = inside.find(", ", start))
+    {
+        fields.push_back(inside.substr(start, at - start));
+        start = at + 2;
+    }
+    fields.push_back(inside.substr(start));
+    return fields;
+}
+
+/// The contents of a step line's one bracketed clause, without the brackets.
+[[nodiscard]] std::string bracketed(std::string const& line)
+{
+    std::size_t const open = line.rfind('[');
+    std::size_t const close = line.rfind(']');
+    REQUIRE(open != std::string::npos);
+    REQUIRE(close != std::string::npos);
+    REQUIRE(open < close);
+    return line.substr(open + 1, close - open - 1);
+}
+} // namespace
+
+namespace formula
+{
+template <typename Rep = Rational, typename Env>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(UntracedLength const&, Env const&) noexcept
+{
+    return std::unexpected { ArithmeticError::DivisionByZero };
+}
+} // namespace formula
+
+TEST_CASE("a derivation names the band a banded lookup's value fell in", "[trace-render][lookup]")
+{
+    // A step reading only `= 112 %` explains nothing. What a reader checking
+    // a number needs is that 112 % came from the band containing the input --
+    // and the band is stated in the unit the table declared it in, which is
+    // neither the unit the operand was entered in nor the one the result is
+    // shown in.
+    CHECK(derivationOf(sizeLookup(), diameterOf(30))
+          == "1. d = 30 mm\n"
+             "2. lookup(#1) = 112 % [5/2 to under 5 cm]\n");
+}
+
+TEST_CASE("a derivation renders a banded miss as a miss, never as a value", "[trace-render][lookup]")
+{
+    // Phase 9's `[not checked]` against `[else]` is the precedent: a reader
+    // must never confuse "no row matched" with "the matched row held zero".
+    // The bands are named too, because "outside the domain" is not something
+    // a reader can check without knowing what the domain was.
+    CHECK(derivationOf(sizeLookup(), diameterOf(95))
+          == "1. d = 95 mm\n"
+             "2. lookup(#1) = argument outside the domain of the operation"
+             " [in no band; the bands cover 1 to under 9 cm]\n");
+}
+
+TEST_CASE("a derivation renders a lookup's own miss differently from one it is relaying",
+          "[trace-render][lookup]")
+{
+    // The heart of the matter. Both derivations below end in a lookup step
+    // carrying the IDENTICAL error, and a renderer reading that step alone
+    // would say "lookup failed: argument outside the domain of the operation"
+    // for both -- true-sounding, and in the second case describing a table
+    // that was never consulted.
+    constexpr auto inner =
+        banded_lookup<unit::Centimetre, InnerBands, unit::Millimetre>(var<Diameter>, { rat(950), rat(35) });
+    constexpr auto nested =
+        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(inner, { rat(95), rat(112), rat(105) });
+
+    // The inner table hits and answers 950 mm == 95 cm, which the outer table
+    // does not reach: the outer lookup missed on its own.
+    std::string const ownMiss = derivationOf(nested, diameterOf(15));
+    CHECK(ownMiss
+          == "1. d = 15 mm\n"
+             "2. lookup(#1) = 950 mm [1 to under 3 cm]\n"
+             "3. lookup(#2) = argument outside the domain of the operation"
+             " [in no band; the bands cover 1 to under 9 cm]\n");
+
+    // The inner table misses and the outer one relays its error untouched.
+    // The outer line claims nothing about the outer table, and points at the
+    // line that does carry the failure.
+    std::string const relayed = derivationOf(nested, diameterOf(95));
+    CHECK(relayed
+          == "1. d = 95 mm\n"
+             "2. lookup(#1) = argument outside the domain of the operation"
+             " [in no band; the bands cover 1 to under 6 cm]\n"
+             "3. lookup(#2) = argument outside the domain of the operation [carried up from #2]\n");
+
+    // And the two outermost lines are compared to each other rather than only
+    // to the literals above, so that a change making them agree fails here
+    // even if both literals were updated to match.
+    REQUIRE(lines(ownMiss).size() == 3);
+    REQUIRE(lines(relayed).size() == 3);
+    CHECK(lines(ownMiss)[2] != lines(relayed)[2]);
+}
+
+TEST_CASE("a derivation renders an exact lookup's key, which is its whole subject",
+          "[trace-render][lookup]")
+{
+    // The key sits where the other two kinds' operand reference sits, because
+    // it plays that part -- and it has to be on this step, since an exact
+    // lookup has no operand and so no step below it that could carry the key.
+    CHECK(derivationOf(shapeLookup(SpecimenShape::Undercut), formula::environment())
+          == "1. lookup(key -3) = 4 MPa\n");
+
+    // A key that is a perfectly legitimate enumerator of the author's own
+    // enumeration, and simply names no row of this table.
+    CHECK(derivationOf(shapeLookup(SpecimenShape::Beam), formula::environment())
+          == "1. lookup(key 11) = argument outside the domain of the operation [no row has this key]\n");
+}
+
+TEST_CASE("a derivation renders an interpolation's own overflow differently from one it is relaying",
+          "[trace-render][lookup]")
+{
+    // The second ambiguity, and not the first one twice: only this kind
+    // computes, so only this kind can overflow of its own accord. A renderer
+    // covering the miss and the relay but not this one would render case two
+    // as a euphemism.
+    constexpr auto own = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
+        var<Diameter>, { rat(0), rat(Huge - 1) });
+    CHECK(derivationOf(own, diameterOf(3))
+          == "1. d = 3 mm\n"
+             "2. interpolate(#1) = overflow in exact arithmetic"
+             " [the interpolation itself overflowed, not anything below it]\n");
+
+    // The same error enumerator, produced below the lookup instead.
+    constexpr auto overflowingLength = formula::constant<unit::Millimetre>(rat(Huge)) * formula::number(rat(Huge));
+    constexpr auto relayed = interpolating_lookup<unit::Millimetre, UnrepresentableAnswer, unit::One>(
+        overflowingLength, { rat(0), rat(Huge - 1) });
+
+    std::vector<std::string> const relayedLines = lines(derivationOf(relayed, formula::environment()));
+    REQUIRE(relayedLines.size() == 4);
+    CHECK(relayedLines[2] == "3. #1 * #2 = overflow in exact arithmetic");
+    CHECK(relayedLines[3] == "4. interpolate(#3) = overflow in exact arithmetic [carried up from #3]");
+}
+
+TEST_CASE("a derivation renders an interpolating miss as outside the curve, not as no band",
+          "[trace-render][lookup]")
+{
+    // 100 mm == 10 cm, past the curve's last row at 8 cm. No extrapolation
+    // and no clamp; the range is closed at both ends and says so.
+    CHECK(derivationOf(curveLookup(), diameterOf(100))
+          == "1. d = 100 mm\n"
+             "2. interpolate(#1) = argument outside the domain of the operation"
+             " [outside the curve, which runs 1 to 8 cm]\n");
+
+    // A value inside the curve is a value, and the step carries no clause at
+    // all: an interpolating table selects no row, so there is none to name.
+    CHECK(derivationOf(curveLookup(), diameterOf(60))
+          == "1. d = 60 mm\n"
+             "2. interpolate(#1) = 140/9 %\n");
+}
+
+TEST_CASE("a derivation spells a band's excluded top and a curve's included one differently",
+          "[trace-render][lookup]")
+{
+    // Both tables end on 30 mm, and the difference is one word. A band's top
+    // is excluded -- 30 mm falls in no band of it -- and a breakpoint is a
+    // row the table states a value at, so 30 mm hits the curve exactly.
+    // "Harmonising" the two spellings in either direction fails here.
+    constexpr auto bands = banded_lookup<unit::Millimetre, TopBands, unit::One>(var<Diameter>, { rat(1), rat(2) });
+    constexpr auto curve =
+        interpolating_lookup<unit::Millimetre, TopPoints, unit::One>(var<Diameter>, { rat(1), rat(2) });
+
+    std::vector<std::string> const banded = lines(derivationOf(bands, diameterOf(30)));
+    REQUIRE(banded.size() == 2);
+    CHECK(bracketed(banded[1]) == "in no band; the bands cover 9 to under 30 mm");
+
+    // The same number, reached rather than excluded.
+    CHECK(derivationOf(curve, diameterOf(30))
+          == "1. d = 30 mm\n"
+             "2. interpolate(#1) = 2\n");
+
+    // And the curve's own extent, spelled without the word that makes a band
+    // half-open -- on the same number the band table excluded.
+    std::vector<std::string> const past = lines(derivationOf(curve, diameterOf(35)));
+    REQUIRE(past.size() == 2);
+    CHECK(bracketed(past[1]) == "outside the curve, which runs 20 to 30 mm");
+    CHECK(bracketed(past[1]).find("under") == std::string::npos);
+}
+
+TEST_CASE("a derivation spells a lookup the way render() does", "[trace-render][lookup]")
+{
+    // `render.hpp` and `trace_render.hpp` compose a band, a key and a head
+    // name from scratch, independently of each other, and nothing but this
+    // assertion ties them together. Phase 8 shipped exactly this shape of
+    // defect for several commits -- two surfaces each internally consistent
+    // and fully tested, disagreeing with each other -- caught only by a
+    // whole-branch review because no test compared them.
+    //
+    // Each surface is compared to the other and never to a literal here, so a
+    // failure shows both actual spellings side by side rather than naming
+    // whichever literal stopped matching.
+
+    // The band: render() writes it as a row's selector, the trace as the
+    // clause on the step that selected it. 30 mm falls in the MIDDLE band,
+    // which is render()'s field 2 (field 0 is the operand).
+    std::vector<std::string> const renderedBands = callFields(formula::render(sizeLookup()));
+    REQUIRE(renderedBands.size() == 4);
+    std::string const renderedBand = renderedBands[2].substr(0, renderedBands[2].find(" gives "));
+
+    std::vector<std::string> const traced = lines(derivationOf(sizeLookup(), diameterOf(30)));
+    REQUIRE(traced.size() == 2);
+    CHECK(bracketed(traced[1]) == renderedBand);
+
+    // The key: render() writes it as the exact lookup's subject, and so does
+    // the trace. A negative key is what separates the two casts `key_text`
+    // spells separately from one that reads every key as unsigned.
+    std::string const renderedKey = callSubject(formula::render(shapeLookup(SpecimenShape::Undercut)));
+    std::vector<std::string> const tracedKey =
+        lines(derivationOf(shapeLookup(SpecimenShape::Undercut), formula::environment()));
+    REQUIRE(tracedKey.size() == 1);
+    CHECK(callSubject(tracedKey[0]) == renderedKey);
+
+    // The head names, all three: the two selecting kinds share one and the
+    // computing kind has its own, and a reader checking a derivation against
+    // the formula it derives must meet one name per kind rather than two.
+    auto const tracedHead = [](std::string const& line) {
+        std::size_t const afterStepNumber = line.find(". ");
+        REQUIRE(afterStepNumber != std::string::npos);
+        return headName(line.substr(afterStepNumber + 2));
+    };
+
+    CHECK(tracedHead(traced[1]) == headName(formula::render(sizeLookup())));
+    CHECK(tracedHead(tracedKey[0]) == headName(formula::render(shapeLookup(SpecimenShape::Undercut))));
+
+    std::vector<std::string> const tracedCurve = lines(derivationOf(curveLookup(), diameterOf(60)));
+    REQUIRE(tracedCurve.size() == 2);
+    CHECK(tracedHead(tracedCurve[1]) == headName(formula::render(curveLookup())));
+    // And the two head names really are different, so that the check above
+    // would not pass merely because both surfaces had collapsed to one name.
+    CHECK(headName(formula::render(curveLookup())) != headName(formula::render(sizeLookup())));
+}
+
+TEST_CASE("a derivation says when it cannot tell whose failure a lookup is carrying",
+          "[trace-render][lookup]")
+{
+    // The operand is a consumer's own node evaluated through the
+    // two-parameter extension point, so it contributes no step -- and with
+    // nothing recorded below, the line says exactly that rather than picking
+    // whichever of the two answers sounds better.
+    constexpr auto node =
+        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(UntracedLength {}, { rat(95), rat(112), rat(105) });
+
+    CHECK(derivationOf(node, formula::environment())
+          == "1. lookup() = division by zero"
+             " [this lookup or something below it: the operand recorded no step]\n");
+}
+
+TEST_CASE("a derivation renders a lookup's own conversion failure as neither a miss nor a relay",
+          "[trace-render][lookup]")
+{
+    // The band IS found, and the correction it selects then does not survive
+    // being converted out of the table's own result unit. Nothing missed and
+    // nothing below failed.
+    constexpr auto wide = banded_lookup<unit::Millimetre, WideBand, unit::Kilometre>(var<Diameter>, { rat(Huge) });
+    CHECK(derivationOf(wide, diameterOf(30))
+          == "1. d = 30 mm\n"
+             "2. lookup(#1) = overflow in exact arithmetic"
+             " [this lookup's own unit conversion failed, not anything below it]\n");
+}
+
+TEST_CASE("a derivation renders a miss against a table that covers nothing at all",
+          "[trace-render][lookup]")
+{
+    // An empty table validates and always misses -- see `band.hpp` -- so
+    // there is no interval to name, and none is invented.
+    constexpr auto noBands = banded_lookup<unit::Centimetre, NoBands, unit::Percent>(var<Diameter>, {});
+    std::vector<std::string> const banded = lines(derivationOf(noBands, diameterOf(30)));
+    REQUIRE(banded.size() == 2);
+    CHECK(bracketed(banded[1]) == "the table declares no bands");
+
+    constexpr auto noPoints = interpolating_lookup<unit::Centimetre, NoPoints, unit::Percent>(var<Diameter>, {});
+    std::vector<std::string> const empty = lines(derivationOf(noPoints, diameterOf(30)));
+    REQUIRE(empty.size() == 2);
+    CHECK(bracketed(empty[1]) == "the curve declares no rows");
+
+    // The other degenerate shape: a curve whose only row is its first and its
+    // last at once. "Runs 15/2 to 15/2 cm" would describe it as a range it is
+    // not, so it is named as the point it is.
+    constexpr auto onePoint = interpolating_lookup<unit::Centimetre, OnePoint, unit::Percent>(var<Diameter>, { rat(90) });
+    std::vector<std::string> const single = lines(derivationOf(onePoint, diameterOf(30)));
+    REQUIRE(single.size() == 2);
+    CHECK(bracketed(single[1]) == "outside the curve, whose only row is at 15/2 cm");
 }

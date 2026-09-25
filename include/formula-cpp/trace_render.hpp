@@ -264,6 +264,150 @@ namespace detail
         return text;
     }
 
+    /// An exact lookup's key, spelled the way `render()` spells it: `key 7`.
+    ///
+    /// The underlying value rather than the enumerator's name, for the reason
+    /// `detail::key_text` (`render.hpp`) sets out in full: a C++ enumerator
+    /// has no name at run time. This cannot call that function -- it is a
+    /// template on the author's enumeration, and a `Step` has erased the type
+    /// -- so the two spellings are independent and the cross-surface test in
+    /// `trace_render_tests.cpp` is what ties them together, exactly as it
+    /// does for the six comparison tokens.
+    ///
+    /// The two casts are spelled separately for `key_text`'s own reason: an
+    /// enumeration's underlying type may be `unsigned long long`, whose top
+    /// half no signed type can hold.
+    [[nodiscard]] inline std::string lookup_key_text(Step<Rational> const& step)
+    {
+        return "key "
+               + (step.lookupKeyIsSigned ? std::to_string(static_cast<long long>(step.lookupKey))
+                                         : std::to_string(step.lookupKey));
+    }
+
+    /// A half-open interval a lookup step reports about -- a selected band,
+    /// or the extent a whole band table covers: `2 to under 61/2 mm`.
+    ///
+    /// Delegates to `render.hpp`'s `band_text`, which is **the** spelling of a
+    /// half-open interval in this library, so that a derivation and the
+    /// formula it derives cannot name one band two ways. That ruling, and the
+    /// published defect that bought it, are in `render.hpp`'s file comment.
+    [[nodiscard]] inline std::string half_open_range_text(LookupRange const& range, std::string_view keySymbol)
+    {
+        return band_text(
+            Band { range.lowNumerator, range.lowDenominator, range.highNumerator, range.highDenominator },
+            keySymbol);
+    }
+
+    /// A **closed** range an interpolating curve runs over: `2 to 19 mm`.
+    ///
+    /// One word shorter than `half_open_range_text` above, and that word is
+    /// the whole point. A band's top is excluded and `to under` says so; a
+    /// breakpoint is a row the table states a value *at*, the last one
+    /// included, so the curve's top end is reached and nothing may say
+    /// otherwise. `lookup.hpp` pins the two behaviours against each other at
+    /// 30 mm and `render_tests.cpp` pins the two spellings; the trace is the
+    /// third surface, and it is pinned in `trace_render_tests.cpp` on the same
+    /// number, so that "harmonising" the two in either direction fails here as
+    /// well as there.
+    ///
+    /// The bounds are reduced through `declared_number_text`, the same helper
+    /// every other declared bound in this library is printed with, so a curve
+    /// whose first row was typed `30/4` reads `15/2` here exactly as it does
+    /// in `render()`.
+    [[nodiscard]] inline std::string closed_range_text(LookupRange const& range, std::string_view keySymbol)
+    {
+        return number_with_unit(declared_number_text(range.lowNumerator, range.lowDenominator) + " to "
+                                    + declared_number_text(range.highNumerator, range.highDenominator),
+                                keySymbol);
+    }
+
+    /// Why a lookup found nothing, in one clause -- the clause that stops
+    /// `describe(ArithmeticError::DomainError)` from being read as a claim
+    /// about something it does not know.
+    ///
+    /// Each kind says it in its own terms, because the three misses are
+    /// genuinely different questions: a value in none of a table's bands, a
+    /// key in none of its rows, a value off the ends of a curve.
+    [[nodiscard]] inline std::string lookup_miss_text(Step<Rational> const& step, std::string_view keySymbol)
+    {
+        if (step.kind == StepKind::ExactLookup)
+            return "no row has this key";
+
+        if (!step.coveredRange.has_value())
+            return step.kind == StepKind::BandedLookup ? "the table declares no bands" : "the curve declares no rows";
+
+        if (step.kind == StepKind::BandedLookup)
+            return "in no band; the bands cover " + half_open_range_text(*step.coveredRange, keySymbol);
+
+        // A curve with exactly one row covers that one key and nothing else,
+        // and "runs 15/2 to 15/2 mm" would describe it as a range it is not.
+        // `at <key>` is the spelling `render()` gives a breakpoint, for the
+        // same reason: a row is a point.
+        std::string const low = declared_number_text(step.coveredRange->lowNumerator, step.coveredRange->lowDenominator);
+        std::string const high =
+            declared_number_text(step.coveredRange->highNumerator, step.coveredRange->highDenominator);
+        if (low == high)
+            return "outside the curve, whose only row is at " + number_with_unit(low, keySymbol);
+        return "outside the curve, which runs " + closed_range_text(*step.coveredRange, keySymbol);
+    }
+
+    /// A lookup step's trailing clause: which row it selected, or -- when it
+    /// produced no value -- whose failure it is carrying and of what kind.
+    ///
+    /// **This clause is not decoration; it is what keeps the line from
+    /// lying.** All three kinds report every failure through one error
+    /// channel, so a lookup step carrying `DomainError` is ambiguous on its
+    /// face between "the value fell in no band" and "the operand failed and I
+    /// am relaying it", and one carrying `Overflow` is ambiguous between "my
+    /// own interpolation overflowed" and the same relaying. Without this
+    /// clause the line would read `lookup(#1) = argument outside the domain of
+    /// the operation` for a case where nothing was outside any domain and the
+    /// real failure happened two levels down -- a plausible answer to a
+    /// question the line cannot otherwise answer, which is the defect phase 9
+    /// refused `bool satisfied()` over. `Step::lookupFailure` is what resolves
+    /// it, and `LookupFailure` (`trace.hpp`) records how.
+    ///
+    /// The same bracket `citation_suffix`, `rounding_mode_suffix` and
+    /// `constraint_outcome_suffix` use, for the reason the last of those gives
+    /// at length: it is where a reader is already looking for a step's
+    /// trailing qualifications, and the plain `--` this project's prose uses
+    /// for a secondary aside would train them to skim past exactly the fact
+    /// that must not be skimmed.
+    [[nodiscard]] inline std::string lookup_suffix(Step<Rational> const& step)
+    {
+        std::string_view const keySymbol = view(step.sourceUnit.symbolText);
+        switch (step.lookupFailure)
+        {
+            case LookupFailure::None:
+                // Nothing failed. A banded lookup names the band its value
+                // fell in, which is the one fact its derivation is for; the
+                // other two kinds have nothing to add that the line does not
+                // already carry -- an exact lookup's key is its subject, and
+                // an interpolating lookup selects no row at all.
+                return step.selectedBand.has_value()
+                           ? " [" + band_text(*step.selectedBand, keySymbol) + "]"
+                           : std::string {};
+            case LookupFailure::Missed:
+                return " [" + lookup_miss_text(step, keySymbol) + "]";
+            case LookupFailure::Computation:
+                return " [the interpolation itself overflowed, not anything below it]";
+            case LookupFailure::Conversion:
+                return " [this lookup's own unit conversion failed, not anything below it]";
+            case LookupFailure::Propagated:
+                // Never a claim about the table: nothing about it went wrong.
+                // The operand is named so a reader is sent to the line that
+                // does carry the failure. It contributed a step by
+                // construction -- that is how the recorder knew -- but
+                // `Step` is a public aggregate and a caller may fill one in
+                // by hand, so the reference is not assumed into existence.
+                return step.operands.empty() ? std::string { " [carried up from the operand]" }
+                                             : " [carried up from " + sole_operand(step) + "]";
+            case LookupFailure::Undetermined:
+                return " [this lookup or something below it: the operand recorded no step]";
+        }
+        return " [unknown lookup failure]";
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -310,6 +454,22 @@ namespace detail
                 return conditional_expression(step);
             case StepKind::Constraint:
                 return constraint_expression(step);
+            // The head names are `render()`'s own, and the split between them
+            // is the one `render.hpp` makes deliberately: the two *selecting*
+            // kinds share `lookup`, and the one that *computes* a number
+            // appearing in no row of its table is `interpolate`. A reader
+            // checking a derivation against the formula it derives must meet
+            // one name per kind, not two.
+            case StepKind::BandedLookup:
+                return "lookup(" + sole_operand(step) + ")";
+            // The key sits where the other two kinds' operand sits, because
+            // it plays that part: it is what is being looked up. It is data
+            // and not a sub-expression -- an exact lookup has no operand at
+            // all -- which is exactly why this step has to carry it.
+            case StepKind::ExactLookup:
+                return "lookup(" + lookup_key_text(step) + ")";
+            case StepKind::InterpolatingLookup:
+                return "interpolate(" + sole_operand(step) + ")";
         }
         return "unknown step kind";
     }
@@ -458,10 +618,11 @@ namespace detail
     }
 
     /// One step's line, without its number: the expression, an `=`, the value,
-    /// and a trailing clause for the four kinds that need one -- a citation
-    /// for `Documented`, a justification for `NumericValue`, the tie-breaking
-    /// rule for the two rounding kinds, and, for a `Conditional` whose
-    /// predicate never resolved, `[no branch]`.
+    /// and a trailing clause for the kinds that need one -- a citation for
+    /// `Documented`, a justification for `NumericValue`, the tie-breaking rule
+    /// for the two rounding kinds, for a `Conditional` whose predicate never
+    /// resolved `[no branch]`, and for the three lookup kinds the row selected
+    /// or the failure's origin (see `lookup_suffix`).
     ///
     /// `Constraint` is handled separately, first: a constraint produces a
     /// verdict, not a quantity (`constraint.hpp`'s own file comment explains
@@ -487,6 +648,12 @@ namespace detail
             suffix = " [" + std::string { describe(step.branch) } + "]";
         else if (step.kind == StepKind::Round || step.kind == StepKind::RoundSignificant)
             suffix = rounding_mode_suffix(step.mode);
+        // Present for a lookup that succeeded as well as for one that failed,
+        // unlike the three suffixes above: on a hit it names the band the
+        // value fell in, and on a failure it is the only thing separating a
+        // miss from a relayed error. See `lookup_suffix`.
+        else if (is_lookup(step.kind))
+            suffix = lookup_suffix(step);
 
         if (step.kind == StepKind::Constant)
             return value + suffix;
