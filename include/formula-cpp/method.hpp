@@ -405,6 +405,79 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
     return {};
 }
 
+namespace detail
+{
+    /// Whether a type is a `RoundingRule`.
+    template <typename T>
+    struct IsRoundingRule: std::false_type
+    {
+    };
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+    struct IsRoundingRule<RoundingRule<U, Places, Mode>>: std::true_type
+    {
+    };
+
+    /// The dimension a variants pack reports, asked without firing any rule.
+    ///
+    /// `known` is true only for a non-empty `Variants` of `VariantCase`s that
+    /// all report the dimension of the first. Every other pack is one
+    /// `Variants` refuses itself, and a rule comparing something against the
+    /// pack's dimension has nothing true to say about it: there is no such
+    /// dimension, and the refusal that matters is already the pack's.
+    template <typename Vs>
+    struct VariantsDimension
+    {
+        /// There is no one dimension to report.
+        static constexpr bool known = false;
+    };
+
+    template <typename Tag, Node Expr, typename... Tags, Node... Exprs>
+    struct VariantsDimension<Variants<VariantCase<Tag, Expr>, VariantCase<Tags, Exprs>...>>
+    {
+        /// Whether every variant agrees with the first.
+        static constexpr bool known = ((Exprs::dimension == Expr::dimension) && ...);
+        /// The dimension of the first variant, which is every variant's when
+        /// `known` holds.
+        static constexpr Dimension dimension = Expr::dimension;
+    };
+
+    /// Fails to compile when a method's rounding rule rounds in a unit that
+    /// does not measure the dimension its variants report.
+    ///
+    /// A `Megapascal` rule on a method whose variants measure a length used to
+    /// be accepted by `method(...)` and refused only inside `evaluate_method`,
+    /// by the rounding node it builds -- so a method nobody evaluated in a test
+    /// would ship broken. Templated on the variants pack and the rule, the two
+    /// places the two dimensions come from, so that both appear in the
+    /// diagnostic.
+    template <typename Vs, typename Rounding>
+    struct RequireRoundingRuleMeasuresVariants
+    {
+        static_assert(Rounding::unit.dimension == VariantsDimension<Vs>::dimension,
+                      "formula: this method's rounding rule rounds in a unit that does not measure the "
+                      "dimension its variants report; the rule rounds whichever variant is selected, so "
+                      "its unit must measure what every variant measures -- the variants and the "
+                      "rounding rule appear in this diagnostic as the template arguments Vs and Rounding "
+                      "of RequireRoundingRuleMeasuresVariants");
+
+        static constexpr bool value = true;
+    };
+
+    /// Whether `RequireRoundingRuleMeasuresVariants` has anything true to ask.
+    ///
+    /// Gated for the reason `RequireWellFormedVariants` gates its agreement
+    /// rule: a pack of variants that disagree, or that is not a pack of
+    /// variants at all, is already refused by `Variants`, and asking this rule
+    /// as well would add a second error -- measured against whichever variant
+    /// happened to be first -- to the one that names the mistake.
+    /// `method_rounding_rule_gated.cpp` pins that by refusing any output that
+    /// names this rule. A `Rounding` that is not a `RoundingRule` is not
+    /// refused here either; it has no `unit` to compare.
+    template <typename Vs, typename Rounding>
+    inline constexpr bool canAskRoundingRule = IsRoundingRule<Rounding>::value && VariantsDimension<Vs>::known;
+} // namespace detail
+
 /// One method: the variants it chooses between, the rounding rule it applies
 /// to whichever one is chosen, and the constraints it checks.
 ///
@@ -412,9 +485,23 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 /// it, held as an ordinary member and never unpacked, so that it can be
 /// handed straight to `check_all()`; `ConstraintSet` in `constraint.hpp` says
 /// why that is the shape.
+///
+/// The rounding rule's unit must measure the variants' dimension. That is
+/// checked in this class body rather than only in `method()` below, for the
+/// reason `Variants` gives for its own checks: this is a public aggregate, so
+/// a `Method<...>` can be declared with no factory call.
 template <typename Vs, typename Rounding, typename Constraints>
 struct Method
 {
+    // `remove_cv_t` because `Method<decltype(pack), ...>` over a `constexpr`
+    // pack names a `const Variants<...>`, which no specialisation of
+    // `VariantsDimension` matches -- and an unmatched pack reads as "nothing
+    // to ask", which would switch the rule off without a word.
+    static_assert(
+        std::conditional_t<detail::canAskRoundingRule<std::remove_cv_t<Vs>, std::remove_cv_t<Rounding>>,
+                           detail::RequireRoundingRuleMeasuresVariants<std::remove_cv_t<Vs>, std::remove_cv_t<Rounding>>,
+                           std::true_type>::value);
+
     /// The variants, as `variants(...)` built them.
     Vs variantSet {};
     /// The rule applied to the selected variant's result.

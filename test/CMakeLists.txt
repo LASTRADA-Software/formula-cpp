@@ -459,6 +459,27 @@ formula_add_negative_test(method_selection_tag_cv_qualified
     "formula: this tag is not a plain class type"
     REJECT "formula: this method declares no variant for that tag")
 
+# A method's rounding rule must round in a unit of the dimension its variants
+# report. Refused where the method is declared, not where it is evaluated, so
+# a method no test evaluates cannot ship broken. Two cases asserting one
+# string: the second declares `Method<...>` directly, which is the only route
+# that tells a check in the class body from one in `method()` -- the factory
+# returns the class by value and so completes it either way.
+formula_add_negative_test(method_rounding_rule_dimension_mismatch
+    "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report")
+
+formula_add_negative_test(method_rounding_rule_dimension_mismatch_no_factory
+    "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report")
+
+# The rounding rule is compared against the dimension the variants agree on,
+# so when they disagree it stays quiet and the agreement rule alone reports.
+# The rule's unit measures the SECOND variant's dimension, not the first's, so
+# that an ungated rule -- which could only compare against the first -- fires
+# here and REJECT sees it.
+formula_add_negative_test(method_rounding_rule_gated
+    "formula: two variants of this method measure different dimensions"
+    REJECT "RequireRoundingRuleMeasuresVariants")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
