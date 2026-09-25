@@ -21,6 +21,7 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/predicate.hpp>
