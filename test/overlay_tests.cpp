@@ -221,6 +221,15 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
     STATIC_REQUIRE(withRatioFixedAtFour(f::sqrt(r)) == Rational { 2 });
     STATIC_REQUIRE(withRatioFixedAtFour(r + f::number(Rational { 1 })) == Rational { 5 });
     STATIC_REQUIRE(withRatioFixedAtFour(f::documented(r, nationalAnnex)) == Rational { 4 });
+
+    // The citation is the one piece of a rebuilt node no value can show, and
+    // provenance is what this phase exists for: the rewritten wrapper must
+    // still cite what the original cited.
+    using Wrapped = decltype(f::documented(r, nationalAnnex));
+    STATIC_REQUIRE(f::detail::ConstantRewrite<Ratio, Wrapped>::apply(f::documented(r, nationalAnnex),
+                                                                     f::with_constant<Ratio>(Rational { 4 }))
+                       .citation
+                   == nationalAnnex);
     STATIC_REQUIRE(withRatioFixedAtFour(f::rounded<unit::One, f::DecimalPlaces { 0 }, f::RoundingMode::HalfAwayFromZero>(
                        r / f::number(Rational { 3 })))
                    == Rational { 1 });
