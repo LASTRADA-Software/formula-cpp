@@ -580,52 +580,46 @@ namespace detail
     }
 } // namespace detail
 
-/// A measured value falls in an interval, and that interval selects a
-/// correction -- see the file comment for the join this node is built on and
-/// for exactly how a miss is reported.
-template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
-struct BandedLookupNode: NodeBase
-{
-    static_assert(RequireValidBandTable<Bands>::value);
-    static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
-
-    /// One correction per band, stated in `unit` -- the table's *contents*,
-    /// runtime state for the same reason `ConstantNode::number` is. See the
-    /// file comment.
-    std::array<Rational, Bands.size()> corrections {};
-
-    /// The expression whose evaluated value selects a band.
-    Operand operand {};
-
-    /// The unit band boundaries are declared in, and the unit `operand`'s
-    /// value is compared against them in -- part of the table's *structure*.
-    static constexpr Unit keyUnit = KeyUnit;
-    /// The band boundaries themselves, already validated above -- reused from
-    /// task 1, never reimplemented here.
-    static constexpr BandTable<Bands.size()> bands = Bands;
-    /// The unit each entry of `corrections` is stated in, and this node's own
-    /// declared unit -- the same role `ConstantNode::unit` plays.
-    static constexpr Unit unit = ResultUnit;
-    /// The dimension of `unit`: what this node itself produces. Independent
-    /// of `keyUnit`'s dimension on purpose -- a banded lookup may select a
-    /// pressure correction from a measured length, say -- a banded lookup
-    /// node stands where a number of *this* dimension stands.
-    static constexpr Dimension dimension = ResultUnit.dimension;
-};
-
 /// Exactly `N` corrections, one per row of a lookup table -- no more and no
 /// fewer. Shared by every table kind in this file: `N` is the band count for
 /// `banded_lookup`, the key count for `exact_lookup` and the breakpoint count
 /// for `interpolating_lookup`, because the hole being closed is the same
-/// hole. Handed to any of those factories in place of a bare
-/// `std::array<Rational, N>`, whose own aggregate initialisation from a short
-/// braced list is exactly the "every answer is a lie" failure the rest of this
-/// file refuses on the *miss* side, reappearing on the *hit* side: the
-/// unwritten elements value-initialise to `Rational{} == 0/1`, and a band, a
-/// key or a breakpoint whose correction the author forgot to type then answers
-/// `0`, confidently, as a value, indistinguishable from a deliberate zero --
-/// and for the interpolating table, a forgotten row drags the whole segment
-/// either side of it down with it.
+/// hole. It stands in for a bare `std::array<Rational, N>`, whose own
+/// aggregate initialisation from a short braced list is exactly the "every
+/// answer is a lie" failure the rest of this file refuses on the *miss* side,
+/// reappearing on the *hit* side: the unwritten elements value-initialise to
+/// `Rational{} == 0/1`, and a band, a key or a breakpoint whose correction the
+/// author forgot to type then answers `0`, confidently, as a value,
+/// indistinguishable from a deliberate zero -- and for the interpolating
+/// table, a forgotten row drags the whole segment either side of it down with
+/// it.
+///
+/// **It is every node's own member type, not only the factories' parameter
+/// type, and the difference was measured rather than argued.** With a raw
+/// array on the node and this wrapper only on the factory, the guard covered
+/// every route *except the one that needs no factory*: every lookup node is a
+/// public aggregate with public members, so
+///
+///     inline constexpr ExactLookupNode<ThreeKeys, unit::One> node {
+///         {}, { rat(7, 10) }, Shape::Prism };
+///
+/// compiled, linked, and evaluated the two rows nobody typed as `0` -- checked
+/// against the installed package on all three node kinds, all three of which
+/// did it. The factory's parameter type cannot see that call, because there is
+/// no call. Making the member itself a `Corrections<N>` is what closes it: the
+/// braced list now initialises this type, a short one selects the
+/// arity-mismatch constructor below, and its `static_assert` names both counts
+/// at the offending line. `lookup_short_corrections_no_factory.cpp` and its
+/// two siblings pin exactly that, one per node kind, and reverting any one
+/// member to a raw array fails that kind's case alone.
+///
+/// Nodes therefore declare `Corrections<N> corrections;` with **no default
+/// member initialiser**, and that omission is load bearing: `{}` for a table
+/// of three rows is a count of zero, which is the very mistake being refused,
+/// so a node cannot be default-constructed and must state its contents. No
+/// consumer noticed the change -- `operator[]` below keeps
+/// `node.corrections[index]` meaning what it always meant in the renderer, the
+/// tracer and the evaluator alike.
 ///
 /// A named type with two arity-disjoint constructor templates rather than
 /// one constrained by `requires` alone: the *matching*-arity constructor
@@ -673,7 +667,70 @@ struct Corrections
     /// for a banded lookup, per key for an exact one, per breakpoint for an
     /// interpolating one.
     std::array<Rational, N> values {};
+
+    /// The correction at @p index, so that every consumer reads a table's
+    /// contents the way it read them when this was a bare `std::array`.
+    ///
+    /// Present so that becoming a node's member type costs the rest of the
+    /// library nothing: `node.corrections[index]` means what it always meant,
+    /// in the renderer, the tracer and the evaluator alike. `values` stays
+    /// public alongside it -- this is a transparent aggregate of the table's
+    /// contents, not an encapsulation.
+    [[nodiscard]] constexpr Rational operator[](std::size_t index) const noexcept
+    {
+        return values[index];
+    }
+
+    /// How many corrections there are -- `N`, and a row count is a thing a
+    /// consumer can reasonably ask a table's contents for.
+    [[nodiscard]] static constexpr std::size_t size() noexcept
+    {
+        return N;
+    }
 };
+
+/// A measured value falls in an interval, and that interval selects a
+/// correction -- see the file comment for the join this node is built on and
+/// for exactly how a miss is reported.
+template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+struct BandedLookupNode: NodeBase
+{
+    static_assert(RequireValidBandTable<Bands>::value);
+    static_assert(detail::RequireLookupKeyMatches<KeyUnit, Operand>::value);
+
+    /// One correction per band, stated in `unit` -- the table's *contents*,
+    /// runtime state for the same reason `ConstantNode::number` is. See the
+    /// file comment.
+    ///
+    /// **`Corrections<N>` and not `std::array<Rational, N>`, and that choice
+    /// is what closes the hole rather than the factory's parameter type.** See
+    /// `Corrections` for the measurement: with a raw array here, a caller who
+    /// declares this aggregate directly -- which its public members invite --
+    /// could hand it a short braced list, and the rows they never typed would
+    /// answer `0`. There is deliberately no default member initialiser: `{}`
+    /// for a table of three rows is a count of zero, which is exactly the
+    /// mistake being refused.
+    Corrections<Bands.size()> corrections;
+
+    /// The expression whose evaluated value selects a band.
+    Operand operand {};
+
+    /// The unit band boundaries are declared in, and the unit `operand`'s
+    /// value is compared against them in -- part of the table's *structure*.
+    static constexpr Unit keyUnit = KeyUnit;
+    /// The band boundaries themselves, already validated above -- reused from
+    /// task 1, never reimplemented here.
+    static constexpr BandTable<Bands.size()> bands = Bands;
+    /// The unit each entry of `corrections` is stated in, and this node's own
+    /// declared unit -- the same role `ConstantNode::unit` plays.
+    static constexpr Unit unit = ResultUnit;
+    /// The dimension of `unit`: what this node itself produces. Independent
+    /// of `keyUnit`'s dimension on purpose -- a banded lookup may select a
+    /// pressure correction from a measured length, say -- a banded lookup
+    /// node stands where a number of *this* dimension stands.
+    static constexpr Dimension dimension = ResultUnit.dimension;
+};
+
 
 /// Declares a banded lookup: `banded_lookup<unit::Millimetre, Bands,
 /// unit::One>(var<Diameter>, { rat(95, 100), rat(1), rat(105, 100) })`.
@@ -693,7 +750,7 @@ template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
 [[nodiscard]] constexpr BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> banded_lookup(
     Operand operand, Corrections<Bands.size()> corrections) noexcept
 {
-    return BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> { {}, corrections.values, operand };
+    return BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> { {}, corrections, operand };
 }
 
 /// Evaluates the operand, converts its value into `KeyUnit`, and looks up the
@@ -1027,8 +1084,10 @@ struct ExactLookupNode: NodeBase
 
     /// One correction per key, stated in `unit`, in the same order `keys`
     /// declares -- the table's *contents*, runtime state for the same reason
-    /// `BandedLookupNode::corrections` and `ConstantNode::number` are.
-    std::array<Rational, Keys.size()> corrections {};
+    /// `BandedLookupNode::corrections` and `ConstantNode::number` are, and
+    /// `Corrections<N>` rather than a raw array for the reason that member
+    /// gives.
+    Corrections<Keys.size()> corrections;
 
     /// The key this lookup selects with: which specimen variant, apparatus or
     /// regime is in front of the caller. Runtime state, for the reason the
@@ -1070,14 +1129,16 @@ struct ExactLookupNode: NodeBase
 /// enumeration is then the compiler's own conversion diagnostic, which names
 /// both enumerations; a library guard here could only restate that less well.
 ///
-/// `corrections` is the same `Corrections<N>` a banded lookup takes, so a
-/// short braced list is refused identically -- see that type for why a bare
-/// `std::array<Rational, N>` would not be.
+/// `corrections` is the same `Corrections<N>` a banded lookup takes, and it is
+/// also this node's own member type, so a short braced list is refused
+/// identically whether it arrives here or is handed straight to the aggregate
+/// -- see that type for why a raw `std::array<Rational, N>` closed only the
+/// first of those two routes, and for the measurement that showed it.
 template <KeyTable Keys, Unit ResultUnit>
 [[nodiscard]] constexpr ExactLookupNode<Keys, ResultUnit> exact_lookup(KeyOf<Keys> key,
                                                                        Corrections<Keys.size()> corrections) noexcept
 {
-    return ExactLookupNode<Keys, ResultUnit> { {}, corrections.values, key };
+    return ExactLookupNode<Keys, ResultUnit> { {}, corrections, key };
 }
 
 /// Looks the node's key up in its table. A key that names a row produces that
@@ -1482,7 +1543,7 @@ namespace detail
     /// segment of zero width", which a well-formed table cannot contain.
     template <BreakpointTable Points>
     [[nodiscard]] constexpr std::expected<std::pair<Rational, Segment>, ArithmeticError> locate_and_interpolate(
-        Rational key, std::array<Rational, Points.size()> const& corrections) noexcept
+        Rational key, Corrections<Points.size()> const& corrections) noexcept
     {
         for (std::size_t index = 0; index < Points.size(); ++index)
         {
@@ -1532,7 +1593,7 @@ namespace detail
     /// see `locate_and_interpolate` above for why there is exactly one.
     template <BreakpointTable Points>
     [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> interpolate(
-        Rational key, std::array<Rational, Points.size()> const& corrections) noexcept
+        Rational key, Corrections<Points.size()> const& corrections) noexcept
     {
         std::expected<std::pair<Rational, Segment>, ArithmeticError> const answered =
             locate_and_interpolate<Points>(key, corrections);
@@ -1567,8 +1628,9 @@ struct InterpolatingLookupNode: NodeBase
     /// The value this table states at each breakpoint, in `unit`, in the same
     /// order `breakpoints` declares -- the table's *contents*, runtime state
     /// for the same reason `BandedLookupNode::corrections` and
-    /// `ConstantNode::number` are.
-    std::array<Rational, Points.size()> corrections {};
+    /// `ConstantNode::number` are, and `Corrections<N>` rather than a raw
+    /// array for the reason that member gives.
+    Corrections<Points.size()> corrections;
 
     /// The expression whose evaluated value is located against `breakpoints`.
     Operand operand {};
@@ -1598,14 +1660,16 @@ struct InterpolatingLookupNode: NodeBase
 /// argument list: a table's structure is the author's declared intent, not
 /// something inferred from whatever the values happen to look like.
 ///
-/// `corrections` is the same `Corrections<N>` both other kinds take, so a short
-/// braced list is refused identically -- see that type for why a bare
-/// `std::array<Rational, N>` would not be.
+/// `corrections` is the same `Corrections<N>` both other kinds take, and it is
+/// also this node's own member type, so a short braced list is refused
+/// identically whether it arrives here or is handed straight to the aggregate
+/// -- see that type for why a raw `std::array<Rational, N>` closed only the
+/// first of those two routes, and for the measurement that showed it.
 template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
 [[nodiscard]] constexpr InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> interpolating_lookup(
     Operand operand, Corrections<Points.size()> corrections) noexcept
 {
-    return InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> { {}, corrections.values, operand };
+    return InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> { {}, corrections, operand };
 }
 
 /// Evaluates the operand, converts its value into `KeyUnit`, and answers from

@@ -200,6 +200,28 @@ formula_add_negative_test(exact_lookup_short_corrections
 formula_add_negative_test(interpolating_lookup_short_corrections
     "this lookup table was given a different number of corrections than it has rows")
 
+# The same rule on the route the three cases above cannot reach: the node
+# declared directly, with no factory call anywhere. Every lookup node is a
+# public aggregate with public members, so a short braced list can be handed to
+# one without the factory's parameter type ever being consulted -- and it was,
+# silently, until `corrections` became a `Corrections<N>` rather than a bare
+# `std::array<Rational, N>`. Measured before the fix on all three kinds: the
+# rows nobody typed evaluated to `0`, indistinguishable from a deliberate zero,
+# which is the "every answer is a lie" failure this node refuses on the miss
+# side.
+#
+# One case per kind, for the reason the key-unit pair just below gives: each
+# node declares its own `corrections` member, so a single case standing for all
+# three would let a revert on one kind pass while the other two still fired.
+formula_add_negative_test(lookup_short_corrections_no_factory
+    "this lookup table was given a different number of corrections than it has rows")
+
+formula_add_negative_test(exact_lookup_short_corrections_no_factory
+    "this lookup table was given a different number of corrections than it has rows")
+
+formula_add_negative_test(interpolating_lookup_short_corrections_no_factory
+    "this lookup table was given a different number of corrections than it has rows")
+
 # The key-unit guard is shared by every lookup kind that HAS a key unit -- the
 # banded and the interpolating one -- for the same reason the corrections-count
 # guard is shared: one rule, one mistake, one sentence. (The exact lookup has no
@@ -318,3 +340,12 @@ add_test(NAME hygiene.testnames
     COMMAND "${CMAKE_COMMAND}"
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckTestNames.cmake")
+
+# A compiler diagnostic quoted in docs/ names a header and a line number, and
+# the number goes stale the moment anyone inserts a line above it -- which
+# happened twice in this repository before anything checked. See the script's
+# own comment for both instances and for what it does and does not verify.
+add_test(NAME hygiene.documented-diagnostics
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckDocumentedDiagnostics.cmake")
