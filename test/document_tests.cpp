@@ -24,6 +24,15 @@ struct ExcavationDepth: formula::Quantity<ExcavationDepth, "d", "excavation dept
 struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::unit::Megapascal>
 {
 };
+// Two distinct quantities appearing nowhere else in this file, so a
+// constraint's symbol-table test can tell which side of its predicate
+// contributed a given row.
+struct ReplicateA: formula::Quantity<ReplicateA, "R_a", "first replicate reading", formula::unit::Megapascal>
+{
+};
+struct ReplicateB: formula::Quantity<ReplicateB, "R_b", "second replicate reading", formula::unit::Megapascal>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -40,6 +49,15 @@ constexpr auto ratio =
 constexpr auto perCent = formula::documented(
     ratio * rat(100),
     { .title = "Water/cement ratio, per cent", .reference = "Example Standard 1:2020", .section = "5.4.3" });
+
+// A two-variable predicate -- var<ReplicateA> against var<ReplicateB>, not a
+// variable against an inert constant -- so a symbol-table test can tell
+// whether each side was walked. Invented, as every citation and verdict in
+// this repository must be.
+constexpr auto replicateAgreement =
+    formula::constraint(var<ReplicateA> > var<ReplicateB>,
+                        formula::Verdict { "repeat the test" },
+                        { .title = "Replicate agreement", .reference = "Example Standard 1:2020", .section = "6.2" });
 
 } // namespace
 
@@ -270,4 +288,48 @@ TEST_CASE("document: a WhenNode documents both branches, not just the one that w
     CHECK(documentation.symbols[1].description == std::string_view { "specimen diameter" });
     CHECK(documentation.symbols[2].symbol == std::string_view { "d" });
     CHECK(documentation.symbols[2].description == std::string_view { "excavation depth" });
+}
+
+TEST_CASE("document: a constraint's citation reaches the documentation", "[document]")
+{
+    // A Constraint is deliberately not a Node (constraint.hpp's file
+    // comment) and so cannot be wrapped by documented() or passed to
+    // document() itself -- it carries its own Citation instead, and
+    // collect() has to record that citation itself. Exercised directly
+    // through formula::detail, the way checked_int_tests.cpp and
+    // compile_time_tests.cpp already reach into that namespace.
+    formula::detail::Walk walk {};
+    formula::detail::collect(walk, replicateAgreement);
+
+    REQUIRE(walk.documentation.citations.size() == 1);
+    CHECK(walk.documentation.citations[0].title == std::string_view { "Replicate agreement" });
+    CHECK(walk.documentation.citations[0].section == std::string_view { "6.2" });
+}
+
+TEST_CASE("document: a constraint predicate's left-hand side reaches the symbol table", "[document]")
+{
+    formula::detail::Walk walk {};
+    formula::detail::collect(walk, replicateAgreement);
+
+    REQUIRE(walk.documentation.symbols.size() == 2);
+    CHECK(walk.documentation.symbols[0].symbol == std::string_view { "R_a" });
+    CHECK(walk.documentation.symbols[0].description == std::string_view { "first replicate reading" });
+}
+
+TEST_CASE("document: a constraint predicate's right-hand side reaches the symbol table, as a separate case",
+          "[document]")
+{
+    // A second, independent case from the one above -- not a second CHECK in
+    // the same test -- because the task-7 review of phase 8 found
+    // collect(walk, node.rhs) completely uncovered: every predicate in this
+    // file put its variable on the left and a constant on the right, so
+    // deleting that line left the whole suite green. This is the same
+    // two-variable predicate as the left-hand test, but the assertion below
+    // targets the right side specifically.
+    formula::detail::Walk walk {};
+    formula::detail::collect(walk, replicateAgreement);
+
+    REQUIRE(walk.documentation.symbols.size() == 2);
+    CHECK(walk.documentation.symbols[1].symbol == std::string_view { "R_b" });
+    CHECK(walk.documentation.symbols[1].description == std::string_view { "second replicate reading" });
 }

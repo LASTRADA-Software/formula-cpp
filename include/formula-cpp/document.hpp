@@ -12,6 +12,7 @@
 /// itself.
 
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/render.hpp>
 
 #include <string>
@@ -137,6 +138,9 @@ namespace detail
     template <Predicate P, Node Then, Node Else>
     void collect(Walk& walk, WhenNode<P, Then, Else> const& node);
 
+    template <Predicate P>
+    void collect(Walk& walk, Constraint<P> const& node);
+
     /// A variable contributes one row to the symbol table -- unless its
     /// quantity type has already contributed one, in which case the second
     /// use of that quantity adds nothing. A different quantity that merely
@@ -247,6 +251,20 @@ namespace detail
         collect(walk, node.predicate);
         collect(walk, node.thenBranch);
         collect(walk, node.elseBranch);
+    }
+
+    /// A constraint carries its own `Citation` instead of being wrapped by
+    /// `documented()` -- see `constraint.hpp`'s file comment for why it
+    /// cannot be: `DocumentedNode` requires `Node Inner`, and a constraint is
+    /// deliberately not a `Node`. So this pushes onto the same citation list
+    /// `collect(Walk&, DocumentedNode<Inner> const&)` above pushes onto,
+    /// rather than opening a second path into it, then walks the predicate
+    /// for the variables both its sides read.
+    template <Predicate P>
+    void collect(Walk& walk, Constraint<P> const& node)
+    {
+        walk.documentation.citations.push_back(node.citation);
+        collect(walk, node.predicate);
     }
 } // namespace detail
 
