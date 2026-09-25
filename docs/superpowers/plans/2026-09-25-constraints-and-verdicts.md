@@ -24,6 +24,7 @@
 - **No release, no tag**, ever, by anyone.
 - `docs/gallery.md` is **generated** by `tools/gallery/main.cpp` and checked by the `gallery.is-current` test. Edit the tool and regenerate; never hand-edit the page.
 - Every documentation snippet must be **pasted from a real compiled run**. Phase 8 withdrew two rendering spellings after they reached the guide.
+- **A test whose interesting case sits last proves nothing about early exit or ordering.** Task 2 found this the hard way: mutating `check_all` to stop at the first `NotChecked` was invisible to the straightforward test, because `NotChecked` happened to be the last constraint and nothing observable changed. Only a reversed-order section caught it. The same family has now bitten this project three times — phase 8's arity mutation passed all five tests because the failure was placed where nothing short-circuits, and a `collect(walk, node.rhs)` walk went entirely untested because every predicate put its variable on the left. **Position is part of a test's meaning.** When a task tests a sequence, an asymmetric pair, or a two-sided operation, place the interesting case where an error would actually be observable, and test both arrangements.
 
 ## Interfaces that already exist — read from the tree at `6787b3e`, not guessed
 
