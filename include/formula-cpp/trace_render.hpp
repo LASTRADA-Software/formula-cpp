@@ -125,6 +125,41 @@ namespace detail
         return step.operands.empty() ? std::string {} : operand_reference(step.operands[0]);
     }
 
+    /// The token a comparison is written with in a derivation: `>`, `<=`.
+    ///
+    /// A table here rather than a call into `render.hpp`, whose own spelling
+    /// lives inside `render_node(PredicateNode ...)` and is parameterised on
+    /// `Dialect`. This renderer has no `Dialect` parameter by contract -- a
+    /// derivation is plain text, and `render_trace` refuses even to render a
+    /// non-`Rational` trace rather than acquire a policy -- so reaching into
+    /// a dialect-aware spelling to take its plain arm would make the trace's
+    /// contract depend on how many dialects `render()` grows.
+    ///
+    /// The six tokens must nonetheless match what `render()` writes in its
+    /// plain dialects, or a reader checking a derivation against the formula
+    /// it derives meets two notations for one comparison. That agreement is
+    /// what `test/trace_render_tests.cpp`'s "a derivation spells a comparison
+    /// the way render() does" pins, for all six, on both surfaces at once.
+    [[nodiscard]] inline std::string_view comparison_symbol(Comparison comparison)
+    {
+        switch (comparison)
+        {
+            case Comparison::Less:
+                return "<";
+            case Comparison::LessOrEqual:
+                return "<=";
+            case Comparison::Greater:
+                return ">";
+            case Comparison::GreaterOrEqual:
+                return ">=";
+            case Comparison::Equal:
+                return "==";
+            case Comparison::NotEqual:
+                return "!=";
+        }
+        return "unknown comparison";
+    }
+
     /// A `Conditional` step, in the same infix shape `render()` gives the
     /// `WhenNode` it came from: `if #1 > #2 then #3`.
     ///
@@ -138,32 +173,42 @@ namespace detail
     /// is the problem. This shape needs none: it is the one `render()`
     /// already writes, minus the branch that did not run.
     ///
-    /// **The branch that ran is the last operand**, when one ran at all:
-    /// operands are recorded in evaluation order and the branch is dispatched
-    /// after the predicate. What says whether one ran is `step.branch`, not
-    /// the operand count -- a predicate side that produced no step of its own
-    /// (an untraced extension node; see `binary_expression` above) reduces
-    /// the count too, and only `branch` distinguishes the two.
+    /// **Three arities, not two.** `branch != Branch::Neither` exactly when a
+    /// branch ran, and a branch that ran contributes exactly one step -- the
+    /// last operand, since operands are recorded in evaluation order and the
+    /// branch is dispatched after the predicate:
     ///
-    /// A predicate side that recorded no step is written `(not evaluated)`,
-    /// which is what actually happened: the one arity below two that arises
-    /// in practice is a predicate whose left side raised an arithmetic error,
-    /// after which the evaluator never dispatched the right one at all. (The
-    /// mirror case -- a left side that is an untraced extension node -- would
-    /// be labelled the wrong way round here, the same imprecision
-    /// `binary_expression` above already accepts for the same cause, and
-    /// reachable only by a consumer who has written such a node.)
+    ///  - three operands, a branch ran: `if #1 > #2 then #3`
+    ///  - two, no branch: `if #1 > #2` -- both sides were evaluated and one
+    ///    was absent, so the comparison was never decided
+    ///  - one, no branch: `if #3` -- the predicate's **left** side raised an
+    ///    arithmetic error, so the right side was never dispatched and no
+    ///    comparison was ever made. The operator is left out for that reason
+    ///    rather than for brevity: writing `#3 >` beside a side that does not
+    ///    exist would claim a comparison that never happened.
+    ///
+    /// Which branch ran is named by the keyword in the body, so `step_line`
+    /// below appends no `[then]`/`[else]` suffix that would only repeat it.
+    /// It still appends `[no branch]`, which the body cannot say: that clause
+    /// is the one that distinguishes a predicate which never resolved from
+    /// one that resolved false, and nothing else carries that distinction.
+    ///
+    /// The bounds are checked rather than assumed. `Step` is a public
+    /// aggregate and a caller may fill one in by hand, the same reason
+    /// `step_value_text` below refuses to print a value whose unit disagrees
+    /// with its dimension.
     template <typename Rep>
     [[nodiscard]] std::string conditional_expression(Step<Rep> const& step)
     {
         bool const branchRan = step.branch != Branch::Neither && !step.operands.empty();
         std::size_t const predicateOperands = step.operands.size() - (branchRan ? 1u : 0u);
 
-        std::string const notEvaluated { "(not evaluated)" };
-        std::string const lhs = predicateOperands >= 1 ? operand_reference(step.operands[0]) : notEvaluated;
-        std::string const rhs = predicateOperands >= 2 ? operand_reference(step.operands[1]) : notEvaluated;
-
-        std::string text = "if " + lhs + " " + std::string { describe(step.comparison) } + " " + rhs;
+        std::string text = "if";
+        if (predicateOperands >= 1)
+            text += " " + operand_reference(step.operands[0]);
+        if (predicateOperands >= 2)
+            text += " " + std::string { comparison_symbol(step.comparison) } + " "
+                    + operand_reference(step.operands[1]);
         if (branchRan)
             text += " " + std::string { describe(step.branch) } + " " + operand_reference(step.operands.back());
         return text;
@@ -316,9 +361,9 @@ namespace detail
 
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the four kinds that need one -- a citation
-    /// for `Documented`, a justification for `NumericValue`, which branch ran
-    /// for `Conditional`, and the tie-breaking rule for the two rounding
-    /// kinds.
+    /// for `Documented`, a justification for `NumericValue`, the tie-breaking
+    /// rule for the two rounding kinds, and, for a `Conditional` whose
+    /// predicate never resolved, `[no branch]`.
     [[nodiscard]] inline std::string step_line(Step<Rational> const& step)
     {
         std::string const value = step_value_text(step);
@@ -327,7 +372,12 @@ namespace detail
             suffix = citation_suffix(step.citation);
         else if (step.kind == StepKind::NumericValue)
             suffix = justification_suffix(step.justification);
-        else if (step.kind == StepKind::Conditional)
+        // Only `[no branch]`. A branch that ran is named by the keyword in
+        // the body (`... then #3`, `... else #5`), and a suffix repeating it
+        // would be noise; `[no branch]` is the one thing the body cannot
+        // say, and it is what separates a predicate that never resolved from
+        // one that resolved false.
+        else if (step.kind == StepKind::Conditional && step.branch == Branch::Neither)
             suffix = " [" + std::string { describe(step.branch) } + "]";
         else if (step.kind == StepKind::Round || step.kind == StepKind::RoundSignificant)
             suffix = rounding_mode_suffix(step.mode);

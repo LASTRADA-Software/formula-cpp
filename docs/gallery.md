@@ -132,7 +132,7 @@ w/c = V_w / V_c = 180 l / 300 l = 3/5 = 0.6
 3. rho_m = 1500 kg/m3
 4. 11/10
 5. #3 * #4 = 1650
-6. if #1 < #2 then #5 = 1650 [then]
+6. if #1 < #2 then #5 = 1650
 7. #6 = 1650 [Compaction-adjusted bulk density, Example Standard 5:2020, 4.5]
 ```
 

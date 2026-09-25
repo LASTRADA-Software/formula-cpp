@@ -150,6 +150,13 @@ struct Step
     /// meaningful only when `kind` is `Conditional`, exactly as `exponent`
     /// and `granularity` above are meaningful only for the kinds that set
     /// them, and no renderer may read it without checking `kind` first.
+    ///
+    /// It is recorded even when the predicate never resolved, because what a
+    /// step could not decide is still a comparison a reader needs named --
+    /// with one exception in the rendering, not here: a predicate whose left
+    /// side errored never dispatched its right one and so never compared
+    /// anything at all. See `detail::conditional_expression`
+    /// (`trace_render.hpp`).
     Comparison comparison {};
 
     /// For `Round` and `RoundSignificant`: the tie-breaking rule the node
@@ -498,9 +505,13 @@ class RecordingSink
 
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
         {
-            // `WhenNode` re-exports its predicate's comparison for exactly
-            // this: a sink is handed a node, never the predicate's type.
-            step.comparison = N::comparison;
+            // The predicate's comparison, taken off the node this sink was
+            // handed. `PredicateNode::comparison` is a public
+            // `static constexpr`, so naming it through the member is a
+            // constant expression and `WhenNode` needs no re-export of its
+            // own -- the same way `citation` above is read straight off a
+            // `DocumentedNode`.
+            step.comparison = std::remove_cvref_t<decltype(node.predicate)>::comparison;
             step.branch = _trace->branchStack.back();
             _trace->branchStack.pop_back();
         }

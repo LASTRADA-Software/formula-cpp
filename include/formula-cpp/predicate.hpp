@@ -25,7 +25,6 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
-#include <string_view>
 #include <type_traits>
 
 namespace formula
@@ -41,36 +40,6 @@ enum class Comparison : std::uint8_t
     Equal,
     NotEqual,
 };
-
-/// `comparison` as the token a person reads, for a trace render -- and for
-/// every rendering dialect but LaTeX, which spells three of the six
-/// mathematically instead (see `render_node(PredicateNode ...)`).
-///
-/// One spelling, in one place, deliberately: `render()` states a formula and
-/// `render_trace()` explains one derivation of it, and a reader who checks
-/// the second against the first must not meet two different tokens for one
-/// comparison. This is the same reason `describe(RoundingMode)` and
-/// `describe(Branch)` exist where they do -- next to the enum, not next to
-/// one of its consumers.
-[[nodiscard]] constexpr std::string_view describe(Comparison comparison) noexcept
-{
-    switch (comparison)
-    {
-        case Comparison::Less:
-            return "<";
-        case Comparison::LessOrEqual:
-            return "<=";
-        case Comparison::Greater:
-            return ">";
-        case Comparison::GreaterOrEqual:
-            return ">=";
-        case Comparison::Equal:
-            return "==";
-        case Comparison::NotEqual:
-            return "!=";
-    }
-    return "unknown comparison";
-}
 
 namespace detail
 {

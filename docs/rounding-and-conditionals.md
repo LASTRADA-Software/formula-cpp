@@ -166,7 +166,7 @@ that did not run:
 2. 20 mm
 3. d = 127/5 mm
 4. round(#3, to 0 dp of mm) = 25 mm [nearest, ties away from zero]
-5. if #1 > #2 then #4 = 1/40 [then]
+5. if #1 > #2 then #4 = 1/40
 ```
 
 Step 5 is the conditional. `#1` and `#2` are the predicate's two sides,
@@ -174,12 +174,19 @@ recorded and numbered exactly like any other step's operands even though
 `PredicateNode` itself is not a `Node` and never gets a step of its own; `>`
 is the comparison that was actually made, so the step can be checked against
 the method on its own, away from the formula text; and `#4` is the branch
-that ran. 25.40 mm is above the 20 mm threshold, so the trailing clause says
-`[then]`. Had the predicate not held, the body would read `if #1 > #2 else
-#4` and the clause `[else]`; had the diameter never been measured at all, the
-body would stop after the comparison -- there is no branch to name, because
-none was ever dispatched -- and the clause would read `[no branch]`. It never
-says "false", which would misreport a predicate that never resolved.
+that ran, named by the keyword in front of it. 25.40 mm is above the 20 mm
+threshold, so the keyword is `then`; had the predicate not held it would read
+`if #1 > #2 else #4`.
+
+A conditional whose predicate never resolved has no branch to name, and that
+is the one thing the body cannot say, so it keeps a trailing clause:
+`if #1 > #2 = (not measured) [no branch]` when the diameter was never
+measured. `[no branch]` is never "false" -- a predicate that never resolved
+is not a predicate that resolved false, and reporting it as one would put a
+branch in the record that was never taken. In the rarer case where the
+predicate's own left side raises an arithmetic error, the right side is never
+dispatched and nothing is ever compared, so the step drops the operator too
+and reads `if #3 = division by zero [no branch]`.
 
 Step 4 carries a trailing clause of its own: `[nearest, ties away from
 zero]`, the `RoundingMode` that node rounded under. The mode is deliberately

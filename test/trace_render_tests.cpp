@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -347,17 +348,18 @@ TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-rende
 
     // The step is spelled the way render() spells the node it came from --
     // `if <lhs> <comparison> <rhs> then <branch>` -- with the predicate's two
-    // sides as #1 and #2 and the branch that ran as #3, and which branch is
-    // also a trailing clause, the same way a citation trails a Documented
-    // step. It must NOT read `when(#1, #2, #3)`: that is positionally
-    // identical to the public when(predicate, then, else) and means something
-    // else, so a reader who knows the API reads the wrong value out of it.
+    // sides as #1 and #2 and the branch that ran as #3. It must NOT read
+    // `when(#1, #2, #3)`: that is positionally identical to the public
+    // when(predicate, then, else) and means something else, so a reader who
+    // knows the API reads the wrong value out of it. And no `[then]` suffix:
+    // the keyword in the body already names the branch.
     CHECK(text
           == "1. f = 60 MPa\n"
              "2. 50 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 > #2 then #3 = 60000000 [then]\n");
+             "4. if #1 > #2 then #3 = 60000000\n");
     CHECK(text.find("when(") == std::string::npos);
+    CHECK(text.find("[then]") == std::string::npos);
 }
 
 TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-render]")
@@ -378,7 +380,8 @@ TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-rende
              "3. f = 40 MPa\n"
              "4. 2\n"
              "5. #3 * #4 = 80000000\n"
-             "6. if #1 > #2 else #5 = 80000000 [else]\n");
+             "6. if #1 > #2 else #5 = 80000000\n");
+    CHECK(text.find("[else]") == std::string::npos);
 }
 
 TEST_CASE("a derivation renders a Conditional step with no branch when the predicate is absent",
@@ -395,9 +398,11 @@ TEST_CASE("a derivation renders a Conditional step with no branch when the predi
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
 
     // Only the predicate's own two operands were ever recorded, so the step
-    // states the comparison and stops -- no branch clause at all -- and the
-    // suffix says plainly that neither branch ran: not which one, and not
-    // "false", which would misreport a predicate that never resolved at all.
+    // states the comparison and stops -- no branch keyword at all -- and the
+    // one suffix that survives says plainly that neither branch ran: not
+    // which one, and not "false", which would misreport a predicate that
+    // never resolved at all. This is the clause the body cannot express, and
+    // it must stay distinct from the else branch's `else #5` above.
     CHECK(text
           == "1. f = (not measured)\n"
              "2. 50 MPa\n"
@@ -422,11 +427,15 @@ TEST_CASE("a derivation renders a Conditional step whose predicate raised an ari
 
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
 
+    // One operand, and no comparison token: the left side failed before the
+    // right was ever dispatched, so nothing was compared. Writing `#3 >`
+    // beside a side that does not exist would claim a comparison that never
+    // happened.
     CHECK(text
           == "1. f = 60 MPa\n"
              "2. 0\n"
              "3. #1 / #2 = division by zero\n"
-             "4. if #3 > (not evaluated) = division by zero [no branch]\n");
+             "4. if #3 = division by zero [no branch]\n");
 }
 
 TEST_CASE("a derivation renders the comparison a conditional actually made", "[trace-render]")
@@ -453,10 +462,43 @@ TEST_CASE("a derivation renders the comparison a conditional actually made", "[t
           == "1. f = 60 MPa\n"
              "2. 50 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 > #2 then #3 = 60000000 [then]\n");
+             "4. if #1 > #2 then #3 = 60000000\n");
     CHECK(less
           == "1. f = 60 MPa\n"
              "2. 50 MPa\n"
              "3. f = 60 MPa\n"
-             "4. if #1 < #2 else #3 = 60000000 [else]\n");
+             "4. if #1 < #2 else #3 = 60000000\n");
+}
+
+TEST_CASE("a derivation spells a comparison the way render() does", "[trace-render]")
+{
+    // trace_render.hpp keeps its own six-token table, because it has no
+    // Dialect parameter and render.hpp's spelling lives inside a function
+    // that does. Two tables can drift, and a reader checking a derivation
+    // against the formula it derives must not meet two notations for one
+    // comparison -- so the agreement is pinned here, on both surfaces at
+    // once, for all six operators rather than the two the cases above reach.
+    constexpr auto fifty = formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
+
+    auto const bothSurfaces = [&environment](auto const& predicate, std::string_view token) {
+        auto const node = formula::when(predicate, var<Strength>, var<Strength>);
+
+        // render(): `if f <token> 50 MPa then f else f`.
+        CHECK(formula::render(node) == "if f " + std::string { token } + " 50 MPa then f else f");
+
+        // The trace: `if #1 <token> #2 <branch> #3`.
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+        std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+        CHECK(text.find("if #1 " + std::string { token } + " #2 ") != std::string::npos);
+    };
+
+    bothSurfaces(var<Strength> < fifty, "<");
+    bothSurfaces(var<Strength> <= fifty, "<=");
+    bothSurfaces(var<Strength> > fifty, ">");
+    bothSurfaces(var<Strength> >= fifty, ">=");
+    bothSurfaces(var<Strength> == fifty, "==");
+    bothSurfaces(var<Strength> != fifty, "!=");
 }

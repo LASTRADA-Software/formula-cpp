@@ -428,33 +428,22 @@ template <Dialect D, Comparison Op, Node Left, Node Right>
     std::string const lhs = detail::render_operand<D>(node.lhs, operandContext);
     std::string const rhs = detail::render_operand<D>(node.rhs, operandContext);
 
-    // Every dialect but LaTeX takes its token from `describe(Op)`
-    // (`predicate.hpp`) rather than keeping a second copy of the same six
-    // here. `render_trace` spells a traced conditional's predicate through
-    // that same function, and a reader checking a derivation against the
-    // formula it derives must not meet two different tokens for one
-    // comparison -- so there is one spelling, kept next to the enum. LaTeX
-    // overrides three of the six with their mathematical forms, the same
-    // way `BinaryNode`'s `*` becomes `\cdot` there.
-    std::string_view const symbol = []() -> std::string_view {
-        if constexpr (D == Dialect::LaTeX)
-        {
-            if constexpr (Op == Comparison::LessOrEqual)
-                return "\\leq";
-            else if constexpr (Op == Comparison::GreaterOrEqual)
-                return "\\geq";
-            else if constexpr (Op == Comparison::Equal)
-                return "=";
-            else if constexpr (Op == Comparison::NotEqual)
-                return "\\neq";
-            else
-                return describe(Op);
-        }
+    char const* const symbol = [] {
+        if constexpr (Op == Comparison::Less)
+            return "<";
+        else if constexpr (Op == Comparison::LessOrEqual)
+            return D == Dialect::LaTeX ? "\\leq" : "<=";
+        else if constexpr (Op == Comparison::Greater)
+            return ">";
+        else if constexpr (Op == Comparison::GreaterOrEqual)
+            return D == Dialect::LaTeX ? "\\geq" : ">=";
+        else if constexpr (Op == Comparison::Equal)
+            return D == Dialect::LaTeX ? "=" : "==";
         else
-            return describe(Op);
+            return D == Dialect::LaTeX ? "\\neq" : "!=";
     }();
 
-    return lhs + " " + std::string { symbol } + " " + rhs;
+    return lhs + " " + symbol + " " + rhs;
 }
 
 /// A conditional renders as `if <predicate> then <then> else <else>` in every
