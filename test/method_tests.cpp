@@ -156,6 +156,39 @@ TEST_CASE("four variants that agree in dimension without agreeing in type are ac
                    == std::tuple_element_t<2, decltype(pack.cases)>::dimension);
 }
 
+TEST_CASE("duplicate variant tags are refused", "[method]")
+{
+    // A well-formed pack is accepted -- the control, so this test is shown
+    // able to pass as well as able to fail.
+    constexpr auto fine = formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                                            formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) ));
+    STATIC_REQUIRE(formula::detail::tags_are_distinct(fine));
+}
+
+TEST_CASE("a pack that repeats a tag is not a well-formed method's variants", "[method]")
+{
+    // Asked of the TYPES, which never completes the pack, so a repeat can be
+    // answered false here rather than refused. `evaluate_method` gates its
+    // body on `IsWellFormedMethod`, whose doc says it asks every rule the
+    // variants ask -- this is what holds the distinct-tag rule to that.
+    //
+    // The repeat is at (0, 1) on purpose, a pair every narrowing of the
+    // pairwise comparison still makes, so that this test does not overlap
+    // `negative/method_duplicate_tag.cpp`, which is what the narrowings die
+    // against.
+    using Pressure = decltype(var<Force> / (var<EdgeX> * var<EdgeY>) );
+    using Repeated = formula::Variants<formula::VariantCase<Cube, Pressure>, formula::VariantCase<Cube, Pressure>>;
+    using Distinct = formula::Variants<formula::VariantCase<Cube, Pressure>, formula::VariantCase<Cylinder, Pressure>>;
+    using Rule =
+        formula::RoundingRule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>;
+    using NoConstraints = decltype(formula::constraints());
+
+    STATIC_REQUIRE(!formula::detail::VariantTagsAreDistinct<Repeated>::value);
+    STATIC_REQUIRE(formula::detail::VariantTagsAreDistinct<Distinct>::value);
+    STATIC_REQUIRE(!formula::detail::IsWellFormedMethod<formula::Method<Repeated, Rule, NoConstraints>>::value);
+    STATIC_REQUIRE(formula::detail::IsWellFormedMethod<formula::Method<Distinct, Rule, NoConstraints>>::value);
+}
+
 TEST_CASE("a method selects the variant matching the tag", "[method]")
 {
     constexpr auto m = formula::method(

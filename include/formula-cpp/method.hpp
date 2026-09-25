@@ -45,15 +45,22 @@
 /// two concepts. So the departure rests on readability plus a neighbouring
 /// silent mis-binding -- not on the spec's own spelling being broken.
 ///
-/// **What a pack refuses, and why here rather than later.** Four rules, the
-/// first three enforced by `Variants` itself and the fourth by each
+/// **What a pack refuses, and why here rather than later.** Five rules, the
+/// first four enforced by `Variants` itself and the fifth by each
 /// `VariantCase` it holds:
 ///
 ///  1. every argument is a variant -- a `VariantCase`, which is what
 ///     `variant<Tag>(...)` returns;
 ///  2. there is at least one of them;
 ///  3. they all report the same dimension;
-///  4. every variant's tag is a plain class type.
+///  4. no two of them declare the same tag;
+///  5. every variant's tag is a plain class type.
+///
+/// Rule 4 is about tags, which are types, and so it is decidable for every
+/// pack. Whether two variants' *conditions* overlap is not: a condition over
+/// a runtime value, such as the number a `ConstantNode` holds, leaves nothing
+/// in the type to compare. So this header refuses repeated tags and does not
+/// attempt the general question.
 ///
 /// The first two exist because `variants(...)` over a bare pack accepted
 /// nonsense in silence. Measured on cl 19.51 at `/W4 /WX`, **exit 0, no
@@ -89,6 +96,7 @@
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
 
+#include <array>
 #include <cstddef>
 #include <tuple>
 #include <type_traits>
@@ -305,10 +313,112 @@ namespace detail
         static constexpr bool value = (RequireVariantsAgree<First, Rest>::value && ...);
     };
 
-    /// Three of the four rules a variants pack obeys, asked in an order that
-    /// matters. The fourth, the tag rule, is each `VariantCase`'s own.
+    /// Row @p T of the same-type table `first_repeated_pair` reads: whether
+    /// `T` is each of `Ts`, in order.
+    template <typename T, typename... Ts>
+    inline constexpr std::array<bool, sizeof...(Ts)> isSameAsEach { std::is_same_v<T, Ts>... };
+
+    /// Two positions in a pack. `first == second` is no pair at all, and is
+    /// what `first_repeated_pair` answers when every type is distinct.
+    struct PositionPair
+    {
+        /// The earlier of the two positions.
+        std::size_t first = 0;
+        /// The later of the two positions.
+        std::size_t second = 0;
+    };
+
+    /// The first two positions of @p Ts holding the same type, ordered by the
+    /// later position; `{ 0, 0 }` when there are none.
     ///
-    /// One `static_assert` in `Variants` rather than three, so that the rules
+    /// Compares EVERY pair, not only neighbours: a repeated tag is as much a
+    /// mistake four variants apart as it is side by side, and nothing about
+    /// tags orders them so that a repeat would have to be adjacent.
+    ///
+    /// The ONLY statement of the distinct-tags rule: `all_distinct` and
+    /// `RequireDistinctVariantTags` both ask it, for the reason
+    /// `isPlainClassTag` gives -- two copies of a rule drift.
+    template <typename... Ts>
+    [[nodiscard]] consteval PositionPair first_repeated_pair() noexcept
+    {
+        constexpr std::size_t count = sizeof...(Ts);
+        constexpr std::array<std::array<bool, count>, count> same { isSameAsEach<Ts, Ts...>... };
+        for (std::size_t second = 1; second < count; ++second)
+            for (std::size_t first = 0; first < second; ++first)
+                if (same[first][second])
+                    return PositionPair { first, second };
+        return PositionPair {};
+    }
+
+    /// True when no two of @p Ts are the same type.
+    template <typename... Ts>
+    [[nodiscard]] consteval bool all_distinct() noexcept
+    {
+        constexpr PositionPair repeated = first_repeated_pair<Ts...>();
+        return repeated.first == repeated.second;
+    }
+
+    /// Fails to compile when two variants of one method declare the same tag.
+    ///
+    /// A method with two variants for one tag has no answer to "which one
+    /// applies", and selecting the first would leave the second as dead code
+    /// nobody is told about.
+    ///
+    /// Templated on the tag and on BOTH positions that declare it, so that the
+    /// diagnostic names the mistake outright: `RequireTagDeclaredOnce<1, 3,
+    /// Cylinder>` rather than a whole pack to be searched by eye. Only
+    /// `RequireDistinctVariantTags` instantiates it, and hands it
+    /// `first == second` when there is no repeat -- see `PositionPair`.
+    template <std::size_t First, std::size_t Second, typename Tag>
+    struct RequireTagDeclaredOnce
+    {
+        static_assert(First == Second,
+                      "formula: this method declares two variants for the same tag; a method with two "
+                      "variants for one tag has no answer to which of them applies -- the tag appears in "
+                      "this diagnostic as the template argument Tag of RequireTagDeclaredOnce, and First "
+                      "and Second are the ZERO-BASED positions of the two variants that declare it, so 0 "
+                      "is the first variant");
+
+        static constexpr bool value = true;
+    };
+
+    /// True when no two variants in a pack declare the same tag; the refusal
+    /// is `RequireTagDeclaredOnce`'s.
+    ///
+    /// Reads `Cs::tag` here, inside the template, and never in the argument
+    /// list that names it -- which is what lets `RequireWellFormedVariants`
+    /// gate it: `RequireDistinctVariantTags<typename Cs::tag...>` would read
+    /// the tags where the template-id is formed, gate or no gate.
+    ///
+    /// The primary template is the empty pack, vacuously true, for the reason
+    /// `RequireAllVariantsAgree` has one: `variants()` passes the
+    /// every-argument-is-a-variant gate, and must be told only that it is
+    /// empty. Without it, the tag lookup below would ask for the tag at
+    /// position 0 of nothing.
+    template <typename... Cs>
+    struct RequireDistinctVariantTags
+    {
+        /// Always true: an empty pack repeats nothing.
+        static constexpr bool value = true;
+    };
+
+    template <typename First, typename... Rest>
+    struct RequireDistinctVariantTags<First, Rest...>
+    {
+        /// Where the first repeated tag sits, if anywhere.
+        static constexpr PositionPair repeated = first_repeated_pair<typename First::tag, typename Rest::tag...>();
+
+        /// True when no tag is repeated.
+        static constexpr bool value = RequireTagDeclaredOnce<
+            repeated.first,
+            repeated.second,
+            std::tuple_element_t<repeated.first, std::tuple<typename First::tag, typename Rest::tag...>>>::value;
+    };
+
+    /// Four of the five rules a variants pack obeys, asked in an order that
+    /// matters. The fifth, the tag rule, is each `VariantCase`'s own.
+    ///
+    /// One `static_assert` in `Variants` rather than four, so that the rules
     /// can be sequenced. The agreement rule is asked **only once every
     /// argument is a variant**: a non-variant has no `dimension` to compare,
     /// and asking anyway buries the one message that matters. Measured on cl
@@ -339,16 +449,24 @@ namespace detail
     /// compiler's own errors under the new rule's name; miss the `REJECT` and
     /// nothing notices, because that case rejects only the names it lists.
     /// That is a likelier mistake than the constraint trap just above.
+    ///
+    /// The distinct-tag rule reads `Cs::tag`, so it sits behind that gate,
+    /// and `method_variants_agreement_gated` rejects its name too. It is
+    /// deliberately NOT gated on the agreement rule, nor the agreement rule
+    /// on it: the two are independent, and a pack that breaks both is told
+    /// about both.
     template <typename... Cs>
     struct RequireWellFormedVariants
     {
         static_assert(RequireAtLeastOneVariant<Cs...>::value);
         static_assert(RequireEveryArgumentIsAVariant<std::index_sequence_for<Cs...>, Cs...>::value);
 
-        /// Whether the agreement rule has anything it can ask about.
+        /// Whether the rules that read a variant's members have anything they
+        /// can ask about.
         static constexpr bool everyArgumentIsAVariant = (IsVariantCase<Cs>::value && ...);
 
         static_assert(std::conditional_t<everyArgumentIsAVariant, RequireAllVariantsAgree<Cs...>, std::true_type>::value);
+        static_assert(std::conditional_t<everyArgumentIsAVariant, RequireDistinctVariantTags<Cs...>, std::true_type>::value);
 
         static constexpr bool value = true;
     };
@@ -386,7 +504,7 @@ struct Variants
 };
 
 /// Builds a method's variants pack: `variants(a, b, c)`. See the file comment
-/// for the four rules a pack has to satisfy.
+/// for the five rules a pack has to satisfy.
 template <typename... Cs>
 [[nodiscard]] constexpr Variants<Cs...> variants(Cs... cases) noexcept
 {
@@ -616,6 +734,38 @@ namespace detail
     {
     };
 
+    /// Whether no two variants in a pack declare the same tag, asked without
+    /// firing `RequireDistinctVariantTags`.
+    ///
+    /// Matches the pack by its type alone, so it never completes the
+    /// `Variants` it is asked about -- which is what lets it answer false,
+    /// where `tags_are_distinct` below cannot: a pack that repeats a tag
+    /// fails to compile the moment it is completed.
+    template <typename Vs>
+    struct VariantTagsAreDistinct: std::false_type
+    {
+    };
+
+    template <typename... Tags, Node... Exprs>
+    struct VariantTagsAreDistinct<Variants<VariantCase<Tags, Exprs>...>>: std::bool_constant<all_distinct<Tags...>()>
+    {
+    };
+
+    /// True when no two variants declare the same tag. A method with two
+    /// variants for one tag has no answer to "which one applies", and picking
+    /// the first would make the second silently dead code.
+    ///
+    /// Asked of a pack that exists, so it is true of every pack it can be
+    /// asked about: a `Variants` that repeats a tag is refused where it is
+    /// completed, by `RequireDistinctVariantTags`. It states the rule for a
+    /// reader and for a test's control; `VariantTagsAreDistinct` is the form
+    /// that can answer false.
+    template <typename... Cs>
+    [[nodiscard]] constexpr bool tags_are_distinct(Variants<Cs...> const&) noexcept
+    {
+        return all_distinct<typename Cs::tag...>();
+    }
+
     /// Whether a rounding rule's unit measures a pack's agreed dimension,
     /// asked without firing `RequireRoundingRuleMeasuresVariants`. Only ever
     /// instantiated behind the checks that give both sides a meaning -- see
@@ -644,6 +794,7 @@ namespace detail
                          IsConstraintSet<std::remove_cv_t<Constraints>>,
                          std::bool_constant<VariantsDimension<std::remove_cv_t<Vs>>::known>,
                          VariantTagsArePlain<std::remove_cv_t<Vs>>,
+                         VariantTagsAreDistinct<std::remove_cv_t<Vs>>,
                          RoundingRuleMeasuresVariants<std::remove_cv_t<Vs>, std::remove_cv_t<Rounding>>>
     {
     };

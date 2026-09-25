@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this argument of variants(...) is not a variant of a method
 // REJECT: RequireVariantsAgree
+// REJECT: RequireDistinctVariantTags
 //
-// Pins that the dimension-agreement rule is GATED: it must not be asked about
-// a pack that holds a non-variant, because a non-variant has no `dimension`
-// and asking anyway buries our message under the compiler's own "no such
-// member" errors. It pins nothing about the order of any other rule.
+// Pins that the dimension-agreement rule and the distinct-tag rule are
+// GATED: neither must be asked about a pack that holds a non-variant, because
+// a non-variant has no `dimension` and no `tag`, and asking anyway buries our
+// message under the compiler's own "no such member" errors. It pins nothing
+// about the order of any other rule.
 //
 // Any rule added behind the same gate -- anything that reads a member of a
 // variant -- must add its own template name to this case's REJECT list in

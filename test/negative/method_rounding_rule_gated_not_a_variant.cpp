@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this argument of variants(...) is not a variant of a method
 // REJECT: RequireRoundingRuleMeasuresVariants
+// REJECT: RequireDistinctVariantTags
 //
 // A method whose variants pack holds a bare `int` beside a real variant.
 //
@@ -11,6 +12,11 @@
 // and leave the refusal to the pack's own rule. Asked anyway, it would look
 // for the pack's agreed dimension, find none, and add the compiler's own
 // "no such member" errors under its name -- which is what the REJECT refuses.
+//
+// The distinct-tag rule is refused the same way, and for the same reason: it
+// reads each variant's `tag`, which a bare `int` has not got. The pack's own
+// case, `method_variants_agreement_gated`, pins that gate for
+// `variants(...)`; this one pins it for a pack reached through `method(...)`.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>

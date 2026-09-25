@@ -452,8 +452,13 @@ formula_add_negative_test(method_variants_not_a_variant
 # print -- measured, none adds a `ul` suffix -- so it is matched literally.
 formula_add_negative_test(method_variants_not_a_variant_position "RequireVariant<2,")
 
+# An empty pack passes the every-argument-is-a-variant gate vacuously, so
+# the rules behind that gate are asked about it too, and must say nothing:
+# the distinct-tag rule has an empty-pack specialisation for exactly that,
+# and the REJECT pins it.
 formula_add_negative_test(method_variants_empty
-    "formula: this method declares no variants at all")
+    "formula: this method declares no variants at all"
+    REJECT "RequireDistinctVariantTags")
 
 # A variant's tag must be a class type free of const and volatile. Of the
 # degenerate tags this refuses -- void, int, Cube&, const Cube -- the case
@@ -476,7 +481,17 @@ formula_add_negative_test(method_variant_tag_cv_qualified
 # list, or its own cascade goes unnoticed -- see `RequireWellFormedVariants`.
 formula_add_negative_test(method_variants_agreement_gated
     "formula: this argument of variants(...) is not a variant of a method"
-    REJECT "RequireVariantsAgree")
+    REJECT "RequireVariantsAgree" "RequireDistinctVariantTags")
+
+# Two variants declaring the same tag. The repeat sits at positions 1 and 3
+# of 5 -- not the first pair, not the last, not adjacent -- so that a rule
+# narrowed to any one of those comparisons lets the pack compile; see the
+# file. The second case pins the diagnostic's naming of the repeat, both
+# positions and then the tag, rather than its message.
+formula_add_negative_test(method_duplicate_tag
+    "formula: this method declares two variants for the same tag")
+
+formula_add_negative_test(method_duplicate_tag_position "RequireTagDeclaredOnce<1,")
 
 # Selecting a tag no variant declares. There is no fallback variant and no
 # "first match wins", so a method asked for a Prism it does not have is
@@ -517,7 +532,7 @@ formula_add_negative_test(method_rounding_rule_gated
 # agreed dimension because one of its members has no dimension at all.
 formula_add_negative_test(method_rounding_rule_gated_not_a_variant
     "formula: this argument of variants(...) is not a variant of a method"
-    REJECT "RequireRoundingRuleMeasuresVariants")
+    REJECT "RequireRoundingRuleMeasuresVariants" "RequireDistinctVariantTags")
 
 # Each part of a method must be the kind of thing its factory builds. The
 # first case passes the variants and the rounding rule in each other's place,

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this method declares no variants at all
+// REJECT: RequireDistinctVariantTags
 //
 // `variants()` with nothing in it. Measured on cl 19.51 at `/W4 /WX` before
 // the guard existed: exit 0, no diagnostics -- an empty pack was a perfectly
