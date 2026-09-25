@@ -547,6 +547,15 @@ formula_add_negative_test(method_rounding_rule_gated_not_a_variant
     "formula: this argument of variants(...) is not a variant of a method"
     REJECT "RequireRoundingRuleMeasuresVariants" "RequireDistinctVariantTags")
 
+# The rounding rule is gated on the variants agreeing, and on nothing else: a
+# repeated tag leaves a dimension to compare, so a rule of the wrong dimension
+# is still reported alongside it. Two independent mistakes, two messages --
+# the same ruling `RequireWellFormedVariants` makes for agreement and
+# distinct tags. EXPECT pins the rounding rule's message; a gate on distinct
+# tags would silence it.
+formula_add_negative_test(method_rounding_rule_not_gated_on_distinct_tags
+    "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report")
+
 # Each part of a method must be the kind of thing its factory builds. The
 # first case passes the variants and the rounding rule in each other's place,
 # which compiled before this rule and failed only at `evaluate_method`, in the
