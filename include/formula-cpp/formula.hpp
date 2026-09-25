@@ -9,6 +9,7 @@
 /// that arithmetic-only consumers stay lean and pay nothing for text a
 /// consumer who wants it asks for by name.
 
+#include <formula-cpp/band.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/constraint.hpp>
@@ -20,6 +21,7 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/predicate.hpp>

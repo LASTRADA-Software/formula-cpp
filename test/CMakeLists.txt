@@ -52,6 +52,8 @@ add_executable(formula-cpp-tests
     constraint_tests.cpp
     conditional_tests.cpp
     escape_tests.cpp
+    band_tests.cpp
+    lookup_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -169,6 +171,145 @@ formula_add_negative_test(escape_unit_dimension_mismatch
 # to all of them.
 formula_add_negative_test(render_trace_no_step_limit "StepLimit")
 
+formula_add_negative_test(band_gap
+    "formula: this band table has a gap or overlap between two adjacent bands")
+
+formula_add_negative_test(band_overlap
+    "formula: this band table has a gap or overlap between two adjacent bands")
+
+formula_add_negative_test(band_inverted
+    "formula: this band is not well-formed")
+
+formula_add_negative_test(band_zero_width
+    "formula: this band is not well-formed")
+
+formula_add_negative_test(lookup_band_gap
+    "formula: this band table has a gap or overlap between two adjacent bands")
+
+# The corrections-count guard is shared by every lookup table in lookup.hpp,
+# so its message names a table's "rows" rather than one kind's own word for
+# them, and every case that trips it asserts this same string. A second
+# wording per table kind is how two surfaces that must agree begin to
+# disagree -- see `RequireCorrectionCountMatches`.
+formula_add_negative_test(lookup_short_corrections
+    "this lookup table was given a different number of corrections than it has rows")
+
+formula_add_negative_test(exact_lookup_short_corrections
+    "this lookup table was given a different number of corrections than it has rows")
+
+formula_add_negative_test(interpolating_lookup_short_corrections
+    "this lookup table was given a different number of corrections than it has rows")
+
+# The same rule on the route the three cases above cannot reach: the node
+# declared directly, with no factory call anywhere. Every lookup node is a
+# public aggregate with public members, so a short braced list can be handed to
+# one without the factory's parameter type ever being consulted -- and it was,
+# silently, until `corrections` became a `Corrections<N>` rather than a bare
+# `std::array<Rational, N>`. Measured before the fix on all three kinds: the
+# rows nobody typed evaluated to `0`, indistinguishable from a deliberate zero,
+# which is the "every answer is a lie" failure this node refuses on the miss
+# side.
+#
+# One case per kind, for the reason the key-unit pair just below gives: each
+# node declares its own `corrections` member, so a single case standing for all
+# three would let a revert on one kind pass while the other two still fired.
+formula_add_negative_test(lookup_short_corrections_no_factory
+    "this lookup table was given a different number of corrections than it has rows")
+
+formula_add_negative_test(exact_lookup_short_corrections_no_factory
+    "this lookup table was given a different number of corrections than it has rows")
+
+formula_add_negative_test(interpolating_lookup_short_corrections_no_factory
+    "this lookup table was given a different number of corrections than it has rows")
+
+# The key-unit guard is shared by every lookup kind that HAS a key unit -- the
+# banded and the interpolating one -- for the same reason the corrections-count
+# guard is shared: one rule, one mistake, one sentence. (The exact lookup has no
+# key unit; its key is a discriminator, not a quantity.) Both cases assert the
+# same string, and both exist, because deleting the guard from one node kind
+# leaves the other kind's case failing exactly as before.
+formula_add_negative_test(lookup_key_dimension_mismatch
+    "this lookup table's key unit does not measure the dimension of the expression whose value selects a row")
+
+formula_add_negative_test(interpolating_lookup_key_dimension_mismatch
+    "this lookup table's key unit does not measure the dimension of the expression whose value selects a row")
+
+# Three duplicate-key cases, asserting one string, because each pins a
+# different way the check can be broken while the other two still pass:
+#   - the base case has its duplicate in the MIDDLE and in NON-ADJACENT rows,
+#     which kills a check confined to the first pair, to the last pair, or to
+#     neighbours -- three mutations on one table;
+#   - _two_rows is the smallest table that can carry a duplicate at all, and
+#     is what fails when the underflow guard in `detail::key_table_is_valid`
+#     is widened from `size() < 2` to `< 3`;
+#   - _no_factory declares the node directly, which is the ONLY case that
+#     tells a class-body `static_assert` from one in the factory -- the
+#     factory returns the node by value, so every other case completes the
+#     class either way.
+formula_add_negative_test(exact_lookup_duplicate_key
+    "formula: this exact lookup table declares the same key twice")
+
+formula_add_negative_test(exact_lookup_duplicate_key_two_rows
+    "formula: this exact lookup table declares the same key twice")
+
+formula_add_negative_test(exact_lookup_duplicate_key_no_factory
+    "formula: this exact lookup table declares the same key twice")
+
+# The scoped-enumeration requirement, at each of the three public entry points
+# that takes a key: the node, the runtime validator and the predicate both are
+# built on. One file each, so that removing any one guard is caught rather
+# than masked by another still firing.
+formula_add_negative_test(exact_lookup_unscoped_key
+    "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
+
+formula_add_negative_test(exact_lookup_int_key_table
+    "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
+
+formula_add_negative_test(exact_lookup_keys_match_int_key
+    "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
+
+# Both lookups' Rep guards. Their messages are author-facing text and are the
+# only place either refusal's reason reaches a user, so they are tested API
+# like every other static_assert here -- and pinning only one of the two would
+# leave the halves of one rule in different states.
+formula_add_negative_test(lookup_rep_not_rational
+    "formula: a banded lookup node can only be evaluated with Rep = Rational")
+
+formula_add_negative_test(exact_lookup_rep_not_rational
+    "formula: an exact lookup node can only be evaluated with Rep = Rational")
+
+formula_add_negative_test(interpolating_lookup_rep_not_rational
+    "formula: an interpolating lookup node can only be evaluated with Rep = Rational")
+
+# An interpolating table's own well-formedness, in its two independent rules.
+#
+# The ordering rule has three cases asserting one string, because each pins a
+# different way it can be broken while the other two still pass:
+#   - _duplicate_breakpoint states the same key twice, which is what survives a
+#     comparison relaxed from `<` to `<=`;
+#   - _descending_breakpoint types two rows out of order, which survives the
+#     opposite mistake -- a check that only rejected equality;
+#   - _no_factory declares the node directly, which is the ONLY case that tells
+#     a class-body `static_assert` from one in the factory, since the factory
+#     returns the node by value and so completes the class either way.
+# Each puts its defect in the MIDDLE pair of four rows, which kills a sweep
+# confined to the first pair or to the last.
+formula_add_negative_test(interpolating_lookup_duplicate_breakpoint
+    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+
+formula_add_negative_test(interpolating_lookup_descending_breakpoint
+    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+
+formula_add_negative_test(interpolating_lookup_descending_breakpoint_no_factory
+    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+
+# The other rule: a row whose key is not a rational number at all. Separate from
+# the ordering rule because a one-row table has no pair for the ordering sweep
+# to look at, and because "not ascending" would be a true statement about the
+# wrong mistake.
+formula_add_negative_test(interpolating_lookup_malformed_breakpoint
+    "formula: this interpolating lookup table has a row whose key is not a rational number")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
@@ -199,3 +340,12 @@ add_test(NAME hygiene.testnames
     COMMAND "${CMAKE_COMMAND}"
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckTestNames.cmake")
+
+# A compiler diagnostic quoted in docs/ names a header and a line number, and
+# the number goes stale the moment anyone inserts a line above it -- which
+# happened twice in this repository before anything checked. See the script's
+# own comment for both instances and for what it does and does not verify.
+add_test(NAME hygiene.documented-diagnostics
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckDocumentedDiagnostics.cmake")

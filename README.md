@@ -183,6 +183,29 @@ defaults to one that does nothing, adding no instruction the evaluator would
 not already emit once the call inlines, measured on all four compilers this
 library targets. See [the tracing guide](docs/tracing.md).
 
+### A published table that a value falls outside of gives no number at all
+
+```cpp
+inline constexpr formula::BandTable<3> SizeBands {
+    formula::band(0, 1, 100, 1),   // 0 to under 100 mm
+    formula::band(100, 1, 150, 1), // 100 to under 150 mm
+    formula::band(150, 1, 200, 1), // 150 to under 200 mm -- 200 mm itself is NOT in it
+};
+```
+
+```
+1. d = 200 mm
+2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 200 mm]
+```
+
+Not zero, not the nearest band, not the last row. A method that defined no
+correction at 200 mm has defined none, and inventing one would put a number in
+a test report that nothing downstream could tell apart from a number the method
+actually published. A table with a **gap** in it does not even compile, and the
+diagnostic names the two rows that do not meet. Three table kinds — banded,
+exact and interpolating — are covered in
+[the lookup-tables guide](docs/lookup-tables.md).
+
 ## What this is for
 
 Test-method standards are written as prose with formulas in them, and software
@@ -211,6 +234,7 @@ because all of it came from the same line of code.
 | [Tracing and audit trails](docs/tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
 | [Rounding and conditionals](docs/rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](docs/constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
+| [Lookup tables](docs/lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
 | [Gallery](docs/gallery.md) | A documentation page the library generated about itself |
 
 Every example in the documentation uses generic physics with invented `Example Standard`
@@ -232,7 +256,8 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Calculation tracing and audit trails | shipped |
 | Rounding nodes (decimal places, significant digits), conditionals (`when()`) | shipped |
 | Constraints, verdicts, checking a set without short-circuit | shipped |
-| Lookup tables, methods, series, statistics | planned |
+| Lookup tables: banded, exact and interpolating | shipped |
+| Methods, series, statistics | planned |
 
 ## Requirements
 

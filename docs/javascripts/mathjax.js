@@ -16,7 +16,36 @@ window.MathJax = {
     inlineMath: [["\\(", "\\)"]],
     displayMath: [["\\[", "\\]"]],
     processEscapes: true,
-    processEnvironments: true
+    processEnvironments: true,
+    // `\allowbreak` DOES NOT EXIST IN MathJax, and a lookup table's LaTeX
+    // rendering emits one between every pair of rows (render.hpp's
+    // `lookup_separator`, where the reason -- a rendered table otherwise has no
+    // legal break point anywhere and runs off the page -- is measured against a
+    // real TeX engine over 22 renderings).
+    //
+    // Measured here, not assumed: the string "allowbreak" appears **nowhere**
+    // in mathjax-full 3.2.2, the version mkdocs.yml pins, so no package set and
+    // no `autoload` entry can define it. Fed the gallery's own LaTeX through
+    // that package's TeX input jax with the default `noundefined` extension --
+    // which renders an unknown macro as its own name in red rather than
+    // failing -- each rendered lookup came back carrying three
+    // `<mtext mathcolor="red">\allowbreak</mtext>` nodes, one per row
+    // separator. That is a published formula with the word `\allowbreak`
+    // printed inside it, in red, three times. With this one macro defined, the
+    // same renderings come back with zero. The instrument was controlled in
+    // both directions first (malformed TeX and an invented macro name both
+    // reported as errors, sound TeX did not), because an instrument that
+    // cannot report a difference will report no difference.
+    //
+    // Empty rather than `\penalty0`, which is what `\allowbreak` means in TeX:
+    // MathJax 3 does not break math across lines at all, so there is no
+    // penalty for it to honour and nothing for it to do. The library's own
+    // output stays correct for a real LaTeX toolchain, which is what it was
+    // measured against; this is the one line the *site's* renderer needs to
+    // read it.
+    macros: {
+      allowbreak: ""
+    }
   },
   options: {
     ignoreHtmlClass: ".*|",

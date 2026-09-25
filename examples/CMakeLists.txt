@@ -55,3 +55,40 @@ formula_add_example(rounding_and_conditionals rounding_and_conditionals.cpp "all
 # -- confirmed empirically, and confusing enough that getting it wrong here
 # silently drops the escape rather than failing to configure.
 formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject the specimen.*not checked.*invalid.*division by zero.*require #1 >= #2 \[satisfied\].*require #1 >= #2 \[not checked\].*require #3 \[division by zero\].*all checks passed: yes]==])
+
+# Same reasoning as the constraints example just above, applied to the
+# spellings docs/lookup-tables.md quotes verbatim. Pinned here, in the order
+# the program prints them:
+#
+#  - `0 to under 100 mm gives 95 %` -- the ONE spelling of a half-open
+#    interval in this library. It exists because `[0, 100)` is Markdown link
+#    syntax, which silently dropped an operand from a published page in phase
+#    8; a guard test already forbids `](` and a bare `[` in any Markdown
+#    rendering, and this regex additionally pins that the replacement wording
+#    itself does not drift.
+#  - `at 100 mm gives 95 %` -- the interpolating table's point spelling, which
+#    must NOT read as an interval: a breakpoint is a row, not a boundary.
+#  - `key 7 gives 97 %` -- an exact key renders as its underlying value, not
+#    its name (an enumerator has none at run time) and not its row index. The
+#    example numbers its enumerators 3, 7, 11 and 13 precisely so a value and
+#    an index cannot be confused, which is why this pins 7 and not 1.
+#  - `[between 100 and 150 mm]`, `[90 to under 100 %]` and
+#    `[on the row at 200 mm]` -- the trace clauses that say where an answer
+#    came from, in the order the program prints them. Three rather than two:
+#    an interpolating lookup has a clause for the two rows it drew on AND a
+#    different one for a value sitting exactly on a row, and those say
+#    genuinely different things, so pinning only the first would leave the
+#    row-hit spelling free to drift. (Order is load bearing here -- `.*`
+#    between the clauses means this asserts a sequence, and the first draft of
+#    this regex listed them in the wrong order and failed, which is how the
+#    sequencing was confirmed to be doing work rather than decorating.)
+#  - `[in no band ... the bands cover 0 to under 200 mm]` -- the clause that
+#    keeps a miss from being an opaque DomainError. Written as two halves
+#    joined by `.*` rather than quoting the literal `;` between them:
+#    PASS_REGULAR_EXPRESSION is a LIST property, so a `;` would split this
+#    into two alternative regexes, either of which passing would satisfy the
+#    test -- silently weakening it to a fraction of what it says.
+#
+# A `[==[ ... ]==]` bracket argument for the reason the constraints entry
+# gives: the regex needs literal backslash escapes around `[` and `]`.
+formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key 7 gives 97 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])

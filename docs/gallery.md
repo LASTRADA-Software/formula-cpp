@@ -122,6 +122,82 @@ $$
 
 A specimen compacted below the reference density is corrected upward by a fixed factor; one at or above it is reported as measured.
 
+## Size allowance by specimen diameter
+
+```
+lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)
+```
+
+$$
+\operatorname{lookup}(d,\allowbreak \text{0 to under 100 mm gives 2 MPa},\allowbreak \text{100 to under 150 mm gives 1 MPa},\allowbreak \text{150 to under 200 mm gives 0 MPa})
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| d | specimen diameter | mm |
+
+- Reference: Example Standard 7:2020
+- Section: 8.2
+
+The allowance deducted from a measured crushing strength, selected by the band the specimen's diameter falls in. A diameter in no band is not a value: the method defined no allowance there and this library reports that rather than inventing one.
+
+## Mould factor by specimen mould
+
+```
+lookup(key 7, key 3 gives 1, key 7 gives 19/20, key 11 gives 9/10)
+```
+
+$$
+\operatorname{lookup}(\text{key 7},\allowbreak \text{key 3 gives 1},\allowbreak \text{key 7 gives 19/20},\allowbreak \text{key 11 gives 9/10})
+$$
+
+- Reference: Example Standard 7:2020
+- Section: 8.3
+
+A category key names a row directly. The key renders as its underlying value, not the enumerator's name, because a C++ enumerator has no name at run time -- a reader reconciling this against a published table carries the author's own enum class across.
+
+## Maturity factor by curing age
+
+```
+interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+```
+
+$$
+\operatorname{interpolate}(t,\allowbreak \text{at 24 h gives 3/5},\allowbreak \text{at 72 h gives 17/20},\allowbreak \text{at 168 h gives 1})
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| t | curing age at test | h |
+
+- Reference: Example Standard 7:2020
+- Section: 8.4
+- Equation: (7)
+
+A curve stated at three ages. A specimen tested between two of them gets the value those two rows imply at that age -- a number appearing in no row of the table. A specimen younger or older than the curve gets nothing at all: there is no extrapolation.
+
+## Size- and age-corrected crushing strength
+
+```
+(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key 7, key 3 gives 1, key 7 gives 19/20, key 11 gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+```
+
+$$
+(f - \operatorname{lookup}(d,\allowbreak \text{0 to under 100 mm gives 2 MPa},\allowbreak \text{100 to under 150 mm gives 1 MPa},\allowbreak \text{150 to under 200 mm gives 0 MPa})) \cdot \operatorname{lookup}(\text{key 7},\allowbreak \text{key 3 gives 1},\allowbreak \text{key 7 gives 19/20},\allowbreak \text{key 11 gives 9/10}) \cdot \operatorname{interpolate}(t,\allowbreak \text{at 24 h gives 3/5},\allowbreak \text{at 72 h gives 17/20},\allowbreak \text{at 168 h gives 1})
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| f | measured crushing strength | MPa |
+| d | specimen diameter | mm |
+| t | curing age at test | h |
+
+- Reference: Example Standard 7:2020
+- Section: 8.5
+- Equation: (8)
+
+The measured strength less its size allowance, scaled by the mould factor and by the maturity factor -- one banded, one exact and one interpolating table inside a single expression.
+
 ## Worked evaluation: water/cement ratio
 
 `V_w` = 180 l, `V_c` = 300 l:
@@ -183,5 +259,40 @@ pi * d^2 / 4
 1. d = 200 mm
 2. 150 mm
 3. require #1 <= #2 [specimen exceeds diameter tolerance]
+```
+
+## Worked derivation: size- and age-corrected crushing strength
+
+`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key 7`. Each table names the row it answered from: the banded one its interval, the interpolating one the two rows it drew on. The exact lookup adds nothing there -- its key is already the subject of its own line.
+
+```
+(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key 7, key 3 gives 1, key 7 gives 19/20, key 11 gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+```
+
+```
+1. f = 32 MPa
+2. d = 120 mm
+3. lookup(#2) = 1 MPa [100 to under 150 mm]
+4. #1 - #3 = 31000000
+5. lookup(key 7) = 19/20
+6. #4 * #5 = 29450000
+7. t = 48 h
+8. interpolate(#7) = 29/40 [between 24 and 72 h]
+9. #6 * #8 = 21351250
+10. #9 = 21351250 [Size- and age-corrected crushing strength, Example Standard 7:2020, 8.5, (8)]
+```
+
+## Worked derivation: a lookup that found nothing
+
+The same size-allowance table at `d` = 250 mm. The table's last band stops below 200 mm, so 250 mm falls in no band -- and a miss is not a value: not zero, not the nearest band, not the last one. The bracketed clause is what keeps the line from being read as a failure relayed up from somewhere below it.
+
+```
+lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)
+```
+
+```
+1. d = 250 mm
+2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 200 mm]
+3. #2 = argument outside the domain of the operation [Size allowance by specimen diameter, Example Standard 7:2020, 8.2]
 ```
 

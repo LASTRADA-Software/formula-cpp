@@ -17,11 +17,13 @@
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/lookup.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -66,6 +68,26 @@ enum class StepKind : std::uint8_t
     /// GCC under `-Wshadow` rather than assumed clean because the Windows
     /// presets raised nothing.
     Constraint,
+    /// A `BandedLookupNode`: a measured value fell in an interval, and that
+    /// interval selected a correction (`lookup.hpp`).
+    ///
+    /// Spelled without the `Node` suffix the type carries, so that this
+    /// enumerator and the two after it read as what a step *is* rather than as
+    /// what class produced it -- the same relationship `Conditional` has to
+    /// `WhenNode`.
+    /// Checked on GCC under `-Wshadow` against every name in namespace
+    /// `formula`, the way `PiConstant` above had to be: the factories are
+    /// `banded_lookup`, `exact_lookup` and `interpolating_lookup`, which
+    /// differ in case as well as in spelling, and the node types carry the
+    /// suffix -- but that was verified on the compiler that objects rather
+    /// than assumed from the four that do not.
+    BandedLookup,
+    /// An `ExactLookupNode`: a category key named a row directly.
+    ExactLookup,
+    /// An `InterpolatingLookupNode`: a measured value sat between two rows,
+    /// and the answer is the value those rows imply at that point -- a number
+    /// that appears in no row of the table.
+    InterpolatingLookup,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -97,6 +119,103 @@ enum class Branch : std::uint8_t
     }
     return "unknown branch";
 }
+
+/// Whose failure a lookup step is carrying, and of what kind.
+///
+/// **The one field this whole surface exists for.** All three lookup kinds
+/// report every failure through `Evaluated<Rep>`'s single error channel, and
+/// `checked_evaluate_si` (`lookup.hpp`) calls `sink.produced(node, failed)`
+/// for an error it is merely *passing upward* in exactly the same way it
+/// calls it for one of its **own**. So a lookup step carrying
+/// `ArithmeticError::DomainError` is ambiguous on its face between "the value
+/// fell in no band" and "the operand failed, two levels down, and I am
+/// relaying it" -- and a renderer reading such a step alone would emit
+/// something true-sounding and useless ("lookup failed: argument outside the
+/// domain of the operation") for a case where nothing was outside any domain.
+/// Phase 9 refused `bool satisfied()` for exactly this shape of defect: a
+/// surface that must answer something for a case it cannot distinguish, where
+/// the plausible answer is a lie.
+///
+/// `ArithmeticError::Overflow` is ambiguous the same way and **is not the
+/// same case**: only the interpolating lookup computes anything, so only it
+/// can overflow of its own accord, where the banded and the exact lookup
+/// merely select and can do no arithmetic beyond converting units.
+///
+/// The recorder resolves both ambiguities at the moment the step is made, by
+/// inspecting the operand step the node just claimed and by re-asking
+/// `lookup.hpp`'s **own** `find_band`, `find_key` and `interpolate` -- the
+/// very functions that made the decision -- rather than by re-deciding with
+/// logic of its own that could drift from them. See `detail::record_lookup`.
+enum class LookupFailure : std::uint8_t
+{
+    /// Nothing failed. The zero value, so every step that is not a lookup is
+    /// already correct without the recorder saying anything -- exactly as
+    /// `Branch::Neither` is the right default for every step that is not a
+    /// `Conditional`. Also the right answer for a lookup that produced a
+    /// value, and for one whose operand was **absent**: absence is not a
+    /// failure and must never be rendered as one.
+    None,
+    /// This lookup missed: the value fell in no band, the key names no row of
+    /// the table, or the value lies outside the closed breakpoint range.
+    /// Always this node's own answer, never a relayed one.
+    Missed,
+    /// This lookup's **own interpolation** failed -- an intermediate outside
+    /// `Rational`'s representable range. Reachable only for
+    /// `StepKind::InterpolatingLookup`: the other two kinds select a number
+    /// their author wrote down and compute nothing.
+    Computation,
+    /// This lookup's **own unit conversion** failed -- converting the
+    /// operand's value into the table's key unit, or the selected row's value
+    /// out of the table's result unit. Its own failure, and specifically not
+    /// a miss: the table was asked nothing, or answered fine and the answer
+    /// then would not fit. Reachable for all three kinds, since all three
+    /// convert their answer out of `ResultUnit`.
+    Conversion,
+    /// An operand failed and this step is relaying its error unchanged.
+    /// Nothing about the table went wrong. Unreachable for
+    /// `StepKind::ExactLookup`, which has no operand at all.
+    Propagated,
+    /// This step failed, and which of the four above it was **cannot be
+    /// told**: the operand contributed no step to inspect, because it is a
+    /// consumer's own node kind evaluated through the two-parameter
+    /// `checked_evaluate_si` extension point (`sink.hpp`) and so is untraced.
+    ///
+    /// Recorded rather than guessed. Choosing `Propagated` here would be a
+    /// plausible answer to a question the recorder cannot actually answer,
+    /// which is the whole defect this enum exists to close.
+    Undetermined,
+};
+
+/// An interval a lookup step reports about, as its table declared it --
+/// numerator over denominator at each end.
+///
+/// Pairs of `std::int64_t` rather than `Rational`, for `Band`'s own reason
+/// (`band.hpp`): a table's bounds are declared as pairs and this repeats them
+/// back rather than reducing them behind the author's back -- the rendering
+/// layer reduces, in the one place that already does it for every other
+/// declared bound.
+///
+/// **Deliberately not a `Band`.** A `Band` is half-open by definition, and
+/// this type must also carry an interpolating curve's extent, which is closed
+/// at **both** ends -- the one difference between the two table kinds that
+/// `lookup.hpp` and `render.hpp` both go out of their way not to blur. Which
+/// one a given value is, is `Step::kind`'s to say, and `trace_render.hpp`
+/// spells the two differently on purpose: `2 to under 19 mm` against
+/// `2 to 19 mm`.
+struct LookupRange
+{
+    /// Numerator of the low end.
+    std::int64_t lowNumerator = 0;
+    /// Denominator of the low end.
+    std::int64_t lowDenominator = 1;
+    /// Numerator of the high end.
+    std::int64_t highNumerator = 0;
+    /// Denominator of the high end.
+    std::int64_t highDenominator = 1;
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(LookupRange const&) const noexcept = default;
+};
 
 /// One node's contribution to a derivation.
 ///
@@ -213,13 +332,27 @@ struct Step
     /// this node exists to produce. See `sourceUnit` below for that unit.
     Unit unit {};
 
-    /// For `NumericValue`: the unit the escape hatch read its number in --
-    /// `Megapascal` for `numeric_value_of<Megapascal, "...">(...)`. Kept
-    /// separate from `unit` above for the reason documented there: this one
-    /// deliberately does not share `dimension`, so it is never used to
-    /// convert `value` -- it is read only by the renderer, to say what unit
-    /// the bare number came from. A default-constructed `Unit` (dimension
-    /// `Scalar`, empty symbol) otherwise.
+    /// A second unit this step needs to name, which is **not** the unit its
+    /// own value is in. Kept separate from `unit` above for the reason
+    /// documented there: this one deliberately does not share `dimension`, so
+    /// it is never used to convert `value` -- it is read only by the
+    /// renderer. A default-constructed `Unit` (dimension `Scalar`, empty
+    /// symbol) for every step that has no second unit to name.
+    ///
+    ///  - For `NumericValue`: the unit the escape hatch read its number in --
+    ///    `Megapascal` for `numeric_value_of<Megapascal, "...">(...)`.
+    ///  - For `BandedLookup` and `InterpolatingLookup`: the table's **key
+    ///    unit** -- the unit its bands or breakpoints are declared in, and
+    ///    the unit the operand's value is compared against them in. It is
+    ///    independent of the node's own `unit` on purpose (a banded lookup
+    ///    may select a pressure correction from a measured length), so a
+    ///    derivation that named only `unit` would state a band's bounds in a
+    ///    scale nobody declared them in.
+    ///
+    /// The lookup kinds reuse this field rather than adding one of their own,
+    /// because "a second unit that is not the step's own" is exactly what it
+    /// already means. `ExactLookup` has none: a category key is a
+    /// discriminator, not a quantity, so there is no key unit to name.
     Unit sourceUnit {};
 
     /// What the step produced, in the coherent SI unit of `dimension`. Empty
@@ -248,6 +381,117 @@ struct Step
     /// `comparison` above default to values that are harmless when `kind`
     /// says they do not apply.
     ConstraintOutcome outcome {};
+
+    /// For the three lookup kinds: whose failure this step is carrying, and
+    /// of what kind. See `LookupFailure`, which exists entirely for this
+    /// field and gives the ambiguity it resolves in full.
+    ///
+    /// Zero-initialises to `LookupFailure::None`, which is also the correct
+    /// default for every step that is *not* a lookup -- the same property
+    /// `branch` has, and unlike `comparison` and `mode`, whose zero values
+    /// are real settings rather than "not applicable".
+    LookupFailure lookupFailure {};
+
+    /// For `BandedLookup`: the band the value fell in, exactly as the table
+    /// declared it -- the one fact a banded lookup's derivation is for. A
+    /// step reading only `= 19/20` explains nothing; what a reader checking a
+    /// number needs is that 19/20 came from the band containing the input.
+    ///
+    /// Empty when no band was selected -- a miss, a failure of any kind, an
+    /// absent operand -- and also when the operand contributed no step for
+    /// the recorder to read its value from (an untraced consumer node), in
+    /// which case the band really is unknown and the renderer says nothing
+    /// rather than guessing.
+    ///
+    /// A field of its own rather than a second meaning piled onto
+    /// `coveredRange` below, which the two are otherwise mutually exclusive
+    /// enough to share: a field that holds "the selected band" on a hit and
+    /// "the whole table's extent" on a miss is a field whose name must lie
+    /// about one of them, and that is how a later reader gets it wrong. The
+    /// reasoning is `granularity`'s, above, unchanged.
+    std::optional<Band> selectedBand {};
+
+    /// For `InterpolatingLookup` when the curve answered: the two rows the
+    /// answer came from, as the table declared them -- `low == high` when the
+    /// value sat exactly **on** a row, and the surrounding pair when it sat
+    /// between two.
+    ///
+    /// The interpolating counterpart of `selectedBand` above, and set under
+    /// the same rule: only when the step produced a value. An interpolating
+    /// table selects no single row -- between two rows its answer appears in
+    /// neither of them -- so the honest equivalent of "which band" is "which
+    /// two rows", which is what an auditor reconciles against the published
+    /// curve.
+    ///
+    /// Empty for every other kind, for a miss, for any failure, for an absent
+    /// operand, and when the operand contributed no step for the recorder to
+    /// read its value from -- the same silences `selectedBand` keeps, for the
+    /// same reason.
+    ///
+    /// The segment comes back from `detail::locate_and_interpolate`
+    /// (`lookup.hpp`), the single scan that also produced the value, rather
+    /// than from a second scan here: two scans of one table against one rule
+    /// are two surfaces obliged to agree.
+    ///
+    /// **"As the table declared them" is a guarantee about this field and not
+    /// about the rendered line.** `trace_render.hpp` reduces both keys through
+    /// `declared_number_text` before printing, so a row typed `14/4` reads
+    /// `7/2` in a derivation -- deliberately, because `render()` prints `7/2`
+    /// for that same row and a trace disagreeing with the formula it derives
+    /// is the defect this phase exists to refuse. An auditor reconciling
+    /// *values* against a published curve therefore matches; one reconciling
+    /// the *literal spelling* an author typed needs this field, which is where
+    /// the unreduced pair survives for a programmatic consumer to read.
+    /// `selectedBand` and `coveredRange` carry the same split, for the same
+    /// reason.
+    std::optional<Segment> selectedSegment {};
+
+    /// For `BandedLookup` and `InterpolatingLookup` when this lookup
+    /// **missed**: the interval the table covers as a whole, stated in
+    /// `sourceUnit`. What a reader needs in order to see *why* nothing
+    /// matched, and the only part of the table a derivation records -- the
+    /// rows themselves are `render()`'s to print from the formula, and
+    /// copying them into every step would be a second surface obliged to
+    /// agree with that one.
+    ///
+    /// **Half-open for a banded table and closed for an interpolating one.**
+    /// A band table's bands are contiguous and ascending -- every
+    /// `BandedLookupNode` instantiates `RequireValidBandTable`, which refuses
+    /// a gap, an overlap or an inversion -- so their union is exactly one
+    /// half-open interval, `[first low, last high)`. An interpolating curve's
+    /// extent is `[first key, last key]`, closed at both ends, because a
+    /// breakpoint is a row the table states a value at rather than a boundary
+    /// between rows. `kind` says which, and `trace_render.hpp` spells them
+    /// differently on purpose.
+    ///
+    /// Empty for a table with no rows at all, which covers nothing and always
+    /// misses.
+    std::optional<LookupRange> coveredRange {};
+
+    /// For `ExactLookup`: the key this lookup selected with, as the
+    /// underlying value of the author's enumerator.
+    ///
+    /// Recorded here because there is nowhere else it could survive. An
+    /// exact lookup has **no operand**, so unlike a banded or an
+    /// interpolating miss -- whose missed value is the operand's own result,
+    /// sitting in the operand's own step -- a key that names no row would
+    /// otherwise appear in no step of the derivation at all.
+    ///
+    /// The underlying **value**, not the enumerator's name: a C++ enumerator
+    /// has no name at run time, so the value is the only part of it that
+    /// survives to a trace. The cost is real and is stated in full by
+    /// `detail::key_text` (`render.hpp`), which shows the same number for the
+    /// same reason.
+    ///
+    /// Stored as the bit pattern with `lookupKeyIsSigned` beside it rather
+    /// than as one signed integer, because an enumeration's underlying type
+    /// may be `unsigned long long`, whose top half no signed type can hold --
+    /// the same case `key_text` spells its two casts separately for.
+    std::uint64_t lookupKey {};
+
+    /// Whether `lookupKey` above is to be read as a signed value. Meaningful
+    /// only when `kind` is `ExactLookup`, exactly as `lookupKey` itself is.
+    bool lookupKeyIsSigned {};
 
     /// Indices of the steps this one consumed, in evaluation order.
     ///
@@ -399,6 +643,283 @@ namespace detail
     {
         static constexpr StepKind value = StepKind::NumericValue;
     };
+
+    template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    struct StepKindOf<BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>
+    {
+        static constexpr StepKind value = StepKind::BandedLookup;
+    };
+
+    template <KeyTable Keys, Unit ResultUnit>
+    struct StepKindOf<ExactLookupNode<Keys, ResultUnit>>
+    {
+        static constexpr StepKind value = StepKind::ExactLookup;
+    };
+
+    template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    struct StepKindOf<InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand>>
+    {
+        static constexpr StepKind value = StepKind::InterpolatingLookup;
+    };
+
+    /// Whether @p kind is one of the three lookup kinds. Written once because
+    /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
+    /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
+    /// appends the clause that keeps a lookup line from lying -- and spelling
+    /// the three-way `||` in each is how one of them ends up missing a kind
+    /// once a fourth table kind is added.
+    [[nodiscard]] constexpr bool is_lookup(StepKind kind) noexcept
+    {
+        return kind == StepKind::BandedLookup || kind == StepKind::ExactLookup
+               || kind == StepKind::InterpolatingLookup;
+    }
+
+    /// Whether any step @p step claimed as an operand failed.
+    ///
+    /// This is the whole of "something below me failed": a lookup dispatches
+    /// exactly one operand and returns its error untouched the moment it has
+    /// one, so an operand step carrying an error and a lookup step carrying
+    /// an error are the same error, and there is no third possibility in
+    /// which the operand failed and the lookup did not.
+    ///
+    /// **It cannot false-positive, and that is provable rather than merely
+    /// plausible.** The worry would be a claimed operand step that failed
+    /// while the parent went on to succeed -- an evaluated-then-abandoned
+    /// child. No node in this library produces one: the only kind that
+    /// chooses between children is `WhenNode`, and `conditional.hpp`
+    /// dispatches **only** the branch it took, so an abandoned branch is
+    /// never evaluated and contributes no step to abandon. A failed claimed
+    /// operand therefore always is the error this step is carrying.
+    template <typename Rep>
+    [[nodiscard]] bool an_operand_failed(std::vector<Step<Rep>> const& steps, Step<Rep> const& step)
+    {
+        for (std::size_t const operand: step.operands)
+            if (steps[operand].error.has_value())
+                return true;
+        return false;
+    }
+
+    /// The value a lookup step's single operand recorded, or nothing when it
+    /// recorded no value (the operand was absent) or when there is no operand
+    /// step at all (the operand is an untraced consumer node, `sink.hpp`).
+    ///
+    /// The operand's recorded value is the **same** `Rational` the node was
+    /// handed: `produced` stores `**result` verbatim, and both are in the
+    /// coherent SI unit of the operand's dimension. So locating it against
+    /// the table here reaches the same row the evaluation reached.
+    template <typename Rep>
+    [[nodiscard]] std::optional<Rep> sole_operand_value(std::vector<Step<Rep>> const& steps, Step<Rep> const& step)
+    {
+        if (step.operands.empty())
+            return std::nullopt;
+        return steps[step.operands.front()].value;
+    }
+
+    /// The half-open interval a whole band table covers, or nothing when it
+    /// declares no bands.
+    ///
+    /// One interval and not a list, because `RequireValidBandTable` -- which
+    /// every `BandedLookupNode` instantiates in its own body -- has already
+    /// refused a gap, an overlap and an inverted band, so the bands are
+    /// contiguous and ascending and their union is exactly
+    /// `[first low, last high)`. This is a consequence of that validation
+    /// rather than an assumption about how tables are usually written.
+    template <BandTable Bands>
+    [[nodiscard]] constexpr std::optional<LookupRange> bands_cover() noexcept
+    {
+        if constexpr (Bands.size() == 0)
+            return std::nullopt;
+        else
+            return LookupRange { Bands.front().lowNumerator,
+                                 Bands.front().lowDenominator,
+                                 Bands.back().highNumerator,
+                                 Bands.back().highDenominator };
+    }
+
+    /// The **closed** range an interpolating curve runs over, or nothing when
+    /// it declares no rows. Closed at both ends, unlike `bands_cover` above,
+    /// because a breakpoint is a row the table states a value at and not a
+    /// boundary between rows -- `lookup.hpp` pins the two behaviours against
+    /// each other rather than harmonising them.
+    ///
+    /// Strictly ascending by `RequireValidBreakpointTable`, so the first and
+    /// last rows really are the extremes.
+    template <BreakpointTable Points>
+    [[nodiscard]] constexpr std::optional<LookupRange> points_cover() noexcept
+    {
+        if constexpr (Points.size() == 0)
+            return std::nullopt;
+        else
+            return LookupRange { Points.front().numerator,
+                                 Points.front().denominator,
+                                 Points.back().numerator,
+                                 Points.back().denominator };
+    }
+
+    /// Fills in a banded lookup step's `lookupFailure` and, on a hit, the
+    /// band it selected.
+    ///
+    /// **Every decision below is `lookup.hpp`'s own, re-asked.** The band is
+    /// found with `find_band` -- the very function that chose it during the
+    /// evaluation -- rather than with a comparison written again here, so the
+    /// derivation cannot come to disagree with the number it derives. The one
+    /// line that is *repeated* rather than reused is the conversion of the
+    /// operand's value into the key unit, which `checked_evaluate_si` does
+    /// immediately before its own `find_band` call; a test whose key unit is
+    /// not the coherent SI unit of its operand's dimension is what keeps the
+    /// two honest.
+    template <typename Rep, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    void record_lookup(BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const&,
+                       Step<Rep>& step,
+                       std::vector<Step<Rep>> const& steps)
+    {
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            constexpr Unit keyUnit = KeyUnit;
+
+            if (an_operand_failed(steps, step))
+            {
+                step.lookupFailure = LookupFailure::Propagated;
+                return;
+            }
+
+            std::optional<Rational> const value = sole_operand_value(steps, step);
+            if (!value.has_value())
+            {
+                // No value to locate: either the operand was absent -- in
+                // which case nothing was looked up and nothing failed -- or
+                // it left no step, and then a failure here cannot be told
+                // apart from one below it.
+                if (step.error.has_value())
+                    step.lookupFailure = LookupFailure::Undetermined;
+                return;
+            }
+
+            std::expected<Rational, ArithmeticError> const valueInKey =
+                checked_convert(*value, coherent(keyUnit.dimension), keyUnit);
+            if (!valueInKey.has_value())
+            {
+                step.lookupFailure = LookupFailure::Conversion;
+                return;
+            }
+
+            std::optional<std::size_t> const index = find_band<Bands>(*valueInKey);
+            if (!index.has_value())
+            {
+                step.lookupFailure = LookupFailure::Missed;
+                step.coveredRange = bands_cover<Bands>();
+                return;
+            }
+
+            // A band was found, so anything still wrong happened after the
+            // selection: converting the selected correction out of the
+            // table's result unit is all that is left.
+            if (step.error.has_value())
+                step.lookupFailure = LookupFailure::Conversion;
+            else
+                step.selectedBand = Bands[*index];
+        }
+    }
+
+    /// Fills in an exact lookup step's key and `lookupFailure`.
+    ///
+    /// The key is recorded unconditionally -- hit or miss -- because no other
+    /// step in the derivation carries it: an exact lookup has no operand, so
+    /// there is no step below to lean on the way the other two kinds lean on
+    /// theirs.
+    ///
+    /// Neither `Propagated` nor `Undetermined` is reachable here, and that is
+    /// a property of the node rather than an omission: with no operand there
+    /// is nothing below this step that could have failed, so every failure it
+    /// reports is its own.
+    template <typename Rep, KeyTable Keys, Unit ResultUnit>
+    void record_lookup(ExactLookupNode<Keys, ResultUnit> const& node,
+                       Step<Rep>& step,
+                       std::vector<Step<Rep>> const&)
+    {
+        using Underlying = std::underlying_type_t<KeyOf<Keys>>;
+        step.lookupKeyIsSigned = std::is_signed_v<Underlying>;
+        step.lookupKey = step.lookupKeyIsSigned ? static_cast<std::uint64_t>(static_cast<long long>(node.key))
+                                                : static_cast<std::uint64_t>(static_cast<unsigned long long>(node.key));
+
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            if (!find_key<Keys>(node.key).has_value())
+                step.lookupFailure = LookupFailure::Missed;
+            else if (step.error.has_value())
+                step.lookupFailure = LookupFailure::Conversion;
+        }
+    }
+
+    /// Fills in an interpolating lookup step's `lookupFailure`.
+    ///
+    /// The one kind that can fail **three** ways of its own, so the one that
+    /// needs `locate_and_interpolate` re-asked rather than a rule of thumb: it
+    /// is the function that decides whether a value is on the curve at all,
+    /// and its `DomainError` is documented there as unambiguously a miss,
+    /// every other error it returns coming from the arithmetic. Re-asking it
+    /// is what separates "the interpolation overflowed" from "the table does
+    /// not reach this specimen" without this file re-deciding either -- and
+    /// the same call hands back the two rows the answer came from, so the
+    /// derivation names them without a second scan.
+    ///
+    /// No band is recorded: an interpolating table selects no single row.
+    /// Between two rows its answer appears in neither of them, and on a row
+    /// the answer is that row's own value -- which the step's value already
+    /// is. `selectedSegment` is the honest equivalent, and it names both rows.
+    template <typename Rep, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    void record_lookup(InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node,
+                       Step<Rep>& step,
+                       std::vector<Step<Rep>> const& steps)
+    {
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            constexpr Unit keyUnit = KeyUnit;
+
+            if (an_operand_failed(steps, step))
+            {
+                step.lookupFailure = LookupFailure::Propagated;
+                return;
+            }
+
+            std::optional<Rational> const value = sole_operand_value(steps, step);
+            if (!value.has_value())
+            {
+                if (step.error.has_value())
+                    step.lookupFailure = LookupFailure::Undetermined;
+                return;
+            }
+
+            std::expected<Rational, ArithmeticError> const valueInKey =
+                checked_convert(*value, coherent(keyUnit.dimension), keyUnit);
+            if (!valueInKey.has_value())
+            {
+                step.lookupFailure = LookupFailure::Conversion;
+                return;
+            }
+
+            std::expected<std::pair<Rational, Segment>, ArithmeticError> const answered =
+                locate_and_interpolate<Points>(*valueInKey, node.corrections);
+            if (!answered.has_value())
+            {
+                if (answered.error() == ArithmeticError::DomainError)
+                {
+                    step.lookupFailure = LookupFailure::Missed;
+                    step.coveredRange = points_cover<Points>();
+                }
+                else
+                    step.lookupFailure = LookupFailure::Computation;
+                return;
+            }
+
+            // The curve answered, so anything still wrong happened after it:
+            // converting that answer out of the table's result unit.
+            if (step.error.has_value())
+                step.lookupFailure = LookupFailure::Conversion;
+            else
+                step.selectedSegment = answered->second;
+        }
+    }
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -523,6 +1044,15 @@ class RecordingSink
             step.justification = N::justification;
             step.sourceUnit = N::unit;
         }
+        // The banded and the interpolating lookup declare a key unit that is
+        // independent of their own: a band's bounds are stated in it, and the
+        // operand's value is compared against them in it. `sourceUnit` is
+        // where a second unit that is not the step's own already goes -- see
+        // its comment -- so it goes there rather than into a parallel field.
+        // The exact lookup has none: its key is a discriminator, not a
+        // quantity.
+        if constexpr (requires { N::keyUnit; })
+            step.sourceUnit = N::keyUnit;
         if constexpr (requires { N::exponent; })
             step.exponent = N::exponent;
         else if constexpr (requires { N::degree; })
@@ -563,6 +1093,14 @@ class RecordingSink
             ++first;
         step.operands.assign(first, _trace->unclaimed.end());
         _trace->unclaimed.erase(first, _trace->unclaimed.end());
+
+        // After the operands are claimed, and not before: telling this
+        // lookup's own failure apart from one it is merely relaying means
+        // reading the operand step it just claimed, so the claim has to have
+        // happened. See `LookupFailure` for the ambiguity this closes, and
+        // `detail::record_lookup` for how each kind closes it.
+        if constexpr (detail::is_lookup(detail::StepKindOf<N>::value))
+            detail::record_lookup(node, step, _trace->steps);
 
         _trace->steps.push_back(std::move(step));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);

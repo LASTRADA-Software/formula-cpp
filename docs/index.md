@@ -62,6 +62,7 @@ for it, in the mode the method specifies.
 | [Tracing and audit trails](tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
 | [Rounding and conditionals](rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
+| [Lookup tables](lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
 | [Gallery](gallery.md) | A documentation page the library generated about itself |
 
 New here? Read **[Expressions and evaluation](expressions.md)** first — it is the layer the library
@@ -94,6 +95,7 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Calculation tracing and audit trails | shipped |
 | Rounding nodes (decimal places, significant digits), conditionals (`when()`) | shipped |
 | Constraints, verdicts, checking a set without short-circuit | shipped |
-| Lookup tables, methods, series, statistics | planned |
+| Lookup tables: banded, exact and interpolating | shipped |
+| Methods, series, statistics | planned |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).
