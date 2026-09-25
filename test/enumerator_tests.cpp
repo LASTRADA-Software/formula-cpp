@@ -26,8 +26,43 @@ enum class NamingNested
 };
 } // namespace naming_outer::naming_inner
 
+namespace naming_library
+{
+inline namespace naming_v1
+{
+    enum class NamingInline
+    {
+        Versioned = 1,
+    };
+} // namespace naming_v1
+} // namespace naming_library
+
+struct NamingPlainHolder
+{
+    enum class Member
+    {
+        Inside = 2,
+    };
+};
+
 namespace
 {
+enum class NamingCharacter : char
+{
+    Letter = 'A',
+};
+
+enum class NamingFlag : bool
+{
+    Off = false,
+};
+
+enum class NamingDigits
+{
+    C150 = 150,
+    X2Y3,
+};
+
 enum class NamingAnonymous
 {
     Hidden,
@@ -205,4 +240,34 @@ TEST_CASE("a customization that leaves an enumerator empty falls back to its own
     // when it is empty, which would show a key as `key ` with nothing after.
     STATIC_REQUIRE(enumerator_name<NamingPartial::Spelled>() == "the spelled one");
     STATIC_REQUIRE(enumerator_name<NamingPartial::Unspelled>() == "Unspelled");
+}
+
+TEST_CASE("an enumerator is named through an inline namespace and a non-template class", "[enumerator]")
+{
+    // GCC and cl print the inline namespace (`naming_library::naming_v1::`),
+    // clang omits it; either way the name is the last run, after a `::`.
+    STATIC_REQUIRE(enumerator_name<naming_library::NamingInline::Versioned>() == "Versioned");
+    STATIC_REQUIRE(enumerator_name<NamingPlainHolder::Member::Inside>() == "Inside");
+}
+
+TEST_CASE("an enumerator with digits inside its name keeps them", "[enumerator]")
+{
+    // Digits are identifier bytes; only a LEADING digit marks a number. Kills
+    // a scan that treats a digit as the end of a name, which would leave both empty.
+    STATIC_REQUIRE(enumerator_name<NamingDigits::C150>() == "C150");
+    STATIC_REQUIRE(enumerator_name<NamingDigits::X2Y3>() == "X2Y3");
+}
+
+TEST_CASE("a char- or bool-based enumeration's non-enumerator has no name either", "[enumerator]")
+{
+    STATIC_REQUIRE(enumerator_name<NamingCharacter::Letter>() == "Letter");
+    STATIC_REQUIRE(enumerator_name<NamingFlag::Off>() == "Off");
+    // clang, GCC and cl all print a char-based value as a number, never as a
+    // character literal: `(NamingCharacter)66`, `(enum NamingCharacter)0x42`.
+    STATIC_REQUIRE(enumerator_name<static_cast<NamingCharacter>('B')>().empty());
+    // cl prints this one as `(enum NamingFlag)true` -- a cast whose value is
+    // an identifier, not a number -- so the digit rule alone would name it
+    // `true`. Kills the rule that a run right after `)` is a cast's value, on
+    // cl; clang and GCC print `(NamingFlag)1`, which the digit rule catches.
+    STATIC_REQUIRE(enumerator_name<static_cast<NamingFlag>(true)>().empty());
 }

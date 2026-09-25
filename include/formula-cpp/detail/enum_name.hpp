@@ -39,9 +39,9 @@ namespace formula::detail
 /// `__FUNCSIG__` on cl and `__PRETTY_FUNCTION__` everywhere else, rather than
 /// `std::source_location::function_name()`. On cl the two are identical; on
 /// clang-cl they are not (`source_location` adds `__cdecl` and `(void)`),
-/// though both end in the same `[E = ...]`. The compiler builtins are the
-/// ones whose format each compiler has kept stable longest, and they need no
-/// header.
+/// though both end in the same `[E = ...]`. The builtins need no header, and
+/// on clang-cl `__PRETTY_FUNCTION__` is the same clang format the non-cl
+/// branch of the parse already reads.
 template <auto E>
 [[nodiscard]] consteval auto enumerator_signature()
 {
@@ -82,11 +82,18 @@ template <auto E>
 /// cuts a name short at a `]` inside the enumeration's own qualification
 /// (`Tmpl<int[3]>::E`).
 ///
-/// **A value that names no enumerator is printed as a cast**, and every
-/// measured spelling of one ends in a number: `(Shape)9` from clang and GCC,
-/// `(enum Shape)0x9` from cl, `(Neg)-4` and `(enum Neg)0xfc` for a negative
-/// one. An identifier cannot begin with a digit, so a run that does is not a
-/// name, and the answer is empty rather than a fragment of a number.
+/// **A value that names no enumerator is printed as a cast**: `(Shape)9` from
+/// clang and GCC, `(enum Shape)0x9` from cl, `(Neg)-4` and `(enum Neg)0xfc`
+/// for a negative one. Two rules turn each of those into an empty answer
+/// rather than a fragment of it, and each is needed on its own:
+///
+///   - **A run right after a `)` is the value of a cast.** Usually that run is
+///     a number, but not always: cl prints a `bool`-based enumeration's
+///     non-enumerator as `(enum Flag)true`, whose run is the identifier-like
+///     `true`. Measured on cl 19.51; clang and GCC print `(Flag)1`.
+///   - **A run that begins with a digit is a number.** An identifier cannot,
+///     and a negative value puts a `-` between the cast and its digits --
+///     `(Neg)-4` on clang and GCC -- so the rule above does not see it.
 ///
 /// Two enumerators with the same value are the same template argument, so
 /// the compiler prints the first one declared for both: `Alias::Second`,
@@ -94,9 +101,11 @@ template <auto E>
 /// That is a property of the language, not of this parse, and all four
 /// compilers agree on it.
 ///
-/// A signature this does not recognise -- a compiler whose tail is not one of
-/// the two above -- yields an empty view rather than a guess, so the caller
-/// falls back to the underlying value instead of printing garbage.
+/// A signature that does not end in the tail this expects yields an empty
+/// view rather than a guess, so the caller falls back to the underlying value.
+/// That is the only format change detected: a compiler that kept the tail but
+/// spelled the argument differently would not be noticed here -- the test
+/// suite is what would notice.
 template <auto E>
     requires std::is_enum_v<decltype(E)>
 [[nodiscard]] consteval std::string_view reflected_enumerator_name() noexcept
@@ -117,7 +126,9 @@ template <auto E>
         --start;
 
     std::string_view const name = signature.substr(start);
-    if (name.empty() || (name.front() >= '0' && name.front() <= '9'))
+    if (name.empty() || (start > 0 && signature[start - 1] == ')'))
+        return {};
+    if (name.front() >= '0' && name.front() <= '9')
         return {};
     return name;
 }
