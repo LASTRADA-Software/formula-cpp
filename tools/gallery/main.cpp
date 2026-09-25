@@ -27,10 +27,13 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
+#include <cstdint>
 #include <cstdio>
+#include <expected>
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -172,6 +175,135 @@ constexpr auto compactionAdjustedDensity = formula::documented(
       .text = "A specimen compacted below the reference density is corrected upward by a fixed factor; "
               "one at or above it is reported as measured." });
 
+// ---- 6: three lookup tables, one per kind ----------------------------------
+//
+// A method's own algebra sometimes needs a number no formula computes -- the
+// method's procedure publishes it as a table instead. Three kinds, and they
+// are not interchangeable: a banded table buckets a measurement into an
+// interval, an exact table is keyed on a category, and an interpolating table
+// computes a value between two rows that appears in no row at all.
+//
+// **None of the three states a value in percent, and that is deliberate.**
+// `unit::Percent`'s symbol is `%`, which is TeX's comment character, and this
+// page publishes every formula as a `$$ ... $$` block. Measured with tectonic
+// 0.15.0 over a three-way control: the same row with no percent sign typesets
+// (exit 0), the exact bytes `render<Dialect::LaTeX>` emits for a percent-valued
+// row fail with `!File ended while scanning use of \text@` (exit 1), and the
+// row with the sign escaped as `\%` typesets again (exit 0). The library does
+// not escape it today, so a percent-valued table renders to LaTeX that does not
+// compile. That is a defect in `render.hpp` rather than in this page, and it is
+// reported as one -- but a page whose whole claim is that its snippets came
+// from a real run is the wrong place to publish a formula that is known not to
+// typeset, so the tables here are stated in megapascals and in plain
+// dimensionless factors.
+
+struct CrushingStrength: formula::Quantity<CrushingStrength, "f", "measured crushing strength", unit::Megapascal>
+{
+};
+struct CuringAge: formula::Quantity<CuringAge, "t", "curing age at test", unit::Hour>
+{
+};
+struct SizeAllowance: formula::Quantity<SizeAllowance, "k_d", "size allowance", unit::Megapascal>
+{
+};
+struct CorrectedStrength: formula::Quantity<CorrectedStrength, "f_c", "size- and age-corrected strength", unit::Megapascal>
+{
+};
+
+// Three bands over the diameter `Diameter` already declares, each stated as a
+// numerator/denominator pair for its low (inclusive) and high (EXCLUSIVE)
+// bound. A gap or an overlap anywhere here is a compile error naming both
+// offending bands, so this table cannot reach the page mis-bucketing anything.
+inline constexpr formula::BandTable<3> GallerySizeBands {
+    formula::band(0, 1, 100, 1),   // 0 to under 100 mm
+    formula::band(100, 1, 150, 1), // 100 to under 150 mm
+    formula::band(150, 1, 200, 1), // 150 to under 200 mm -- 200 mm itself is in NO band
+};
+
+// A key enumeration wants a name of its own per translation unit: two files
+// declaring a same-named internal-linkage enumeration, used as a `KeyTable`
+// non-type template parameter with equal values, silently mislink on clang
+// (`lookup.hpp` measures the mechanism). Hence `GalleryMould` and not `Mould`.
+enum class GalleryMould : std::uint8_t
+{
+    Cube,
+    Cylinder,
+    Prism,
+};
+
+inline constexpr formula::KeyTable<GalleryMould, 3> GalleryMouldKeys {
+    GalleryMould::Cube,
+    GalleryMould::Cylinder,
+    GalleryMould::Prism,
+};
+
+// Breakpoints, not bands: each is one key the curve states a value AT, and the
+// value between two of them is computed rather than stored. The domain is
+// closed at both ends -- 24 h and 168 h are both hits -- because a breakpoint
+// is a row and not a boundary between rows.
+inline constexpr formula::BreakpointTable<3> GalleryAgeCurve {
+    formula::breakpoint(24),
+    formula::breakpoint(72),
+    formula::breakpoint(168),
+};
+
+// The structure (the bands, the keys, the breakpoints, and the two units) is
+// the method and lives in each node's type; the contents -- the number each row
+// gives -- are a registered table's data and arrive at runtime.
+constexpr auto sizeAllowanceTable =
+    formula::banded_lookup<unit::Millimetre, GallerySizeBands, unit::Megapascal>(
+        var<Diameter>, { formula::Rational { 2 }, formula::Rational { 1 }, formula::Rational { 0 } });
+
+constexpr auto mouldFactorTable = formula::exact_lookup<GalleryMouldKeys, unit::One>(
+    GalleryMould::Cylinder, { formula::Rational { 1 }, formula::Rational { 19, 20 }, formula::Rational { 9, 10 } });
+
+constexpr auto maturityFactorTable =
+    formula::interpolating_lookup<unit::Hour, GalleryAgeCurve, unit::One>(
+        var<CuringAge>,
+        { formula::Rational { 3, 5 }, formula::Rational { 17, 20 }, formula::Rational { 1 } });
+
+constexpr auto sizeAllowance =
+    formula::documented(sizeAllowanceTable,
+                        { .title = "Size allowance by specimen diameter",
+                          .reference = "Example Standard 7:2020",
+                          .section = "8.2",
+                          .text = "The allowance deducted from a measured crushing strength, selected by the band "
+                                  "the specimen's diameter falls in. A diameter in no band is not a value: the "
+                                  "method defined no allowance there and this library reports that rather than "
+                                  "inventing one." });
+
+constexpr auto mouldFactor =
+    formula::documented(mouldFactorTable,
+                        { .title = "Mould factor by specimen mould",
+                          .reference = "Example Standard 7:2020",
+                          .section = "8.3",
+                          .text = "A category key names a row directly. The key renders as its underlying value, "
+                                  "not the enumerator's name, because a C++ enumerator has no name at run time -- "
+                                  "a reader reconciling this against a published table carries the author's own "
+                                  "enum class across." });
+
+constexpr auto maturityFactor =
+    formula::documented(maturityFactorTable,
+                        { .title = "Maturity factor by curing age",
+                          .reference = "Example Standard 7:2020",
+                          .section = "8.4",
+                          .equation = "(7)",
+                          .text = "A curve stated at three ages. A specimen tested between two of them gets the "
+                                  "value those two rows imply at that age -- a number appearing in no row of the "
+                                  "table. A specimen younger or older than the curve gets nothing at all: there "
+                                  "is no extrapolation." });
+
+// All three at once, wrapped exactly once so the section below has exactly one
+// citation, the same way every other formula on this page does.
+constexpr auto correctedStrength = formula::documented(
+    (var<CrushingStrength> - sizeAllowanceTable) * mouldFactorTable * maturityFactorTable,
+    { .title = "Size- and age-corrected crushing strength",
+      .reference = "Example Standard 7:2020",
+      .section = "8.5",
+      .equation = "(8)",
+      .text = "The measured strength less its size allowance, scaled by the mould factor and by the maturity "
+              "factor -- one banded, one exact and one interpolating table inside a single expression." });
+
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
 /// Not reused from render.hpp's own `detail::number_text`, which does exactly
@@ -189,6 +321,33 @@ constexpr auto compactionAdjustedDensity = formula::documented(
 {
     std::string_view const symbolText = formula::view(unitOfValue.symbolText);
     return symbolText.empty() ? std::string { "dimensionless" } : std::string { symbolText };
+}
+
+/// Writes the symbol table for a section, or nothing when there are no symbols
+/// to put in it.
+///
+/// **The empty case is reachable, which is why it is handled rather than
+/// asserted away.** An exact lookup has no operand at all -- its row is chosen
+/// by a category key, which is data on the node and not a sub-expression
+/// (`lookup.hpp`) -- so a formula that is nothing but an exact lookup reads no
+/// quantity and contributes no `SymbolEntry`. Emitting the header and the
+/// separator with no rows under them publishes an empty table, which tells a
+/// reader the section has a symbol table and then shows them none.
+///
+/// One function called from both section writers rather than the same six
+/// lines twice, for the reason this file's own `write_constraint` comment
+/// gives: a constraint should document exactly the way a formula does, and two
+/// copies of a rule are how two surfaces that must agree begin to disagree.
+void write_symbol_table(std::ofstream& out, std::vector<formula::SymbolEntry> const& symbols)
+{
+    if (symbols.empty())
+        return;
+
+    out << "| Symbol | Description | Unit |\n";
+    out << "| --- | --- | --- |\n";
+    for (formula::SymbolEntry const& row: symbols)
+        out << "| " << row.symbol << " | " << row.description << " | " << unit_cell(row.unit) << " |\n";
+    out << "\n";
 }
 
 /// Writes one formula's section: its citation's title as a heading, the plain
@@ -217,11 +376,7 @@ void write_formula(std::ofstream& out, N const& node)
 
     out << "$$\n" << latex.formula << "\n$$\n\n";
 
-    out << "| Symbol | Description | Unit |\n";
-    out << "| --- | --- | --- |\n";
-    for (formula::SymbolEntry const& row: markdown.symbols)
-        out << "| " << row.symbol << " | " << row.description << " | " << unit_cell(row.unit) << " |\n";
-    out << "\n";
+    write_symbol_table(out, markdown.symbols);
 
     bool const hasBibliographicFields =
         !citation.reference.empty() || !citation.section.empty() || !citation.equation.empty();
@@ -288,11 +443,7 @@ template <formula::Predicate P>
 
     out << "$$\n" << latex.formula << "\n$$\n\n";
 
-    out << "| Symbol | Description | Unit |\n";
-    out << "| --- | --- | --- |\n";
-    for (formula::SymbolEntry const& row: markdown.symbols)
-        out << "| " << row.symbol << " | " << row.description << " | " << unit_cell(row.unit) << " |\n";
-    out << "\n";
+    write_symbol_table(out, markdown.symbols);
 
     bool const hasBibliographicFields =
         !citation.reference.empty() || !citation.section.empty() || !citation.equation.empty();
@@ -359,6 +510,10 @@ int main(int argc, char** argv)
     write_formula(out, flowRate);
     write_formula(out, waterCementRatio);
     write_formula(out, compactionAdjustedDensity);
+    write_formula(out, sizeAllowance);
+    write_formula(out, mouldFactor);
+    write_formula(out, maturityFactor);
+    write_formula(out, correctedStrength);
 
     // ---- A worked evaluation, so the page proves the numbers as well as the text ----
 
@@ -446,6 +601,60 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << formula::render_trace(constraintTrace, { .maxSteps = 5 });
+    out << "```\n\n";
+
+    // ---- Three lookup tables in one derivation, so the page shows each kind naming the row it used ----
+
+    out << "## Worked derivation: size- and age-corrected crushing strength\n\n";
+    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key 1`. Each table names the row it answered "
+           "from: the banded one its interval, the interpolating one the two rows it drew on. The exact "
+           "lookup adds nothing there -- its key is already the subject of its own line.\n\n";
+
+    write_worked_formula(out, correctedStrength);
+
+    auto const correctedInputs = formula::environment(formula::Measured<CrushingStrength> { formula::Rational { 32 } },
+                                                      formula::Measured<Diameter> { formula::Rational { 120 } },
+                                                      formula::Measured<CuringAge> { formula::Rational { 48 } });
+    formula::Explained<CorrectedStrength> const explainedCorrected =
+        formula::explain<CorrectedStrength>(correctedStrength, correctedInputs);
+    if (!explainedCorrected.outcome.is_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked lookup derivation did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(explainedCorrected.trace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    // ---- A lookup that found nothing, because a miss is not a number ----
+    //
+    // Traced through a RecordingSink rather than `explain()`: `explain()` goes
+    // through the THROWING `evaluate()`, so a miss -- an ordinary outcome for a
+    // lookup, not a defect -- would throw instead of handing back the
+    // derivation that says why it missed.
+
+    out << "## Worked derivation: a lookup that found nothing\n\n";
+    out << "The same size-allowance table at `d` = 250 mm. The table's last band stops below 200 mm, so "
+           "250 mm falls in no band -- and a miss is not a value: not zero, not the nearest band, not the "
+           "last one. The bracketed clause is what keeps the line from being read as a failure relayed up "
+           "from somewhere below it.\n\n";
+
+    write_worked_formula(out, sizeAllowance);
+
+    auto const uncoveredSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 250 } });
+    formula::Trace<> missTrace {};
+    formula::RecordingSink<> missSink { missTrace };
+    std::expected<formula::Outcome<SizeAllowance>, formula::ArithmeticError> const missed =
+        formula::checked_evaluate<SizeAllowance>(sizeAllowance, uncoveredSpecimen, missSink);
+    if (missed.has_value() || missed.error() != formula::ArithmeticError::DomainError)
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the uncovered diameter did not report a domain error\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(missTrace, { .maxSteps = 5 });
     out << "```\n\n";
 
     out.flush();
