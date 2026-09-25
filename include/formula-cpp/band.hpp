@@ -45,6 +45,23 @@
 /// and it would give the one validation predicate below two different
 /// adjacency rules to reconcile instead of one.
 ///
+/// **`[low, high)` is the notation, not the output, and the two are meant to
+/// differ.** Every band this library *renders* -- in plain text, Markdown,
+/// LaTeX and the trace alike -- reads `<low> to under <high>`, as
+/// `render.hpp`'s `detail::band_text` produces it and as `docs/lookup-tables.md`
+/// explains at length. That is one spelling for two audiences, not an
+/// inconsistency waiting to be tidied into one: bracket notation states what
+/// the interval *means*, to a reader of the API reference, where Doxygen sets
+/// these comments and the brackets are inert; the prose spelling is what the
+/// library *emits*, and it carries no punctuation at all because `[10, 20)`
+/// opens CommonMark link syntax, which once silently dropped an operand from a
+/// published page of this project's own documentation (`render.hpp`'s ruling,
+/// and the guard test forbidding `](` and a bare `[` in any Markdown
+/// rendering). **So anything a guide quotes must use the emitted spelling** --
+/// `examples/lookup_tables.cpp`'s band table is quoted into the guide
+/// verbatim, its comments included, which makes those comments published text
+/// and is why they say `to under` where the comments here say `[low, high)`.
+///
 /// An empty table (`BandTable<0>`) validates: there is no adjacent pair to
 /// check, so it is vacuously free of gaps and overlaps, and a lookup against
 /// it simply always misses -- the same "not a value" outcome a banded lookup

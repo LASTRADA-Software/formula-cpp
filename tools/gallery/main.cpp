@@ -224,11 +224,19 @@ inline constexpr formula::BandTable<3> GallerySizeBands {
 // declaring a same-named internal-linkage enumeration, used as a `KeyTable`
 // non-type template parameter with equal values, silently mislink on clang
 // (`lookup.hpp` measures the mechanism). Hence `GalleryMould` and not `Mould`.
+//
+// **Numbered explicitly, and not contiguously, on purpose.** An exact lookup
+// renders its rows as `key <underlying value>` -- a C++ enumerator has no name
+// at run time, so the value is the only thing that survives into the rendered
+// formula. Leaving these to default would print 0, 1, 2, which a reader could
+// just as easily take for row indices; 3, 7 and 11 can only be the
+// enumerators' own values, so the page demonstrates the rule rather than
+// leaving docs/lookup-tables.md to assert it in prose alone.
 enum class GalleryMould : std::uint8_t
 {
-    Cube,
-    Cylinder,
-    Prism,
+    Cube = 3,
+    Cylinder = 7,
+    Prism = 11,
 };
 
 inline constexpr formula::KeyTable<GalleryMould, 3> GalleryMouldKeys {
@@ -606,7 +614,12 @@ int main(int argc, char** argv)
     // ---- Three lookup tables in one derivation, so the page shows each kind naming the row it used ----
 
     out << "## Worked derivation: size- and age-corrected crushing strength\n\n";
-    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key 1`. Each table names the row it answered "
+    // The key is written out of the enumerator rather than typed, so this
+    // sentence cannot drift from the row the lookup below actually selects --
+    // which is the whole hazard of an enumerator whose value is not its index.
+    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key "
+        << static_cast<int>(GalleryMould::Cylinder)
+        << "`. Each table names the row it answered "
            "from: the banded one its interval, the interpolating one the two rows it drew on. The exact "
            "lookup adds nothing there -- its key is already the subject of its own line.\n\n";
 
