@@ -92,17 +92,12 @@ namespace detail
         std::vector<void const*> seenQuantities {};
     };
 
-    // Forward declared for consistency with this convention, not because
-    // two-phase lookup strictly requires it here: every collect() call's
-    // first argument is a `Walk&` -- `formula::detail::Walk` -- so
-    // `formula::detail` is always part of that call's argument-dependent
-    // lookup, and by the time document() is ever instantiated the whole
-    // header, every overload below included, has already been parsed. ADL
-    // then finds each one regardless of declaration order -- verified by
-    // removing all of the forward declarations below at once and finding
-    // the suite still compiled and passed. Declaring them anyway costs
-    // nothing and stops the whole scheme from resting on Walk's namespace
-    // being the one thing that happens to rescue every call.
+    // Not load-bearing, just this file's convention: every collect() call's
+    // first argument is `Walk&`, so `formula::detail` -- Walk's namespace --
+    // is always in ADL's search set, which is why every overload below is
+    // found regardless of declaration order (confirmed by removing all five
+    // and rebuilding). That is an implementation detail, not a guarantee, so
+    // each overload stays declared here rather than relying on it.
 
     template <Described Q>
     void collect(Walk& walk, VarNode<Q> const& node);
