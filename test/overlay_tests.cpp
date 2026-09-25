@@ -87,14 +87,16 @@ inline constexpr auto national =
 /// `expression` was rewritten.
 ///
 /// Asks the rewrite `with_constant` applies to each variant directly rather
-/// than through a method, because a banded or an interpolating lookup cannot
-/// be a variant's expression on clang++ today: `Variants` holds its variants
-/// in a `std::tuple`, whose default-constructor check makes clang instantiate
-/// the zero-argument constructor of the lookup's `Corrections`, and that
-/// constructor is the refusal of a short corrections list. That is a defect of
-/// `lookup.hpp` and `method.hpp` together, not of the overlay, and the tests
-/// above already take the rewrite through `apply` for the node kinds a method
-/// can hold everywhere.
+/// than through a method, because no lookup -- banded, exact or interpolating,
+/// at the root of a variant or nested inside it -- can be in a variant's
+/// expression on clang++ 20 with libstdc++ 14 today. `Variants` holds its
+/// variants in a `std::tuple`, whose default-constructor check makes clang
+/// instantiate the zero-argument constructor of the lookup's `Corrections`,
+/// and that constructor is the refusal of a short corrections list. cl,
+/// clang-cl and g++ accept the same method. That is a defect of `lookup.hpp`
+/// and `method.hpp` together, not of the overlay, and the tests above already
+/// take the rewrite through `apply` for the node kinds a method can hold
+/// everywhere.
 template <typename Expr>
 [[nodiscard]] constexpr formula::Rational withRatioFixedAtFour(Expr expression)
 {
