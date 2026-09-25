@@ -417,13 +417,24 @@ namespace unit = formula::unit;
 // order half would compare the position of a letter in `under` against the
 // position of a real symbol. Symbols that cannot collide are what make either
 // answer mean anything.
+//
+// **`D_g` rather than a spelling that sorts between the other two**, which is
+// what the gauge quantity first had. With `L_g` every ordered pair below ran
+// in ASCII order as well as in reading order -- `L_g` before `t_p`, `L_c`
+// before `L_g` -- so a `collect` that sorted `.symbols` would have satisfied
+// every ordering assertion in this block, including the one the cross-surface
+// test is sold on. `D_g` inverts the interpolating pair (`L_c` then `D_g`, a
+// descending pair) while leaving the banded pair ascending (`D_g` then `t_p`),
+// so the two together cover both ends of that axis instead of one end twice.
+// Measured: sorting `.symbols` in `document()` leaves the cross-surface test
+// green under the old spellings and fails it under these.
 struct PlateThickness: formula::Quantity<PlateThickness, "t_p", "plate thickness", formula::unit::Millimetre>
 {
 };
 struct CoreLength: formula::Quantity<CoreLength, "L_c", "core length", formula::unit::Millimetre>
 {
 };
-struct GaugeLength: formula::Quantity<GaugeLength, "L_g", "gauge length", formula::unit::Millimetre>
+struct GaugeDiameter: formula::Quantity<GaugeDiameter, "D_g", "gauge diameter", formula::unit::Millimetre>
 {
 };
 // Read by no fixture in this file. The cross-surface test needs one such
@@ -572,6 +583,14 @@ void quantityAgrees(formula::Documentation const& documentation, std::size_t& sh
 /// something that is not a variable at all (a key unit, a band, a key), can
 /// pass.
 ///
+/// **What this does not do, stated because the rest of this comment reads like
+/// coverage.** It kills no mutation that the per-kind tests above do not also
+/// kill -- every attempt to construct one failed. Its whole claim is the one
+/// below: it is the only assertion in this file that checks either half of a
+/// `Documentation` against the other rather than against a literal its author
+/// typed, which is the property phase 8's published defect violated, and it is
+/// what a lookup kind added later gets without anyone remembering to write it.
+///
 /// The rows also come back in the order the formula reads, which is what
 /// `Documentation::symbols` promises in so many words -- "in the order they
 /// first appear when the formula is read left to right". Every other order
@@ -619,10 +638,10 @@ TEST_CASE("document: a banded lookup's operand reaches the symbol table", "[docu
     // compound expression; the interpolating case below puts its lookup on the
     // LEFT with a bare variable as the operand. The pair covers both ends of
     // both axes rather than one end of each.
-    formula::Documentation const documentation = formula::document(var<GaugeLength> * bandedLookup());
+    formula::Documentation const documentation = formula::document(var<GaugeDiameter> * bandedLookup());
 
     REQUIRE(documentation.symbols.size() == 2);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "L_g" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "D_g" });
     CHECK(documentation.symbols[1].symbol == std::string_view { "t_p" });
     CHECK(documentation.symbols[1].description == std::string_view { "plate thickness" });
     CHECK(documentation.symbols[1].unit == formula::unit::Millimetre);
@@ -635,15 +654,15 @@ TEST_CASE("document: an exact lookup names no variable and contributes no row", 
     // could take it for a variable. It is not one: an exact lookup has no
     // operand at all, and a key is a discriminator with no symbol and no unit.
     // The only row here is the one contributed from outside the lookup.
-    formula::Documentation const documentation = formula::document(var<GaugeLength> * apparatusLookup());
+    formula::Documentation const documentation = formula::document(var<GaugeDiameter> * apparatusLookup());
 
     REQUIRE(documentation.symbols.size() == 1);
-    CHECK(documentation.symbols[0].symbol == std::string_view { "L_g" });
+    CHECK(documentation.symbols[0].symbol == std::string_view { "D_g" });
 }
 
 TEST_CASE("document: an interpolating lookup's operand reaches the symbol table", "[document][lookup]")
 {
-    formula::Documentation const documentation = formula::document(profileLookup() * var<GaugeLength>);
+    formula::Documentation const documentation = formula::document(profileLookup() * var<GaugeDiameter>);
 
     // First-appearance order with the lookup on the LEFT, so its operand's
     // quantity must come first. A walk that reached the operand but contributed
@@ -652,7 +671,41 @@ TEST_CASE("document: an interpolating lookup's operand reaches the symbol table"
     REQUIRE(documentation.symbols.size() == 2);
     CHECK(documentation.symbols[0].symbol == std::string_view { "L_c" });
     CHECK(documentation.symbols[0].description == std::string_view { "core length" });
-    CHECK(documentation.symbols[1].symbol == std::string_view { "L_g" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "D_g" });
+}
+
+TEST_CASE("document: a quantity read both outside and inside a banded lookup gets one row", "[document][lookup]")
+{
+    // `Documentation::symbols` promises each variable "each once", and nothing
+    // pinned that across a lookup boundary: every other fixture in this block
+    // reads a different quantity inside the lookup from the one outside it, so
+    // no test could tell one row from two.
+    //
+    // The mutation this exists for builds clean and passes every other test in
+    // the suite: walk the operand into a `Walk` of its own and merge its rows
+    // back, which is the shape someone writes who thinks of a table's key
+    // expression as a sub-document with a symbol table of its own. The fresh
+    // walk starts with an empty `seenQuantities`, so the operand's row is
+    // pushed again next to the one the outer walk already has -- two identical
+    // rows on a generated page, which is exactly what deduplicating by quantity
+    // type exists to prevent.
+    formula::Documentation const documentation = formula::document(var<PlateThickness> * bandedLookup());
+
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "t_p" });
+}
+
+TEST_CASE("document: a quantity read both outside and inside an interpolating lookup gets one row", "[document][lookup]")
+{
+    // Its own case rather than a second assertion in the banded one above: the
+    // defect is written per overload, and pinning one of the two would leave
+    // the other in the state task 3 left the exact lookup in. The exact lookup
+    // has no third case here because it has no operand, so it has no inside for
+    // a quantity to be read in -- not an omission.
+    formula::Documentation const documentation = formula::document(var<CoreLength> * profileLookup());
+
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "L_c" });
 }
 
 TEST_CASE("document: a citation on a banded lookup reaches the documentation with its operand's", "[document][lookup]")
@@ -705,7 +758,7 @@ TEST_CASE("document: a citation on an interpolating lookup reaches the documenta
 
 TEST_CASE("document: the rendered formula and the symbol table agree on every lookup kind", "[document][lookup]")
 {
-    formulaAndSymbolsAgree<PlateThickness, GaugeLength, AbsentReading>(var<GaugeLength> * bandedLookup());
-    formulaAndSymbolsAgree<PlateThickness, GaugeLength, AbsentReading>(var<GaugeLength> * apparatusLookup());
-    formulaAndSymbolsAgree<CoreLength, GaugeLength, AbsentReading>(profileLookup() * var<GaugeLength>);
+    formulaAndSymbolsAgree<PlateThickness, GaugeDiameter, AbsentReading>(var<GaugeDiameter> * bandedLookup());
+    formulaAndSymbolsAgree<PlateThickness, GaugeDiameter, AbsentReading>(var<GaugeDiameter> * apparatusLookup());
+    formulaAndSymbolsAgree<CoreLength, GaugeDiameter, AbsentReading>(profileLookup() * var<GaugeDiameter>);
 }
