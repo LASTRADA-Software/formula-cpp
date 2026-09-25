@@ -46,6 +46,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/citation.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/conditional.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/constraint.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/dimension.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/document.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/environment.hpp"
