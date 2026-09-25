@@ -346,3 +346,61 @@ constexpr auto broken = formula::root<0>(formula::var<Area>);
 // static_assert message: "formula: a root of degree zero describes no
 // operation" -- pinned verbatim in test/negative/function_zero_root_degree.cpp.
 ```
+
+## Composing a formula from other formulas
+
+A formula is an ordinary value, so it stands wherever a variable or a
+constant stands. Give one a name and it can be an operand of the next:
+
+```cpp
+constexpr auto waterCementRatio =
+    formula::documented(var<WaterVolume> / var<CementVolume>,
+                        { .title = "Water/cement ratio", .reference = "Example Standard 1:2020", ... });
+
+// The second formula uses the first by name. Nothing about the first
+// declaration anticipated being reused.
+constexpr auto mixCost =
+    formula::documented(var<UnitPrice> * waterCementRatio,
+                        { .title = "Cost of a mix at a given water/cement ratio", ... });
+```
+
+There is no separate composition step and no wrapper type. The outer formula
+is simply a larger expression tree, so the dimension check, evaluation,
+rendering, tracing and `document()` all treat the reused sub-tree the way
+they treat any other node.
+
+**Provenance travels upward through the seam.** The outer formula was never
+told about the inner one's citation, but `document()` walks the whole tree
+and finds it:
+
+```
+citations on the outer formula: 2
+  - Cost of a mix at a given water/cement ratio [Example Standard 9:2021]
+  - Water/cement ratio [Example Standard 1:2020]
+```
+
+**The trace names the reused formula as its own step**, which is what an
+auditor needs and what the rendering alone does not show — `render()` gives
+`c_u * V_w / V_c`, flattened, because `*` and `/` share a precedence and no
+parenthesis is needed to preserve the meaning:
+
+```
+1. c_u = 250 EUR
+2. V_w = 180 l
+3. V_c = 300 l
+4. #2 / #3 = 3/5
+5. #4 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
+6. #1 * #5 = 150
+7. #6 = 150 [Cost of a mix at a given water/cement ratio, Example Standard 9:2021, 2.1]
+```
+
+Step 5 is the reused formula, carrying its own citation; step 6 consumes it.
+
+One asymmetry is worth knowing before you rely on it. Using the same
+sub-formula **twice** in one tree reaches its citation twice, and the citation
+list reports it twice — while the symbol table still reports each symbol once.
+If you are building a reference list from `.citations`, collapse duplicates
+yourself.
+
+`examples/composition.cpp` is this, complete and runnable; its output is
+where the blocks above come from.
