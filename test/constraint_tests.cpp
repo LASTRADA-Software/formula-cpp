@@ -133,17 +133,75 @@ TEST_CASE("constraint set: two violated constraints are both reported, in declar
     }
 }
 
-TEST_CASE("constraint set: a satisfied constraint and a violated one are both reported", "[constraint]")
+TEST_CASE("constraint set: a satisfied constraint and a violated one are both reported, in either position",
+          "[constraint]")
 {
     // strength 45 satisfies minimumStrength; diameter 150 still violates
     // maximumDiameter.
-    constexpr auto outcomes = formula::check_all(formula::constraints(minimumStrength, maximumDiameter),
-                                                  strengthAndDiameter(45, 150));
-    STATIC_REQUIRE(outcomes[0].is_satisfied());
-    STATIC_REQUIRE(outcomes[1].is_violated());
-    CHECK_FALSE(outcomes[0].verdict().has_value());
-    REQUIRE(outcomes[1].verdict().has_value());
-    CHECK(outcomes[1].verdict()->label == std::string_view { "specimen exceeds diameter tolerance" });
+    {
+        constexpr auto outcomes = formula::check_all(formula::constraints(minimumStrength, maximumDiameter),
+                                                      strengthAndDiameter(45, 150));
+        STATIC_REQUIRE(outcomes[0].is_satisfied());
+        STATIC_REQUIRE(outcomes[1].is_violated());
+        CHECK_FALSE(outcomes[0].verdict().has_value());
+        REQUIRE(outcomes[1].verdict().has_value());
+        CHECK(outcomes[1].verdict()->label == std::string_view { "specimen exceeds diameter tolerance" });
+    }
+
+    // Declared the other way around, so the satisfied constraint is the one
+    // evaluated last rather than first. The section above would pass even if
+    // the checker stopped at the first Satisfied it met -- minimumStrength
+    // simply happens to come first there -- purely by the fixture's order,
+    // not by anything the test asserts. This section is the one that would
+    // actually catch that mutation, because here stopping at the first
+    // Satisfied never happens (it comes second), so both sections together
+    // prove the property regardless of which position it lands in.
+    {
+        constexpr auto outcomes = formula::check_all(formula::constraints(maximumDiameter, minimumStrength),
+                                                      strengthAndDiameter(45, 150));
+        STATIC_REQUIRE(outcomes[0].is_violated());
+        STATIC_REQUIRE(outcomes[1].is_satisfied());
+        REQUIRE(outcomes[0].verdict().has_value());
+        CHECK(outcomes[0].verdict()->label == std::string_view { "specimen exceeds diameter tolerance" });
+        CHECK_FALSE(outcomes[1].verdict().has_value());
+    }
+}
+
+TEST_CASE("constraint set: a violated constraint and an invalid one are both reported, in either position",
+          "[constraint]")
+{
+    // strength 0 violates minimumStrength (0 >= 30 is false) and makes
+    // dividesByZero's predicate divide by zero, so checking it comes back
+    // invalid -- rather than either being dropped by a checker that stops at
+    // the first Invalid it meets.
+    constexpr auto environment = strengthOf(0);
+
+    {
+        constexpr auto outcomes = formula::check_all(formula::constraints(minimumStrength, dividesByZero),
+                                                      environment);
+        STATIC_REQUIRE(outcomes[0].is_violated());
+        STATIC_REQUIRE(outcomes[1].is_invalid());
+        REQUIRE(outcomes[0].verdict().has_value());
+        CHECK(outcomes[0].verdict()->label == std::string_view { "reject the specimen" });
+        REQUIRE(outcomes[1].error().has_value());
+        CHECK(outcomes[1].error() == formula::ArithmeticError::DivisionByZero);
+    }
+
+    // Reversed: the invalid constraint is checked first. A checker that
+    // stops at the first Invalid would leave index 1 at its NotChecked
+    // default instead of reporting the violation -- this is the direction
+    // that actually catches that mutation, the same way the not-checked
+    // test's reversed section catches stop-at-first-NotChecked.
+    {
+        constexpr auto outcomes = formula::check_all(formula::constraints(dividesByZero, minimumStrength),
+                                                      environment);
+        STATIC_REQUIRE(outcomes[0].is_invalid());
+        STATIC_REQUIRE(outcomes[1].is_violated());
+        REQUIRE(outcomes[0].error().has_value());
+        CHECK(outcomes[0].error() == formula::ArithmeticError::DivisionByZero);
+        REQUIRE(outcomes[1].verdict().has_value());
+        CHECK(outcomes[1].verdict()->label == std::string_view { "reject the specimen" });
+    }
 }
 
 TEST_CASE("constraint set: a not-checked constraint does not suppress a violated one, in either position",
