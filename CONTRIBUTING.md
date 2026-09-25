@@ -69,6 +69,17 @@ expected, not a bug in your setup; do not rename them to satisfy the linter,
 and do not add a clang-tidy CI job without first resolving this conflict
 deliberately.
 
+`.clang-format` has the same status, and one more hazard: **the checked-in
+tree does not match it, and you should not reformat existing files to make it
+match.** Running clang-format over the tree today rewrites 99 files, most of
+the drift predating any single change, and it silently turns this library's
+central idiom `var<Q> * x` into `var<Q>* x` -- clang-format parses `var<Q>`
+as a type and the `*` as a pointer declarator, and there is no setting that
+rescues the DSL without turning every genuine pointer into `Trace<Rep> *p`.
+So if your editor formats on save, exclude this repository or expect to
+discard the result; reformatting the tree is separate work nobody has asked
+for yet.
+
 ## Tests
 
 Three kinds, and new behaviour usually needs more than one:
