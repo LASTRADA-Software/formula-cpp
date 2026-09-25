@@ -52,6 +52,7 @@ add_executable(formula-cpp-tests
     constraint_tests.cpp
     conditional_tests.cpp
     escape_tests.cpp
+    band_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -168,6 +169,12 @@ formula_add_negative_test(escape_unit_dimension_mismatch
 # type whose constructor is deleted, so that name is the one substring common
 # to all of them.
 formula_add_negative_test(render_trace_no_step_limit "StepLimit")
+
+formula_add_negative_test(band_gap
+    "formula: this band table has a gap or overlap between two adjacent bands")
+
+formula_add_negative_test(band_overlap
+    "formula: this band table has a gap or overlap between two adjacent bands")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
