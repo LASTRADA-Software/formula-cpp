@@ -179,6 +179,9 @@ formula_add_negative_test(band_overlap
 formula_add_negative_test(band_inverted
     "formula: this band is not well-formed")
 
+formula_add_negative_test(band_zero_width
+    "formula: this band is not well-formed")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
