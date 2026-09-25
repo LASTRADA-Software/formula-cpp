@@ -189,6 +189,22 @@ TEST_CASE("a pack that repeats a tag is not a well-formed method's variants", "[
     STATIC_REQUIRE(formula::detail::IsWellFormedMethod<formula::Method<Distinct, Rule, NoConstraints>>::value);
 }
 
+TEST_CASE("a repeated tag is reported by the later of its two positions", "[method]")
+{
+    // `[Cube, Cylinder, Cylinder, Cube]` holds two repeats, and the two ways
+    // of ordering them disagree: by the later position the first repeat is
+    // Cylinder at (1, 2), because 2 comes before 3; by the earlier position
+    // it is Cube at (0, 3). `first_repeated_pair` documents the former, and
+    // `RequireTagDeclaredOnce<First, Second, Tag>` reports what it answers.
+    constexpr auto repeated = formula::detail::first_repeated_pair<Cube, Cylinder, Cylinder, Cube>();
+    STATIC_REQUIRE(repeated.first == 1);
+    STATIC_REQUIRE(repeated.second == 2);
+
+    // The control: nothing repeated answers no pair at all.
+    constexpr auto distinct = formula::detail::first_repeated_pair<Cube, Cylinder, Prism, Core>();
+    STATIC_REQUIRE(distinct.first == distinct.second);
+}
+
 TEST_CASE("a method selects the variant matching the tag", "[method]")
 {
     constexpr auto m = formula::method(
