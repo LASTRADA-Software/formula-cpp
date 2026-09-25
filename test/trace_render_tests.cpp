@@ -525,7 +525,7 @@ TEST_CASE("a derivation renders a satisfied Constraint step", "[trace-render]")
     CHECK(text
           == "1. f = 45 MPa\n"
              "2. 30 MPa\n"
-             "3. require #1 >= #2 -- satisfied\n");
+             "3. require #1 >= #2 [satisfied]\n");
     CHECK(text.find("constraint(") == std::string::npos);
 }
 
@@ -545,7 +545,7 @@ TEST_CASE("a derivation renders a violated Constraint step, carrying the verdict
     CHECK(text
           == "1. f = 20 MPa\n"
              "2. 30 MPa\n"
-             "3. require #1 >= #2 -- reject the specimen\n");
+             "3. require #1 >= #2 [reject the specimen]\n");
 }
 
 TEST_CASE("a derivation renders a Constraint step as not checked when the predicate is absent -- not satisfied",
@@ -569,7 +569,7 @@ TEST_CASE("a derivation renders a Constraint step as not checked when the predic
     CHECK(text
           == "1. f = (not measured)\n"
              "2. 30 MPa\n"
-             "3. require #1 >= #2 -- not checked\n");
+             "3. require #1 >= #2 [not checked]\n");
 }
 
 TEST_CASE("a derivation renders a Constraint step with one operand when the predicate's left side errors",
@@ -601,7 +601,7 @@ TEST_CASE("a derivation renders a Constraint step with one operand when the pred
           == "1. f = 60 MPa\n"
              "2. 0\n"
              "3. #1 / #2 = division by zero\n"
-             "4. require #3 -- division by zero\n");
+             "4. require #3 [division by zero]\n");
 }
 
 TEST_CASE("a derivation renders a Constraint step with two operands when the predicate's right side errors",
@@ -631,5 +631,5 @@ TEST_CASE("a derivation renders a Constraint step with two operands when the pre
              "2. f = 60 MPa\n"
              "3. 0\n"
              "4. #2 / #3 = division by zero\n"
-             "5. require #1 > #4 -- division by zero\n");
+             "5. require #1 > #4 [division by zero]\n");
 }

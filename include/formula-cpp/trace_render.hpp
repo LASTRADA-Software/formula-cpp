@@ -241,6 +241,13 @@ namespace detail
     ///    `conditional_expression` above leaves one out in its own
     ///    one-operand case.
     ///
+    /// A predicate side that is itself a custom untraced `Node` (`sink.hpp`)
+    /// contributes no step of its own to consume, so **zero** operands is
+    /// also constructible in principle -- the same pre-existing escape hatch
+    /// `binary_expression` above already names for `Divide`, not a gap this
+    /// step introduces. This function degrades the same way: plain
+    /// `require`, no comparison token, nothing to claim was wrong to omit.
+    ///
     /// The verdict reached checking it -- satisfied, violated, not checked,
     /// invalid -- is deliberately not part of this expression; `step_line`
     /// appends it as a suffix instead, because it is what checking the step
@@ -404,46 +411,50 @@ namespace detail
         return " [" + std::string { describe(mode) } + "]";
     }
 
-    /// A `Constraint` step's outcome, in one clause: ` -- satisfied`,
-    /// ` -- reject the specimen`, ` -- not checked`, or the arithmetic error
-    /// that made it impossible to check at all.
+    /// A `Constraint` step's outcome, in one bracketed clause: `[satisfied]`,
+    /// `[reject the specimen]`, `[not checked]`, or the arithmetic error that
+    /// made it impossible to check at all.
     ///
-    /// Present for **every** outcome, unlike the bracketed suffixes above.
-    /// `Conditional` needs `[no branch]` only for the one case its body
-    /// cannot already say, because the other three name the branch in the
-    /// keyword itself (`then #3`, `else #5`). A constraint's body never
+    /// Present for **every** outcome, unlike the other bracketed suffixes in
+    /// this file. `Conditional` needs `[no branch]` only for the one case its
+    /// body cannot already say, because the other three name the branch in
+    /// the keyword itself (`then #3`, `else #5`). A constraint's body never
     /// names its outcome: `require #1 >= #2` reads identically whether the
     /// requirement held, failed, was never checked, or could not be checked
     /// -- so unlike `Conditional`, nothing elsewhere in the line carries that
     /// distinction for any of the four states, and this suffix is the only
     /// place it is ever said.
     ///
-    /// A plain `--` rather than the bracket convention `citation_suffix`,
-    /// `justification_suffix` and `rounding_mode_suffix` above use for a
-    /// trailing fact: those three sit alongside an expression that already
-    /// has its own value (`round(#1, to 1 dp of mm) = 13 mm [nearest, ...]`),
-    /// so the bracket marks "also true, but secondary" next to a value the
-    /// line already gave. A constraint's line has no value to sit next to --
-    /// this suffix **is** the line's answer, not a secondary fact about a
-    /// number it already showed -- so it reads as the sentence's own ending
-    /// rather than a parenthetical the reader could skip.
+    /// The same bracket `citation_suffix`, `justification_suffix` and
+    /// `rounding_mode_suffix` use, not the plain `--` this project's own
+    /// prose already uses throughout its comments and guides for a
+    /// secondary aside. Reusing that glyph here would train a reader to
+    /// skim past it as an aside, which is exactly wrong for the one fact a
+    /// constraint step exists to make prominent: whether it passed. A
+    /// constraint line is already the only kind with no `=` in it, so the
+    /// structural difference alone already marks "this line reads
+    /// differently" without a second, competing signal doing the same job.
+    /// The citation suffix already proves a bracket can hold a full clause
+    /// rather than a single word (`[Bulk density of a compacted specimen,
+    /// Example Standard 1:2020, 4.2, (3)]`), so there is no shape a verdict
+    /// label needs that the existing convention cannot give it.
     [[nodiscard]] inline std::string constraint_outcome_suffix(ConstraintOutcome const& outcome)
     {
         switch (outcome.kind())
         {
             case ConstraintOutcomeKind::Satisfied:
-                return " -- satisfied";
+                return " [satisfied]";
             case ConstraintOutcomeKind::Violated:
                 // `verdict()` is guaranteed present here -- `kind()` just
                 // said `Violated`, the only state it is set for.
-                return " -- " + std::string { outcome.verdict()->label };
+                return " [" + std::string { outcome.verdict()->label } + "]";
             case ConstraintOutcomeKind::NotChecked:
-                return " -- not checked";
+                return " [not checked]";
             case ConstraintOutcomeKind::Invalid:
                 // Likewise guaranteed present for `Invalid`.
-                return " -- " + std::string { describe(*outcome.error()) };
+                return " [" + std::string { describe(*outcome.error()) } + "]";
         }
-        return " -- unknown outcome";
+        return " [unknown outcome]";
     }
 
     /// One step's line, without its number: the expression, an `=`, the value,
