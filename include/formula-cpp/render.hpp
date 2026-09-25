@@ -255,7 +255,12 @@ namespace detail
     /// 2020-02 or later (the one that absorbed textcomp). The quote becomes a
     /// typewriter `\char34`, because `\textquotedbl` -- the obvious spelling --
     /// is "unavailable in encoding OT1" without a package, and even under TU a
-    /// bare `"` is turned into a curly quote.
+    /// bare `"` is turned into a curly quote. Finally, TeX's ligatures are
+    /// broken with an empty group: `--`, `---`, `''` and `,,` would otherwise
+    /// print as an en dash, an em dash, a closing double quote and a low
+    /// double quote -- measured in OT1, T1 and TU alike -- so each such pair is
+    /// written `-{}-`, `'{}'`, `,{}`. A lone `'` is left alone: it prints as a
+    /// right single quote, which is how TeX sets an apostrophe.
     ///
     /// **Markdown** backslash-escapes the six characters that open inline
     /// markup -- a backslash, a backtick, `*`, `_`, `[`, `]` -- and writes six
@@ -286,12 +291,24 @@ namespace detail
         {
             std::string text;
             text.reserve(words.size());
-            for (char const c: words)
+            for (std::size_t at = 0; at < words.size(); ++at)
             {
+                char const c = words[at];
                 if constexpr (D == Dialect::LaTeX)
                 {
                     switch (c)
                     {
+                        case '-':
+                        case '\'':
+                        case ',':
+                            // Harmless alone, a ligature in pairs: `--` is an
+                            // en dash (`---` an em dash), `''` a closing
+                            // quote, `,,` a low quote. An empty group
+                            // between the two keeps them two characters.
+                            text += c;
+                            if (at + 1 < words.size() && words[at + 1] == c)
+                                text += "{}";
+                            break;
                         case '\\':
                             text += "\\textbackslash{}";
                             break;

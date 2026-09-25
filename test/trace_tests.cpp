@@ -1088,6 +1088,10 @@ TEST_CASE("an exact lookup step records an unsigned key that no signed type coul
     REQUIRE(trace.steps.size() == 1);
     CHECK(!trace.steps[0].lookupKeyIsSigned);
     CHECK(trace.steps[0].lookupKey == 18446744073709551615ULL);
+    // The name is matched against the table by the key's value, and this
+    // value is the top of `unsigned long long`: the only test in which the
+    // recorder names a key no signed type could hold.
+    CHECK(trace.steps[0].lookupKeyName == "Legacy");
     CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::None);
 }
 

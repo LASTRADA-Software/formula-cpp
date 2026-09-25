@@ -1124,7 +1124,8 @@ struct formula::EnumeratorName<MouldMarking>
 {
     static constexpr std::string_view of(MouldMarking) noexcept
     {
-        return "a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s";
+        // The tail is TeX's ligature pairs: `--`, `---`, `''`, `,,`.
+        return "a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
     }
 };
 
@@ -1136,16 +1137,18 @@ TEST_CASE("render: every character either dialect escapes in a key's name is esc
     // escaped forms were each measured -- see that function's comment.
     constexpr auto node = exact_lookup<MarkingKeys, unit::One>(MouldMarking::Stamped, { rat(1) });
 
-    std::string const markdown = "a\\\\b\\`c\\*d\\_e\\[f\\]g&lt;h&gt;i&amp;j&#124;k&#126;l&#36;m^n{o}p#q%r\"s";
+    // Markdown has no ligatures to break: the pairs pass through unchanged.
+    std::string const markdown = "a\\\\b\\`c\\*d\\_e\\[f\\]g&lt;h&gt;i&amp;j&#124;k&#126;l&#36;m^n{o}p#q%r\"s--t---u''v,,w";
     CHECK(formula::render<Dialect::Markdown>(node) == "lookup(key " + markdown + ", key " + markdown + " gives 1)");
 
     std::string const latex = "a\\textbackslash{}b\\textasciigrave{}c*d\\_e[f]g\\textless{}h\\textgreater{}i\\&j\\textbar{}"
-                              "k\\textasciitilde{}l\\$m\\textasciicircum{}n\\{o\\}p\\#q\\%r{\\ttfamily\\char34}s";
+                              "k\\textasciitilde{}l\\$m\\textasciicircum{}n\\{o\\}p\\#q\\%r{\\ttfamily\\char34}s"
+                              "-{}-t-{}-{}-u'{}'v,{},w";
     CHECK(formula::render<Dialect::LaTeX>(node)
           == "\\operatorname{lookup}(\\text{key " + latex + "},\\allowbreak \\text{key " + latex + " gives 1})");
 
-    CHECK(formula::render<Dialect::Plain>(node)
-          == "lookup(key a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s, key a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s gives 1)");
+    std::string const plain = "a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
+    CHECK(formula::render<Dialect::Plain>(node) == "lookup(key " + plain + ", key " + plain + " gives 1)");
 }
 
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")
