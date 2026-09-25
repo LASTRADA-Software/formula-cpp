@@ -210,6 +210,7 @@ because all of it came from the same line of code.
 | [Citations and rendering](docs/citations.md) | `documented()`, the three dialects, generated documentation |
 | [Tracing and audit trails](docs/tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
 | [Rounding and conditionals](docs/rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
+| [Constraints and verdicts](docs/constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Gallery](docs/gallery.md) | A documentation page the library generated about itself |
 
 Every example in the documentation uses generic physics with invented `Example Standard`
@@ -230,7 +231,8 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Citations, rendering dialects, generated documentation | shipped |
 | Calculation tracing and audit trails | shipped |
 | Rounding nodes (decimal places, significant digits), conditionals (`when()`) | shipped |
-| Lookup tables, constraints, series, statistics | planned |
+| Constraints, verdicts, checking a set without short-circuit | shipped |
+| Lookup tables, methods, series, statistics | planned |
 
 ## Requirements
 

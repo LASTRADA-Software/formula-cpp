@@ -44,6 +44,21 @@ $$
 
 The area of a circular cross-section computed from its diameter.
 
+## Maximum specimen diameter
+
+```
+require d <= 150 mm
+```
+
+$$
+\text{require } d \leq 150 mm
+$$
+
+- Reference: Example Standard 6:2020
+- Section: 4.1
+
+A specimen wider than the die diameter cannot be tested and is rejected outright.
+
 ## Volumetric flow rate
 
 ```
@@ -134,5 +149,15 @@ w/c = V_w / V_c = 180 l / 300 l = 3/5 = 0.6
 5. #3 * #4 = 1650
 6. if #1 < #2 then #5 = 1650
 7. #6 = 1650 [Compaction-adjusted bulk density, Example Standard 5:2020, 4.5]
+```
+
+## Worked derivation: maximum specimen diameter, alongside the circular area it validates
+
+`d` = 200 mm -- above the 150 mm tolerance, so the constraint is violated and its verdict appears in the trace, `formula::check()` and `formula::render_trace()`:
+
+```
+1. d = 200 mm
+2. 150 mm
+3. require #1 <= #2 [specimen exceeds diameter tolerance]
 ```
 
