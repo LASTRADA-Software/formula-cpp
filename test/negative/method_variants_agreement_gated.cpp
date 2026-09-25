@@ -26,7 +26,10 @@
 // the instantiation stack once the rule is asked on each of the four
 // toolchains measured locally -- cl 19.51, clang-cl 22, clang++ 20 and g++ 13;
 // CI's g++-14 and Apple clang legs were not measured. The template name rather
-// than an error code, because the codes are cl's own.
+// than an error code, because the codes are cl's own. The same holds for
+// `RequireDistinctVariantTags`: with its gate removed, this case and
+// `method_rounding_rule_gated_not_a_variant` both failed on that name alone,
+// on the same four toolchains.
 //
 // This must not compile.
 #include <formula-cpp/method.hpp>
