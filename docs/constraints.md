@@ -17,9 +17,12 @@ does for `examples/rounding_and_conditionals.cpp`.
 A `Constraint` is deliberately **not** a `Node`, for the same reason a
 predicate is not one: checking it produces a verdict, which has no
 dimension, and giving it one would mean inventing a dimension to lie about.
-That has real consequences below -- a constraint cannot be wrapped by
-`documented()`, cannot be passed to `document()`, and cannot sit inside a
-formula's own operand tree. It carries its own `Citation` directly instead.
+That has real consequences below -- a constraint cannot sit inside a
+formula's own operand tree, and cannot be wrapped by `documented()`: it
+carries its own `Citation` directly instead, precisely so that it never
+needs wrapping. `document()` itself, though, has its own overload for a
+standalone `Constraint`, alongside the one for `Node` -- see
+[below](#how-a-constraint-renders-and-documents).
 
 ## A predicate paired with a verdict
 
@@ -141,7 +144,7 @@ rule or the data feeding it. A reader who sees only `Satisfied` and
 state as one of those two -- which is exactly the failure this four-state
 design exists to prevent.
 
-## How a constraint renders -- and how it doesn't
+## How a constraint renders and documents
 
 A constraint renders as its rule alone, `require <lhs> <comparison> <rhs>`,
 never its verdict:
@@ -167,18 +170,43 @@ decided. `check()` reaches `Satisfied` or `Violated` from the predicate
 alone; the verdict is a label attached afterwards, not an ingredient the
 predicate needed.
 
-A `Constraint` cannot be wrapped by `documented()` and cannot be passed to
-`document()` -- both are built around `Node`, and a constraint deliberately
-is not one. It carries a `Citation` as a plain public member instead,
-readable directly with no `document()` call at all:
+A `Constraint` cannot be wrapped by `documented()` -- it carries its own
+`Citation` precisely so that it never needs wrapping -- but `document()`
+itself has its own overload for a standalone `Constraint`, alongside the one
+for `Node`, so a constraint documents exactly the way a formula does:
 
 ```cpp
-formula::Citation const& citation = minimumStrength.citation;
+formula::Documentation const documentation = formula::document(minimumStrength);
+formula::Citation const& citation = documentation.citations.front();
+std::printf("documented: %s\n", documentation.formula.c_str());
+std::printf("cited: %.*s, %.*s, %.*s\n",
+            static_cast<int>(citation.title.size()),
+            citation.title.data(),
+            static_cast<int>(citation.reference.size()),
+            citation.reference.data(),
+            static_cast<int>(citation.section.size()),
+            citation.section.data());
+for (formula::SymbolEntry const& entry: documentation.symbols)
+    std::printf("symbol: %.*s = %.*s [%s]\n",
+                static_cast<int>(entry.symbol.size()),
+                entry.symbol.data(),
+                static_cast<int>(entry.description.size()),
+                entry.description.data(),
+                std::string { formula::view(entry.unit.symbolText) }.c_str());
 ```
 
 ```
+documented: require f >= 30 MPa
 cited: Minimum compressive strength, Example Standard 7:2020, 5.1
+symbol: f = measured compressive strength [MPa]
 ```
+
+`documentation.formula` is the same `require f >= 30 MPa` the plain
+rendering above already showed -- `document()` reaches it by calling the
+identical `render<D>()` this page has already used, not a second renderer --
+and the citation and the one-row symbol table come from walking the
+constraint's predicate, the same `detail::collect()` machinery every other
+node in this library goes through.
 
 ## How a constraint traces
 

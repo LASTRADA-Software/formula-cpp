@@ -293,27 +293,31 @@ TEST_CASE("document: a WhenNode documents both branches, not just the one that w
 TEST_CASE("document: a constraint's citation reaches the documentation", "[document]")
 {
     // A Constraint is deliberately not a Node (constraint.hpp's file
-    // comment) and so cannot be wrapped by documented() or passed to
-    // document() itself -- it carries its own Citation instead, and
-    // collect() has to record that citation itself. Exercised directly
-    // through formula::detail, the way checked_int_tests.cpp and
-    // compile_time_tests.cpp already reach into that namespace.
-    formula::detail::Walk walk {};
-    formula::detail::collect(walk, replicateAgreement);
+    // comment) and so cannot be wrapped by documented() -- it carries its
+    // own Citation instead. document() itself DOES accept a Constraint
+    // directly, through the overload below the Node one in document.hpp;
+    // going through formula::document(...) here, exactly as every other
+    // test in this file does, is what proves that public path reachable
+    // rather than only proving detail::collect's internals work.
+    formula::Documentation const documentation = formula::document(replicateAgreement);
 
-    REQUIRE(walk.documentation.citations.size() == 1);
-    CHECK(walk.documentation.citations[0].title == std::string_view { "Replicate agreement" });
-    CHECK(walk.documentation.citations[0].section == std::string_view { "6.2" });
+    // Proves the render() half of this overload too, not only the walk:
+    // document(Constraint<P> const&) dispatches render<D>(node) to
+    // render.hpp's own Constraint overload exactly as the Node overload
+    // does for everything else.
+    CHECK(documentation.formula == "require R_a > R_b");
+    REQUIRE(documentation.citations.size() == 1);
+    CHECK(documentation.citations[0].title == std::string_view { "Replicate agreement" });
+    CHECK(documentation.citations[0].section == std::string_view { "6.2" });
 }
 
 TEST_CASE("document: a constraint predicate's left-hand side reaches the symbol table", "[document]")
 {
-    formula::detail::Walk walk {};
-    formula::detail::collect(walk, replicateAgreement);
+    formula::Documentation const documentation = formula::document(replicateAgreement);
 
-    REQUIRE(walk.documentation.symbols.size() == 2);
-    CHECK(walk.documentation.symbols[0].symbol == std::string_view { "R_a" });
-    CHECK(walk.documentation.symbols[0].description == std::string_view { "first replicate reading" });
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "R_a" });
+    CHECK(documentation.symbols[0].description == std::string_view { "first replicate reading" });
 }
 
 TEST_CASE("document: a constraint predicate's right-hand side reaches the symbol table, as a separate case",
@@ -326,10 +330,9 @@ TEST_CASE("document: a constraint predicate's right-hand side reaches the symbol
     // deleting that line left the whole suite green. This is the same
     // two-variable predicate as the left-hand test, but the assertion below
     // targets the right side specifically.
-    formula::detail::Walk walk {};
-    formula::detail::collect(walk, replicateAgreement);
+    formula::Documentation const documentation = formula::document(replicateAgreement);
 
-    REQUIRE(walk.documentation.symbols.size() == 2);
-    CHECK(walk.documentation.symbols[1].symbol == std::string_view { "R_b" });
-    CHECK(walk.documentation.symbols[1].description == std::string_view { "second replicate reading" });
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[1].symbol == std::string_view { "R_b" });
+    CHECK(documentation.symbols[1].description == std::string_view { "second replicate reading" });
 }

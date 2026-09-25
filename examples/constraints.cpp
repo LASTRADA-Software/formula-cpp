@@ -17,6 +17,7 @@
 // Every citation here is invented -- generic physics with fictional Example
 // Standard references, exactly as every other example in this repository is.
 
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
@@ -116,14 +117,16 @@ int main()
     std::printf("rendered: %s\n", formula::render(minimumStrength).c_str());
     std::printf("rendered (LaTeX): %s\n", formula::render<formula::Dialect::LaTeX>(minimumStrength).c_str());
 
-    // ---- 2. Its own Citation, carried directly rather than via document() -
+    // ---- 2. document() walks it for its citation and symbol table ---------
     //
     // A Constraint is deliberately not a Node (constraint.hpp's file comment
-    // explains why), so it cannot be wrapped by documented(), and
-    // document() itself -- constrained on Node -- refuses it too. It
-    // carries a Citation as a plain public member instead, readable
-    // directly, with no document() call needed:
-    formula::Citation const& citation = minimumStrength.citation;
+    // explains why), so it cannot be wrapped by documented() -- but
+    // document() itself has its own overload for Constraint, alongside the
+    // one for Node, so a standalone constraint documents exactly the way a
+    // formula does:
+    formula::Documentation const documentation = formula::document(minimumStrength);
+    formula::Citation const& citation = documentation.citations.front();
+    std::printf("documented: %s\n", documentation.formula.c_str());
     std::printf("cited: %.*s, %.*s, %.*s\n",
                 static_cast<int>(citation.title.size()),
                 citation.title.data(),
@@ -131,6 +134,13 @@ int main()
                 citation.reference.data(),
                 static_cast<int>(citation.section.size()),
                 citation.section.data());
+    for (formula::SymbolEntry const& entry: documentation.symbols)
+        std::printf("symbol: %.*s = %.*s [%s]\n",
+                    static_cast<int>(entry.symbol.size()),
+                    entry.symbol.data(),
+                    static_cast<int>(entry.description.size()),
+                    entry.description.data(),
+                    std::string { formula::view(entry.unit.symbolText) }.c_str());
 
     // ---- 3. The four outcomes, checked one at a time -----------------------
     constexpr auto satisfied = formula::check(minimumStrength, strengthOf(45));
@@ -198,12 +208,13 @@ int main()
     bool const renderedCorrectly = formula::render(minimumStrength) == "require f >= 30 MPa"
                                    && formula::render<formula::Dialect::LaTeX>(minimumStrength)
                                           == "\\text{require } f \\geq 30 MPa";
-    bool const citationCarriedDirectly =
-        citation.title == "Minimum compressive strength" && citation.reference == "Example Standard 7:2020";
+    bool const documentedCorrectly = documentation.formula == "require f >= 30 MPa" && documentation.symbols.size() == 1
+                                     && citation.title == "Minimum compressive strength"
+                                     && citation.reference == "Example Standard 7:2020";
     bool const fourOutcomesCorrect = satisfied.is_satisfied() && violated.is_violated() && notChecked.is_not_checked()
                                      && invalid.is_invalid();
 
-    bool const allChecksPassed = renderedCorrectly && citationCarriedDirectly && fourOutcomesCorrect
+    bool const allChecksPassed = renderedCorrectly && documentedCorrectly && fourOutcomesCorrect
                                  && notCheckedIsHonest && setCheckedBothWithoutShortCircuit;
     std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;

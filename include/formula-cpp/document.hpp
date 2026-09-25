@@ -278,4 +278,31 @@ template <Dialect D = Dialect::Plain, Node N>
     return std::move(walk.documentation);
 }
 
+/// Documents @p node: renders it in dialect @p D and walks it for the
+/// citation and symbol table a documentation page needs.
+///
+/// A second overload, not the one above, for the identical reason
+/// `render()` (`render.hpp`) carries a separate overload for `Constraint`
+/// rather than reusing its `Node` one: a `Constraint` is not a `Node` --
+/// `constraint.hpp`'s file comment explains why -- so it cannot reach the
+/// overload above at all. This is **not** the same gap `documented()`
+/// leaves. `documented()` still cannot wrap a constraint, and should not:
+/// `DocumentedNode` requires `Node Inner`, and a constraint carries its own
+/// `Citation` precisely so that it never needs wrapping in the first place.
+/// This overload is the other half -- the one that lets a constraint be
+/// documented directly, the way it is already rendered directly -- and it
+/// does so through the exact same machinery: `render<D>(node)` dispatches
+/// to `render.hpp`'s own `Constraint` overload, and `detail::collect(walk,
+/// node)` dispatches to `collect(Walk&, Constraint<P> const&)` above, which
+/// pushes the constraint's citation and walks its predicate for the symbol
+/// table. Nothing here is new machinery; this overload is what makes that
+/// existing machinery reachable from the public API at all.
+template <Dialect D = Dialect::Plain, Predicate P>
+[[nodiscard]] Documentation document(Constraint<P> const& node)
+{
+    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
 } // namespace formula
