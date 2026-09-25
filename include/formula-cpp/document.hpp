@@ -262,7 +262,7 @@ namespace detail
     /// (`lookup.hpp`). Its key is a discriminator rather than a quantity, so it
     /// reaches the node as runtime state instead of as a sub-expression, and
     /// there is no child to walk. Rendering does put that key where the other
-    /// two kinds put their operand -- `lookup(key 7, ...)` -- so the subject
+    /// two kinds put their operand -- `lookup(key Cylinder, ...)` -- so the subject
     /// position of the rendered formula is occupied by something a reader may
     /// well take for a variable; it names none, has no unit and earns no row.
     /// Empty for the reason `collect(Walk&, ConstantNode<U> const&)` is empty,

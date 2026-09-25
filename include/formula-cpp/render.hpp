@@ -242,17 +242,41 @@ namespace detail
     /// syntax this file's ruling and the guard test in `render_tests.cpp`
     /// exist to keep out.
     ///
-    /// LaTeX escapes its ten special characters the way a text-mode author
-    /// would. Markdown backslash-escapes the six characters that open inline
-    /// markup -- a backslash, a backtick, `*`, `_`, `[`, `]` -- and writes `<`, `>`
-    /// and `&` as entities, because those three are HTML's rather than
-    /// Markdown's, and a backslash before them is shown literally by
-    /// python-markdown (MkDocs' engine) where CommonMark would drop it.
-    /// Measured: this exact set renders as the original text through
-    /// python-markdown, pandoc's CommonMark reader and pandoc's GFM reader
-    /// alike, and the LaTeX set through tectonic 0.17.0. Plain changes
-    /// nothing. Text with none of these characters is the same in all three
-    /// dialects, which is what the cross-dialect test relies on.
+    /// **LaTeX** escapes its ten special characters the way a text-mode author
+    /// would -- `^` and `~` as `\textasciicircum{}` and `\textasciitilde{}`,
+    /// which are ASCII glyphs under T1 and TU where `\^{}` and `\~{}` are
+    /// accents over nothing -- and five more that are not special but print as
+    /// the wrong glyph. Under pdflatex's default OT1 font encoding `<`, `>`,
+    /// `|` and a double quote come out as an inverted exclamation mark, an
+    /// inverted question mark, an em dash and a closing curly quote, and a
+    /// backtick comes out as an opening curly quote in every encoding. They
+    /// become `\textless{}`, `\textgreater{}`, `\textbar{}` and
+    /// `\textasciigrave{}`, which need no package on a LaTeX kernel from
+    /// 2020-02 or later (the one that absorbed textcomp). The quote becomes a
+    /// typewriter `\char34`, because `\textquotedbl` -- the obvious spelling --
+    /// is "unavailable in encoding OT1" without a package, and even under TU a
+    /// bare `"` is turned into a curly quote.
+    ///
+    /// **Markdown** backslash-escapes the six characters that open inline
+    /// markup -- a backslash, a backtick, `*`, `_`, `[`, `]` -- and writes six
+    /// more as entities: `<`, `>` and `&`, which are HTML's; `$`, which the
+    /// site's `pymdownx.arithmatex` reads as a maths delimiter; `|`, which
+    /// splits a GFM table cell; and `~`, whose pair is GFM strikethrough.
+    /// Entities rather than backslashes for those six, because python-markdown
+    /// with the site's extensions shows a backslash before `|` or `~`
+    /// literally, where CommonMark would drop it.
+    ///
+    /// Measured, not reasoned. The LaTeX set was compiled with tectonic 0.17.0
+    /// forced to OT1 (`\usepackage[OT1]{fontenc}`), where the four wrong glyphs
+    /// reproduce, and also under T1 and TU; the escaped text reads back as
+    /// the original in all three. The Markdown set was rendered by
+    /// python-markdown with exactly the extensions `mkdocs.yml` enables
+    /// (admonition, pymdownx.highlight, pymdownx.superfences,
+    /// pymdownx.arithmatex in generic mode), and by pandoc's CommonMark and
+    /// GFM readers, in a paragraph and in a GFM table cell, and reads back as
+    /// the original in every one. Plain changes nothing. Text with none of
+    /// these characters is the same in all three dialects, which is what the
+    /// cross-dialect test relies on.
     template <Dialect D>
     [[nodiscard]] std::string literal_words_in_dialect(std::string_view words)
     {
@@ -272,10 +296,25 @@ namespace detail
                             text += "\\textbackslash{}";
                             break;
                         case '^':
-                            text += "\\^{}";
+                            text += "\\textasciicircum{}";
                             break;
                         case '~':
-                            text += "\\~{}";
+                            text += "\\textasciitilde{}";
+                            break;
+                        case '`':
+                            text += "\\textasciigrave{}";
+                            break;
+                        case '<':
+                            text += "\\textless{}";
+                            break;
+                        case '>':
+                            text += "\\textgreater{}";
+                            break;
+                        case '|':
+                            text += "\\textbar{}";
+                            break;
+                        case '"':
+                            text += "{\\ttfamily\\char34}";
                             break;
                         case '{':
                         case '}':
@@ -304,6 +343,15 @@ namespace detail
                             break;
                         case '&':
                             text += "&amp;";
+                            break;
+                        case '$':
+                            text += "&#36;";
+                            break;
+                        case '|':
+                            text += "&#124;";
+                            break;
+                        case '~':
+                            text += "&#126;";
                             break;
                         case '\\':
                         case '`':
@@ -338,8 +386,11 @@ namespace detail
     /// 9` for a key that names no row of the table, which is exactly the key
     /// a missing lookup holds. It may even be a real enumerator the table
     /// has no row for; `key_name` answers only among the table's own keys,
-    /// so this does too. The spelling is the one this function used before it
-    /// had names, so a miss reads the same as it always has. A reflected name
+    /// so this does too. The one other case is a row the table declares under
+    /// a value that names no enumerator (`static_cast<Shape>(9)` is a valid
+    /// key): a hit on it has no name to show either, and shows its value. The
+    /// spelling is the one this function used before it had names, so a miss
+    /// reads the same as it always has. A reflected name
     /// is an identifier and cannot begin with a digit, so the two spellings
     /// cannot be confused unless an author customizes a name into a number.
     ///
@@ -364,7 +415,7 @@ namespace detail
     }
 
     /// One row of a rendered lookup table: what selects the row, then what the
-    /// row gives. `10 to under 20 mm gives 19/20`, `key 7 gives 1`,
+    /// row gives. `10 to under 20 mm gives 19/20`, `key Cylinder gives 1`,
     /// `at 25 mm gives 6/5`.
     [[nodiscard]] inline std::string lookup_row_text(std::string const& selector, std::string const& value)
     {
@@ -781,7 +832,7 @@ template <Dialect D, Node Inner>
 // `lookup.hpp` calls out as deliberate: a banded and an exact table *select* a
 // number their author wrote down, while an interpolating table *computes* one
 // that appears in no row of it. Which of band or key did the selecting is
-// visible in every row already (`10 to under 20 mm` against `key 7`), so
+// visible in every row already (`10 to under 20 mm` against `key Cylinder`), so
 // spending the head name on that instead would name the difference a reader
 // can see and leave the one they cannot.
 //
@@ -837,7 +888,7 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
 /// sub-expression -- an exact lookup has no operand at all (`lookup.hpp`) --
 /// but that is a fact about where the value comes from, not about what the
 /// text says, and the text says the same thing either way. It does change one
-/// thing, and only in LaTeX: `key 7` is words, not mathematics, so it is set
+/// thing, and only in LaTeX: `key Cylinder` is words, not mathematics, so it is set
 /// as text like the rows are, where the other two kinds' operands stay in math
 /// mode because they really are expressions.
 ///

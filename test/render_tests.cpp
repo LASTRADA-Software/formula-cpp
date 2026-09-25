@@ -1027,6 +1027,19 @@ TEST_CASE("render: a lookup states the expression, never that the expression fou
           == "lookup(key 11, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
 }
 
+TEST_CASE("render: a row declared under a value that names no enumerator shows that value", "[render][lookup]")
+{
+    // `static_cast<MouldShape>(9)` is a legal key -- a `KeyTable` holds values
+    // of the enumeration, not only its enumerators -- and it has no name. Its
+    // row and a hit on it both show the value, while the named row beside it
+    // keeps its name. Kills an implementation that prints an empty name
+    // (`key `) or a fragment of the compiler's cast spelling (`key 9` would
+    // survive that, `key 0x9` or `key true` would not).
+    static constexpr KeyTable<MouldShape, 2> unnamedRow { MouldShape::Cube, static_cast<MouldShape>(9) };
+    CHECK(formula::render(exact_lookup<unnamedRow, unit::One>(static_cast<MouldShape>(9), { rat(1), rat(2) }))
+          == "lookup(key 9, key Cube gives 1, key 9 gives 2)");
+}
+
 namespace
 {
 /// A key enumeration with one enumerator spelled by its author and one left
@@ -1091,6 +1104,48 @@ TEST_CASE("render: a key's name is shown literally in every dialect, whatever ch
     // Plain is for a terminal, where nothing is markup, so nothing is escaped.
     CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Hollow_Core))
           == "lookup(key Hollow_Core, key polished *[A]* 100% & oiled gives 1, key Hollow_Core gives 2)");
+}
+
+namespace
+{
+/// A key whose author's spelling holds every character either dialect
+/// escapes, each once and each between two letters, so that a missing escape
+/// shows as exactly one wrong character in a known place.
+enum class MouldMarking : std::uint8_t
+{
+    Stamped = 1,
+};
+
+inline constexpr KeyTable<MouldMarking, 1> MarkingKeys { MouldMarking::Stamped };
+} // namespace
+
+template <>
+struct formula::EnumeratorName<MouldMarking>
+{
+    static constexpr std::string_view of(MouldMarking) noexcept
+    {
+        return "a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s";
+    }
+};
+
+TEST_CASE("render: every character either dialect escapes in a key's name is escaped", "[render][lookup][markdown][latex]")
+{
+    // One fixture for every escape branch of `detail::literal_words_in_dialect`
+    // in both dialects: deleting any single `case` from either switch fails
+    // this test, and it is the only test that fails for most of them. The
+    // escaped forms were each measured -- see that function's comment.
+    constexpr auto node = exact_lookup<MarkingKeys, unit::One>(MouldMarking::Stamped, { rat(1) });
+
+    std::string const markdown = "a\\\\b\\`c\\*d\\_e\\[f\\]g&lt;h&gt;i&amp;j&#124;k&#126;l&#36;m^n{o}p#q%r\"s";
+    CHECK(formula::render<Dialect::Markdown>(node) == "lookup(key " + markdown + ", key " + markdown + " gives 1)");
+
+    std::string const latex = "a\\textbackslash{}b\\textasciigrave{}c*d\\_e[f]g\\textless{}h\\textgreater{}i\\&j\\textbar{}"
+                              "k\\textasciitilde{}l\\$m\\textasciicircum{}n\\{o\\}p\\#q\\%r{\\ttfamily\\char34}s";
+    CHECK(formula::render<Dialect::LaTeX>(node)
+          == "\\operatorname{lookup}(\\text{key " + latex + "},\\allowbreak \\text{key " + latex + " gives 1})");
+
+    CHECK(formula::render<Dialect::Plain>(node)
+          == "lookup(key a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s, key a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s gives 1)");
 }
 
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")
@@ -1216,17 +1271,56 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
 // the same way. Only checking the actual character sequence a Markdown
 // parser treats specially catches it, which is what this test does instead.
 
+namespace
+{
+/// True when the character at @p at is backslash-escaped: preceded by an odd
+/// number of backslashes. `\[` is escaped; `\\[` is an escaped backslash
+/// followed by a live `[`.
+[[nodiscard]] bool isEscapedAt(std::string const& text, std::size_t at)
+{
+    std::size_t backslashes = 0;
+    while (at > backslashes && text[at - backslashes - 1] == '\\')
+        ++backslashes;
+    return backslashes % 2 == 1;
+}
+
+/// Every position of @p c in @p text that is not backslash-escaped.
+[[nodiscard]] std::vector<std::size_t> unescapedPositions(std::string const& text, char c)
+{
+    std::vector<std::size_t> positions;
+    for (std::size_t at = text.find(c); at != std::string::npos; at = text.find(c, at + 1))
+        if (!isEscapedAt(text, at))
+            positions.push_back(at);
+    return positions;
+}
+} // namespace
+
+TEST_CASE("render: the Markdown guard tells an escaped character from a live one", "[render][markdown]")
+{
+    // The guard below forbids a live `[`, and must still let through the
+    // `\[` a key's escaped name legitimately carries. Pinned on its own,
+    // because a guard that accepted everything would pass every case it is
+    // then run over.
+    CHECK(unescapedPositions("a [b", '[') == std::vector<std::size_t> { 2 });
+    CHECK(unescapedPositions("a \\[b", '[').empty());
+    CHECK(unescapedPositions("a \\\\[b", '[') == std::vector<std::size_t> { 4 });
+    CHECK(unescapedPositions("[", '[') == std::vector<std::size_t> { 0 });
+}
+
 TEST_CASE("render: Markdown output never contains text a CommonMark parser reinterprets, for any node kind",
           "[render][markdown]")
 {
     auto const isInertInMarkdown = [](std::string const& text) {
-        CHECK(text.find("](") == std::string::npos);
+        INFO("in: " << text);
+        for (std::size_t const at: unescapedPositions(text, ']'))
+            CHECK(text.compare(at, 2, "](") != 0);
         // A bare "[" alone is not risky by itself, but nothing this library
-        // renders has any legitimate reason to contain one either -- so the
+        // writes has any legitimate reason to contain one either -- so the
         // stronger check costs nothing and catches a "[...]" reference-style
         // link too, not only the inline "[...](...)" shape review round 3
-        // found.
-        CHECK(text.find('[') == std::string::npos);
+        // found. A backslash-escaped `\[` is inert, and is exactly how a key's
+        // author-supplied name carries one (`detail::literal_words_in_dialect`).
+        CHECK(unescapedPositions(text, '[').empty());
 
         // Phase 10 round 2: an asterisk. A bare `*` CANNOT be forbidden the
         // way `[` is, because one node kind emits it legitimately --
@@ -1249,7 +1343,10 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         // any future node kind that emits `*` anywhere else. Anyone tempted to
         // relax this to "no asterisk at all": that breaks multiplication, and
         // this comment is here so you need not re-measure to find that out.
-        for (std::size_t at = text.find('*'); at != std::string::npos; at = text.find('*', at + 1))
+        //
+        // A backslash-escaped `\*` is inert too, and is how a key's name
+        // carries one, so only live asterisks are held to the rule.
+        for (std::size_t const at: unescapedPositions(text, '*'))
         {
             INFO("asterisk at " << at << " in: " << text);
             CHECK(at > 0);
@@ -1302,6 +1399,13 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(bandedLookup()));                        // BandedLookupNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(shapeLookup()));                         // ExactLookupNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(curveLookup()));                         // InterpolatingLookupNode
+
+    // A key whose name the author spelled with Markdown's own punctuation,
+    // and one holding every character either dialect escapes: inert only
+    // because the name is escaped, which is what these two lines guard.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(finishLookup(MouldFinish::Polished)));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        exact_lookup<MarkingKeys, formula::unit::One>(MouldMarking::Stamped, { rat(1) })));
 
     // And a formula nesting several of the above, since a guard that only
     // ever sees one node kind in isolation could still miss an interaction

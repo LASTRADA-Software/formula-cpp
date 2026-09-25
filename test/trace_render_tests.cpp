@@ -1213,6 +1213,7 @@ TEST_CASE("a derivation spells a lookup the way render() does", "[trace-render][
     keysAgree(shapeLookup(RenderedShape::Overcut));
     std::vector<std::string> const tracedKey =
         lines(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment()));
+    REQUIRE(tracedKey.size() == 1);
 
     // The head names, all three: the two selecting kinds share one and the
     // computing kind has its own, and a reader checking a derivation against

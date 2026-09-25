@@ -495,7 +495,14 @@ struct Step
     /// For `ExactLookup`: the name of the key this lookup selected with --
     /// `Cylinder`, or the author's own spelling of it through
     /// `EnumeratorName` (`enumerator.hpp`) -- and empty when the key names no
-    /// row of the table, which is to say when the lookup missed.
+    /// row of the table, or when the row it names has a key that is itself no
+    /// enumerator.
+    ///
+    /// **Empty does not by itself mean a miss.** A table may declare a row
+    /// under a value that names no enumerator -- `static_cast<Shape>(9)` is a
+    /// perfectly good key -- and a hit on that row records no name, because
+    /// there is none to record. `lookupFailure` is what says whether the
+    /// lookup missed.
     ///
     /// **Carried here because nothing downstream can compute it.** A `Step`
     /// has erased the key's type, so `trace_render.hpp` cannot ask the
@@ -510,11 +517,16 @@ struct Step
     /// **A view, and safe to keep for the life of the trace and beyond.**
     /// Every name `enumerator_name` produces has static storage duration: a
     /// reflected name points into the compiler's function-signature literal,
-    /// and a customized one is refused at compile time unless every character
-    /// of it can be read in a constant expression, which a view of anything
-    /// shorter-lived cannot be (`RequireEnumeratorName`, `enumerator.hpp`).
-    /// So a trace outliving the formula, the table and the environment that
-    /// produced it still holds a valid name.
+    /// and a customized one is refused at compile time unless it passes the
+    /// three gates described on `EnumeratorName` (`enumerator.hpp`) -- the
+    /// library's own check, in its own words, on cl, clang-cl and clang; the
+    /// compiler's `consteval` result rule, in the compiler's words, which is
+    /// where g++ 13 refuses a view of a dead local buffer. So a trace
+    /// outliving the formula, the table and the environment that produced it
+    /// still holds a valid name. The one limit is the code image itself: a
+    /// name recorded by a shared library or plugin points into that image's
+    /// read-only data, and a trace kept after it is unloaded holds a dangling
+    /// view.
     std::string_view lookupKeyName {};
 
     /// Indices of the steps this one consumed, in evaluation order.

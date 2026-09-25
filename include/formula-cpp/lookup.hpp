@@ -1076,7 +1076,8 @@ namespace detail
     /// The spelling of @p key -- a value only known at run time -- **among the
     /// keys @p Keys declares, and nowhere else**: the row's key's
     /// `enumerator_name` when @p key names a row, and an empty view when it
-    /// names none.
+    /// names none -- or when the row it names was declared under a value that
+    /// is no enumerator (`static_cast<Shape>(9)`), which has no name to give.
     ///
     /// A key that names no row is exactly how an exact lookup misses, and it
     /// may be a perfectly good enumerator of the author's type that the table

@@ -265,7 +265,8 @@ namespace detail
     }
 
     /// An exact lookup's key, spelled the way `render()` spells it in its
-    /// plain dialect: `key Cylinder`, or `key 9` for a key that names no row.
+    /// plain dialect: `key Cylinder`, or `key 9` for a key that names no row
+    /// (or a row whose key is itself no enumerator).
     ///
     /// The name is the one the step recorded (`Step::lookupKeyName`), and the
     /// underlying value is the fallback for an empty one, for the reasons

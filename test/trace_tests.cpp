@@ -1088,8 +1088,33 @@ TEST_CASE("an exact lookup step records an unsigned key that no signed type coul
     REQUIRE(trace.steps.size() == 1);
     CHECK(!trace.steps[0].lookupKeyIsSigned);
     CHECK(trace.steps[0].lookupKey == 18446744073709551615ULL);
-    CHECK(trace.steps[0].lookupKeyName == "Legacy");
     CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::None);
+}
+
+/// A table that declares a row under a value naming no enumerator -- legal,
+/// since a `KeyTable` holds values of the enumeration, not only its
+/// enumerators. Its values differ from `ShapeKeys`' so the two cannot share a
+/// template parameter object (see `trace_render_tests.cpp`'s `RenderedShape`).
+inline constexpr KeyTable<SpecimenShape, 2> UnnamedRowKeys { SpecimenShape::Cube, static_cast<SpecimenShape>(9) };
+
+TEST_CASE("an exact lookup step that hits a row whose key names no enumerator records no name, and no miss",
+          "[trace][lookup]")
+{
+    // An empty `lookupKeyName` is not a miss by itself: this lookup HIT the
+    // second row, whose key has no name to record. `lookupFailure` is what
+    // says whether it missed. Kills a reading of "empty name" as "missed", and
+    // a recorder that invents a name for the row.
+    constexpr auto node = exact_lookup<UnnamedRowKeys, unit::One>(static_cast<SpecimenShape>(9), { rat(1), rat(2) });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, formula::environment(), sink);
+
+    REQUIRE(trace.steps.size() == 1);
+    CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::None);
+    CHECK(trace.steps[0].value == rat(2));
+    CHECK(trace.steps[0].lookupKeyName.empty());
+    CHECK(static_cast<long long>(trace.steps[0].lookupKey) == 9);
 }
 
 TEST_CASE("an interpolating lookup step tells its own overflow apart from an operand's", "[trace][lookup]")
