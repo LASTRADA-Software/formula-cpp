@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <formula-cpp/formula.hpp>
+#include <formula-cpp/trace.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -48,6 +49,28 @@ TEST_CASE("the branch not taken is never evaluated", "[conditional]")
     constexpr auto result = formula::checked_evaluate<Strength>(guarded, strengthOf(60));
     REQUIRE(result.has_value());
     CHECK(result->measurement().value() == formula::Rational { 60 });
+
+    // The value alone does not test this test's own title. An evaluator that
+    // ran both branches and selected afterwards -- which is precisely the
+    // implementation conditional.hpp's file comment says this is not -- would
+    // still answer 60: the else branch's error would be produced and thrown
+    // away. So count the steps, which is the one place the difference shows.
+    //
+    // Four, and no more: the predicate's two sides, the one branch that ran,
+    // and the conditional itself. Evaluating the else branch as well would
+    // add three (its variable, its zero, and the division) for seven.
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const traced = formula::checked_evaluate_si<formula::Rational>(guarded, strengthOf(60), sink);
+
+    REQUIRE(traced.has_value());
+    REQUIRE(trace.steps.size() == 4);
+    CHECK(trace.steps[trace.root()].branch == formula::Branch::Then);
+    // Nothing in the derivation failed, which is a second way of saying the
+    // divide-by-zero branch was never dispatched rather than dispatched and
+    // discarded.
+    for (auto const& step: trace.steps)
+        CHECK_FALSE(step.error.has_value());
 }
 
 TEST_CASE("an absent predicate makes the result absent, not the else branch", "[conditional]")

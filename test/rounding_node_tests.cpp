@@ -13,13 +13,29 @@ using formula::RoundingMode;
 struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
 {
 };
-struct Length: formula::Quantity<Length, "L", "specimen length", unit::Millimetre>
+
+/// A signed quantity, so the mode cases below can also land on a tie *below*
+/// zero -- which is the only place four of the seven modes separate from each
+/// other. On a non-negative value Ceiling and AwayFromZero agree, and so do
+/// Floor and TowardZero.
+struct Deviation: formula::Quantity<Deviation, "e", "dimensional deviation", unit::Millimetre>
 {
 };
 
 [[nodiscard]] constexpr auto millimetres(long long value)
 {
     return formula::environment(formula::Measured<Diameter> { formula::Rational { value, 100 } });
+}
+
+/// @p millimetres rounded to one decimal place of a millimetre under @p Mode,
+/// through an actual rounding node, and back out in millimetres.
+template <RoundingMode Mode>
+[[nodiscard]] constexpr formula::Rational toOneDecimalPlace(formula::Rational millimetresOfDeviation)
+{
+    constexpr auto node = formula::rounded<unit::Millimetre, DecimalPlaces { 1 }, Mode>(var<Deviation>);
+    auto const outcome = formula::checked_evaluate<Deviation>(
+        node, formula::environment(formula::Measured<Deviation> { millimetresOfDeviation }));
+    return outcome.has_value() && outcome->is_value() ? outcome->measurement().value() : formula::Rational {};
 }
 } // namespace
 
@@ -91,4 +107,58 @@ TEST_CASE("significant digits are available as a node too", "[rounding-node]")
     REQUIRE(result.has_value());
     REQUIRE(result->is_value());
     CHECK(result->measurement().value() == formula::Rational { 12, 1 });
+}
+
+TEST_CASE("every rounding mode reaches the node, at a value that lands exactly on a tie",
+          "[rounding-node]")
+{
+    // The Mode template argument is one of the three things a caller must
+    // supply to a rounding node, and until this case nothing verified it
+    // reached the rounding at all: making RepRounding<Rational>::round_in
+    // ignore its `mode` argument and always round half away from zero left
+    // the whole suite green. The three cases that actually rounded all used
+    // HalfAwayFromZero; the one naming Ceiling only asserted a dimension, and
+    // the one naming Floor had an absent operand and never rounded.
+    //
+    // One value per shape of disagreement, each landing exactly on a tie:
+    //
+    //  - 12.25 mm separates the three half modes from each other (12.2 is the
+    //    even neighbour, so HalfEven goes down where HalfAwayFromZero goes
+    //    up);
+    //  - 12.35 mm is the same tie one step along, where 12.4 is the even
+    //    neighbour -- so HalfEven goes UP here, which is what distinguishes
+    //    it from HalfTowardZero rather than merely from HalfAwayFromZero;
+    //  - -12.25 mm separates Ceiling from AwayFromZero and Floor from
+    //    TowardZero, which agree on every non-negative value.
+    constexpr formula::Rational evenNeighbourBelow { 1225, 100 };   // 12.25 mm
+    constexpr formula::Rational evenNeighbourAbove { 1235, 100 };   // 12.35 mm
+    constexpr formula::Rational belowZero { -1225, 100 };           // -12.25 mm
+
+    constexpr formula::Rational twoTwo { 122, 10 };
+    constexpr formula::Rational twoThree { 123, 10 };
+    constexpr formula::Rational twoFour { 124, 10 };
+
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfAwayFromZero>(evenNeighbourBelow) == twoThree);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfTowardZero>(evenNeighbourBelow) == twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfEven>(evenNeighbourBelow) == twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::Ceiling>(evenNeighbourBelow) == twoThree);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::Floor>(evenNeighbourBelow) == twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::TowardZero>(evenNeighbourBelow) == twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::AwayFromZero>(evenNeighbourBelow) == twoThree);
+
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfAwayFromZero>(evenNeighbourAbove) == twoFour);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfTowardZero>(evenNeighbourAbove) == twoThree);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfEven>(evenNeighbourAbove) == twoFour);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::Ceiling>(evenNeighbourAbove) == twoFour);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::Floor>(evenNeighbourAbove) == twoThree);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::TowardZero>(evenNeighbourAbove) == twoThree);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::AwayFromZero>(evenNeighbourAbove) == twoFour);
+
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfAwayFromZero>(belowZero) == -twoThree);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfTowardZero>(belowZero) == -twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::HalfEven>(belowZero) == -twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::Ceiling>(belowZero) == -twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::Floor>(belowZero) == -twoThree);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::TowardZero>(belowZero) == -twoTwo);
+    STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::AwayFromZero>(belowZero) == -twoThree);
 }
