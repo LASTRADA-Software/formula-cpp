@@ -189,6 +189,9 @@ formula_add_negative_test(lookup_band_gap
 formula_add_negative_test(lookup_short_corrections
     "this banded lookup was given a different number of corrections than it has bands")
 
+formula_add_negative_test(lookup_key_dimension_mismatch
+    "this banded lookup's key unit does not measure the dimension of the expression whose value selects a band")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

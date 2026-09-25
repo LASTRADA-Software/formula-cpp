@@ -221,3 +221,18 @@ TEST_CASE("an empty band table always misses -- the same 'not a value' outcome, 
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::DomainError);
 }
+
+TEST_CASE("an integer literal is accepted as a correction, not only a Rational", "[lookup]")
+{
+    // Corrections<N>'s element constraint is convertible_to<Rational>, not
+    // same_as<Rational>: same_as would silently stop `{1, 1, 1}` -- a
+    // correction table whose rows are all unity, the common case -- from
+    // compiling, and every other Rational-typed parameter in this library
+    // already accepts an integer literal. Kept as its own test so nobody
+    // re-tightens this constraint later without noticing.
+    constexpr auto node = banded_lookup<unit::Centimetre, SizeBands, unit::One>(var<Diameter>, { 1, 1, 1 });
+    constexpr auto computed = formula::checked_evaluate<SizeCorrection>(node, millimetresOfDiameter(5));
+    STATIC_REQUIRE(computed.has_value());
+    STATIC_REQUIRE(computed->is_value());
+    STATIC_REQUIRE(computed->measurement().value() == rat(1));
+}

@@ -280,12 +280,27 @@ struct BandedLookupNode: NodeBase
 /// and its `static_assert` (through `RequireCorrectionCountMatches`) names
 /// both counts -- rather than the compiler's own generic "no matching
 /// constructor for call", which names neither.
+///
+/// Each element is constrained by `std::convertible_to<Rational>`, not
+/// `std::same_as<Rational>`: the arity check is what closes the actual hole
+/// (see the class comment above), and over-constraining the element type on
+/// top of it would only take away what `Rational` already does correctly.
+/// `Rational`'s converting constructor from an integral type is implicit *by
+/// design* (`rational.hpp`) -- `same_as` would silently stop `{1, 1, 1}`,
+/// the common case of a table whose rows are all unity, from compiling at
+/// all, a surprise this library exists to remove. And `Rational`'s
+/// floating-point constructor is deliberately poisoned with its own
+/// diagnostic pointing at `from_decimal`/`rational_from_double`; `same_as`
+/// would reject a stray `{0.45}` with a generic constraint failure instead
+/// of letting it reach that better message. `convertible_to` lets both
+/// through to `Rational` itself, which is exactly where each is already
+/// handled correctly.
 template <std::size_t N>
 struct Corrections
 {
     /// The `N`-correction case: the one path that actually builds `values`.
     template <typename... Rs>
-        requires(sizeof...(Rs) == N) && (std::same_as<Rs, Rational> && ...)
+        requires(sizeof...(Rs) == N) && (std::convertible_to<Rs, Rational> && ...)
     constexpr Corrections(Rs... rs) noexcept:
         values { rs... }
     {
@@ -294,7 +309,7 @@ struct Corrections
     /// Every other count: fails to compile, naming both counts through
     /// `RequireCorrectionCountMatches`'s template arguments.
     template <typename... Rs>
-        requires(sizeof...(Rs) != N) && (std::same_as<Rs, Rational> && ...)
+        requires(sizeof...(Rs) != N) && (std::convertible_to<Rs, Rational> && ...)
     constexpr Corrections(Rs...) noexcept
     {
         static_assert(detail::RequireCorrectionCountMatches<sizeof...(Rs), N>::value);

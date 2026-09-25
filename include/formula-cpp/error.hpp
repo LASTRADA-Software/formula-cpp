@@ -30,7 +30,8 @@ enum class ArithmeticError : std::uint8_t
     /// A floating-point input was NaN or infinite.
     NotFinite,
     /// An argument was outside the domain of the operation -- a non-positive
-    /// step, say, or fewer than one significant digit.
+    /// step, say, fewer than one significant digit, or a banded lookup whose
+    /// value fell in no declared band (`lookup.hpp`).
     DomainError,
     /// The exact answer exists mathematically but is not a rational number, so
     /// this layer refuses rather than returning a nearby one. The square root of
