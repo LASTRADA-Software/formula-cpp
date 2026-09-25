@@ -87,12 +87,45 @@
 namespace formula
 {
 
+namespace detail
+{
+    /// Fails to compile when a variant's tag is not a class type free of
+    /// `const` and `volatile`.
+    ///
+    /// `void`, `int` and `Cube&` name nothing a specimen can be, so a variant
+    /// tagged with one can never be selected -- the same author's mistake an
+    /// empty pack is. `const Cube` is subtler and is the reason for the
+    /// `remove_cv_t` half: it is still a class type, but it is a different
+    /// type from `Cube`, so two variants tagged `Cube` and `const Cube` would
+    /// escape any duplicate-tag check that compares tags with `is_same_v`.
+    ///
+    /// Deliberately not `std::is_empty_v`: that would demand a complete type,
+    /// and an incomplete `struct Cube;` is a legitimate tag -- it is never
+    /// instantiated, which is the point of a tag.
+    template <typename Tag>
+    struct RequirePlainClassTag
+    {
+        static_assert(std::is_class_v<Tag> && std::is_same_v<Tag, std::remove_cv_t<Tag>>,
+                      "formula: the tag of this variant is not a plain class type; a tag names what "
+                      "a variant applies to, so it must be a class type without const or volatile "
+                      "-- not void, a fundamental type or a reference, and not const Cube where "
+                      "Cube is meant -- and the offending tag appears in this diagnostic as the "
+                      "template argument of RequirePlainClassTag");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
 /// One variant of a method: the expression that applies when the specimen,
 /// apparatus or product matches `Tag`.
 ///
-/// `Tag` is an ordinary empty type and is never instantiated -- what a
-/// variant applies to is a *type*, so that selecting one is a compile-time
-/// fact the type system can state rather than a string nobody checks.
+/// `Tag` is an ordinary class type, never cv-qualified and never
+/// instantiated -- what a variant applies to is a *type*, so that selecting
+/// one is a compile-time fact the type system can state rather than a string
+/// nobody checks. It need not be complete. `detail::RequirePlainClassTag`
+/// enforces this, in this class body rather than only in `variant()` below,
+/// for the reason `Variants` gives for its own checks: this is a public
+/// aggregate, so a `VariantCase<...>` can be declared with no factory call.
 ///
 /// Deliberately not a `Node`. A variant does not stand where a number stands;
 /// it names one of the formulas a method chooses between. Phase 10 settled
@@ -101,6 +134,8 @@ namespace formula
 template <typename Tag, Node Expr>
 struct VariantCase
 {
+    static_assert(detail::RequirePlainClassTag<Tag>::value);
+
     /// What this variant applies to: the discriminator `variant<Tag>` was
     /// spelled with.
     using tag = Tag;

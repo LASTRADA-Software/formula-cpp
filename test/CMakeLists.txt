@@ -357,6 +357,14 @@ formula_add_negative_test(method_variants_not_a_variant
 formula_add_negative_test(method_variants_empty
     "formula: this method declares no variants at all")
 
+# A variant's tag must be a class type free of const and volatile. Of the
+# degenerate tags this refuses -- void, int, Cube&, const Cube -- the case
+# pins `const Cube`: it is the one an author could write by accident, and the
+# one a duplicate-tag check comparing tags with is_same_v would otherwise
+# miss, since `const Cube` and `Cube` are different types.
+formula_add_negative_test(method_variant_tag_cv_qualified
+    "formula: the tag of this variant is not a plain class type")
+
 # Pins the order of the rules rather than any one of them. The agreement rule
 # is asked only once every argument is a variant, so that a non-variant is
 # never asked for a `dimension` it has not got; this case hands over a bare

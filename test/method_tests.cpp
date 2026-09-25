@@ -27,6 +27,10 @@ struct Core
 {
 };
 
+// Declared and never defined: a tag is never instantiated, so it need not be
+// complete. See the test that uses it.
+struct Unfinished;
+
 struct Force: formula::Quantity<Force, "F", "applied force", unit::Newton>
 {
 };
@@ -79,6 +83,17 @@ TEST_CASE("a variant carries its tag, its expression and the dimension it report
     // way for that to stop being true is for someone to give `VariantCase` a
     // `NodeBase` it does not need.
     STATIC_REQUIRE(!formula::Node<decltype(only)>);
+}
+
+TEST_CASE("a variant's tag need not be a complete type", "[method]")
+{
+    // The tag rule refuses what can never be selected -- `void`, `int`, a
+    // reference, a cv-qualified class -- and deliberately stops short of
+    // `std::is_empty_v`, which would demand a complete type. This is what
+    // pins that choice: a rule tightened to `is_empty_v` refuses this file.
+    constexpr auto only = formula::variant<Unfinished>(var<Force> / (var<EdgeX> * var<EdgeY>) );
+
+    STATIC_REQUIRE(std::is_same_v<decltype(only)::tag, Unfinished>);
 }
 
 TEST_CASE("the expression a variant was given is the expression it stores", "[method]")
