@@ -47,6 +47,10 @@ add_executable(formula-cpp-tests
     function_tests.cpp
     trace_tests.cpp
     trace_render_tests.cpp
+    rounding_node_tests.cpp
+    predicate_tests.cpp
+    conditional_tests.cpp
+    escape_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -145,6 +149,15 @@ formula_add_negative_test(function_zero_root_degree
 
 formula_add_negative_test(documented_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
+
+formula_add_negative_test(escape_empty_justification
+    "formula: numeric_value_of requires a justification saying why this rule is stated")
+
+formula_add_negative_test(escape_blank_justification
+    "formula: numeric_value_of requires a justification saying why this rule is stated")
+
+formula_add_negative_test(escape_unit_dimension_mismatch
+    "formula: this numeric_value_of names a unit that does not measure the dimension")
 
 # Same NAME-not-message shape as the exponent and symbol-length sentinels
 # above: there is no static_assert to quote here, only a deleted default

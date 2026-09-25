@@ -84,6 +84,25 @@ $$
 
 Ratio of the effective water content to the cement content of a batch.
 
+## Compaction-adjusted bulk density
+
+```
+if rho_m < 1800 kg/m3 then rho_m * 11/10 else rho_m
+```
+
+$$
+\begin{cases} rho_m \cdot 11/10 & \text{if } rho_m < 1800 kg/m3 \\ rho_m & \text{otherwise} \end{cases}
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| rho_m | measured bulk density | kg/m3 |
+
+- Reference: Example Standard 5:2020
+- Section: 4.5
+
+A specimen compacted below the reference density is corrected upward by a fixed factor; one at or above it is reported as measured.
+
 ## Worked evaluation: water/cement ratio
 
 `V_w` = 180 l, `V_c` = 300 l:
@@ -101,5 +120,19 @@ w/c = V_w / V_c = 180 l / 300 l = 3/5 = 0.6
 2. V = 1/2 m3
 3. #1 / #2 = 2400
 4. #3 = 2400 [Bulk density of a compacted specimen, Example Standard 1:2020, 4.2, (3)]
+```
+
+## Worked derivation: compaction-adjusted bulk density
+
+`rho_m` = 1500 kg/m3 -- below the 1800 kg/m3 reference density, so the predicate holds and the correction factor is applied:
+
+```
+1. rho_m = 1500 kg/m3
+2. 1800 kg/m3
+3. rho_m = 1500 kg/m3
+4. 11/10
+5. #3 * #4 = 1650
+6. if #1 < #2 then #5 = 1650 [then]
+7. #6 = 1650 [Compaction-adjusted bulk density, Example Standard 5:2020, 4.5]
 ```
 

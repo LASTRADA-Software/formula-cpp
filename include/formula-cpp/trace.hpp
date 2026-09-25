@@ -12,8 +12,11 @@
 /// that one as well to print it.
 
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/conditional.hpp>
+#include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
 
 #include <cstddef>
@@ -45,7 +48,48 @@ enum class StepKind : std::uint8_t
     Power,
     Root,
     Documented,
+    /// A `RoundNode`: rounded to a number of decimal places. Checked against
+    /// `formula::round` (`rounding.hpp`) the same way `PiConstant` above was
+    /// checked against `formula::Pi` -- different case, so it does not
+    /// actually collide, but verified on GCC rather than assumed.
+    Round,
+    /// A `RoundSignificantNode`: rounded to a number of significant digits.
+    RoundSignificant,
+    /// A `WhenNode`.
+    Conditional,
+    /// A `NumericValueNode`: the traced escape hatch.
+    NumericValue,
 };
+
+/// Which branch a `Conditional` step took, if any.
+///
+/// Not a `bool`: `WhenNode`'s own predicate can itself be absent, in which
+/// case neither branch ever ran -- a state a `bool` has no room for. Zero-
+/// initialises to `Neither`, which is also the correct default for every
+/// step that is *not* a `Conditional`: "no branch taken" is exactly as true
+/// there as it is for a conditional whose predicate never resolved, so no
+/// separate sentinel is needed for "not applicable".
+enum class Branch : std::uint8_t
+{
+    Neither,
+    Then,
+    Else,
+};
+
+/// `branch` in prose, for a trace render.
+[[nodiscard]] constexpr std::string_view describe(Branch branch) noexcept
+{
+    switch (branch)
+    {
+        case Branch::Neither:
+            return "no branch";
+        case Branch::Then:
+            return "then";
+        case Branch::Else:
+            return "else";
+    }
+    return "unknown branch";
+}
 
 /// One node's contribution to a derivation.
 ///
@@ -66,16 +110,72 @@ struct Step
     /// For `Documented`: what the wrapped formula cites.
     Citation citation {};
 
+    /// For `NumericValue`: why the dimension was dropped -- the compile-time
+    /// justification `numeric_value_of` was written with. Points into the
+    /// static storage of the node's own template-parameter object, the same
+    /// guarantee `symbol` above relies on for `Describe`. Empty otherwise, and
+    /// the renderer treats an empty one as absent -- see `step_line`.
+    std::string_view justification {};
+
     /// For `Power`: the exponent. For `Root`: the degree. Zero otherwise.
     int exponent {};
+
+    /// For `Round`: the decimal places kept. For `RoundSignificant`: the
+    /// significant digits kept. Zero otherwise.
+    ///
+    /// A field of its own rather than a third and fourth meaning piled onto
+    /// `exponent` above, which already carries two (`Power`'s exponent,
+    /// `Root`'s degree). `exponent` reused would still work -- both are a
+    /// single `int` a switch on `kind` disambiguates -- but a field named
+    /// `exponent` holding a decimal-place count is a field whose name lies
+    /// about what it holds, and that is how a later reader gets it wrong. A
+    /// dedicated field costs four bytes and stays honest.
+    int granularity {};
+
+    /// Which branch a `Conditional` step took. See `Branch`'s own comment for
+    /// why this is a three-state enum rather than a `bool`, and why its
+    /// zero value is already the correct default for every other kind.
+    Branch branch {};
+
+    /// For `Conditional`: which way the predicate compared its two sides.
+    ///
+    /// Recorded because a derivation that says two values were compared but
+    /// not *how* is not an audit trail: the trace is the artefact that
+    /// survives on its own, away from the formula text, and `#1` and `#2`
+    /// with no operator between them leaves a reader unable to check the
+    /// step against the method it came from.
+    ///
+    /// Unlike `branch` above, this field's zero value (`Comparison::Less`) is
+    /// **not** a neutral "not applicable": it is a real comparison. It is
+    /// meaningful only when `kind` is `Conditional`, exactly as `exponent`
+    /// and `granularity` above are meaningful only for the kinds that set
+    /// them, and no renderer may read it without checking `kind` first.
+    Comparison comparison {};
+
+    /// For `Round` and `RoundSignificant`: the tie-breaking rule the node
+    /// rounded under.
+    ///
+    /// Two rounding nodes differing only in their mode produce different
+    /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
+    /// that omits the mode cannot explain its own result. The mode is
+    /// deliberately absent from `render()` and hence from `document()` (a
+    /// standard states a granularity, not a tie rule; see
+    /// `render_node(RoundNode ...)`); the trace is where it belongs, because
+    /// a trace exists to say why *this* number came out as it did.
+    ///
+    /// As with `comparison` above, the zero value is a real mode
+    /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
+    /// sentinel: meaningful only for the two rounding kinds.
+    RoundingMode mode {};
 
     /// The dimension of what this step produced.
     Dimension dimension {};
 
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
-    /// for a variable, the constant's own unit for a constant, and the
-    /// coherent SI unit of `dimension` for anything computed, which has no
-    /// declared unit of its own.
+    /// for a variable, the constant's own unit for a constant, the node's own
+    /// unit for a `Round` or `RoundSignificant` step, and the coherent SI unit
+    /// of `dimension` for anything else computed, which has no declared unit
+    /// of its own.
     ///
     /// `value` is always in the coherent SI unit, so that steps are
     /// comparable; this is what a renderer converts back to before showing a
@@ -84,7 +184,24 @@ struct Step
     /// the same volume and a worse record. The renderer cannot recover this
     /// on its own -- by the time a `Step` exists the quantity type is erased,
     /// so the recorder captures it here.
+    ///
+    /// **Deliberately not the unit `NumericValue` was read in.** That unit
+    /// measures the *operand's* dimension (`Megapascal`, say), while a
+    /// `NumericValueNode`'s own `dimension` is always `Scalar` -- assigning it
+    /// here would make the renderer's `checked_convert(value, coherent(dimension),
+    /// unit)` compare a `Scalar` `from` against a non-`Scalar` `to` and refuse
+    /// every such step with a dimension-mismatch error, hiding the very number
+    /// this node exists to produce. See `sourceUnit` below for that unit.
     Unit unit {};
+
+    /// For `NumericValue`: the unit the escape hatch read its number in --
+    /// `Megapascal` for `numeric_value_of<Megapascal, "...">(...)`. Kept
+    /// separate from `unit` above for the reason documented there: this one
+    /// deliberately does not share `dimension`, so it is never used to
+    /// convert `value` -- it is read only by the renderer, to say what unit
+    /// the bare number came from. A default-constructed `Unit` (dimension
+    /// `Scalar`, empty symbol) otherwise.
+    Unit sourceUnit {};
 
     /// What the step produced, in the coherent SI unit of `dimension`. Empty
     /// when the value was **absent** -- which is not an error and must not be
@@ -124,6 +241,18 @@ struct Trace
     ///
     /// Bookkeeping, as `marks` is, and for the same reason.
     std::vector<std::size_t> unclaimed {};
+
+    /// Which branch each still-open `Conditional` step is on its way to
+    /// recording. `entered` pushes `Branch::Neither` for a `WhenNode` and
+    /// nothing else; `RecordingSink::branch_taken` (called, optionally, from
+    /// `conditional.hpp`'s `checked_evaluate_si(WhenNode ...)`) overwrites the
+    /// top entry once a branch is actually selected; `produced` pops it onto
+    /// the step. A stack, not a single slot, for the same reason `marks` is
+    /// one: a `when()` nested inside another's branch must not clobber its
+    /// still-open parent's pending entry.
+    ///
+    /// Bookkeeping, as `marks` and `unclaimed` are, and for the same reason.
+    std::vector<Branch> branchStack {};
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
@@ -203,6 +332,30 @@ namespace detail
     {
         static constexpr StepKind value = StepKind::Documented;
     };
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct StepKindOf<RoundNode<U, Places, Mode, Operand>>
+    {
+        static constexpr StepKind value = StepKind::Round;
+    };
+
+    template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+    struct StepKindOf<RoundSignificantNode<U, Digits, Mode, Operand>>
+    {
+        static constexpr StepKind value = StepKind::RoundSignificant;
+    };
+
+    template <Predicate P, Node Then, Node Else>
+    struct StepKindOf<WhenNode<P, Then, Else>>
+    {
+        static constexpr StepKind value = StepKind::Conditional;
+    };
+
+    template <Unit U, FixedString Justification, Node Operand>
+    struct StepKindOf<NumericValueNode<U, Justification, Operand>>
+    {
+        static constexpr StepKind value = StepKind::NumericValue;
+    };
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -213,15 +366,15 @@ namespace detail
 /// forces this.
 ///
 /// Constructing a `RecordingSink` **begins a walk**: the constructor clears
-/// @p trace's `marks` and `unclaimed`, which belong to whichever walk is
-/// currently in flight and never to the ones before it. Without this, a
-/// second walk into the same `Trace` would find the first walk's root still
-/// sitting in `unclaimed` -- nothing left to claim it, since that walk is
-/// already over -- and it would linger there, unclaimed, for as long as the
-/// `Trace` lives. `steps` itself is left alone: several walks may accumulate
-/// their steps into one `Trace` on purpose, which is exactly why `root()`
-/// documents itself as naming the most recent walk's root rather than "the"
-/// root.
+/// @p trace's `marks`, `unclaimed`, and `branchStack`, which belong to
+/// whichever walk is currently in flight and never to the ones before it.
+/// Without this, a second walk into the same `Trace` would find the first
+/// walk's root still sitting in `unclaimed` -- nothing left to claim it,
+/// since that walk is already over -- and it would linger there, unclaimed,
+/// for as long as the `Trace` lives. `steps` itself is left alone: several
+/// walks may accumulate their steps into one `Trace` on purpose, which is
+/// exactly why `root()` documents itself as naming the most recent walk's
+/// root rather than "the" root.
 ///
 /// A `Trace` may therefore be walked repeatedly **in sequence, but never by
 /// two sinks at once**: constructing a second `RecordingSink` on a `Trace`
@@ -235,21 +388,50 @@ class RecordingSink
 {
   public:
     /// @p trace must outlive the evaluation. Begins a new walk: see the class
-    /// comment for why this clears `trace.marks` and `trace.unclaimed`.
+    /// comment for why this clears `trace.marks`, `trace.unclaimed`, and
+    /// `trace.branchStack`.
     ///
     /// @pre no other `RecordingSink` is part-way through a walk of @p trace.
     explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace }
     {
         _trace->marks.clear();
         _trace->unclaimed.clear();
+        _trace->branchStack.clear();
     }
 
     /// Remembers how much of the arena predates this node, so `produced` can
-    /// tell which steps are its operands.
+    /// tell which steps are its operands. For a `WhenNode` specifically, also
+    /// pushes a pending `Branch::Neither` onto `branchStack` -- popped by
+    /// `produced` below, and overwritten in between by `branch_taken` only if
+    /// a branch actually runs. Pushed unconditionally, not only once a branch
+    /// is known to run, because `produced` always pops exactly one entry for
+    /// every `Conditional` step, including one whose predicate errored or was
+    /// absent and so never called `branch_taken` at all.
     template <Node N>
     void entered(N const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
+            _trace->branchStack.push_back(Branch::Neither);
+    }
+
+    /// Told which branch a `WhenNode` selected, right before it dispatches
+    /// that branch. Not part of `SinkFor` (`sink.hpp`): `conditional.hpp`'s
+    /// `checked_evaluate_si(WhenNode ...)` calls it through `if constexpr
+    /// (requires {...})`, the same pattern `sink.hpp`'s `dispatch` uses to
+    /// find a sink-aware `checked_evaluate_si` overload, so a sink that has
+    /// no use for it -- `NullSink` included -- simply does not define it and
+    /// pays nothing.
+    ///
+    /// Updates the top of `branchStack`, which the matching `entered` above
+    /// pushed and the matching `produced` below will pop -- the same
+    /// push-in-`entered`, pop-in-`produced` discipline as `marks`, and for
+    /// the same reason: a `when()` nested inside another's branch must not
+    /// clobber its still-open parent's pending entry.
+    template <Node N>
+    void branch_taken(N const&, bool thenTaken) noexcept
+    {
+        _trace->branchStack.back() = thenTaken ? Branch::Then : Branch::Else;
     }
 
     /// Records the step, claiming as its operands every step recorded at or
@@ -265,25 +447,63 @@ class RecordingSink
         step.dimension = N::dimension;
 
         // Anything computed has no declared unit, so the coherent SI one is
-        // the truthful answer; a variable and a constant each override it
-        // with the unit they were written in. `requires { N::unit; }` selects
-        // exactly `ConstantNode<U>`, the only node kind that declares such a
-        // member -- `VarNode` carries its unit on `Describe<quantity>`
-        // instead, and the rest carry none at all.
+        // the truthful answer; a variable overrides it with the unit its
+        // quantity is declared in. `requires { N::unit; }` now also selects
+        // `ConstantNode<U>`, `RoundNode`, and `RoundSignificantNode` -- every
+        // one of them declares a unit that is the single most load-bearing
+        // fact about the step: `rounded<Megapascal, 1>(...)` rounds *in
+        // megapascals*, and a step recording "rounded to 1 dp" without saying
+        // 1 dp of what is not a record of anything. `VarNode` still carries
+        // its unit on `Describe<quantity>` instead of a member of its own,
+        // which is why it needs the branch above rather than this one.
+        //
+        // `NumericValueNode` is excluded even though it also declares
+        // `unit`: unlike the three kinds above, its declared unit measures
+        // its *operand's* dimension, not its own -- a `NumericValueNode` is
+        // always `Scalar` -- so assigning it here would make this step's
+        // `unit` disagree with its `dimension`, and the renderer's
+        // `checked_convert(value, coherent(dimension), unit)` would refuse
+        // every such step as a dimension mismatch. See `Step::sourceUnit`,
+        // which is where that unit goes instead.
         step.unit = coherent(N::dimension);
         if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
             step.unit = Describe<typename N::quantity>::unit;
-        else if constexpr (requires { N::unit; })
+        else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             step.unit = N::unit;
 
         if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
             step.symbol = Describe<typename N::quantity>::symbol;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             step.citation = node.citation;
+        if constexpr (detail::StepKindOf<N>::value == StepKind::NumericValue)
+        {
+            step.justification = N::justification;
+            step.sourceUnit = N::unit;
+        }
         if constexpr (requires { N::exponent; })
             step.exponent = N::exponent;
         else if constexpr (requires { N::degree; })
             step.exponent = N::degree;
+
+        if constexpr (requires { N::places; })
+            step.granularity = N::places.value;
+        else if constexpr (requires { N::digits; })
+            step.granularity = N::digits.value;
+
+        // `RoundNode` and `RoundSignificantNode` are the only kinds that
+        // declare one, so the `requires` alone selects them -- the same shape
+        // `exponent` and `granularity` above use.
+        if constexpr (requires { N::mode; })
+            step.mode = N::mode;
+
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
+        {
+            // `WhenNode` re-exports its predicate's comparison for exactly
+            // this: a sink is handed a node, never the predicate's type.
+            step.comparison = N::comparison;
+            step.branch = _trace->branchStack.back();
+            _trace->branchStack.pop_back();
+        }
 
         if (!result.has_value())
             step.error = result.error();

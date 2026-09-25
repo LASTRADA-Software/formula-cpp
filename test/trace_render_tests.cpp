@@ -26,6 +26,12 @@ struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "water volume", unit::
 struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement volume", unit::Litre>
 {
 };
+struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
+{
+};
+struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Megapascal>
+{
+};
 } // namespace
 
 TEST_CASE("a derivation renders one line per step, in order", "[trace-render]")
@@ -229,4 +235,228 @@ TEST_CASE("an explicit limit of zero is allowed, and says what it hid", "[trace-
 
     std::string const text = formula::render_trace(trace, { .maxSteps = 0 });
     CHECK(text == "... 1 further step not shown\n");
+}
+
+// --------------------------------------------------------------- phase 8
+
+TEST_CASE("a derivation renders a Round step as round(..., to N dp of unit)", "[trace-render]")
+{
+    // 12.34 mm to one decimal place, half away from zero, is 12.3 mm -- the
+    // same example rounding_node_tests.cpp verifies directly.
+    constexpr auto node =
+        formula::rounded<unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
+    auto const environment = formula::environment(formula::Measured<Diameter> { formula::Rational { 1234, 100 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    // The pre-rounding value (12.34 mm) is right there on #1 -- adjacency is
+    // this library's answer to "how does a Round step make the change of
+    // value visible", not a duplicated field on the Round step itself.
+    CHECK(text
+          == "1. d = 617/50 mm\n"
+             "2. round(#1, to 1 dp of mm) = 123/10 mm [nearest, ties away from zero]\n");
+}
+
+TEST_CASE("a derivation renders a RoundSignificant step as round(..., to N sf of unit)", "[trace-render]")
+{
+    // 12.34 mm to two significant digits is 12 mm.
+    constexpr auto node = formula::rounded_to_digits<unit::Millimetre, formula::SignificantDigits { 2 },
+                                                     formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+    auto const environment = formula::environment(formula::Measured<Diameter> { formula::Rational { 1234, 100 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    CHECK(text
+          == "1. d = 617/50 mm\n"
+             "2. round(#1, to 2 sf of mm) = 12 mm [nearest, ties away from zero]\n");
+}
+
+TEST_CASE("a derivation names the rounding mode, which is the whole reason two runs differ",
+          "[trace-render]")
+{
+    // Two rounding nodes identical but for the mode, on a value that lands
+    // exactly on a tie. They produce 13 mm and 12 mm. Before the step carried
+    // the mode, every human-readable output this library has -- render, LaTeX,
+    // document() and the trace -- was character-for-character identical for
+    // both, so a reader checking a report against a method that says "round
+    // half to even" had nothing to check against.
+    constexpr auto awayFromZero =
+        formula::rounded<unit::Millimetre, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
+    constexpr auto toEven =
+        formula::rounded<unit::Millimetre, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+            var<Diameter>);
+    auto const environment = formula::environment(formula::Measured<Diameter> { formula::Rational { 25, 2 } });
+
+    auto const traceOf = [&environment](auto const& node) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+        return formula::render_trace(trace, { .maxSteps = 10 });
+    };
+
+    CHECK(traceOf(awayFromZero)
+          == "1. d = 25/2 mm\n"
+             "2. round(#1, to 0 dp of mm) = 13 mm [nearest, ties away from zero]\n");
+    CHECK(traceOf(toEven)
+          == "1. d = 25/2 mm\n"
+             "2. round(#1, to 0 dp of mm) = 12 mm [nearest, ties to even]\n");
+}
+
+TEST_CASE("a derivation renders a NumericValue step's justification, and the unit it read from",
+          "[trace-render]")
+{
+    constexpr auto node =
+        formula::numeric_value_of<unit::Megapascal, "empirical fit only valid in MPa">(var<Strength>);
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 70 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    // The bare number (70) carries no unit suffix of its own -- it is
+    // dimensionless by construction -- but "in MPa" is not lost: it is
+    // rendered, not merely carried, in the numeric(..., in ...) suffix.
+    CHECK(text
+          == "1. f = 70 MPa\n"
+             "2. numeric(#1, in MPa) = 70 (empirical fit only valid in MPa)\n");
+}
+
+TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-render]")
+{
+    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(chosen, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    // The step is spelled the way render() spells the node it came from --
+    // `if <lhs> <comparison> <rhs> then <branch>` -- with the predicate's two
+    // sides as #1 and #2 and the branch that ran as #3, and which branch is
+    // also a trailing clause, the same way a citation trails a Documented
+    // step. It must NOT read `when(#1, #2, #3)`: that is positionally
+    // identical to the public when(predicate, then, else) and means something
+    // else, so a reader who knows the API reads the wrong value out of it.
+    CHECK(text
+          == "1. f = 60 MPa\n"
+             "2. 50 MPa\n"
+             "3. f = 60 MPa\n"
+             "4. if #1 > #2 then #3 = 60000000 [then]\n");
+    CHECK(text.find("when(") == std::string::npos);
+}
+
+TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-render]")
+{
+    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 40 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(chosen, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    CHECK(text
+          == "1. f = 40 MPa\n"
+             "2. 50 MPa\n"
+             "3. f = 40 MPa\n"
+             "4. 2\n"
+             "5. #3 * #4 = 80000000\n"
+             "6. if #1 > #2 else #5 = 80000000 [else]\n");
+}
+
+TEST_CASE("a derivation renders a Conditional step with no branch when the predicate is absent",
+          "[trace-render]")
+{
+    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+    auto const environment = formula::environment(formula::Measured<Strength>::absent());
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(chosen, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    // Only the predicate's own two operands were ever recorded, so the step
+    // states the comparison and stops -- no branch clause at all -- and the
+    // suffix says plainly that neither branch ran: not which one, and not
+    // "false", which would misreport a predicate that never resolved at all.
+    CHECK(text
+          == "1. f = (not measured)\n"
+             "2. 50 MPa\n"
+             "3. if #1 > #2 = (not measured) [no branch]\n");
+}
+
+TEST_CASE("a derivation renders a Conditional step whose predicate raised an arithmetic error",
+          "[trace-render]")
+{
+    // The one arity below two that arises in practice: the predicate's left
+    // side fails, so the evaluator never dispatches the right one and no step
+    // is ever recorded for it. The line must still say what was being
+    // compared and must not pretend the recorded operand was both sides.
+    constexpr auto overZero = (var<Strength> / formula::number(formula::Rational { 0 }))
+                              > formula::constant<unit::Megapascal>(formula::Rational { 0 });
+    constexpr auto guarded = formula::when(overZero, var<Strength>, var<Strength> * formula::Rational { 2 });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(guarded, environment, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+
+    CHECK(text
+          == "1. f = 60 MPa\n"
+             "2. 0\n"
+             "3. #1 / #2 = division by zero\n"
+             "4. if #3 > (not evaluated) = division by zero [no branch]\n");
+}
+
+TEST_CASE("a derivation renders the comparison a conditional actually made", "[trace-render]")
+{
+    // Two conditionals identical but for the comparison operator. Before the
+    // step carried a Comparison, both rendered `when(#1, #2, #3)` -- a trace
+    // that says two values were compared but never which way is not an audit
+    // trail, because the trace is the artefact that survives on its own.
+    constexpr auto over = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto under = var<Strength> < formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
+
+    auto const traceOf = [&environment](auto const& node) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(node, environment, sink);
+        return formula::render_trace(trace, { .maxSteps = 10 });
+    };
+
+    std::string const greater = traceOf(formula::when(over, var<Strength>, var<Strength>));
+    std::string const less = traceOf(formula::when(under, var<Strength>, var<Strength>));
+
+    CHECK(greater
+          == "1. f = 60 MPa\n"
+             "2. 50 MPa\n"
+             "3. f = 60 MPa\n"
+             "4. if #1 > #2 then #3 = 60000000 [then]\n");
+    CHECK(less
+          == "1. f = 60 MPa\n"
+             "2. 50 MPa\n"
+             "3. f = 60 MPa\n"
+             "4. if #1 < #2 else #3 = 60000000 [else]\n");
 }

@@ -129,6 +129,33 @@ constexpr auto waterCementRatio =
                           .equation = "(2)",
                           .text = "Ratio of the effective water content to the cement content of a batch." });
 
+// ---- 5: a conditional, evaluated below for its worked derivation ------------
+
+// A density read directly off a specimen, distinct from `BulkDensity` above
+// (which is a formula's *result*, not a variable a formula can read): this
+// conditional's predicate and both its branches need a leaf they can read
+// from the environment.
+struct MeasuredDensity: formula::Quantity<MeasuredDensity, "rho_m", "measured bulk density", KilogramPerCubicMetre>
+{
+};
+struct AdjustedBulkDensity
+    : formula::Quantity<AdjustedBulkDensity, "rho_adj", "compaction-adjusted bulk density", KilogramPerCubicMetre>
+{
+};
+
+// A numeric threshold selects between two formulas, not an if/else a caller
+// has to remember to apply: a specimen compacted below the reference density
+// is corrected upward by a fixed factor, and one at or above it is reported
+// exactly as measured.
+constexpr auto compactionAdjustedDensity = formula::documented(
+    formula::when(var<MeasuredDensity> < formula::constant<KilogramPerCubicMetre>(formula::Rational { 1800 }),
+                 var<MeasuredDensity> * formula::Rational { 11, 10 }, var<MeasuredDensity>),
+    { .title = "Compaction-adjusted bulk density",
+      .reference = "Example Standard 5:2020",
+      .section = "4.5",
+      .text = "A specimen compacted below the reference density is corrected upward by a fixed factor; "
+              "one at or above it is reported as measured." });
+
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
 /// Not reused from render.hpp's own `detail::number_text`, which does exactly
@@ -225,6 +252,7 @@ int main(int argc, char** argv)
     write_formula(out, circularArea);
     write_formula(out, flowRate);
     write_formula(out, waterCementRatio);
+    write_formula(out, compactionAdjustedDensity);
 
     // ---- A worked evaluation, so the page proves the numbers as well as the text ----
 
@@ -261,6 +289,25 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << formula::render_trace(explained.trace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    // ---- A worked conditional, so the page shows a when() naming the branch it took ----
+
+    out << "## Worked derivation: compaction-adjusted bulk density\n\n";
+    out << "`rho_m` = 1500 kg/m3 -- below the 1800 kg/m3 reference density, so the predicate holds "
+           "and the correction factor is applied:\n\n";
+
+    auto const compactionInputs = formula::environment(formula::Measured<MeasuredDensity> { formula::Rational { 1500 } });
+    formula::Explained<AdjustedBulkDensity> const explainedCompaction =
+        formula::explain<AdjustedBulkDensity>(compactionAdjustedDensity, compactionInputs);
+    if (!explainedCompaction.outcome.is_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked conditional did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(explainedCompaction.trace, { .maxSteps = 20 });
     out << "```\n\n";
 
     out.flush();

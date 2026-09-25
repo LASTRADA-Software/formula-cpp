@@ -16,9 +16,13 @@
 /// string formatter in every translation unit. Include it when you want text.
 
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/conditional.hpp>
+#include <formula-cpp/escape.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/unit.hpp>
 
 #include <string>
@@ -45,6 +49,11 @@ namespace detail
     /// every renderer.
     enum class Precedence
     {
+        /// A comparison or a `when()` -- binds looser than every arithmetic
+        /// operator, so either one needs a bracket wherever it sits as the
+        /// operand of `+`, `-`, `*`, `/`, unary negation, or a power. Added in
+        /// spec phase 8; every other rung keeps its original number.
+        Conditional = 0,
         Additive = 1,
         Multiplicative = 2,
         Unary = 3,
@@ -69,6 +78,27 @@ namespace detail
     struct PrecedenceOf<UnaryNode<Op, Operand>>
     {
         static constexpr Precedence value = Precedence::Unary;
+    };
+
+    /// A `when()`'s rendered shape ("if ... then ... else ..." or, in LaTeX, a
+    /// `\begin{cases}` block) never changes with the data it carries, unlike
+    /// `ConstantNode` below -- so the type-level trait alone is enough, and no
+    /// runtime `precedence_of` overload is needed to get the right answer.
+    template <Predicate P, Node Then, Node Else>
+    struct PrecedenceOf<WhenNode<P, Then, Else>>
+    {
+        static constexpr Precedence value = Precedence::Conditional;
+    };
+
+    /// A comparison, for the same reason: its rendered shape is always
+    /// `<lhs> <op> <rhs>` regardless of what the operands hold. `PredicateNode`
+    /// is not a `Node`, so this trait is read directly by its `render_node`
+    /// overload below rather than through the `Node`-constrained
+    /// `precedence_of` runtime function -- see that overload.
+    template <Comparison Op, Node Left, Node Right>
+    struct PrecedenceOf<PredicateNode<Op, Left, Right>>
+    {
+        static constexpr Precedence value = Precedence::Conditional;
     };
 
     /// Forwards the *type-level* precedence of what it wraps. That is correct
@@ -138,6 +168,12 @@ namespace detail
 
 template <Dialect D, Node N>
 [[nodiscard]] std::string render(N const& node);
+
+/// Renders @p node in dialect @p D. A `PredicateNode` is not a `Node` -- see
+/// `predicate.hpp` -- so it needs this second overload rather than the one
+/// above; `WhenNode::render_node` calls this one to render its predicate.
+template <Dialect D, Predicate P>
+[[nodiscard]] std::string render(P const& node);
 
 namespace detail
 {
@@ -248,6 +284,113 @@ template <Dialect D, int Degree, Node Operand>
     }
 }
 
+/// A rounding node renders as a function call, `round(<operand>, to <places>
+/// dp of <unit>)` -- braced onto a subscript in LaTeX, the same way a root's
+/// degree is. Like `sqrt` and `root` above, the parentheses it always
+/// produces already group its own operand, so it needs no `PrecedenceOf`
+/// override: the primary template's `Atom` fallback is already the right
+/// answer, and unlike `ConstantNode` nothing about that answer depends on the
+/// data the node carries, so no runtime `precedence_of` overload either.
+///
+/// The granularity is a second, comma-separated argument -- `round(d, to 1 dp
+/// of mm)`, operand first, in the "value, then how" order `ROUND(value,
+/// digits)` already reads to an engineer -- rather than trailing after the
+/// operand with nothing between them (`round(<operand> to <places> dp of
+/// <unit>)`, the shape this rendered before a review caught it). That
+/// trailing shape reads fine for an operand that is a single token, but a
+/// `WhenNode` operand has no closing delimiter of its own in Plain or
+/// Markdown -- `round(if p then a else b to 1 dp of mm)` reads as if only `b`
+/// were "to 1 dp of mm", rounding the else branch alone, when the tree rounds
+/// whichever branch predicate `p` selects. A first fix moved the suffix into
+/// its own `[...]` in front of the operand's parentheses instead
+/// (`round[to 1 dp of mm](d)`), which fixed that misattachment but created a
+/// worse one: `[...](...)` right next to each other, with nothing between,
+/// is CommonMark link syntax -- a Markdown renderer displays only the link
+/// label (`to 1 dp of mm`), and the operand disappears from the visible text
+/// entirely rather than merely misattaching. The comma form is safe against
+/// both hazards at once: it is a single top-level separator no operand's own
+/// rendered text can ever produce (nothing trails into it from a branch with
+/// no closing delimiter of its own, the same property the `[...]`-prefix
+/// form had), and it contains no character that means anything to any
+/// Markdown flavour, unlike `[`, `]`, or `{`/`}` (the latter pair is inert in
+/// CommonMark but is consumed by the `attr_list` extension some downstream
+/// MkDocs Material setups enable).
+///
+/// `RoundingMode` deliberately does not appear in this text, in any dialect,
+/// and therefore does not appear in `document()` either -- a `Documentation`
+/// states its formula through this very function. A formula's rendered text
+/// is what a reader checks against a standard, and a standard states a
+/// rounding *granularity* -- "to one decimal place" -- without naming a
+/// tie-breaking rule.
+///
+/// Where the mode does appear is the **trace**: `render_trace`
+/// (`trace_render.hpp`) writes it as a bracketed clause on the step itself,
+/// `round(#1, to 0 dp of mm) = 13 mm [nearest, ties away from zero]`. That is
+/// a different document with a different job -- a trace exists to explain why
+/// *this* number came out as it did, and the tie rule can be the entire
+/// reason a value is 13 rather than 12. Leaving the mode out of the formula
+/// text is a decision; leaving it out of the trace would be a defect.
+template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+[[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node)
+{
+    std::string const inner = render<D>(node.operand);
+    constexpr Unit unit = U;
+    std::string const unitSymbol { view(unit.symbolText) };
+    std::string const placesText = std::to_string(Places.value);
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + placesText + "\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+    else
+        return "round(" + inner + ", to " + placesText + " dp of " + unitSymbol + ")";
+}
+
+/// A significant-digits rounding node, spelled the same way as `RoundNode`
+/// above but with "sf" (significant figures) in place of "dp" -- see that
+/// overload for why no precedence override is needed, why `RoundingMode` is
+/// left out, and why the granularity is a comma-separated second argument
+/// rather than a trailing suffix or a `[...]` prefix.
+template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+[[nodiscard]] std::string render_node(RoundSignificantNode<U, Digits, Mode, Operand> const& node)
+{
+    std::string const inner = render<D>(node.operand);
+    constexpr Unit unit = U;
+    std::string const unitSymbol { view(unit.symbolText) };
+    std::string const digitsText = std::to_string(Digits.value);
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf},\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+    else
+        return "round(" + inner + ", to " + digitsText + " sf of " + unitSymbol + ")";
+}
+
+/// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,
+/// or as a braced quotient in LaTeX. A function call like `RoundNode` above,
+/// so the same reasoning applies: no `PrecedenceOf` override needed, none of
+/// its data changes that answer, and the unit is a comma-separated second
+/// argument for the identical reason `RoundNode` does -- see that overload's
+/// comment for both hazards this form avoids (a trailing suffix
+/// misattaching to a `WhenNode` operand's else branch, and a `[...]` prefix
+/// reading as a Markdown link).
+///
+/// The justification does not appear here either. It is the compile-time
+/// record of *why* a rule needed a bare number instead of a quantity -- an
+/// audit trail for the **trace**, not part of the arithmetic this text
+/// states. `render_trace` (`trace_render.hpp`) writes it as a bracketed
+/// clause on the step itself; `Documentation` has no field for it and
+/// `collect()` records none, so `document()` does not carry it either.
+template <Dialect D, Unit U, detail::FixedString Justification, Node Operand>
+[[nodiscard]] std::string render_node(NumericValueNode<U, Justification, Operand> const& node)
+{
+    std::string const inner = render<D>(node.operand);
+    constexpr Unit unit = U;
+    std::string const unitSymbol { view(unit.symbolText) };
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\{" + inner + "/\\mathrm{" + unitSymbol + "}\\}";
+    else
+        return "numeric(" + inner + ", in " + unitSymbol + ")";
+}
+
 /// Pi renders as `\pi` in LaTeX, and as `pi` in every other dialect.
 template <Dialect D>
 [[nodiscard]] inline std::string render_node(PiNode const&)
@@ -266,6 +409,92 @@ template <Dialect D, Node Inner>
     return render<D>(node.inner);
 }
 
+/// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
+/// cannot go through `render_operand` -- its own operand context is computed
+/// directly from `PrecedenceOf<PredicateNode<...>>` instead, one rung above
+/// `Conditional`, exactly the way `BinaryNode`'s right operand above computes
+/// its context one rung above its own -- so that a `when()` nested on either
+/// side still brackets: `when(...) > threshold` must not read as if the
+/// comparison applied only to the else branch.
+///
+/// `<=`, `>=` and `!=` get the mathematical spelling in LaTeX (`\leq`,
+/// `\geq`, `\neq`) rather than the code-like tokens the other dialects use,
+/// the same way `BinaryNode`'s `*` becomes `\cdot` there.
+template <Dialect D, Comparison Op, Node Left, Node Right>
+[[nodiscard]] std::string render_node(PredicateNode<Op, Left, Right> const& node)
+{
+    constexpr detail::Precedence operandContext =
+        static_cast<detail::Precedence>(static_cast<int>(detail::PrecedenceOf<PredicateNode<Op, Left, Right>>::value) + 1);
+    std::string const lhs = detail::render_operand<D>(node.lhs, operandContext);
+    std::string const rhs = detail::render_operand<D>(node.rhs, operandContext);
+
+    // Every dialect but LaTeX takes its token from `describe(Op)`
+    // (`predicate.hpp`) rather than keeping a second copy of the same six
+    // here. `render_trace` spells a traced conditional's predicate through
+    // that same function, and a reader checking a derivation against the
+    // formula it derives must not meet two different tokens for one
+    // comparison -- so there is one spelling, kept next to the enum. LaTeX
+    // overrides three of the six with their mathematical forms, the same
+    // way `BinaryNode`'s `*` becomes `\cdot` there.
+    std::string_view const symbol = []() -> std::string_view {
+        if constexpr (D == Dialect::LaTeX)
+        {
+            if constexpr (Op == Comparison::LessOrEqual)
+                return "\\leq";
+            else if constexpr (Op == Comparison::GreaterOrEqual)
+                return "\\geq";
+            else if constexpr (Op == Comparison::Equal)
+                return "=";
+            else if constexpr (Op == Comparison::NotEqual)
+                return "\\neq";
+            else
+                return describe(Op);
+        }
+        else
+            return describe(Op);
+    }();
+
+    return lhs + " " + std::string { symbol } + " " + rhs;
+}
+
+/// A conditional renders as `if <predicate> then <then> else <else>` in every
+/// dialect but LaTeX, which spells it as a `\begin{cases}` block -- the usual
+/// way a case-defined quantity is typeset. Both branches are unambiguous
+/// without a bracket at any nesting depth, in every dialect: every `when()`
+/// carries a mandatory `else`, so nested if-then-else has none of the
+/// dangling-else trouble an *optional* else would cause -- nearest-else-
+/// binds-nearest-if always recovers the tree correctly. That is a fact about
+/// what a parser can do, though, and this library's rendered text ends up in
+/// generated documentation a person checks against a standard; unambiguous
+/// to a parser is not the same bar as readable to a person.
+///
+/// So the **then** branch gets a bracket in Plain and Markdown when it is
+/// itself a `WhenNode` -- `if p then (if q then a else b) else c` -- because
+/// otherwise a reader has to count `else`s against `then`s to find where the
+/// inner conditional stops before "else c" is reached. The **else** branch
+/// does not: `if p then a else if q then b else c` is the ordinary else-if
+/// chain, already reads fine, and bracketing it would only add noise for
+/// nothing. This asymmetry is deliberate -- a future reader who "fixes" it
+/// to look symmetric would be undoing the actual readability improvement.
+/// LaTeX needs no bracket in either position: its `\begin{cases}` block is a
+/// visibly distinct construct nested inside a cell, not text a reader could
+/// mistake for a continuation of the outer one.
+template <Dialect D, Predicate P, Node Then, Node Else>
+[[nodiscard]] std::string render_node(WhenNode<P, Then, Else> const& node)
+{
+    std::string const predicateText = render<D>(node.predicate);
+    std::string const thenText = D == Dialect::LaTeX
+                                     ? render<D>(node.thenBranch)
+                                     : detail::render_operand<D>(node.thenBranch, detail::Precedence::Additive);
+    std::string const elseText = render<D>(node.elseBranch);
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\begin{cases} " + thenText + " & \\text{if } " + predicateText + " \\\\ " + elseText
+               + " & \\text{otherwise} \\end{cases}";
+    else
+        return "if " + predicateText + " then " + thenText + " else " + elseText;
+}
+
 /// Renders @p node in dialect @p D.
 template <Dialect D, Node N>
 [[nodiscard]] std::string render(N const& node)
@@ -276,6 +505,21 @@ template <Dialect D, Node N>
 /// Renders @p node as plain text.
 template <Node N>
 [[nodiscard]] std::string render(N const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+/// Renders @p node in dialect @p D. See the forward declaration above for why
+/// this overload -- for `Predicate`, not `Node` -- exists separately.
+template <Dialect D, Predicate P>
+[[nodiscard]] std::string render(P const& node)
+{
+    return render_node<D>(node);
+}
+
+/// Renders @p node as plain text.
+template <Predicate P>
+[[nodiscard]] std::string render(P const& node)
 {
     return render<Dialect::Plain>(node);
 }

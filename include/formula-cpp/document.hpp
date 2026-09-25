@@ -92,9 +92,12 @@ namespace detail
         std::vector<void const*> seenQuantities {};
     };
 
-    // Forward declared so that a node whose children may themselves be any
-    // node kind -- BinaryNode, DocumentedNode -- can recurse into a child
-    // before every overload below has been declared.
+    // Not load-bearing, just this file's convention: every collect() call's
+    // first argument is `Walk&`, so `formula::detail` -- Walk's namespace --
+    // is always in ADL's search set, which is why every overload below is
+    // found regardless of declaration order (confirmed by removing all five
+    // and rebuilding). That is an implementation detail, not a guarantee, so
+    // each overload stays declared here rather than relying on it.
 
     template <Described Q>
     void collect(Walk& walk, VarNode<Q> const& node);
@@ -118,6 +121,21 @@ namespace detail
 
     template <Node Inner>
     void collect(Walk& walk, DocumentedNode<Inner> const& node);
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk& walk, RoundNode<U, Places, Mode, Operand> const& node);
+
+    template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+    void collect(Walk& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node);
+
+    template <Unit U, FixedString Justification, Node Operand>
+    void collect(Walk& walk, NumericValueNode<U, Justification, Operand> const& node);
+
+    template <Comparison Op, Node Left, Node Right>
+    void collect(Walk& walk, PredicateNode<Op, Left, Right> const& node);
+
+    template <Predicate P, Node Then, Node Else>
+    void collect(Walk& walk, WhenNode<P, Then, Else> const& node);
 
     /// A variable contributes one row to the symbol table -- unless its
     /// quantity type has already contributed one, in which case the second
@@ -180,6 +198,55 @@ namespace detail
     {
         walk.documentation.citations.push_back(node.citation);
         collect(walk, node.inner);
+    }
+
+    /// Rounding changes a number, not the variables it depends on.
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk& walk, RoundNode<U, Places, Mode, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// Rounding to significant digits changes a number, not the variables it
+    /// depends on.
+    template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+    void collect(Walk& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// The escape hatch still reads a variable, even though what it produces
+    /// no longer carries a dimension.
+    template <Unit U, FixedString Justification, Node Operand>
+    void collect(Walk& walk, NumericValueNode<U, Justification, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// `PredicateNode` is not a `Node`, but its two sides are; both still name
+    /// variables that belong in the symbol table.
+    template <Comparison Op, Node Left, Node Right>
+    void collect(Walk& walk, PredicateNode<Op, Left, Right> const& node)
+    {
+        collect(walk, node.lhs);
+        collect(walk, node.rhs);
+    }
+
+    /// Walks the predicate and *both* branches -- deliberately the opposite of
+    /// `checked_evaluate_si(WhenNode ...)` in `conditional.hpp`, which
+    /// evaluates only the branch its predicate selects. Evaluation answers
+    /// what happened this one time; documentation describes the formula
+    /// itself, and a variable read only in the branch not taken on this
+    /// occasion still belongs in the symbol table -- omitting it would make
+    /// the documentation depend on which inputs happened to be passed in,
+    /// which a formula's description must not do. Do not "fix" this to match
+    /// evaluation's short-circuiting.
+    template <Predicate P, Node Then, Node Else>
+    void collect(Walk& walk, WhenNode<P, Then, Else> const& node)
+    {
+        collect(walk, node.predicate);
+        collect(walk, node.thenBranch);
+        collect(walk, node.elseBranch);
     }
 } // namespace detail
 

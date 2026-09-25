@@ -23,6 +23,9 @@ struct Area: formula::Quantity<Area, "A", "cross-sectional area", formula::unit:
 struct Edge: formula::Quantity<Edge, "a", "cube edge", formula::unit::Metre>
 {
 };
+struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::unit::Megapascal>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -253,4 +256,393 @@ TEST_CASE("render: a dimensionless constant as the base of a power needs no brac
     // a blanket bracket around every constant at the base of a power: `One`
     // has no symbol, so a constant of it renders as a single token.
     CHECK(formula::render(formula::pow<2>(formula::constant<formula::unit::One>(rat(5)))) == "5^2");
+}
+
+// ------------------------------------------------------- phase 8: rounding
+
+TEST_CASE("render: a decimal-places rounding node renders as round(..., to N dp of unit)", "[render][rounding]")
+{
+    // The granularity is a comma-separated second argument, operand first --
+    // see the comment on RoundNode's render_node for why: a trailing suffix
+    // with nothing between it and the operand (round(... to 1 dp of mm),
+    // fixed in review round 1) let it misattach to a WhenNode operand's else
+    // branch, and a `[...]` prefix right against the operand's own
+    // parentheses (round[to 1 dp of mm](...), the round-1 fix itself) read as
+    // a CommonMark link in Markdown, fixed in review round 3.
+    constexpr auto rounded =
+        formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
+
+    CHECK(formula::render<Dialect::Plain>(rounded) == "round(d, to 1 dp of mm)");
+    CHECK(formula::render<Dialect::Markdown>(rounded) == "round(`d`, to 1 dp of mm)");
+    CHECK(formula::render<Dialect::LaTeX>(rounded) == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d)");
+    // The RoundingMode (HalfAwayFromZero here) does not appear anywhere above
+    // -- see the comment on RoundNode's render_node for why that is a
+    // decision, not an oversight.
+}
+
+TEST_CASE("render: a decimal-places rounding node inside a power and inside a product keeps no extra bracket",
+          "[render][rounding]")
+{
+    // A rounding node reads as a function call -- like sqrt(...) -- so it is
+    // already fully delimited by its own parentheses and never needs a
+    // bracket added around it, in either context.
+    constexpr auto rounded =
+        formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
+
+    CHECK(formula::render(formula::pow<2>(rounded)) == "round(d, to 1 dp of mm)^2");
+    CHECK(formula::render(rounded * rat(2)) == "round(d, to 1 dp of mm) * 2");
+    CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(rounded)) == "round(`d`, to 1 dp of mm)^2");
+    CHECK(formula::render<Dialect::Markdown>(rounded * rat(2)) == "round(`d`, to 1 dp of mm) * 2");
+    CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(rounded)) == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d)^{2}");
+    CHECK(formula::render<Dialect::LaTeX>(rounded * rat(2)) == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d) \\cdot 2");
+}
+
+TEST_CASE("render: a significant-digits rounding node renders as round(..., to N sf of unit)", "[render][rounding]")
+{
+    constexpr auto rounded = formula::rounded_to_digits<formula::unit::Millimetre,
+                                                        formula::SignificantDigits { 2 },
+                                                        formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+
+    CHECK(formula::render<Dialect::Plain>(rounded) == "round(d, to 2 sf of mm)");
+    CHECK(formula::render<Dialect::Markdown>(rounded) == "round(`d`, to 2 sf of mm)");
+    CHECK(formula::render<Dialect::LaTeX>(rounded) == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{mm}}(d)");
+}
+
+TEST_CASE("render: a significant-digits rounding node inside a power and inside a product keeps no extra bracket",
+          "[render][rounding]")
+{
+    constexpr auto rounded = formula::rounded_to_digits<formula::unit::Millimetre,
+                                                        formula::SignificantDigits { 2 },
+                                                        formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+
+    CHECK(formula::render(formula::pow<2>(rounded)) == "round(d, to 2 sf of mm)^2");
+    CHECK(formula::render(rounded * rat(2)) == "round(d, to 2 sf of mm) * 2");
+    CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(rounded)) == "round(`d`, to 2 sf of mm)^2");
+    CHECK(formula::render<Dialect::Markdown>(rounded * rat(2)) == "round(`d`, to 2 sf of mm) * 2");
+    CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(rounded))
+          == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{mm}}(d)^{2}");
+    CHECK(formula::render<Dialect::LaTeX>(rounded * rat(2))
+          == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{mm}}(d) \\cdot 2");
+}
+
+// --------------------------------------------------- phase 8: predicates
+
+TEST_CASE("render: a predicate renders as lhs comparison rhs", "[render][predicate]")
+{
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+
+    CHECK(formula::render<Dialect::Plain>(overFifty) == "f > 50 MPa");
+    CHECK(formula::render<Dialect::Markdown>(overFifty) == "`f` > 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(overFifty) == "f > 50 MPa");
+    // The default dialect for a Predicate is plain, exactly as for a Node.
+    CHECK(formula::render(overFifty) == "f > 50 MPa");
+}
+
+TEST_CASE("render: every comparison spells correctly, and three of them get a LaTeX-specific symbol", "[render][predicate]")
+{
+    // <, > and == read the same in every dialect; <=, >= and != get the
+    // mathematical spelling in LaTeX, the same way BinaryNode's "*" becomes
+    // "\cdot" there.
+    constexpr auto threshold = formula::constant<formula::unit::Megapascal>(rat(50));
+
+    CHECK(formula::render(var<Strength> < threshold) == "f < 50 MPa");
+    CHECK(formula::render(var<Strength> <= threshold) == "f <= 50 MPa");
+    CHECK(formula::render(var<Strength> > threshold) == "f > 50 MPa");
+    CHECK(formula::render(var<Strength> >= threshold) == "f >= 50 MPa");
+    CHECK(formula::render(var<Strength> == threshold) == "f == 50 MPa");
+    CHECK(formula::render(var<Strength> != threshold) == "f != 50 MPa");
+
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> < threshold) == "f < 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> <= threshold) == "f \\leq 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> > threshold) == "f > 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> >= threshold) == "f \\geq 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> == threshold) == "f = 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> != threshold) == "f \\neq 50 MPa");
+
+    // Markdown only backtick-quotes the variable; the comparison symbol
+    // itself is unaffected, the same way it is unaffected for BinaryNode.
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> < threshold) == "`f` < 50 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> <= threshold) == "`f` <= 50 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> > threshold) == "`f` > 50 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> >= threshold) == "`f` >= 50 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> == threshold) == "`f` == 50 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> != threshold) == "`f` != 50 MPa");
+}
+
+TEST_CASE("render: a conditional nested as a predicate's operand keeps its bracket", "[render][predicate]")
+{
+    // A PredicateNode's own operands are ordinary Node expressions, and a
+    // WhenNode is one of those -- so the same hazard a power or a product
+    // operand has applies here too: rendered without a bracket, "if f > 50
+    // MPa then f else f * 2 > 10 MPa" would read as the comparison applying
+    // to the else branch alone, not to the whole conditional.
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * rat(2));
+    constexpr auto guarded = chosen > formula::constant<formula::unit::Megapascal>(rat(10));
+
+    CHECK(formula::render(guarded) == "(if f > 50 MPa then f else f * 2) > 10 MPa");
+}
+
+// --------------------------------------------------- phase 8: conditionals
+
+TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases block", "[render][conditional]")
+{
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+
+    CHECK(formula::render<Dialect::Plain>(chosen) == "if f > 50 MPa then f * 2 else f * 4");
+    CHECK(formula::render<Dialect::Markdown>(chosen) == "if `f` > 50 MPa then `f` * 2 else `f` * 4");
+    CHECK(formula::render<Dialect::LaTeX>(chosen)
+          == "\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} \\end{cases}");
+    // RoundingMode is not the only thing this phase deliberately keeps out of
+    // the rendered text -- WhenNode has no state to omit, but note that its
+    // predicate's operands are plain quantities and constants here on
+    // purpose: the brackets a nested conditional needs are covered below,
+    // not in this standalone case.
+}
+
+TEST_CASE("render: a conditional inside a power keeps its bracket", "[render][conditional]")
+{
+    // This is the case phase 6's two rendering bugs generalise to: a node
+    // whose *text* binds looser than arithmetic must bracket as the base of
+    // a power, exactly as a negative or unit-bearing constant does.
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+
+    CHECK(formula::render(formula::pow<2>(chosen)) == "(if f > 50 MPa then f * 2 else f * 4)^2");
+    CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(chosen)) == "(if `f` > 50 MPa then `f` * 2 else `f` * 4)^2");
+    CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(chosen))
+          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} \\end{cases})^{2}");
+}
+
+TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][conditional]")
+{
+    // The exact scenario named in the task: when(p, a, b) * 2 must not read
+    // as when(p, a, b * 2), which is a different formula.
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+
+    CHECK(formula::render(chosen * rat(2)) == "(if f > 50 MPa then f * 2 else f * 4) * 2");
+    CHECK(formula::render<Dialect::Markdown>(chosen * rat(2)) == "(if `f` > 50 MPa then `f` * 2 else `f` * 4) * 2");
+    CHECK(
+        formula::render<Dialect::LaTeX>(chosen * rat(2))
+        == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} \\end{cases}) \\cdot 2");
+}
+
+// ------------------------------------------------- phase 8: numeric_value_of
+
+TEST_CASE("render: a numeric-value escape hatch renders as numeric(..., in unit)", "[render][escape]")
+{
+    // The unit is a comma-separated second argument, operand first -- see the
+    // comment on NumericValueNode's render_node for why: a trailing suffix
+    // with nothing between it and the operand (numeric(... in MPa), fixed in
+    // review round 1) let it misattach to a WhenNode operand's else branch,
+    // and a `[...]` prefix right against the operand's own parentheses
+    // (numeric[in MPa](...), the round-1 fix itself) read as a CommonMark
+    // link in Markdown, fixed in review round 3.
+    constexpr auto numeric =
+        formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(var<Strength>);
+
+    CHECK(formula::render<Dialect::Plain>(numeric) == "numeric(f, in MPa)");
+    CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(`f`, in MPa)");
+    CHECK(formula::render<Dialect::LaTeX>(numeric) == "\\{f/\\mathrm{MPa}\\}");
+    // The justification string does not appear above -- see the comment on
+    // NumericValueNode's render_node for why: it is an audit trail for the
+    // TRACE, not part of the formula's stated arithmetic. It is not in
+    // document() either -- Documentation has no field for it and collect()
+    // records none; render_trace writes it as a bracketed clause on the step
+    // (test/trace_render_tests.cpp), and that is the only surface it has.
+}
+
+TEST_CASE("render: a numeric-value escape hatch inside a power and inside a product keeps no extra bracket",
+          "[render][escape]")
+{
+    constexpr auto numeric =
+        formula::numeric_value_of<formula::unit::Megapascal, "empirical fit is only valid stated in MPa">(var<Strength>);
+
+    CHECK(formula::render(formula::pow<2>(numeric)) == "numeric(f, in MPa)^2");
+    CHECK(formula::render(numeric * rat(2)) == "numeric(f, in MPa) * 2");
+    CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(numeric)) == "numeric(`f`, in MPa)^2");
+    CHECK(formula::render<Dialect::Markdown>(numeric * rat(2)) == "numeric(`f`, in MPa) * 2");
+    CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(numeric)) == "\\{f/\\mathrm{MPa}\\}^{2}");
+    CHECK(formula::render<Dialect::LaTeX>(numeric * rat(2)) == "\\{f/\\mathrm{MPa}\\} \\cdot 2");
+}
+
+// ----------------------------- phase 8 fix round 1: nesting a new kind
+// inside another new kind, in every dialect. This is the exact axis review
+// round 1 found untested -- and where the trailing-suffix bug (findings 1-2
+// of that review) was hiding.
+
+TEST_CASE("render: a rounding node wrapping a conditional keeps the granularity from misattaching to a branch",
+          "[render][rounding][conditional]")
+{
+    // Before review round 1's fix, this rendered in Plain as "round(if f > 50
+    // MPa then d * 2 else d * 3 to 1 dp of mm)" -- a reader parses "d * 3 to
+    // 1 dp of mm" as one phrase, rounding the else branch alone. The
+    // granularity is now a comma-separated second argument, so nothing can
+    // trail into the operand from a branch with no closing delimiter of its
+    // own to misattach.
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto chosenLength = formula::when(overFifty, var<Diameter> * rat(2), var<Diameter> * rat(3));
+    constexpr auto rounded =
+        formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            chosenLength);
+
+    CHECK(formula::render<Dialect::Plain>(rounded) == "round(if f > 50 MPa then d * 2 else d * 3, to 1 dp of mm)");
+    CHECK(formula::render<Dialect::Markdown>(rounded) == "round(if `f` > 50 MPa then `d` * 2 else `d` * 3, to 1 dp of mm)");
+    CHECK(formula::render<Dialect::LaTeX>(rounded)
+          == "\\operatorname{round}_{1\\,\\mathrm{mm}}(\\begin{cases} d \\cdot 2 & \\text{if } f > 50 MPa \\\\ d \\cdot 3 & "
+             "\\text{otherwise} \\end{cases})");
+}
+
+TEST_CASE("render: a numeric-value escape hatch wrapping a conditional keeps the unit from misattaching to a branch",
+          "[render][escape][conditional]")
+{
+    // The exact shape of must-fix finding 2 in review round 1: before the
+    // fix, this rendered in Plain as "numeric(if f > 50 MPa then f * 2 else f
+    // * 4 in MPa)", reading as if "in MPa" (and therefore the whole escape
+    // hatch) applied to the else branch alone.
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+    constexpr auto numeric = formula::numeric_value_of<formula::unit::Megapascal, "nested-conditional coverage">(chosen);
+
+    CHECK(formula::render<Dialect::Plain>(numeric) == "numeric(if f > 50 MPa then f * 2 else f * 4, in MPa)");
+    CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(if `f` > 50 MPa then `f` * 2 else `f` * 4, in MPa)");
+    CHECK(formula::render<Dialect::LaTeX>(numeric)
+          == "\\{\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} "
+             "\\end{cases}/\\mathrm{MPa}\\}");
+}
+
+TEST_CASE("render: a numeric-value escape hatch wrapping a rounding node needs no extra bracket",
+          "[render][escape][rounding]")
+{
+    constexpr auto rounded =
+        formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
+    constexpr auto numeric = formula::numeric_value_of<formula::unit::Millimetre, "nested-rounding coverage">(rounded);
+
+    CHECK(formula::render<Dialect::Plain>(numeric) == "numeric(round(d, to 1 dp of mm), in mm)");
+    CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(round(`d`, to 1 dp of mm), in mm)");
+    CHECK(formula::render<Dialect::LaTeX>(numeric) == "\\{\\operatorname{round}_{1\\,\\mathrm{mm}}(d)/\\mathrm{mm}\\}");
+}
+
+TEST_CASE("render: a predicate comparing two rounded operands needs no extra bracket", "[render][predicate][rounding]")
+{
+    constexpr auto rounded =
+        formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Diameter>);
+    constexpr auto guarded = rounded > formula::constant<formula::unit::Millimetre>(rat(5));
+
+    CHECK(formula::render<Dialect::Plain>(guarded) == "round(d, to 1 dp of mm) > 5 mm");
+    CHECK(formula::render<Dialect::Markdown>(guarded) == "round(`d`, to 1 dp of mm) > 5 mm");
+    CHECK(formula::render<Dialect::LaTeX>(guarded) == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d) > 5 mm");
+}
+
+TEST_CASE("render: a conditional nested inside another conditional's branches is unambiguous without brackets",
+          "[render][conditional]")
+{
+    // Every when() renders with a mandatory else, unlike an "if" whose else
+    // is optional -- so nested if-then-else has no dangling-else problem:
+    // nearest-else-binds-nearest-if recovers the tree correctly at any
+    // nesting depth, in every dialect. That is true regardless of the
+    // bracket asserted below.
+    //
+    // The bracket itself (Plain/Markdown, then-position only) is for the
+    // reader, not the parser -- see the comment on WhenNode's render_node.
+    // Unambiguous under nearest-else-binds-nearest-if does not mean a person
+    // does not have to count "else"s against "then"s to find where a nested
+    // conditional in the *then* position stops; the *else* position needs no
+    // such help, because "if a then x else if b then y else z" is the
+    // ordinary else-if chain and already reads fine unbracketed.
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto inner = formula::when(overFifty, var<Strength>, var<Strength> * rat(3));
+
+    constexpr auto nestedInThen = formula::when(overFifty, inner, var<Strength> * rat(5));
+    constexpr auto nestedInElse = formula::when(overFifty, var<Strength> * rat(5), inner);
+    constexpr auto nestedInBoth = formula::when(overFifty, inner, inner);
+
+    CHECK(formula::render<Dialect::Plain>(nestedInThen)
+          == "if f > 50 MPa then (if f > 50 MPa then f else f * 3) else f * 5");
+    CHECK(formula::render<Dialect::Plain>(nestedInElse) == "if f > 50 MPa then f * 5 else if f > 50 MPa then f else f * 3");
+    CHECK(formula::render<Dialect::Plain>(nestedInBoth)
+          == "if f > 50 MPa then (if f > 50 MPa then f else f * 3) else if f > 50 MPa then f else f * 3");
+
+    CHECK(formula::render<Dialect::Markdown>(nestedInThen)
+          == "if `f` > 50 MPa then (if `f` > 50 MPa then `f` else `f` * 3) else `f` * 5");
+    CHECK(formula::render<Dialect::Markdown>(nestedInElse)
+          == "if `f` > 50 MPa then `f` * 5 else if `f` > 50 MPa then `f` else `f` * 3");
+    CHECK(formula::render<Dialect::Markdown>(nestedInBoth)
+          == "if `f` > 50 MPa then (if `f` > 50 MPa then `f` else `f` * 3) else if `f` > 50 MPa then `f` else `f` * 3");
+
+    CHECK(formula::render<Dialect::LaTeX>(nestedInThen)
+          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f \\cdot 3 & \\text{otherwise} \\end{cases} & "
+             "\\text{if } f > 50 MPa \\\\ f \\cdot 5 & \\text{otherwise} \\end{cases}");
+    CHECK(formula::render<Dialect::LaTeX>(nestedInElse)
+          == "\\begin{cases} f \\cdot 5 & \\text{if } f > 50 MPa \\\\ \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f "
+             "\\cdot 3 & \\text{otherwise} \\end{cases} & \\text{otherwise} \\end{cases}");
+    CHECK(formula::render<Dialect::LaTeX>(nestedInBoth)
+          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f \\cdot 3 & \\text{otherwise} \\end{cases} & "
+             "\\text{if } f > 50 MPa \\\\ \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f \\cdot 3 & \\text{otherwise} "
+             "\\end{cases} & \\text{otherwise} \\end{cases}");
+}
+
+// --------------------------------------------- phase 8 fix round 3: guard
+// against the whole class of bug review round 3 found, not just this one
+// instance. `"](" `is CommonMark's inline-link syntax -- a Markdown renderer
+// displays only the link's label, silently dropping whatever the destination
+// held, so string equality between two Markdown-dialect strings is blind to
+// this: two strings can be equal to each other and still both be wrong in
+// the same way. Only checking the actual character sequence a Markdown
+// parser treats specially catches it, which is what this test does instead.
+
+TEST_CASE("render: Markdown output never contains CommonMark link syntax, for any node kind", "[render][markdown]")
+{
+    auto const hasNoLinkSyntax = [](std::string const& text) {
+        CHECK(text.find("](") == std::string::npos);
+        // A bare "[" alone is not risky by itself, but nothing this library
+        // renders has any legitimate reason to contain one either -- so the
+        // stronger check costs nothing and catches a "[...]" reference-style
+        // link too, not only the inline "[...](...)" shape review round 3
+        // found.
+        CHECK(text.find('[') == std::string::npos);
+    };
+
+    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto rounded = formula::rounded<formula::unit::Millimetre,
+                                              formula::DecimalPlaces { 1 },
+                                              formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+    constexpr auto roundedSig = formula::rounded_to_digits<formula::unit::Millimetre,
+                                                           formula::SignificantDigits { 2 },
+                                                           formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
+    constexpr auto numeric = formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(var<Strength>);
+    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+    constexpr auto citedDiameter = formula::documented(var<Diameter>, { .title = "Diameter, cited" });
+
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(var<Strength>));                                    // VarNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(150)))); // ConstantNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(-var<Strength>));                                   // UnaryNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(var<Strength> + var<Strength>));                    // BinaryNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::pow<2>(var<Diameter>)));                   // PowerNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::sqrt(var<Area>)));                         // RootNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::pi));                                      // PiNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(citedDiameter));                                    // DocumentedNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(rounded));                                          // RoundNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(roundedSig));                                       // RoundSignificantNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(numeric));                                          // NumericValueNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(chosen));                                           // WhenNode
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(overFifty));                                        // PredicateNode
+
+    // And a formula nesting several of the above, since a guard that only
+    // ever sees one node kind in isolation could still miss an interaction
+    // between two -- which is exactly how review round 3's defect hid from
+    // both the mutation testing and the "read it as a person would" pass in
+    // fix round 1: neither ever combined a rounding/escape node with a
+    // conditional operand under Dialect::Markdown and looked at the raw
+    // character sequence rather than the string as a whole.
+    constexpr auto deep =
+        formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(formula::when(
+            overFifty, var<Strength> * rat(2), var<Strength> * rat(4)));
+    hasNoLinkSyntax(formula::render<Dialect::Markdown>(deep));
 }

@@ -10,17 +10,21 @@
 /// consumer who wants it asks for by name.
 
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/conditional.hpp>
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/environment.hpp>
 #include <formula-cpp/error.hpp>
+#include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/outcome.hpp>
+#include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
+#include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>
