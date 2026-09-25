@@ -67,22 +67,22 @@ Attempting this gives, verbatim, on MSVC's `cl.exe` (19.51, from Visual
 Studio's `cl-debug` preset):
 
 ```
-D:\formula-cpp\include\formula-cpp/expression.hpp(128): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
-D:\formula-cpp\include\formula-cpp/expression.hpp(128): note: the template instantiation context (the oldest one first) is
+D:\formula-cpp\include\formula-cpp/expression.hpp(135): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
+D:\formula-cpp\include\formula-cpp/expression.hpp(135): note: the template instantiation context (the oldest one first) is
 D:\formula-cpp\test\negative\expression_add_dimension_mismatch.cpp(13): note: see reference to function template instantiation 'auto formula::operator +<formula::VarNode<Volume>,formula::VarNode<Length>>(Left,Right) noexcept' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-D:\formula-cpp\include\formula-cpp/expression.hpp(197): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
-D:\formula-cpp\include\formula-cpp/expression.hpp(179): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
+D:\formula-cpp\include\formula-cpp/expression.hpp(216): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
+D:\formula-cpp\include\formula-cpp/expression.hpp(191): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-D:\formula-cpp\include\formula-cpp/expression.hpp(145): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
+D:\formula-cpp\include\formula-cpp/expression.hpp(152): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
@@ -147,11 +147,11 @@ int main()
 which gives, verbatim, on MSVC's `cl.exe` (19.51, `cl-debug` preset):
 
 ```
-D:\formula-cpp\include\formula-cpp/environment.hpp(124): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
-D:\formula-cpp\include\formula-cpp/environment.hpp(124): note: the template instantiation context (the oldest one first) is
+D:\formula-cpp\include\formula-cpp/environment.hpp(126): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
+D:\formula-cpp\include\formula-cpp/environment.hpp(126): note: the template instantiation context (the oldest one first) is
 D:\formula-cpp\test\negative\environment_missing_quantity.cpp(17): note: see reference to function template instantiation 'formula::Measured<Ratio> formula::Environment<formula::Measured<WaterVolume>>::get<Ratio>(void) noexcept const' being compiled
 D:\formula-cpp\test\negative\environment_missing_quantity.cpp(17): note: see the first reference to 'formula::Environment<formula::Measured<WaterVolume>>::get' in 'main'
-D:\formula-cpp\include\formula-cpp/environment.hpp(169): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
+D:\formula-cpp\include\formula-cpp/environment.hpp(171): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
 ```
 
 The prototype this layer replaced answered a missing input with a runtime
