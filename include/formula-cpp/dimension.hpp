@@ -293,6 +293,23 @@ namespace dim
     inline constexpr Dimension Energy = Force * Length;
     /// The reciprocal of time.
     inline constexpr Dimension Frequency = Scalar / Time;
+    /// Mass per area -- what a sheet or a membrane is specified by, and NOT a
+    /// density: one length short of it, so the two are different dimensions and
+    /// compare unequal.
+    inline constexpr Dimension MassPerArea = Mass / Area;
+    /// Force per length -- a force carried per unit of width, which is not a
+    /// stress: dividing a force by a *length* rather than by an area leaves a
+    /// dimension of its own.
+    inline constexpr Dimension ForcePerLength = Force / Length;
+    /// Pressure times time: the resistance of a fluid to shear, measured in
+    /// pascal seconds. Distinct from `KinematicViscosity` below by a factor of
+    /// density, which is why the two are separate dimensions rather than two
+    /// spellings of one.
+    inline constexpr Dimension DynamicViscosity = Pressure * Time;
+    /// Area per time: dynamic viscosity divided by density, and the other of
+    /// the two quantities called "viscosity". A value in one is not a value in
+    /// the other, and the type system says so.
+    inline constexpr Dimension KinematicViscosity = Area / Time;
 } // namespace dim
 
 /// True when two dimensions are identical.
