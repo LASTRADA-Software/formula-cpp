@@ -498,6 +498,55 @@ TEST_CASE("key_table_is_well_formed answers for a table that only arrives at run
         SpecimenShape::Prism,
     };
     STATIC_REQUIRE(!formula::key_table_is_well_formed(Repeated));
+
+    // The table's own FINAL pair. `Repeated` above cannot catch a sweep whose
+    // outer bound stops one row early -- its duplicate is at rows 1 and 3 of
+    // 5, so rows 3 and 4 never need to be compared for it to be found.
+    // Measured: widening the outer bound from `first + 1 < N` to
+    // `first + 2 < N` leaves every other assertion in this file green.
+    constexpr KeyTable<SpecimenShape, 3> RepeatedAtTheEnd {
+        SpecimenShape::Cube100,
+        SpecimenShape::Cube150,
+        SpecimenShape::Cube150, // the last pair, and nothing after it
+    };
+    STATIC_REQUIRE(!formula::key_table_is_well_formed(RepeatedAtTheEnd));
+
+    // TWO rows -- the smallest table that can be malformed at all, and the
+    // boundary between "no pair to compare" (a one-row table, above) and "one
+    // pair to compare". Both directions, so a predicate that answered `false`
+    // for every two-row table would fail here too rather than look correct.
+    constexpr KeyTable<SpecimenShape, 2> TwoRowsRepeated { SpecimenShape::Prism, SpecimenShape::Prism };
+    constexpr KeyTable<SpecimenShape, 2> TwoRowsDistinct { SpecimenShape::Prism, SpecimenShape::Cube100 };
+    STATIC_REQUIRE(!formula::key_table_is_well_formed(TwoRowsRepeated));
+    STATIC_REQUIRE(formula::key_table_is_well_formed(TwoRowsDistinct));
+}
+
+TEST_CASE("a two-row exact table selects each of its rows and misses everything else", "[lookup]")
+{
+    // The compile-time side of the same boundary the predicate test covers
+    // just above: two rows is the smallest table with a pair, and the phase
+    // otherwise only ever uses 0, 1, 4 and 5. Both rows, so neither a
+    // first-only nor a last-only scan passes.
+    constexpr KeyTable<SpecimenShape, 2> TwoShapes { SpecimenShape::Cube100, SpecimenShape::Prism };
+
+    constexpr auto first = formula::checked_evaluate<SizeCorrection>(
+        exact_lookup<TwoShapes, unit::One>(SpecimenShape::Cube100, { rat(1, 2), rat(1, 4) }),
+        formula::environment());
+    STATIC_REQUIRE(first.has_value());
+    STATIC_REQUIRE(first->is_value());
+    STATIC_REQUIRE(first->measurement().value() == rat(1, 2));
+
+    constexpr auto second = formula::checked_evaluate<SizeCorrection>(
+        exact_lookup<TwoShapes, unit::One>(SpecimenShape::Prism, { rat(1, 2), rat(1, 4) }), formula::environment());
+    STATIC_REQUIRE(second.has_value());
+    STATIC_REQUIRE(second->is_value());
+    STATIC_REQUIRE(second->measurement().value() == rat(1, 4));
+
+    constexpr auto absent = formula::checked_evaluate<SizeCorrection>(
+        exact_lookup<TwoShapes, unit::One>(SpecimenShape::Cube150, { rat(1, 2), rat(1, 4) }),
+        formula::environment());
+    STATIC_REQUIRE(!absent.has_value());
+    STATIC_REQUIRE(absent.error() == formula::ArithmeticError::DomainError);
 }
 
 TEST_CASE("keys_match is exact equality, with no ordering and no conversion", "[lookup]")

@@ -235,10 +235,16 @@
 /// aggregate, so that is one build per specimen, not one evaluation per
 /// specimen. **Giving `Environment` a categorical entry, so that a key could
 /// be supplied alongside the measurements, is deliberately not done here**:
-/// it is a change to `environment.hpp`, outside this task's files, and it is
-/// additive -- nothing in this node's shape forecloses it, since such a node
-/// would read its key from the environment instead of from itself and
-/// everything else here would stand.
+/// it is a change to `environment.hpp`, outside this task's files. Nothing
+/// here forecloses it -- `Environment`'s `detail::EntryTraits` is an open
+/// specialisation point, and this node's `checked_evaluate_si` already takes
+/// the environment -- but it is **a second node kind, not a field swap on
+/// this one**, and a later task should plan for that rather than the easier
+/// version. The reason is `key`'s own comment below: `KeyOf<Keys>{}` is a
+/// legitimate key that hits a row, so `ExactLookupNode` has no spelling for
+/// "no key yet, take it from the environment". Whatever reads a key from an
+/// environment has to say so in its *type*, exactly as everything else
+/// structural in this file does.
 ///
 /// **A missing key is a miss, in the one vocabulary this file already has.**
 /// `std::unexpected { ArithmeticError::DomainError }`, through
@@ -601,6 +607,35 @@ using KeyTable = std::array<Key, N>;
 template <KeyTable Keys>
 using KeyOf = typename std::remove_cvref_t<decltype(Keys)>::value_type;
 
+namespace detail
+{
+    /// Fails to compile when an exact lookup's keys are not enumerators of a
+    /// scoped enumeration -- see the file comment for why `int` and an
+    /// unscoped enumeration are refused rather than merely discouraged: both
+    /// convert to and from arithmetic silently, which destroys the one
+    /// property the choice of an enumerated key was made for, that a
+    /// misspelled key is a compile error at the offending token.
+    ///
+    /// Declared here, ahead of the predicates, because **every** public entry
+    /// point that takes a key enforces it, not only the node. A validator that
+    /// accepted an `std::array<int, N>` no node would ever take is two
+    /// surfaces disagreeing about the same question -- the defect this phase
+    /// keeps finding -- and a runtime loader (phase 10 task 4) reaching for
+    /// `key_table_is_well_formed` is exactly where it would bite.
+    template <typename Key>
+    struct RequireScopedEnumKey
+    {
+        static_assert(std::is_scoped_enum_v<Key>,
+                      "formula: an exact lookup's keys must be enumerators of a scoped enumeration "
+                      "(enum class); the offending key type appears in this diagnostic as the template "
+                      "argument Key of RequireScopedEnumKey -- an int or a plain enum converts to and "
+                      "from arithmetic silently, so a mistyped key would be a value rather than a "
+                      "compile error");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
 /// The single predicate every "is this the same key" question in this file is
 /// built on: exact equality of two enumerators, with no ordering and no
 /// conversion. Used by `key_table_is_well_formed` for a table that arrives at
@@ -610,9 +645,16 @@ using KeyOf = typename std::remove_cvref_t<decltype(Keys)>::value_type;
 /// The same arrangement `bands_are_adjacent` has in `band.hpp`, and for the
 /// same reason: this project has had two checks of one fact drift apart
 /// before.
+///
+/// Refuses the same key types `ExactLookupNode` refuses, and says so with the
+/// same sentence. "Cannot drift" has to cover *which key types are accepted*
+/// as well as *what the same key means*: a predicate that answered for an
+/// `std::array<int, N>` would be validating a table no node could ever be
+/// built from.
 template <typename Key>
 [[nodiscard]] constexpr bool keys_match(Key first, Key second) noexcept
 {
+    static_assert(detail::RequireScopedEnumKey<Key>::value);
     return first == second;
 }
 
@@ -625,7 +667,21 @@ template <typename Key>
 /// An empty table and a single-key table are both well-formed: neither has a
 /// pair that could repeat. See `band.hpp`'s file comment for why an empty
 /// table is treated as valid rather than refused -- an exact table naming no
-/// rows always misses, which is a thing this library can say honestly.
+/// rows always misses, which is a thing this library can say honestly. A
+/// **two-row** table is the smallest one that can be malformed at all, and is
+/// asserted on directly in `lookup_tests.cpp` rather than left to follow from
+/// the general case.
+///
+/// Refuses the same key types `ExactLookupNode` refuses -- see `keys_match`
+/// just above for why a validator that accepted more than the node does would
+/// be a defect rather than a convenience. It carries no guard of its own,
+/// deliberately: the call to `keys_match` in its body is instantiated whenever
+/// this function is, **including for `N == 0` and `N == 1` where the loops
+/// never run** (a call expression in a template's body is instantiated with
+/// the template, not when control reaches it -- measured on all four
+/// compilers, and `exact_lookup_int_key_table.cpp` pins it). A second
+/// `static_assert` here would therefore be one no test could ever distinguish
+/// from this one, which is an assertion nothing can keep honest.
 template <typename Key, std::size_t N>
 [[nodiscard]] constexpr bool key_table_is_well_formed(KeyTable<Key, N> const& table) noexcept
 {
@@ -660,25 +716,6 @@ struct RequireKeysDistinct
 
 namespace detail
 {
-    /// Fails to compile when an exact lookup's keys are not enumerators of a
-    /// scoped enumeration -- see the file comment for why `int` and an
-    /// unscoped enumeration are refused rather than merely discouraged: both
-    /// convert to and from arithmetic silently, which destroys the one
-    /// property the choice of an enumerated key was made for, that a
-    /// misspelled key is a compile error at the offending token.
-    template <typename Key>
-    struct RequireScopedEnumKey
-    {
-        static_assert(std::is_scoped_enum_v<Key>,
-                      "formula: an exact lookup's keys must be enumerators of a scoped enumeration "
-                      "(enum class); the offending key type appears in this diagnostic as the template "
-                      "argument Key of RequireScopedEnumKey -- an int or a plain enum converts to and "
-                      "from arithmetic silently, so a mistyped key would be a value rather than a "
-                      "compile error");
-
-        static constexpr bool value = true;
-    };
-
     /// Expands to one `RequireKeysDistinct<Keys[Index], Keys[j]>::value` for
     /// every `j` strictly after `Index`, `&&`-folded together. Every operand
     /// of a fold expression is instantiated to form the expression,
@@ -760,11 +797,25 @@ struct RequireValidKeyTable
 /// cannot reach the node through an operand or through the `Environment`.
 ///
 /// Both `static_assert`s sit in the class body rather than in the factory,
-/// deliberately: that is what makes a malformed table fail to compile even
-/// when the factory's result is discarded entirely, so that
-/// `(void) exact_lookup<Duplicated, unit::One>(...)` is still an error.
-/// Measured on all four compilers for `BandedLookupNode`, and the placement
-/// is copied rather than the idea.
+/// and the property that buys is narrower than it first looks -- stated
+/// precisely here because an earlier revision of this comment claimed more
+/// than it could deliver, and a reviewer measured the difference. Discarding
+/// the factory's result is **not** what distinguishes the two placements:
+/// `exact_lookup` returns `ExactLookupNode` *by value*, so calling it
+/// completes the class whichever placement is chosen, and an assert in the
+/// factory body fires on any call, discarded or not. What the class body
+/// buys is this: `ExactLookupNode` is a public aggregate with public members,
+/// so a caller can declare one **without ever calling the factory** --
+///
+///     inline constexpr ExactLookupNode<Duplicated, unit::One> node {
+///         {}, { rat(1), rat(1), rat(1) }, Shape::Cube };
+///
+/// -- and only a `static_assert` in the class body refuses that. With the
+/// asserts in the factory it compiles, links, and carries a silently
+/// unreachable row. `exact_lookup_duplicate_key_no_factory.cpp` is exactly
+/// that declaration and exists to pin this; it differs from
+/// `exact_lookup_duplicate_key.cpp` in precisely one thing, the absence of the
+/// factory call.
 template <KeyTable Keys, Unit ResultUnit>
 struct ExactLookupNode: NodeBase
 {
@@ -780,6 +831,15 @@ struct ExactLookupNode: NodeBase
     /// regime is in front of the caller. Runtime state, for the reason the
     /// file comment gives at length; a key that names no row of `keys` is a
     /// miss, reported exactly as a value falling in no band is.
+    ///
+    /// **There is no unset state, and a later task must not assume one.** The
+    /// default member initialiser is `KeyOf<Keys>{}` -- the enumerator whose
+    /// value is zero -- which for the ordinary table is a perfectly legitimate
+    /// key that hits a row. It does not mean "no key yet" and cannot be made
+    /// to: an enumeration has no spare value this library gets to reserve, and
+    /// adding a sentinel enumerator would be a rule imposed on the method
+    /// author's own type. See the file comment's note on where the key comes
+    /// from for what this costs the environment-sourced variant.
     KeyOf<Keys> key {};
 
     /// The keys themselves, already validated above -- part of the table's
@@ -839,17 +899,22 @@ template <typename Rep = Rational, KeyTable Keys, Unit ResultUnit, typename Env,
     {
         // See the file comment: the lookup family evaluates in `Rational`
         // only, so both kinds answer in one representation rather than each
-        // in whichever one happens to be legal for it. The message says "this
-        // representation" rather than naming a specific type it might be
-        // wrong about -- the instantiation backtrace already names whatever
-        // `Rep` the caller actually asked for. Dependent on `Rep` so this
-        // fires only when this function is actually instantiated with a
-        // non-`Rational` `Rep`, not merely declared -- the same trick
-        // `RepRounding<double>::round_in` uses.
+        // in whichever one happens to be legal for it. **The message gives
+        // that reason and not the banded node's**, because the banded node's
+        // reason is not true here -- comparing two enumerators is not
+        // arithmetic and is exact in every representation -- and the author
+        // who trips this guard reads the message, never this file's comment.
+        // It names no concrete type either: the instantiation backtrace
+        // already names whatever `Rep` the caller actually asked for.
+        // Dependent on `Rep` so this fires only when this function is
+        // actually instantiated with a non-`Rational` `Rep`, not merely
+        // declared -- the same trick `RepRounding<double>::round_in` uses.
         static_assert(sizeof(Rep) == 0,
-                      "formula: an exact lookup node can only be evaluated with Rep = Rational -- a "
-                      "lookup table's rows are selected in exact arithmetic this representation may "
-                      "not give; evaluate this formula with Rep = Rational instead "
+                      "formula: an exact lookup node can only be evaluated with Rep = Rational -- not "
+                      "because selecting a row by key needs exact arithmetic (comparing two "
+                      "enumerators does not), but because every lookup table in this library answers "
+                      "in one representation, so that a formula evaluates the same way whichever kind "
+                      "of table it contains; evaluate this formula with Rep = Rational instead "
                       "(checked_evaluate<Result> always does)");
         return std::unexpected { ArithmeticError::DomainError };
     }

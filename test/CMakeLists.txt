@@ -200,11 +200,49 @@ formula_add_negative_test(exact_lookup_short_corrections
 formula_add_negative_test(lookup_key_dimension_mismatch
     "this banded lookup's key unit does not measure the dimension of the expression whose value selects a band")
 
+# Three duplicate-key cases, asserting one string, because each pins a
+# different way the check can be broken while the other two still pass:
+#   - the base case has its duplicate in the MIDDLE and in NON-ADJACENT rows,
+#     which kills a check confined to the first pair, to the last pair, or to
+#     neighbours -- three mutations on one table;
+#   - _two_rows is the smallest table that can carry a duplicate at all, and
+#     is what fails when the underflow guard in `detail::key_table_is_valid`
+#     is widened from `size() < 2` to `< 3`;
+#   - _no_factory declares the node directly, which is the ONLY case that
+#     tells a class-body `static_assert` from one in the factory -- the
+#     factory returns the node by value, so every other case completes the
+#     class either way.
 formula_add_negative_test(exact_lookup_duplicate_key
     "formula: this exact lookup table declares the same key twice")
 
+formula_add_negative_test(exact_lookup_duplicate_key_two_rows
+    "formula: this exact lookup table declares the same key twice")
+
+formula_add_negative_test(exact_lookup_duplicate_key_no_factory
+    "formula: this exact lookup table declares the same key twice")
+
+# The scoped-enumeration requirement, at each of the three public entry points
+# that takes a key: the node, the runtime validator and the predicate both are
+# built on. One file each, so that removing any one guard is caught rather
+# than masked by another still firing.
 formula_add_negative_test(exact_lookup_unscoped_key
     "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
+
+formula_add_negative_test(exact_lookup_int_key_table
+    "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
+
+formula_add_negative_test(exact_lookup_keys_match_int_key
+    "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
+
+# Both lookups' Rep guards. Their messages are author-facing text and are the
+# only place either refusal's reason reaches a user, so they are tested API
+# like every other static_assert here -- and pinning only one of the two would
+# leave the halves of one rule in different states.
+formula_add_negative_test(lookup_rep_not_rational
+    "formula: a banded lookup node can only be evaluated with Rep = Rational")
+
+formula_add_negative_test(exact_lookup_rep_not_rational
+    "formula: an exact lookup node can only be evaluated with Rep = Rational")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

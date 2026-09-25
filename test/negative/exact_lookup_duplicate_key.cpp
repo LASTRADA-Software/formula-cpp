@@ -8,10 +8,12 @@
 // has no declared order, so a check that compared only neighbours, or only
 // the first or last pair, would wave this through. This must not compile.
 //
-// The factory's result is DISCARDED here on purpose. `ExactLookupNode`'s
-// validation lives in the class body rather than in the factory, which is
-// what makes a malformed table an error even when nothing is done with the
-// node; moving it into the factory would leave this file compiling cleanly.
+// This file goes through `exact_lookup`. Its pair,
+// `exact_lookup_duplicate_key_no_factory.cpp`, declares the same defect
+// without the factory and differs from this file in nothing else; that is the
+// one that pins the class-body placement of the validation, and this one does
+// not. `exact_lookup_duplicate_key_two_rows.cpp` covers the smallest table
+// that can carry a duplicate at all.
 #include <formula-cpp/lookup.hpp>
 
 namespace
@@ -31,13 +33,14 @@ namespace
         SpecimenShape::Cube150, // already declared two rows above
         SpecimenShape::Prism,
     };
+
+    inline constexpr auto broken = formula::exact_lookup<DuplicatedKeys, formula::unit::One>(
+        SpecimenShape::Cube100,
+        { formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 },
+          formula::Rational { 1 } });
 } // namespace
 
 int main()
 {
-    (void) formula::exact_lookup<DuplicatedKeys, formula::unit::One>(
-        SpecimenShape::Cube100,
-        { formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 },
-          formula::Rational { 1 } });
-    return 0;
+    return static_cast<int>(decltype(broken)::dimension.length.numerator);
 }
