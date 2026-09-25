@@ -2,8 +2,22 @@
 #pragma once
 
 /// @file
-/// Banded lookup: a measured value falls in an interval, and that interval
-/// selects a correction.
+/// Lookup tables: a method publishes rows, and something about the specimen
+/// selects one of them. Two kinds live here, and they share one vocabulary
+/// for everything they have in common:
+///
+///  - **Banded lookup** (`BandedLookupNode`): a measured value falls in an
+///    interval, and that interval selects a correction.
+///  - **Exact lookup** (`ExactLookupNode`): a category key -- a discriminator
+///    such as a specimen shape or an apparatus variant, which is *not* a
+///    quantity -- names a row directly.
+///
+/// The two report a miss identically, split structure from contents
+/// identically, and share one `Corrections<N>` wrapper. Everything below
+/// about a miss, about `documented()` carrying a table's identity, and about
+/// what is left to a later task is written once and binds both; the
+/// exact-lookup section near the end of this comment adds only what is
+/// genuinely particular to a key.
 ///
 /// A method's own algebra sometimes needs a coefficient no formula computes --
 /// a size-correction factor for a specimen's diameter, say -- that the
@@ -47,8 +61,9 @@
 /// ever populated.
 ///
 /// **A miss is not a value.** A `BandedLookupNode` whose operand's value
-/// falls in no band has found nothing -- not zero, not the nearest band, not
-/// the first. There is no default-value parameter and no fallback of any
+/// falls in no band -- or an `ExactLookupNode` whose key names no row of its
+/// table -- has found nothing: not zero, not the nearest band, not the
+/// first row. There is no default-value parameter and no fallback of any
 /// kind: adding one would be phase 9's forbidden `bool satisfied()` in a new
 /// costume, an API that must answer *something* for the unresolved case,
 /// where every answer is a lie.
@@ -134,6 +149,142 @@
 /// closed, full stop, until that seam exists. `checked_evaluate<Result>` --
 /// the entry point every test in this file uses -- always computes in
 /// `Rational` internally, so this restriction is never reached from there.
+///
+/// ===========================================================================
+///
+/// **Exact lookup: a category key names a row.** The second table kind in
+/// this file. Not every published table buckets a measurement: a method just
+/// as often publishes one row per *variant* -- a specimen shape, an apparatus
+/// type, a curing regime -- and the row is chosen by which variant is in
+/// front of you, not by how large anything is. That key is a discriminator,
+/// not a quantity: it has no dimension, no unit and no order, so a band table
+/// cannot express it and `find_band`'s comparison means nothing for it.
+///
+/// **How a key is spelled, and why.** A key is an enumerator of a *scoped*
+/// enumeration the method's author declares, and a table is
+/// `KeyTable<Shape, 3>` -- `std::array<Shape, 3>` -- as a non-type template
+/// parameter. The alternative considered, and rejected, was
+/// `detail::FixedString` (phase 4), which is equally usable as an NTTP. The
+/// deciding question is the one a method author will actually hit: **what
+/// happens when a key is absent.**
+///
+///   1. With a string key, the author's realistic mistake -- writing
+///      `"cylindr"` where the table says `"cylinder"` -- compiles cleanly and
+///      becomes a runtime miss. A miss carries `ArithmeticError::DomainError`
+///      and nothing else (see below), so what the author gets back is a
+///      formula that reports a domain error for every specimen, with no
+///      statement anywhere of which key was wrong. With a scoped
+///      enumeration, `Shape::Cylindr` is a compile error from the language
+///      itself, at the offending token, quoting the misspelling and listing
+///      the enumerators that do exist. No library diagnostic can beat that,
+///      and none is needed to get it.
+///   2. A key's *type* names the categorisation. Two tables keyed on `Shape`
+///      and on `Apparatus` cannot be crossed: passing the wrong one is a type
+///      error naming both types. Two tables keyed on strings both accept
+///      `"a"`, and neither can tell it was meant for the other.
+///   3. Duplicate-key detection (below) is exact and cheap on enumerators.
+///
+/// What the enumeration route costs, stated rather than hidden: the
+/// enumerator's spelling is the author's, not the published table's, so an
+/// enumerator can drift from the row label it stands for. That is a
+/// *documentation* fact, and this library already has one place for
+/// documentation facts -- `documented()`/`Citation` (`citation.hpp`) -- which
+/// is where a table's identity belongs for the exact lookup for exactly the
+/// same reason it does for the banded one. Per-row labels are not modelled
+/// here and are not smuggled into the node.
+///
+/// `std::is_scoped_enum_v` is required -- not enumerations generally, and not
+/// `int`. An unscoped enumeration and an integer both convert to and from
+/// arithmetic silently, which gives back the one property point 1 is built
+/// on: with `KeyTable<int, 3> { 1, 2, 3 }` the author's typo is `3` where `2`
+/// was meant, and nothing catches it. The refusal is `RequireScopedEnumKey`,
+/// in the node's own body so it fires whether or not the factory's result is
+/// used.
+///
+/// **A table's own well-formedness is that no key repeats.** That is the
+/// whole of it: an exact table has no order to violate, no boundary to share
+/// and no coverage to leave a gap in. A repeated key is a real typo a
+/// published table can contain, and it is not harmless -- the second row
+/// becomes unreachable, so a correction the author entered is silently never
+/// selected, and which of the two wins depends on nothing but scan direction.
+/// `RequireValidKeyTable` refuses it at compile time through
+/// `RequireKeysDistinct`, which names both offending keys as its template
+/// arguments exactly as `RequireBandsAdjacent` names both offending bands.
+/// `key_table_is_well_formed` is the same question for a table that only
+/// arrives at runtime, built on the same `keys_match` predicate, so the two
+/// cannot drift -- the arrangement `band.hpp` uses, for the same reason.
+///
+/// An empty key table validates and always misses, for the identical reason
+/// `BandTable<0>` does (`band.hpp`'s file comment): there is no pair that
+/// could repeat, and a table naming no rows leaves the whole domain
+/// undefined, which is a thing this library can say honestly.
+///
+/// **Where the key comes from, and what that does not cover.** An
+/// `ExactLookupNode` has no operand. A category is not a quantity, and this
+/// library's `Environment` carries `Measured<Q>`/`Entered<Q>` -- numbers --
+/// and nothing else, so there is no existing channel through which a
+/// discriminator could arrive at evaluation time. The key is therefore
+/// ordinary runtime state on the node, arriving through the factory, for the
+/// same reason `ConstantNode::number` is runtime state: the *structure*
+/// (which rows exist, and the unit they are stated in) is the method, and
+/// lives in the type; the *selection* and the *contents* are facts about this
+/// specimen and this customer's registered table, and both arrive late.
+/// Concretely, a formula whose key varies per specimen is a function of the
+/// key -- `auto f(Shape s) { return var<Force> / var<Area> *
+/// exact_lookup<Shapes, unit::One>(s, { ... }); }` -- and a node is a cheap
+/// aggregate, so that is one build per specimen, not one evaluation per
+/// specimen. **Giving `Environment` a categorical entry, so that a key could
+/// be supplied alongside the measurements, is deliberately not done here**:
+/// it is a change to `environment.hpp`, outside this task's files, and it is
+/// additive -- nothing in this node's shape forecloses it, since such a node
+/// would read its key from the environment instead of from itself and
+/// everything else here would stand.
+///
+/// **A missing key is a miss, in the one vocabulary this file already has.**
+/// `std::unexpected { ArithmeticError::DomainError }`, through
+/// `Evaluated<Rep>`'s existing error channel -- the identical mechanism a
+/// value falling in no band uses, for the identical reason: `DomainError` is
+/// documented (`error.hpp`) as "an argument was outside the domain of the
+/// operation", and an exact table's domain **is** its set of keys, exactly
+/// and literally. No second enumerator, no `Outcome::invalid`, no
+/// `InvalidReason`, no composed sentence. The reasoning is given in full
+/// under "How the miss is actually reported" above and is deliberately not
+/// restated here, because restating it is how two surfaces that must agree
+/// begin to drift.
+///
+/// **Exact-key selection is `Rational`-only by construction** -- as the
+/// banded node is, and for a different reason, which is worth stating rather
+/// than copying across a justification that does not transfer. Deciding which
+/// band a value falls in is arithmetic, and binary floating point is
+/// unreliable at it. Deciding whether two enumerators are the same is not
+/// arithmetic at all, and would be exact in any representation. So what
+/// closes `Rep` here is not floating point but the lookup family speaking
+/// with one voice: a formula containing a lookup of either kind evaluates in
+/// `Rational`, full stop, rather than in whichever `Rep` happens to be legal
+/// for the kind that got used. As with the banded node the guard says "this
+/// representation" and leaves the instantiation backtrace to name the
+/// caller's actual type, and **no `RepExactSelection` seam is built** --
+/// mirroring the decision not to build `RepBandSelection`.
+/// `checked_evaluate<Result>` always computes in `Rational`, so this is never
+/// reached from the entry point every test here uses.
+///
+/// **What a later task is owed, stated because the error channel cannot say
+/// it.** A miss carries `DomainError` and nothing more, so "which key missed
+/// which table" has to be rendered from the trace -- and for the exact lookup
+/// that is a harder obligation than for the banded one. A banded miss still
+/// leaves its evidence in the tree: the value that missed is the operand's
+/// own evaluated result, and once a lookup node is taught to a
+/// `RecordingSink` the operand contributes a step of its own carrying that
+/// value. **An exact lookup has no operand**, so the key that missed appears
+/// in no step at all unless `ExactLookupNode`'s own step records it. Nothing
+/// here loses the key -- it is a plain data member of the node the sink is
+/// handed, readable as `node.key`, and `Keys` is a compile-time property of
+/// the node's type -- but recovering it *does* require the later task to add
+/// a field for it, where the banded case can lean on a step that already
+/// exists. `detail::StepKindOf` (`trace.hpp`) has a specialisation for
+/// neither lookup node today, so both are equally untraceable right now; the
+/// asymmetry is written down here so the later task does not discover it
+/// after designing for the banded case alone.
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -147,6 +298,7 @@
 #include <expected>
 #include <optional>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -183,12 +335,12 @@ namespace detail
     /// rest, and `Rational{} == 0/1` is a perfectly legitimate correction --
     /// indistinguishable from a forgotten one.
     ///
-    /// **Worded for every table kind in this file on purpose.** A banded
-    /// lookup's rows are its bands, and another kind's rows are whatever that
-    /// kind selects by; the hole, the mechanism that closes it and the mistake
-    /// an author makes are one and the same, so there is one guard and one
-    /// sentence. A second guard saying the same thing in a second kind's own
-    /// words is precisely how two surfaces that must agree start to disagree.
+    /// **Worded for both table kinds on purpose.** A banded lookup's rows are
+    /// its bands and an exact lookup's rows are its keys, but the hole, the
+    /// mechanism that closes it and the mistake an author makes are one and
+    /// the same, so there is one guard and one sentence. A second guard
+    /// saying the same thing in the exact lookup's own words is precisely how
+    /// two surfaces that must agree start to disagree.
     template <std::size_t Given, std::size_t Expected>
     struct RequireCorrectionCountMatches
     {
@@ -272,15 +424,15 @@ struct BandedLookupNode: NodeBase
 };
 
 /// Exactly `N` corrections, one per row of a lookup table -- no more and no
-/// fewer. Not specific to bands: `N` is whatever row count the table it
-/// belongs to has, because the hole being closed is the same hole for every
-/// table kind in this file. Handed to a lookup's factory in place of a bare
+/// fewer. Shared by both table kinds in this file: `N` is the band count for
+/// `banded_lookup` and the key count for `exact_lookup`, because the hole
+/// being closed is the same hole. Handed to either factory in place of a bare
 /// `std::array<Rational, N>`, whose own aggregate initialisation from a short
 /// braced list is exactly the "every answer is a lie" failure the rest of this
 /// file refuses on the *miss* side, reappearing on the *hit* side: the
-/// unwritten elements value-initialise to `Rational{} == 0/1`, and a row whose
-/// correction the author forgot to type then answers `0`, confidently, as a
-/// value, indistinguishable from a deliberate zero.
+/// unwritten elements value-initialise to `Rational{} == 0/1`, and a band --
+/// or a key -- whose correction the author forgot to type then answers `0`,
+/// confidently, as a value, indistinguishable from a deliberate zero.
 ///
 /// A named type with two arity-disjoint constructor templates rather than
 /// one constrained by `requires` alone: the *matching*-arity constructor
@@ -324,7 +476,8 @@ struct Corrections
         static_assert(detail::RequireCorrectionCountMatches<sizeof...(Rs), N>::value);
     }
 
-    /// One correction per row, in the table's own declared order.
+    /// One correction per row, in the table's own declared order -- per band
+    /// for a banded lookup, per key for an exact one.
     std::array<Rational, N> values {};
 };
 
@@ -410,6 +563,304 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
             // A miss is not a value: no default, no nearest-band, no
             // first-band fallback. `DomainError` is literally true here, not
             // a euphemism -- see the file comment.
+            Evaluated<Rep> const missed = std::unexpected { ArithmeticError::DomainError };
+            sink.produced(node, missed);
+            return missed;
+        }
+
+        Evaluated<Rep> const result = detail::in_si<Rep>(node.corrections[*index], ResultUnit);
+        sink.produced(node, result);
+        return result;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Exact lookup: a category key names a row. See the file comment's
+// "Exact lookup" section for why a key is a scoped enumerator, where the key
+// comes from, and why a missing key is reported the same way a value in no
+// band is.
+// ---------------------------------------------------------------------------
+
+/// A table of category keys, in the order their corrections are declared. An
+/// alias template over `std::array`, for the same reason `BandTable` is one
+/// (`band.hpp`): a spike compiled `template <KeyTable Keys>` with both `Key`
+/// and `N` deduced from the template argument, on cl, clang-cl, clang++ and
+/// g++, so a wrapping struct would add a name to unwrap and nothing else.
+///
+/// `Key` is a scoped enumeration -- enforced by `RequireScopedEnumKey` in
+/// `ExactLookupNode`'s own body rather than by a constraint here, so that the
+/// diagnostic is this library's sentence and not "constraints not satisfied".
+template <typename Key, std::size_t N>
+using KeyTable = std::array<Key, N>;
+
+/// The key type of a `KeyTable` given as a template argument -- `Shape` for a
+/// `KeyTable<Shape, 3>`. Written once here because it is needed in three
+/// places (the node's member, the factory's parameter, `find_key`'s
+/// parameter) and spelling `typename decltype(Keys)::value_type` in each is
+/// how one of them ends up subtly different from the others.
+template <KeyTable Keys>
+using KeyOf = typename std::remove_cvref_t<decltype(Keys)>::value_type;
+
+/// The single predicate every "is this the same key" question in this file is
+/// built on: exact equality of two enumerators, with no ordering and no
+/// conversion. Used by `key_table_is_well_formed` for a table that arrives at
+/// runtime, by `RequireKeysDistinct` for one fixed at compile time, and by
+/// `detail::find_key` at evaluation time -- so a change to what "the same
+/// key" means cannot reach one of those three without reaching all of them.
+/// The same arrangement `bands_are_adjacent` has in `band.hpp`, and for the
+/// same reason: this project has had two checks of one fact drift apart
+/// before.
+template <typename Key>
+[[nodiscard]] constexpr bool keys_match(Key first, Key second) noexcept
+{
+    return first == second;
+}
+
+/// True when `table` is well-formed: no key appears twice. That is the whole
+/// of an exact table's well-formedness -- see the file comment -- and it is
+/// checked for every pair, not merely for neighbours, because an exact table
+/// has no declared order for a duplicate to hide behind: the same key in rows
+/// 0 and 7 is exactly as unreachable as the same key in rows 3 and 4.
+///
+/// An empty table and a single-key table are both well-formed: neither has a
+/// pair that could repeat. See `band.hpp`'s file comment for why an empty
+/// table is treated as valid rather than refused -- an exact table naming no
+/// rows always misses, which is a thing this library can say honestly.
+template <typename Key, std::size_t N>
+[[nodiscard]] constexpr bool key_table_is_well_formed(KeyTable<Key, N> const& table) noexcept
+{
+    for (std::size_t first = 0; first + 1 < N; ++first)
+        for (std::size_t second = first + 1; second < N; ++second)
+            if (keys_match(table[first], table[second]))
+                return false;
+    return true;
+}
+
+/// Fails to compile when a table declares the same key twice -- so the second
+/// row is unreachable and a correction the author entered is silently never
+/// selected.
+///
+/// Same shape and same reason as `RequireBandsAdjacent` (`band.hpp`):
+/// instantiating a named template on the two values makes the compiler print
+/// the offending key, and the wording is ours so the negative-compile harness
+/// can assert the reason rather than merely the failure. Reached through
+/// `::value`, for the same reason `RequireBandsAdjacent` is.
+template <auto First, auto Second>
+struct RequireKeysDistinct
+{
+    static_assert(!keys_match(First, Second),
+                  "formula: this exact lookup table declares the same key twice; the later row can "
+                  "never be selected, so a correction that was entered would silently never be used; "
+                  "the offending key appears in this diagnostic as both template arguments First and "
+                  "Second of RequireKeysDistinct");
+
+    /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
+    static constexpr bool value = true;
+};
+
+namespace detail
+{
+    /// Fails to compile when an exact lookup's keys are not enumerators of a
+    /// scoped enumeration -- see the file comment for why `int` and an
+    /// unscoped enumeration are refused rather than merely discouraged: both
+    /// convert to and from arithmetic silently, which destroys the one
+    /// property the choice of an enumerated key was made for, that a
+    /// misspelled key is a compile error at the offending token.
+    template <typename Key>
+    struct RequireScopedEnumKey
+    {
+        static_assert(std::is_scoped_enum_v<Key>,
+                      "formula: an exact lookup's keys must be enumerators of a scoped enumeration "
+                      "(enum class); the offending key type appears in this diagnostic as the template "
+                      "argument Key of RequireScopedEnumKey -- an int or a plain enum converts to and "
+                      "from arithmetic silently, so a mistyped key would be a value rather than a "
+                      "compile error");
+
+        static constexpr bool value = true;
+    };
+
+    /// Expands to one `RequireKeysDistinct<Keys[Index], Keys[j]>::value` for
+    /// every `j` strictly after `Index`, `&&`-folded together. Every operand
+    /// of a fold expression is instantiated to form the expression,
+    /// independent of the runtime short-circuit `&&` also performs -- so
+    /// every later key is compared against this one and each duplicate
+    /// reports on its own. The same reasoning as
+    /// `require_all_bands_adjacent` (`band.hpp`).
+    template <KeyTable Keys, std::size_t Index, std::size_t... Later>
+    [[nodiscard]] constexpr bool require_key_distinct_from_later(std::index_sequence<Later...>) noexcept
+    {
+        return (RequireKeysDistinct<Keys[Index], Keys[Index + 1 + Later]>::value && ...);
+    }
+
+    /// The outer half of the pairwise sweep: one `Index` per row that has a
+    /// row after it, so every unordered pair is visited exactly once.
+    template <KeyTable Keys, std::size_t... Index>
+    [[nodiscard]] constexpr bool require_all_keys_distinct(std::index_sequence<Index...>) noexcept
+    {
+        return (require_key_distinct_from_later<Keys, Index>(std::make_index_sequence<Keys.size() - 1 - Index> {}) && ...);
+    }
+
+    /// Split out of `RequireValidKeyTable` so that `Keys.size() - 1` -- which
+    /// underflows for an empty table -- sits behind `if constexpr` and is
+    /// therefore never instantiated for `N < 2`. Guarding with `||` instead
+    /// would not be enough, for the reason `band_table_is_valid`'s own
+    /// comment gives: that operator's short circuit applies to *evaluation*,
+    /// not to forming the type of its right-hand operand, and
+    /// `std::make_index_sequence<Keys.size() - 1>` for an empty table would
+    /// still have to name a sequence of length `SIZE_MAX`.
+    template <KeyTable Keys>
+    [[nodiscard]] constexpr bool key_table_is_valid() noexcept
+    {
+        if constexpr (Keys.size() < 2)
+            return true;
+        else
+            return require_all_keys_distinct<Keys>(std::make_index_sequence<Keys.size() - 1> {});
+    }
+
+    /// Finds the index of the row in @p Keys whose key is @p key, or nothing
+    /// when no row has it.
+    ///
+    /// A linear scan, for the reason `find_band` is one: a method's own
+    /// published table is rows, not big data, and an obviously-correct O(N)
+    /// scan is worth more here than any cleverer search. There is nothing to
+    /// convert and nothing to compare inexactly -- `keys_match` is equality
+    /// of two enumerators -- which is the whole difference between this
+    /// function and `find_band`.
+    template <KeyTable Keys>
+    [[nodiscard]] constexpr std::optional<std::size_t> find_key(KeyOf<Keys> key) noexcept
+    {
+        for (std::size_t index = 0; index < Keys.size(); ++index)
+            if (keys_match(Keys[index], key))
+                return index;
+        return std::nullopt;
+    }
+} // namespace detail
+
+/// The static_assert wiring for an exact table: instantiating this with a
+/// `KeyTable` that is a compile-time constant enforces, right there, that no
+/// key repeats -- reusing `keys_match`, the same predicate
+/// `key_table_is_well_formed` uses for a table that only arrives at runtime,
+/// through `RequireKeysDistinct` above. Reached through `::value`, for the
+/// same reason `RequireValidBandTable` is.
+template <KeyTable Keys>
+struct RequireValidKeyTable
+{
+    static constexpr bool value = detail::key_table_is_valid<Keys>();
+};
+
+/// A category key names a row, and that row selects a correction -- see the
+/// file comment's "Exact lookup" section for how a key is spelled, where it
+/// comes from and how a miss is reported.
+///
+/// The same split as `BandedLookupNode`, not a parallel one invented for this
+/// node: `Keys` and `ResultUnit` are the table's *structure* and live in the
+/// type, `corrections` are its *contents* and arrive at runtime. `key` is the
+/// one member with no counterpart there, and it is runtime state for the
+/// reason the file comment gives: a discriminator is not a quantity, so it
+/// cannot reach the node through an operand or through the `Environment`.
+///
+/// Both `static_assert`s sit in the class body rather than in the factory,
+/// deliberately: that is what makes a malformed table fail to compile even
+/// when the factory's result is discarded entirely, so that
+/// `(void) exact_lookup<Duplicated, unit::One>(...)` is still an error.
+/// Measured on all four compilers for `BandedLookupNode`, and the placement
+/// is copied rather than the idea.
+template <KeyTable Keys, Unit ResultUnit>
+struct ExactLookupNode: NodeBase
+{
+    static_assert(detail::RequireScopedEnumKey<KeyOf<Keys>>::value);
+    static_assert(RequireValidKeyTable<Keys>::value);
+
+    /// One correction per key, stated in `unit`, in the same order `keys`
+    /// declares -- the table's *contents*, runtime state for the same reason
+    /// `BandedLookupNode::corrections` and `ConstantNode::number` are.
+    std::array<Rational, Keys.size()> corrections {};
+
+    /// The key this lookup selects with: which specimen variant, apparatus or
+    /// regime is in front of the caller. Runtime state, for the reason the
+    /// file comment gives at length; a key that names no row of `keys` is a
+    /// miss, reported exactly as a value falling in no band is.
+    KeyOf<Keys> key {};
+
+    /// The keys themselves, already validated above -- part of the table's
+    /// *structure*, so a formula whose table is wrong is a compile error
+    /// naming it.
+    static constexpr KeyTable<KeyOf<Keys>, Keys.size()> keys = Keys;
+    /// The unit each entry of `corrections` is stated in, and this node's own
+    /// declared unit -- the same role `ConstantNode::unit` plays.
+    static constexpr Unit unit = ResultUnit;
+    /// The dimension of `unit`: what this node itself produces. An exact
+    /// lookup stands where a number of *this* dimension stands.
+    static constexpr Dimension dimension = ResultUnit.dimension;
+};
+
+/// Declares an exact lookup: `exact_lookup<Shapes, unit::One>(shape,
+/// { rat(1), rat(97, 100), rat(92, 100) })`.
+///
+/// `Keys` and `ResultUnit` are deliberately not deduced, for the reason
+/// `banded_lookup` leaves its structural parameters unstated at the argument
+/// list: a table's structure is the author's declared intent, not something
+/// inferred from whatever the corrections happen to look like.
+///
+/// `key`'s type is `KeyOf<Keys>` exactly -- not a deduced parameter with a
+/// `static_assert` behind it. Handing this an enumerator of the wrong
+/// enumeration is then the compiler's own conversion diagnostic, which names
+/// both enumerations; a library guard here could only restate that less well.
+///
+/// `corrections` is the same `Corrections<N>` a banded lookup takes, so a
+/// short braced list is refused identically -- see that type for why a bare
+/// `std::array<Rational, N>` would not be.
+template <KeyTable Keys, Unit ResultUnit>
+[[nodiscard]] constexpr ExactLookupNode<Keys, ResultUnit> exact_lookup(KeyOf<Keys> key,
+                                                                       Corrections<Keys.size()> corrections) noexcept
+{
+    return ExactLookupNode<Keys, ResultUnit> { {}, corrections.values, key };
+}
+
+/// Looks the node's key up in its table. A key that names a row produces that
+/// row's correction; a key that names none is reported as
+/// `ArithmeticError::DomainError` -- never a default, never the first row --
+/// the identical mechanism `BandedLookupNode` reports an out-of-range value
+/// with, and see the file comment for why that is the honest answer rather
+/// than a euphemism.
+///
+/// There is no absence case to propagate, and that is not an omission: an
+/// exact lookup has no operand and reads nothing from the environment, so it
+/// is always either a hit or a miss, exactly as `ConstantNode` is always a
+/// value. Absence is a fact about a measurement, and this node has none.
+template <typename Rep = Rational, KeyTable Keys, Unit ResultUnit, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ExactLookupNode<Keys, ResultUnit> const& node,
+                                                           Env const&,
+                                                           Sink sink = {}) noexcept
+{
+    sink.entered(node);
+
+    if constexpr (!std::is_same_v<Rep, Rational>)
+    {
+        // See the file comment: the lookup family evaluates in `Rational`
+        // only, so both kinds answer in one representation rather than each
+        // in whichever one happens to be legal for it. The message says "this
+        // representation" rather than naming a specific type it might be
+        // wrong about -- the instantiation backtrace already names whatever
+        // `Rep` the caller actually asked for. Dependent on `Rep` so this
+        // fires only when this function is actually instantiated with a
+        // non-`Rational` `Rep`, not merely declared -- the same trick
+        // `RepRounding<double>::round_in` uses.
+        static_assert(sizeof(Rep) == 0,
+                      "formula: an exact lookup node can only be evaluated with Rep = Rational -- a "
+                      "lookup table's rows are selected in exact arithmetic this representation may "
+                      "not give; evaluate this formula with Rep = Rational instead "
+                      "(checked_evaluate<Result> always does)");
+        return std::unexpected { ArithmeticError::DomainError };
+    }
+    else
+    {
+        std::optional<std::size_t> const index = detail::find_key<Keys>(node.key);
+        if (!index.has_value())
+        {
+            // A miss is not a value: no default, no first-row fallback.
+            // `DomainError` is literally true here -- an exact table's domain
+            // is its set of keys -- not a euphemism. See the file comment.
             Evaluated<Rep> const missed = std::unexpected { ArithmeticError::DomainError };
             sink.produced(node, missed);
             return missed;

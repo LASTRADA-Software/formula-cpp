@@ -194,8 +194,17 @@ formula_add_negative_test(lookup_band_gap
 formula_add_negative_test(lookup_short_corrections
     "this lookup table was given a different number of corrections than it has rows")
 
+formula_add_negative_test(exact_lookup_short_corrections
+    "this lookup table was given a different number of corrections than it has rows")
+
 formula_add_negative_test(lookup_key_dimension_mismatch
     "this banded lookup's key unit does not measure the dimension of the expression whose value selects a band")
+
+formula_add_negative_test(exact_lookup_duplicate_key
+    "formula: this exact lookup table declares the same key twice")
+
+formula_add_negative_test(exact_lookup_unscoped_key
+    "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
