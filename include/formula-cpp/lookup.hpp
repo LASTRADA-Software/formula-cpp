@@ -204,6 +204,27 @@
 /// in the node's own body so it fires whether or not the factory's result is
 /// used.
 ///
+/// **Give each translation unit's key enumeration a name of its own.** A key
+/// enumeration declared in an anonymous namespace -- the ordinary way to write
+/// one in a `.cpp` -- is an internal-linkage type, so `KeyTable<Shape, N>` in
+/// two such files names two *different* specialisations. Clang spells an
+/// anonymous namespace `_GLOBAL__N_1` with no per-translation-unit
+/// discriminator, so if two files' enumerations share a name **and** their
+/// tables share their element values, both template parameter objects mangle to
+/// one name and land in a COMDAT group keyed by it; the linker keeps one group
+/// and the other file's reference points into a discarded section. Measured on
+/// clang 20.1.8, with `nm` over the objects: each such object is emitted as a
+/// *local* symbol yet still carries that shared group name, and the mangling
+/// encodes the element values, which is why tables differing in any value link
+/// cleanly. cl 19.51, clang-cl 22 and g++ 14.2 all link it without complaint.
+///
+/// This is worth a paragraph because of how it fails: a link error with a
+/// dangling relocation, naming a mangled symbol and not the key type, from a
+/// program that compiled without a single diagnostic. Distinct names cost
+/// nothing and end it; an enumeration declared in a *header* has external
+/// linkage instead, in which case both files name one type and one
+/// specialisation and the question does not arise.
+///
 /// **A table's own well-formedness is that no key repeats.** That is the
 /// whole of it: an exact table has no order to violate, no boundary to share
 /// and no coverage to leave a gap in. A repeated key is a real typo a
