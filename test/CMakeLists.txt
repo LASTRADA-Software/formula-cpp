@@ -54,6 +54,7 @@ add_executable(formula-cpp-tests
     escape_tests.cpp
     band_tests.cpp
     lookup_tests.cpp
+    method_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -309,6 +310,26 @@ formula_add_negative_test(interpolating_lookup_descending_breakpoint_no_factory
 # wrong mistake.
 formula_add_negative_test(interpolating_lookup_malformed_breakpoint
     "formula: this interpolating lookup table has a row whose key is not a rational number")
+
+# A method reports one quantity, so its variants must agree on the dimension
+# they report -- they are free to disagree on everything else, and by design
+# they do: the pack's whole point is that the variants are different TYPES.
+#
+# The disagreeing variant sits THIRD OF FOUR, not second of three. This guard
+# compares the first variant against each later one rather than each row
+# against its neighbour, so three variants yield only the comparisons (0,1)
+# and (0,2) and there is no middle one to sit in -- second-of-three lands in
+# the FIRST comparison, and a guard mutated to check only the first of the
+# rest still refuses it. Measured on cl 19.51 against that exact fixture: the
+# mutation survived and the test passed. Third of four lands in (0,2), and
+# both the first-only and last-only mutations then make the case compile.
+#
+# The guard lives in `Variants`'s class body rather than in `variants()`, so
+# this one case covers the no-factory route too -- declaring a `Variants<...>`
+# directly completes the same class. That is measured, not assumed; the task
+# report records the build that showed it.
+formula_add_negative_test(method_variants_disagree
+    "formula: two variants of this method measure different dimensions")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
