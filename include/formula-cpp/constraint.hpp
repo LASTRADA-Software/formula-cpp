@@ -25,9 +25,13 @@
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/sink.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <tuple>
+#include <utility>
 
 namespace formula
 {
@@ -196,7 +200,7 @@ template <Predicate P>
     return Constraint<P> { predicate, verdict, citation };
 }
 
-/// Checks @p constraint against @p environment, mapping `checked_evaluate_
+/// Checks @p subject against @p environment, mapping `checked_evaluate_
 /// predicate`'s three-state result onto the four `ConstraintOutcomeKind`
 /// states: an arithmetic error becomes `Invalid`, an unresolved predicate
 /// (an input was never measured) becomes `NotChecked`, a held predicate
@@ -204,12 +208,19 @@ template <Predicate P>
 /// carrying the constraint's own verdict. That mapping is the whole
 /// implementation -- see the file comment and `ConstraintOutcome` for why
 /// `NotChecked` must never collapse into `Satisfied`.
+///
+/// The parameter is named `subject`, not `constraint` -- the obvious name --
+/// because `formula::constraint(...)` is a free function at namespace scope
+/// and a parameter of the same name would shadow it. `-Wshadow` does not
+/// catch a parameter shadowing a function, so nothing would fail to build,
+/// but it is the same kind of name collision that shipped a `StepKind::Pi`
+/// enumerator shadowing `formula::Pi` in phase 7 and broke GCC alone.
 template <typename Rep = Rational, typename P, typename Env, typename Sink = NullSink>
-[[nodiscard]] constexpr ConstraintOutcome check(Constraint<P> const& constraint, Env const& environment,
+[[nodiscard]] constexpr ConstraintOutcome check(Constraint<P> const& subject, Env const& environment,
                                                 Sink sink = {}) noexcept
 {
     std::expected<std::optional<bool>, ArithmeticError> const result =
-        checked_evaluate_predicate<Rep>(constraint.predicate, environment, sink);
+        checked_evaluate_predicate<Rep>(subject.predicate, environment, sink);
 
     if (!result.has_value())
         return ConstraintOutcome::invalid(result.error());
@@ -220,7 +231,84 @@ template <typename Rep = Rational, typename P, typename Env, typename Sink = Nul
     if (**result)
         return ConstraintOutcome::satisfied();
 
-    return ConstraintOutcome::violated(constraint.verdict);
+    return ConstraintOutcome::violated(subject.verdict);
+}
+
+/// A set of constraints checked together, in declaration order:
+/// `constraints(dimensional_tolerance, replicate_agreement)`.
+///
+/// Bundles `Constraint`s the same way `environment()` bundles entries in
+/// `environment.hpp` -- a factory taking a pack by value, returning a class
+/// template over that pack -- so a reader who already knows `environment(...)`
+/// recognises this immediately. Phase 11 will hold one of these as an
+/// ordinary member of `Method` (spec section 9.1: `formula::constraints(dimensional_
+/// tolerance)` inside `formula::method(...)`), and pass it straight to
+/// `check_all()` below without unpacking it first -- the reason this is a
+/// bundle type rather than only a variadic `check_all(environment, sink,
+/// constraints...)` over a raw pack, which `Method` would then have to
+/// re-expand on every check.
+///
+/// Deliberately a plain aggregate, unlike `Environment`: `Environment` earns
+/// its private state and `get<Q>()` accessor because it enforces "each
+/// quantity supplied at most once" and does type-keyed lookup. A constraint
+/// set has neither invariant to protect -- it is only an ordered bundle to be
+/// walked front to back -- so there is nothing an encapsulated class would
+/// buy here that a public tuple does not.
+template <Predicate... Ps>
+struct ConstraintSet
+{
+    /// The constraints, in the order `constraints(...)` was called with them.
+    /// `check_all()` reports one `ConstraintOutcome` per element of this
+    /// tuple, at the same index -- see `check_all()` for why that order is
+    /// part of the contract.
+    std::tuple<Constraint<Ps>...> items {};
+};
+
+/// Builds a constraint set: `constraints(a, b, c)`. See `ConstraintSet`.
+template <Predicate... Ps>
+[[nodiscard]] constexpr ConstraintSet<Ps...> constraints(Constraint<Ps>... items) noexcept
+{
+    return ConstraintSet<Ps...> { std::tuple<Constraint<Ps>...> { items... } };
+}
+
+namespace detail
+{
+    /// Checks every element of @p items against @p environment and collects
+    /// the results at the matching index of the returned array. The pack
+    /// expansion sits inside a braced-init-list, whose elements C++ requires
+    /// to be evaluated in the order written -- so this also evaluates the
+    /// constraints in declaration order, though `check_all()`'s safety
+    /// property (every constraint evaluated) holds regardless of order.
+    template <typename Rep, typename Env, typename Sink, typename... Ps, std::size_t... Is>
+    [[nodiscard]] constexpr std::array<ConstraintOutcome, sizeof...(Ps)> check_all_impl(
+        std::tuple<Constraint<Ps>...> const& items, Env const& environment, Sink sink,
+        std::index_sequence<Is...>) noexcept
+    {
+        return { check<Rep>(std::get<Is>(items), environment, sink)... };
+    }
+} // namespace detail
+
+/// Checks every constraint in @p set against @p environment and returns one
+/// `ConstraintOutcome` per constraint, at the same index it was declared at
+/// in `constraints(...)` -- so the nth result answers for the nth constraint,
+/// and a reader can match them up without re-deriving which is which.
+///
+/// **Every constraint is evaluated. There is no short-circuit.** A specimen
+/// can fail two checks at once, and a report naming only the first sends
+/// someone back for a second round of testing they should not have needed.
+/// This is deliberately the opposite of `when()` in `conditional.hpp`, which
+/// evaluates only the branch it takes -- and the reason differs rather than
+/// the rule being inconsistent: `when()` skips a branch because evaluating it
+/// could raise an arithmetic error that has nothing to do with the answer,
+/// whereas every constraint *is* about the answer, so skipping one to save
+/// work would be discarding an answer the caller asked for, not avoiding a
+/// meaningless one.
+template <typename Rep = Rational, typename... Ps, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr std::array<ConstraintOutcome, sizeof...(Ps)> check_all(ConstraintSet<Ps...> const& set,
+                                                                               Env const& environment,
+                                                                               Sink sink = {}) noexcept
+{
+    return detail::check_all_impl<Rep>(set.items, environment, sink, std::index_sequence_for<Ps...> {});
 }
 
 } // namespace formula
