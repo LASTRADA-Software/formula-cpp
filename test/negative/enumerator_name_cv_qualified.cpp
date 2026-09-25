@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: EnumeratorName is specialised for a const- or volatile-qualified enumeration
+// EXPECT: formula: EnumeratorName is specialised for a const-qualified enumeration
 //
 // An EnumeratorName specialisation written for `QualifiedShape const`. The
 // library only ever asks `EnumeratorName<QualifiedShape>` -- a key's type is

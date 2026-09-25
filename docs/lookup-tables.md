@@ -405,7 +405,8 @@ The rules are few, and each is enforced:
   own name. A `switch` that falls off its end without returning is not usable
   in a constant expression, and is refused rather than read as empty.
 - **What `of` returns must be readable at compile time** — a string literal,
-  or a view of a `constexpr` array — which is what guarantees it has static
+  or a view of a namespace-scope or `static` `constexpr` array (one local to
+  `of` is a local buffer, and is refused) — which is what guarantees it has static
   storage duration. A trace keeps the view for as long as the trace lives,
   which may be long after the formula that recorded it is gone. A view of a
   destroyed local buffer, of a `std::string` returned by value, of a mutable
@@ -415,11 +416,15 @@ The rules are few, and each is enforced:
   `consteval`, so the compiler refuses such a view in its own words too, which
   is where g++ 13 catches the local-buffer case.
 - **Declare the specialization next to the enumeration, before anything uses
-  it, and on the unqualified type.** A specialization the translation unit
-  cannot see when a name is first asked for is, like any trait's, simply not
-  there, and the enumerator's own name is used with nothing to say so.
-  `EnumeratorName<LookupExampleCuring const>` is refused outright: the library
-  never asks about the qualified type, so it could never take effect.
+  it, and on the unqualified type.** Declared later in the same file than a
+  use, it is normally a compile error ("specialization after instantiation" —
+  measured on all four compilers; cl alone lets a use inside a never-used
+  template through). Declared in a header another file does not include, it is
+  simply not there for that file, which uses the enumerator's own name with
+  nothing to say so. `EnumeratorName<LookupExampleCuring const>`, with no
+  specialization for the unqualified type, is refused outright: the library
+  never asks about the qualified type, so it could never take effect. A
+  constrained partial specialization covering every enumeration is fine.
 - **A specialization the library can see but cannot read is refused, never
   ignored.** A misspelt `of`, one that is not `constexpr`, or one returning the
   wrong type is a compile error in the library's own words — "this EnumeratorName

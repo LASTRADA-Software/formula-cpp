@@ -3,8 +3,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <concepts>
 #include <cstdint>
 #include <string_view>
+#include <type_traits>
 
 // Every enumeration here is named for this file -- see `lookup.hpp`'s note on
 // giving each translation unit's key enumeration a name of its own. None of
@@ -118,7 +120,37 @@ enum class NamingPartial
     Spelled,
     Unspelled,
 };
+
+/// An enumeration whose spelling comes from the codebase's own `to_string`,
+/// found by argument-dependent lookup, through the generic bridge below.
+enum class NamingBridged
+{
+    Alpha,
+    Beta,
+};
+
+[[nodiscard]] constexpr std::string_view naming_to_string(NamingBridged value) noexcept
+{
+    return value == NamingBridged::Alpha ? "alpha, bridged" : "";
+}
 } // namespace
+
+/// A constrained partial specialization covering every enumeration that has a
+/// `naming_to_string` -- the ordinary way to bridge a codebase's own
+/// `to_string` into this trait. `std::is_enum_v` is true of a cv-qualified
+/// enumeration too, so this also matches `NamingBridged const`, which must not
+/// be mistaken for a specialization of the qualified type alone.
+template <typename E>
+    requires std::is_enum_v<E> && requires(E value) {
+        { naming_to_string(value) } -> std::convertible_to<std::string_view>;
+    }
+struct formula::EnumeratorName<E>
+{
+    static constexpr std::string_view of(E value) noexcept
+    {
+        return naming_to_string(value);
+    }
+};
 
 template <>
 struct formula::EnumeratorName<NamingCustomized>
@@ -270,4 +302,15 @@ TEST_CASE("a char- or bool-based enumeration's non-enumerator has no name either
     // `true`. Kills the rule that a run right after `)` is a cast's value, on
     // cl; clang and GCC print `(NamingFlag)1`, which the digit rule catches.
     STATIC_REQUIRE(enumerator_name<static_cast<NamingFlag>(true)>().empty());
+}
+
+TEST_CASE("a generic partial specialization over every enumeration is a customization, not a cv-qualified one",
+          "[enumerator]")
+{
+    // The bridge matches `NamingBridged const` as well as `NamingBridged`, so
+    // a cv-qualification check that looked only at the qualified form would
+    // refuse every name here with a message that is false. Kills that check;
+    // this case is a compile error under it.
+    STATIC_REQUIRE(enumerator_name<NamingBridged::Alpha>() == "alpha, bridged");
+    STATIC_REQUIRE(enumerator_name<NamingBridged::Beta>() == "Beta");
 }

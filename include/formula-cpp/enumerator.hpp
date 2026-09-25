@@ -76,15 +76,27 @@ namespace detail
 ///
 /// **Declare the specialization next to the enumeration, before anything uses
 /// it, and on the unqualified type.** That promise covers a specialization the
-/// library can see; it cannot cover one it cannot. Like every trait, a
-/// specialization declared after the first `render()` or trace that asks for
-/// the name -- or in a header that translation unit does not include -- is
-/// simply not there when the name is computed, and the enumerator's own name
-/// is used instead, with nothing to say so. (A specialization declared after
-/// an implicit instantiation is ill-formed, no diagnostic required.) The
-/// cv-qualified form, `EnumeratorName<Shape const>`, is refused with this
-/// library's message: the library only ever asks about the unqualified type,
-/// so such a specialization could never take effect.
+/// library can see; it cannot cover one it cannot.
+///
+///   - **Later in the same translation unit** than a use, it is normally a
+///     hard error, because any use of `enumerator_name` has already
+///     instantiated `EnumeratorName<Shape>`: "explicit specialization ...
+///     after instantiation" from clang and clang-cl, "specialization ... after
+///     instantiation" from GCC, C2908 from cl. Measured with the use at
+///     namespace scope, in an inline function, and in a function template that
+///     is never instantiated. cl alone accepts the last of those and then uses
+///     the specialization -- it defers the template body -- while clang,
+///     clang-cl and GCC reject it too.
+///   - **In a header another translation unit does not include**, it is simply
+///     not there when that unit computes a name, and that unit uses the
+///     enumerator's own name with nothing to say so. Two units disagreeing
+///     about a specialization is ill-formed, no diagnostic required, as for
+///     any trait.
+///
+/// The const-qualified form, `EnumeratorName<Shape const>` with no specialization
+/// for `Shape` itself, is refused with this library's message: the library
+/// only ever asks about the unqualified type, so such a specialization could
+/// never take effect.
 ///
 /// **Return an empty view to leave an enumerator alone.** A specialization
 /// may cover some enumerators and return `{}` for the rest; those fall back
@@ -93,7 +105,9 @@ namespace detail
 /// read as empty.
 ///
 /// **What `of` returns must be readable at compile time, and so have static
-/// storage duration** -- a string literal, or a view of a `constexpr` array.
+/// storage duration** -- a string literal, or a view of a namespace-scope or
+/// `static` `constexpr` array. A `constexpr` array local to `of` is a local
+/// buffer like any other, and is refused.
 /// A trace keeps the view (`Step::lookupKeyName`, `trace.hpp`) for as long as
 /// the trace lives, which may be long after the formula that recorded it is
 /// gone. This is enforced, not merely requested, by three independent gates,
@@ -200,12 +214,15 @@ struct RequireEnumeratorName
 
     // `!EnumeratorNameCustomization || ...` so a wrongly shaped specialization
     // gets the message above and not this one as well --
-    // `enumerator_name_misspelt_of.cpp` REJECTs this message to pin that.
+    // `enumerator_name_misspelt_of.cpp` REJECTs this message to pin that,
+    // on cl and GCC; clang stops at the first failed static_assert of a class
+    // template instantiation, so it never shows this one either way.
     static_assert(!EnumeratorNameCustomization<decltype(E)> || detail::ConstantEnumeratorName<E>,
                   "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression for this "
                   "enumerator, or returns a view whose characters cannot be read at compile time -- a "
-                  "string literal or a constexpr array can be, a local buffer, a std::string returned by "
-                  "value or a non-constexpr array cannot, and a trace keeps the view; the enumerator "
+                  "string literal or a namespace-scope or static constexpr array can be, a local buffer "
+                  "(constexpr or not), a std::string returned by value or a non-constexpr array cannot, and "
+                  "a trace keeps the view; the enumerator "
                   "appears in this diagnostic as template argument E of RequireEnumeratorName -- make of() "
                   "constexpr, return a string literal, and return an empty string_view for an enumerator "
                   "it does not spell");
@@ -214,10 +231,26 @@ struct RequireEnumeratorName
     static constexpr bool value = true;
 };
 
-/// Fails to compile when `EnumeratorName` is specialized for a cv-qualified
-/// @p Enum -- `EnumeratorName<Shape const>`. The library only ever asks
-/// `EnumeratorName<Shape>`, so that specialization could never take effect,
-/// and the author's wording would be silently absent.
+/// Fails to compile when `EnumeratorName` is specialized for a const-qualified
+/// @p Enum -- `EnumeratorName<Shape const>` -- and not for @p Enum itself.
+/// The library only ever asks `EnumeratorName<Shape>`, so that specialization
+/// could never take effect, and the author's wording would be silently absent.
+///
+/// **Only when the unqualified form is not customized.** A constrained partial
+/// specialization covering every enumeration -- say one bridging to a
+/// codebase's own `to_string` -- also matches `Shape const`, since
+/// `std::is_enum_v` is true of a cv-qualified enumeration; it customizes
+/// `Shape` as well, and must not be refused.
+///
+/// **`volatile` is deliberately not checked.** Asking whether
+/// `EnumeratorName<Shape volatile>` is specialized instantiates it, and for
+/// exactly that generic bridge that declares `of(Shape volatile)`: a
+/// volatile-qualified parameter, which clang and clang-cl report as
+/// deprecated (`-Wdeprecated-volatile`, on by default); g++ 13 and cl stay
+/// quiet. The check would turn an ordinary bridge into a build failure under
+/// `-Werror` on clang, to catch a specialization nobody writes. Measured on
+/// all four; with this library's own warning flags it failed to compile the
+/// bridge test in `enumerator_tests.cpp` on clang 20.
 ///
 /// Instantiated by `enumerator_name` for every enumerator it names,
 /// customized or not, since the point is to catch a specialization that
@@ -225,9 +258,8 @@ struct RequireEnumeratorName
 template <typename Enum>
 struct RequireUnqualifiedEnumeratorName
 {
-    static_assert(!detail::customizesEnumeratorName<Enum const> && !detail::customizesEnumeratorName<Enum volatile>
-                      && !detail::customizesEnumeratorName<Enum const volatile>,
-                  "formula: EnumeratorName is specialised for a const- or volatile-qualified enumeration, "
+    static_assert(detail::customizesEnumeratorName<Enum> || !detail::customizesEnumeratorName<Enum const>,
+                  "formula: EnumeratorName is specialised for a const-qualified enumeration, "
                   "which the library never asks about, so it would silently never be used; the enumeration "
                   "appears in this diagnostic as template argument Enum of RequireUnqualifiedEnumeratorName "
                   "-- specialise EnumeratorName for the unqualified enumeration instead");

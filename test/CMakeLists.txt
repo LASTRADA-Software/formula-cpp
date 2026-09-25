@@ -377,7 +377,9 @@ formula_add_negative_test(exact_lookup_unscoped_key
 # The REJECTs pin the two "report it once" guards in enumerator.hpp. The
 # first REJECT of the misspelt case is the constant-expression message, which
 # `!EnumeratorNameCustomization || ...` keeps from following the shape
-# message. The rest are each compiler's own wording for the raw call that the
+# message -- pinned on cl and GCC only; clang stops at the first failed
+# static_assert of a class template instantiation, so it never shows the
+# second message with or without the guard. The rest are each compiler's own wording for the raw call that the
 # `if constexpr (detail::ConstantEnumeratorName<E>)` guard keeps from
 # following either message -- measured with that guard removed, on cl,
 # clang-cl, clang and GCC, each of which emits exactly one of them.
@@ -394,7 +396,7 @@ formula_add_negative_test(enumerator_name_not_constexpr
            "expression did not evaluate to a constant")
 
 formula_add_negative_test(enumerator_name_cv_qualified
-    "formula: EnumeratorName is specialised for a const- or volatile-qualified enumeration")
+    "formula: EnumeratorName is specialised for a const-qualified enumeration")
 
 formula_add_negative_test(enumerator_name_dangling_view
     "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression")
