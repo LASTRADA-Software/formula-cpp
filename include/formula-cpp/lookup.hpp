@@ -83,7 +83,7 @@
 ///      an alias for `std::expected<std::optional<Rep>, ArithmeticError>`.
 ///      There is no path from there to `Outcome<Result>::invalid(...)`:
 ///      `checked_evaluate` only ever builds `Outcome<Result>::empty()` or
-///      `::value(...)` itself, and an `ArithmeticError` returned by any node
+///      `::%value(...)` itself, and an `ArithmeticError` returned by any node
 ///      propagates out of `Outcome` entirely, as the outer `std::expected`'s
 ///      error. Reaching `Outcome::invalid` from inside a node's own
 ///      `checked_evaluate_si` would mean widening `Evaluated<Rep>` for every
@@ -790,8 +790,19 @@ using KeyTable = std::array<Key, N>;
 /// The key type of a `KeyTable` given as a template argument -- `Shape` for a
 /// `KeyTable<Shape, 3>`. Written once here because it is needed in three
 /// places (the node's member, the factory's parameter, `find_key`'s
-/// parameter) and spelling `typename decltype(Keys)::value_type` in each is
+/// parameter) and spelling `typename decltype(Keys)::%value_type` in each is
 /// how one of them ends up subtly different from the others.
+///
+/// The `%` is Doxygen's "do not try to link this" prefix, and it is load
+/// bearing rather than a typo: **Doxygen 1.9.8 -- the version `pages.yml`
+/// installs -- reads a leading `::` as an explicit link request even inside a
+/// code span**, and fails the build under `WARN_AS_ERROR = FAIL_ON_WARNINGS`
+/// when it cannot resolve the name. Newer Doxygen does not, which is exactly
+/// how this reached the branch: it was verified against 1.18.0 on a
+/// contributor's machine and was red for the one CI actually runs. The `%` is
+/// stripped from the generated HTML, so nothing leaks onto the page. Same
+/// treatment, same reason, on `Outcome`'s `::%value(...)` in this file's
+/// comment above.
 template <KeyTable Keys>
 using KeyOf = typename std::remove_cvref_t<decltype(Keys)>::value_type;
 
