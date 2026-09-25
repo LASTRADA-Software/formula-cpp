@@ -98,6 +98,16 @@ namespace formula
 
 namespace detail
 {
+    /// Whether @p Tag passes `RequirePlainClassTag`, asked without firing it.
+    ///
+    /// The ONLY statement of the rule: `RequirePlainClassTag` asserts this
+    /// rather than restating it, so that the gate in `RequireSelectableTag`
+    /// cannot drift from the guard it gates. With two copies, a guard
+    /// tightened in one place would leave the gate open for the newly refused
+    /// tag, and the no-match message would fire on top of it.
+    template <typename Tag>
+    inline constexpr bool isPlainClassTag = std::is_class_v<Tag> && std::is_same_v<Tag, std::remove_cv_t<Tag>>;
+
     /// Fails to compile when a tag is not a class type free of `const` and
     /// `volatile` -- whether a variant declares it or `evaluate_method` is
     /// asked to select by it, which is why its message says "this tag" and
@@ -116,7 +126,7 @@ namespace detail
     template <typename Tag>
     struct RequirePlainClassTag
     {
-        static_assert(std::is_class_v<Tag> && std::is_same_v<Tag, std::remove_cv_t<Tag>>,
+        static_assert(isPlainClassTag<Tag>,
                       "formula: this tag is not a plain class type; a tag names what a variant "
                       "applies to, so it must be a class type without const or volatile "
                       "-- not void, a fundamental type or a reference, and not const Cube where "
@@ -535,10 +545,6 @@ namespace detail
 
         static constexpr bool value = true;
     };
-
-    /// Whether @p Tag passes `RequirePlainClassTag`, asked without firing it.
-    template <typename Tag>
-    inline constexpr bool isPlainClassTag = std::is_class_v<Tag> && std::is_same_v<Tag, std::remove_cv_t<Tag>>;
 
     /// The two rules a selection tag obeys, asked in an order that matters.
     ///
