@@ -329,14 +329,22 @@ it, and a key is named only among the keys its own table declares. What is
 shown instead is its underlying *value*, not an index: an author who numbers
 theirs `{ Cube = 3, Cylinder = 7, Prism = 11, DrilledCore = 13 }` — as the
 example above does, for exactly this reason — sees 13, a number that appears in
-their own source and nowhere in a row count. A name is an identifier and cannot
-begin with a digit, so the two spellings cannot be confused.
+their own source and nowhere in a row count. A reflected name is an identifier
+and cannot begin with a digit, so the two spellings cannot be confused — unless
+you customize a name into a number yourself (a row spelled `"150"`, below, reads
+exactly like a value).
+
+A table may also declare a row under a value that names no enumerator —
+`static_cast<LookupExampleShape>(9)` is a legal key — and that row, and a hit
+on it, show the value too, because there is no name to show.
 
 Two things follow from the name being the *compiler's* view of the enumerator:
 two enumerators declared with the same value are one value, and both are shown
 under the name of the first one declared; and the extraction has been measured
-on cl 19.51, clang-cl 22, clang 20 and g++ 13. A compiler whose signature format
-it does not recognise gets the value fallback rather than a guess.
+on cl 19.51, clang-cl 22, clang 20 and g++ 13. A compiler whose signature does
+not end the way the extraction expects gets the value fallback rather than a
+guess; that is the only format change it detects, and the test suite is what
+would notice any other.
 
 ### Spelling a key the published table's way
 
@@ -396,22 +404,33 @@ The rules are few, and each is enforced:
 - **Return an empty view to leave an enumerator alone.** `Air` falls back to its
   own name. A `switch` that falls off its end without returning is not usable
   in a constant expression, and is refused rather than read as empty.
-- **What `of` returns must have static storage duration** — a string literal,
-  or a view of a `static constexpr` array. A trace keeps the view for as long as
-  the trace lives, which may be long after the formula that recorded it is gone.
-  The library reads every character of the view in a constant expression, and
-  a view of a destroyed local buffer, of a `std::string` returned by value, or
-  of a mutable static cannot be read there, so each is refused.
-- **A specialization the library cannot read is refused, never ignored.** A
-  misspelt `of`, one that is not `constexpr`, or one returning the wrong type is
-  a compile error in the library's own words — "this EnumeratorName
+- **What `of` returns must be readable at compile time** — a string literal,
+  or a view of a `constexpr` array — which is what guarantees it has static
+  storage duration. A trace keeps the view for as long as the trace lives,
+  which may be long after the formula that recorded it is gone. A view of a
+  destroyed local buffer, of a `std::string` returned by value, of a mutable
+  static, or of a `const char name[]` that is not `constexpr` is refused. The
+  library reads every character of the view in a constant expression and
+  refuses in its own words on cl, clang-cl and clang; `enumerator_name` is also
+  `consteval`, so the compiler refuses such a view in its own words too, which
+  is where g++ 13 catches the local-buffer case.
+- **Declare the specialization next to the enumeration, before anything uses
+  it, and on the unqualified type.** A specialization the translation unit
+  cannot see when a name is first asked for is, like any trait's, simply not
+  there, and the enumerator's own name is used with nothing to say so.
+  `EnumeratorName<LookupExampleCuring const>` is refused outright: the library
+  never asks about the qualified type, so it could never take effect.
+- **A specialization the library can see but cannot read is refused, never
+  ignored.** A misspelt `of`, one that is not `constexpr`, or one returning the
+  wrong type is a compile error in the library's own words — "this EnumeratorName
   specialisation does not have the shape the library reads", or
   "EnumeratorName<Enum>::of(E) is not usable in a constant expression". Read as
   "not customized", any of them would silently drop your wording.
 
 A spelling can hold any characters. The Markdown and LaTeX renderings escape
-the name so it shows as written — `\_` and `\*` in Markdown, `\_` and `\%` in
-LaTeX — and the plain rendering and the trace show it untouched.
+the name so it shows as written — `\_` and `\*` in Markdown, `\_`, `\%` and
+`\textless{}` in LaTeX, among others — and the plain rendering and the trace
+show it untouched.
 
 ### Give each translation unit's key enumeration a name of its own
 
