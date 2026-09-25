@@ -671,19 +671,28 @@ namespace unit = formula::unit;
 /// mutation survives whenever *any* axis of a fixture is degenerate and not
 /// only the one that caught the last defect:
 ///
-///  - the widths are 3, 4 and 21 -- unequal, so a renderer computing a band's
-///    extent from the first pair rather than per band is visible;
+///  - the widths are 1/2, 13/2 and 43/2 -- unequal, so a renderer computing a
+///    band's extent from the first pair rather than per band is visible;
 ///  - no bound equals its own row's index, so a bound cannot be confused with
 ///    an index;
 ///  - no bound repeats across rows other than where two bands genuinely share
-///    a boundary, and the shared boundaries (5 and 9) differ from each other,
+///    a boundary, and the shared boundaries (5/2 and 9) differ from each other,
 ///    so "always print the first band's bounds" is visible on every row;
 ///  - the corrections are 19/20, 7/5 and 21/20: three distinct values, none of
-///    them equal to any index, any bound or any other correction.
+///    them equal to any index, any bound or any other correction;
+///  - **not every bound has denominator 1.** A first revision of this fixture
+///    declared every bound as a whole number, and with that fixture
+///    `declared_number_text` could be cut down to `return
+///    std::to_string(numerator);` -- throwing the denominator away outright --
+///    and the entire suite still passed. A published table states bounds like
+///    2.5 mm as readily as 5 mm, so the fixture now does too.
+///  - and one bound is declared **unreduced** (`10/4`), because reducing
+///    through `Rational::make` is a decision this renderer makes and a bound
+///    already in lowest terms cannot tell whether it was made.
 inline constexpr BandTable<3> SizeBands {
-    band(2, 1, 5, 1),  // 2 to under 5 mm
-    band(5, 1, 9, 1),  // 5 to under 9 mm
-    band(9, 1, 30, 1), // 9 to under 30 mm
+    band(2, 1, 10, 4), // 2 to under 5/2 mm -- 10/4 declared, so reduction shows
+    band(5, 2, 9, 1),  // 5/2 to under 9 mm
+    band(9, 1, 61, 2), // 9 to under 61/2 mm
 };
 
 /// The underlying type is fixed and the enumerators are numbered by hand, both
@@ -707,17 +716,26 @@ inline constexpr KeyTable<SpecimenShape, 3> ShapeKeys {
     SpecimenShape::Prism,    // key 5
 };
 
-/// Three breakpoints, spaced unequally (5 then 12) and with no key equal to its
-/// own index, for the reasons `SizeBands` gives.
+/// Three breakpoints, spaced unequally (11/2 then 23/2), with no key equal to
+/// its own index, with the middle key **not** a whole number and declared
+/// **unreduced** -- every reason `SizeBands` gives, and the last two for the
+/// same measured reason: a curve whose every key was an integer could not tell
+/// a renderer that keeps the denominator from one that discards it.
 inline constexpr BreakpointTable<3> CurvePoints {
     breakpoint(2),
-    breakpoint(7),
+    breakpoint(30, 4), // 15/2 -- declared unreduced, and in the middle
     breakpoint(19),
 };
 
 inline constexpr BandTable<0> NoBands {};
 inline constexpr KeyTable<SpecimenShape, 0> NoShapes {};
 inline constexpr BreakpointTable<0> NoPoints {};
+
+/// The other degenerate shape: a table whose only row is simultaneously its
+/// first and its last, and which needs no separator between rows at all.
+inline constexpr BandTable<1> OneBand { band(2, 1, 10, 4) };
+inline constexpr KeyTable<SpecimenShape, 1> OneShape { SpecimenShape::Cylinder };
+inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) };
 
 /// Key unit `mm` (a symbol), result unit `One` (no symbol) -- so this fixture
 /// exercises the unit-bearing side of a row and the bare-number side at once.
@@ -733,17 +751,23 @@ inline constexpr BreakpointTable<0> NoPoints {};
 /// from either end.
 [[nodiscard]] constexpr auto shapeLookup(SpecimenShape shape = SpecimenShape::Cylinder)
 {
-    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4, 5), rat(13, 10) });
+    // The middle correction is a whole number, so that `number_text`'s
+    // whole-number branch is reached through a lookup and not only through a
+    // constant -- and 4 is not the middle row's index, its key, or any bound.
+    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4), rat(13, 10) });
 }
 
 /// Both units bear a symbol here, which neither fixture above does.
 [[nodiscard]] constexpr auto curveLookup()
 {
+    // The middle value is negative -- a correction a published curve may well
+    // subtract -- so a renderer that took a magnitude anywhere is visible, and
+    // `number_text`'s sign handling is reached through a lookup.
     return interpolating_lookup<unit::Millimetre, CurvePoints, unit::Megapascal>(
-        var<Diameter>, { rat(9, 10), rat(23, 20), rat(6, 5) });
+        var<Diameter>, { rat(9, 10), rat(-23, 20), rat(6, 5) });
 }
 
-/// The `index`-th comma-separated field of a rendered call's argument list.
+/// The fields of a rendered call's argument list, split on @p separator.
 ///
 /// **Located by position and by nothing else.** The cross-dialect test below
 /// exists to establish that two dialects name a band the *same way*, and a
@@ -751,10 +775,16 @@ inline constexpr BreakpointTable<0> NoPoints {};
 /// whatever the two dialects said -- it would be comparing each of them to a
 /// literal in the test, not to each other.
 ///
-/// Only valid for a rendering whose own operand contains no `, ` and no
-/// brackets of its own, which is why every caller below uses a bare variable
-/// as the operand.
-[[nodiscard]] std::vector<std::string> callFields(std::string const& text)
+/// The separator is the caller's to state because it is a property of the
+/// dialect, not of the field: LaTeX writes `,\allowbreak ` where the other two
+/// write `, ` (see `detail::lookup_separator`). Passing it in keeps the split
+/// structural -- "the third field", whatever a field happens to say -- rather
+/// than letting one dialect's punctuation leak into a shared helper.
+///
+/// Only valid for a rendering whose own operand contains neither the separator
+/// nor brackets of its own, which is why every caller below uses a bare
+/// variable as the operand.
+[[nodiscard]] std::vector<std::string> callFields(std::string const& text, std::string const& separator)
 {
     std::size_t const open = text.find('(');
     std::size_t const close = text.rfind(')');
@@ -765,10 +795,10 @@ inline constexpr BreakpointTable<0> NoPoints {};
     std::string const inside = text.substr(open + 1, close - open - 1);
     std::vector<std::string> fields;
     std::size_t start = 0;
-    for (std::size_t at = inside.find(", "); at != std::string::npos; at = inside.find(", ", start))
+    for (std::size_t at = inside.find(separator); at != std::string::npos; at = inside.find(separator, start))
     {
         fields.push_back(inside.substr(start, at - start));
-        start = at + 2;
+        start = at + separator.size();
     }
     fields.push_back(inside.substr(start));
     return fields;
@@ -790,36 +820,36 @@ TEST_CASE("render: all three lookup kinds are Nodes, so they need no entry point
 TEST_CASE("render: a banded lookup renders its operand and one field per band", "[render][lookup]")
 {
     CHECK(formula::render<Dialect::Plain>(bandedLookup())
-          == "lookup(d, 2 to under 5 mm gives 19/20, 5 to under 9 mm gives 7/5, 9 to under 30 mm gives 21/20)");
+          == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
     // Markdown differs from plain in exactly one thing -- the backticks the
     // variable already had. The bands are words and numbers, so nothing in
     // them is Markdown's business.
     CHECK(formula::render<Dialect::Markdown>(bandedLookup())
-          == "lookup(`d`, 2 to under 5 mm gives 19/20, 5 to under 9 mm gives 7/5, 9 to under 30 mm gives 21/20)");
+          == "lookup(`d`, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
     CHECK(formula::render<Dialect::LaTeX>(bandedLookup())
-          == "\\operatorname{lookup}(d, \\text{2 to under 5 mm gives 19/20}, \\text{5 to under 9 mm gives 7/5}, "
-             "\\text{9 to under 30 mm gives 21/20})");
+          == "\\operatorname{lookup}(d,\\allowbreak \\text{2 to under 5/2 mm gives 19/20},\\allowbreak \\text{5/2 to under "
+             "9 mm gives 7/5},\\allowbreak \\text{9 to under 61/2 mm gives 21/20})");
     // The default dialect is plain, exactly as for every other node kind.
     CHECK(formula::render(bandedLookup())
-          == "lookup(d, 2 to under 5 mm gives 19/20, 5 to under 9 mm gives 7/5, 9 to under 30 mm gives 21/20)");
+          == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
 }
 
 TEST_CASE("render: an exact lookup renders the key it selects with and one field per row", "[render][lookup]")
 {
     CHECK(formula::render<Dialect::Plain>(shapeLookup())
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
     // Nothing here is a variable, so Markdown has nothing to backtick and the
     // two dialects coincide. That is a fact about this node kind, not an
     // accident: an exact lookup has no operand.
     CHECK(formula::render<Dialect::Markdown>(shapeLookup())
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
     // `key 7` is words, not mathematics, so LaTeX sets the subject as text too
     // -- unlike the other two kinds, whose subject is a real sub-expression.
     CHECK(formula::render<Dialect::LaTeX>(shapeLookup())
-          == "\\operatorname{lookup}(\\text{key 7}, \\text{key 3 gives 31/25 MPa}, \\text{key 7 gives 4/5 MPa}, "
-             "\\text{key 5 gives 13/10 MPa})");
+          == "\\operatorname{lookup}(\\text{key 7},\\allowbreak \\text{key 3 gives 31/25 MPa},\\allowbreak \\text{key 7 "
+             "gives 4 MPa},\\allowbreak \\text{key 5 gives 13/10 MPa})");
     CHECK(formula::render(shapeLookup())
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
 }
 
 TEST_CASE("render: an exact lookup's subject is the key it holds, not a row of its table", "[render][lookup]")
@@ -829,22 +859,22 @@ TEST_CASE("render: an exact lookup's subject is the key it holds, not a row of i
     // fixture's own default selects, so that mistake would pass the test above
     // -- is caught here and nowhere else.
     CHECK(formula::render(shapeLookup(SpecimenShape::Cube))
-          == "lookup(key 3, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key 3, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
     CHECK(formula::render(shapeLookup(SpecimenShape::Prism))
-          == "lookup(key 5, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key 5, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
 }
 
 TEST_CASE("render: an interpolating lookup renders its operand and one field per breakpoint", "[render][lookup]")
 {
     CHECK(formula::render<Dialect::Plain>(curveLookup())
-          == "interpolate(d, at 2 mm gives 9/10 MPa, at 7 mm gives 23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
     CHECK(formula::render<Dialect::Markdown>(curveLookup())
-          == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 7 mm gives 23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
     CHECK(formula::render<Dialect::LaTeX>(curveLookup())
-          == "\\operatorname{interpolate}(d, \\text{at 2 mm gives 9/10 MPa}, \\text{at 7 mm gives 23/20 MPa}, "
-             "\\text{at 19 mm gives 6/5 MPa})");
+          == "\\operatorname{interpolate}(d,\\allowbreak \\text{at 2 mm gives 9/10 MPa},\\allowbreak \\text{at 15/2 mm "
+             "gives -23/20 MPa},\\allowbreak \\text{at 19 mm gives 6/5 MPa})");
     CHECK(formula::render(curveLookup())
-          == "interpolate(d, at 2 mm gives 9/10 MPa, at 7 mm gives 23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
 }
 
 TEST_CASE("render: a band's excluded top and a breakpoint's included one are spelled differently", "[render][lookup]")
@@ -879,6 +909,35 @@ TEST_CASE("render: a band's excluded top and a breakpoint's included one are spe
     CHECK(banded.find("at 30 mm") == std::string::npos);
 }
 
+TEST_CASE("render: a declared bound keeps its denominator and is reduced, in every kind", "[render][lookup]")
+{
+    // A first revision of these fixtures declared every bound and every
+    // breakpoint as a whole number. With that, `detail::declared_number_text`
+    // could be cut down to `return std::to_string(numerator);` -- discarding
+    // the denominator outright -- and the whole suite still passed. The code
+    // was right; the fixture was degenerate on an axis nobody had looked at.
+    //
+    // So: a bound that is not whole (5/2), one declared unreduced (10/4, which
+    // must come back as 5/2 and not as 10/4), and the same on the breakpoint
+    // side (30/4 -> 15/2). Asserted here as its own case as well as inside the
+    // full-text cases above, because a reader of a failure should be told
+    // which property broke.
+    std::string const banded = formula::render(bandedLookup());
+    CHECK(banded.find("2 to under 5/2 mm") != std::string::npos);
+    CHECK(banded.find("5/2 to under 9 mm") != std::string::npos);
+    CHECK(banded.find("10/4") == std::string::npos);
+
+    std::string const curve = formula::render(curveLookup());
+    CHECK(curve.find("at 15/2 mm") != std::string::npos);
+    CHECK(curve.find("30/4") == std::string::npos);
+
+    // And the two branches of `number_text` a lookup can reach: a whole-number
+    // correction and a negative one, neither of which the first revision of
+    // these fixtures had either.
+    CHECK(formula::render(shapeLookup()).find("gives 4 MPa") != std::string::npos);
+    CHECK(curve.find("gives -23/20 MPa") != std::string::npos);
+}
+
 TEST_CASE("render: every lookup kind nests inside a product and a power without a bracket of its own",
           "[render][lookup]")
 {
@@ -887,31 +946,31 @@ TEST_CASE("render: every lookup kind nests inside a product and a power without 
     // answer and no override is needed, exactly as for `round`. What that
     // claim is worth is what these cases measure.
     CHECK(formula::render(var<Strength> * bandedLookup())
-          == "f * lookup(d, 2 to under 5 mm gives 19/20, 5 to under 9 mm gives 7/5, 9 to under 30 mm gives 21/20)");
+          == "f * lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
     CHECK(formula::render(formula::pow<2>(bandedLookup()))
-          == "lookup(d, 2 to under 5 mm gives 19/20, 5 to under 9 mm gives 7/5, 9 to under 30 mm gives 21/20)^2");
+          == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)^2");
 
     CHECK(formula::render(var<Strength> * shapeLookup())
-          == "f * lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)");
+          == "f * lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
     CHECK(formula::render(formula::pow<2>(shapeLookup()))
-          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)^2");
+          == "lookup(key 7, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)^2");
 
     CHECK(formula::render(var<Strength> * curveLookup())
-          == "f * interpolate(d, at 2 mm gives 9/10 MPa, at 7 mm gives 23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "f * interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
     CHECK(formula::render(formula::pow<2>(curveLookup()))
-          == "interpolate(d, at 2 mm gives 9/10 MPa, at 7 mm gives 23/20 MPa, at 19 mm gives 6/5 MPa)^2");
+          == "interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)^2");
 
     // Markdown and LaTeX too, since the bracketing decision is dialect-wide
     // and a power is the one context where a two-token atom went wrong before
     // (see `precedence_of(ConstantNode)`).
     CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(curveLookup()))
-          == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 7 mm gives 23/20 MPa, at 19 mm gives 6/5 MPa)^2");
+          == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)^2");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(shapeLookup()))
-          == "\\operatorname{lookup}(\\text{key 7}, \\text{key 3 gives 31/25 MPa}, \\text{key 7 gives 4/5 MPa}, "
-             "\\text{key 5 gives 13/10 MPa})^{2}");
+          == "\\operatorname{lookup}(\\text{key 7},\\allowbreak \\text{key 3 gives 31/25 MPa},\\allowbreak \\text{key 7 "
+             "gives 4 MPa},\\allowbreak \\text{key 5 gives 13/10 MPa})^{2}");
 }
 
-TEST_CASE("render: an empty table says so rather than rendering a call with nothing in it", "[render][lookup]")
+TEST_CASE("render: a table with no rows says so, and a table with one row renders it", "[render][lookup]")
 {
     // All three empty tables are valid and all three always miss (`band.hpp`,
     // `lookup.hpp`). `lookup(d)` would show a reader a complete-looking call
@@ -919,12 +978,24 @@ TEST_CASE("render: an empty table says so rather than rendering a call with noth
     // the operand a published page dropped in phase 8.
     CHECK(formula::render(banded_lookup<unit::Millimetre, NoBands, unit::One>(var<Diameter>, {}))
           == "lookup(d, no rows)");
-    CHECK(formula::render(exact_lookup<NoShapes, unit::One>(SpecimenShape::Beam, {})) == "lookup(key 11, no rows)");
+    CHECK(formula::render(exact_lookup<NoShapes, unit::One>(SpecimenShape::Beam, {}))
+          == "lookup(key 11, no rows)");
     CHECK(formula::render(interpolating_lookup<unit::Millimetre, NoPoints, unit::One>(var<Diameter>, {}))
           == "interpolate(d, no rows)");
 
     CHECK(formula::render<Dialect::LaTeX>(banded_lookup<unit::Millimetre, NoBands, unit::One>(var<Diameter>, {}))
-          == "\\operatorname{lookup}(d, \\text{no rows})");
+          == "\\operatorname{lookup}(d,\\allowbreak \\text{no rows})");
+
+    // One row is the other degenerate shape: the only row is simultaneously
+    // the first and the last, and there is no separator between rows for a
+    // renderer to get wrong -- so a table of one is the case that tells a
+    // "say so when empty" branch from a "say so when fewer than two" one.
+    CHECK(formula::render(banded_lookup<unit::Millimetre, OneBand, unit::One>(var<Diameter>, { rat(19, 20) }))
+          == "lookup(d, 2 to under 5/2 mm gives 19/20)");
+    CHECK(formula::render(exact_lookup<OneShape, unit::One>(SpecimenShape::Cylinder, { rat(19, 20) }))
+          == "lookup(key 7, key 7 gives 19/20)");
+    CHECK(formula::render(interpolating_lookup<unit::Millimetre, OnePoint, unit::One>(var<Diameter>, { rat(19, 20) }))
+          == "interpolate(d, at 15/2 mm gives 19/20)");
 }
 
 TEST_CASE("render: a lookup states the expression, never that the expression found something", "[render][lookup]")
@@ -935,7 +1006,7 @@ TEST_CASE("render: a lookup states the expression, never that the expression fou
     // it shows the reader the key and the rows and lets them see there is no
     // match, which is exactly what a rendered formula is for.
     CHECK(formula::render(shapeLookup(SpecimenShape::Beam))
-          == "lookup(key 11, key 3 gives 31/25 MPa, key 7 gives 4/5 MPa, key 5 gives 13/10 MPa)");
+          == "lookup(key 11, key 3 gives 31/25 MPa, key 7 gives 4 MPa, key 5 gives 13/10 MPa)");
 }
 
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")
@@ -947,6 +1018,58 @@ TEST_CASE("render: a documented lookup renders as the bare lookup, like every ot
     constexpr auto cited = formula::documented(bandedLookup(), { .title = "Invented Method 7, table 2" });
     CHECK(formula::render(cited) == formula::render(bandedLookup()));
     CHECK(formula::render(cited).find("Invented Method 7") == std::string::npos);
+}
+
+TEST_CASE("render: a LaTeX lookup can be broken across lines, and never breaks itself", "[render][lookup][latex]")
+{
+    // Each row is one atomic `\text{...}` and TeX puts no break penalty at a
+    // math comma, so without `\allowbreak` a rendered lookup has NO legal
+    // break point at any row count: it does not wrap, it runs off the line and
+    // -- for a table of six rows -- off the paper, with the reader told
+    // nothing is missing. Typeset with tectonic 0.17.0, worst overfull box
+    // across 22 renderings -- these tests' 20, plus a six-row table and its
+    // square -- inline in prose: 721pt before, 88pt after.
+    //
+    // Asserted on the emitted text rather than on a PDF, because a test that
+    // needed a LaTeX toolchain could not run on this project's CI -- so this
+    // pins the mechanism the measurement showed to work, and the measurement
+    // itself lives in `detail::lookup_separator`'s comment.
+    std::string const banded = formula::render<Dialect::LaTeX>(bandedLookup());
+    std::string const exact = formula::render<Dialect::LaTeX>(shapeLookup());
+    std::string const curve = formula::render<Dialect::LaTeX>(curveLookup());
+
+    auto const breakPoints = [](std::string const& text) {
+        std::size_t count = 0;
+        for (std::size_t at = text.find(",\\allowbreak "); at != std::string::npos;
+             at = text.find(",\\allowbreak ", at + 1))
+            ++count;
+        return count;
+    };
+
+    // One per field separator: three rows means three separators, the first of
+    // them after the subject. A renderer that put `\allowbreak` only between
+    // rows, or only once, is a different number.
+    CHECK(breakPoints(banded) == 3);
+    CHECK(breakPoints(exact) == 3);
+    CHECK(breakPoints(curve) == 3);
+    // And no bare comma is left without one.
+    CHECK(banded.find(", ") == std::string::npos);
+
+    // The other half of the display-math decision: a lookup never emits `\\`.
+    // `\\` is the only thing that would break a DISPLAY, and it is a hard
+    // LaTeX error in `$...$` and `\[...\]` -- so a caller who needs a wide
+    // table broken in a display reaches for breqn's `dmath` (measured: zero
+    // overfull boxes), and this library emits nothing that could break their
+    // build to get there. See `detail::lookup_separator`.
+    CHECK(banded.find("\\\\") == std::string::npos);
+    CHECK(exact.find("\\\\") == std::string::npos);
+    CHECK(curve.find("\\\\") == std::string::npos);
+
+    // Plain and Markdown carry none of it: `\allowbreak` is a LaTeX control
+    // word, and leaking one into a terminal or a web page would be the
+    // dialect-blind mistake this library keeps testing for.
+    CHECK(formula::render<Dialect::Plain>(bandedLookup()).find("allowbreak") == std::string::npos);
+    CHECK(formula::render<Dialect::Markdown>(bandedLookup()).find("allowbreak") == std::string::npos);
 }
 
 TEST_CASE("render: the three dialects name a lookup's rows the same way, for all three kinds",
@@ -970,9 +1093,10 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
     // LaTeX's field to plain's field *modulo that wrapper* compares the two
     // renderers' choice of words, which is the thing that can drift.
     auto const dialectsAgree = [](auto const& node, std::size_t fieldCount) {
-        std::vector<std::string> const plain = callFields(formula::render<Dialect::Plain>(node));
-        std::vector<std::string> const markdown = callFields(formula::render<Dialect::Markdown>(node));
-        std::vector<std::string> const latex = callFields(formula::render<Dialect::LaTeX>(node));
+        std::vector<std::string> const plain = callFields(formula::render<Dialect::Plain>(node), ", ");
+        std::vector<std::string> const markdown = callFields(formula::render<Dialect::Markdown>(node), ", ");
+        std::vector<std::string> const latex =
+            callFields(formula::render<Dialect::LaTeX>(node), ",\\allowbreak ");
 
         REQUIRE(plain.size() == fieldCount);
         REQUIRE(markdown.size() == fieldCount);
@@ -1003,9 +1127,10 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
 // the same way. Only checking the actual character sequence a Markdown
 // parser treats specially catches it, which is what this test does instead.
 
-TEST_CASE("render: Markdown output never contains CommonMark link syntax, for any node kind", "[render][markdown]")
+TEST_CASE("render: Markdown output never contains text a CommonMark parser reinterprets, for any node kind",
+          "[render][markdown]")
 {
-    auto const hasNoLinkSyntax = [](std::string const& text) {
+    auto const isInertInMarkdown = [](std::string const& text) {
         CHECK(text.find("](") == std::string::npos);
         // A bare "[" alone is not risky by itself, but nothing this library
         // renders has any legitimate reason to contain one either -- so the
@@ -1013,6 +1138,39 @@ TEST_CASE("render: Markdown output never contains CommonMark link syntax, for an
         // link too, not only the inline "[...](...)" shape review round 3
         // found.
         CHECK(text.find('[') == std::string::npos);
+
+        // Phase 10 round 2: an asterisk. A bare `*` CANNOT be forbidden the
+        // way `[` is, because one node kind emits it legitimately --
+        // `render_node(BinaryNode)` spells multiplication ` * ` in Plain and
+        // Markdown alike, and always will.
+        //
+        // But every asterisk this library emits has a space on BOTH sides,
+        // and that is exactly what makes it safe: CommonMark's flanking rules
+        // make a `*` surrounded by whitespace neither a left- nor a
+        // right-flanking delimiter run, so it can open and close nothing.
+        // Measured rather than reasoned -- `a * b * c * d * e`, four
+        // asterisks, through pandoc's CommonMark reader, pandoc's GFM reader
+        // and python-markdown (MkDocs' engine) with `attr_list` and `smarty`:
+        // all four survive, no `<em>` anywhere. An asterisk in any other
+        // position does corrupt: `*x*` is dropped and emphasised by all
+        // three.
+        //
+        // So the guard is on the property that makes the library's asterisks
+        // inert, not on the character. It permits multiplication and fails on
+        // any future node kind that emits `*` anywhere else. Anyone tempted to
+        // relax this to "no asterisk at all": that breaks multiplication, and
+        // this comment is here so you need not re-measure to find that out.
+        for (std::size_t at = text.find('*'); at != std::string::npos; at = text.find('*', at + 1))
+        {
+            INFO("asterisk at " << at << " in: " << text);
+            CHECK(at > 0);
+            CHECK(at + 1 < text.size());
+            if (at > 0 && at + 1 < text.size())
+            {
+                CHECK(text[at - 1] == ' ');
+                CHECK(text[at + 1] == ' ');
+            }
+        }
     };
 
     constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
@@ -1028,29 +1186,33 @@ TEST_CASE("render: Markdown output never contains CommonMark link syntax, for an
     constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
     constexpr auto rule = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
 
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(var<Strength>));                                    // VarNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(150)))); // ConstantNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(-var<Strength>));                                   // UnaryNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(var<Strength> + var<Strength>));                    // BinaryNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::pow<2>(var<Diameter>)));                   // PowerNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::sqrt(var<Area>)));                         // RootNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::pi));                                      // PiNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(citedDiameter));                                    // DocumentedNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(rounded));                                          // RoundNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(roundedSig));                                       // RoundSignificantNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(numeric));                                          // NumericValueNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(chosen));                                           // WhenNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(overFifty));                                        // PredicateNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(rule));                                              // Constraint
+    isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength>));                         // VarNode
+    // ConstantNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(150))));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(-var<Strength>));                        // UnaryNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength> + var<Strength>));         // BinaryNode, +
+    // BinaryNode, * -- the one node kind that legitimately emits an asterisk,
+    // and therefore the one that decides how far the asterisk check can go.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength> * var<Strength>));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::pow<2>(var<Diameter>)));        // PowerNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::sqrt(var<Area>)));              // RootNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::pi));                           // PiNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(citedDiameter));                         // DocumentedNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(rounded));                               // RoundNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSig));                            // RoundSignificantNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(numeric));                               // NumericValueNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(overFifty));                             // PredicateNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint
 
     // Phase 10's three lookup kinds. A band is naturally written `[10, 20)`,
     // which is the exact character sequence this guard forbids -- so these
     // three lines are the reason `render.hpp` rules that a half-open interval
     // is spelled `10 to under 20` instead, and the thing that fails if anyone
     // ever "fixes" that back to the mathematician's spelling.
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(bandedLookup()));                          // BandedLookupNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(shapeLookup()));                           // ExactLookupNode
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(curveLookup()));                           // InterpolatingLookupNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(bandedLookup()));                        // BandedLookupNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(shapeLookup()));                         // ExactLookupNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(curveLookup()));                         // InterpolatingLookupNode
 
     // And a formula nesting several of the above, since a guard that only
     // ever sees one node kind in isolation could still miss an interaction
@@ -1062,12 +1224,12 @@ TEST_CASE("render: Markdown output never contains CommonMark link syntax, for an
     constexpr auto deep =
         formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(formula::when(
             overFifty, var<Strength> * rat(2), var<Strength> * rat(4)));
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(deep));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(deep));
 
     // And the same for a lookup, which nests two ways at once: a conditional
     // as its operand (no closing delimiter of its own, the hazard the comma
     // form exists for) inside a rounding node inside a power.
-    hasNoLinkSyntax(formula::render<Dialect::Markdown>(formula::pow<2>(
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::pow<2>(
         banded_lookup<formula::unit::Millimetre, SizeBands, formula::unit::One>(
             formula::when(overFifty, var<Diameter>, var<Diameter> * rat(2)),
             { rat(19, 20), rat(7, 5), rat(21, 20) }))));

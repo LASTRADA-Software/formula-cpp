@@ -296,9 +296,70 @@ namespace detail
             return words;
     }
 
+    /// The separator between a rendered lookup's fields.
+    ///
+    /// **LaTeX adds `\allowbreak`, and that is a correctness fix rather than
+    /// typographic polish.** Each row is one atomic `\text{...}`, and TeX
+    /// gives a math comma no break penalty at all -- so without this there is
+    /// **no legal break point anywhere in a rendered lookup, at any row
+    /// count**. A table does not wrap; it runs off the line, and a wide enough
+    /// one runs off the paper. A reader of a truncated formula is told nothing
+    /// is missing, which is the same class of defect as the Markdown link
+    /// syntax that dropped an operand from a published page -- see this file's
+    /// ruling.
+    ///
+    /// Measured with tectonic 0.17.0 over 22 renderings -- the 20 these tests
+    /// build, plus a six-row table and its square, which is the width the
+    /// review measured running off the paper -- as overfull `\hbox` against
+    /// article's 345pt text block, worst case:
+    ///
+    /// | context                          | before | after |
+    /// |----------------------------------|-------:|------:|
+    /// | inline `$...$` inside prose      |  721pt |  88pt |
+    /// | inline `$...$` alone in a para    |  549pt | 125pt |
+    /// | display `\[...\]`                 |  549pt | 549pt |
+    ///
+    /// The middle row is the honest caveat: a formula sitting alone in its own
+    /// paragraph has no interword glue to justify a broken line with, so TeX
+    /// finds every two-line split too loose for `\tolerance` and falls back to
+    /// one overfull line. Only the widest cases gain there. That is a TeX
+    /// limitation rather than something the emitted text can fix, and it does
+    /// not touch the case this library is actually for -- a formula quoted in
+    /// a sentence of generated documentation, the top row, where the worst
+    /// case drops by 88%.
+    ///
+    /// **Display math is a separate decision, and the decision is that this
+    /// library emits nothing for it.** TeX does not break a display across
+    /// lines at all, so `\allowbreak` is inert there -- measured, byte for
+    /// byte the same overfull boxes with and without it. The only thing that
+    /// could break a display is an explicit `\\`, and that is refused on two
+    /// measured grounds, not one: `\\` is a hard error in the far commoner
+    /// `$...$` and `\[...\]`, **and** wrapping these in amsmath's `multline*`
+    /// does not help anyway (measured: 571pt worst, slightly *worse* than the
+    /// plain display, because `multline` also breaks only at an explicit `\\`
+    /// and never at `\allowbreak`). An earlier revision of this comment
+    /// claimed `multline` fixed it; it does not, and the claim was reasoned
+    /// rather than measured.
+    ///
+    /// What does work, for a caller who genuinely needs a wide table in a
+    /// display, is `breqn`'s `dmath`: **0 overfull boxes** on the same
+    /// renderings -- and 0 with `\allowbreak` stripped out too, so that is
+    /// entirely the caller's package doing the work and owes nothing to this
+    /// function. `render_tests.cpp` pins both halves of the decision: that
+    /// every field separator carries `\allowbreak`, and that a lookup never
+    /// emits `\\`.
+    template <Dialect D>
+    [[nodiscard]] std::string lookup_separator()
+    {
+        if constexpr (D == Dialect::LaTeX)
+            return ",\\allowbreak ";
+        else
+            return ", ";
+    }
+
     /// Assembles a rendered lookup: `<name>(<subject>, <row>, <row>, ...)`,
-    /// where @p rows is already `", "`-prefixed and dialect-wrapped, one field
-    /// per row.
+    /// where @p rows is already separator-prefixed and dialect-wrapped, one
+    /// field per row.
     ///
     /// **This is not a fourth punctuation style.** It is the shape
     /// `round(d, to 1 dp of mm)` and `numeric(f, in MPa)` already have: a call
@@ -321,7 +382,8 @@ namespace detail
     template <Dialect D>
     [[nodiscard]] std::string lookup_call(std::string_view name, std::string const& subject, std::string const& rows)
     {
-        std::string const body = rows.empty() ? ", " + lookup_words_in_dialect<D>("no rows") : rows;
+        std::string const body =
+            rows.empty() ? lookup_separator<D>() + lookup_words_in_dialect<D>("no rows") : rows;
         if constexpr (D == Dialect::LaTeX)
             return "\\operatorname{" + std::string { name } + "}(" + subject + body + ")";
         else
@@ -630,7 +692,7 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
 
     std::string rows;
     for (std::size_t index = 0; index < Bands.size(); ++index)
-        rows += ", "
+        rows += detail::lookup_separator<D>()
                 + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
                     detail::band_text(Bands[index], view(keyUnit.symbolText)),
                     detail::number_with_unit(detail::number_text(node.corrections[index]),
@@ -662,7 +724,7 @@ template <Dialect D, KeyTable Keys, Unit ResultUnit>
 
     std::string rows;
     for (std::size_t index = 0; index < Keys.size(); ++index)
-        rows += ", "
+        rows += detail::lookup_separator<D>()
                 + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
                     detail::key_text(Keys[index]),
                     detail::number_with_unit(detail::number_text(node.corrections[index]),
@@ -691,7 +753,7 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
 
     std::string rows;
     for (std::size_t index = 0; index < Points.size(); ++index)
-        rows += ", "
+        rows += detail::lookup_separator<D>()
                 + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
                     "at "
                         + detail::number_with_unit(
