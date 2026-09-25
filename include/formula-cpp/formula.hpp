@@ -15,6 +15,7 @@
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/dimension.hpp>
+#include <formula-cpp/enumerator.hpp>
 #include <formula-cpp/environment.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/escape.hpp>

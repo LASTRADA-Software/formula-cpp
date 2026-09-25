@@ -54,6 +54,7 @@ add_executable(formula-cpp-tests
     escape_tests.cpp
     band_tests.cpp
     lookup_tests.cpp
+    enumerator_tests.cpp
     method_tests.cpp
     overlay_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
@@ -372,6 +373,15 @@ formula_add_negative_test(exact_lookup_duplicate_key_no_factory
 # than masked by another still firing.
 formula_add_negative_test(exact_lookup_unscoped_key
     "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
+
+formula_add_negative_test(enumerator_name_misspelt_of
+    "formula: this EnumeratorName specialisation does not have the shape the library reads")
+
+formula_add_negative_test(enumerator_name_not_constexpr
+    "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression")
+
+formula_add_negative_test(enumerator_name_dangling_view
+    "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression")
 
 formula_add_negative_test(exact_lookup_int_key_table
     "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
