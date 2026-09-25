@@ -251,16 +251,35 @@ void write_formula(std::ofstream& out, N const& node)
 /// Everything downstream of that call is identical to `write_formula`'s own
 /// shape, including the symbol table -- a constraint documents exactly the
 /// way a formula does, and this page should not read as though it doesn't.
+///
+/// Returns false, with a message on stderr, rather than assuming a citation
+/// the way `write_formula` above assumes one: `write_formula`'s own
+/// `citations.front()` leans on every `Node` here being wrapped by
+/// `documented(inner, citation)`, whose `citation` parameter has no
+/// default, so a wrapped node always contributes one citation regardless of
+/// what it says. `constraint(predicate, verdict, citation = {})`
+/// (`constraint.hpp`) has no such backstop -- its citation is optional by
+/// design, used uncited in this project's own guide, example and tests --
+/// so nothing here can lean on the type system the way `write_formula` can;
+/// "every gallery constraint is cited" is a convention this file happens to
+/// follow today, not a guarantee. `.front()` on an empty vector is
+/// undefined behaviour, and on an MSVC debug build that means an assertion
+/// dialog, not a clean crash -- exactly the modal-dialog failure mode
+/// `examples/CMakeLists.txt`'s own comment warns about, and this tool is
+/// run from `ctest` (`gallery.is-current`) just as an example is. Checking
+/// first and failing loudly costs one `if`.
 template <formula::Predicate P>
-void write_constraint(std::ofstream& out, formula::Constraint<P> const& node)
+[[nodiscard]] bool write_constraint(std::ofstream& out, formula::Constraint<P> const& node)
 {
     formula::Documentation const plain = formula::document(node);
     formula::Documentation const markdown = formula::document<formula::Dialect::Markdown>(node);
     formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(node);
 
-    // Exactly one constraint written this way in this file, and it is
-    // cited, so exactly one citation comes back -- see write_formula's own
-    // comment above for the identical assumption.
+    if (plain.citations.empty())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: a gallery constraint must be cited, and this one is not\n");
+        return false;
+    }
     formula::Citation const& citation = plain.citations.front();
 
     out << "## " << citation.title << "\n\n";
@@ -288,6 +307,8 @@ void write_constraint(std::ofstream& out, formula::Constraint<P> const& node)
 
     if (!citation.text.empty())
         out << citation.text << "\n\n";
+
+    return true;
 }
 
 } // namespace
@@ -318,7 +339,8 @@ int main(int argc, char** argv)
 
     write_formula(out, density);
     write_formula(out, circularArea);
-    write_constraint(out, maximumDiameter);
+    if (!write_constraint(out, maximumDiameter))
+        return 1;
     write_formula(out, flowRate);
     write_formula(out, waterCementRatio);
     write_formula(out, compactionAdjustedDensity);
