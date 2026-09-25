@@ -170,6 +170,18 @@ function(formula_add_negative_test name expected)
                 -D "TARGET=negative-${name}"
                 -D "EXPECTATIONS_FILE=${expectationsFile}"
                 -P "${PROJECT_SOURCE_DIR}/cmake/RunNegativeCompileTest.cmake")
+
+    # Every negative case drives `cmake --build` in the one shared build tree,
+    # and two of those at once collide on ninja's own state: "opening build
+    # log: Permission denied", which the harness then reports as a failure for
+    # the WRONG reason, and a truncated `.ninja_log`. It needs a stale tree, so
+    # that every case's build regenerates at once -- measured on cl-debug with
+    # test/CMakeLists.txt touched before `ctest -j 16 -R negative`: 4 trials of
+    # 4 failed without this lock (8 to 29 of 70 cases each), 0 of 4 with it. A
+    # fresh tree passed even without it, which is why this went unnoticed. The
+    # lock serialises the negative cases against each other only; every other
+    # test still runs in parallel beside them.
+    set_tests_properties(negative.${name} PROPERTIES RESOURCE_LOCK formula-negative-build-tree)
 endfunction()
 
 # The expected text is the library's OWN static_assert message. All three
