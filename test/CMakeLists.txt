@@ -354,6 +354,12 @@ formula_add_negative_test(method_variants_disagree
 formula_add_negative_test(method_variants_not_a_variant
     "formula: this argument of variants(...) is not a variant of a method")
 
+# The same refusal, pinned on the position it reports rather than on its
+# message: the offender is third of four, so the diagnostic must name index 2.
+# `RequireVariant<2,` is the one spelling cl, clang-cl, clang++ and g++ all
+# print -- measured, none adds a `ul` suffix -- so it is matched literally.
+formula_add_negative_test(method_variants_not_a_variant_position "RequireVariant<2,")
+
 formula_add_negative_test(method_variants_empty
     "formula: this method declares no variants at all")
 
