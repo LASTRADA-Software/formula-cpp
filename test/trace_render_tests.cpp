@@ -501,6 +501,67 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
     bothSurfaces(var<Strength> >= fifty, ">=");
     bothSurfaces(var<Strength> == fifty, "==");
     bothSurfaces(var<Strength> != fifty, "!=");
+
+    // A Constraint's two surfaces must agree the same way a WhenNode's do
+    // above, and for the same reason nothing here has checked it yet:
+    // constraint_expression (trace_render.hpp) and render_node(Constraint
+    // ...) (render.hpp) are two independent functions that each spell
+    // "require <lhs> <comparison> <rhs>" from scratch, and nothing but this
+    // assertion ties them together. Phase 8 shipped exactly this shape of
+    // defect -- render() and the trace renderer disagreeing about a
+    // rounding spelling -- for several commits, each internally consistent
+    // and fully tested, caught only by a whole-branch review because no
+    // test compared the two surfaces to each other.
+    //
+    // Extracts just the keyword and the comparison token from each surface
+    // -- both "require f >= 30 MPa" (render) and "require #1 >= #2 [...]"
+    // (trace) are shaped "<keyword> <operand> <comparison> <operand> ...",
+    // differing only in how the operand is spelled (a variable's symbol vs.
+    // a step reference), which is expected and not what this checks -- and
+    // compares the two surfaces directly to each other rather than each to
+    // its own hardcoded literal, so a mismatch's failure message shows both
+    // actual surfaces side by side instead of only naming which literal
+    // stopped matching.
+    auto const keywordAndComparison = [](std::string_view text) {
+        std::size_t const firstSpace = text.find(' ');
+        std::size_t const secondSpace = text.find(' ', firstSpace + 1);
+        std::size_t const thirdSpace = text.find(' ', secondSpace + 1);
+        return std::string { text.substr(0, firstSpace) } + " "
+               + std::string { text.substr(secondSpace + 1, thirdSpace - secondSpace - 1) };
+    };
+
+    constexpr auto atLeastFifty =
+        formula::constraint(var<Strength> >= fifty, formula::Verdict { "reject the specimen" });
+    std::string const renderedConstraint = formula::render(atLeastFifty);
+
+    formula::Trace<> constraintTrace {};
+    formula::RecordingSink<> constraintSink { constraintTrace };
+    (void) formula::check(atLeastFifty, environment, constraintSink);
+    std::string const fullTrace = formula::render_trace(constraintTrace, { .maxSteps = 10 });
+
+    // render_trace() returns every step, numbered ("1. f = 60 MPa\n2. 50
+    // MPa\n3. require #1 >= #2 [...]\n"), not the constraint line alone --
+    // its line is the last one here, because the constraint step is the
+    // outermost and so the last claimed. Found by position, not by
+    // searching for either surface's own keyword: searching for "require "
+    // would itself assume the very keyword this test exists to check, and
+    // would find nothing -- not a mismatch, a `std::string::npos` -- the
+    // moment a mutation changed it, hiding the two-surfaces-disagree
+    // failure this test exists to show behind an unrelated one.
+    std::string_view remaining { fullTrace };
+    if (!remaining.empty() && remaining.back() == '\n')
+        remaining.remove_suffix(1);
+    std::size_t const lastNewline = remaining.find_last_of('\n');
+    std::string_view lastLine = lastNewline == std::string_view::npos ? remaining : remaining.substr(lastNewline + 1);
+
+    // Every line also opens with its own step number ("3. "), which
+    // keywordAndComparison must not mistake for the keyword -- strip it the
+    // same way, by position, before extracting.
+    std::size_t const afterStepNumber = lastLine.find(". ");
+    REQUIRE(afterStepNumber != std::string_view::npos);
+    std::string const tracedConstraint { lastLine.substr(afterStepNumber + 2) };
+
+    CHECK(keywordAndComparison(renderedConstraint) == keywordAndComparison(tracedConstraint));
 }
 
 // ------------------------------------------------------- Constraint steps
