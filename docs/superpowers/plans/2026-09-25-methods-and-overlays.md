@@ -14,14 +14,15 @@
 
 ## Global Constraints
 
-- Must compile on **MSVC cl, clang-cl, clang++ and GCC**. Verify on all seven presets: `cl-debug`, `cl-release`, `clangcl-debug`, `clangcl-release`, `clang-debug`, `clang-release`, `gcc-release`.
+- Must compile on **MSVC cl, clang-cl, clang++ and GCC**. Verify on all eight presets: `cl-debug`, `cl-release`, `clangcl-debug`, `clangcl-release`, `clang-debug`, `clang-release`, `gcc-release`, `clang-ubsan`. `clang-ubsan` is the eighth because it is a *CI leg*, and a task verified against seven has not been verified against what runs.
 - **Also build the Doxygen target and run `mkdocs build --strict` on every task**, not only before a merge. Both were merge-time-only rules during phase 10 and the Doxygen leg was silently red for six tasks.
 - **Never hardcode `/std:c++23`.** The standard comes from `set(CMAKE_CXX_STANDARD 23)` + `CMAKE_CXX_STANDARD_REQUIRED ON` + `target_compile_features(formula-cpp INTERFACE cxx_std_23)`. On this machine a literal `/std:c++23` silently drops `cl` to pre-C++17 and `clang-cl` to C++14.
 - **No third-party standard text** — no real published standard's values, thresholds, clause numbers or citations, in code, tests, guide or gallery. Invented `Example Standard` citations only.
 - **Never redirect a build to `/dev/null`** — a `STATIC_REQUIRE` failure is a *build* error, and hiding it lets the next `ctest` report a stale pass.
 - Every negative test asserts **both** that the build fails **and** that the message contains the library's own `static_assert` text. Those strings are tested API.
 - **`FORMULA_WERROR=ON`** on every configuration; zero warnings. GCC is the only leg running `-Wshadow -Wconversion -Wpedantic`, and it has caught defects no other compiler saw.
-- Baseline at branch point: **512 tests** on seven configurations, `master` at `1108097`.
+- Baseline at branch point: **512 tests** on seven configurations, `master` at `1108097`. **After task 1 the branch baseline is 519 tests on eight configurations** — a task that reports fewer has lost tests, not merely added none.
+- The VS developer environment is **not** on PATH after a machine restart: `cmake`, `ninja` and `cl` are unfindable from a plain shell until the session's `devenv.ps1` preamble is dot-sourced. `mkdocs` lives on **Windows** Python (`python -m mkdocs`); `doxygen` 1.9.8 lives in **WSL**. Neither is where the other is.
 
 ## Rules bought with real defects, which apply to every task here
 
