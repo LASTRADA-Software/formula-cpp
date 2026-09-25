@@ -1037,13 +1037,27 @@ TEST_CASE("a derivation renders an interpolating miss as outside the curve, not 
           == "1. d = 60 mm\n"
              "2. interpolate(#1) = 140/9 % [between 7/2 and 8 cm]\n");
 
+    // The other end of the same axis: 2 cm is in the FIRST segment. A suite
+    // that only ever probed the second lets "report the last pair" through in
+    // silence, exactly as round 1's fixtures let "report the last band"
+    // through by only ever selecting the middle one.
+    CHECK(derivationOf(curveLookup(), diameterOf(20))
+          == "1. d = 20 mm\n"
+             "2. interpolate(#1) = 8 % [between 1 and 7/2 cm]\n");
+
     // A value sitting exactly on a row says so instead. The two clauses mean
     // different things -- between two rows a reader has an interpolation to
-    // check, on a row the table stated the number itself -- and at the curve's
-    // last row it is the only way an answer can be produced at all.
+    // check, on a row the table stated the number itself.
     CHECK(derivationOf(curveLookup(), diameterOf(35))
           == "1. d = 35 mm\n"
              "2. interpolate(#1) = -115 % [on the row at 7/2 cm]\n");
+
+    // And on the curve's LAST row, where it is the only way an answer can be
+    // produced at all -- and the row index every other on-a-row probe in this
+    // file happens not to be.
+    CHECK(derivationOf(curveLookup(), diameterOf(80))
+          == "1. d = 80 mm\n"
+             "2. interpolate(#1) = 120 % [on the row at 8 cm]\n");
 }
 
 TEST_CASE("a derivation spells a band's excluded top and a curve's included one differently",

@@ -1151,10 +1151,22 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     REQUIRE(inside.steps[1].selectedSegment.has_value());
     CHECK(*inside.steps[1].selectedSegment == formula::Segment { breakpoint(14, 4), breakpoint(24, 3) });
 
-    // And a value sitting exactly ON a row reports that row twice, which is
-    // this type's spelling for "the table stated this number directly" -- the
-    // behaviour `lookup.hpp` pins at a curve's last row, where interpolating
-    // is not merely equivalent but impossible.
+    // And 2 cm sits in the FIRST segment. Both ends of that axis, because
+    // "reports the first pair" and "reports the last pair" are two mutations
+    // and a fixture that only ever selects one end can see only one of them.
+    // A suite probing the second segment alone lets "report the last pair"
+    // through in silence -- measured, not supposed.
+    formula::Trace<> firstSegment {};
+    {
+        formula::RecordingSink<> firstSink { firstSegment };
+        (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(20), firstSink);
+    }
+    REQUIRE(firstSegment.steps.size() == 2);
+    REQUIRE(firstSegment.steps[1].selectedSegment.has_value());
+    CHECK(*firstSegment.steps[1].selectedSegment == formula::Segment { breakpoint(4, 4), breakpoint(14, 4) });
+
+    // A value sitting exactly ON a row reports that row twice, which is this
+    // type's spelling for "the table stated this number directly".
     formula::Trace<> onRow {};
     {
         formula::RecordingSink<> rowSink { onRow };
@@ -1163,6 +1175,23 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     REQUIRE(onRow.steps.size() == 2);
     REQUIRE(onRow.steps[1].selectedSegment.has_value());
     CHECK(*onRow.steps[1].selectedSegment == formula::Segment { breakpoint(14, 4), breakpoint(14, 4) });
+
+    // And on the curve's LAST row, which is the behaviour `lookup.hpp` pins
+    // at 30 mm -- a breakpoint is a row and not a boundary, so the last one is
+    // reached, and interpolating to it is not merely equivalent but
+    // impossible because it begins no segment. The same mirror as above: the
+    // row hits in this file all landed on row index 1, so "report row 1"
+    // survived everything until this probe existed.
+    formula::Trace<> lastRow {};
+    {
+        formula::RecordingSink<> lastSink { lastRow };
+        (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(80), lastSink);
+    }
+    REQUIRE(lastRow.steps.size() == 2);
+    CHECK(lastRow.steps[1].lookupFailure == formula::LookupFailure::None);
+    CHECK(lastRow.steps[1].value == rat(120, 100));
+    REQUIRE(lastRow.steps[1].selectedSegment.has_value());
+    CHECK(*lastRow.steps[1].selectedSegment == formula::Segment { breakpoint(24, 3), breakpoint(24, 3) });
 }
 
 TEST_CASE("an exact lookup that found its row can still fail converting it out", "[trace][lookup]")

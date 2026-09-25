@@ -432,6 +432,18 @@ struct Step
     /// (`lookup.hpp`), the single scan that also produced the value, rather
     /// than from a second scan here: two scans of one table against one rule
     /// are two surfaces obliged to agree.
+    ///
+    /// **"As the table declared them" is a guarantee about this field and not
+    /// about the rendered line.** `trace_render.hpp` reduces both keys through
+    /// `declared_number_text` before printing, so a row typed `14/4` reads
+    /// `7/2` in a derivation -- deliberately, because `render()` prints `7/2`
+    /// for that same row and a trace disagreeing with the formula it derives
+    /// is the defect this phase exists to refuse. An auditor reconciling
+    /// *values* against a published curve therefore matches; one reconciling
+    /// the *literal spelling* an author typed needs this field, which is where
+    /// the unreduced pair survives for a programmatic consumer to read.
+    /// `selectedBand` and `coveredRange` carry the same split, for the same
+    /// reason.
     std::optional<Segment> selectedSegment {};
 
     /// For `BandedLookup` and `InterpolatingLookup` when this lookup
