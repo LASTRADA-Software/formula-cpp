@@ -409,7 +409,8 @@ struct Method
 /// Builds a method:
 /// `method(variants(...), rounding_rule<...>(), constraints(...))`.
 template <typename Vs, typename Rounding, typename Constraints>
-[[nodiscard]] constexpr Method<Vs, Rounding, Constraints> method(Vs variantSet, Rounding rounding,
+[[nodiscard]] constexpr Method<Vs, Rounding, Constraints> method(Vs variantSet,
+                                                                 Rounding rounding,
                                                                  Constraints constraintSet) noexcept
 {
     return Method<Vs, Rounding, Constraints> { variantSet, rounding, constraintSet };
@@ -449,8 +450,7 @@ namespace detail
     struct RequireSelectableTag
     {
         static_assert(RequirePlainClassTag<Tag>::value);
-        static_assert(
-            std::conditional_t<isPlainClassTag<Tag>, RequireVariantForTag<Tag, Cs...>, std::true_type>::value);
+        static_assert(std::conditional_t<isPlainClassTag<Tag>, RequireVariantForTag<Tag, Cs...>, std::true_type>::value);
 
         static constexpr bool value = true;
     };
@@ -508,8 +508,7 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
     using Rule = std::remove_cvref_t<decltype(m.rounding)>;
 
     auto const& selected = std::get<Selection::index>(m.variantSet.cases);
-    return detail::dispatch<Rep>(rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression), environment,
-                                 sink);
+    return detail::dispatch<Rep>(rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression), environment, sink);
 }
 
 } // namespace formula

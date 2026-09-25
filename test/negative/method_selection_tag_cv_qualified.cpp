@@ -37,12 +37,13 @@ struct EdgeY: formula::Quantity<EdgeY, "y_m", "measured edge", formula::unit::Mi
 
 using formula::var;
 
-inline constexpr auto m = formula::method(
-    formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
-                      formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
-    formula::rounding_rule<formula::unit::Megapascal, formula::DecimalPlaces { 1 },
-                           formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints());
+inline constexpr auto m =
+    formula::method(formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                                      formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
+                    formula::rounding_rule<formula::unit::Megapascal,
+                                           formula::DecimalPlaces { 1 },
+                                           formula::RoundingMode::HalfAwayFromZero>(),
+                    formula::constraints());
 
 inline constexpr auto inputs = formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
                                                     formula::Measured<EdgeX> { formula::Rational { 150 } },
@@ -51,5 +52,5 @@ inline constexpr auto inputs = formula::environment(formula::Measured<Force> { f
 
 int main()
 {
-    return formula::evaluate_method<const Cube>(m, inputs).has_value() ? 0 : 1;
+    return formula::evaluate_method<Cube const>(m, inputs).has_value() ? 0 : 1;
 }

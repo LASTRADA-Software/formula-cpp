@@ -204,8 +204,8 @@ TEST_CASE("a method applies its own rounding rule to the variant it selects", "[
 
     // The unrounded figure, measured through the variant's own expression, so
     // that the fixture's premise is checked rather than asserted in a comment.
-    constexpr auto unrounded = formula::checked_evaluate<Strength>(std::get<1>(m.variantSet.cases).expression,
-                                                                   specimen(60'500, 100, 999));
+    constexpr auto unrounded =
+        formula::checked_evaluate<Strength>(std::get<1>(m.variantSet.cases).expression, specimen(60'500, 100, 999));
     STATIC_REQUIRE(unrounded->measurement().value() == formula::Rational { 605, 100 });
 
     // Cylinder, the second variant rather than the first, so that a method
