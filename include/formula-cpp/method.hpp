@@ -41,7 +41,25 @@
 /// overload, because `Cube` is not a `Predicate` and the ternary is removed
 /// by substitution failure. What does not resolve is the neighbouring
 /// three-argument spelling above, and no diagnostic anywhere separates the
-/// two concepts. Two questions, one name, no diagnostic telling them apart.
+/// two concepts. So the departure rests on readability plus a neighbouring
+/// silent mis-binding -- not on the spec's own spelling being broken.
+///
+/// **What a pack refuses, and why here rather than later.** Three rules, all
+/// enforced by `Variants` itself:
+///
+///  1. every argument is a variant -- something `variant<Tag>(...)` returned;
+///  2. there is at least one of them;
+///  3. they all report the same dimension.
+///
+/// The first two exist because `variants(...)` over a bare pack accepted
+/// nonsense in silence. Measured on cl 19.51 at `/W4 /WX`, **exit 0, no
+/// diagnostics**: `variants(var<EdgeX>, var<EdgeX>)` -- a pack with no tags
+/// anywhere -- `variants(var<Force>)`, and `variants()`. The first slipped
+/// through rule 3 because a `VarNode` happens to publish a `dimension`; the
+/// second never reached it, a one-element pack having no pair; the third is
+/// vacuous. All three are refused now, at the earliest point where the
+/// mistake is still the author's own call rather than something several
+/// layers away.
 ///
 /// **Variants agree in the quantity they report, and at this layer that means
 /// the dimension.** Variants are heterogeneous by design -- the spec's own
@@ -61,12 +79,95 @@
 #include <formula-cpp/expression.hpp>
 
 #include <tuple>
+#include <type_traits>
 
 namespace formula
 {
 
+/// One variant of a method: the expression that applies when the specimen,
+/// apparatus or product matches `Tag`.
+///
+/// `Tag` is an ordinary empty type and is never instantiated -- what a
+/// variant applies to is a *type*, so that selecting one is a compile-time
+/// fact the type system can state rather than a string nobody checks.
+///
+/// Deliberately not a `Node`. A variant does not stand where a number stands;
+/// it names one of the formulas a method chooses between. Phase 10 settled
+/// that test for lookups -- a lookup *is* a node because it produces a
+/// quantity -- and it comes out the other way here.
+template <typename Tag, Node Expr>
+struct VariantCase
+{
+    /// What this variant applies to: the discriminator `variant<Tag>` was
+    /// spelled with.
+    using tag = Tag;
+
+    /// The expression evaluated when this variant is the one selected.
+    Expr expression {};
+
+    /// The dimension this variant reports. Every variant of one method must
+    /// publish the same one -- see `detail::RequireVariantsAgree`.
+    static constexpr Dimension dimension = Expr::dimension;
+};
+
+/// The spelling of one variant in a method: `variant<Cube>(expr)`. See the
+/// file comment for why this is not spelled `when<Cube>`.
+template <typename Tag, Node Expr>
+[[nodiscard]] constexpr VariantCase<Tag, Expr> variant(Expr expression) noexcept
+{
+    return VariantCase<Tag, Expr> { expression };
+}
+
 namespace detail
 {
+    /// Whether a type is something `variant<Tag>(...)` produced.
+    ///
+    /// A trait rather than a concept, because the refusal below wants to name
+    /// the offending type in a message of ours. A concept on `variants()`
+    /// would instead give "no matching function for call to 'variants'",
+    /// which is the diagnostic this header already refuses once, in the
+    /// `when` discussion above.
+    template <typename T>
+    struct IsVariantCase: std::false_type
+    {
+    };
+
+    template <typename Tag, Node Expr>
+    struct IsVariantCase<VariantCase<Tag, Expr>>: std::true_type
+    {
+    };
+
+    /// Fails to compile when something that is not a variant was handed to
+    /// `variants(...)`.
+    template <typename C>
+    struct RequireVariant
+    {
+        static_assert(IsVariantCase<C>::value,
+                      "formula: this argument of variants(...) is not a variant of a method; every "
+                      "argument must come from variant<Tag>(expression), and the offending one "
+                      "appears in this diagnostic as the template argument of RequireVariant");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile for `variants()` -- a method with nothing to choose
+    /// between.
+    ///
+    /// Not the same refusal as "no variant matched this specimen", which is a
+    /// property of one evaluation and belongs in an outcome. A pack with no
+    /// variants can never match anything, for any tag, ever: that is the
+    /// author's mistake, so it is refused where the author wrote it.
+    template <typename... Cs>
+    struct RequireAtLeastOneVariant
+    {
+        static_assert(sizeof...(Cs) != 0,
+                      "formula: this method declares no variants at all; a method with nothing to "
+                      "choose between can never produce a result for any specimen, so an empty "
+                      "variants() is the author's mistake rather than an outcome to report");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when two variants of one method measure different
     /// dimensions.
     ///
@@ -123,41 +224,36 @@ namespace detail
         /// True when `First` agrees with every one of `Rest`.
         static constexpr bool value = (RequireVariantsAgree<First, Rest>::value && ...);
     };
+
+    /// The three rules a variants pack obeys, asked in an order that matters.
+    ///
+    /// One `static_assert` in `Variants` rather than three, so that the rules
+    /// can be sequenced. The agreement rule is asked **only once every
+    /// argument is a variant**: a non-variant has no `dimension` to compare,
+    /// and asking anyway buries the one message that matters. Measured on cl
+    /// 19.51 before this gate existed, `variants(42, 43)` reported six errors
+    /// -- `C2825`, `C2510` and `C2065`, once for `First` and once for `Other`
+    /// -- every one of them the compiler's own wording for "that has no such
+    /// member", and not one of them ours.
+    ///
+    /// `std::conditional_t` and not `if constexpr`, because this is a
+    /// constant initialiser rather than a statement; naming
+    /// `RequireAllVariantsAgree<Cs...>` as a template argument does not
+    /// instantiate it, and only the selected branch's `value` does.
+    template <typename... Cs>
+    struct RequireWellFormedVariants
+    {
+        static_assert(RequireAtLeastOneVariant<Cs...>::value);
+        static_assert((RequireVariant<Cs>::value && ...));
+
+        /// Whether the agreement rule has anything it can ask about.
+        static constexpr bool everyArgumentIsAVariant = (IsVariantCase<Cs>::value && ...);
+
+        static_assert(std::conditional_t<everyArgumentIsAVariant, RequireAllVariantsAgree<Cs...>, std::true_type>::value);
+
+        static constexpr bool value = true;
+    };
 } // namespace detail
-
-/// One variant of a method: the expression that applies when the specimen,
-/// apparatus or product matches `Tag`.
-///
-/// `Tag` is an ordinary empty type and is never instantiated -- what a
-/// variant applies to is a *type*, so that selecting one is a compile-time
-/// fact the type system can state rather than a string nobody checks.
-///
-/// Deliberately not a `Node`. A variant does not stand where a number stands;
-/// it names one of the formulas a method chooses between. Phase 10 settled
-/// that test for lookups -- a lookup *is* a node because it produces a
-/// quantity -- and it comes out the other way here.
-template <typename Tag, Node Expr>
-struct VariantCase
-{
-    /// What this variant applies to: the discriminator `variant<Tag>` was
-    /// spelled with.
-    using tag = Tag;
-
-    /// The expression evaluated when this variant is the one selected.
-    Expr expression {};
-
-    /// The dimension this variant reports. Every variant of one method must
-    /// publish the same one -- see `detail::RequireVariantsAgree`.
-    static constexpr Dimension dimension = Expr::dimension;
-};
-
-/// The spelling of one variant in a method: `variant<Cube>(expr)`. See the
-/// file comment for why this is not spelled `when<Cube>`.
-template <typename Tag, Node Expr>
-[[nodiscard]] constexpr VariantCase<Tag, Expr> variant(Expr expression) noexcept
-{
-    return VariantCase<Tag, Expr> { expression };
-}
 
 /// The variants of one method, in declaration order:
 /// `variants(variant<Cube>(...), variant<Cylinder>(...))`.
@@ -174,15 +270,15 @@ template <typename Tag, Node Expr>
 /// are genuinely different types -- that is the whole point, and an array
 /// could not hold the spec's own pair.
 ///
-/// The agreement check sits in this class body rather than in `variants()`
-/// below, deliberately: this is a public aggregate with a public member, so a
+/// The checks sit in this class body rather than in `variants()` below,
+/// deliberately: this is a public aggregate with a public member, so a
 /// `Variants<...>` can be declared directly with no factory call anywhere,
 /// and a check placed only in the factory would let that route through. The
 /// same mistake was found, and fixed, in the lookup tables of phase 10.
 template <typename... Cs>
 struct Variants
 {
-    static_assert(detail::RequireAllVariantsAgree<Cs...>::value);
+    static_assert(detail::RequireWellFormedVariants<Cs...>::value);
 
     /// The variants, in the order `variants(...)` was called with them. That
     /// order is part of the contract: selection reports which index fired,
@@ -190,7 +286,8 @@ struct Variants
     std::tuple<Cs...> cases {};
 };
 
-/// Builds a method's variants pack: `variants(a, b, c)`. See `Variants`.
+/// Builds a method's variants pack: `variants(a, b, c)`. See `Variants` for
+/// the three rules a pack has to satisfy.
 template <typename... Cs>
 [[nodiscard]] constexpr Variants<Cs...> variants(Cs... cases) noexcept
 {

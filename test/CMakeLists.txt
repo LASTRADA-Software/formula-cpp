@@ -331,6 +331,25 @@ formula_add_negative_test(interpolating_lookup_malformed_breakpoint
 formula_add_negative_test(method_variants_disagree
     "formula: two variants of this method measure different dimensions")
 
+# The other two rules a variants pack obeys, one case each because each can be
+# broken while the other still fires: an empty pack satisfies the
+# every-argument-is-a-variant fold vacuously, and a pack of non-variants is
+# not empty.
+#
+# Both were silent before these guards existed -- measured on cl 19.51 at
+# /W4 /WX, exit 0 and no diagnostics for `variants(var<EdgeX>, var<EdgeX>)`
+# and for `variants()`. The first slipped past the dimension rule because a
+# VarNode publishes a `dimension` exactly as a variant does, which is the
+# whole reason a separate rule is needed rather than a stricter one.
+#
+# The non-variant sits third of four, for the same reason the disagreeing
+# variant above does.
+formula_add_negative_test(method_variants_not_a_variant
+    "formula: this argument of variants(...) is not a variant of a method")
+
+formula_add_negative_test(method_variants_empty
+    "formula: this method declares no variants at all")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

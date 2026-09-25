@@ -83,19 +83,23 @@ TEST_CASE("a variant carries its tag, its expression and the dimension it report
 
 TEST_CASE("the expression a variant was given is the expression it stores", "[method]")
 {
-    // The only test here that EVALUATES what a variant stores rather than
-    // inspecting its type, and the reason it uses a `ConstantNode`: that is
-    // the one node with runtime state, so a pack that carried the right types
-    // and the wrong bytes is visible here and nowhere else -- the half would
-    // come back as zero.
+    // A REACHABILITY PROBE, and judged as one. The other tests here inspect
+    // types; this is the only one that takes a variant back out of the pack
+    // and evaluates it, which is what says the pack holds usable formulas
+    // rather than merely well-formed types.
     //
-    // Stated honestly, because it was measured rather than assumed: no
-    // mutation of `method.hpp` was found that ONLY this test catches.
-    // Dropping the expression in `variant()` leaves its parameter unreferenced
-    // and `/W4 /WX` rejects the build before any test runs. What this test
-    // does buy is the end-to-end reachability the spike compiled but never ran
-    // -- that a variant taken back out of the pack is still a formula that
-    // evaluates -- which is the property tasks built on this one assume.
+    // It kills no mutation uniquely, and that is characteristic of the kind
+    // rather than a defect in this one: dropping the expression in `variant()`
+    // leaves its parameter unreferenced and `/W4 /WX` rejects the build before
+    // any test runs. What a reachability probe catches is ABSENCE -- phase 9
+    // shipped an overload that worked, was tested, and no user could call;
+    // phase 10 shipped a `document()` walk that compiled for nothing. The
+    // spike compiled this pack and never ran it, so nothing until now had
+    // established that a stored variant still evaluates at all.
+    //
+    // `ConstantNode` because it is the one node carrying runtime state: with
+    // every other node kind the bytes are empty and there is nothing for a
+    // round trip to lose.
     constexpr auto pack = formula::variants(
         formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
         formula::variant<Cylinder>(var<Force> / (formula::number(formula::Rational { 1, 2 }) * var<EdgeX> * var<EdgeX>) ));
