@@ -12,14 +12,28 @@
 # should not (a lone "." matches anything). The check exists to catch a wrong
 # reason, so it must not be the thing that quietly stops working.
 #
-# REJECT, when supplied, is a second literal substring that must NOT appear.
-# With it the harness answers a stricter question: did the build fail for our
-# reason, AND not also for a cascade of the compiler's own? EXPECT alone
-# cannot tell those apart -- a static_assert of ours can fire and a pile of
-# "no such member" errors can follow it, and the expected text is still
-# found. That is what makes an ordering guard testable at all: a guard that
-# exists to stop a later rule being asked must be pinned by rejecting that
-# rule's name, because its absence is the only observable difference.
+# REJECT, when supplied, is one or more further literal substrings, and none of
+# them may appear. With them the harness answers a stricter question: did the
+# build fail for our reason, AND not also report any of THESE strings? It does
+# not answer whether the compiler added a cascade of its own under some other
+# name -- only a string named here is looked for. EXPECT alone cannot tell a
+# clean refusal from one with a pile of "no such member" errors after it, since
+# the expected text is found either way. That is what makes an ordering guard
+# testable at all: a guard that exists to stop a later rule being asked must be
+# pinned by rejecting that rule's name, because its absence is the only
+# observable difference.
+#
+# The REJECT values arrive in REJECT_FILE, which formula_add_negative_test in
+# test/CMakeLists.txt writes as `REJECT_COUNT` plus `REJECT_0`, `REJECT_1`, ...
+# -- see that function for why not `-D`.
+#
+# Both EXPECT and REJECT are matched against the COMBINED build output, which
+# is more than the compiler's diagnostics: it includes the build tool's own
+# lines, such as ninja's echo of a failed command, and so the target name and
+# every file path on that command line. A REJECT that happens to occur in a
+# path or target name -- "method", say, or "negative" -- fails every build,
+# for no reason of the compiler's. Choose text that only a diagnostic can
+# contain, such as a template name or a message of the library's own.
 
 execute_process(
     COMMAND "${CMAKE_COMMAND}" --build "${BUILD_DIR}" --config "${CONFIG}" --target "${TARGET}"
@@ -41,8 +55,23 @@ string(REPLACE "‘" "'" combined "${combined}")
 string(REPLACE "’" "'" combined "${combined}")
 string(REPLACE "‘" "'" EXPECT "${EXPECT}")
 string(REPLACE "’" "'" EXPECT "${EXPECT}")
-string(REPLACE "‘" "'" REJECT "${REJECT}")
-string(REPLACE "’" "'" REJECT "${REJECT}")
+
+set(REJECT_COUNT 0)
+if(DEFINED REJECT_FILE)
+    include("${REJECT_FILE}")
+endif()
+if(REJECT_COUNT GREATER 0)
+    math(EXPR _lastReject "${REJECT_COUNT} - 1")
+    foreach(_index RANGE 0 ${_lastReject})
+        if(NOT DEFINED REJECT_${_index})
+            message(FATAL_ERROR
+                "negative test ${TARGET}: ${REJECT_FILE} declares ${REJECT_COUNT} REJECT values but "
+                "does not define REJECT_${_index}.")
+        endif()
+        string(REPLACE "‘" "'" REJECT_${_index} "${REJECT_${_index}}")
+        string(REPLACE "’" "'" REJECT_${_index} "${REJECT_${_index}}")
+    endforeach()
+endif()
 
 if(buildResult EQUAL 0)
     message(FATAL_ERROR
@@ -58,21 +87,24 @@ if(_found EQUAL -1)
         "--- compiler output ---\n${combined}")
 endif()
 
-# Guarded on emptiness, not merely on being defined: string(FIND) of an empty
-# needle returns 0 rather than -1, so an unsupplied REJECT would otherwise
-# "match" every output and fail every case that never asked for the check.
-if(NOT "${REJECT}" STREQUAL "")
-    string(FIND "${combined}" "${REJECT}" _rejected)
-    if(NOT _rejected EQUAL -1)
+# Every value is checked, and every one that is found is reported, not only
+# the first. An empty value would be found in every output -- string(FIND) of
+# an empty needle returns 0 -- so formula_add_negative_test refuses one at
+# configure time rather than this script skipping it here.
+if(REJECT_COUNT GREATER 0)
+    set(_rejected "")
+    foreach(_index RANGE 0 ${_lastReject})
+        string(FIND "${combined}" "${REJECT_${_index}}" _position)
+        if(NOT _position EQUAL -1)
+            string(APPEND _rejected "Must NOT find:    ${REJECT_${_index}}\n")
+        endif()
+    endforeach()
+    if(NOT _rejected STREQUAL "")
         message(FATAL_ERROR
             "negative test ${TARGET}: the build failed for the RIGHT reason, but ALSO reported "
-            "something it must not.
-"
-            "Expected to find: ${EXPECT}
-"
-            "Must NOT find:    ${REJECT}
-"
-            "--- compiler output ---
-${combined}")
+            "something it must not.\n"
+            "Expected to find: ${EXPECT}\n"
+            "${_rejected}"
+            "--- compiler output ---\n${combined}")
     endif()
 endif()
