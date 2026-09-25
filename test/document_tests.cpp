@@ -219,11 +219,16 @@ TEST_CASE("document: a variable inside a RoundNode still appears in the symbol t
           "[document]")
 {
     // The RoundNode sits as the right operand of a BinaryNode, not at the
-    // root -- exactly the shape the collect() forward declarations exist
-    // for. An overload that is only *defined*, and never forward declared,
-    // compiles for a formula where RoundNode sits at the top and fails to
-    // find an overload here, where BinaryNode's collect() must recurse into
-    // it before RoundNode's own collect() has been declared.
+    // root: BinaryNode's collect() has to recurse into it, so this covers a
+    // nested position and not only a node kind at the top of a tree.
+    //
+    // **It does not establish that the collect() forward declarations are
+    // load-bearing, and an earlier version of this comment claimed it did.**
+    // Measured while phase 10 added the lookup overloads: deleting every
+    // forward declaration in document.hpp and rebuilding this suite succeeds
+    // on cl 19.51, clang-cl 22 and g++ 14.2 -- this test included. ADL finds
+    // the overload wherever it is declared, exactly as document.hpp's own
+    // comment on that block says.
     constexpr auto node =
         var<CementVolume>
         + formula::rounded<formula::unit::Litre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(

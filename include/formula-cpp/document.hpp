@@ -97,9 +97,15 @@ namespace detail
     // Not load-bearing, just this file's convention: every collect() call's
     // first argument is `Walk&`, so `formula::detail` -- Walk's namespace --
     // is always in ADL's search set, which is why every overload below is
-    // found regardless of declaration order (confirmed by removing all five
-    // and rebuilding). That is an implementation detail, not a guarantee, so
-    // each overload stays declared here rather than relying on it.
+    // found regardless of declaration order. Re-measured when the three lookup
+    // overloads below were added: deleting all 17 declarations in this block
+    // and rebuilding the whole test suite succeeds on cl 19.51, clang-cl 22
+    // and g++ 14.2 alike -- the last two settle it for a conformant two-phase
+    // lookup, not only for the permissive one cl is left in here, since
+    // nothing in this project passes /permissive-. (The earlier wording said
+    // "all five", which was the count when this was first measured.) That is
+    // an implementation detail, not a guarantee, so each overload stays
+    // declared here rather than relying on it.
 
     template <Described Q>
     void collect(Walk& walk, VarNode<Q> const& node);
