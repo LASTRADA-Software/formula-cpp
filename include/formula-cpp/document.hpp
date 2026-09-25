@@ -13,6 +13,7 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/lookup.hpp>
 #include <formula-cpp/render.hpp>
 
 #include <string>
@@ -132,6 +133,15 @@ namespace detail
     template <Unit U, FixedString Justification, Node Operand>
     void collect(Walk& walk, NumericValueNode<U, Justification, Operand> const& node);
 
+    template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    void collect(Walk& walk, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node);
+
+    template <KeyTable Keys, Unit ResultUnit>
+    void collect(Walk& walk, ExactLookupNode<Keys, ResultUnit> const& node);
+
+    template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    void collect(Walk& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node);
+
     template <Comparison Op, Node Left, Node Right>
     void collect(Walk& walk, PredicateNode<Op, Left, Right> const& node);
 
@@ -223,6 +233,43 @@ namespace detail
     /// no longer carries a dimension.
     template <Unit U, FixedString Justification, Node Operand>
     void collect(Walk& walk, NumericValueNode<U, Justification, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A lookup table names no variable, and neither half of one could: a
+    /// banded lookup's bands live in its type and its corrections are runtime
+    /// numbers (`lookup.hpp`), while a symbol table's rows are the quantities a
+    /// formula *reads*. The operand is the one thing here that reads anything,
+    /// and it is walked for the reason `RoundNode`'s operand is walked: the
+    /// table decides which number comes out, not which variables went in.
+    template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    void collect(Walk& walk, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// An exact lookup contributes nothing, and that is a fact about this node
+    /// kind rather than a decision taken here: it has no operand at all
+    /// (`lookup.hpp`). Its key is a discriminator rather than a quantity, so it
+    /// reaches the node as runtime state instead of as a sub-expression, and
+    /// there is no child to walk. Rendering does put that key where the other
+    /// two kinds put their operand -- `lookup(key 7, ...)` -- so the subject
+    /// position of the rendered formula is occupied by something a reader may
+    /// well take for a variable; it names none, has no unit and earns no row.
+    /// Empty for the reason `collect(Walk&, ConstantNode<U> const&)` is empty,
+    /// not for want of looking.
+    template <KeyTable Keys, Unit ResultUnit>
+    void collect(Walk&, ExactLookupNode<Keys, ResultUnit> const&)
+    {
+    }
+
+    /// An interpolating lookup walks its operand for the reason a banded one
+    /// does. What is particular to this kind changes nothing about it: the
+    /// answer between two rows is computed rather than read off the table, and
+    /// a computed number is still a number, not a variable.
+    template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    void collect(Walk& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node)
     {
         collect(walk, node.operand);
     }
