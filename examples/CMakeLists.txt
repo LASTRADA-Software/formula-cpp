@@ -67,11 +67,20 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #    itself does not drift.
 #  - `at 100 mm gives 95 %` -- the interpolating table's point spelling, which
 #    must NOT read as an interval: a breakpoint is a row, not a boundary.
-#  - `key 1 gives 97 %` -- an exact key renders as its underlying value,
-#    because an enumerator has no name at run time.
-#  - `[between 100 and 150 mm]` and `[90 to under 100 %]` -- the two trace
-#    clauses that say where an answer came from, one per table kind, from the
-#    nested `banded(interpolating(...))` shape.
+#  - `key 7 gives 97 %` -- an exact key renders as its underlying value, not
+#    its name (an enumerator has none at run time) and not its row index. The
+#    example numbers its enumerators 3, 7, 11 and 13 precisely so a value and
+#    an index cannot be confused, which is why this pins 7 and not 1.
+#  - `[between 100 and 150 mm]`, `[90 to under 100 %]` and
+#    `[on the row at 200 mm]` -- the trace clauses that say where an answer
+#    came from, in the order the program prints them. Three rather than two:
+#    an interpolating lookup has a clause for the two rows it drew on AND a
+#    different one for a value sitting exactly on a row, and those say
+#    genuinely different things, so pinning only the first would leave the
+#    row-hit spelling free to drift. (Order is load bearing here -- `.*`
+#    between the clauses means this asserts a sequence, and the first draft of
+#    this regex listed them in the wrong order and failed, which is how the
+#    sequencing was confirmed to be doing work rather than decorating.)
 #  - `[in no band ... the bands cover 0 to under 200 mm]` -- the clause that
 #    keeps a miss from being an opaque DomainError. Written as two halves
 #    joined by `.*` rather than quoting the literal `;` between them:
@@ -81,4 +90,4 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #
 # A `[==[ ... ]==]` bracket argument for the reason the constraints entry
 # gives: the regex needs literal backslash escapes around `[` and `]`.
-formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key 1 gives 97 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])
+formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key 7 gives 97 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])

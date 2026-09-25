@@ -175,10 +175,10 @@ compiler), with the rest of the instantiation backtrace below these lines:
 ```
 In file included from test\negative\lookup_band_gap.cpp:9:
 In file included from include\formula-cpp/lookup.hpp:469:
-include\formula-cpp/band.hpp(202,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{10, 1, 20, 1}, formula::Band{25, 1, 35, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
-  202 |     static_assert(bands_are_adjacent(First, Second),
+include\formula-cpp/band.hpp(219,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{10, 1, 20, 1}, formula::Band{25, 1, 35, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
+  219 |     static_assert(bands_are_adjacent(First, Second),
       |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-include\formula-cpp/band.hpp(248,17): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{10, 1, 20, 1}, Band{25, 1, 35, 1}>' requested here
+include\formula-cpp/band.hpp(265,17): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{10, 1, 20, 1}, Band{25, 1, 35, 1}>' requested here
 ```
 
 The message names **both offending rows**, as the values you typed: the one
@@ -206,6 +206,15 @@ that a short braced list is a compile error naming both counts — handed to a
 bare `std::array<Rational, N>`, a short list silently value-initialises the rest
 to zero, and a row whose correction you forgot to type would then answer `0`,
 confidently, indistinguishable from a deliberate zero.
+
+It is the **node's own member type**, not only the factory's parameter type,
+and that distinction was bought the hard way. A lookup node is a public
+aggregate with public members, so it can be declared without calling a factory
+at all — and while the member was a raw array, that route bypassed the check
+entirely and the untyped rows evaluated to `0` on all three kinds. The factory's
+parameter cannot see a call that never happens. A consequence worth knowing:
+a lookup node has no default constructor, because `{}` for a table of three
+rows is a count of zero, which is exactly the mistake being refused.
 
 ## A miss is not a value
 
@@ -260,10 +269,10 @@ a `KeyTable<Key, N>`:
 ```cpp
 enum class LookupExampleShape : std::uint8_t
 {
-    Cube,
-    Cylinder,
-    Prism,
-    DrilledCore, // deliberately absent from ShapeKeys below -- the miss
+    Cube = 3,
+    Cylinder = 7,
+    Prism = 11,
+    DrilledCore = 13, // deliberately absent from ShapeKeys below -- the miss
 };
 
 inline constexpr formula::KeyTable<LookupExampleShape, 3> ShapeKeys {
@@ -294,18 +303,19 @@ entered is silently never selected.
 ### The key renders as its underlying value, not the enumerator's name
 
 ```
-exact:         lookup(key 1, key 0 gives 100 %, key 1 gives 97 %, key 2 gives 92 %)
+exact:         lookup(key 7, key 3 gives 100 %, key 7 gives 97 %, key 11 gives 92 %)
 ```
 
-`key 1` is `Cylinder`, and the rendering cannot say so. **A C++ enumerator has
+`key 7` is `Cylinder`, and the rendering cannot say so. **A C++ enumerator has
 no name at run time** — there is no portable way to get `Cylinder` back out of a
 `LookupExampleShape` — so what a reader is given is the underlying value, which
 is the only thing that survives. It is the *value*, not the row's index: an
-author who numbered theirs `{ Cube = 3, Cylinder = 7 }` sees 3 and 7, numbers
-that appear in their own source.
+author who numbers theirs `{ Cube = 3, Cylinder = 7 }` -- as the example
+above does, for exactly this reason -- sees 3 and 7, numbers that appear in
+their own source and nowhere in a row count.
 
 **So a reader reconciling a rendered exact lookup against a published table has
-to carry your `enum class` declaration across.** `key 1` says which row, not
+to carry your `enum class` declaration across.** `key 7` says which row, not
 which variant. Per-row labels are deliberately not modelled on the node — a
 table's identity is `documented()`'s job, not a field smuggled into the
 arithmetic — so if you publish a rendering of an exact lookup, publish the
@@ -544,7 +554,7 @@ an interpolating one — collecting the citation and the symbol table. Here it i
 over a banded and an exact lookup inside one formula:
 
 ```
-method:        f_m * lookup(d, 0 to under 100 mm gives 95 %, 100 to under 150 mm gives 100 %, 150 to under 200 mm gives 105 %) * lookup(key 1, key 0 gives 100 %, key 1 gives 97 %, key 2 gives 92 %)
+method:        f_m * lookup(d, 0 to under 100 mm gives 95 %, 100 to under 150 mm gives 100 %, 150 to under 200 mm gives 105 %) * lookup(key 7, key 3 gives 100 %, key 7 gives 97 %, key 11 gives 92 %)
 cited:         Corrected compressive strength, Example Standard 8:2020, 7.3 (5)
 symbol:        f_m = measured compressive strength [MPa]
 symbol:        d = specimen diameter [mm]
@@ -566,13 +576,35 @@ interpolation drew on:
 2. d = 120 mm
 3. lookup(#2) = 100 % [100 to under 150 mm]
 4. #1 * #3 = 40000000
-5. lookup(key 1) = 97 %
+5. lookup(key 7) = 97 %
 6. #4 * #5 = 38800000
 7. #6 = 38800000 [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
 ```
 
 The exact lookup on line 5 adds no such clause, and that is right: its key is
 already the subject of the line, and the key *is* the row.
+
+An interpolating lookup has **two** such clauses rather than one, and they say
+genuinely different things. Between two rows:
+
+```
+1. d = 120 mm
+2. interpolate(#1) = 97 % [between 100 and 150 mm]
+```
+
+and on a row:
+
+```
+1. d = 200 mm
+2. interpolate(#1) = 105 % [on the row at 200 mm]
+```
+
+The first tells a reader there is an interpolation to check and that the answer
+appears in neither named row; the second tells them the table stated that
+number directly and there is nothing to check. Neither spelling is an interval:
+`between 100 and 150 mm` names two rows and claims nothing about either end
+being included or excluded, so it needs neither a band's `to under` nor a
+curve's closed `to`.
 
 Both lookup steps report in the unit their own table is stated in — `100 %`,
 `97 %` — while lines 4 and 6 report the products in coherent SI, because an

@@ -95,12 +95,19 @@ inline constexpr formula::BandTable<1> TopRowInclusive {
 // mislink on clang -- a dangling relocation, no diagnostic. lookup.hpp's file
 // comment measures the mechanism. An enumeration declared in a *header* has
 // external linkage instead and the question does not arise.
+//
+// **Numbered explicitly, and not contiguously, on purpose.** An exact lookup
+// renders its rows as `key <underlying value>`, and enumerators left to
+// default would print 0, 1, 2 -- which a reader could just as easily take for
+// row indices. 3, 7, 11 and 13 can only be the enumerators' own values, so the
+// rendering below demonstrates the rule rather than merely being consistent
+// with it.
 enum class LookupExampleShape : std::uint8_t
 {
-    Cube,
-    Cylinder,
-    Prism,
-    DrilledCore, // deliberately absent from ShapeKeys below -- the miss
+    Cube = 3,
+    Cylinder = 7,
+    Prism = 11,
+    DrilledCore = 13, // deliberately absent from ShapeKeys below -- the miss
 };
 
 // Three of the four shapes. `DrilledCore` is left out on purpose: it is the
@@ -333,6 +340,18 @@ int main()
     std::printf("nested symbols: %zu\n", nestedDocumentation.symbols.size());
 
     std::printf("%s", tracedEvaluation<SizeCorrection>(classFactor(), diameterOf(120)).c_str());
+
+    // ---- 6a. An interpolating lookup's own trace clause, in both its forms ---
+    //
+    // A lookup step ends in a bracketed clause naming where its answer came
+    // from, and the interpolating kind has TWO of those rather than one: the
+    // two rows it drew on, or -- at a value sitting exactly on a row -- the
+    // single row it read. They say genuinely different things. Between two
+    // rows the answer appears in neither and a reader has an interpolation to
+    // check; on a row the table stated the number directly and there is
+    // nothing to check.
+    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeCurveFactor(), diameterOf(120)).c_str());
+    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeCurveFactor(), diameterOf(200)).c_str());
 
     // ---- 7. The whole method, rendered and documented ------------------------
     auto const method = correctedStrength(LookupExampleShape::Cylinder);
