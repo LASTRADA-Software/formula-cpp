@@ -28,8 +28,10 @@ struct PowerNode: NodeBase
 {
     /// The base expression.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
     Operand operand;
 
     /// The power `operand` is raised to.
@@ -60,8 +62,10 @@ struct RootNode: NodeBase
 
     /// The expression the root is taken of.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
     Operand operand;
 
     /// Which root this is -- 2 for a square root, 3 for a cube root, and so on.

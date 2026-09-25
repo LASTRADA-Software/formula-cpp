@@ -74,8 +74,10 @@ struct PredicateNode
 
     /// The left-hand child expression.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
     Left lhs;
     /// The right-hand child expression.
     Right rhs;

@@ -630,29 +630,41 @@ namespace detail
 ///
 /// **Asked whether a node is default-constructible, the traits and the
 /// concepts answer `false`, cleanly**, and so does anything holding a lookup
-/// node: a `BinaryNode` around one, a `VariantCase`, a `Constraint`. That
-/// takes two things, and both are load bearing:
+/// node: every node kind with one under it, a `VariantCase`, a `Constraint`,
+/// the `Variants` and `ConstraintSet` packs, a `Method`, and a `std::tuple` of
+/// methods. `method_lookup_tests.cpp` asks each of them. That takes two
+/// things, and both are load bearing:
 ///
 ///  - A count of zero is refused by the wrong-count constructor's
 ///    *constraint*, not by its body -- see that constructor below. With
 ///    `{}` reaching a `static_assert` in a body instead, the traits answered
-///    `true` and the concepts hard-errored; and clang++ 20 with libstdc++ 14
-///    instantiated that body from inside `std::tuple<VariantCase<...>>`,
-///    whose default constructor asks `__is_implicitly_default_constructible`
-///    of each element, so **a method could not hold a lookup at all**. g++,
-///    cl and clang-cl did not instantiate the body and accepted it, which is
-///    why only that one toolchain showed it.
-///  - Every member of every node, variant and constraint that holds a child
-///    expression is declared **without** a `{}` default member initialiser
-///    (`Operand operand;`, `Left lhs;`, `Expr expression;` and so on). An
-///    omitted member is still copy-initialised from `{}` by aggregate
-///    initialisation, so nothing that initialises a node changes -- but a
-///    `{}` written as a *default member initialiser* is instantiated on its
-///    own, outside the probe's immediate context, and clang reports a child
-///    that cannot be built from `{}` there as a hard error rather than as
-///    the probe's answer. Putting `{}` back on any one of them re-breaks a
-///    method holding a lookup under that member, on clang++ with libstdc++
-///    only; `method_lookup_tests.cpp` pins it.
+///    `true` and the concepts hard-errored, and `std::tuple` -- whose default
+///    constructor asks that question of every element -- reached the body
+///    from `Variants`, so **a method could not hold a lookup at all**.
+///    Measured on clang++ 20 with libstdc++ 14 and on g++ 14 for a method of
+///    one variant, and on g++ 13 and on clang++ 20 with libc++ 22 once the
+///    method had two; cl and clang-cl accepted it.
+///  - Every member that holds a child expression is declared **without** a
+///    `{}` default member initialiser (`Operand operand;`, `Left lhs;`,
+///    `Expr expression;` and so on). An omitted member is still
+///    copy-initialised from `{}` by aggregate initialisation, so nothing that
+///    initialises a node changes -- but a `{}` written as a *default member
+///    initialiser* is instantiated on its own, outside the probe's immediate
+///    context. Restoring it on one member at a time, measured on all six
+///    toolchains above: for every node member, a method holding a lookup
+///    under it fails to compile on clang++ (either library), clang-cl and
+///    g++ 13 and 14, while cl compiles the method and answers the trait
+///    `true` instead. `VariantCase::expression` and `Constraint::predicate`
+///    behave the same, except that g++ accepts them. The four pack members
+///    -- `Variants::cases`, `ConstraintSet::items`, `Method::variantSet` and
+///    `Method::constraintSet` -- break no method; with a `{}` on one, the
+///    trait asked of the pack, of the method or by a tuple of methods
+///    hard-errors or answers `true`, on clang++ with libstdc++ for all four,
+///    and on cl and clang-cl for all but `Method::variantSet`, which only a
+///    tuple of methods reaches. A lookup's own `operand` is reached only
+///    under a table of no rows, since otherwise `corrections`, declared
+///    before it, refuses first. `method_lookup_tests.cpp` has a row for each
+///    member, and fails on cl too for every one but `Method::variantSet`.
 ///
 /// **`corrections` is no longer a range, and `operator[]` is const and returns
 /// by value.** So `for (auto& correction: node.corrections)`,
@@ -771,8 +783,9 @@ struct BandedLookupNode: NodeBase
 
     /// The expression whose evaluated value selects a band.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`.
+    /// The probe reaches this member only under a table of no rows: with any
+    /// row, `corrections`, declared before it, refuses first.
     Operand operand;
 
     /// The unit band boundaries are declared in, and the unit `operand`'s
@@ -1734,8 +1747,9 @@ struct InterpolatingLookupNode: NodeBase
 
     /// The expression whose evaluated value is located against `breakpoints`.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`.
+    /// The probe reaches this member only under a table of no rows: with any
+    /// row, `corrections`, declared before it, refuses first.
     Operand operand;
 
     /// The unit breakpoints are declared in, and the unit `operand`'s value is

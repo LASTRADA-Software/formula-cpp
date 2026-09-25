@@ -77,8 +77,10 @@ struct WhenNode: NodeBase
 
     /// The condition that selects a branch.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
     P predicate;
     /// Evaluated, and only evaluated, when `predicate` holds.
     Then thenBranch;

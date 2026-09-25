@@ -339,12 +339,13 @@ formula_add_negative_test(interpolating_lookup_short_corrections_no_factory
 # An EMPTY list is the one wrong count the sentence above does not reach, on
 # purpose: `{}` is what a default-constructibility probe asks for, and a
 # refusal reachable from it stopped a method holding a lookup from compiling on
-# clang++ with libstdc++ -- see `Corrections` in lookup.hpp. It is refused by
-# the wrong-count constructor's constraint instead, in the compiler's words,
-# which every compiler spells with the type's name. The REJECT pins the route:
-# an empty list that reached the constructor body again would print the
-# sentence, and fail this case on every compiler, not only the one that shows
-# the method defect.
+# clang++ (with libstdc++ or libc++) and on g++ -- see `Corrections` in
+# lookup.hpp. It is refused by the wrong-count constructor's constraint
+# instead, in the compiler's words, which every compiler spells with the
+# type's name. The REJECT pins the route: with that constraint reverted, the
+# empty list reaches the body again and prints the sentence -- measured on
+# clang++ with both libraries, g++ 13 and 14, cl and clang-cl -- so this case
+# catches the revert even on the compilers that accept the method either way.
 formula_add_negative_test(lookup_empty_corrections_no_factory
     "Corrections<"
     REJECT "this lookup table was given a different number of corrections than it has rows")

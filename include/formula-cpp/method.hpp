@@ -174,8 +174,9 @@ struct VariantCase
 
     /// The expression evaluated when this variant is the one selected.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup fails to compile on clang++ and clang-cl, and cl
+    /// answers the trait wrongly -- see `Corrections` (`lookup.hpp`).
     Expr expression;
 
     /// The dimension this variant reports. Every variant of one method must
@@ -539,8 +540,10 @@ struct Variants
     /// order is part of the contract: selection reports which index fired,
     /// and a reader matches it back to the declaration by counting.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser. With one, no method
+    /// fails to compile, but asking whether this type -- or a tuple holding
+    /// it -- is default-constructible hard-errors or answers `true` when a
+    /// lookup is inside; see `Corrections` (`lookup.hpp`).
     std::tuple<Cs...> cases;
 };
 
@@ -744,8 +747,10 @@ struct Method
 
     /// The variants, as `variants(...)` built them.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser. With one, no method
+    /// fails to compile, but asking whether this type -- or a tuple holding
+    /// it -- is default-constructible hard-errors or answers `true` when a
+    /// lookup is inside; see `Corrections` (`lookup.hpp`).
     Vs variantSet;
     /// The rule applied to the selected variant's result.
     Rounding rounding {};

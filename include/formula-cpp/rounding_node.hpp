@@ -52,8 +52,10 @@ struct RoundNode: NodeBase
 
     /// The expression being rounded.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
     Operand operand;
 
     /// The unit the rounding happens in.
@@ -74,8 +76,10 @@ struct RoundSignificantNode: NodeBase
 
     /// The expression being rounded.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
     Operand operand;
 
     /// The unit the rounding happens in.

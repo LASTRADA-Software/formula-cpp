@@ -186,8 +186,10 @@ struct Constraint
 {
     /// The condition that must hold for this constraint to be satisfied.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// whose constraint holds a lookup fails to compile on clang++ and
+    /// clang-cl, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
     P predicate;
     /// What the outcome is when `predicate` does not hold.
     Verdict verdict {};
@@ -281,8 +283,10 @@ struct ConstraintSet
     /// tuple, at the same index -- see `check_all()` for why that order is
     /// part of the contract.
     ///
-    /// Deliberately no `{}` default member initialiser -- see `Corrections`
-    /// (`lookup.hpp`) for the clang++/libstdc++ defect one causes.
+    /// Deliberately no `{}` default member initialiser. With one, no method
+    /// fails to compile, but asking whether this type -- or a tuple holding
+    /// it -- is default-constructible hard-errors or answers `true` when a
+    /// lookup is inside; see `Corrections` (`lookup.hpp`).
     std::tuple<Constraint<Ps>...> items;
 };
 

@@ -6,8 +6,8 @@
 // the compiler, not by the library's own sentence, and that is deliberate.
 // `{}` is value-initialisation, which is exactly what a default-
 // constructibility probe performs, so refusing it in a `static_assert` body
-// is what stopped a `Method` holding a lookup from compiling on clang++ with
-// libstdc++ (see `Corrections` in `lookup.hpp`, and `method_lookup_tests.cpp`).
+// is what stopped a `Method` holding a lookup from compiling on clang++ and
+// g++ (see `Corrections` in `lookup.hpp`, and `method_lookup_tests.cpp`).
 // The expected text is the one part of the diagnostic every compiler shares,
 // the type's own name; the rejected text pins that the empty list is refused
 // by the constraint and never reaches that body. This must not compile.
