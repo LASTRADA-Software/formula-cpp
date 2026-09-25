@@ -260,10 +260,26 @@ namespace detail
     /// `collect(Walk&, DocumentedNode<Inner> const&)` above pushes onto,
     /// rather than opening a second path into it, then walks the predicate
     /// for the variables both its sides read.
+    ///
+    /// **Only when the citation is not blank.** `constraint(predicate,
+    /// verdict, citation = {})` (`constraint.hpp`) makes `citation` optional
+    /// -- the two-argument call is an ordinary, supported way to declare a
+    /// constraint, used by this project's own guide, example and several
+    /// tests -- so `node.citation` is not always something a caller meant to
+    /// cite. `DocumentedNode` has no equivalent guard because
+    /// `documented(expr, citation)` requires the citation argument; nothing
+    /// here has ever been able to construct a `DocumentedNode` with a blank
+    /// one to compare against. Pushing unconditionally would turn
+    /// `documentation.citations.empty()` from "this formula cites nothing"
+    /// into "this formula cites nothing, unless it read an uncited
+    /// constraint", and would render a bare, five-blank-field citation entry
+    /// on a generated page. `Citation`'s memberwise `operator==` against a
+    /// value-initialised `Citation {}` is exactly "every field empty".
     template <Predicate P>
     void collect(Walk& walk, Constraint<P> const& node)
     {
-        walk.documentation.citations.push_back(node.citation);
+        if (!(node.citation == Citation {}))
+            walk.documentation.citations.push_back(node.citation);
         collect(walk, node.predicate);
     }
 } // namespace detail

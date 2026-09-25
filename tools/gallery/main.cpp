@@ -238,25 +238,42 @@ void write_formula(std::ofstream& out, N const& node)
         out << citation.text << "\n\n";
 }
 
-/// Writes one constraint's section: its citation's title as a heading, and
-/// the plain and LaTeX renderings of its rule -- never its verdict, which
-/// belongs to the trace, not the rule (docs/constraints.md explains why).
+/// Writes one constraint's section: its citation's title as a heading, the
+/// plain and LaTeX renderings of its rule -- never its verdict, which
+/// belongs to the trace, not the rule (docs/constraints.md explains why) --
+/// and its symbol table.
 ///
-/// Not `write_formula` above: a `Constraint` is deliberately not a `Node`
-/// (`constraint.hpp`'s file comment), so it cannot be wrapped by
-/// `documented()` and `document()` -- built around `Node` -- refuses it
-/// too. There is no symbol table here for the same reason; the citation and
-/// rule are read directly off the constraint's own public members instead.
+/// Not `write_formula` above only because a `Constraint` is not a `Node`
+/// (`constraint.hpp`'s file comment) and so cannot be passed to the
+/// `Node`-constrained `document<D>()` overload; it goes through
+/// `document()`'s other overload, for `Constraint`, instead, added
+/// alongside the `Node` one in `document.hpp` for exactly this reason.
+/// Everything downstream of that call is identical to `write_formula`'s own
+/// shape, including the symbol table -- a constraint documents exactly the
+/// way a formula does, and this page should not read as though it doesn't.
 template <formula::Predicate P>
 void write_constraint(std::ofstream& out, formula::Constraint<P> const& node)
 {
-    formula::Citation const& citation = node.citation;
+    formula::Documentation const plain = formula::document(node);
+    formula::Documentation const markdown = formula::document<formula::Dialect::Markdown>(node);
+    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(node);
+
+    // Exactly one constraint written this way in this file, and it is
+    // cited, so exactly one citation comes back -- see write_formula's own
+    // comment above for the identical assumption.
+    formula::Citation const& citation = plain.citations.front();
 
     out << "## " << citation.title << "\n\n";
 
-    out << "```\n" << formula::render(node) << "\n```\n\n";
+    out << "```\n" << plain.formula << "\n```\n\n";
 
-    out << "$$\n" << formula::render<formula::Dialect::LaTeX>(node) << "\n$$\n\n";
+    out << "$$\n" << latex.formula << "\n$$\n\n";
+
+    out << "| Symbol | Description | Unit |\n";
+    out << "| --- | --- | --- |\n";
+    for (formula::SymbolEntry const& row: markdown.symbols)
+        out << "| " << row.symbol << " | " << row.description << " | " << unit_cell(row.unit) << " |\n";
+    out << "\n";
 
     bool const hasBibliographicFields =
         !citation.reference.empty() || !citation.section.empty() || !citation.equation.empty();

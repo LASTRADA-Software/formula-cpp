@@ -59,6 +59,13 @@ constexpr auto replicateAgreement =
                         formula::Verdict { "repeat the test" },
                         { .title = "Replicate agreement", .reference = "Example Standard 1:2020", .section = "6.2" });
 
+// The two-argument call -- constraint(predicate, verdict), citation left at
+// its default -- is an ordinary, supported way to declare a constraint, used
+// by this project's own guide, example and several tests. So a constraint
+// with no citation at all is not a hypothetical input.
+constexpr auto uncitedAgreement = formula::constraint(var<ReplicateA> > var<ReplicateB>,
+                                                     formula::Verdict { "repeat the test" });
+
 } // namespace
 
 TEST_CASE("document: the documentation carries the rendered formula", "[document]")
@@ -309,6 +316,21 @@ TEST_CASE("document: a constraint's citation reaches the documentation", "[docum
     REQUIRE(documentation.citations.size() == 1);
     CHECK(documentation.citations[0].title == std::string_view { "Replicate agreement" });
     CHECK(documentation.citations[0].section == std::string_view { "6.2" });
+}
+
+TEST_CASE("document: an uncited constraint contributes no citation row", "[document]")
+{
+    // constraint(predicate, verdict, citation = {}) makes the citation
+    // optional, so collect(Walk&, Constraint<P> const&) must check before
+    // pushing node.citation onto the list -- pushing unconditionally would
+    // turn documentation.citations.empty() from "this formula cites
+    // nothing" into "this formula cites nothing, unless it read an uncited
+    // constraint", and would render a bare, five-blank-field citation entry
+    // on a generated page. The test above proves the cited direction still
+    // contributes exactly one row; this is the other direction.
+    formula::Documentation const documentation = formula::document(uncitedAgreement);
+
+    CHECK(documentation.citations.empty());
 }
 
 TEST_CASE("document: a constraint predicate's left-hand side reaches the symbol table", "[document]")

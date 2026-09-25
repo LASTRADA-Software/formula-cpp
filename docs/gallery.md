@@ -54,6 +54,10 @@ $$
 \text{require } d \leq 150 mm
 $$
 
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| d | specimen diameter | mm |
+
 - Reference: Example Standard 6:2020
 - Section: 4.1
 
