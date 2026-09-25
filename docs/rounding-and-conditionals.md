@@ -158,24 +158,40 @@ containing an underscore in backticks so Markdown does not read it as
 emphasis.
 
 A conditional renders as `if <predicate> then <then> else <else>` -- seen
-above -- and a trace names which branch it took as a trailing clause, the
-same way a citation trails a `Documented` step:
+above -- and a trace spells the step in that same shape, minus the branch
+that did not run:
 
 ```
 1. d = 127/5 mm
 2. 20 mm
 3. d = 127/5 mm
-4. round(#3, to 0 dp of mm) = 25 mm
-5. when(#1, #2, #4) = 1/40 [then]
+4. round(#3, to 0 dp of mm) = 25 mm [nearest, ties away from zero]
+5. if #1 > #2 then #4 = 1/40 [then]
 ```
 
-25.40 mm is above the 20 mm threshold, so the trace's last line says
-`[then]`; it would say `[else]` had the predicate not held, or `[no branch]`
-had the diameter never been measured at all -- never "false", which would
-misreport a predicate that never resolved. `#1` and `#2` are the predicate's
-two sides, recorded and numbered exactly like any other step's operands, even
-though `PredicateNode` itself is not a `Node` and never gets a step of its
-own. Note too that step 5's own value, `1/40`, carries no `mm` -- a `when()`
+Step 5 is the conditional. `#1` and `#2` are the predicate's two sides,
+recorded and numbered exactly like any other step's operands even though
+`PredicateNode` itself is not a `Node` and never gets a step of its own; `>`
+is the comparison that was actually made, so the step can be checked against
+the method on its own, away from the formula text; and `#4` is the branch
+that ran. 25.40 mm is above the 20 mm threshold, so the trailing clause says
+`[then]`. Had the predicate not held, the body would read `if #1 > #2 else
+#4` and the clause `[else]`; had the diameter never been measured at all, the
+body would stop after the comparison -- there is no branch to name, because
+none was ever dispatched -- and the clause would read `[no branch]`. It never
+says "false", which would misreport a predicate that never resolved.
+
+Step 4 carries a trailing clause of its own: `[nearest, ties away from
+zero]`, the `RoundingMode` that node rounded under. The mode is deliberately
+absent from the rendered formula, in every dialect, and therefore from
+`document()` too, which states its formula through the same renderer -- a
+method states a granularity, "to one decimal place", without naming a tie
+rule. The trace is the one place it appears, and the split is the point
+rather than an inconsistency: a rendered formula states what a method says,
+while a trace explains why one particular number came out as it did, and the
+tie rule can be the entire reason a value is 13 rather than 12.
+
+Note too that step 5's own value, `1/40`, carries no `mm` -- a `when()`
 step is a computed value like any other, and every computed step is shown in
 the coherent SI unit of its dimension with no symbol at all, the same rule
 [Tracing and audit trails](tracing.md) explains for `#1 / #2` in a plain

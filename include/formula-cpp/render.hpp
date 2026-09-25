@@ -316,12 +316,20 @@ template <Dialect D, int Degree, Node Operand>
 /// CommonMark but is consumed by the `attr_list` extension some downstream
 /// MkDocs Material setups enable).
 ///
-/// `RoundingMode` deliberately does not appear in this text. A formula's
-/// rendered text is what a reader checks against a standard, and a standard
-/// states a rounding *granularity* -- "to one decimal place" -- without
-/// naming a tie-breaking rule. The mode stays visible in the type, and will
-/// surface in the trace and in `document()`; leaving it out here is a
-/// decision, not an oversight.
+/// `RoundingMode` deliberately does not appear in this text, in any dialect,
+/// and therefore does not appear in `document()` either -- a `Documentation`
+/// states its formula through this very function. A formula's rendered text
+/// is what a reader checks against a standard, and a standard states a
+/// rounding *granularity* -- "to one decimal place" -- without naming a
+/// tie-breaking rule.
+///
+/// Where the mode does appear is the **trace**: `render_trace`
+/// (`trace_render.hpp`) writes it as a bracketed clause on the step itself,
+/// `round(#1, to 0 dp of mm) = 13 mm [nearest, ties away from zero]`. That is
+/// a different document with a different job -- a trace exists to explain why
+/// *this* number came out as it did, and the tie rule can be the entire
+/// reason a value is 13 rather than 12. Leaving the mode out of the formula
+/// text is a decision; leaving it out of the trace would be a defect.
 template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
 [[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node)
 {
@@ -366,7 +374,10 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
 ///
 /// The justification does not appear here either. It is the compile-time
 /// record of *why* a rule needed a bare number instead of a quantity -- an
-/// audit trail for `document()`, not part of the arithmetic this text states.
+/// audit trail for the **trace**, not part of the arithmetic this text
+/// states. `render_trace` (`trace_render.hpp`) writes it as a bracketed
+/// clause on the step itself; `Documentation` has no field for it and
+/// `collect()` records none, so `document()` does not carry it either.
 template <Dialect D, Unit U, detail::FixedString Justification, Node Operand>
 [[nodiscard]] std::string render_node(NumericValueNode<U, Justification, Operand> const& node)
 {
@@ -417,22 +428,33 @@ template <Dialect D, Comparison Op, Node Left, Node Right>
     std::string const lhs = detail::render_operand<D>(node.lhs, operandContext);
     std::string const rhs = detail::render_operand<D>(node.rhs, operandContext);
 
-    char const* const symbol = [] {
-        if constexpr (Op == Comparison::Less)
-            return "<";
-        else if constexpr (Op == Comparison::LessOrEqual)
-            return D == Dialect::LaTeX ? "\\leq" : "<=";
-        else if constexpr (Op == Comparison::Greater)
-            return ">";
-        else if constexpr (Op == Comparison::GreaterOrEqual)
-            return D == Dialect::LaTeX ? "\\geq" : ">=";
-        else if constexpr (Op == Comparison::Equal)
-            return D == Dialect::LaTeX ? "=" : "==";
+    // Every dialect but LaTeX takes its token from `describe(Op)`
+    // (`predicate.hpp`) rather than keeping a second copy of the same six
+    // here. `render_trace` spells a traced conditional's predicate through
+    // that same function, and a reader checking a derivation against the
+    // formula it derives must not meet two different tokens for one
+    // comparison -- so there is one spelling, kept next to the enum. LaTeX
+    // overrides three of the six with their mathematical forms, the same
+    // way `BinaryNode`'s `*` becomes `\cdot` there.
+    std::string_view const symbol = []() -> std::string_view {
+        if constexpr (D == Dialect::LaTeX)
+        {
+            if constexpr (Op == Comparison::LessOrEqual)
+                return "\\leq";
+            else if constexpr (Op == Comparison::GreaterOrEqual)
+                return "\\geq";
+            else if constexpr (Op == Comparison::Equal)
+                return "=";
+            else if constexpr (Op == Comparison::NotEqual)
+                return "\\neq";
+            else
+                return describe(Op);
+        }
         else
-            return D == Dialect::LaTeX ? "\\neq" : "!=";
+            return describe(Op);
     }();
 
-    return lhs + " " + symbol + " " + rhs;
+    return lhs + " " + std::string { symbol } + " " + rhs;
 }
 
 /// A conditional renders as `if <predicate> then <then> else <else>` in every

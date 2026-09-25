@@ -84,6 +84,19 @@ struct WhenNode: NodeBase
 
     /// The two branches already agree; this is that (shared) dimension.
     static constexpr Dimension dimension = Then::dimension;
+
+    /// Which way `predicate` compares its two sides, re-exported from `P`.
+    ///
+    /// A sink is handed the node, not the node's type spelled out, and
+    /// `RecordingSink::produced` (`trace.hpp`) reads a node's compile-time
+    /// facts as `N::something` -- `N::dimension`, `N::unit`, `N::exponent`,
+    /// `N::mode`. Without this member the comparison would be reachable only
+    /// by naming `P` and reaching into it, which a generic sink cannot do,
+    /// and a recorded conditional step could say that two things were
+    /// compared but never which way. The alias-shaped alternative
+    /// (`using predicate = P;`) is not available here: `predicate` is already
+    /// the name of the data member above.
+    static constexpr Comparison comparison = P::comparison;
 };
 
 /// `when(predicate, thenBranch, elseBranch)`: `thenBranch` where `predicate`

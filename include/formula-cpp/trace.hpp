@@ -137,6 +137,37 @@ struct Step
     /// zero value is already the correct default for every other kind.
     Branch branch {};
 
+    /// For `Conditional`: which way the predicate compared its two sides.
+    ///
+    /// Recorded because a derivation that says two values were compared but
+    /// not *how* is not an audit trail: the trace is the artefact that
+    /// survives on its own, away from the formula text, and `#1` and `#2`
+    /// with no operator between them leaves a reader unable to check the
+    /// step against the method it came from.
+    ///
+    /// Unlike `branch` above, this field's zero value (`Comparison::Less`) is
+    /// **not** a neutral "not applicable": it is a real comparison. It is
+    /// meaningful only when `kind` is `Conditional`, exactly as `exponent`
+    /// and `granularity` above are meaningful only for the kinds that set
+    /// them, and no renderer may read it without checking `kind` first.
+    Comparison comparison {};
+
+    /// For `Round` and `RoundSignificant`: the tie-breaking rule the node
+    /// rounded under.
+    ///
+    /// Two rounding nodes differing only in their mode produce different
+    /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
+    /// that omits the mode cannot explain its own result. The mode is
+    /// deliberately absent from `render()` and hence from `document()` (a
+    /// standard states a granularity, not a tie rule; see
+    /// `render_node(RoundNode ...)`); the trace is where it belongs, because
+    /// a trace exists to say why *this* number came out as it did.
+    ///
+    /// As with `comparison` above, the zero value is a real mode
+    /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
+    /// sentinel: meaningful only for the two rounding kinds.
+    RoundingMode mode {};
+
     /// The dimension of what this step produced.
     Dimension dimension {};
 
@@ -459,8 +490,17 @@ class RecordingSink
         else if constexpr (requires { N::digits; })
             step.granularity = N::digits.value;
 
+        // `RoundNode` and `RoundSignificantNode` are the only kinds that
+        // declare one, so the `requires` alone selects them -- the same shape
+        // `exponent` and `granularity` above use.
+        if constexpr (requires { N::mode; })
+            step.mode = N::mode;
+
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
         {
+            // `WhenNode` re-exports its predicate's comparison for exactly
+            // this: a sink is handed a node, never the predicate's type.
+            step.comparison = N::comparison;
             step.branch = _trace->branchStack.back();
             _trace->branchStack.pop_back();
         }

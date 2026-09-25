@@ -356,6 +356,9 @@ TEST_CASE("a Round step records its own declared unit and granularity, and the p
     // dp" means nothing without saying 1 dp of what.
     CHECK(trace.steps[1].unit == unit::Millimetre);
     CHECK(trace.steps[1].granularity == 1);
+    // The tie rule too: it can be the entire reason a rounded value is one
+    // number rather than the next one along, and it reaches no other output.
+    CHECK(trace.steps[1].mode == formula::RoundingMode::HalfAwayFromZero);
     CHECK(trace.steps[1].value == formula::Rational { 123, 10000 });   // 12.3 mm, in coherent SI (m)
     REQUIRE(trace.steps[1].operands.size() == 1);
     CHECK(trace.steps[1].operands[0] == 0);
@@ -379,6 +382,7 @@ TEST_CASE("a RoundSignificant step records its own declared unit and granularity
     CHECK(trace.steps[1].kind == formula::StepKind::RoundSignificant);
     CHECK(trace.steps[1].unit == unit::Millimetre);
     CHECK(trace.steps[1].granularity == 2);
+    CHECK(trace.steps[1].mode == formula::RoundingMode::HalfAwayFromZero);
     CHECK(trace.steps[1].value == formula::Rational { 3, 250 });   // 12 mm, in coherent SI (m)
     REQUIRE(trace.steps[1].operands.size() == 1);
     CHECK(trace.steps[1].operands[0] == 0);
@@ -402,6 +406,12 @@ TEST_CASE("a Conditional step records the then branch it took, and every operand
     auto const& root = trace.steps[trace.root()];
     CHECK(root.kind == formula::StepKind::Conditional);
     CHECK(root.branch == formula::Branch::Then);
+    // Which way the two sides were compared, not merely that they were: the
+    // trace is the artefact that survives away from the formula text, and a
+    // step naming two operands with no operator between them cannot be
+    // checked against the method it came from. `WhenNode` re-exports it from
+    // the predicate, which is not a Node and so gets no step of its own.
+    CHECK(root.comparison == formula::Comparison::Greater);
     REQUIRE(root.operands.size() == 3);
     CHECK(root.operands[0] == 0);
     CHECK(root.operands[1] == 1);
@@ -424,6 +434,7 @@ TEST_CASE("a Conditional step records the else branch it took", "[trace]")
     auto const& root = trace.steps[trace.root()];
     CHECK(root.kind == formula::StepKind::Conditional);
     CHECK(root.branch == formula::Branch::Else);
+    CHECK(root.comparison == formula::Comparison::Greater);
     // The elseBranch's own root (the Multiply) already claimed its own two
     // children, so the Conditional's operands are the predicate's two sides
     // plus that one Multiply step -- not five.
@@ -450,6 +461,9 @@ TEST_CASE("a Conditional step records no branch when the predicate is absent -- 
     auto const& root = trace.steps[trace.root()];
     CHECK(root.kind == formula::StepKind::Conditional);
     CHECK(root.branch == formula::Branch::Neither);
+    // Recorded even though no branch ran: what the step could not decide is
+    // still a comparison, and a reader needs to know which one.
+    CHECK(root.comparison == formula::Comparison::Greater);
     // Neither branch ran, so only the predicate's own two operands were
     // claimed -- not three.
     REQUIRE(root.operands.size() == 2);

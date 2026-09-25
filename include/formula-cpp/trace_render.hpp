@@ -125,6 +125,50 @@ namespace detail
         return step.operands.empty() ? std::string {} : operand_reference(step.operands[0]);
     }
 
+    /// A `Conditional` step, in the same infix shape `render()` gives the
+    /// `WhenNode` it came from: `if #1 > #2 then #3`.
+    ///
+    /// It used to read `when(#1, #2, #3)`, which is positionally identical to
+    /// the public `when(predicate, thenBranch, elseBranch)` and means
+    /// something else entirely -- `(predicate lhs, predicate rhs, the branch
+    /// that ran)`. A reader who had just met the API mapped the three slots
+    /// onto it and concluded the *then* value was the second one, then read a
+    /// `[then]` suffix next to a number that came from the third. A notation
+    /// that needs prose to decode is not a smaller version of the problem; it
+    /// is the problem. This shape needs none: it is the one `render()`
+    /// already writes, minus the branch that did not run.
+    ///
+    /// **The branch that ran is the last operand**, when one ran at all:
+    /// operands are recorded in evaluation order and the branch is dispatched
+    /// after the predicate. What says whether one ran is `step.branch`, not
+    /// the operand count -- a predicate side that produced no step of its own
+    /// (an untraced extension node; see `binary_expression` above) reduces
+    /// the count too, and only `branch` distinguishes the two.
+    ///
+    /// A predicate side that recorded no step is written `(not evaluated)`,
+    /// which is what actually happened: the one arity below two that arises
+    /// in practice is a predicate whose left side raised an arithmetic error,
+    /// after which the evaluator never dispatched the right one at all. (The
+    /// mirror case -- a left side that is an untraced extension node -- would
+    /// be labelled the wrong way round here, the same imprecision
+    /// `binary_expression` above already accepts for the same cause, and
+    /// reachable only by a consumer who has written such a node.)
+    template <typename Rep>
+    [[nodiscard]] std::string conditional_expression(Step<Rep> const& step)
+    {
+        bool const branchRan = step.branch != Branch::Neither && !step.operands.empty();
+        std::size_t const predicateOperands = step.operands.size() - (branchRan ? 1u : 0u);
+
+        std::string const notEvaluated { "(not evaluated)" };
+        std::string const lhs = predicateOperands >= 1 ? operand_reference(step.operands[0]) : notEvaluated;
+        std::string const rhs = predicateOperands >= 2 ? operand_reference(step.operands[1]) : notEvaluated;
+
+        std::string text = "if " + lhs + " " + std::string { describe(step.comparison) } + " " + rhs;
+        if (branchRan)
+            text += " " + std::string { describe(step.branch) } + " " + operand_reference(step.operands.back());
+        return text;
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -168,25 +212,7 @@ namespace detail
                 return "numeric(" + sole_operand(step) + ", in " + std::string { view(step.sourceUnit.symbolText) }
                        + ")";
             case StepKind::Conditional:
-            {
-                // Unlike `binary_expression` above, every recorded operand is
-                // shown -- there can be two (the predicate's sides, when
-                // neither branch ran) or three (those two, plus whichever
-                // branch did) -- so a fixed arity would misname the third
-                // slot. Which branch ran, if any, is not this function's
-                // business: it is a fact about the step, not about what it
-                // consumed, and `step_line` below appends it as a suffix the
-                // same way it already does for `Documented`'s citation.
-                std::string text = "when(";
-                for (std::size_t index = 0; index < step.operands.size(); ++index)
-                {
-                    if (index > 0)
-                        text += ", ";
-                    text += operand_reference(step.operands[index]);
-                }
-                text += ")";
-                return text;
-            }
+                return conditional_expression(step);
         }
         return "unknown step kind";
     }
@@ -265,10 +291,34 @@ namespace detail
         return justification.empty() ? std::string {} : " (" + std::string { justification } + ")";
     }
 
+    /// A rounding step's tie-breaking rule, in one bracketed clause:
+    /// `[nearest, ties away from zero]`.
+    ///
+    /// The mode is deliberately absent from `render()` -- a standard states a
+    /// granularity, not a tie rule -- but a trace has the opposite job, and
+    /// two rounding nodes differing only in their mode produce 13 mm and
+    /// 12 mm from the same input. A derivation that showed identical text for
+    /// both would be unable to explain either number.
+    ///
+    /// A bracketed suffix rather than a third argument inside the
+    /// parentheses, which is where the granularity already sits. Every
+    /// `describe(RoundingMode)` spelling for a half mode contains a comma of
+    /// its own -- "nearest, ties away from zero" -- so `round(#1, to 0 dp of
+    /// mm, nearest, ties away from zero)` would read as a four-argument call
+    /// whose last two arguments are fragments. The suffix machinery this
+    /// function already uses for `Documented` and `NumericValue` has no such
+    /// collision, and puts the mode where a reader is already looking for a
+    /// step's trailing qualifications.
+    [[nodiscard]] inline std::string rounding_mode_suffix(RoundingMode mode)
+    {
+        return " [" + std::string { describe(mode) } + "]";
+    }
+
     /// One step's line, without its number: the expression, an `=`, the value,
-    /// and a trailing clause for the three kinds that need one -- a citation
-    /// for `Documented`, a justification for `NumericValue`, and which branch
-    /// ran for `Conditional`.
+    /// and a trailing clause for the four kinds that need one -- a citation
+    /// for `Documented`, a justification for `NumericValue`, which branch ran
+    /// for `Conditional`, and the tie-breaking rule for the two rounding
+    /// kinds.
     [[nodiscard]] inline std::string step_line(Step<Rational> const& step)
     {
         std::string const value = step_value_text(step);
@@ -279,6 +329,8 @@ namespace detail
             suffix = justification_suffix(step.justification);
         else if (step.kind == StepKind::Conditional)
             suffix = " [" + std::string { describe(step.branch) } + "]";
+        else if (step.kind == StepKind::Round || step.kind == StepKind::RoundSignificant)
+            suffix = rounding_mode_suffix(step.mode);
 
         if (step.kind == StepKind::Constant)
             return value + suffix;
