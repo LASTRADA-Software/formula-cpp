@@ -78,8 +78,10 @@
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/expression.hpp>
 
+#include <cstddef>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -139,15 +141,34 @@ namespace detail
 
     /// Fails to compile when something that is not a variant was handed to
     /// `variants(...)`.
-    template <typename C>
+    ///
+    /// Templated on the argument's position as well as its type. The type
+    /// alone is an expression node spelled out in full, which an author has to
+    /// match against every argument by eye; the position says which one it is
+    /// outright.
+    template <std::size_t Index, typename Argument>
     struct RequireVariant
     {
-        static_assert(IsVariantCase<C>::value,
+        static_assert(IsVariantCase<Argument>::value,
                       "formula: this argument of variants(...) is not a variant of a method; every "
-                      "argument must come from variant<Tag>(expression), and the offending one "
-                      "appears in this diagnostic as the template argument of RequireVariant");
+                      "argument must be a VariantCase, which variant<Tag>(expression) is the ordinary "
+                      "way to write -- the offending argument appears in this diagnostic as the "
+                      "template argument Argument of RequireVariant, and Index is its ZERO-BASED "
+                      "position, so 0 is the first argument");
 
         static constexpr bool value = true;
+    };
+
+    /// True when every argument is a variant; pairs each with its position so
+    /// that `RequireVariant` can report it.
+    template <typename Indices, typename... Cs>
+    struct RequireEveryArgumentIsAVariant;
+
+    template <std::size_t... Indices, typename... Cs>
+    struct RequireEveryArgumentIsAVariant<std::index_sequence<Indices...>, Cs...>
+    {
+        /// True when every one of `Cs` is a variant.
+        static constexpr bool value = (RequireVariant<Indices, Cs>::value && ...);
     };
 
     /// Fails to compile for `variants()` -- a method with nothing to choose
@@ -244,7 +265,7 @@ namespace detail
     struct RequireWellFormedVariants
     {
         static_assert(RequireAtLeastOneVariant<Cs...>::value);
-        static_assert((RequireVariant<Cs>::value && ...));
+        static_assert(RequireEveryArgumentIsAVariant<std::index_sequence_for<Cs...>, Cs...>::value);
 
         /// Whether the agreement rule has anything it can ask about.
         static constexpr bool everyArgumentIsAVariant = (IsVariantCase<Cs>::value && ...);
