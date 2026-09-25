@@ -355,6 +355,16 @@ formula_add_negative_test(method_variants_not_a_variant
 formula_add_negative_test(method_variants_empty
     "formula: this method declares no variants at all")
 
+# Pins the order of the rules rather than any one of them. The agreement rule
+# is asked only once every argument is a variant, so that a non-variant is
+# never asked for a `dimension` it has not got; this case hands over a bare
+# `int`, which genuinely has none. Our refusal fires either way, so EXPECT
+# alone cannot see the gate -- REJECT can: `RequireVariantsAgree` appears in
+# the instantiation stack on every compiler whenever the rule is asked.
+formula_add_negative_test(method_variants_agreement_gated
+    "formula: this argument of variants(...) is not a variant of a method"
+    REJECT "RequireVariantsAgree")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
