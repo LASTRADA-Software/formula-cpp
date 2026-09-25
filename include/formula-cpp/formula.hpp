@@ -32,5 +32,6 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/tag.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>

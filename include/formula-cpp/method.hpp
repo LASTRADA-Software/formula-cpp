@@ -15,8 +15,9 @@
 ///
 /// This header declares the variants and the tags they apply to, bundles them
 /// with a rounding rule and a constraint set into a `Method`, and selects a
-/// variant by tag in `evaluate_method`. What records that selection as a
-/// trace step is built on top of these.
+/// variant by tag in `evaluate_method`, which tells a sink that asks which
+/// variant it selected -- see `VariantSelection` (`sink.hpp`) and
+/// `StepKind::VariantSelected` (`trace.hpp`).
 ///
 /// **Why `variant<Tag>` and not the spec's own `when<Tag>`.** Spec section
 /// 9.1 sketches the selector as `formula::when<Cube>(expr)`. This library
@@ -94,6 +95,7 @@
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/tag.hpp>
 #include <formula-cpp/unit.hpp>
 
 #include <array>
@@ -919,6 +921,14 @@ namespace detail
 /// variant declares is refused at compile time rather than answered with a
 /// fallback -- see `detail::RequireVariantForTag`.
 ///
+/// **The selection is recorded, not merely made.** A sink that defines
+/// `variant_entered` and `variant_produced` is told which variant fired --
+/// its tag's name, its position and how many there were -- around the
+/// evaluation of that variant, so a `RecordingSink` (`trace.hpp`) records a
+/// `StepKind::VariantSelected` step whose one operand is the rounded
+/// variant. That is the answer to "why the cylinder formula?" that spec
+/// section 9.1 asks for; see `VariantSelection` (`sink.hpp`).
+///
 /// The rounding is the ordinary rounding node wrapped around the selected
 /// expression, so it rounds in the rule's unit exactly as
 /// `rounded<U, Places, Mode>(...)` does, and a sink sees the steps it would
@@ -959,7 +969,28 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         using Rule = std::remove_cvref_t<decltype(m.rounding)>;
 
         auto const& selected = std::get<Selection::index>(m.variantSet.cases);
-        return detail::dispatch<Rep>(rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression), environment, sink);
+        auto const expression = rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression);
+
+        // The selection is named whether or not the sink asks for it, so that
+        // a broken `TagName` specialization is refused the first time the
+        // method is evaluated with that tag, traced or not.
+        constexpr VariantSelection selection {
+            tag_name<Tag>(),
+            Selection::index,
+            std::tuple_size_v<std::remove_cvref_t<decltype(m.variantSet.cases)>>,
+        };
+        if constexpr (requires(Evaluated<Rep> const& result) {
+                          sink.variant_entered(selection);
+                          sink.variant_produced(selection, result);
+                      })
+        {
+            sink.variant_entered(selection);
+            Evaluated<Rep> const result = detail::dispatch<Rep>(expression, environment, sink);
+            sink.variant_produced(selection, result);
+            return result;
+        }
+        else
+            return detail::dispatch<Rep>(expression, environment, sink);
     }
 }
 

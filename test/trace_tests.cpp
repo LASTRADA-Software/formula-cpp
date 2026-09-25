@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -1412,4 +1413,176 @@ TEST_CASE("a lookup whose operand was never measured records absence, not a fail
     CHECK(!trace.steps[1].error.has_value());
     CHECK(trace.steps[1].lookupFailure == formula::LookupFailure::None);
     CHECK(!trace.steps[1].selectedBand.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// A method's variant selection, recorded
+//
+// The step's NAME is pinned in `trace_render_tests.cpp` -- "the trace names
+// which variant fired and on what discriminator" -- and, apart from the
+// customized spelling below, these tests select the FIRST variant whenever
+// they read `variantTag`, so that a recorder naming the first variant
+// whatever was selected is killed by that one test alone. Everything else the
+// step carries is pinned here.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+struct Plate;
+struct Disc;
+struct Ring;
+
+struct Load: formula::Quantity<Load, "F", "applied load", unit::Kilonewton>
+{
+};
+struct Side: formula::Quantity<Side, "a", "loaded side", unit::Millimetre>
+{
+};
+
+// A spelling of the author's own for the first variant's tag, as a published
+// method might word it.
+struct Core;
+} // namespace
+
+template <>
+struct formula::TagName<Core>
+{
+    static constexpr std::string_view of() noexcept { return "core drilled 100 mm"; }
+};
+
+namespace
+{
+inline constexpr auto rule =
+    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>();
+
+inline constexpr auto bearing = formula::method(
+    formula::variants(formula::variant<Plate>(var<Load> / (var<Side> * var<Side>)),
+                      formula::variant<Disc>(var<Load> / (formula::pi * var<Side> * var<Side>)),
+                      formula::variant<Ring>(var<Load> / (var<Side> * var<Side> * formula::Rational { 2 }))),
+    rule,
+    formula::constraints());
+
+[[nodiscard]] auto loadOn(long long load, long long side)
+{
+    return formula::environment(formula::Measured<Load> { formula::Rational { load } },
+                                formula::Measured<Side> { formula::Rational { side } });
+}
+
+/// A sink that defines only half of the variant pair, and counts it.
+struct HalfVariantSink
+{
+    int* told;
+
+    template <formula::Node N>
+    constexpr void entered(N const&) noexcept
+    {
+    }
+
+    template <formula::Node N, typename V>
+    constexpr void produced(N const&, V const&) noexcept
+    {
+    }
+
+    void variant_entered(formula::VariantSelection const&) noexcept { ++*told; }
+};
+} // namespace
+
+TEST_CASE("a method's selection is the root step, and claims the rounded variant as its operand", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::evaluate_method<Disc>(bearing, loadOn(100, 50), sink);
+
+    REQUIRE(!trace.empty());
+    formula::Step<> const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::VariantSelected);
+
+    // The second of three, zero-based.
+    CHECK(root.variantIndex == 1);
+    CHECK(root.variantCount == 3);
+
+    // One operand: the rounding step, which is the variant that ran. The
+    // selection is the walk's one root, and nothing is left unclaimed.
+    REQUIRE(root.operands.size() == 1);
+    formula::Step<> const& variant = trace.steps[root.operands.front()];
+    CHECK(variant.kind == formula::StepKind::Round);
+    CHECK(trace.unclaimed.size() == 1);
+    CHECK(trace.marks.empty());
+
+    // The step's value is exactly what the method returned, in the unit the
+    // variant was rounded in.
+    REQUIRE(result.has_value());
+    REQUIRE(result->has_value());
+    REQUIRE(root.value.has_value());
+    CHECK(*root.value == **result);
+    CHECK(*root.value == *variant.value);
+    CHECK(root.dimension == formula::dim::Pressure);
+    CHECK(root.unit == unit::Megapascal);
+}
+
+TEST_CASE("a selection records the tag's name, or the author's spelling of it", "[trace][method]")
+{
+    // The first variant, whose tag is named the author's way.
+    constexpr auto cored = formula::method(
+        formula::variants(formula::variant<Core>(var<Load> / (var<Side> * var<Side>)),
+                          formula::variant<Plate>(var<Load> / (var<Side> * var<Side> * formula::Rational { 2 }))),
+        rule,
+        formula::constraints());
+
+    formula::Trace<> customized {};
+    (void) formula::evaluate_method<Core>(cored, loadOn(100, 50), formula::RecordingSink<> { customized });
+    CHECK(customized.steps[customized.root()].variantTag == "core drilled 100 mm");
+
+    // And a tag nobody customized, by its own name: unqualified, with the
+    // anonymous namespace it is declared in nowhere in sight.
+    formula::Trace<> reflected {};
+    (void) formula::evaluate_method<Plate>(bearing, loadOn(100, 50), formula::RecordingSink<> { reflected });
+    CHECK(reflected.steps[reflected.root()].variantTag == "Plate");
+}
+
+TEST_CASE("a selected variant that fails is recorded with its failure, not a value", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::evaluate_method<Plate>(bearing, loadOn(100, 0), sink);
+
+    REQUIRE(!result.has_value());
+    formula::Step<> const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::VariantSelected);
+    REQUIRE(root.error.has_value());
+    CHECK(*root.error == result.error());
+    CHECK(!root.value.has_value());
+    // Still one operand, which carries the same failure, and still one root.
+    REQUIRE(root.operands.size() == 1);
+    CHECK(trace.steps[root.operands.front()].error == root.error);
+    CHECK(trace.unclaimed.size() == 1);
+}
+
+TEST_CASE("a selected variant with an absent input is recorded as absent, not as failed", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::evaluate_method<Plate>(
+        bearing,
+        formula::environment(formula::Measured<Load>::absent(), formula::Measured<Side> { formula::Rational { 50 } }),
+        sink);
+
+    REQUIRE(result.has_value());
+    CHECK(!result->has_value());
+    formula::Step<> const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::VariantSelected);
+    CHECK(!root.value.has_value());
+    CHECK(!root.error.has_value());
+}
+
+TEST_CASE("a sink that defines half of the variant pair is told nothing", "[trace][method]")
+{
+    // Both or neither, asked in one `requires`: a sink told of an entry it
+    // will never see closed would leave its own bookkeeping unbalanced.
+    int told = 0;
+    auto const result = formula::evaluate_method<Plate>(bearing, loadOn(100, 50), HalfVariantSink { &told });
+
+    REQUIRE(result.has_value());
+    CHECK(result->has_value());
+    CHECK(told == 0);
 }

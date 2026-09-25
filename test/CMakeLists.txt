@@ -55,6 +55,7 @@ add_executable(formula-cpp-tests
     band_tests.cpp
     lookup_tests.cpp
     enumerator_tests.cpp
+    tag_tests.cpp
     method_tests.cpp
     overlay_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
@@ -400,6 +401,28 @@ formula_add_negative_test(enumerator_name_cv_qualified
 
 formula_add_negative_test(enumerator_name_dangling_view
     "formula: EnumeratorName<Enum>::of(E) is not usable in a constant expression")
+
+# The TagName counterparts of the four above (`tag.hpp`), with the same
+# REJECTs for the same two "report it once" guards -- measured again for this
+# trait rather than assumed from that one, on cl, clang-cl, clang and GCC with
+# each guard removed.
+formula_add_negative_test(tag_name_misspelt_of
+    "formula: this TagName specialisation does not have the shape the library reads"
+    REJECT "is not usable in a constant expression"
+           "no matching function for call to"
+           "no matching overloaded function found")
+
+formula_add_negative_test(tag_name_not_constexpr
+    "formula: TagName<Tag>::of() is not usable in a constant expression"
+    REJECT "must be initialized by a constant expression"
+           "called in a constant expression"
+           "expression did not evaluate to a constant")
+
+formula_add_negative_test(tag_name_cv_qualified
+    "formula: TagName is specialised for a const-qualified tag")
+
+formula_add_negative_test(tag_name_dangling_view
+    "formula: TagName<Tag>::of() is not usable in a constant expression")
 
 formula_add_negative_test(exact_lookup_int_key_table
     "formula: an exact lookup's keys must be enumerators of a scoped enumeration")

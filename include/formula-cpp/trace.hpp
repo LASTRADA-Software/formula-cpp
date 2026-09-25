@@ -51,6 +51,24 @@ enum class StepKind : std::uint8_t
     Power,
     Root,
     Documented,
+    /// A method selecting one of its variants. Carries the tag's name and
+    /// the discriminator it matched, because "a variant was selected" is
+    /// true of every outcome and therefore answers nothing.
+    ///
+    /// The discriminator is the tag itself: `evaluate_method<Cylinder>`
+    /// selects the variant declared `variant<Cylinder>(...)` and no other, so
+    /// the step records the tag's name (`Step::variantTag`) together with the
+    /// variant's position among its siblings (`Step::variantIndex`,
+    /// `Step::variantCount`). Its one operand is the selected variant,
+    /// rounded by the method's rule.
+    ///
+    /// Recorded by `RecordingSink::variant_produced`, not through
+    /// `detail::StepKindOf`: a method is not a `Node`, so it has no entry in
+    /// that registry and needs none. Checked on GCC under `-Wshadow`, the way
+    /// `PiConstant` above had to be: nothing in namespace `formula` is spelt
+    /// `VariantSelected` -- the plain data the step is built from is
+    /// `VariantSelection` (`sink.hpp`) -- and that was compiled, not assumed.
+    VariantSelected,
     /// A `RoundNode`: rounded to a number of decimal places. Checked against
     /// `formula::round` (`rounding.hpp`) the same way `PiConstant` above was
     /// checked against `formula::Pi` -- different case, so it does not
@@ -528,6 +546,38 @@ struct Step
     /// read-only data, and a trace kept after it is unloaded holds a dangling
     /// view.
     std::string_view lookupKeyName {};
+
+    /// For `VariantSelected`: the selected variant's tag, as `tag_name`
+    /// (`tag.hpp`) spells it -- `Cylinder`, or the author's own spelling of
+    /// it through `TagName`. Empty for every other kind, and for a selection
+    /// whose tag the compiler's signature did not let the library read, in
+    /// which case `variantIndex` is what still identifies the variant.
+    ///
+    /// **A view, and safe to keep for the life of the trace and beyond,** for
+    /// the reason `lookupKeyName` above gives, with one difference in where
+    /// the characters live. A reflected tag name is **not** a substring of
+    /// the compiler's signature literal -- stripping a qualifier from inside
+    /// a template argument list leaves nothing contiguous to point at -- so
+    /// it is written into a `static constexpr` array of its own
+    /// (`detail::TypeNameStorage`, `detail/type_name.hpp`), which has static
+    /// storage duration exactly as the literal does. A customized one passes
+    /// the gates described on `TagName`. The same limit applies: a name
+    /// recorded by a shared library or plugin dangles once that image is
+    /// unloaded.
+    std::string_view variantTag {};
+
+    /// For `VariantSelected`: the selected variant's ZERO-BASED position in
+    /// the method's `variants(...)`, the order `Variants` makes part of its
+    /// contract so that a reader can count back to the declaration.
+    /// `trace_render.hpp` prints it one-based, as an ordinal. Zero otherwise,
+    /// which is a real position, so -- as with `comparison` -- no reader may
+    /// use it without checking `kind` first.
+    std::size_t variantIndex {};
+
+    /// For `VariantSelected`: how many variants the method declares. Zero
+    /// otherwise -- never a real count, since a method with no variants is
+    /// refused where it is declared.
+    std::size_t variantCount {};
 
     /// Indices of the steps this one consumed, in evaluation order.
     ///
@@ -1189,6 +1239,66 @@ class RecordingSink
             ++first;
         step.operands.assign(first, _trace->unclaimed.end());
         _trace->unclaimed.erase(first, _trace->unclaimed.end());
+
+        _trace->steps.push_back(std::move(step));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a method is about to evaluate the variant it selected.
+    /// Remembers where the arena stood, exactly as `entered` does for a
+    /// `Node`, so that `variant_produced` below can claim the variant's own
+    /// step as its operand.
+    ///
+    /// A method is not a `Node`, so it cannot come through `entered`; it
+    /// comes through this pair instead, which `evaluate_method`
+    /// (`method.hpp`) calls when a sink defines both -- see
+    /// `VariantSelection` (`sink.hpp`).
+    void variant_entered(VariantSelection const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records a `StepKind::VariantSelected` step for @p selection, claiming
+    /// as its operand the step the selected variant produced -- so the
+    /// selection is the walk's root, and the formula that ran sits under it.
+    ///
+    /// The step's value is what the method returned, which is exactly what
+    /// the variant produced; its dimension and unit are copied from the
+    /// variant's step rather than passed in, since that step already says
+    /// what the number is, and a second source for the same facts would be
+    /// one obliged to agree with it. Absent an operand step -- which no method in this library leaves,
+    /// since the rounding node it wraps is always traced -- the step records
+    /// the selection and its error, if any, and no value it could not state
+    /// the unit of.
+    void variant_produced(VariantSelection const& selection, Evaluated<Rep> const& result)
+    {
+        std::size_t const mark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> step {};
+        step.kind = StepKind::VariantSelected;
+        step.variantTag = selection.tag;
+        step.variantIndex = selection.index;
+        step.variantCount = selection.count;
+
+        // Everything unclaimed from `mark` onwards belongs to this selection
+        // -- see `produced` above for why this is a `while`.
+        auto first = _trace->unclaimed.begin();
+        while (first != _trace->unclaimed.end() && *first < mark)
+            ++first;
+        step.operands.assign(first, _trace->unclaimed.end());
+        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+
+        if (!step.operands.empty())
+        {
+            Step<Rep> const& variant = _trace->steps[step.operands.back()];
+            step.dimension = variant.dimension;
+            step.unit = variant.unit;
+        }
+        if (!result.has_value())
+            step.error = result.error();
+        else if (result->has_value() && !step.operands.empty())
+            step.value = **result;
 
         _trace->steps.push_back(std::move(step));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);

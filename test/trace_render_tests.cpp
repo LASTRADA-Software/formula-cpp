@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1312,4 +1313,140 @@ TEST_CASE("a derivation renders a miss against a table that covers nothing at al
     std::vector<std::string> const single = lines(derivationOf(onePoint, diameterOf(30)));
     REQUIRE(single.size() == 2);
     CHECK(bracketed(single[1]) == "outside the curve, whose only row is at 15/2 cm");
+}
+
+// ---------------------------------------------------------------------------
+// Which variant a method selected
+//
+// Spec section 9.1 makes this the phase's acceptance criterion: the trace
+// records which variant fired and on what discriminator. The fixture below is
+// written so that the name of a variant NOT taken cannot appear in a
+// derivation by any other route -- no quantity symbol, unit, constant or
+// citation in it contains "Cube", "Cylinder" or "Prism" -- so that a check for
+// its absence tests the step and nothing else.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+// Nested in a namespace of their own, inside the anonymous one, so that every
+// derivation below also shows that neither qualifier reaches the trace.
+namespace specimen
+{
+    struct Cube;
+    struct Cylinder;
+    struct Prism;
+} // namespace specimen
+
+struct MaximumLoad: formula::Quantity<MaximumLoad, "F", "maximum load", unit::Kilonewton>
+{
+};
+
+// An invented method: a 150 mm cube, a 150 mm diameter cylinder, a 200 mm
+// square prism. The areas are what those shapes have; nothing here is taken
+// from any published standard.
+inline constexpr auto compressiveStrength = formula::method(
+    formula::variants(
+        formula::variant<specimen::Cube>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(22'500)),
+        formula::variant<specimen::Cylinder>(var<MaximumLoad>
+                                             / (formula::pi * formula::constant<unit::SquareMillimetre>(5'625))),
+        formula::variant<specimen::Prism>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(40'000))),
+    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+
+inline constexpr auto inputs = formula::environment(formula::Measured<MaximumLoad> { formula::Rational { 562 } });
+
+using specimen::Cylinder;
+
+/// A derivation of @p m under tag `Tag`, rendered.
+template <typename Tag, typename M>
+[[nodiscard]] std::string methodDerivation(M const& m)
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::evaluate_method<Tag>(m, inputs, sink);
+    return formula::render_trace(trace, { .maxSteps = 20 });
+}
+
+/// The line of a hand-built `VariantSelected` step over a constant 1, the
+/// line numbered 2.
+[[nodiscard]] std::string variantLine(std::string_view tag, std::size_t index, std::size_t count)
+{
+    formula::Trace<> trace {};
+    formula::Step<> operand {};
+    operand.kind = formula::StepKind::Constant;
+    operand.value = formula::Rational { 1 };
+    trace.steps.push_back(std::move(operand));
+
+    formula::Step<> step {};
+    step.kind = formula::StepKind::VariantSelected;
+    step.variantTag = tag;
+    step.variantIndex = index;
+    step.variantCount = count;
+    step.value = formula::Rational { 1 };
+    step.operands = { 0 };
+    trace.steps.push_back(std::move(step));
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 2 });
+    return text.substr(text.find('\n') + 1);
+}
+} // namespace
+
+TEST_CASE("the trace names which variant fired and on what discriminator", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::evaluate_method<Cylinder>(compressiveStrength, inputs, sink);
+
+    std::string const rendered = formula::render_trace(trace, { .maxSteps = 20 });
+    // Names the variant AND the discriminator, not merely that selection happened.
+    CHECK(rendered.find("variant Cylinder") != std::string::npos);
+    CHECK(rendered.find("Cube") == std::string::npos); // the one NOT taken is not claimed
+    CHECK(rendered.find("Prism") == std::string::npos);
+}
+
+TEST_CASE("a variant step reads as its operand, with the variant and its position in brackets",
+          "[trace-render][method]")
+{
+    // The FIRST variant, deliberately: the test above is the one that must
+    // notice a recorder naming the first variant whatever was selected, and
+    // this one must not share that job, or a mutation of the tag would be
+    // killed twice and prove nothing about either. What this one pins is
+    // the shape of the whole line and the ordinal.
+    //
+    // 562 kN over 22 500 mm2 is 24.97... MPa, which rounds to 25.0.
+    CHECK(methodDerivation<specimen::Cube>(compressiveStrength)
+          == "1. F = 562 kN\n"
+             "2. 22500 mm2\n"
+             "3. #1 / #2 = 224800000/9\n"
+             "4. round(#3, to 1 dp of MPa) = 25 MPa [nearest, ties away from zero]\n"
+             "5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]\n");
+}
+
+TEST_CASE("a variant's position is an ordinal counted from one", "[trace-render][method]")
+{
+    // One-based in the text, zero-based in the step, as every position this
+    // library reports in a diagnostic is.
+    CHECK(variantLine("Core", 0, 1) == "2. #1 = 1 [variant Core (1st of 1), selected by tag]\n");
+    CHECK(variantLine("Core", 1, 4) == "2. #1 = 1 [variant Core (2nd of 4), selected by tag]\n");
+    CHECK(variantLine("Core", 2, 4) == "2. #1 = 1 [variant Core (3rd of 4), selected by tag]\n");
+    CHECK(variantLine("Core", 3, 4) == "2. #1 = 1 [variant Core (4th of 4), selected by tag]\n");
+
+    // The teens take `th` whatever their last digit, in every hundred; the
+    // numbers either side of them do not.
+    std::string const expected[] = { "11th", "12th", "13th", "21st", "22nd", "23rd", "101st", "111th", "112th", "113th" };
+    std::size_t const positions[] = { 11, 12, 13, 21, 22, 23, 101, 111, 112, 113 };
+    for (std::size_t i = 0; i < std::size(positions); ++i)
+    {
+        std::string const line = variantLine("Core", positions[i] - 1, 200);
+        CHECK(line.find("(" + expected[i] + " of 200)") != std::string::npos);
+    }
+}
+
+TEST_CASE("a variant whose tag could not be named is still identified by its position", "[trace-render][method]")
+{
+    // An empty name is what the recorder is handed when the compiler's
+    // signature was not in the shape the library reads. The position is the
+    // one thing still known, and it is said; no name is invented.
+    CHECK(variantLine("", 1, 3)
+          == "2. #1 = 1 [the 2nd of 3 variants, selected by a tag whose name could not be read]\n");
 }

@@ -296,6 +296,70 @@ actually dispatched, not what the node's arity would predict -- when an
 operand fails, its parent returns without evaluating the remaining ones, so a
 `Divide` may hold one recorded operand, or, in the rare case above, none.
 
+## Which variant a method chose
+
+A method reports one quantity by more than one formula -- a cube, a cylinder
+and a prism each have their own -- and which one applies is a property of the
+specimen, stated by the caller as a tag: `evaluate_method<Cylinder>(...)`.
+Spec section 9.1 asks that an inspector reading the result can ask *"why the
+cylinder formula?"* and get an answer, so the selection is recorded as a step
+of its own, `StepKind::VariantSelected`, and a derivation says which variant
+fired and on what:
+
+```cpp
+formula::Trace<> trace {};
+formula::RecordingSink<> sink { trace };
+(void) formula::evaluate_method<specimen::Cube>(compressiveStrength, inputs, sink);
+std::printf("%s", formula::render_trace(trace, { .maxSteps = 20 }).c_str());
+```
+
+```
+1. F = 562 kN
+2. 22500 mm2
+3. #1 / #2 = 224800000/9
+4. round(#3, to 1 dp of MPa) = 25 MPa [nearest, ties away from zero]
+5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]
+```
+
+(`test/trace_render_tests.cpp`, `"a variant step reads as its operand, with the
+variant and its position in brackets"`, whose method has an invented cube,
+cylinder and prism.) The selection is the last line and the walk's one root:
+its operand is the variant that ran, rounded by the method's rule, and its
+value is exactly what `evaluate_method` returned. The bracket carries both
+halves of the answer. The tag's name is the discriminator the caller selected
+with; the position -- one-based here, zero-based in `Step::variantIndex` --
+is what a reader counts back to in the method's `variants(...)`, and it
+survives even where the name cannot be read. `selected by tag` says how the
+choice was made rather than only that it was. Nothing in the line names a
+variant that was not taken: the neighbouring test selects the cylinder and
+checks that the word `Cube` appears nowhere in its derivation.
+
+A method tells a sink about its choice through two optional members,
+`variant_entered` and `variant_produced`, with a `VariantSelection`
+(`sink.hpp`) -- a method is not a node, so it cannot come through `entered`
+and `produced`. A sink defines both or neither; `NullSink` defines neither and
+pays nothing.
+
+**The tag's name is recovered from the compiler**, the way an enumerator's is,
+and it is the name as written, unqualified: `Cube`, whichever namespace or
+class declares it, and never with an anonymous namespace in front of it --
+which the four compilers this library is measured on would otherwise spell
+in three different ways, and cl alone in two. A class template specialization keeps its arguments,
+`Sized<150>`, with their qualification stripped the same way. One difference
+cannot be evened out: cl prints a `bool`, `char` or enumeration argument as a
+number, `Flag<1>` where the others print `Flag<true>`. An author who wants a
+tag to read the same everywhere, or to read the way a published method words
+the variant, specializes `formula::TagName` (`tag.hpp`), which has the shape
+and the refusals of `EnumeratorName`:
+
+```cpp
+template <>
+struct formula::TagName<Cylinder>
+{
+    static constexpr std::string_view of() noexcept { return "cylinder 150 x 300 mm"; }
+};
+```
+
 ## The bound is a required argument, not a default
 
 ```cpp
@@ -431,11 +495,25 @@ arithmetic for free and a traced subtree for nothing -- no warning, no
 diagnostic, just a derivation with a gap in it exactly where that node stood.
 `render_trace` cannot even show the gap, because nothing was ever recorded to
 show; the tree beneath an untraced node vanishes from the derivation as
-completely as if the formula had been written without it. A consumer who wants
-their own node traced writes the third-parameter overload -- calling
-`sink.entered(node)` before evaluating its operands and `sink.produced(node,
-result)` after, the same shape every evaluator overload in this library
-already follows.
+completely as if the formula had been written without it.
+
+**That graceful degradation belongs to the two-parameter overload alone.** It
+would be natural to conclude that a consumer who wants their node traced
+writes the three-parameter overload instead -- calling `sink.entered(node)`
+before evaluating its operands and `sink.produced(node, result)` after, the
+shape every evaluator overload in this library follows. Against `NullSink`, or
+a sink of the consumer's own, that compiles and works. Against
+`RecordingSink` it **does not compile**: `RecordingSink` looks up every node's
+kind in `detail::StepKindOf` (`trace.hpp`), a closed registry whose primary
+template is deliberately left undefined, and a consumer's node has no entry
+there. g++ 13.3 reports "incomplete type
+`formula::detail::StepKindOf<AwareNode>` used in nested name specifier", and
+cl 19.51 reports C2027, "use of undefined type". So today a consumer's own
+node cannot appear in a recorded trace at all. What does compile is a
+three-parameter overload that only hands the sink on to its operands'
+`detail::dispatch` and reports nothing of its own: its operands are traced,
+and it is not -- measured on the same two compilers. Opening the registry to consumers is a separate change from
+anything this guide describes.
 
 ## Every citation here is invented
 

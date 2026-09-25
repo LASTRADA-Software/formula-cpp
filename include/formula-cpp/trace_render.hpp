@@ -480,6 +480,11 @@ namespace detail
                                           : "root" + std::to_string(step.exponent) + "(" + sole_operand(step) + ")";
             case StepKind::Documented:
                 return sole_operand(step);
+            // Its operand, exactly as `Documented`'s is: the selection chose
+            // which formula ran, and computed nothing of its own. What it
+            // chose goes in the suffix -- see `variant_suffix`.
+            case StepKind::VariantSelected:
+                return sole_operand(step);
             case StepKind::Round:
                 return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp of "
                        + std::string { view(step.unit.symbolText) } + ")";
@@ -539,6 +544,61 @@ namespace detail
             text += part;
         }
         return text.empty() ? text : " [" + text + "]";
+    }
+
+    /// @p position as an English ordinal: `1st`, `2nd`, `3rd`, `4th`, and
+    /// `11th`, `12th`, `13th` rather than `11st`, `12nd`, `13rd`.
+    [[nodiscard]] inline std::string ordinal_text(std::size_t position)
+    {
+        std::string_view suffix = "th";
+        if (position % 100 < 11 || position % 100 > 13)
+        {
+            switch (position % 10)
+            {
+                case 1:
+                    suffix = "st";
+                    break;
+                case 2:
+                    suffix = "nd";
+                    break;
+                case 3:
+                    suffix = "rd";
+                    break;
+                default:
+                    break;
+            }
+        }
+        return std::to_string(position) + std::string { suffix };
+    }
+
+    /// Which variant a method selected, and on what, in one bracketed clause:
+    /// `[variant Cylinder (2nd of 3), selected by tag]`.
+    ///
+    /// **Both the name and the position, because each answers what the other
+    /// cannot.** The name is the discriminator the caller selected with, and
+    /// what an inspector asking "why the cylinder formula?" reads; the
+    /// position is what they count back to in the method's `variants(...)`,
+    /// and it survives even where the name does not -- a tag the compiler's
+    /// signature did not let the library read, recorded with an empty name,
+    /// still says which variant ran: `[the 2nd of 3 variants, selected by a
+    /// tag whose name could not be read]`. Printed one-based, as an ordinal,
+    /// because a person counts from one; `Step::variantIndex` stays
+    /// zero-based, as every position this library reports in a diagnostic
+    /// is.
+    ///
+    /// `selected by tag` names **how** the choice was made, not only that it
+    /// was: a tag is the only discriminator a method has in this phase, and
+    /// saying so now is what will keep this line true once there is a second.
+    ///
+    /// The same bracket `citation_suffix` and `lookup_suffix` use, for the
+    /// reason `lookup_suffix` gives: it is where a reader already looks for
+    /// the fact about a step that must not be skimmed.
+    [[nodiscard]] inline std::string variant_suffix(Step<Rational> const& step)
+    {
+        std::string const position = ordinal_text(step.variantIndex + 1) + " of " + std::to_string(step.variantCount);
+        if (step.variantTag.empty())
+            return " [the " + position + " variants, selected by a tag whose name could not be read]";
+        return " [variant " + std::string { step.variantTag } + " (" + position + "), selected by tag]";
     }
 
     /// What a step produced, as a person should read it.
@@ -658,7 +718,8 @@ namespace detail
 
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the kinds that need one -- a citation for
-    /// `Documented`, a justification for `NumericValue`, the tie-breaking rule
+    /// `Documented`, the variant and its discriminator for `VariantSelected`,
+    /// a justification for `NumericValue`, the tie-breaking rule
     /// for the two rounding kinds, for a `Conditional` whose predicate never
     /// resolved `[no branch]`, and for the three lookup kinds the row selected
     /// or the failure's origin (see `lookup_suffix`).
@@ -676,6 +737,8 @@ namespace detail
         std::string suffix;
         if (step.kind == StepKind::Documented)
             suffix = citation_suffix(step.citation);
+        else if (step.kind == StepKind::VariantSelected)
+            suffix = variant_suffix(step);
         else if (step.kind == StepKind::NumericValue)
             suffix = justification_suffix(step.justification);
         // Only `[no branch]`. A branch that ran is named by the keyword in

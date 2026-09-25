@@ -19,6 +19,9 @@
 
 #include <formula-cpp/expression.hpp>
 
+#include <cstddef>
+#include <string_view>
+
 namespace formula
 {
 
@@ -67,6 +70,42 @@ struct NullSink
     }
 };
 
+/// Which variant a method selected, as `evaluate_method` (`method.hpp`) tells
+/// a sink that asks.
+///
+/// A method is not a `Node` -- it chooses between expressions rather than
+/// standing where a number stands -- so its choice cannot reach a sink
+/// through `entered` and `produced`. It is told instead through two optional
+/// members, found the way `RecordingSink::branch_taken` is, through
+/// `if constexpr (requires {...})`:
+///
+///     sink.variant_entered(selection);          // before the variant is evaluated
+///     sink.variant_produced(selection, result); // after, with what it produced
+///
+/// A sink defines **both or neither**: `evaluate_method` asks for the pair in
+/// one `requires`, so a sink defining only one is told nothing, rather than
+/// told half and left with an `entered` it will never see matched. `NullSink`
+/// defines neither and pays nothing.
+///
+/// Plain data, so that a sink needs neither the method's type nor the tag's
+/// to record the decision: the tag has already been named here, while its
+/// type was still known.
+struct VariantSelection
+{
+    /// The selected variant's tag, as `tag_name` (`tag.hpp`) spells it --
+    /// `Cylinder`, or the author's `TagName` spelling. Static storage, so a
+    /// sink may keep the view; see `tag_name`. Empty only if the compiler's
+    /// spelling could not be read, and then `index` is what identifies it.
+    std::string_view tag {};
+
+    /// The selected variant's ZERO-BASED position in the method's `variants(...)`,
+    /// the order `Variants` documents as part of its contract.
+    std::size_t index {};
+
+    /// How many variants the method declares.
+    std::size_t count {};
+};
+
 namespace detail
 {
     /// Evaluates @p node with @p sink, through whichever overload exists.
@@ -78,8 +117,23 @@ namespace detail
     /// prefers a sink-aware overload where one exists and falls back to the
     /// two-parameter one where it does not, so a consumer's existing node keeps
     /// evaluating correctly. It simply contributes no trace steps -- the honest
-    /// outcome, since the library was never told how to trace it. A consumer
-    /// who wants their node traced adds the third parameter.
+    /// outcome, since the library was never told how to trace it.
+    ///
+    /// **That graceful degradation is the two-parameter overload's alone.** A
+    /// consumer's three-parameter overload that reports its own node --
+    /// `sink.entered(node)`, `sink.produced(node, result)` -- compiles against
+    /// `NullSink` and against a sink of the consumer's own, but **fails to
+    /// compile** against `RecordingSink` (`trace.hpp`): that sink looks every
+    /// node's kind up in `detail::StepKindOf`, a closed registry whose primary
+    /// template is left undefined, and the consumer's node has no entry in it.
+    /// Measured on g++ 13.3 ("incomplete type
+    /// `formula::detail::StepKindOf<...>` used in nested name specifier") and
+    /// on cl 19.51 (C2027, use of undefined type). So a consumer's node cannot
+    /// yet appear in a recorded trace at all. A three-parameter overload that
+    /// only hands the sink on to its operands' `dispatch`, and reports nothing
+    /// of its own, does compile against `RecordingSink`: its operands are
+    /// traced and it is not (measured on the same two). Opening the registry
+    /// to consumers is a separate change.
     ///
     /// `checked_evaluate_si` is not declared at this point in the include
     /// order, and does not need to be: the body is instantiated later, where
