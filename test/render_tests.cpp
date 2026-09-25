@@ -449,8 +449,11 @@ TEST_CASE("render: a numeric-value escape hatch renders as numeric(..., in unit)
     CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(`f`, in MPa)");
     CHECK(formula::render<Dialect::LaTeX>(numeric) == "\\{f/\\mathrm{MPa}\\}");
     // The justification string does not appear above -- see the comment on
-    // NumericValueNode's render_node for why: it is an audit trail for
-    // document(), not part of the formula's stated arithmetic.
+    // NumericValueNode's render_node for why: it is an audit trail for the
+    // TRACE, not part of the formula's stated arithmetic. It is not in
+    // document() either -- Documentation has no field for it and collect()
+    // records none; render_trace writes it as a bracketed clause on the step
+    // (test/trace_render_tests.cpp), and that is the only surface it has.
 }
 
 TEST_CASE("render: a numeric-value escape hatch inside a power and inside a product keeps no extra bracket",

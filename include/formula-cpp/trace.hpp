@@ -137,6 +137,44 @@ struct Step
     /// zero value is already the correct default for every other kind.
     Branch branch {};
 
+    /// For `Conditional`: which way the predicate compared its two sides.
+    ///
+    /// Recorded because a derivation that says two values were compared but
+    /// not *how* is not an audit trail: the trace is the artefact that
+    /// survives on its own, away from the formula text, and `#1` and `#2`
+    /// with no operator between them leaves a reader unable to check the
+    /// step against the method it came from.
+    ///
+    /// Unlike `branch` above, this field's zero value (`Comparison::Less`) is
+    /// **not** a neutral "not applicable": it is a real comparison. It is
+    /// meaningful only when `kind` is `Conditional`, exactly as `exponent`
+    /// and `granularity` above are meaningful only for the kinds that set
+    /// them, and no renderer may read it without checking `kind` first.
+    ///
+    /// It is recorded even when the predicate never resolved, because what a
+    /// step could not decide is still a comparison a reader needs named --
+    /// with one exception in the rendering, not here: a predicate whose left
+    /// side errored never dispatched its right one and so never compared
+    /// anything at all. See `detail::conditional_expression`
+    /// (`trace_render.hpp`).
+    Comparison comparison {};
+
+    /// For `Round` and `RoundSignificant`: the tie-breaking rule the node
+    /// rounded under.
+    ///
+    /// Two rounding nodes differing only in their mode produce different
+    /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
+    /// that omits the mode cannot explain its own result. The mode is
+    /// deliberately absent from `render()` and hence from `document()` (a
+    /// standard states a granularity, not a tie rule; see
+    /// `render_node(RoundNode ...)`); the trace is where it belongs, because
+    /// a trace exists to say why *this* number came out as it did.
+    ///
+    /// As with `comparison` above, the zero value is a real mode
+    /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
+    /// sentinel: meaningful only for the two rounding kinds.
+    RoundingMode mode {};
+
     /// The dimension of what this step produced.
     Dimension dimension {};
 
@@ -459,8 +497,21 @@ class RecordingSink
         else if constexpr (requires { N::digits; })
             step.granularity = N::digits.value;
 
+        // `RoundNode` and `RoundSignificantNode` are the only kinds that
+        // declare one, so the `requires` alone selects them -- the same shape
+        // `exponent` and `granularity` above use.
+        if constexpr (requires { N::mode; })
+            step.mode = N::mode;
+
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
         {
+            // The predicate's comparison, taken off the node this sink was
+            // handed. `PredicateNode::comparison` is a public
+            // `static constexpr`, so naming it through the member is a
+            // constant expression and `WhenNode` needs no re-export of its
+            // own -- the same way `citation` above is read straight off a
+            // `DocumentedNode`.
+            step.comparison = std::remove_cvref_t<decltype(node.predicate)>::comparison;
             step.branch = _trace->branchStack.back();
             _trace->branchStack.pop_back();
         }
