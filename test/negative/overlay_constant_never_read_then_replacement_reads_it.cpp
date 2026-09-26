@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay fixes a quantity, and an operation listed after the constant removed every use it fixed and put back one that reads the quantity from the environment
+// EXPECT: formula: this overlay fixes a quantity that nothing read where the constant is listed, and an operation listed after it reads the quantity from the environment
 // REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
-// REJECT: formula: this method reads a quantity both where
-// REJECT: formula: this overlay fixes a quantity that nothing read where the constant is listed
+// REJECT: formula: this overlay fixes a quantity, and an operation listed after the constant removed
 //
-// The shape factor fixed, then the Cube -- its only reader -- replaced by a
-// formula that reads it again. Operations apply in order, so the constant
-// never reaches the replacement, which would read the specimen's factor
-// under an overlay that claims to fix it, and nothing the constant fixed is
-// left. The REJECTs pin that this is reported as neither "nothing uses it" --
-// the replacement does -- nor as read "both where an overlay fixed it and
-// elsewhere", since nothing fixed remains, nor as listed before a use it
-// never met: it met the Cube's.
+// A constant for a quantity the method never reads, then a replaced
+// variant in the same overlay that reads it. The constant met no use where
+// it applied; the replacement puts in a plain one. Refused as listed before
+// that use; the REJECTs pin that it is refused neither as read by nothing
+// nor as bypassed.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -27,9 +23,6 @@ struct Cube
 {
 };
 struct Cylinder
-{
-};
-struct Prism
 {
 };
 
@@ -48,25 +41,30 @@ struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", formul
 struct Ratio: formula::Quantity<Ratio, "r", "a dimensionless ratio", formula::unit::One>
 {
 };
+struct Other: formula::Quantity<Other, "o", "a ratio the method never reads", formula::unit::One>
+{
+};
 
 using formula::var;
 
-// Only the Cube variant reads the shape factor.
+// Only the Cube variant reads the shape factor, and only the method's own
+// constraint reads the ratio.
 inline constexpr auto m =
     formula::method(formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeX> * var<EdgeY>) ),
                                       formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
                     formula::rounding_rule<formula::unit::Megapascal,
                                            formula::DecimalPlaces { 1 },
                                            formula::RoundingMode::HalfAwayFromZero>(),
-                    formula::constraints());
+                    formula::constraints(formula::constraint(var<Ratio> <= formula::number(formula::Rational { 1 }),
+                                                             formula::Verdict { "the ratio exceeds one" })));
+
 } // namespace
 
 int main()
 {
-    static_cast<void>(m);
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }),
-                         formula::replace_variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeX> * var<EdgeX>) )),
+        formula::overlay(formula::with_constant<Other>(formula::Rational { 1, 2 }),
+                         formula::replace_variant<Cylinder>(var<Other> * var<Force> / (var<EdgeX> * var<EdgeX>) )),
         m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

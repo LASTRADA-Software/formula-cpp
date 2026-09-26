@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
+// EXPECT: formula: this overlay fixes a quantity that nothing read where the constant is listed, and an operation listed after it reads the quantity from the environment
+// REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 // REJECT: formula: this overlay fixes a quantity, and an operation listed after the constant removed
 //
 // A constant for a quantity the method never reads, then constraints put in
-// by the same overlay that read it plainly. The constant fixed nothing where
-// it applied -- there was nothing to fix -- so it is refused as doing
-// nothing, as a constant naming the wrong quantity is. The REJECT pins that
-// it is not refused as bypassed: no operation removed a use it fixed.
+// by the same overlay that read it plainly. The constant met no use where it
+// applied, and the method the overlay produces reads the quantity only from
+// the environment: refused as listed before the use it should fix. The
+// REJECTs pin that it is refused neither as read by nothing -- the
+// constraints read it -- nor as bypassed: no operation removed a use it
+// fixed.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>

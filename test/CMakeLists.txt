@@ -825,28 +825,40 @@ formula_add_negative_test(overlay_constraints_twice
 # A quantity only the method's own constraint reads, fixed or defined, then
 # constraints put in by the same overlay that read it plainly: refused as
 # bypassed. Not as read by nothing -- the new constraint reads it -- and not
-# as read both substituted and plainly, since nothing substituted is left:
-# the REJECTs.
+# as read both substituted and plainly, since nothing substituted is left,
+# and not as listed before a use it never met, since it met one: the REJECTs.
 formula_add_negative_test(overlay_constant_before_constraints_read_plainly
     "formula: this overlay fixes a quantity, and an operation listed after the constant removed every use it fixed and put back one that reads the quantity from the environment"
-    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where")
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where"
+        "formula: this overlay fixes a quantity that nothing read where the constant is listed")
 
 formula_add_negative_test(overlay_derived_before_constraints_read_plainly
     "formula: this overlay derives a quantity, and an operation listed after the definition removed every use it replaced and put back one that reads the quantity from the environment"
-    REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where")
+    REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where"
+        "formula: this overlay derives a quantity that nothing read where the definition is listed")
 
 # The same shapes, where the substitution met no use where it applied: the
 # quantity is read by nothing until a later operation of the overlay puts in
-# a plain use, or a definition cycle starts from a quantity nothing reads.
-# Refused as doing nothing, not as bypassed -- no operation removed a use the
+# a plain use -- constraints, a definition, a replaced variant -- or a
+# definition cycle starts from a quantity nothing reads. Refused as listed
+# before that use; not as read by nothing, which the produced method
+# contradicts, nor as bypassed -- no operation removed a use the
 # substitution reached: the REJECTs.
 formula_add_negative_test(overlay_constant_never_read_then_constraints_read_it
-    "formula: this overlay overrides a quantity that no variant or constraint of the method uses"
-    REJECT "formula: this overlay fixes a quantity, and an operation listed after the constant removed")
+    "formula: this overlay fixes a quantity that nothing read where the constant is listed, and an operation listed after it reads the quantity from the environment"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this overlay fixes a quantity, and an operation listed after the constant removed")
+
+formula_add_negative_test(overlay_constant_never_read_then_derived_reads_it
+    "formula: this overlay fixes a quantity that nothing read where the constant is listed, and an operation listed after it reads the quantity from the environment"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this overlay fixes a quantity, and an operation listed after the constant removed")
+
+formula_add_negative_test(overlay_constant_never_read_then_replacement_reads_it
+    "formula: this overlay fixes a quantity that nothing read where the constant is listed, and an operation listed after it reads the quantity from the environment"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this overlay fixes a quantity, and an operation listed after the constant removed")
 
 formula_add_negative_test(overlay_derived_cycle_unread
-    "formula: this overlay derives a quantity that no variant or constraint of the method uses"
-    REJECT "formula: this overlay derives a quantity, and an operation listed after the definition removed")
+    "formula: this overlay derives a quantity that nothing read where the definition is listed, and an operation listed after it reads the quantity from the environment"
+    REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses" "formula: this overlay derives a quantity, and an operation listed after the definition removed")
 
 # A quantity only the replaced constraints read, fixed before and after the
 # replacement: the same method is produced, so the same refusal in either
@@ -1025,7 +1037,8 @@ formula_add_negative_test(overlay_stacked_constant_read_again
 
 formula_add_negative_test(overlay_constant_reintroduced
     "formula: this overlay fixes a quantity, and an operation listed after the constant removed every use it fixed and put back one that reads the quantity from the environment"
-    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where")
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where"
+        "formula: this overlay fixes a quantity that nothing read where the constant is listed")
 
 formula_add_negative_test(overlay_node_hand_built_fixed
     "formula: only an overlay builds this node")

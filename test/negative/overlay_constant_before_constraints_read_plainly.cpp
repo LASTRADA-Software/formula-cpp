@@ -2,6 +2,7 @@
 // EXPECT: formula: this overlay fixes a quantity, and an operation listed after the constant removed every use it fixed and put back one that reads the quantity from the environment
 // REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 // REJECT: formula: this method reads a quantity both where
+// REJECT: formula: this overlay fixes a quantity that nothing read where the constant is listed
 //
 // The ratio fixed -- which only the method's own constraint reads -- then
 // the constraints replaced by one that reads it plainly. Operations apply in
@@ -9,7 +10,8 @@
 // the specimen's ratio under an overlay that claims to fix it. The REJECTs
 // pin that this is reported as neither "nothing uses it" -- the new
 // constraint does -- nor as read "both where an overlay fixed it and
-// elsewhere": the constraint the constant fixed is gone.
+// elsewhere": the constraint the constant fixed is gone -- nor as listed
+// before a use it never met: it met the constraint it fixed.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>

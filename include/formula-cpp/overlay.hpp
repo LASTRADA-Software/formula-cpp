@@ -79,6 +79,10 @@
 ///  - a `with_constant<Q>` or `add_derived<Q>` whose every use an operation
 ///    listed after it in the same overlay removed, putting back a plain
 ///    `var<Q>` -- the substitution then does nothing at all;
+///  - a `with_constant<Q>` or `add_derived<Q>` that met no use of `Q` where it
+///    is listed, while an operation listed after it in the same overlay puts
+///    in a plain `var<Q>` -- the substitution does nothing either, where
+///    listed after that operation it would have applied;
 ///  - `pin_variant`, `prune_variant` or `replace_variant` of a tag no variant
 ///    declares, and a `replace_variant` whose variant the produced method no
 ///    longer holds, in either order;
@@ -1777,6 +1781,46 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when `with_constant<Q>` met no use of `Q` where it
+    /// was applied, and an operation listed after it in the same overlay put
+    /// in a use that reads `Q` from the environment. The method the overlay
+    /// produces then reads `Q` only unfixed: the constant does nothing, though
+    /// listed after that operation it would have fixed that use.
+    ///
+    /// Not `RequireConstantUsed`'s message: the method does read `Q`. Nor
+    /// `RequireConstantNotBypassed`'s: the constant fixed nothing for a later
+    /// operation to remove.
+    template <typename Q, bool Follows>
+    struct RequireConstantPrecedesItsUse
+    {
+        static_assert(Follows,
+                      "formula: this overlay fixes a quantity that nothing read where the constant is listed, and "
+                      "an operation listed after it reads the quantity from the environment; the method it "
+                      "produces reads the quantity only unfixed, so the constant does nothing -- list the constant "
+                      "after that operation; the quantity appears in this diagnostic as the template argument Q "
+                      "of RequireConstantPrecedesItsUse");
+
+        static constexpr bool value = true;
+    };
+
+    /// `RequireConstantPrecedesItsUse`'s rule for `add_derived<Q>`, in words
+    /// that say what the overlay did. The operation that reads `Q` may itself
+    /// be a definition that `Q`'s definition reads; listed the other way
+    /// round the two are a cycle, and the message says so.
+    template <typename Q, bool Follows>
+    struct RequireDerivationPrecedesItsUse
+    {
+        static_assert(Follows,
+                      "formula: this overlay derives a quantity that nothing read where the definition is listed, "
+                      "and an operation listed after it reads the quantity from the environment; the method it "
+                      "produces reads the quantity only undefined, so the definition does nothing -- list the "
+                      "definition after that operation (if that operation is itself a definition that reads this "
+                      "quantity, the two form a cycle); the quantity appears in this diagnostic as the template "
+                      "argument Q of RequireDerivationPrecedesItsUse");
+
+        static constexpr bool value = true;
+    };
+
     /// What a substitution @p Sub for `Q` asks of the method an overlay
     /// produces: that it is still in effect somewhere, and that it is in
     /// effect everywhere `Q` is read.
@@ -1789,8 +1833,9 @@ namespace detail
     /// @p Reached says whether the substitution met a use of `Q` in the method
     /// as it stood when it was applied. It does not decide whether to refuse
     /// -- that is judged of the result alone -- only which refusal is true: a
-    /// substitution that met uses a later operation removed was bypassed, and
-    /// one that met none did nothing from the start.
+    /// substitution that met uses a later operation removed was bypassed, one
+    /// that met none while a later operation put one in was listed too early,
+    /// and one that met none with none put in did nothing at all.
     template <typename Sub, typename Vs, typename Constraints, bool Reached = true>
     struct RequireConstantApplies;
 
@@ -1823,18 +1868,24 @@ namespace detail
                                             RequireDerivationNotBypassed<Q, !plainLeft>,
                                             RequireConstantNotBypassed<Q, !plainLeft>>;
 
+        /// The refusal for a plain use put in after a substitution that met
+        /// none: in the words of the operation listed too early.
+        using TooEarly = std::conditional_t<IsDerivation<Sub>::value,
+                                            RequireDerivationPrecedesItsUse<Q, !plainLeft>,
+                                            RequireConstantPrecedesItsUse<Q, !plainLeft>>;
+
         // Each message says only what is there. A node the substitution left,
         // beside a plain use: the method reads `Q` both ways. No such node,
         // but a plain use, and the substitution did meet uses when it was
         // applied: a later operation removed them, so it was bypassed. No
-        // such node and either no plain use or no use met: the substitution
-        // does nothing -- "nothing reads it" is then true of the method as it
-        // stood where the substitution applied, and a plain use put in later
-        // was never one it could have reached.
+        // such node, a plain use, and no use met: a later operation put the
+        // use in, and the substitution was listed before it. No such node and
+        // no plain use: nothing reads `Q`, so the substitution does nothing.
         static_assert(
             std::conditional_t<known && used, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
         static_assert(std::conditional_t<known && !used && Reached, Bypassed, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used && (!plainLeft || !Reached), Refusal, std::true_type>::value);
+        static_assert(std::conditional_t<known && !used && !Reached, TooEarly, std::true_type>::value);
+        static_assert(std::conditional_t<known && !used && !plainLeft, Refusal, std::true_type>::value);
 
         static constexpr bool value = true;
     };
@@ -2596,7 +2647,8 @@ namespace detail
     /// `overlay_derived_cycle`. The substitution's own check is still needed:
     /// when a later operation removed every node the substitution left and put
     /// a plain use back, the quantity has no substitution's node for this rule
-    /// to find, and that check refuses it as bypassed.
+    /// to find, and that check refuses it as bypassed -- or, when it met no
+    /// use where it was listed, as listed before the one put in.
     template <typename Substituted, typename Vs, typename Constraints>
     struct RequireEverySubstitutionEverywhere;
 

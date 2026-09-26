@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay derives a quantity that no variant or constraint of the method uses
+// EXPECT: formula: this overlay derives a quantity that nothing read where the definition is listed, and an operation listed after it reads the quantity from the environment
+// REJECT: formula: this overlay derives a quantity that no variant or constraint of the method uses
 // REJECT: formula: this overlay derives a quantity, and an operation listed after the definition removed
 //
 // Two definitions that read each other, the first of a quantity the method
 // never reads: `Other` defined by the ratio, then the ratio -- read by the
 // method's own constraint -- defined by `Other`. `Other`'s definition met no
-// use where it applied, so it is refused as doing nothing. The REJECT pins
-// that it is not refused as bypassed: no operation removed a use it
-// replaced. Listed the other way round, the two form a cycle and are refused
-// as one (`overlay_derived_cycle`).
+// use where it applied, and the ratio's definition puts in a plain one:
+// refused as listed before that use, with the note that the two may form a
+// cycle -- listed the other way round, they do, and are refused as one
+// (`overlay_derived_cycle`). The REJECTs pin that it is refused neither as
+// read by nothing nor as bypassed.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>

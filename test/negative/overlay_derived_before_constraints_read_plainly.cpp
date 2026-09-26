@@ -2,10 +2,11 @@
 // EXPECT: formula: this overlay derives a quantity, and an operation listed after the definition removed every use it replaced and put back one that reads the quantity from the environment
 // REJECT: formula: this overlay derives a quantity that no variant or constraint of the method uses
 // REJECT: formula: this method reads a quantity both where
+// REJECT: formula: this overlay derives a quantity that nothing read where the definition is listed
 //
 // `overlay_constant_before_constraints_read_plainly`, with the ratio defined
 // rather than fixed: the definition never reaches the new constraint, which
-// would check the specimen's ratio. The REJECTs pin the same two messages
+// would check the specimen's ratio. The REJECTs pin the same three messages
 // away.
 //
 // This must not compile.
