@@ -113,3 +113,11 @@ add_test(NAME docs.methods-and-overlays-output
             -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-methods_and_overlays>"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/methods-and-overlays.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+
+# Every ```cpp block of docs/methods-and-overlays.md must appear in the
+# example's source as consecutive lines, indentation aside -- see the script.
+add_test(NAME docs.methods-and-overlays-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/methods_and_overlays.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/methods-and-overlays.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")

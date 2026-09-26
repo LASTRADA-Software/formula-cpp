@@ -22,6 +22,14 @@ as quoted (`cmake/CheckGuideOutput.cmake`). **Compiler diagnostics** -- the bloc
 opening `static assertion failed` -- are the library's refusals as g++ 13.3
 printed them, captured from this repository's negative tests.
 
+**Code** is copied from the example's source, and
+`docs.methods-and-overlays-snippets` fails unless each code block appears there
+as a run of consecutive lines, compared without their indentation
+(`cmake/CheckGuideSnippets.cmake`). A code block that is deliberately *not*
+from the example -- a misuse shown in order to say what happens -- would carry
+a `<!-- snippet: not from the example -->` comment directly above it, which
+the check skips. No code block on this page carries one.
+
 ## A method: variants, tags, and one rounding rule
 
 A method is built from three parts, always in this order: the variants, the
