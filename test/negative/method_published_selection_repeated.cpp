@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: published_positions_must_be_distinct_and_below_the_published_count
+// EXPECT: published_positions_must_increase_and_stay_below_the_published_count
 //
 // A selection that keeps the same variant twice. `select` is how an overlay
 // carries a published layout through a pin or a prune, copying the published

@@ -406,7 +406,16 @@ quantity, but it says the value was not the specimen's:
 (`test/overlay_tests.cpp`, `"an overridden constant is traced as fixed by the
 overlay, holding its value"`.) `document()` marks it too: the quantity's row
 in the symbol table carries `fixedValue` and `fixedBy`, so a documentation
-page does not ask a reader to supply a value the formula never reads.
+page does not ask a reader to supply a value the formula never reads. A formula
+assembled by hand that both fixes a quantity and reads it from the specimen
+gets a row saying both: `alsoReadAsInput` is set beside the fixed value.
+
+The provenance a trace reports is only ever the library's to state. A
+`RoundingRule` claims a jurisdiction's overlay only when `with_rounding`
+produced it, and the rounding node a method applies holds the rule itself
+rather than a provenance of its own, so neither can be hand-built to say
+otherwise. What the guard governs is how a rule is created: a copy of an
+overlay's rule stays the overlay's wherever it is used, which is true of it.
 
 ## The bound is a required argument, not a default
 

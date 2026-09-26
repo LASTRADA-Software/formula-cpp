@@ -59,6 +59,16 @@ struct SymbolEntry
     /// `fixedValue`'s to say, not this.
     Citation fixedBy {};
 
+    /// For a fixed row: whether the formula ALSO reads this quantity from the
+    /// environment somewhere, besides where the overlay fixed it. False for a
+    /// row that is not fixed, which is read and nothing else.
+    ///
+    /// Only a formula assembled by hand has both -- `apply` fixes every use --
+    /// and then a row saying only "fixed at 97/100" would hide that the
+    /// specimen's value is read as well, and one saying only "read" would hide
+    /// the fixed value. It says both, in whichever order the two were met.
+    bool alsoReadAsInput {};
+
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
 };
@@ -181,21 +191,44 @@ namespace detail
     template <Predicate P>
     void collect(Walk& walk, Constraint<P> const& node);
 
+    /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
+    /// none yet; @p row is its index. True when the row was added now.
+    ///
+    /// Deduplicated by quantity type -- see `SymbolEntry`. `seenQuantities`
+    /// and `symbols` grow together, so one index names both.
+    template <Described Q>
+    bool add_row(Walk& walk, std::size_t& row)
+    {
+        void const* const key = &quantityIdentity<Q>;
+        row = 0;
+        while (row < walk.seenQuantities.size() && walk.seenQuantities[row] != key)
+            ++row;
+        if (row < walk.seenQuantities.size())
+            return false;
+        walk.seenQuantities.push_back(key);
+        walk.documentation.symbols.push_back(SymbolEntry {
+            .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+        return true;
+    }
+
     /// A variable contributes one row to the symbol table -- unless its
     /// quantity type has already contributed one, in which case the second
     /// use of that quantity adds nothing. A different quantity that merely
     /// renders the same symbol is not caught by this check and gets its own
     /// row; see the note on `SymbolEntry`.
+    ///
+    /// A quantity an overlay fixed earlier in the same walk -- possible only in
+    /// a formula assembled by hand -- keeps its fixed row, which is marked as
+    /// also read: see `SymbolEntry::alsoReadAsInput`.
     template <Described Q>
     void collect(Walk& walk, VarNode<Q> const&)
     {
-        void const* const key = &quantityIdentity<Q>;
-        for (void const* seen: walk.seenQuantities)
-            if (seen == key)
-                return;
-        walk.seenQuantities.push_back(key);
-        walk.documentation.symbols.push_back(SymbolEntry {
-            .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+        std::size_t row = 0;
+        if (add_row<Q>(walk, row))
+            return;
+        SymbolEntry& entry = walk.documentation.symbols[row];
+        if (entry.fixedValue.has_value())
+            entry.alsoReadAsInput = true;
     }
 
     /// An overridden constant contributes its quantity's row as a variable
@@ -207,25 +240,20 @@ namespace detail
     ///
     /// A quantity read plainly earlier in the same walk -- possible only in a
     /// formula assembled by hand, since `apply` fixes every use of it -- has
-    /// its row marked here rather than left plain: the formula does read the
-    /// fixed value, and a page must not say otherwise because of the order the
-    /// two uses were met in.
+    /// its row marked fixed and also read, rather than left plain: the formula
+    /// reads both, and a page must say so whichever order the two uses were
+    /// met in. See `SymbolEntry::alsoReadAsInput`.
     template <Described Q>
     void collect(Walk& walk, OverriddenConstantNode<Q> const& node)
     {
-        void const* const key = &quantityIdentity<Q>;
         std::size_t row = 0;
-        while (row < walk.seenQuantities.size() && walk.seenQuantities[row] != key)
-            ++row;
-        if (row == walk.seenQuantities.size())
-        {
-            walk.seenQuantities.push_back(key);
-            walk.documentation.symbols.push_back(SymbolEntry {
-                .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
-        }
+        bool const added = add_row<Q>(walk, row);
         SymbolEntry& entry = walk.documentation.symbols[row];
         if (entry.fixedValue.has_value())
             return;
+        // An existing row that is not fixed was contributed by a plain read.
+        if (!added)
+            entry.alsoReadAsInput = true;
         entry.fixedValue = node.value;
         entry.fixedBy = node.source;
     }

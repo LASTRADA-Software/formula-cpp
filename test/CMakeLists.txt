@@ -819,26 +819,43 @@ formula_add_negative_test(overlay_rounding_dimension_mismatch
     "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report")
 
 # A published layout that is not one: a repeated position, and a position at
-# the count. One case per half of the rule, because each half can be deleted
-# while the other still refuses its own case. The positions are values, not
+# the count. One case per half of the rule -- the ordering half and the range
+# half -- because each can be deleted while the other still refuses its own
+# case; the swapped cases below pin the ordering half past mere distinctness.
+# The positions are values, not
 # types, so the refusal is a call no constant expression can make, and its
 # name is the message -- see `detail::PublishedLayout` (`method.hpp`).
 formula_add_negative_test(method_published_position_repeated
-    "published_positions_must_be_distinct_and_below_the_published_count")
+    "published_positions_must_increase_and_stay_below_the_published_count")
 
 formula_add_negative_test(method_published_position_out_of_range
-    "published_positions_must_be_distinct_and_below_the_published_count")
+    "published_positions_must_increase_and_stay_below_the_published_count")
 
 # The route `apply` carries a layout by: `select` copies the published
 # positions of the variants a pin or a prune keeps, and holds the positions it
 # keeps to the same rule at compile time.
 formula_add_negative_test(method_published_selection_repeated
-    "published_positions_must_be_distinct_and_below_the_published_count")
+    "published_positions_must_increase_and_stay_below_the_published_count")
+
+# Two variants swapped, by hand and through `select`. Distinct and below the
+# count, so only the rule that positions increase refuses them -- which a pin
+# or a prune always satisfies, since it keeps declaration order.
+formula_add_negative_test(method_published_position_swapped
+    "published_positions_must_increase_and_stay_below_the_published_count")
+
+formula_add_negative_test(method_published_selection_swapped
+    "published_positions_must_increase_and_stay_below_the_published_count")
 
 # A method's own rule claiming to be a jurisdiction overlay's. Provenance is
 # the library's to state: `rounding_rule<...>()` or `with_rounding` applied by
 # an overlay, nothing else.
 formula_add_negative_test(method_rounding_rule_provenance_hand_built
+    "formula: a rounding rule's provenance is the library's to state, not an author's")
+
+# The same claim made through a rounding node built by hand and put in a
+# variant. The node holds a `RoundingRule`, not a provenance of its own, so the
+# claim is refused by the rule's guard.
+formula_add_negative_test(method_rounding_rule_node_provenance_hand_built
     "formula: a rounding rule's provenance is the library's to state, not an author's")
 
 add_test(NAME hygiene.version

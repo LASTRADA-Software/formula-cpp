@@ -224,6 +224,8 @@ TEST_CASE("the documentation marks an overridden constant as fixed, with its val
     REQUIRE(factor.fixedValue.has_value());
     CHECK(*factor.fixedValue == formula::Rational { 97, 100 });
     CHECK(factor.fixedBy == nationalAnnex);
+    // Every use of it is fixed, so it is not read from the specimen at all.
+    CHECK(!factor.alsoReadAsInput);
 
     // The rows the specimen supplies are not marked.
     for (std::size_t row = 1; row < documentation.symbols.size(); ++row)
@@ -233,17 +235,33 @@ TEST_CASE("the documentation marks an overridden constant as fixed, with its val
     }
 }
 
-TEST_CASE("a quantity read plainly and also fixed is documented as fixed", "[overlay][document]")
+TEST_CASE("a quantity read plainly and then fixed is documented as both", "[overlay][document]")
 {
     // Only a formula assembled by hand holds both, since `apply` fixes every
     // use. The plain use comes first, so a walk keeping the first row it met
-    // would hide the fixed value the formula does read.
+    // would hide the fixed value the formula does read -- and one that only
+    // marked it fixed would hide that the specimen's value is read too.
     constexpr formula::OverriddenConstantNode<ShapeFactor> fixed { {}, formula::Rational { 97, 100 }, nationalAnnex };
     auto const documentation = formula::document(var<ShapeFactor> + fixed);
 
     REQUIRE(documentation.symbols.size() == 1);
     REQUIRE(documentation.symbols[0].fixedValue.has_value());
     CHECK(*documentation.symbols[0].fixedValue == formula::Rational { 97, 100 });
+    CHECK(documentation.symbols[0].alsoReadAsInput);
+}
+
+TEST_CASE("a quantity fixed and then read plainly is documented as both", "[overlay][document]")
+{
+    // The other order: the fixed use comes first, so a walk that let the
+    // later plain read change nothing would say only "fixed at 97/100" of a
+    // quantity the formula also takes from the specimen.
+    constexpr formula::OverriddenConstantNode<ShapeFactor> fixed { {}, formula::Rational { 97, 100 }, nationalAnnex };
+    auto const documentation = formula::document(fixed + var<ShapeFactor>);
+
+    REQUIRE(documentation.symbols.size() == 1);
+    REQUIRE(documentation.symbols[0].fixedValue.has_value());
+    CHECK(*documentation.symbols[0].fixedValue == formula::Rational { 97, 100 });
+    CHECK(documentation.symbols[0].alsoReadAsInput);
 }
 
 TEST_CASE("an overlay fixes a constant in every variant and every constraint", "[overlay]")
@@ -473,6 +491,56 @@ TEST_CASE("the trace says where the rounding rule came from", "[trace][overlay]"
     CHECK(cited.find("8. round(#7, in MPa) = 601/100 MPa [rounded to 2 dp (jurisdiction overlay: Example Standard "
                      "12:2021 NA, NA.4.1); nearest, ties away from zero]\n")
           != std::string::npos);
+}
+
+namespace
+{
+/// Two decimals of a megapascal, citing the national annex: the operation
+/// alone, to be listed beside another.
+inline constexpr auto citedTwoDecimals =
+    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+        roundingAnnex);
+
+/// What a trace says of `citedTwoDecimals` wherever it holds.
+inline constexpr char citedRuleText[] = "rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, NA.4.1)";
+} // namespace
+
+// The three tests below each list the rounding override beside one other
+// operation, in both orders. Each other operation rebuilds the method, and
+// one that rebuilt the rule too -- `Rounding {}` for `rounding` -- would reset
+// it to the method's own and drop the citation.
+
+TEST_CASE("a rounding override survives a pin, in either order", "[overlay][trace]")
+{
+    CHECK(traceOf(formula::apply(formula::overlay(citedTwoDecimals, formula::pin_variant<Cube>()), baseMethod))
+              .find(citedRuleText)
+          != std::string::npos);
+    CHECK(traceOf(formula::apply(formula::overlay(formula::pin_variant<Cube>(), citedTwoDecimals), baseMethod))
+              .find(citedRuleText)
+          != std::string::npos);
+}
+
+TEST_CASE("a rounding override survives a prune, in either order", "[overlay][trace]")
+{
+    CHECK(traceOf(formula::apply(formula::overlay(citedTwoDecimals, formula::prune_variant<Cylinder>()), baseMethod))
+              .find(citedRuleText)
+          != std::string::npos);
+    CHECK(traceOf(formula::apply(formula::overlay(formula::prune_variant<Cylinder>(), citedTwoDecimals), baseMethod))
+              .find(citedRuleText)
+          != std::string::npos);
+}
+
+TEST_CASE("a rounding override survives a fixed constant, in either order", "[overlay][trace]")
+{
+    constexpr auto fixed = formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, nationalAnnex);
+    CHECK(traceOf(formula::apply(formula::overlay(citedTwoDecimals, fixed), baseMethod)).find(citedRuleText)
+          != std::string::npos);
+    CHECK(traceOf(formula::apply(formula::overlay(fixed, citedTwoDecimals), baseMethod)).find(citedRuleText)
+          != std::string::npos);
+
+    // And an overlay that fixes a constant and says nothing of rounding
+    // leaves the method's own rule the method's own.
+    CHECK(traceOf(formula::apply(national, baseMethod)).find("rounded to 1 dp (method default)") != std::string::npos);
 }
 
 TEST_CASE("with_rounding rounds the method's result by the overlay's rule", "[overlay]")

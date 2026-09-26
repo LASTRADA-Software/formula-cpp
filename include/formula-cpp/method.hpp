@@ -527,26 +527,30 @@ namespace detail
         return positions;
     }
 
-    /// Whether @p positions name variants' positions in a method of @p total
-    /// truthfully: each below @p total, and no two alike.
+    /// Whether @p positions could be where a pack's variants were published in
+    /// a method of @p total: each below @p total, and each above the one
+    /// before it.
+    ///
+    /// **Strictly increasing, not merely distinct.** A pin or a prune keeps
+    /// the variants it keeps in declaration order, so their published
+    /// positions always increase; `{ 1, 0 }` is distinct and below the count,
+    /// and no overlay can produce it -- it would report each of two variants
+    /// as the other. Increasing also implies distinct, so one comparison per
+    /// neighbouring pair says both.
     template <std::size_t Count>
     [[nodiscard]] constexpr bool is_published_layout(std::array<std::size_t, Count> const& positions,
                                                      std::size_t total) noexcept
     {
-        for (std::size_t later = 0; later < Count; ++later)
+        for (std::size_t index = 0; index < Count; ++index)
         {
-            if (positions[later] >= total)
+            if (positions[index] >= total)
                 return false;
-            for (std::size_t earlier = 0; earlier < later; ++earlier)
-                if (positions[earlier] == positions[later])
-                    return false;
+            if (index > 0 && positions[index - 1] >= positions[index])
+                return false;
         }
         return true;
     }
 
-    /// Reached only for a published layout that is not one -- see
-    /// `PublishedLayout`. Its name is the refusal.
-    ///
     /// Reached only while building a published layout that is not one -- see
     /// `PublishedLayout`. Its name is the refusal.
     ///
@@ -560,22 +564,23 @@ namespace detail
     /// could not call. It is never called at run time -- there is no run time
     /// path to it at all -- which is why its body is empty rather than one
     /// that ends the program.
-    inline void published_positions_must_be_distinct_and_below_the_published_count() noexcept {}
+    inline void published_positions_must_increase_and_stay_below_the_published_count() noexcept {}
 
     /// Where each variant of a pack sits in the method **as published**, and
     /// how many variants that method declares -- see `Variants::published`.
     ///
     /// Encapsulated, unlike the rest of `Variants`, because this is the one
     /// part with an invariant of its own: every position below the count, and
-    /// no two alike. As a pair of public members it let anyone state a layout
-    /// that is not one -- the same position for two variants, or a 4th of 3
-    /// -- and a trace then counted in it without a word. There are three ways
-    /// in, and none of them can produce a layout that is not one:
+    /// each above the one before it (see `is_published_layout`). As a pair of
+    /// public members it let anyone state a layout that is not one -- the same
+    /// position for two variants, two variants swapped, or a 4th of 3 -- and a
+    /// trace then counted in it without a word. There are three ways to build
+    /// one, and none of them can build a layout that breaks that invariant:
     ///
     ///  - the default constructor, declaration order;
     ///  - the `consteval` constructor, which checks a layout stated by hand and
     ///    refuses one that is not -- see
-    ///    `published_positions_must_be_distinct_and_below_the_published_count`;
+    ///    `published_positions_must_increase_and_stay_below_the_published_count`;
     ///  - `select<Kept...>()`, which is how `apply` (`overlay.hpp`) carries a
     ///    layout through a pin or a prune.
     ///
@@ -585,9 +590,18 @@ namespace detail
     /// the result of an earlier overlay, held in a variable whose layout is
     /// run time data. `select` takes the positions to keep as template
     /// arguments, checked by the same rule at compile time, and copies their
-    /// published positions out of a layout that is already valid. A selection
-    /// of distinct entries from a layout with distinct entries below its count
-    /// is one too, so nothing is left to check at run time.
+    /// published positions out of a layout that is already valid. An
+    /// increasing selection of entries from an increasing layout below its
+    /// count is one too, so nothing is left to check at run time.
+    ///
+    /// **What the check does not guarantee.** It guarantees a well-formed
+    /// layout, not that a layout is the right one for the pack that holds it.
+    /// A layout copied from another method's pack of the same size --
+    /// `pack.published = other.published`, or the same in an aggregate
+    /// initialiser -- is well formed, and indistinguishable from what a
+    /// legitimate prune produces: `{ 1, 2 }` of 3 is both. `published` is
+    /// maintained by the library, and assigning it is the author's explicit
+    /// act; the check refuses a layout no method could have, and nothing more.
     template <std::size_t Count>
     class PublishedLayout
     {
@@ -600,22 +614,24 @@ namespace detail
         }
 
         /// @p published of @p total, refused at compile time unless every
-        /// position is below @p total and no two are alike. `consteval`, so
+        /// position is below @p total and above the one before it. `consteval`, so
         /// that no layout reaches a trace unchecked.
         consteval PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t total) noexcept:
             _positions { published },
             _total { total }
         {
             if (!is_published_layout(published, total))
-                published_positions_must_be_distinct_and_below_the_published_count();
+                published_positions_must_increase_and_stay_below_the_published_count();
         }
 
         /// The layout of the variants at @p Kept, in that order: each keeps
         /// its published position, and the count is unchanged.
         ///
         /// @p Kept are positions in THIS pack, not published ones, and are
-        /// held to the rule the layout itself obeys -- each below `Count`, no
-        /// two alike -- by the constructor that forms them, at compile time.
+        /// held to the rule the layout itself obeys -- each below `Count`,
+        /// each above the one before -- by the constructor that forms them, at
+        /// compile time. So a selection keeps declaration order, as a pin or a
+        /// prune does.
         template <std::size_t... Kept>
         [[nodiscard]] constexpr PublishedLayout<sizeof...(Kept)> select() const noexcept
         {
@@ -705,8 +721,14 @@ struct Variants
     /// `variants(...)` numbers them in order; `apply` (`overlay.hpp`) carries
     /// them through a pin or a prune, so that a published `(Cube, Cylinder,
     /// Prism)` with `Cube` pruned still reports `Cylinder` as the 2nd of 3,
-    /// not the 1st of 2. A layout with a repeated position, or one at or past
+    /// not the 1st of 2. A layout whose positions do not increase, or reach
     /// the count, is refused -- see `detail::PublishedLayout`.
+    ///
+    /// **Maintained by the library; assigning it is the author's act.** The
+    /// check guarantees a well-formed layout, not the right one: another
+    /// method's layout of the same size, assigned here, is well formed and
+    /// cannot be told from what a legitimate prune leaves -- `{ 1, 2 }` of 3
+    /// is both. A trace then counts in the layout the author put here.
     ///
     /// A default member initialiser is safe here, unlike on `cases`: it names
     /// no variant's type, so asking whether this pack is default-constructible
@@ -789,7 +811,17 @@ namespace detail
 /// 9.1). Carries no operand: it is applied to whichever variant is selected.
 ///
 /// The granularity is the type; where it came from is data, private, and set
-/// only by the library -- see `detail::RoundingRuleAccess`. `with_rounding`
+/// only by the library -- see `detail::RoundingRuleAccess`.
+///
+/// **The guard governs how a rule is created, not where a copy travels.** A
+/// rule `with_rounding` produced keeps its provenance when it is copied --
+/// into another `method(...)`, say, as `apply(overlay, m).rounding` -- and
+/// that is legitimate: the claim stays true of the rule, which is the
+/// jurisdiction's wherever it is used. Likewise `Method::rounding` is a public
+/// member, and assigning it a default rule relabels a jurisdiction's rule as
+/// the method's own. Both are explicit acts on public members, as assigning
+/// `Variants::published` is; what no author can do is create a rule that
+/// states a provenance the library did not give it. `with_rounding`
 /// (`overlay.hpp`) can replace a rule with one of the same granularity -- a
 /// jurisdiction adopting the base standard's rounding in its own name -- and
 /// the trace must still say whose rule it was.
@@ -1212,16 +1244,23 @@ namespace detail
 /// jurisdiction's. A trace records this node as a
 /// `StepKind::RoundingRuleApplied` step (`trace.hpp`), which says both.
 ///
-/// Built only by `evaluate_method`, around the variant it selected. Nothing in
-/// a formula an author writes is one, so `render()` and `document()` never
-/// meet it.
+/// **Its provenance is the rule's, and only as trustworthy as the rule's
+/// guard.** The node holds the `RoundingRule` itself rather than a provenance
+/// and a citation of its own, so a trace can say "jurisdiction overlay" only of
+/// a rule `with_rounding` produced -- see `detail::RequireLibraryStatesProvenance`.
+///
+/// `evaluate_method` builds one around the variant it selected, from the
+/// method's rule. It is a public aggregate, so an author can build one too;
+/// what that author cannot do is make it claim a jurisdiction's rule. A node
+/// built by hand around a default `RoundingRule` claims the method default,
+/// and says so of whatever formula it is put in. It rounds and renders as the
+/// `RoundNode` it is.
 template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
 struct RoundingRuleNode: RoundNode<U, Places, Mode, Operand>
 {
-    /// Where the rule comes from -- see `RoundingRule::provenance`.
-    RoundingProvenance provenance {};
-    /// What the overlay that set the rule cited -- see `RoundingRule::source`.
-    Citation source {};
+    /// The rule applied: its granularity is this node's, and its provenance
+    /// and citation are what a trace reports of it.
+    RoundingRule<U, Places, Mode> rule {};
 };
 
 /// Rounds as the `RoundNode` it derives from, and tells @p sink about the
@@ -1306,8 +1345,7 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         using Selected = std::remove_cvref_t<decltype(selected.expression)>;
         RoundingRuleNode<Rule::unit, Rule::places, Rule::mode, Selected> const expression {
             { {}, selected.expression },
-            m.rounding.provenance(),
-            m.rounding.source(),
+            m.rounding,
         };
 
         // The selection is named whether or not the sink asks for it, so that
