@@ -74,10 +74,12 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
 #include <formula-cpp/unit.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <optional>
@@ -157,7 +159,8 @@ namespace detail
     ///
     /// It forwards exactly what the shipped nodes ask of an environment --
     /// `provides`, `is_entered`, `get` and `source_of`, measured by task 1's
-    /// spike -- so every node evaluates inside it as it does outside. A
+    /// spike, and phase 12's `is_entered_series` and `get_series` -- so every
+    /// node, a series node included, evaluates inside it as it does outside. A
     /// binding it does not hold itself is asked of the environment it wraps,
     /// so an inner construct's binding shadows an outer one's of the same
     /// kind.
@@ -189,6 +192,17 @@ namespace detail
         [[nodiscard]] constexpr Measured<Q> get() const noexcept
         {
             return _wrapped.template get<Q>();
+        }
+
+        /// Whether the wrapped environment's series for @p Q was typed in.
+        template <Described Q>
+        static constexpr bool is_entered_series = Env::template is_entered_series<Q>;
+
+        /// The wrapped environment's series for @p Q, of length @p N.
+        template <Described Q, std::size_t N>
+        [[nodiscard]] constexpr MeasuredSeries<Q, N> get_series() const noexcept
+        {
+            return _wrapped.template get_series<Q, N>();
         }
 
         /// Where the wrapped environment's value for @p Q came from.
@@ -438,6 +452,44 @@ namespace detail
     {
     };
 
+    // Phase 12's series kinds. A series is not a `Node`, but a placeholder
+    // broadcast into one -- `series<M, 3> + precision_level<A>` under a
+    // `sum` -- is inside the level all the same.
+    template <Described Q, std::size_t N>
+    struct LevelChildren<SeriesVarNode<Q, N>>: LevelLeaf
+    {
+    };
+
+    template <Unit U, std::size_t N>
+    struct LevelChildren<SeriesConstantNode<U, N>>: LevelLeaf
+    {
+    };
+
+    template <UnaryOperator Op, SeriesNode Operand>
+    struct LevelChildren<ElementwiseUnaryNode<Op, Operand>>: LevelParent<Operand>
+    {
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct LevelChildren<ElementwiseBinaryNode<Op, Left, Right>>: LevelParent<Left, Right>
+    {
+    };
+
+    template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    struct LevelChildren<ElementwiseRoundNode<U, Places, Mode, S>>: LevelParent<S>
+    {
+    };
+
+    template <CumulativeDirection D, SeriesNode S>
+    struct LevelChildren<CumulativeNode<D, S>>: LevelParent<S>
+    {
+    };
+
+    template <SeriesNode S>
+    struct LevelChildren<SumNode<S>>: LevelParent<S>
+    {
+    };
+
     // Phase 14's snap and curves: a snap reads its operand, a curve its two
     // series, a splice its two curves, an interpolation its curve and the
     // point it is read at. A declared domain is a table of points.
@@ -465,7 +517,6 @@ namespace detail
     struct LevelChildren<InterpolateAlongNode<C, At>>: LevelParent<C, At>
     {
     };
-
     /// Whether @p N is a `PrecisionLevelNode`.
     template <typename N>
     inline constexpr bool is_precision_level = false;

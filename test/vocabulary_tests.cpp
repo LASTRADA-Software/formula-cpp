@@ -976,19 +976,24 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 
 TEST_CASE("a precision limit's checks see inside every node kind", "[vocabulary][precision]")
 {
-    // The every-kind method, overlaid, and the method's rounding around it:
-    // every node kind this library ships. One that fell to `LevelChildren`'s
+    // The every-kind method, overlaid -- its series variant holding every
+    // series kind -- and the method's rounding around it: every node kind
+    // this library ships. One that fell to `LevelChildren`'s
     // primary would hide a placeholder from the level checks without a word,
     // as the overlay's derived quantity once did.
     using Cube = std::remove_cvref_t<decltype(std::get<0>(everyOverlaid.variantSet.cases).expression)>;
     using Cylinder = std::remove_cvref_t<decltype(std::get<1>(everyOverlaid.variantSet.cases).expression)>;
+    using Series = std::remove_cvref_t<decltype(std::get<2>(everyOverlaid.variantSet.cases).expression)>;
+    using Curve = std::remove_cvref_t<decltype(std::get<3>(everyOverlaid.variantSet.cases).expression)>;
     using Rounded = formula::
         RoundingRuleNode<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero, Cube>;
     STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Cube>());
     STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Cylinder>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Series>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Curve>());
     STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Rounded>());
     // A consumer's node kind is unseen by design, which is what makes the
-    // three above able to fail.
+    // five above able to fail.
     STATIC_REQUIRE_FALSE(formula::detail::level_check_sees_every_node<decltype(Gauge {} * var<Strength>)>());
     // Nor is one in a limit expression hidden from it, where a placeholder is
     // bound rather than free.

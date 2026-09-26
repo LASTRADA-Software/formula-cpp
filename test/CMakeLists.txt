@@ -713,6 +713,12 @@ formula_add_negative_test(precision_level_derived_into_level
     "formula: this precision_limit's level expression reads precision_level"
     REJECT "precision_level is meaningful only inside" "cannot see inside")
 
+# The same check sees through phase 12's series kinds: a placeholder added to
+# every element of a series a nested level sums.
+formula_add_negative_test(precision_level_in_nested_level_through_series
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside")
+
 formula_add_negative_test(precision_level_offset_unit
     "formula: this precision_level names a quantity whose unit has an offset"
     REJECT "reads a level of another dimension" "limit expression reads a precision_level whose quantity")

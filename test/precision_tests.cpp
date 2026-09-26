@@ -57,6 +57,10 @@ template <formula::PrecisionKind K, typename Level>
                                formula::Verdict { "repeat the determinations" });
 }
 
+/// A series of masses, read inside a limit expression and a nested level.
+struct Retained: formula::Quantity<Retained, "m_r", "retained mass", unit::Gram>
+{
+};
 /// A bare number, for `abs` at the edge of `Rational`.
 struct BareNumber: formula::Quantity<BareNumber, "q", "bare number", unit::One>
 {
@@ -251,6 +255,29 @@ TEST_CASE("abs is the absolute value, and keeps the dimension", "[precision]")
             ->measurement()
             .value()
         == Rational { std::numeric_limits<std::int64_t>::max() });
+}
+
+TEST_CASE("a series is read inside a limit expression and inside a nested level", "[precision][series]")
+{
+    // The limit's environment wraps the caller's, series included: pass 2
+    // reads sum(m_r) = 6 g, so r = 40 g / 50 + 6 g / 1000 = 403/500 g; a
+    // nested limit's level, evaluated in the outer limit's environment, sums
+    // the same series, 6 g, and its limit is that level: 6 g + 40 g = 46 g.
+    constexpr auto withSeries =
+        formula::environment(formula::Measured<ResultA> { rat(40) },
+                             formula::measured_series<Retained>(formula::Measured<Retained> { rat(1) },
+                                                                formula::Measured<Retained> { rat(2) },
+                                                                formula::Measured<Retained> { rat(3) }));
+    constexpr auto r = formula::precision_limit<formula::PrecisionKind::Repeatability>(
+        var<ResultA>,
+        rat(1, 50) * formula::precision_level<ResultA> + formula::sum(formula::series<Retained, 3>) / rat(1000));
+    STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(r, withSeries)->measurement().value() == rat(403, 500));
+
+    constexpr auto inner = formula::precision_limit<formula::PrecisionKind::Repeatability>(
+        formula::sum(formula::series<Retained, 3>), formula::precision_level<Retained>);
+    constexpr auto outer = formula::precision_limit<formula::PrecisionKind::Reproducibility>(
+        var<ResultA>, inner + formula::precision_level<ResultA>);
+    STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(outer, withSeries)->measurement().value() == rat(46));
 }
 
 TEST_CASE("a precision limit evaluates at runtime too", "[precision]")
