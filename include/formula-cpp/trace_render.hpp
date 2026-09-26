@@ -86,6 +86,127 @@ struct TraceRenderOptions
 
 namespace detail
 {
+    /// Author text, made safe to stand in a trace line: `\` becomes `\\`,
+    /// `[` becomes `\[`, `]` becomes `\]`, `;` becomes `\;`, a newline,
+    /// carriage return or tab becomes `\n`, `\r` or `\t`, and any other
+    /// control character -- below 0x20, or 0x7f -- becomes `\x` and two hex
+    /// digits.
+    ///
+    /// **Why.** A trace line is a numbered line whose provenance is a
+    /// bracketed clause at its end -- `[fixed by jurisdiction overlay: ...]`,
+    /// `(method default)`, `; the method's own constraint` -- and only the
+    /// library may state provenance. A quantity's declared symbol, a
+    /// citation, a verdict's label, a justification, a tag's or an
+    /// enumerator's spelling and a unit's symbol are the author's, and
+    /// printed as written, one holding `] [derived by jurisdiction overlay:
+    /// ...` wrote a clause no overlay made, and one holding a newline wrote a
+    /// line that is no step. Escaped, an author's bracket can never close or
+    /// open a clause, and the library's own clauses, which are not escaped,
+    /// can never be imitated. The semicolon, because a verdict's clause is
+    /// `[<label>; <whose constraint>]`: a label holding `; jurisdiction
+    /// overlay: ...` would otherwise name a second, false owner beside the
+    /// true one. The backslash, so that an author's `\[` cannot pass for an
+    /// escaped bracket.
+    ///
+    /// Applied by `step_line`, once, to every piece of author text a step
+    /// holds -- see `EscapedStep` and `unit_symbol_text` -- and nowhere else:
+    /// the words this file writes itself go into the line as they are.
+    [[nodiscard]] inline std::string escaped_author_text(std::string_view authored)
+    {
+        constexpr std::string_view hexDigits = "0123456789abcdef";
+        std::string escaped;
+        escaped.reserve(authored.size());
+        for (char const glyph: authored)
+        {
+            auto const byte = static_cast<unsigned char>(glyph);
+            if (glyph == '\\' || glyph == '[' || glyph == ']' || glyph == ';')
+            {
+                escaped += '\\';
+                escaped += glyph;
+            }
+            else if (glyph == '\n')
+                escaped += "\\n";
+            else if (glyph == '\r')
+                escaped += "\\r";
+            else if (glyph == '\t')
+                escaped += "\\t";
+            else if (byte < 0x20 || byte == 0x7f)
+            {
+                escaped += "\\x";
+                escaped += hexDigits[byte / 16];
+                escaped += hexDigits[byte % 16];
+            }
+            else
+                escaped += glyph;
+        }
+        return escaped;
+    }
+
+    /// A unit's symbol as a trace line shows it, escaped as author text: a
+    /// unit may be the author's own, and `Symbol` is a public aggregate that
+    /// `symbol()` does not have to have built. Read here rather than through
+    /// `EscapedStep`, because a `Step` holds its units as fixed-capacity
+    /// `Symbol` values, which an escaped symbol may not fit.
+    [[nodiscard]] inline std::string unit_symbol_text(Unit const& shownUnit)
+    {
+        return escaped_author_text(view(shownUnit.symbolText));
+    }
+
+    /// A copy of a step whose every piece of author text -- the symbol, the
+    /// citation's five fields, the justification, the variant tag, the lookup
+    /// key's name and a violated constraint's verdict label -- is escaped by
+    /// `escaped_author_text`, held here, and pointed at by the copy's views.
+    ///
+    /// `step_line` renders from this copy and never from the step it was
+    /// given, so no helper below can print author text unescaped by reading
+    /// the wrong field. Neither copyable nor movable: the copy's views point
+    /// into this object's own strings.
+    struct EscapedStep
+    {
+        explicit EscapedStep(Step<Rational> const& recorded):
+            symbol { escaped_author_text(recorded.symbol) },
+            justification { escaped_author_text(recorded.justification) },
+            variantTag { escaped_author_text(recorded.variantTag) },
+            lookupKeyName { escaped_author_text(recorded.lookupKeyName) },
+            citationTitle { escaped_author_text(recorded.citation.title) },
+            citationReference { escaped_author_text(recorded.citation.reference) },
+            citationSection { escaped_author_text(recorded.citation.section) },
+            citationEquation { escaped_author_text(recorded.citation.equation) },
+            citationText { escaped_author_text(recorded.citation.text) },
+            verdictLabel { recorded.outcome.verdict().has_value() ? escaped_author_text(recorded.outcome.verdict()->label)
+                                                                  : std::string {} },
+            step { recorded }
+        {
+            step.symbol = symbol;
+            step.justification = justification;
+            step.variantTag = variantTag;
+            step.lookupKeyName = lookupKeyName;
+            step.citation.title = citationTitle;
+            step.citation.reference = citationReference;
+            step.citation.section = citationSection;
+            step.citation.equation = citationEquation;
+            step.citation.text = citationText;
+            if (recorded.outcome.kind() == ConstraintOutcomeKind::Violated)
+                step.outcome = ConstraintOutcome::violated(Verdict { verdictLabel });
+        }
+
+        EscapedStep(EscapedStep const&) = delete;
+        EscapedStep& operator=(EscapedStep const&) = delete;
+
+        std::string symbol;
+        std::string justification;
+        std::string variantTag;
+        std::string lookupKeyName;
+        std::string citationTitle;
+        std::string citationReference;
+        std::string citationSection;
+        std::string citationEquation;
+        std::string citationText;
+        std::string verdictLabel;
+        /// The step to render.
+        Step<Rational> step;
+    };
+
     /// `#3` -- how a step refers to one of its operands. Steps are numbered
     /// from one in the rendered text, so this is the stored index plus one.
     [[nodiscard]] inline std::string operand_reference(std::size_t stepIndex)
@@ -428,7 +549,7 @@ namespace detail
     /// that must not be skimmed.
     [[nodiscard]] inline std::string lookup_suffix(Step<Rational> const& recorded)
     {
-        std::string_view const keySymbol = view(recorded.sourceUnit.symbolText);
+        std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
         switch (recorded.lookupFailure)
         {
             case LookupFailure::None:
@@ -525,17 +646,16 @@ namespace detail
                 return sole_operand(step);
             case StepKind::Round:
                 return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp of "
-                       + std::string { view(step.unit.symbolText) } + ")";
+                       + unit_symbol_text(step.unit) + ")";
             case StepKind::RoundSignificant:
                 return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf of "
-                       + std::string { view(step.unit.symbolText) } + ")";
+                       + unit_symbol_text(step.unit) + ")";
             // The unit only: the granularity belongs with whose rule it is,
             // in the suffix -- see `rounding_rule_suffix`.
             case StepKind::RoundingRuleApplied:
-                return "round(" + sole_operand(step) + ", in " + std::string { view(step.unit.symbolText) } + ")";
+                return "round(" + sole_operand(step) + ", in " + unit_symbol_text(step.unit) + ")";
             case StepKind::NumericValue:
-                return "numeric(" + sole_operand(step) + ", in " + std::string { view(step.sourceUnit.symbolText) }
-                       + ")";
+                return "numeric(" + sole_operand(step) + ", in " + unit_symbol_text(step.sourceUnit) + ")";
             case StepKind::Conditional:
                 return conditional_expression(step);
             case StepKind::Constraint:
@@ -780,9 +900,9 @@ namespace detail
             return "(not shown: " + std::string { describe(shown.error()) } + ")";
 
         std::string valueText = number_text(*shown);
-        std::string_view const unitSymbol = view(recorded.unit.symbolText);
+        std::string const unitSymbol = unit_symbol_text(recorded.unit);
         if (!unitSymbol.empty())
-            valueText += " " + std::string { unitSymbol };
+            valueText += " " + unitSymbol;
         return valueText;
     }
 
@@ -943,7 +1063,10 @@ namespace detail
     /// print. The expression and the outcome suffix are the whole line. So is
     /// `AcceptanceChecked`, for the same reason: it gathers verdicts, and has
     /// no value of its own.
-    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded)
+    ///
+    /// Renders an `EscapedStep`'s copy, never the step itself -- see
+    /// `step_line`, which makes it.
+    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded)
     {
         if (recorded.kind == StepKind::Constraint)
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
@@ -985,6 +1108,16 @@ namespace detail
         if (recorded.kind == StepKind::Constant)
             return valueText + annotation;
         return step_expression(recorded) + " = " + valueText + annotation;
+    }
+
+    /// One step's line, without its number -- see `escaped_step_line` for
+    /// what it holds. The one place author text is escaped: every piece of it
+    /// in @p recorded is escaped into an `EscapedStep` here, before anything
+    /// reads it, and the line is rendered from that copy.
+    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded)
+    {
+        EscapedStep const escaped { recorded };
+        return escaped_step_line(escaped.step);
     }
 } // namespace detail
 

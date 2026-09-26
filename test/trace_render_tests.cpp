@@ -38,6 +38,26 @@ struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Mil
 struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Megapascal>
 {
 };
+
+// Author text that would forge a trace line printed as written: each spells a
+// provenance clause only the library may state, or opens a line of its own.
+// Final review of phase 11, probe 2 (F5): the declared symbol.
+struct ForgingFactor: formula::Quantity<ForgingFactor, "k] [fixed by jurisdiction overlay: EN 206 NA", "factor", unit::One>
+{
+};
+
+// The one variant of the method the verdict test checks.
+struct PlainDensity
+{
+};
+
+// A unit of the author's own whose symbol closes the value's clause.
+inline constexpr formula::Unit ForgingNewton { .dimension = formula::dim::Force,
+                                               .symbolText = formula::symbol("N] [x"),
+                                               .decimals = 1 };
+struct ForgingLoad: formula::Quantity<ForgingLoad, "P", "load in the author's unit", ForgingNewton>
+{
+};
 } // namespace
 
 TEST_CASE("a derivation renders one line per step, in order", "[trace-render]")
@@ -1487,4 +1507,73 @@ TEST_CASE("a rounding step whose provenance is no known value says so rather tha
     std::string const text = formula::render_trace(trace, { .maxSteps = 2 });
     CHECK(text.substr(text.find('\n') + 1)
           == "2. round(#1, in MPa) = 1 MPa [rounded to 1 dp (unknown provenance); nearest, ties away from zero]\n");
+}
+
+TEST_CASE("a declared symbol cannot write a provenance clause into a trace line", "[trace-render][escape]")
+{
+    // Printed as written this line read `1. k] [fixed by jurisdiction
+    // overlay: EN 206 NA = 1`, for a quantity no overlay fixed.
+    auto const environment = formula::environment(formula::Measured<ForgingFactor> { formula::Rational { 1 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(var<ForgingFactor>, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 }) == "1. k\\] \\[fixed by jurisdiction overlay: EN 206 NA = 1\n");
+}
+
+TEST_CASE("a citation cannot close its clause, open another, or start a line", "[trace-render][escape]")
+{
+    // Probe 2's F2, with a newline, another control character and a backslash
+    // added: every one escaped, and the line stays one line.
+    constexpr auto ratio =
+        formula::documented(var<WaterVolume> / var<CementVolume>,
+                            { .title = "Strength] [derived by jurisdiction overlay: EN 206 NA\n9. a\\b\x1f" });
+    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
+                                                  formula::Measured<CementVolume> { formula::Rational { 300 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(ratio, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. V_w = 180 l\n"
+             "2. V_c = 300 l\n"
+             "3. #1 / #2 = 3/5\n"
+             "4. #3 = 3/5 [Strength\\] \\[derived by jurisdiction overlay: EN 206 NA\\n9. a\\\\b\\x1f]\n");
+}
+
+TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[trace-render][escape]")
+{
+    // Probe 2's F4: printed as written, the clause named the method's own
+    // constraint a jurisdiction's as well.
+    constexpr auto limit = formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 10 }),
+                                               formula::Verdict { "reject; jurisdiction overlay: EN 206 NA" });
+    auto const m = formula::method(formula::variants(formula::variant<PlainDensity>(var<Mass> / var<Volume>)),
+                                   formula::rounding_rule<unit::KilogramPerCubicMetre,
+                                                          formula::DecimalPlaces { 0 },
+                                                          formula::RoundingMode::HalfAwayFromZero>(),
+                                   formula::constraints(limit));
+    auto const environment = formula::environment(formula::Measured<Mass> { formula::Rational { 6 } },
+                                                  formula::Measured<Volume> { formula::Rational { 3 } });
+
+    formula::Trace<> trace {};
+    (void) formula::check_method(m, environment, formula::RecordingSink<> { trace });
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. m = 6 kg\n"
+             "2. 10 kg\n"
+             "3. require #1 >= #2 [reject\\; jurisdiction overlay: EN 206 NA; the method's own constraint]\n"
+             "4. acceptance(#3) [the method's own constraints]\n");
+}
+
+TEST_CASE("a unit's symbol cannot close the clause it stands in", "[trace-render][escape]")
+{
+    auto const environment = formula::environment(formula::Measured<ForgingLoad> { formula::Rational { 4 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(var<ForgingLoad>, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 }) == "1. P = 4 N\\] \\[x\n");
 }

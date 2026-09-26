@@ -480,33 +480,66 @@ both or neither.
 
 ## Only the library states a provenance
 
-The provenance a trace reports is only ever the library's to state. The nodes
+The provenance a trace records is only ever the library's to state. The nodes
 an overlay leaves behind -- a fixed constant, a derived quantity, a replaced
 formula -- can be built only by the overlay, and building one by hand is
 refused in the library's words. A
 `RoundingRule` claims a jurisdiction's overlay only when `with_rounding`
 produced it, and the rounding node a method applies is built only by
 `evaluate_method`, from the method's own rule, which it holds rather than a
-provenance of its own. So "(method default)" and "(jurisdiction overlay)"
-are only ever said of a method's rule. A method's constraints are a
+provenance of its own. A method's constraints are a
 jurisdiction's only when they are the `OverlaidConstraints` that
 `with_constraints` produced -- which carries the overlay's citation with the
-constraints themselves -- and building one by hand is refused.
+constraints themselves -- and building one by hand is refused. A variant's
+published position and count are stated only by `variants(...)` and carried
+by `apply`: a layout written by hand, `{ { 5, 7 }, 9 }`, is refused.
 
-What the guard governs is how a rule or a set of constraints is created, not
-where a copy travels, and a copy stays true of itself: a method holding a copy
-of an overlay's rule is traced as that overlay's rule, and a method built from
-an overlaid method's `constraintSet` checks the jurisdiction's constraints and
-says so, because they are the jurisdiction's. Three routes remain that no
-type can close. `method(o.variantSet, o.rounding, o.constraintSet.constraintSet())`
-hands the jurisdiction's constraints over as a plain set in one call, which
-makes them the new method's own -- reading them has to be possible.
-Reinterpreting an object's bytes makes it anything. And explicitly
-specialising `OverlaidConstraints` over a program's own types declares
-whatever the specialisation likes: specialising a library template is outside
-this library's contract, and no code can forbid it.
+**The author's own text cannot state one either.** A trace line is a numbered
+line whose provenance is a bracketed clause at its end, and some of the words
+in it are the author's: a quantity's symbol, a citation, a verdict's label, a
+justification, a unit's symbol, a variant's tag and a lookup key's name.
+`render_trace` escapes every one of them before it writes the line -- `\` as
+`\\`, `[` as `\[`, `]` as `\]`, `;` as `\;`, a newline as `\n`, and any other
+control character as `\x` and two hex digits -- and writes its own clauses as
+they are. So a declared symbol `k] [fixed by jurisdiction overlay: X` reads
+
+```
+1. k\] \[fixed by jurisdiction overlay: X = 1
+```
+
+and cannot pass for the clause the library writes when an overlay did fix
+`k`, and a verdict labelled `reject; jurisdiction overlay: X` cannot name a
+second owner for a constraint. A `TagName` or `EnumeratorName` spelling, and a
+vocabulary's symbol, go further: holding `[`, `]` or a control character, it is
+refused at compile time.
+
+What the guard governs is how a rule, a set of constraints or a layout is
+created, not where a copy travels, and a copy stays true of itself: a method
+holding a copy of an overlay's rule is traced as that overlay's rule, and a
+method built from an overlaid method's `constraintSet` checks the
+jurisdiction's constraints and says so, because they are the jurisdiction's.
+These routes remain, and no type can close them:
+
+- `method(o.variantSet, o.rounding, o.constraintSet.constraintSet())` hands
+  the jurisdiction's constraints over as a plain set in one call, which makes
+  them the new method's own -- reading them has to be possible.
+- Assigning a method's public `rounding` member, `m.rounding =
+  rounding_rule<...>()`, replaces a jurisdiction's rule with a rule of the
+  method's own, and the trace then says "(method default)". The member is
+  public so that a method stays an aggregate.
+- Copying a pack's layout, `pack.published = other.published`, or resetting it
+  to declaration order with `pack.published = {}`, gives it a layout the
+  library made for another pack -- positions, count and any pin or prune
+  with what it cited. A pruned pack reset this way reports its variants as the
+  1st and 2nd of 2 rather than where they were published, and says nothing of
+  the prune.
+- Reinterpreting an object's bytes makes it anything.
+- Explicitly specialising `OverlaidConstraints` over a program's own types
+  declares whatever the specialisation likes: specialising a library template
+  is outside this library's contract, and no code can forbid it.
+
 Nor does the guard reach a sink's own hooks, which are public: code that calls
-them by hand writes whatever trace it likes.
+them by hand, or fills in a `Step` by hand, writes whatever trace it likes.
 
 ## Whose symbols
 
