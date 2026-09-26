@@ -1173,11 +1173,13 @@ namespace detail
 ///
 /// A `Trace` may therefore be walked repeatedly **in sequence, but never by
 /// two sinks at once**: constructing a second `RecordingSink` on a `Trace`
-/// whose walk is still in progress clears the bookkeeping that walk is using,
-/// and the outer walk's next `produced` then reads `marks.back()` on an empty
-/// vector -- undefined behaviour. Nothing in this library does that; only a
-/// consumer sharing one `Trace` with an evaluation already under way can, and
-/// no runtime guard is levied on every walk to prevent it.
+/// whose walk is still in progress clears the bookkeeping that walk is using.
+/// Nothing in this library does that; only a consumer sharing one `Trace` with
+/// an evaluation already under way can. The outer walk's next `produced` then
+/// finds no mark to claim from, and drops its step rather than read an empty
+/// stack -- as every `..._produced` does when told of a result without the
+/// matching `..._entered`, which a consumer's own evaluator may forget. The
+/// trace is then incomplete, and says less rather than something false.
 ///
 /// **A vocabulary, when one is given, is held by value**, and every step
 /// naming a quantity writes its symbol through it (`Step::symbol`). By value
@@ -1253,6 +1255,13 @@ class RecordingSink
     template <Node N>
     void produced(N const& node, Evaluated<Rep> const& result)
     {
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
         std::size_t const nodeMark = _trace->marks.back();
         _trace->marks.pop_back();
 
@@ -1401,6 +1410,13 @@ class RecordingSink
     template <Predicate P>
     void constraint_produced(Constraint<P> const& constraint, ConstraintOutcome const& outcome)
     {
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `constraint_entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
         std::size_t const constraintMark = _trace->marks.back();
         _trace->marks.pop_back();
 
@@ -1455,6 +1471,13 @@ class RecordingSink
     /// the unit of.
     void variant_produced(VariantSelection const& variantSelection, Evaluated<Rep> const& produced)
     {
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `variant_entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
         std::size_t const selectionMark = _trace->marks.back();
         _trace->marks.pop_back();
 
@@ -1517,6 +1540,13 @@ class RecordingSink
     /// any method is claimed by nothing here, and keeps no provenance.
     void acceptance_produced(ConstraintOrigin const& constraintOrigin)
     {
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `acceptance_entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
         std::size_t const acceptanceMark = _trace->marks.back();
         _trace->marks.pop_back();
 

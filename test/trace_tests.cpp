@@ -1697,3 +1697,30 @@ TEST_CASE("overlay steps compose, and the position still counts in the method as
     CHECK(afterTwoApplies.steps[afterTwoApplies.root()].variantIndex == 2);
     CHECK(afterTwoApplies.steps[afterTwoApplies.root()].variantCount == 3);
 }
+
+TEST_CASE("a result told without its entry is dropped, never read off an empty stack", "[trace]")
+{
+    // A consumer's own evaluator that calls `produced` but forgot `entered`:
+    // there is no mark to claim from. Reading one off the empty stack was
+    // undefined behaviour -- cl's debug library aborts the program -- so the
+    // sink drops the step instead. The same for each of the other three
+    // pairs a sink is told.
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const value = formula::Evaluated<formula::Rational> { std::optional { formula::Rational { 1 } } };
+
+    sink.produced(var<Mass>, value);
+    constexpr auto limit = formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 1 }),
+                                               formula::Verdict { "too light" });
+    sink.constraint_produced(limit, formula::ConstraintOutcome::satisfied());
+    sink.variant_produced(formula::VariantSelection { "Cube", 0, 1 }, value);
+    sink.acceptance_produced(formula::ConstraintOrigin {});
+
+    CHECK(trace.steps.empty());
+    CHECK(trace.marks.empty());
+
+    // And the sink still records a walk that follows, whole.
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        var<Mass>, formula::environment(formula::Measured<Mass> { formula::Rational { 6 } }), sink);
+    CHECK(trace.steps.size() == 1);
+}
