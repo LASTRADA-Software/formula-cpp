@@ -1837,9 +1837,14 @@ formula_add_negative_test(record_scope_role_not_bound
     "formula: this record_context binds no record to this role"
     REJECT "RequireProvided" "RequireRecordContext" "RequireForeignRole")
 
+# After the refusal record<Role>() returns this record, so the key read after
+# it draws nothing more. Without that fallback the tuple lookup adds errors
+# of its own ("tuple index must be in range" and a deleted `get` on g++ 13
+# and clang++ 20.1.8, tuple_element instantiations on cl); the "tuple"
+# REJECT catches them on all three, measured.
 formula_add_negative_test(record_context_role_not_bound
     "formula: this record_context binds no record to this role"
-    REJECT "RequireThisRecordFirst" "RequireDistinctRoles")
+    REJECT "RequireThisRecordFirst" "RequireDistinctRoles" "tuple")
 
 formula_add_negative_test(record_scope_this_record
     "formula: from_record<ThisRecord> reads this record as though it were another"
@@ -1869,6 +1874,14 @@ formula_add_negative_test(record_unbound_this_record
 formula_add_negative_test(record_environment_is_context
     "formula: a record holds its values in an environment(...), and this is not one"
     REJECT "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles" "RequireProvided")
+
+# A bare Measured where environment(...) was meant, and a formula of three
+# quantities evaluated through a context over that record. One message: the
+# refused record holds detail::AbsentEnvironment, which answers every
+# quantity as absent without a RequireProvided of its own.
+formula_add_negative_test(record_values_not_environment
+    "formula: a record holds its values in an environment(...), and this is not one"
+    REJECT "RequireProvided" "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
 
 # The same mistake one level up: a context given as this record's values,
 # and a formula then evaluated through the context built over it. One

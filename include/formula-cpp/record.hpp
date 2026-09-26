@@ -25,8 +25,15 @@
 /// that record's environment, and the rest of the formula against this
 /// record's. A scope evaluated against anything but a context, over a role
 /// the context does not bind, or naming `ThisRecord` is refused at compile
-/// time, each with one message. A scope over a record that is bound but
-/// unbound -- a test not done yet -- is absent, never zero.
+/// time, each with one message. A scope over a role bound to an unbound
+/// record -- a test not done yet -- is absent, never zero.
+///
+/// **Not yet traced, rendered or documented.** Until the trace and the page
+/// learn the scope, `explain`, a `RecordingSink`, `render` and `document`
+/// over a formula holding one are refused with the compiler's own errors --
+/// many of them, and none of them this library's -- not with a message of
+/// its own. That is a refusal, not a silent gap: no trace or page omits a
+/// scope it was given.
 ///
 /// **Keys are integers, and two strong types.** `SampleId` and `TestId` each
 /// wrap a `std::uint64_t`, which is how a lab information system keys its
@@ -179,9 +186,41 @@ namespace detail
     template <typename... Entries>
     inline constexpr bool isEnvironment<Environment<Entries...>> = true;
 
-    /// What a record holds its values in.
+    /// What a refused `record()` holds when its values were neither an
+    /// environment nor a context -- a bare `Measured<Q>` where
+    /// `environment(...)` was meant, say. It answers every quantity, each as
+    /// absent, and asserts nothing, so that the refusal of the values is the
+    /// only message however many quantities a formula then reads through the
+    /// record. No record holds one otherwise.
+    struct AbsentEnvironment
+    {
+        /// Every quantity is answered -- absent.
+        template <Described Q>
+        static constexpr bool provides = true;
+
+        /// Nothing was typed in.
+        template <Described Q>
+        static constexpr bool is_entered = false;
+
+        /// Absent, for every quantity.
+        template <Described Q>
+        [[nodiscard]] constexpr Measured<Q> get() const noexcept
+        {
+            return Measured<Q>::absent();
+        }
+
+        /// What `Environment::source_of` answers for a value not typed in.
+        template <Described Q>
+        [[nodiscard]] constexpr ValueSource source_of() const noexcept
+        {
+            return ValueSource::Measured;
+        }
+    };
+
+    /// What a record holds its values in: a plain `Environment`, or, after a
+    /// refused `record()`, an `AbsentEnvironment`.
     template <typename Env>
-    concept RecordEnvironment = isEnvironment<Env>;
+    concept RecordEnvironment = isEnvironment<Env> || std::is_same_v<Env, AbsentEnvironment>;
 
     /// Fails to compile when `record<Role>(key, values)` is given values that
     /// are not a plain `Environment` -- a `record_context`, above all. A
@@ -223,6 +262,12 @@ namespace detail
     [[nodiscard]] constexpr Environment<Entries...> absent_environment(std::type_identity<Environment<Entries...>>) noexcept
     {
         return Environment<Entries...> { Entries {}... };
+    }
+
+    /// An `AbsentEnvironment` is absent throughout already.
+    [[nodiscard]] constexpr AbsentEnvironment absent_environment(std::type_identity<AbsentEnvironment>) noexcept
+    {
+        return AbsentEnvironment {};
     }
 
     /// The environment a `RecordContext` inherits, as `type`; nothing for any
@@ -349,9 +394,9 @@ class Record
 /// - given a `record_context`, the record holds that context's own
 ///   record's environment, the values the context itself evaluates against,
 ///   so evaluating through it draws nothing more;
-/// - given anything else, the record holds no values at all. Its key and
-///   `is_bound()` still answer, but each quantity read from it is refused
-///   again, by `RequireProvided`.
+/// - given anything else, the record holds a `detail::AbsentEnvironment`,
+///   which answers every quantity as absent without refusing it, so a
+///   formula evaluated through the record is absent and draws nothing more.
 template <typename Role, typename Env, typename... Lineage>
 [[nodiscard]] constexpr auto record(RecordKey recordKey, Env recordEnvironment, Lineage... lineageKeys) noexcept
 {
@@ -365,8 +410,8 @@ template <typename Role, typename Env, typename... Lineage>
             recordKey, static_cast<OwnEnvironment const&>(recordEnvironment), lineageKeys...);
     }
     else
-        return detail::RecordAccess::bound<Record<Role, Environment<>, Lineage...>>(recordKey, Environment<> {},
-                                                                                   lineageKeys...);
+        return detail::RecordAccess::bound<Record<Role, detail::AbsentEnvironment, Lineage...>>(
+            recordKey, detail::AbsentEnvironment {}, lineageKeys...);
 }
 
 namespace detail

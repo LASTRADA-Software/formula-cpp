@@ -38,8 +38,9 @@ constexpr auto ctx = formula::record_context(
 
 TEST_CASE("one quantity read here and from the reference gives two values", "[record-scope]")
 {
-    // 6 MPa here over 4 MPa there is 3/2. Reading both from one record gives 1;
-    // swapping them gives 2/3. Each wrong implementation has its own number.
+    // 85 902 N here over 57 268 N there is 3/2. Reading both from one record
+    // gives 1; swapping them gives 2/3. Each wrong implementation has its own
+    // number.
     constexpr auto ratio = var<Force> / formula::from_record<Reference>(var<Force>);
     constexpr auto evaluated = formula::checked_evaluate_si<formula::Rational>(ratio, ctx);
     STATIC_REQUIRE(evaluated.has_value());
@@ -71,4 +72,12 @@ TEST_CASE("a scope over a record not yet made is absent, never zero", "[record-s
     STATIC_REQUIRE(!referenceForce->has_value());
     STATIC_REQUIRE(ratio.has_value());
     STATIC_REQUIRE(!ratio->has_value());
+
+    // An operand that reads no quantity at all: only the scope itself can
+    // tell that the record is unbound. A scope that evaluated its operand
+    // regardless would give a present 5 N, attributed to a test not done.
+    constexpr auto constantThere = formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(formula::constant<unit::Newton>(formula::Rational { 5 })), notYetTested);
+    STATIC_REQUIRE(constantThere.has_value());
+    STATIC_REQUIRE(!constantThere->has_value());
 }
