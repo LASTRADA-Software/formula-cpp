@@ -447,8 +447,9 @@ formula_add_negative_test(snap_empty_permitted_set
     "this snap's permitted set is empty"
     REJECT "RequireBreakpoint" "RequireValidBreakpointTable" "key unit does not measure" "no matching")
 formula_add_negative_test(snap_descending_permitted_set
-    "breakpoints do not strictly ascend"
-    REJECT "key unit does not measure" "permitted set is empty")
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "key unit does not measure" "permitted set is empty"
+           "must be initialized by a constant expression")
 formula_add_negative_test(snap_key_dimension_mismatch
     "this snap's key unit does not measure the dimension of the expression it snaps"
     REJECT "breakpoints do not strictly ascend" "permitted set is empty")
@@ -761,20 +762,23 @@ formula_add_negative_test(interpolating_lookup_rep_not_rational
 # Each puts its defect in the MIDDLE pair of four rows, which kills a sweep
 # confined to the first pair or to the last.
 formula_add_negative_test(interpolating_lookup_duplicate_breakpoint
-    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(interpolating_lookup_descending_breakpoint
-    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(interpolating_lookup_descending_breakpoint_no_factory
-    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression")
 
 # The other rule: a row whose key is not a rational number at all. Separate from
 # the ordering rule because a one-row table has no pair for the ordering sweep
 # to look at, and because "not ascending" would be a true statement about the
 # wrong mistake.
 formula_add_negative_test(interpolating_lookup_malformed_breakpoint
-    "formula: this interpolating lookup table has a row whose key is not a rational number")
+    "formula: this breakpoint table -- an interpolating lookup's rows, or a snap's permitted set -- has a breakpoint whose key is not a rational number")
 
 # A method reports one quantity, so its variants must agree on the dimension
 # they report -- they are free to disagree on everything else, and by design

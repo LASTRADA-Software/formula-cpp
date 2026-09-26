@@ -1455,10 +1455,11 @@ template <Breakpoint B>
 struct RequireBreakpointWellFormed
 {
     static_assert(breakpoint_is_well_formed(B),
-                  "formula: this interpolating lookup table has a row whose key is not a rational "
-                  "number; its denominator is zero, or its numerator and denominator cannot be "
-                  "reduced without overflow; the offending Breakpoint value appears in this "
-                  "diagnostic as the template argument B of RequireBreakpointWellFormed");
+                  "formula: this breakpoint table -- an interpolating lookup's rows, or a snap's permitted "
+                  "set -- has a breakpoint whose key is not a rational number; its denominator is zero, or "
+                  "its numerator and denominator cannot be reduced without overflow; the offending "
+                  "Breakpoint value appears in this diagnostic as the template argument B of "
+                  "RequireBreakpointWellFormed");
 
     /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
     static constexpr bool value = true;
@@ -1478,10 +1479,11 @@ template <Breakpoint First, Breakpoint Second>
 struct RequireBreakpointsAscend
 {
     static_assert(breakpoints_ascend(First, Second),
-                  "formula: this interpolating lookup table's breakpoints do not strictly ascend; two "
-                  "adjacent rows either state the same key twice or are declared out of order, and the "
-                  "two offending Breakpoint values appear in this diagnostic as the template arguments "
-                  "First and Second of RequireBreakpointsAscend");
+                  "formula: this breakpoint table's breakpoints do not strictly ascend -- an "
+                  "interpolating lookup's rows, or a snap's permitted set; two adjacent breakpoints either "
+                  "state the same key twice or are declared out of order, and the two offending Breakpoint "
+                  "values appear in this diagnostic as the template arguments First and Second of "
+                  "RequireBreakpointsAscend");
 
     /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
     static constexpr bool value = true;
@@ -1489,59 +1491,57 @@ struct RequireBreakpointsAscend
 
 namespace detail
 {
-    /// Expands to one `RequireBreakpointWellFormed<Points[i]>::value` per row,
-    /// `&&`-folded together. Every operand of a fold expression is instantiated
-    /// to form the expression, independent of the runtime short-circuit `&&`
-    /// also performs -- so every row is checked and each bad one reports on its
-    /// own. The same reasoning as `require_all_bands_well_formed` (`band.hpp`).
-    template <BreakpointTable Points, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_breakpoints_well_formed(std::index_sequence<Index...>) noexcept
+    /// One check, told apart from another of the same type by its position,
+    /// so that a table naming one breakpoint twice does not name one base
+    /// class twice.
+    template <std::size_t Position, typename Check>
+    struct PositionedCheck: Check
     {
-        return (RequireBreakpointWellFormed<Points[Index]>::value && ...);
-    }
+    };
 
-    /// Same idea, one index per adjacent pair rather than per row, so every
-    /// pair is checked and reported independently of every other.
-    template <BreakpointTable Points, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_breakpoints_ascend(std::index_sequence<Index...>) noexcept
-    {
-        return (RequireBreakpointsAscend<Points[Index], Points[Index + 1]>::value && ...);
-    }
+    /// Every row's `RequireBreakpointWellFormed` and every adjacent pair's
+    /// `RequireBreakpointsAscend`, **instantiated as base classes**: every row
+    /// and every pair is checked, and each bad one reports on its own, with
+    /// its offending breakpoints in the diagnostic.
+    ///
+    /// Base classes, not a fold over each check's `::value`: once a check's
+    /// own assert has failed, clang++ cannot read that `::value` in a constant
+    /// expression, and reported the read -- and everything built on it -- as
+    /// further errors, five for one descending pair, where g++ and cl gave
+    /// one. Naming a check as a base instantiates it without reading anything.
+    template <BreakpointTable Points, typename Rows, typename Pairs>
+    struct BreakpointChecks;
 
-    /// Split out of `RequireValidBreakpointTable` so that `Points.size() - 1` --
-    /// which underflows for an empty table -- sits behind `if constexpr` and is
-    /// therefore never instantiated for `N < 2`. Guarding with `&&` instead
-    /// would not be enough, for the reason `band_table_is_valid`'s own comment
-    /// gives: that operator's short circuit applies to *evaluation*, not to
-    /// forming the type of its right-hand operand. The per-row fold has no such
-    /// hazard (it indexes 0..N-1, not 0..N-2) and always runs, so a one-row
-    /// table with a malformed key -- no pair to speak of -- is still caught.
-    template <BreakpointTable Points>
-    [[nodiscard]] constexpr bool breakpoint_table_is_valid() noexcept
+    template <BreakpointTable Points, std::size_t... Row, std::size_t... Pair>
+    struct BreakpointChecks<Points, std::index_sequence<Row...>, std::index_sequence<Pair...>>:
+        PositionedCheck<Row, RequireBreakpointWellFormed<Points[Row]>>...,
+        PositionedCheck<Points.size() + Pair, RequireBreakpointsAscend<Points[Pair], Points[Pair + 1]>>...
     {
-        bool const wellFormed = require_all_breakpoints_well_formed<Points>(std::make_index_sequence<Points.size()> {});
-        if constexpr (Points.size() < 2)
-            return wellFormed;
-        else
-            return wellFormed && require_all_breakpoints_ascend<Points>(std::make_index_sequence<Points.size() - 1> {});
-    }
+    };
+
+    /// The pairs of a table of @p N rows: none below two rows, where `N - 1`
+    /// would underflow or name no pair.
+    template <std::size_t N>
+    using AdjacentPairs = std::make_index_sequence<(N < 2 ? 0 : N - 1)>;
 } // namespace detail
 
-/// The static_assert wiring for an interpolating table: instantiating this with
-/// a `BreakpointTable` that is a compile-time constant enforces, right there,
-/// that every row names a number and that the rows strictly ascend -- reusing
-/// `breakpoint_is_well_formed` and `breakpoints_ascend`, the same two
-/// predicates `breakpoint_table_is_well_formed` uses for a curve that only
+/// The static_assert wiring for a breakpoint table -- an interpolating
+/// lookup's rows, or a snap's permitted set (`snap.hpp`): instantiating this
+/// with a `BreakpointTable` that is a compile-time constant enforces, right
+/// there, that every row names a number and that the rows strictly ascend --
+/// reusing `breakpoint_is_well_formed` and `breakpoints_ascend`, the same two
+/// predicates `breakpoint_table_is_well_formed` uses for a table that only
 /// arrives at runtime. Reached through `::value`, for the same reason
 /// `RequireValidBandTable` is.
 template <BreakpointTable Points>
-struct RequireValidBreakpointTable
+struct RequireValidBreakpointTable:
+    detail::BreakpointChecks<Points, std::make_index_sequence<Points.size()>, detail::AdjacentPairs<Points.size()>>
 {
-    /// Always `true` once reached -- every `static_assert` this instantiates
-    /// has already failed compilation otherwise. Present so `::value` is the
-    /// spelling that instantiates the class template, exactly as
-    /// `RequireValidBandTable::value` (`band.hpp`) is.
-    static constexpr bool value = detail::breakpoint_table_is_valid<Points>();
+    /// Always `true` once reached -- every `static_assert` this instantiates,
+    /// through its bases, has already failed compilation otherwise. A literal,
+    /// never read off a check, so that nothing downstream of a failed check
+    /// has anything left to fail on.
+    static constexpr bool value = true;
 };
 
 namespace detail

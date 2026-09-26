@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: breakpoints do not strictly ascend
+// EXPECT: formula: this breakpoint table's breakpoints do not strictly ascend
 // REJECT: key unit does not measure
 // REJECT: permitted set is empty
+// REJECT: must be initialized by a constant expression
 //
 // A permitted set out of order: refused by the shipped breakpoint table
-// validation (RequireValidBreakpointTable, reused, whose words name an
-// interpolating lookup table -- the same table type). The key unit check,
-// wrong here too, is gated off behind it.
+// validation (RequireValidBreakpointTable, reused), in words that name both
+// uses of a breakpoint table, and once on clang++ as on g++ and cl. The key
+// unit check, wrong here too, is gated off behind it.
 #include <formula-cpp/snap.hpp>
 
 struct Opening: formula::Quantity<Opening, "d", "screen opening", formula::unit::Millimetre>

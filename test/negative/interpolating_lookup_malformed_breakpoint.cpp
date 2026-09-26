@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this interpolating lookup table has a row whose key is not a rational number
+// EXPECT: formula: this breakpoint table -- an interpolating lookup's rows, or a snap's permitted set -- has a breakpoint whose key is not a rational number
 //
 // A row whose key has a zero denominator: it names no point on the curve at
 // all. This is a rule of its own, separate from the ordering rule, and this

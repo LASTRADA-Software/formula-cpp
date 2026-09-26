@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this interpolating lookup table's breakpoints do not strictly ascend
+// EXPECT: formula: this breakpoint table's breakpoints do not strictly ascend
+// REJECT: must be initialized by a constant expression
 //
 // The same defect as `interpolating_lookup_descending_breakpoint.cpp`, declared
 // WITHOUT the factory -- and that single difference is the whole point of this
