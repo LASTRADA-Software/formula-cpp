@@ -18,3 +18,9 @@ std::remove_cvref_t<decltype(join_cross_tu::joined)> joined_in_other_tu()
 {
     return join_cross_tu::joined;
 }
+
+formula::Evaluated<formula::Rational> evaluate_joined_in_other_tu(
+    std::remove_cvref_t<decltype(join_cross_tu::joined)> const& handed)
+{
+    return formula::evaluate_method<join_cross_tu::Cylinder>(handed, join_cross_tu::inputs);
+}

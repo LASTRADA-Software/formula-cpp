@@ -127,4 +127,12 @@ TEST_CASE("an overlaid method shared across translation units renders and traces
     REQUIRE(theirs.has_value());
     REQUIRE(theirs->has_value());
     CHECK(**theirs == formula::Rational { 40909, 10000 });
+
+    // And the method this unit built, evaluated there. The parameter's type
+    // is the method's, so the two units must agree on it to link at all --
+    // see `evaluate_joined_in_other_tu`.
+    auto const ours = evaluate_joined_in_other_tu(joined);
+    REQUIRE(ours.has_value());
+    REQUIRE(ours->has_value());
+    CHECK(**ours == formula::Rational { 40909, 10000 });
 }
