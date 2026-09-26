@@ -461,6 +461,9 @@ formula_add_negative_test(snap_descending_permitted_set
 formula_add_negative_test(snap_key_dimension_mismatch
     "this snap's key unit does not measure the dimension of the expression it snaps"
     REJECT "breakpoints do not strictly ascend" "permitted set is empty")
+# Task 8 review, L5: a snap evaluated in anything but Rational.
+formula_add_negative_test(snap_rep_not_rational
+    "formula: a snap can only be evaluated with Rep = Rational")
 
 # Task 5: sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT
