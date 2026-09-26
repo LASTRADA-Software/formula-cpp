@@ -1611,6 +1611,67 @@ namespace detail
         return checked_add(lowValue, *share);
     }
 
+    /// Where a key sits among keys that strictly ascend: on the key at `low`
+    /// (`low == high`), or between the keys at `low` and `high`, which is
+    /// `low + 1`.
+    struct KeyPosition
+    {
+        /// The key at or below the one located.
+        std::size_t low;
+        /// The key above it, or `low` again when the located key sat on one.
+        std::size_t high;
+    };
+
+    /// **The one scan of ascending keys**, shared by an interpolating lookup
+    /// (`locate_and_interpolate`, whose keys are a `BreakpointTable` in its
+    /// type) and a curve (`curve.hpp`, whose domain is a series evaluated at
+    /// run time): where @p key sits among the @p keyCount keys @p keyAt
+    /// yields, in order, or `ArithmeticError::DomainError` -- a miss -- below
+    /// the first key, above the last, or among none.
+    ///
+    /// A single forward scan, not a binary search, for the reason `find_band`
+    /// is one: a method's own curve is rows, not big data. It leans on the
+    /// keys ascending strictly, which each caller has already made sure of --
+    /// the first key **not** below @p key is where it sits, and everything
+    /// after it can be ignored.
+    ///
+    /// The equality test comes first, so that a key sitting exactly on one
+    /// is located **on** it rather than on a segment ending there. That is
+    /// observable at the last key, which begins no segment; everywhere else
+    /// interpolating would give the same number, because the weight is
+    /// exactly zero. It is also what makes `low == high` mean "on a key"
+    /// rather than "a segment of zero width", which strictly ascending keys
+    /// cannot contain.
+    ///
+    /// A key @p keyAt cannot yield is a miss too: reporting nothing is better
+    /// than locating against a number that was never there.
+    template <typename KeyAt>
+    [[nodiscard]] constexpr std::expected<KeyPosition, ArithmeticError> locate_key(std::size_t keyCount,
+                                                                                   KeyAt const& keyAt,
+                                                                                   Rational key) noexcept
+    {
+        for (std::size_t keyIndex = 0; keyIndex < keyCount; ++keyIndex)
+        {
+            std::expected<Rational, ArithmeticError> const rowKey = keyAt(keyIndex);
+            if (!rowKey.has_value())
+                return std::unexpected { ArithmeticError::DomainError };
+            if (*rowKey == key)
+                return KeyPosition { keyIndex, keyIndex };
+            if (key < *rowKey)
+            {
+                // Below the first key: a miss, never an extrapolation
+                // backwards along the first segment's slope.
+                if (keyIndex == 0)
+                    return std::unexpected { ArithmeticError::DomainError };
+                return KeyPosition { keyIndex - 1, keyIndex };
+            }
+        }
+        // Past the last key -- or no keys at all, past the last vacuously. A
+        // miss, never a clamp to the final key and never an extrapolation
+        // onwards along the final segment's slope.
+        return std::unexpected { ArithmeticError::DomainError };
+    }
+
     /// Answers @p key against @p Points and @p corrections **and says where the
     /// answer came from**: the row's own value when the key sits exactly on a
     /// row, the interpolation of the two surrounding rows when it sits between
@@ -1633,64 +1694,38 @@ namespace detail
     /// `interpolate_between`, which reports `Overflow` (or, unreachably,
     /// `DivisionByZero`) and never `DomainError`.
     ///
-    /// A single forward scan, not a binary search, for the reason `find_band`
-    /// is one: a method's own published curve is rows, not big data. It leans
-    /// on the ascending order `RequireValidBreakpointTable` has already
-    /// enforced -- the first row whose key is **not** below @p key is where the
-    /// answer is, and everything after it can be ignored.
-    ///
-    /// The equality test comes first, so that a key sitting exactly on a row
-    /// returns that row rather than interpolating a segment to it. That is
-    /// observable at the table's **last** row, which begins no segment; at
-    /// every other row interpolating would give the same number, because the
-    /// weight is exactly zero. See the file comment. It is also what makes the
-    /// returned `Segment`'s `low == high` mean "on a row" rather than "a
-    /// segment of zero width", which a well-formed table cannot contain.
+    /// The scan is `locate_key`'s, shared with a curve's; it leans on the
+    /// ascending order `RequireValidBreakpointTable` has already enforced. The
+    /// value between two rows is `interpolate_between`'s, the one formula for
+    /// it.
     template <BreakpointTable Points>
     [[nodiscard]] constexpr std::expected<std::pair<Rational, Segment>, ArithmeticError> locate_and_interpolate(
         Rational key, Corrections<Points.size()> const& corrections) noexcept
     {
-        for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
-        {
-            std::expected<Rational, ArithmeticError> const rowKey =
-                Rational::make(Points[pointIndex].numerator, Points[pointIndex].denominator);
-            // Unreachable for a `Points` that reached this point: every
-            // `InterpolatingLookupNode` instantiates
-            // `RequireValidBreakpointTable<Points>`, which already refuses a
-            // malformed key at compile time. Guarded anyway, for the same
-            // reason `find_band` guards its own: reporting nothing is better
-            // than interpolating against a number that was never there.
-            if (!rowKey.has_value())
-                return std::unexpected { ArithmeticError::DomainError };
+        // A key that does not reduce is unreachable for a `Points` that got
+        // here: every `InterpolatingLookupNode` instantiates
+        // `RequireValidBreakpointTable<Points>`, which refuses one at compile
+        // time. `locate_key` reports it as a miss anyway.
+        auto const keyAt = [](std::size_t pointIndex) {
+            return Rational::make(Points[pointIndex].numerator, Points[pointIndex].denominator);
+        };
+        std::expected<KeyPosition, ArithmeticError> const located = locate_key(Points.size(), keyAt, key);
+        if (!located.has_value())
+            return std::unexpected { located.error() };
+        if (located->low == located->high)
+            return std::pair<Rational, Segment> { corrections[located->low],
+                                                  Segment { Points[located->low], Points[located->low] } };
 
-            if (*rowKey == key)
-                return std::pair<Rational, Segment> { corrections[pointIndex],
-                                                      Segment { Points[pointIndex], Points[pointIndex] } };
-
-            if (key < *rowKey)
-            {
-                // Below the table's first row: a miss, never an extrapolation
-                // backwards along the first segment's slope.
-                if (pointIndex == 0)
-                    return std::unexpected { ArithmeticError::DomainError };
-
-                std::expected<Rational, ArithmeticError> const previous =
-                    Rational::make(Points[pointIndex - 1].numerator, Points[pointIndex - 1].denominator);
-                if (!previous.has_value())
-                    return std::unexpected { ArithmeticError::DomainError };
-
-                std::expected<Rational, ArithmeticError> const answered =
-                    interpolate_between(*previous, corrections[pointIndex - 1], *rowKey, corrections[pointIndex], key);
-                if (!answered.has_value())
-                    return std::unexpected { answered.error() };
-
-                return std::pair<Rational, Segment> { *answered, Segment { Points[pointIndex - 1], Points[pointIndex] } };
-            }
-        }
-        // Past the table's last row -- or an empty table, which is past its
-        // last row vacuously. A miss, never a clamp to the final row and never
-        // an extrapolation onwards along the final segment's slope.
-        return std::unexpected { ArithmeticError::DomainError };
+        // Both reduced a moment ago, inside the scan.
+        std::expected<Rational, ArithmeticError> const previous = keyAt(located->low);
+        std::expected<Rational, ArithmeticError> const rowKey = keyAt(located->high);
+        if (!previous.has_value() || !rowKey.has_value())
+            return std::unexpected { ArithmeticError::DomainError };
+        std::expected<Rational, ArithmeticError> const answered =
+            interpolate_between(*previous, corrections[located->low], *rowKey, corrections[located->high], key);
+        if (!answered.has_value())
+            return std::unexpected { answered.error() };
+        return std::pair<Rational, Segment> { *answered, Segment { Points[located->low], Points[located->high] } };
     }
 
     /// The answer alone, for the evaluation path, which has no use for the
