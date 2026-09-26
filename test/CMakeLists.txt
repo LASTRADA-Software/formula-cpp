@@ -811,7 +811,33 @@ formula_add_negative_test(overlay_apply_arguments_out_of_order
 # and the second silently replaces the first. The repeat rule compares each
 # operation's identity, and every rounding override has the same one.
 formula_add_negative_test(overlay_rounding_twice
-    "formula: this overlay lists the same operation twice; two constants or definitions of one quantity, two pins, prunes or replacements of one variant, or two rounding overrides")
+    "formula: this overlay lists the same operation twice; two constants or definitions of one quantity, two pins, prunes or replacements of one variant, two rounding overrides, or two replacements of the constraints, leave the first silently doing nothing")
+
+# Two replacements of the constraints in one overlay, holding different
+# constraints: the same, for the method's one set of constraints.
+formula_add_negative_test(overlay_constraints_twice
+    "formula: this overlay lists the same operation twice")
+
+# A quantity only the method's own constraint reads, fixed or defined, then
+# constraints put in by the same overlay that read it plainly: refused by the
+# rule a later replacement's plain use is refused by, and not as read by
+# nothing, although the constraint it was applied to is gone -- the REJECTs.
+formula_add_negative_test(overlay_constant_before_constraints_read_plainly
+    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_derived_before_constraints_read_plainly
+    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+
+# A quantity only the replaced constraints read, fixed before and after the
+# replacement: the same method is produced, so the same refusal in either
+# order.
+formula_add_negative_test(overlay_constant_before_its_constraint_is_replaced
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_constant_after_its_constraint_is_replaced
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 # A rounding override whose unit does not measure what the method reports is
 # refused by the method `apply` produces, in the words the method's own rule
@@ -858,6 +884,19 @@ formula_add_negative_test(method_rounding_rule_provenance_hand_built
 # claim is refused by the rule's guard.
 formula_add_negative_test(method_rounding_rule_node_provenance_hand_built
     "formula: a rounding rule's provenance is the library's to state, not an author's")
+
+# A method's own constraints claiming to be a jurisdiction overlay's. Whose
+# they are is the library's to state: `method(...)` or `with_constraints`
+# applied by an overlay, nothing else.
+formula_add_negative_test(method_constraint_origin_hand_built
+    "formula: whose a method's constraints are is the library's to state, not an author's")
+
+# A malformed method checked: `check_method` gates its body as
+# `evaluate_method` does, so the REJECT refuses the compiler's own error for
+# the `check_all` an ungated body would call on the rounding rule.
+formula_add_negative_test(method_check_arguments_out_of_order
+    "formula: this method's rounding rule is not a rounding rule"
+    REJECT "check_all")
 
 # A rounding node built by hand around the default rule: it would make a trace
 # say "(method default)" where there is no method. Only `evaluate_method`

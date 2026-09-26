@@ -429,6 +429,45 @@ selection whose line ends `[replaced by jurisdiction overlay: ...]`. It is a
 step of its own because what it marks is the formula that ran, not the choice
 of which variant ran.
 
+## Whose constraints
+
+A method's constraints are checked with `check_method`, which answers one
+outcome per constraint the method holds -- `check_all` over its
+`constraintSet`, handed over whole -- and tells a sink whose constraints they
+are. The verdicts are gathered under a step of their own,
+`StepKind::AcceptanceChecked`, whose operands are the verdicts in the order
+`check_method` returns them, and each verdict's bracket says whose check it
+was:
+
+```
+1. F = 90000 N
+2. 50000 N
+3. require #1 >= #2 [satisfied; the method's own constraint]
+4. acceptance(#3) [the method's own constraints]
+```
+
+(`test/overlay_tests.cpp`, `"each verdict says whether the method or a
+jurisdiction's overlay supplied it"`.) An overlay's `with_constraints`
+replaces the constraints wholesale, with as many as the jurisdiction states,
+and every verdict of the overlaid method then ends `; jurisdiction overlay:`
+and what the overlay cited. A jurisdiction that removes every constraint
+still gets a line, so the removal is never silent:
+
+```
+1. acceptance(none) [jurisdiction overlay: Acceptance, Example Standard 12:2021 NA, NA.6]
+```
+
+(`test/overlay_tests.cpp`, `"an overlay removes every constraint, and the
+trace says by whose authority"`.) The provenance is in
+`Step::constraintProvenance`, set on the gathering step and on each verdict
+it holds, with the overlay's citation in `Step::citation`. A constraint
+checked on its own, with `check` or `check_all`, belongs to no method, and
+its line reads as it always did. A method tells a sink about its constraints
+through two optional members, `acceptance_entered` and `acceptance_produced`,
+given the method's `ConstraintOrigin`; a sink defines both or neither.
+
+## Only the library states a provenance
+
 The provenance a trace reports is only ever the library's to state. The nodes
 an overlay leaves behind -- a fixed constant, a derived quantity, a replaced
 formula -- can be built only by the overlay, and building one by hand is
@@ -437,9 +476,13 @@ refused in the library's words. A
 produced it, and the rounding node a method applies is built only by
 `evaluate_method`, from the method's own rule, which it holds rather than a
 provenance of its own. So "(method default)" and "(jurisdiction overlay)"
-are only ever said of a method's rule. What the guard governs is how a rule is
-created, not where a copy travels: a method holding a copy of an overlay's
-rule is traced as that overlay's rule, which is true of it.
+are only ever said of a method's rule. A method's `ConstraintOrigin` likewise
+claims a jurisdiction's overlay only when `with_constraints` produced it.
+What the guard governs is how a rule or an origin is created, not where a
+copy travels: a method holding a copy of an overlay's rule is traced as that
+overlay's rule, which is true of it. Nor does it reach a sink's own hooks,
+which are public: code that calls them by hand writes whatever trace it
+likes.
 
 ## Whose symbols
 
@@ -465,8 +508,8 @@ formula::Trace<> southern {};
 sink's vocabulary"`.) `explain` takes the vocabulary as an optional third
 argument. Those three step kinds are the only ones that name a quantity.
 Every other step names none -- arithmetic, a lookup, a rounding rule, a
-constraint, a variant selection and a replaced variant refer to their
-operands by number -- and so reaches the vocabulary through the steps beneath
+constraint, a method's constraints, a variant selection and a replaced
+variant refer to their operands by number -- and so reaches the vocabulary through the steps beneath
 it.
 
 The sink keeps its own copy of the vocabulary -- plain data holding views of

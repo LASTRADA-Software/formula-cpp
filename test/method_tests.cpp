@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <string>
 #include <tuple>
 #include <type_traits>
 
@@ -50,6 +51,54 @@ struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit
                                 formula::Measured<EdgeX> { formula::Rational { edgeX } },
                                 formula::Measured<EdgeY> { formula::Rational { edgeY } });
 }
+
+/// Writes down what `check_method` tells it about a method's constraints, in
+/// order: `E` and `P` for the pair around the checks, with whose they are,
+/// and `c` for each verdict.
+struct AcceptanceWitness: formula::NullSink
+{
+    std::string* events;
+
+    void acceptance_entered(formula::ConstraintOrigin const& origin) const
+    {
+        *events += origin.provenance() == formula::ConstraintProvenance::MethodOwn ? "E(own)" : "E(overlay)";
+    }
+    template <formula::Predicate P>
+    void constraint_produced(formula::Constraint<P> const&, formula::ConstraintOutcome const&) const
+    {
+        *events += "c";
+    }
+    void acceptance_produced(formula::ConstraintOrigin const&) const
+    {
+        *events += "P";
+    }
+};
+
+/// The same, defining only the first of the pair.
+struct HalfAcceptanceWitness: formula::NullSink
+{
+    std::string* events;
+
+    void acceptance_entered(formula::ConstraintOrigin const&) const
+    {
+        *events += "E";
+    }
+    template <formula::Predicate P>
+    void constraint_produced(formula::Constraint<P> const&, formula::ConstraintOutcome const&) const
+    {
+        *events += "c";
+    }
+};
+
+// Two constraints of the method's own: 90 kN holds the first (at least
+// 50 kN) and not the second (at least 100 kN).
+inline constexpr auto twoOwnConstraints = formula::method(
+    formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) )),
+    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 50'000 }),
+                                             formula::Verdict { "the load is below the minimum" }),
+                         formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 100'000 }),
+                                             formula::Verdict { "the load is below the upper minimum" })));
 } // namespace
 
 TEST_CASE("a variants pack holds structurally different expressions", "[method]")
@@ -278,4 +327,19 @@ TEST_CASE("a method applies its own rounding rule to the variant it selects", "[
     STATIC_REQUIRE(notATie.has_value());
     STATIC_REQUIRE(notATie->has_value());
     STATIC_REQUIRE(notATie->value() == formula::Rational { 6'000'000 });
+}
+
+TEST_CASE("a sink is told whose constraints they are around the checks, or not at all", "[method][constraint]")
+{
+    // Both of the pair: told once before the verdicts and once after, and
+    // that these are the method's own.
+    std::string both;
+    (void) formula::check_method(twoOwnConstraints, specimen(90'000, 150, 100), AcceptanceWitness { {}, &both });
+    CHECK(both == "E(own)ccP");
+
+    // Only the first of the pair: told nothing of it, rather than told of a
+    // beginning it will never see the end of. The verdicts still reach it.
+    std::string half;
+    (void) formula::check_method(twoOwnConstraints, specimen(90'000, 150, 100), HalfAcceptanceWitness { {}, &half });
+    CHECK(half == "cc");
 }

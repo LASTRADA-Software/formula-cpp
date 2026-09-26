@@ -125,6 +125,25 @@ namespace detail
         return step.operands.empty() ? std::string {} : operand_reference(step.operands[0]);
     }
 
+    /// A method's constraints, as the verdicts they reached:
+    /// `acceptance(#3, #6, #9)`, in the order `check_method` returned them,
+    /// and `acceptance(none)` for a method with no constraints -- which is
+    /// the line that says an overlay removed every check.
+    template <typename Rep>
+    [[nodiscard]] std::string acceptance_expression(Step<Rep> const& step)
+    {
+        if (step.operands.empty())
+            return "acceptance(none)";
+        std::string text = "acceptance(";
+        for (std::size_t index = 0; index < step.operands.size(); ++index)
+        {
+            if (index != 0)
+                text += ", ";
+            text += operand_reference(step.operands[index]);
+        }
+        return text + ")";
+    }
+
     /// The token a comparison is written with in a derivation: `>`, `<=`.
     ///
     /// A table here rather than a call into `render.hpp`, whose own spelling
@@ -518,6 +537,8 @@ namespace detail
                 return conditional_expression(step);
             case StepKind::Constraint:
                 return constraint_expression(step);
+            case StepKind::AcceptanceChecked:
+                return acceptance_expression(step);
             // The head names are `render()`'s own, and the split between them
             // is the one `render.hpp` makes deliberately: the two *selecting*
             // kinds share `lookup`, and the one that *computes* a number
@@ -773,9 +794,80 @@ namespace detail
         return " [" + std::string { describe(mode) } + "]";
     }
 
+    /// A constraint's outcome in words, unbracketed: `satisfied`, the verdict's
+    /// label, `not checked`, or the arithmetic error that made it impossible
+    /// to check at all.
+    [[nodiscard]] inline std::string constraint_outcome_text(ConstraintOutcome const& outcome)
+    {
+        switch (outcome.kind())
+        {
+            case ConstraintOutcomeKind::Satisfied:
+                return "satisfied";
+            case ConstraintOutcomeKind::Violated:
+                // `verdict()` is guaranteed present here -- `kind()` just
+                // said `Violated`, the only state it is set for.
+                return std::string { outcome.verdict()->label };
+            case ConstraintOutcomeKind::NotChecked:
+                return "not checked";
+            case ConstraintOutcomeKind::Invalid:
+                // Likewise guaranteed present for `Invalid`.
+                return std::string { describe(*outcome.error()) };
+        }
+        return "unknown outcome";
+    }
+
+    /// Whose a method's constraints were: `the method's own`, or the overlay
+    /// and what it cited, as every overlay clause in this file spells it.
+    [[nodiscard]] inline std::string constraint_provenance_text(ConstraintProvenance provenance, Citation const& source)
+    {
+        switch (provenance)
+        {
+            case ConstraintProvenance::MethodOwn:
+                return "the method's own";
+            case ConstraintProvenance::JurisdictionOverlay:
+                return overlay_source_text(source);
+        }
+        // A hand-built `Step` may hold any value of the underlying type, and
+        // naming either provenance for it would be a guess.
+        return "unknown provenance";
+    }
+
+    /// A verdict's second clause, after a semicolon: `; the method's own
+    /// constraint`, or `; jurisdiction overlay: ...`. Empty for a constraint
+    /// checked outside any method, which is no one's -- so a trace of
+    /// `check` or `check_all` reads exactly as it did before methods had
+    /// constraints.
+    ///
+    /// A semicolon, not a comma, for `rounding_rule_suffix`'s reason: a cited
+    /// source has commas of its own.
+    [[nodiscard]] inline std::string constraint_provenance_clause(Step<Rational> const& step)
+    {
+        if (!step.constraintProvenance.has_value())
+            return {};
+        if (*step.constraintProvenance == ConstraintProvenance::MethodOwn)
+            return "; " + constraint_provenance_text(*step.constraintProvenance, step.citation) + " constraint";
+        return "; " + constraint_provenance_text(*step.constraintProvenance, step.citation);
+    }
+
+    /// A method's constraints step's clause: `[the method's own constraints]`,
+    /// or `[jurisdiction overlay: ...]`. Present whatever the provenance, for
+    /// the reason `overridden_constant_suffix` gives: the body of the line
+    /// says nothing of whose checks they were.
+    [[nodiscard]] inline std::string acceptance_suffix(Step<Rational> const& step)
+    {
+        if (!step.constraintProvenance.has_value())
+            return {};
+        if (*step.constraintProvenance == ConstraintProvenance::MethodOwn)
+            return " [" + constraint_provenance_text(*step.constraintProvenance, step.citation) + " constraints]";
+        return " [" + constraint_provenance_text(*step.constraintProvenance, step.citation) + "]";
+    }
+
     /// A `Constraint` step's outcome, in one bracketed clause: `[satisfied]`,
     /// `[reject the specimen]`, `[not checked]`, or the arithmetic error that
-    /// made it impossible to check at all.
+    /// made it impossible to check at all -- followed, for a method's
+    /// constraint, by whose it was: `[satisfied; the method's own
+    /// constraint]`, `[reject the specimen; jurisdiction overlay: ...]` (see
+    /// `constraint_provenance_clause`).
     ///
     /// Present for **every** outcome, unlike the other bracketed suffixes in
     /// this file. `Conditional` needs `[no branch]` only for the one case its
@@ -800,23 +892,9 @@ namespace detail
     /// rather than a single word (`[Bulk density of a compacted specimen,
     /// Example Standard 1:2020, 4.2, (3)]`), so there is no shape a verdict
     /// label needs that the existing convention cannot give it.
-    [[nodiscard]] inline std::string constraint_outcome_suffix(ConstraintOutcome const& outcome)
+    [[nodiscard]] inline std::string constraint_outcome_suffix(Step<Rational> const& step)
     {
-        switch (outcome.kind())
-        {
-            case ConstraintOutcomeKind::Satisfied:
-                return " [satisfied]";
-            case ConstraintOutcomeKind::Violated:
-                // `verdict()` is guaranteed present here -- `kind()` just
-                // said `Violated`, the only state it is set for.
-                return " [" + std::string { outcome.verdict()->label } + "]";
-            case ConstraintOutcomeKind::NotChecked:
-                return " [not checked]";
-            case ConstraintOutcomeKind::Invalid:
-                // Likewise guaranteed present for `Invalid`.
-                return " [" + std::string { describe(*outcome.error()) } + "]";
-        }
-        return " [unknown outcome]";
+        return " [" + constraint_outcome_text(step.outcome) + constraint_provenance_clause(step) + "]";
     }
 
     /// One step's line, without its number: the expression, an `=`, the value,
@@ -832,11 +910,15 @@ namespace detail
     /// `Constraint` is handled separately, first: a constraint produces a
     /// verdict, not a quantity (`constraint.hpp`'s own file comment explains
     /// why), so there is no value at all for `step_value_text` to convert or
-    /// print. The expression and the outcome suffix are the whole line.
+    /// print. The expression and the outcome suffix are the whole line. So is
+    /// `AcceptanceChecked`, for the same reason: it gathers verdicts, and has
+    /// no value of its own.
     [[nodiscard]] inline std::string step_line(Step<Rational> const& step)
     {
         if (step.kind == StepKind::Constraint)
-            return constraint_expression(step) + constraint_outcome_suffix(step.outcome);
+            return constraint_expression(step) + constraint_outcome_suffix(step);
+        if (step.kind == StepKind::AcceptanceChecked)
+            return acceptance_expression(step) + acceptance_suffix(step);
 
         std::string const value = step_value_text(step);
         std::string suffix;

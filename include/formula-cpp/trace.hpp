@@ -147,6 +147,18 @@ enum class StepKind : std::uint8_t
     /// the operation `VariantReplacement`, so nothing in namespace `formula`
     /// is spelt `ReplacedVariant`.
     ReplacedVariant,
+    /// A method's constraints, checked by `check_method` (`method.hpp`): whose
+    /// they are, in `Step::constraintProvenance` and, for an overlay's, what
+    /// it cited, in `Step::citation`; its operands are the constraints'
+    /// verdicts, in the order `check_method` returns them. Recorded even for
+    /// a method with no constraints, which then has no operands -- so a trace
+    /// of a method whose overlay removed every check still says so.
+    ///
+    /// Recorded by `RecordingSink::acceptance_produced`, not through
+    /// `detail::StepKindOf`: a method is not a `Node`. Checked on GCC under
+    /// `-Wshadow`: nothing in namespace `formula` is spelt
+    /// `AcceptanceChecked`.
+    AcceptanceChecked,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -306,7 +318,11 @@ struct Step
     /// `OverriddenConstant`, `DerivedQuantity`, `ReplacedVariant` and `RoundingRuleApplied`:
     /// what the overlay that fixed the value, defined the quantity, replaced the formula or set
     /// the rule cited, empty when it cited nothing --
-    /// and always empty for a method's own rule.
+    /// and always empty for a method's own rule. For `AcceptanceChecked`, and
+    /// for a `Constraint` it holds: what the overlay that replaced the
+    /// method's constraints cited, empty for the method's own. A
+    /// `Constraint`'s own citation is `render()`'s and `document()`'s to show,
+    /// and is not copied here.
     Citation citation {};
 
     /// For `NumericValue`: why the dimension was dropped -- the compile-time
@@ -388,6 +404,19 @@ struct Step
     /// (`RoundingProvenance::MethodDefault`) and not a "not applicable"
     /// sentinel: meaningful only for `RoundingRuleApplied`.
     RoundingProvenance roundingProvenance {};
+
+    /// For `AcceptanceChecked`, and for each `Constraint` step it holds as an
+    /// operand: whose constraints they were -- the method's own, or a
+    /// jurisdiction's overlay. Spec section 9.1 asks the trace for every
+    /// constraint verdict, and section 16.7 lets a jurisdiction supply its
+    /// own acceptance logic; a verdict that does not say which is true of
+    /// both and answers neither.
+    ///
+    /// Empty for a constraint checked on its own, by `check` or `check_all`
+    /// (`constraint.hpp`), where there is no method to be anyone's -- which
+    /// is why this is optional where `roundingProvenance` is not: a
+    /// `RoundingRuleApplied` step always has a method behind it.
+    std::optional<ConstraintProvenance> constraintProvenance {};
 
     /// The dimension of what this step produced.
     Dimension dimension {};
@@ -1440,6 +1469,56 @@ class RecordingSink
             step.error = result.error();
         else if (result->has_value() && !step.operands.empty())
             step.value = **result;
+
+        _trace->steps.push_back(std::move(step));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a method is about to check its constraints. Remembers where
+    /// the arena stood, exactly as `entered` does for a `Node`, so that
+    /// `acceptance_produced` below can claim the verdicts as its operands.
+    ///
+    /// Called by `check_method` (`method.hpp`) when a sink defines both this
+    /// and `acceptance_produced`, as `evaluate_method` calls
+    /// `variant_entered` and `variant_produced`.
+    void acceptance_entered(ConstraintOrigin const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records a `StepKind::AcceptanceChecked` step for constraints of
+    /// @p origin, claiming as its operands every verdict recorded since the
+    /// matching `acceptance_entered`, and marks each of those verdicts with
+    /// whose it was and what the overlay cited.
+    ///
+    /// Marked here, after the checks, rather than as each verdict is recorded:
+    /// the verdicts claimed are exactly the constraints `check_method`
+    /// checked, so no second record of which method is in progress is kept
+    /// beside `marks`. A verdict recorded by `check` or `check_all` outside
+    /// any method is claimed by nothing here, and keeps no provenance.
+    void acceptance_produced(ConstraintOrigin const& origin)
+    {
+        std::size_t const mark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> step {};
+        step.kind = StepKind::AcceptanceChecked;
+        step.constraintProvenance = origin.provenance();
+        step.citation = origin.source();
+
+        // Everything unclaimed from `mark` onwards belongs to this method's
+        // constraints -- see `produced` above for why this is a `while`.
+        auto first = _trace->unclaimed.begin();
+        while (first != _trace->unclaimed.end() && *first < mark)
+            ++first;
+        step.operands.assign(first, _trace->unclaimed.end());
+        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+
+        for (std::size_t const verdict: step.operands)
+        {
+            _trace->steps[verdict].constraintProvenance = origin.provenance();
+            _trace->steps[verdict].citation = origin.source();
+        }
 
         _trace->steps.push_back(std::move(step));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);

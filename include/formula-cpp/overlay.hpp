@@ -20,7 +20,7 @@
 /// is closed and lives in the type; which one applies is a runtime choice made
 /// among methods that already exist.
 ///
-/// This header provides six operations:
+/// This header provides seven operations:
 ///
 ///  - `with_constant<Q>(value)` fixes the quantity `Q` to `value` wherever the
 ///    method uses it -- the national body fixing a constant the base standard
@@ -33,13 +33,18 @@
 ///  - `prune_variant<Tag>()` deletes the variant tagged `Tag` outright;
 ///  - `replace_variant<Tag>(expression)` replaces the formula of the variant
 ///    tagged `Tag` wholesale;
-///  - `with_rounding<U, Places, Mode>()` replaces the method's rounding rule.
+///  - `with_rounding<U, Places, Mode>()` replaces the method's rounding rule;
+///  - `with_constraints(constraints(...))` replaces the method's constraints
+///    wholesale, with as many as the jurisdiction states -- more, fewer or
+///    none.
 ///
 /// Every one of them is **said** in the trace, not merely done: a fixed
 /// constant, a derived quantity, a replaced formula and an overlay's rounding
 /// rule each record a step naming the jurisdiction's overlay and what it
-/// cited, and the nodes and rules those steps are read from can be built only
-/// by this header -- see `detail::OverlayNodeAccess` and `RoundingRule`.
+/// cited, and each verdict of an overlay's constraints is marked as the
+/// jurisdiction's. The nodes, rules and origins those steps are read from can
+/// be built only by this header -- see `detail::OverlayNodeAccess`,
+/// `RoundingRule` and `ConstraintOrigin`.
 ///
 /// **A declared unit is not an overlay's to change, and none of these
 /// operations touches one.** Spec section 16.7 asks that an overlay can
@@ -83,8 +88,8 @@
 ///  - one overlay listing the same operation twice, which leaves the first
 ///    silently overridden by the second -- and two `with_rounding` of any
 ///    granularities are the same operation, since a method has one rule, as
-///    are a `with_constant<Q>` and an `add_derived<Q>`, and two replacements
-///    of one variant;
+///    are a `with_constant<Q>` and an `add_derived<Q>`, two replacements
+///    of one variant, and two `with_constraints`;
 ///  - one overlay that both pins and prunes: a pin already states the whole
 ///    selection, so a prune beside it either does nothing or contradicts it;
 ///  - `with_constant` or `add_derived` over an expression holding a node kind
@@ -98,6 +103,14 @@
 /// variant is that one. A `with_rounding` of the granularity the method
 /// already has is accepted for the same reason, and does change something:
 /// the rule is then the jurisdiction's, and the trace says so.
+///
+/// A `with_constraints` is accepted whatever it holds, for the same reason:
+/// the base method's own constraints restated make them the jurisdiction's,
+/// and `with_constraints(constraints())` -- no constraints at all -- is a
+/// jurisdiction that checks nothing the base standard checks. A method
+/// declared with `constraints()` is already well formed, and the removal is
+/// not silent: `check_method` records a step for a method's constraints even
+/// when there are none, and that step names the overlay.
 ///
 /// A `with_rounding` whose unit does not measure what the method reports is
 /// refused by the method it produces, in `Method`'s own words: the result of
@@ -600,6 +613,50 @@ template <typename Tag, Node Expr>
     return VariantReplacement<Tag, Expr> { expression, source };
 }
 
+/// The operation `with_constraints(constraints(...))` builds: replace the
+/// method's constraints wholesale.
+///
+/// No `{}` default member initialiser on the constraint set: it holds
+/// predicates, which hold expressions -- see `Corrections` (`lookup.hpp`).
+template <Predicate... Ps>
+struct ConstraintsOverride
+{
+    /// The constraints that replace the method's own.
+    ConstraintSet<Ps...> constraintSet;
+    /// Where they come from; carried onto the method's `constraintOrigin`,
+    /// and from there beside every verdict in the trace.
+    Citation source {};
+};
+
+/// Replaces the constraints of the method the overlay is applied to with
+/// @p replacement -- the jurisdiction whose acceptance logic is not the base
+/// standard's: one comparing a pair of determinations where the base checks
+/// one, one requiring a mean of three, one judging a category code rather than
+/// a numeric limit. The number of constraints is the jurisdiction's, so
+/// `check_method` on the overlaid method answers with as many outcomes as
+/// @p replacement holds: more than the base method's, fewer, or none.
+///
+/// **The trace says whose constraints they were.** The method's
+/// `constraintOrigin` then records `ConstraintProvenance::JurisdictionOverlay`
+/// and @p source, and every verdict `check_method` records says so --
+/// `[satisfied; jurisdiction overlay: ...]` where the base method's reads
+/// `[satisfied; the method's own constraint]`.
+///
+/// A `with_constant` or an `add_derived` listed **after** it reaches inside
+/// the new constraints, as it reaches inside every other part of the method.
+/// Listed **before** it, the substitution was made in the constraints this
+/// replaces, so new constraints reading the quantity plainly are refused by
+/// the rule a later replacement's plain use is refused by, and a quantity only
+/// the replaced constraints read is refused as read by nothing -- in either
+/// order. Refused when one overlay lists it twice: the second would silently
+/// discard the first. Across overlays, the later one's constraints hold.
+template <Predicate... Ps>
+[[nodiscard]] constexpr ConstraintsOverride<Ps...> with_constraints(ConstraintSet<Ps...> replacement,
+                                                                    Citation source = {}) noexcept
+{
+    return ConstraintsOverride<Ps...> { replacement, source };
+}
+
 /// The operation `add_derived<Q>(expression)` builds; defined below the
 /// rewrite machinery its class body asks.
 template <Described Q, Node Expr>
@@ -643,6 +700,11 @@ namespace detail
     {
     };
 
+    template <Predicate... Ps>
+    struct IsOverlayOperation<ConstraintsOverride<Ps...>>: std::true_type
+    {
+    };
+
     /// Fails to compile when something that is not an overlay operation was
     /// handed to `overlay(...)`. Templated on the position for the reason
     /// `RequireVariant` is.
@@ -652,8 +714,8 @@ namespace detail
         static_assert(IsOverlayOperation<Operation>::value,
                       "formula: this argument of overlay(...) is not an overlay operation; every argument "
                       "must be what with_constant<Q>(value), add_derived<Q>(expression), pin_variant<Tag>(), "
-                      "prune_variant<Tag>(), replace_variant<Tag>(expression) or with_rounding<U, Places, "
-                      "Mode>() returns -- the offending argument appears in this "
+                      "prune_variant<Tag>(), replace_variant<Tag>(expression), with_rounding<U, Places, "
+                      "Mode>() or with_constraints(constraints(...)) returns -- the offending argument appears in this "
                       "diagnostic as the template argument Operation of RequireOverlayOperation, and Index is "
                       "its ZERO-BASED position, so 0 is the first argument");
 
@@ -699,6 +761,20 @@ namespace detail
     {
         /// Every rounding override alike.
         using type = AnyRoundingOverride;
+    };
+
+    /// What every `with_constraints` of an overlay is, for the repeat rule:
+    /// a method has one set of constraints, and of two replacements of it the
+    /// second silently discards the first, whatever either holds.
+    struct AnyConstraintsOverride
+    {
+    };
+
+    template <Predicate... Ps>
+    struct OperationIdentity<ConstraintsOverride<Ps...>>
+    {
+        /// Every replacement of the constraints alike.
+        using type = AnyConstraintsOverride;
     };
 
     /// What every operation that substitutes for `Q` is, for the repeat rule:
@@ -756,8 +832,9 @@ namespace detail
     {
         static_assert(First == Second,
                       "formula: this overlay lists the same operation twice; two constants or definitions of "
-                      "one quantity, two pins, prunes or replacements of one variant, or two rounding "
-                      "overrides, leave the first silently doing nothing -- the first of the two appears in "
+                      "one quantity, two pins, prunes or replacements of one variant, two rounding overrides, "
+                      "or two replacements of the constraints, leave the first silently doing nothing -- the "
+                      "first of the two appears in "
                       "this diagnostic as the template "
                       "argument Operation of RequireOperationListedOnce, and First and Second are the "
                       "ZERO-BASED positions of the two arguments that list it, so 0 is the first argument");
@@ -1905,6 +1982,19 @@ namespace detail
                            pack.published.template select<positionsWithout<Tag, Cs...>[Kept]...>());
     }
 
+    /// A method of these parts whose constraints are @p origin's: what every
+    /// `apply_operation` below returns, so that an operation which leaves the
+    /// constraints alone -- or only rewrites inside them -- carries whose they
+    /// are on unchanged. `method(...)` would make them the method's own.
+    template <typename Vs, typename Rounding, typename Constraints>
+    [[nodiscard]] constexpr Method<Vs, Rounding, Constraints> method_of(Vs variantSet,
+                                                                        Rounding rounding,
+                                                                        Constraints constraintSet,
+                                                                        ConstraintOrigin origin) noexcept
+    {
+        return Method<Vs, Rounding, Constraints> { variantSet, rounding, constraintSet, origin };
+    }
+
     /// Whether an operation substitutes for a quantity: `with_constant` or
     /// `add_derived`.
     template <typename Operation>
@@ -1928,18 +2018,20 @@ namespace detail
     [[nodiscard]] constexpr auto apply_operation(Sub const& overriding,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet) noexcept
+                                                 ConstraintSet<Ps...> const& constraintSet,
+                                                 ConstraintOrigin const& origin) noexcept
     {
         auto rewritten = std::apply(
             [&](auto const&... cases) { return formula::variants(rewrite_variant(cases, overriding)...); }, pack.cases);
         // Rewriting a variant's expression moves nothing, so the layout is
         // carried over as it stands, already checked.
         rewritten.published = pack.published;
-        return formula::method(
+        return method_of(
             rewritten,
             rounding,
             std::apply([&](auto const&... items) { return formula::constraints(rewrite_constraint(items, overriding)...); },
-                       constraintSet.items));
+                       constraintSet.items),
+            origin);
     }
 
     /// `pin_variant<Tag>`: the variant tagged `Tag`, alone.
@@ -1953,18 +2045,20 @@ namespace detail
     [[nodiscard]] constexpr auto apply_operation(VariantPin<Tag> const&,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet) noexcept
+                                                 ConstraintSet<Ps...> const& constraintSet,
+                                                 ConstraintOrigin const& origin) noexcept
     {
         static_assert(
             std::conditional_t<isPlainClassTag<Tag>, RequireOverlayNamesDeclaredVariant<Tag, Cs...>, std::true_type>::value);
 
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
-            return formula::method(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
-                                               pack.published.template select<variant_index<Tag, Cs...>()>()),
-                                   rounding,
-                                   constraintSet);
+            return method_of(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
+                                         pack.published.template select<variant_index<Tag, Cs...>()>()),
+                             rounding,
+                             constraintSet,
+                             origin);
         else
-            return formula::method(pack, rounding, constraintSet);
+            return method_of(pack, rounding, constraintSet, origin);
     }
 
     /// `prune_variant<Tag>`: every variant but the one tagged `Tag`.
@@ -1976,7 +2070,8 @@ namespace detail
     [[nodiscard]] constexpr auto apply_operation(VariantPrune<Tag> const&,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet) noexcept
+                                                 ConstraintSet<Ps...> const& constraintSet,
+                                                 ConstraintOrigin const& origin) noexcept
     {
         static_assert(
             std::conditional_t<isPlainClassTag<Tag>, RequireOverlayNamesDeclaredVariant<Tag, Cs...>, std::true_type>::value);
@@ -1985,10 +2080,12 @@ namespace detail
                                          std::true_type>::value);
 
         if constexpr (namesDeclaredVariant<Tag, Cs...> && sizeof...(Cs) > 1)
-            return formula::method(
-                variants_without<Tag>(pack, std::make_index_sequence<sizeof...(Cs) - 1> {}), rounding, constraintSet);
+            return method_of(variants_without<Tag>(pack, std::make_index_sequence<sizeof...(Cs) - 1> {}),
+                             rounding,
+                             constraintSet,
+                             origin);
         else
-            return formula::method(pack, rounding, constraintSet);
+            return method_of(pack, rounding, constraintSet, origin);
     }
 
     /// `with_rounding<U, Places, Mode>`: the same variants and constraints,
@@ -2002,10 +2099,25 @@ namespace detail
     [[nodiscard]] constexpr auto apply_operation(RoundingOverride<U, Places, Mode> const& overriding,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const&,
-                                                 ConstraintSet<Ps...> const& constraintSet) noexcept
+                                                 ConstraintSet<Ps...> const& constraintSet,
+                                                 ConstraintOrigin const& origin) noexcept
     {
-        return formula::method(
-            pack, RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source), constraintSet);
+        return method_of(
+            pack, RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source), constraintSet, origin);
+    }
+
+    /// `with_constraints(...)`: the same variants and rounding rule, checked
+    /// against the overlay's constraints, which the method records as the
+    /// overlay's, with what the overlay cited. The constraints replaced are
+    /// dropped whole, of whatever number, and so is whose they were.
+    template <Predicate... Rs, typename... Cs, typename Rounding, Predicate... Ps>
+    [[nodiscard]] constexpr auto apply_operation(ConstraintsOverride<Rs...> const& overriding,
+                                                 Variants<Cs...> const& pack,
+                                                 Rounding const& rounding,
+                                                 ConstraintSet<Ps...> const&,
+                                                 ConstraintOrigin const&) noexcept
+    {
+        return method_of(pack, rounding, overriding.constraintSet, ConstraintOriginAccess::overlaid(overriding.source));
     }
 
     /// Fails to compile when a replacement measures a different dimension
@@ -2058,23 +2170,25 @@ namespace detail
     [[nodiscard]] constexpr auto apply_operation(VariantReplacement<Tag, Expr> const& replacing,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet) noexcept
+                                                 ConstraintSet<Ps...> const& constraintSet,
+                                                 ConstraintOrigin const& origin) noexcept
     {
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
         {
             constexpr Dimension reported = VariantsDimension<Variants<Cs...>>::dimension;
             if constexpr (reported == Expr::dimension)
-                return formula::method(variants_replacing<variant_index<Tag, Cs...>(), Tag>(
-                                           pack,
-                                           OverlayNodeAccess::replaced(replacing.expression, replacing.source),
-                                           std::index_sequence_for<Cs...> {}),
-                                       rounding,
-                                       constraintSet);
+                return method_of(variants_replacing<variant_index<Tag, Cs...>(), Tag>(
+                                     pack,
+                                     OverlayNodeAccess::replaced(replacing.expression, replacing.source),
+                                     std::index_sequence_for<Cs...> {}),
+                                 rounding,
+                                 constraintSet,
+                                 origin);
             else
-                return formula::method(pack, rounding, constraintSet);
+                return method_of(pack, rounding, constraintSet, origin);
         }
         else
-            return formula::method(pack, rounding, constraintSet);
+            return method_of(pack, rounding, constraintSet, origin);
     }
 
     /// Whether every node of every variant and constraint of a method is a kind
@@ -2389,7 +2503,8 @@ namespace detail
             return m;
         else
             return apply_from<Index + 1>(
-                operations, apply_operation(std::get<Index>(operations), m.variantSet, m.rounding, m.constraintSet));
+                operations,
+                apply_operation(std::get<Index>(operations), m.variantSet, m.rounding, m.constraintSet, m.constraintOrigin));
     }
 } // namespace detail
 

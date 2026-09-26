@@ -261,10 +261,10 @@ template <typename Rep = Rational, typename P, typename Env, typename Sink = Nul
 /// Bundles `Constraint`s the same way `environment()` bundles entries in
 /// `environment.hpp` -- a factory taking a pack by value, returning a class
 /// template over that pack -- so a reader who already knows `environment(...)`
-/// recognises this immediately. Phase 11 will hold one of these as an
-/// ordinary member of `Method` (spec section 9.1: `formula::constraints(dimensional_
-/// tolerance)` inside `formula::method(...)`), and pass it straight to
-/// `check_all()` below without unpacking it first -- the reason this is a
+/// recognises this immediately. `Method` (`method.hpp`) holds one of these as
+/// an ordinary member (spec section 9.1: `formula::constraints(dimensional_
+/// tolerance)` inside `formula::method(...)`), and `check_method` passes it
+/// straight to `check_all()` below without unpacking it first -- the reason this is a
 /// bundle type rather than only a variadic `check_all(environment, sink,
 /// constraints...)` over a raw pack, which `Method` would then have to
 /// re-expand on every check.
@@ -310,6 +310,11 @@ namespace detail
         std::tuple<Constraint<Ps>...> const& items, Env const& environment, Sink sink,
         std::index_sequence<Is...>) noexcept
     {
+        // An empty set -- a method declared with `constraints()`, or an
+        // overlay's `with_constraints(constraints())` -- expands the pack
+        // below to nothing, and g++ 13 then reports `sink` as set but not
+        // used, an error under `-Werror`.
+        static_cast<void>(sink);
         return { check<Rep>(std::get<Is>(items), environment, sink)... };
     }
 } // namespace detail

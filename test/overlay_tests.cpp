@@ -49,12 +49,14 @@ using OneDecimalOfMegapascal =
     formula::RoundingRule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>;
 
 // Only the Cube variant reads the shape factor, so an overlay fixing it
-// changes Cube and leaves Cylinder alone.
-inline constexpr auto baseMethod =
-    formula::method(formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeX> * var<EdgeY>) ),
-                                      formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
-                    OneDecimalOfMegapascal {},
-                    formula::constraints());
+// changes Cube and leaves Cylinder alone. Its one constraint of its own reads
+// only the load, which no overlay here fixes or derives.
+inline constexpr auto baseMethod = formula::method(
+    formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                      formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
+    OneDecimalOfMegapascal {},
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 50'000 }),
+                                             formula::Verdict { "the load is below the method's minimum" })));
 
 // Three variants reading three different expressions, so each one's result
 // names which variant produced it: Cube 6 MPa, Cylinder 4 MPa, Prism 9 MPa.
@@ -158,6 +160,51 @@ enum class Shape : std::uint8_t
 inline constexpr formula::KeyTable<Shape, 2> ShapeKeys { Shape::Square, Shape::Round };
 inline constexpr formula::BandTable<2> RatioBands { formula::band(0, 1, 2, 1), formula::band(2, 1, 6, 1) };
 inline constexpr formula::BreakpointTable<2> RatioPoints { formula::breakpoint(0), formula::breakpoint(8) };
+
+inline constexpr formula::Citation acceptanceAnnex { .title = "Acceptance",
+                                                     .reference = "Example Standard 12:2021 NA",
+                                                     .section = "NA.6" };
+
+inline constexpr formula::Citation laterAcceptanceAnnex { .reference = "Example Standard 12:2024 NA", .section = "NA.6" };
+
+/// A jurisdiction's three constraints in place of the base method's one --
+/// two of them with no counterpart in the base. Against `inputs` (90 kN over
+/// 150 mm by 100 mm, shape factor 1) the first holds (150 mm <= 200 mm), the
+/// second does not (90 kN < 100 kN), and the third holds (1 <= 1); with the
+/// shape factor left unmeasured the third is not checked. Three different
+/// outcomes at three indices, so a result read at the wrong index shows.
+inline constexpr auto threeConstraintSet =
+    formula::constraints(formula::constraint(var<EdgeX> <= var<EdgeY> * formula::number(formula::Rational { 2 }),
+                                             formula::Verdict { "the edges differ by more than a factor of two" }),
+                         formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 100'000 }),
+                                             formula::Verdict { "the load is below the annex's minimum" }),
+                         formula::constraint(var<ShapeFactor> <= formula::number(formula::Rational { 1 }),
+                                             formula::Verdict { "the shape factor exceeds one" }));
+
+inline constexpr auto threeConstraints = formula::overlay(formula::with_constraints(threeConstraintSet, acceptanceAnnex));
+
+/// One constraint, reading only the load -- 90 kN < 100 kN, so violated -- for
+/// the cases where a constraint reading the shape factor would be refused.
+inline constexpr auto oneConstraintSet =
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 100'000 }),
+                                             formula::Verdict { "the load is below the annex's minimum" }));
+
+/// `inputs` with the shape factor left unmeasured.
+inline constexpr auto inputsWithUnmeasuredFactor =
+    formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
+                         formula::Measured<EdgeX> { formula::Rational { 150 } },
+                         formula::Measured<EdgeY> { formula::Rational { 100 } },
+                         formula::Measured<ShapeFactor> {});
+
+/// The derivation `check_method` records for @p m against @p environment,
+/// rendered.
+template <typename M, typename Env>
+[[nodiscard]] std::string acceptanceTraceOf(M const& m, Env const& environment)
+{
+    formula::Trace<> trace {};
+    (void) formula::check_method(m, environment, formula::RecordingSink<> { trace });
+    return formula::render_trace(trace, { .maxSteps = 40 });
+}
 } // namespace
 
 TEST_CASE("an overlay overrides a constant and yields a method", "[overlay]")
@@ -841,6 +888,10 @@ TEST_CASE("an overlay whose operations hold expressions says it cannot be defaul
     using Replacing =
         decltype(formula::overlay(formula::replace_variant<Cube>(lookup * var<Force> / (var<EdgeX> * var<EdgeY>) )));
     using Deriving = decltype(formula::overlay(formula::add_derived<ShapeFactor>(lookup)));
+    // Constraints hold predicates, which hold expressions, so a replacement
+    // of them is held to the same.
+    using Constraining = decltype(formula::overlay(formula::with_constraints(formula::constraints(formula::constraint(
+        lookup > formula::number(formula::Rational { 0 }), formula::Verdict { "the correction is not positive" })))));
 
     STATIC_REQUIRE(!std::is_default_constructible_v<Replacing>);
     STATIC_REQUIRE(!std::default_initializable<Replacing>);
@@ -848,9 +899,179 @@ TEST_CASE("an overlay whose operations hold expressions says it cannot be defaul
     STATIC_REQUIRE(!std::is_default_constructible_v<Deriving>);
     STATIC_REQUIRE(!std::default_initializable<Deriving>);
     STATIC_REQUIRE(!std::is_default_constructible_v<std::tuple<Deriving, Deriving>>);
+    STATIC_REQUIRE(!std::is_default_constructible_v<Constraining>);
+    STATIC_REQUIRE(!std::default_initializable<Constraining>);
+    STATIC_REQUIRE(!std::is_default_constructible_v<std::tuple<Constraining, Constraining>>);
 
-    // The control: both are still copyable, which `overlay()` and `apply`
-    // rely on.
+    // The control: all three are still copyable, which `overlay()` and
+    // `apply` rely on.
     STATIC_REQUIRE(std::is_copy_constructible_v<Replacing>);
     STATIC_REQUIRE(std::is_copy_constructible_v<Deriving>);
+    STATIC_REQUIRE(std::is_copy_constructible_v<Constraining>);
+}
+
+TEST_CASE("an overlay supplies acceptance logic of a different arity", "[overlay][constraint]")
+{
+    // Base: one constraint. Overlay: three, including one the base has no
+    // counterpart for. The RESULT ARRAY SIZE differs, which is the point.
+    constexpr auto overlaid = formula::apply(threeConstraints, baseMethod);
+    constexpr auto baseOutcomes = formula::check_method(baseMethod, inputs);
+    constexpr auto afterOutcomes = formula::check_method(overlaid, inputs);
+    STATIC_REQUIRE(baseOutcomes.size() == 1);
+    STATIC_REQUIRE(afterOutcomes.size() == 3);
+}
+
+TEST_CASE("an overlay supplies fewer constraints, and a later overlay's hold", "[overlay][constraint]")
+{
+    // Three, replaced by a later jurisdiction's one: the later overlay's
+    // constraint holds, and so does its citation -- not the earlier one's.
+    constexpr auto three = formula::apply(threeConstraints, baseMethod);
+    constexpr auto one =
+        formula::apply(formula::overlay(formula::with_constraints(oneConstraintSet, laterAcceptanceAnnex)), three);
+    constexpr auto outcomes = formula::check_method(one, inputs);
+    STATIC_REQUIRE(outcomes.size() == 1);
+    STATIC_REQUIRE(outcomes[0].verdict() == formula::Verdict { "the load is below the annex's minimum" });
+    STATIC_REQUIRE(three.constraintOrigin.source() == acceptanceAnnex);
+    STATIC_REQUIRE(one.constraintOrigin.provenance() == formula::ConstraintProvenance::JurisdictionOverlay);
+    STATIC_REQUIRE(one.constraintOrigin.source() == laterAcceptanceAnnex);
+}
+
+TEST_CASE("an overlay removes every constraint, and the trace says by whose authority", "[overlay][constraint][trace]")
+{
+    // Accepted, not refused: a method declared with `constraints()` is well
+    // formed, and a jurisdiction may check nothing the base standard checks.
+    // What must not happen is a silent removal -- so the trace still records
+    // the method's constraints, none of them, as the overlay's.
+    constexpr auto none =
+        formula::apply(formula::overlay(formula::with_constraints(formula::constraints(), acceptanceAnnex)), baseMethod);
+    STATIC_REQUIRE(formula::check_method(none, inputs).size() == 0);
+
+    CHECK(acceptanceTraceOf(none, inputs)
+          == "1. acceptance(none) [jurisdiction overlay: Acceptance, Example Standard 12:2021 NA, NA.6]\n");
+}
+
+TEST_CASE("each verdict says whether the method or a jurisdiction's overlay supplied it", "[overlay][constraint][trace]")
+{
+    auto const own = acceptanceTraceOf(baseMethod, inputs);
+    auto const overlaid = acceptanceTraceOf(formula::apply(threeConstraints, baseMethod), inputs);
+
+    CHECK(own
+          == "1. F = 90000 N\n"
+             "2. 50000 N\n"
+             "3. require #1 >= #2 [satisfied; the method's own constraint]\n"
+             "4. acceptance(#3) [the method's own constraints]\n");
+    CHECK(overlaid.find("require #6 >= #7 [the load is below the annex's minimum; jurisdiction overlay: Acceptance, "
+                        "Example Standard 12:2021 NA, NA.6]")
+          != std::string::npos);
+    CHECK(overlaid.find("[satisfied; jurisdiction overlay: Acceptance, Example Standard 12:2021 NA, NA.6]")
+          != std::string::npos);
+
+    // The two provenances differ, and the overlaid trace names the method's
+    // own nowhere: every one of its verdicts is the jurisdiction's.
+    CHECK(own != overlaid);
+    CHECK(overlaid.find("the method's own") == std::string::npos);
+}
+
+TEST_CASE("the nth outcome and the nth verdict in the trace answer for the nth constraint", "[overlay][constraint][trace]")
+{
+    // Three different outcomes at three indices -- see `threeConstraintSet` --
+    // so an outcome reported at another constraint's index cannot pass.
+    constexpr auto overlaid = formula::apply(threeConstraints, baseMethod);
+    constexpr auto outcomes = formula::check_method(overlaid, inputsWithUnmeasuredFactor);
+    STATIC_REQUIRE(outcomes[0].is_satisfied());
+    STATIC_REQUIRE(outcomes[1].verdict() == formula::Verdict { "the load is below the annex's minimum" });
+    STATIC_REQUIRE(outcomes[2].is_not_checked());
+
+    // The trace holds the same verdicts in the same order: the method's
+    // constraints step names them as its operands, first to last.
+    formula::Trace<> trace {};
+    auto const traced = formula::check_method(overlaid, inputsWithUnmeasuredFactor, formula::RecordingSink<> { trace });
+    CHECK(traced == outcomes);
+    auto const& acceptance = trace.steps[trace.root()];
+    REQUIRE(acceptance.kind == formula::StepKind::AcceptanceChecked);
+    REQUIRE(acceptance.operands.size() == outcomes.size());
+    for (std::size_t index = 0; index < outcomes.size(); ++index)
+    {
+        CHECK(trace.steps[acceptance.operands[index]].kind == formula::StepKind::Constraint);
+        CHECK(trace.steps[acceptance.operands[index]].outcome == outcomes[index]);
+    }
+}
+
+TEST_CASE("an overlay's constraints stay the jurisdiction's through every other operation, in either order",
+          "[overlay][constraint]")
+{
+    constexpr auto constrain = formula::with_constraints(oneConstraintSet, acceptanceAnnex);
+    constexpr auto isTheOverlays = [](auto const& m) {
+        return m.constraintOrigin.provenance() == formula::ConstraintProvenance::JurisdictionOverlay
+               && m.constraintOrigin.source() == acceptanceAnnex && formula::check_method(m, inputs).size() == 1;
+    };
+
+    constexpr auto pin = formula::pin_variant<Cube>();
+    constexpr auto prune = formula::prune_variant<Cylinder>();
+    constexpr auto replace = formula::replace_variant<Cylinder>(var<Force> / (var<EdgeY> * var<EdgeY>) );
+    constexpr auto round =
+        formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>();
+    constexpr auto fix = formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 });
+    constexpr auto derive = formula::add_derived<ShapeFactor>(var<EdgeY> / var<EdgeX>);
+
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(constrain, pin), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(pin, constrain), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(constrain, prune), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(prune, constrain), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(constrain, replace), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(replace, constrain), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(constrain, round), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(round, constrain), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(constrain, fix), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(fix, constrain), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(constrain, derive), baseMethod)));
+    STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(derive, constrain), baseMethod)));
+
+    // And across overlays: a later overlay that leaves the constraints alone
+    // leaves them the earlier jurisdiction's.
+    STATIC_REQUIRE(
+        isTheOverlays(formula::apply(formula::overlay(round), formula::apply(formula::overlay(constrain), baseMethod))));
+}
+
+TEST_CASE("a constant listed after an overlay's constraints reaches inside them", "[overlay][constraint]")
+{
+    // The third constraint reads the shape factor, which the same overlay
+    // then fixes at 1.1. Checked against an environment holding no shape
+    // factor at all -- which compiles only if the rewrite reached the new
+    // constraints -- it reads the overlay's 1.1, and is violated.
+    constexpr auto overlaid =
+        formula::apply(formula::overlay(formula::with_constraints(threeConstraintSet, acceptanceAnnex),
+                                        formula::with_constant<ShapeFactor>(formula::Rational { 11, 10 })),
+                       baseMethod);
+    constexpr auto outcomes = formula::check_method(overlaid, inputsWithoutShapeFactor);
+    STATIC_REQUIRE(outcomes.size() == 3);
+    STATIC_REQUIRE(outcomes[2].verdict() == formula::Verdict { "the shape factor exceeds one" });
+}
+
+TEST_CASE("an overlay's constraint judges a category code, and its verdict names the category",
+          "[overlay][constraint][trace]")
+{
+    // Spec section 16.7's third jurisdiction: a category code in place of a
+    // numeric limit. The annex accepts square specimens only -- 1 for a
+    // square, 0 for a round one -- and this specimen is round.
+    constexpr auto acceptedShape = formula::constraint(
+        formula::exact_lookup<ShapeKeys, unit::One>(Shape::Round, { formula::Rational { 1 }, formula::Rational { 0 } })
+            >= formula::number(formula::Rational { 1 }),
+        formula::Verdict { "the annex does not accept this shape" });
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::with_constraints(formula::constraints(acceptedShape), acceptanceAnnex)), baseMethod);
+
+    constexpr auto outcomes = formula::check_method(overlaid, inputs);
+    STATIC_REQUIRE(outcomes.size() == 1);
+    STATIC_REQUIRE(outcomes[0].verdict() == formula::Verdict { "the annex does not accept this shape" });
+
+    // The category by name, on the page and in the verdict's derivation --
+    // never as its underlying value.
+    CHECK(formula::render(std::get<0>(overlaid.constraintSet.items)).find("Round") != std::string::npos);
+    CHECK(acceptanceTraceOf(overlaid, inputs)
+          == "1. lookup(key Round) = 0\n"
+             "2. 1\n"
+             "3. require #1 >= #2 [the annex does not accept this shape; jurisdiction overlay: Acceptance, "
+             "Example Standard 12:2021 NA, NA.6]\n"
+             "4. acceptance(#3) [jurisdiction overlay: Acceptance, Example Standard 12:2021 NA, NA.6]\n");
 }
