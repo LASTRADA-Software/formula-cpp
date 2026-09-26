@@ -1566,7 +1566,6 @@ template <Predicate P>
     return render<Dialect::Plain>(node);
 }
 
-
 namespace detail
 {
     /// One row of an envelope as the range it permits, the unit after the

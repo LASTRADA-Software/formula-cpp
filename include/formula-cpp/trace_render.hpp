@@ -757,9 +757,6 @@ namespace detail
                 return "cumulative(" + sole_operand(step) + ", " + std::string { describe(step.cumulativeDirection) } + ")";
             case StepKind::SeriesSum:
                 return "sum(" + sole_operand(step) + ")";
-            // Every granularity, in the series' order, in the unit rounded
-            // in, as `render()` writes it; the mode goes in the suffix, as
-            // for `Round`.
             // The subject; each element's outcome follows, in the bracket --
             // see `conformity_line`.
             case StepKind::ConformityChecked:
@@ -768,6 +765,9 @@ namespace detail
             // value landed in its suffix -- see `snap_suffix`.
             case StepKind::SnappedToPermitted:
                 return "snap(" + sole_operand(step) + ")";
+            // Every granularity, in the series' order, in the unit rounded
+            // in, as `render()` writes it; the mode goes in the suffix, as
+            // for `Round`.
             case StepKind::ElementwiseRound:
                 return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp of "
                        + std::string { view(step.unit.symbolText) } + ")";

@@ -13,6 +13,7 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -21,10 +22,9 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rounding_node.hpp>
-#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/series.hpp>
-#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>

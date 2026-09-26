@@ -86,7 +86,6 @@ namespace detail
         static constexpr bool value = true;
     };
 
-
     /// Where a snap landed: the value, the two permitted neighbours as the set
     /// declared them (`low == high` on an exact hit), and whether the tie rule
     /// decided.

@@ -771,7 +771,6 @@ template <Dialect D = Dialect::Plain, Predicate P>
     return document<D>(node, DefaultVocabulary {});
 }
 
-
 /// Documents a conformity check: its rendering in dialect @p D, its citation
 /// when it has one -- the author's own, as a constraint's is -- and the
 /// symbol table of its subject.
