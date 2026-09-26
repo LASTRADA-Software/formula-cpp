@@ -29,14 +29,21 @@
 /// extrapolation or a clamp. It is carried out in the coherent SI unit, since
 /// a computed domain has no declared unit of its own to carry it out in; a
 /// linear interpolation's answer does not depend on the scale either axis is
-/// stated in.
+/// stated in. Its exact arithmetic can: a point that is exact in its declared
+/// unit may not be in the coherent one. `domain<Millimetre, {1/10^16, 1}>`
+/// fails with `Overflow` at its first element, since 1/10^19 m has a
+/// denominator no int64 holds, where an interpolating lookup over the same
+/// table -- which interpolates in its declared key unit -- answers. The
+/// failure is conservative: it never gives a wrong number.
 ///
 /// **A splice** is the sorted union of two curves by domain, of static length
 /// `A::length + B::length`, whichever curve is written first. Two points at
 /// one domain value are a miss at the second of them, where the two curves
 /// meet; and the values must run in the direction the author names -- a
 /// required `Monotone`, with no default -- judged on the spliced curve, not on
-/// each operand, or it fails at the first element that breaks it. **Nothing is
+/// each operand, or it fails at the first element that breaks it. Duplicates
+/// are judged over the whole union before the direction, so where a splice
+/// fails never depends on which curve was written first. **Nothing is
 /// rescaled at the join**: putting one basis onto another is the method's
 /// algebra, written with elementwise arithmetic before splicing, where the
 /// trace shows it.
@@ -267,6 +274,20 @@ enum class Monotone : std::uint8_t
     }
     return "unknown direction";
 }
+
+/// The rule a curve broke where it failed, as its trace step names it.
+enum class CurveBreak : std::uint8_t
+{
+    /// No rule named: the curve did not fail, or failed for another reason.
+    None,
+    /// A point below the one before it.
+    NotAscending,
+    /// A point equal to the one before it: stated twice, or where two
+    /// spliced curves meet.
+    DuplicatePoint,
+    /// A spliced value running against the splice's `Monotone`.
+    AgainstDirection,
+};
 
 namespace detail
 {
@@ -502,16 +523,63 @@ namespace detail
         return true;
     }
 
-    /// The first position whose point is not above the one before it, or
-    /// nothing when every point strictly ascends. Asked only of points that
-    /// are all present.
-    template <std::size_t N>
-    [[nodiscard]] constexpr std::optional<std::size_t> first_not_ascending(
-        std::array<std::optional<Rational>, N> const& points) noexcept
+    /// Where a curve breaks a rule, and which rule.
+    struct CurveBreakAt
     {
-        for (std::size_t at = 1; at < N; ++at)
+        /// The position of the offending point, zero-based.
+        std::size_t at;
+        /// The rule it breaks.
+        CurveBreak rule;
+    };
+
+    /// The first point not above the one before it -- a `DuplicatePoint`
+    /// when it equals that one, else `NotAscending` -- or nothing when every
+    /// point strictly ascends. Asked only of points that are all present.
+    ///
+    /// Spans, as `interpolate_along`'s are, so that the evaluator and the
+    /// trace judge with this one function.
+    [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_domain(std::span<std::optional<Rational> const> points) noexcept
+    {
+        for (std::size_t at = 1; at < points.size(); ++at)
             if (!(*points[at - 1] < *points[at]))
-                return at;
+                return CurveBreakAt { at, *points[at] == *points[at - 1] ? CurveBreak::DuplicatePoint : CurveBreak::NotAscending };
+        return std::nullopt;
+    }
+
+    /// Sorts a splice's points ascending, each value moving with its point:
+    /// an insertion sort, since a method's curves are a few points each and
+    /// nothing here may allocate. Every point must be present.
+    constexpr void sort_by_domain(std::span<std::optional<Rational>> points,
+                                  std::span<std::optional<Rational>> pointValues) noexcept
+    {
+        for (std::size_t placed = 1; placed < points.size(); ++placed)
+            for (std::size_t at = placed; at > 0 && *points[at] < *points[at - 1]; --at)
+            {
+                std::swap(points[at], points[at - 1]);
+                std::swap(pointValues[at], pointValues[at - 1]);
+            }
+    }
+
+    /// Judges a splice's sorted union: first a point equal to the one before
+    /// it, anywhere in the union, and only then the first value running
+    /// against @p direction. In that order because the sort keeps two equal
+    /// points in the order they were written, so a direction judged first
+    /// would fail beside a duplicate at a position that depends on which
+    /// curve came first. Every point and value must be present.
+    [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_splice(std::span<std::optional<Rational> const> points,
+                                                                     std::span<std::optional<Rational> const> pointValues,
+                                                                     Monotone direction) noexcept
+    {
+        for (std::size_t at = 1; at < points.size(); ++at)
+            if (*points[at] == *points[at - 1])
+                return CurveBreakAt { at, CurveBreak::DuplicatePoint };
+        for (std::size_t at = 1; at < pointValues.size(); ++at)
+        {
+            bool const against = direction == Monotone::NonDecreasing ? *pointValues[at] < *pointValues[at - 1]
+                                                                      : *pointValues[at - 1] < *pointValues[at];
+            if (against)
+                return CurveBreakAt { at, CurveBreak::AgainstDirection };
+        }
         return std::nullopt;
     }
 
@@ -611,8 +679,8 @@ template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typ
             paired.domain = points->elements;
             paired.values = pairedValues->elements;
             if (detail::all_present(paired.domain))
-                if (std::optional<std::size_t> const disorder = detail::first_not_ascending(paired.domain))
-                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, *disorder } };
+                if (std::optional<detail::CurveBreakAt> const disorder = detail::judge_domain(paired.domain))
+                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, disorder->at } };
             return paired;
         }();
         if constexpr (detail::HearsCurve<Sink, CurveNode<D, V>, Rep>)
@@ -622,11 +690,13 @@ template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typ
 }
 
 /// Splices the two curves: the first, then the second, each once; a failure of
-/// either is relayed as it is. An absent element in either makes the whole
-/// splice absent. Otherwise every point of both is sorted by domain -- the
-/// order the two were written in plays no part -- and then, from the second
-/// point on, a point equal to the one before it fails the splice there, where
-/// the curves meet, and so does a value running against `M`.
+/// either is relayed with its error and no element, since its position is in
+/// that curve's points, not the splice's. An absent element in either makes
+/// the whole splice absent. Otherwise every point of both is sorted by domain
+/// -- the order the two were written in plays no part -- and a point equal to
+/// the one before it fails the splice there, where the curves meet; only a
+/// union with no such point is then judged for a value running against `M`
+/// (`detail::judge_splice`).
 template <typename Rep = Rational, Monotone M, CurveExpression A, CurveExpression B, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedCurve<Rep, SpliceNode<M, A, B>::length> checked_evaluate_curve_si(
     SpliceNode<M, A, B> const& node, Env const& environment, Sink sink = {}) noexcept
@@ -645,11 +715,13 @@ template <typename Rep = Rational, Monotone M, CurveExpression A, CurveExpressio
             sink.curve_entered(node);
         EvaluatedCurve<Rep, splicedLength> const evaluated = [&]() -> EvaluatedCurve<Rep, splicedLength> {
             EvaluatedCurve<Rep, A::length> const firstCurve = detail::dispatch_curve<Rep>(node.first, environment, sink);
+            // An operand's position is in its own points, not in the union:
+            // relayed without it, as its own step names it.
             if (!firstCurve.has_value())
-                return std::unexpected { firstCurve.error() };
+                return std::unexpected { SeriesFailure { firstCurve.error().error, std::nullopt } };
             EvaluatedCurve<Rep, B::length> const secondCurve = detail::dispatch_curve<Rep>(node.second, environment, sink);
             if (!secondCurve.has_value())
-                return std::unexpected { secondCurve.error() };
+                return std::unexpected { SeriesFailure { secondCurve.error().error, std::nullopt } };
 
             // Default-initialised: every element absent.
             CurveValue<Rep, splicedLength> spliced;
@@ -667,23 +739,9 @@ template <typename Rep = Rational, Monotone M, CurveExpression A, CurveExpressio
                 spliced.domain[A::length + at] = secondCurve->domain[at];
                 spliced.values[A::length + at] = secondCurve->values[at];
             }
-            // An insertion sort by domain: a method's curves are a few points
-            // each, and nothing here may allocate.
-            for (std::size_t placed = 1; placed < splicedLength; ++placed)
-                for (std::size_t at = placed; at > 0 && *spliced.domain[at] < *spliced.domain[at - 1]; --at)
-                {
-                    std::swap(spliced.domain[at], spliced.domain[at - 1]);
-                    std::swap(spliced.values[at], spliced.values[at - 1]);
-                }
-
-            for (std::size_t at = 1; at < splicedLength; ++at)
-            {
-                bool const meets = *spliced.domain[at] == *spliced.domain[at - 1];
-                bool const against = M == Monotone::NonDecreasing ? *spliced.values[at] < *spliced.values[at - 1]
-                                                                  : *spliced.values[at - 1] < *spliced.values[at];
-                if (meets || against)
-                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, at } };
-            }
+            detail::sort_by_domain(spliced.domain, spliced.values);
+            if (std::optional<detail::CurveBreakAt> const broken = detail::judge_splice(spliced.domain, spliced.values, M))
+                return std::unexpected { SeriesFailure { ArithmeticError::DomainError, broken->at } };
             return spliced;
         }();
         if constexpr (detail::HearsCurve<Sink, SpliceNode<M, A, B>, Rep>)
