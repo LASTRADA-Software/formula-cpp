@@ -5,6 +5,10 @@
 # every `.hpp` directly under `include/formula-cpp/` -- must be included there
 # by name. A header added later and left off the list would be unguarded
 # without any test saying so; this check says so.
+#
+# Included unconditionally, too: an include inside `#if 0`, or inside any
+# other preprocessor conditional, is on the list but may never be compiled,
+# and would leave its header as unguarded as one left off the list.
 
 set(guard "${SOURCE_DIR}/test/consumer_globals_tests.cpp")
 file(GLOB headers RELATIVE "${SOURCE_DIR}/include" "${SOURCE_DIR}/include/formula-cpp/*.hpp")
@@ -37,4 +41,27 @@ if(missing)
         "nothing guards them against hiding a consumer's global:\n  ${missingText}")
 endif()
 
-message(STATUS "consumer-globals check: all ${total} public headers are included by the guard")
+# Every preprocessor line, in order: an include of a library header met while
+# a conditional is open is refused, whatever the condition says.
+file(STRINGS "${guard}" directiveLines REGEX "^[ \t]*#")
+set(depth 0)
+set(conditional "")
+foreach(line IN LISTS directiveLines)
+    if(line MATCHES "^[ \t]*#[ \t]*if")
+        math(EXPR depth "${depth} + 1")
+    elseif(line MATCHES "^[ \t]*#[ \t]*endif")
+        math(EXPR depth "${depth} - 1")
+    elseif(line MATCHES "^[ \t]*#[ \t]*include[ \t]*<formula-cpp/" AND depth GREATER 0)
+        list(APPEND conditional "${line}")
+    endif()
+endforeach()
+
+if(conditional)
+    list(JOIN conditional "\n  " conditionalText)
+    message(FATAL_ERROR
+        "consumer-globals check: test/consumer_globals_tests.cpp includes these library headers inside a "
+        "preprocessor conditional, which may leave them uncompiled and so unguarded; include every one "
+        "unconditionally:\n  ${conditionalText}")
+endif()
+
+message(STATUS "consumer-globals check: all ${total} public headers are included by the guard, unconditionally")
