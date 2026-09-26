@@ -812,6 +812,44 @@ template <Dialect D, UnaryOperator Op, SeriesNode Operand, Vocabulary V>
     return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary, vocabulary);
 }
 
+namespace detail
+{
+    /// A per-element rounding's granularities, `0/0/1`, in the series' order.
+    /// A slash rather than a comma, which already separates the call's
+    /// fields, and never brackets, which Markdown reads as a link.
+    template <auto Places>
+    [[nodiscard]] std::string granularities_text()
+    {
+        std::string listed;
+        for (DecimalPlaces const elementPlaces: Places)
+        {
+            if (!listed.empty())
+                listed += "/";
+            listed += std::to_string(elementPlaces.value);
+        }
+        return listed;
+    }
+} // namespace detail
+
+/// A per-element rounding renders as `RoundNode` does, with every element's
+/// granularity in the series' order: `round(p(i), to 0/0/1 dp of %)`, and in
+/// LaTeX `\operatorname{round}_{0/-1/2\,\mathrm{mm}}(...)`. The unit symbol is
+/// emitted verbatim, as every rounding node emits it (`unit.hpp`). The mode is
+/// absent, for `RoundNode`'s reason, and appears in the trace.
+template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render_node(ElementwiseRoundNode<U, Places, Mode, S> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.operand, vocabulary);
+    constexpr Unit unit = U;
+    std::string const unitSymbol { view(unit.symbolText) };
+    std::string const placesText = detail::granularities_text<Places>();
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + placesText + "\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+    else
+        return "round(" + inner + ", to " + placesText + " dp of " + unitSymbol + ")";
+}
+
 /// A running total renders as a call naming its end: `cumulative(m_r(i), from
 /// last)`, and in LaTeX `\operatorname{cumulative}_{\text{from last}}(...)`,
 /// the end on a subscript as a rounding's granularity is. The direction is

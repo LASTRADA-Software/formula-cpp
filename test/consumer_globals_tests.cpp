@@ -31,8 +31,8 @@
 // `render` and `document` of a series variable, and `explain_series` with
 // its trace rendered; elementwise arithmetic with a broadcast scalar,
 // negation and a per-element constant, on the same surfaces; running totals
-// from either end and `sum`, inside a method an overlay's constant rewrote,
-// evaluated, rendered, documented and traced;
+// from either end, a per-element rounding and `sum`, inside a method an
+// overlay's constant rewrote, evaluated, rendered, documented and traced;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -229,12 +229,16 @@ inline constexpr auto specimen = formula::environment(formula::Measured<Force> {
 
 inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"));
 
+inline constexpr formula::PlacesTable<2> edgePlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 } };
+
 /// Every series node kind that reaches a method: a sum over a running total
 /// from each end, with the factor an overlay fixes inside the elementwise
-/// product.
+/// product, rounded element by element.
 inline constexpr auto seriesMethod = formula::method(
     formula::variants(formula::variant<Cube>(
-        formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<EdgeX, 2> * var<Factor>))
+        formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(
+            formula::rounded_elementwise<unit::Millimetre, edgePlaces, formula::RoundingMode::HalfAwayFromZero>(
+                formula::series<EdgeX, 2> * var<Factor>)))
         / formula::sum(formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<EdgeX, 2>)))),
     formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
@@ -422,6 +426,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
     constexpr auto seriesVariant = std::get<0>(seriesOverlaid.variantSet.cases).expression;
     probe.checks.push_back(seriesShare.has_value() && *seriesShare == formula::Rational { 3 }
                            && formula::render(seriesVariant, north).find("cumulative(x_m(i), from first)") != std::string::npos
+                           && formula::render(seriesVariant, north).find("to 0/1 dp of mm") != std::string::npos
                            && formula::render<formula::Dialect::Markdown>(seriesVariant).find("sum(") != std::string::npos
                            && formula::render<formula::Dialect::LaTeX>(seriesVariant).find("\\sum") != std::string::npos
                            && formula::document(seriesVariant, north).symbols.size() == 2

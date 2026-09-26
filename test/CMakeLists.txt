@@ -408,6 +408,15 @@ formula_add_negative_test(series_cumulative_of_single_value
     "cumulative runs a total along a series, and this is a single value, not a series"
     REJECT "no matching")
 
+# Task 6: a per-element rounding with a table of the wrong length, which
+# gates the unit check off, and one with a unit of the wrong dimension.
+formula_add_negative_test(series_round_places_count_mismatch
+    "this per-element rounding was given a different number of decimal places than its series has elements"
+    REJECT "this rounding node names a unit that does not measure the dimension of the expression it rounds")
+formula_add_negative_test(series_round_unit_dimension_mismatch
+    "this rounding node names a unit that does not measure the dimension of the expression it rounds"
+    REJECT "this per-element rounding was given a different number of decimal places than its series has elements")
+
 # A substitution for a quantity the method reads as a series: refused as
 # such, and the "nobody reads it" refusal gated off, since a variant does
 # read it.

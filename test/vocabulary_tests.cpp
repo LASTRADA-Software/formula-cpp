@@ -603,6 +603,10 @@ inline constexpr formula::Citation everyCited { .reference = "Example Standard 1
            * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) });
 }
 
+inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
+                                                       formula::DecimalPlaces { 0 },
+                                                       formula::DecimalPlaces { -1 } };
+
 // Every series node kind, in the one variant a series can stand in: reduced to
 // one value by `sum`. The overlay's constant sits inside the elementwise
 // product, so it reaches there or the method is refused.
@@ -610,7 +614,8 @@ inline constexpr formula::Citation everyCited { .reference = "Example Standard 1
 {
     constexpr auto s = formula::series<EveryRetained, 3>;
     return formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(
-               -s + s * formula::series_constant<unit::One>(rat(1), rat(2), rat(3)) * var<EveryFixed>))
+               formula::rounded_elementwise<unit::Gram, everyPlaces, formula::RoundingMode::HalfAwayFromZero>(
+                   -s + s * formula::series_constant<unit::One>(rat(1), rat(2), rat(3)) * var<EveryFixed>)))
            / var<EveryTotal>;
 }
 
@@ -632,9 +637,11 @@ inline constexpr auto everyOverlaid = formula::apply(everyOverlay, everyMethod);
 
 // 30 MPa, 12 MPa and 241 mm, distinct from each other and from every table row.
 // The series 10, 20 and 40 g against 2020 g: with the factors 1, 2, 3 and the
-// fixed 1487/1000, the totals from the last are 182.79, 177.92 and 138.44 g,
-// their sum 499.15 g, and the share 24.7 % -- a direction swapped gives 4.87,
-// 44.35 and 182.79 g, summing to 232.01 g.
+// fixed 1487/1000, the elements are 4.87, 39.48 and 138.44 g; rounded to 0,
+// 0 and -1 places they are 5, 39 and 140 g; the totals from the last are 184,
+// 179 and 140 g, their sum 503 g, and the share 503/2020, 24.9 % -- unrounded
+// it would be 24.7 %, and a direction swapped gives 5, 44 and 184 g, summing
+// to 233 g.
 inline constexpr auto everyInputs = formula::environment(
     formula::Measured<EveryStrength> { rat(30) },
     formula::Measured<EveryModulus> { rat(12) },
@@ -673,12 +680,14 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
     // Every series kind, the jurisdiction's symbol marked in each dialect.
     constexpr auto seriesVariant = std::get<2>(everyOverlaid.variantSet.cases).expression;
     CHECK(formula::render(seriesVariant, everyVocabulary)
-          == "sum(cumulative(-m_n(i) + m_n(i) * values(1, 2, 3) * x_n, from last)) / M_n");
+          == "sum(cumulative(round(-m_n(i) + m_n(i) * values(1, 2, 3) * x_n, to 0/0/-1 dp of g), from last)) / M_n");
     CHECK(formula::render<formula::Dialect::Markdown>(seriesVariant, everyVocabulary)
-          == "sum(cumulative(-`m_n(i)` + `m_n(i)` * values(1, 2, 3) * `x_n`, from last)) / `M_n`");
+          == "sum(cumulative(round(-`m_n(i)` + `m_n(i)` * values(1, 2, 3) * `x_n`, to 0/0/-1 dp of g), from last)) "
+             "/ `M_n`");
     CHECK(formula::render<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary)
-          == "\\frac{\\sum \\operatorname{cumulative}_{\\text{from last}}(-{m_n}_{i} + {m_n}_{i} \\cdot "
-             "\\operatorname{values}(1,\\allowbreak 2,\\allowbreak 3) \\cdot x_n)}{M_n}");
+          == "\\frac{\\sum \\operatorname{cumulative}_{\\text{from last}}(\\operatorname{round}_{0/0/-1\\,"
+             "\\mathrm{g}}(-{m_n}_{i} + {m_n}_{i} \\cdot \\operatorname{values}(1,\\allowbreak 2,\\allowbreak 3) "
+             "\\cdot x_n))}{M_n}");
 
     for (std::string const& text: { formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(cube, everyVocabulary),
@@ -785,12 +794,13 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "6. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "7. #5 * #6 = 1487/100000; 1487/25000; 4461/25000\n"
              "8. #2 + #7 = 487/100000; 987/25000; 3461/25000\n"
-             "9. cumulative(#8, from last) = 18279/100000; 556/3125; 3461/25000\n"
-             "10. sum(#9) = 9983/20000\n"
-             "11. M_n = 2020 g\n"
-             "12. #10 / #11 = 9983/40400\n"
-             "13. round(#12, in %) = 247/10 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "14. #13 = 247/10 % [variant EverySeries (3rd of 3), selected by tag]\n");
+             "9. round(#8, to 0/0/-1 dp of g) = 5 g; 39 g; 140 g [nearest, ties away from zero]\n"
+             "10. cumulative(#9, from last) = 184 g; 179 g; 140 g\n"
+             "11. sum(#10) = 503 g\n"
+             "12. M_n = 2020 g\n"
+             "13. #11 / #12 = 503/2020\n"
+             "14. round(#13, in %) = 249/10 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "15. #14 = 249/10 % [variant EverySeries (3rd of 3), selected by tag]\n");
 }
 
 TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",

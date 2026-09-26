@@ -41,6 +41,8 @@
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rounding.hpp>
+#include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
 
 #include <array>
@@ -430,6 +432,87 @@ template <SeriesNode Right>
 [[nodiscard]] constexpr auto operator/(Rational lhs, Right rhs) noexcept
 {
     return number(lhs) / rhs;
+}
+
+/// One granularity per point of a series, in the series' own order: what
+/// `rounded_elementwise` rounds each element to.
+template <std::size_t N>
+using PlacesTable = std::array<DecimalPlaces, N>;
+
+namespace detail
+{
+    /// Whether @p Places is a `PlacesTable` of exactly @p N granularities.
+    template <typename Places, std::size_t N>
+    inline constexpr bool places_per_element = std::is_same_v<std::remove_cv_t<Places>, PlacesTable<N>>;
+
+    /// Fails to compile when a per-element rounding is given a different
+    /// number of granularities than its series has elements. Named so the
+    /// table's type -- with its count -- and the length both print.
+    template <typename Places, std::size_t N>
+    struct RequirePlacesPerElement
+    {
+        static_assert(places_per_element<Places, N>,
+                      "formula: this per-element rounding was given a different number of decimal places than its "
+                      "series has elements; the places table and the series length appear in this diagnostic as "
+                      "the template arguments of RequirePlacesPerElement -- give one granularity per point of the "
+                      "series, as a PlacesTable<N>");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// A series rounded element by element, each element to its own granularity:
+/// element i to `Places[i]` decimal places of `U`, under `Mode` -- a method
+/// that rounds a coarse screen to whole percent and a fine one to a tenth.
+///
+/// Rounding happens **in `U`**, exactly as `RoundNode`'s does, through the same
+/// `RepRounding<Rep>::round_in`: each element is converted from the coherent
+/// SI unit into `U`, rounded there, and converted back.
+///
+/// **A count mismatch gates the unit check off**, and an operand already
+/// refused gates both: each would otherwise report one mistake twice.
+template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+struct ElementwiseRoundNode: SeriesNodeBase
+{
+    /// Whether the operand was already refused -- see `detail::refused_already`.
+    static constexpr bool operandRefused = detail::refused_already<S>();
+    /// Whether the table has one granularity per element.
+    static constexpr bool countMatches = detail::places_per_element<decltype(Places), S::length>;
+
+    static_assert(std::conditional_t<!operandRefused,
+                                     detail::RequirePlacesPerElement<decltype(Places), S::length>,
+                                     std::true_type>::value);
+    static_assert(std::conditional_t<!operandRefused && countMatches,
+                                     detail::RequireRoundingUnitMatches<U, S>,
+                                     std::true_type>::value);
+
+    /// The series rounded. No `{}` initialiser, deliberately: see
+    /// `Corrections` (`lookup.hpp`).
+    S operand;
+
+    /// The unit every element is rounded in.
+    static constexpr Unit unit = U;
+    /// The granularity of each element, in order.
+    static constexpr auto places = Places;
+    /// Which way to break ties, and which way to go -- one mode for every
+    /// element.
+    static constexpr RoundingMode mode = Mode;
+    /// Rounding changes a number, never its dimension.
+    static constexpr Dimension dimension = S::dimension;
+    /// As long as its operand.
+    static constexpr std::size_t length = S::length;
+    /// Whether this node, or its operand, was refused.
+    static constexpr bool refused = operandRefused || !countMatches || !(U.dimension == S::dimension);
+};
+
+/// @p seriesOperand rounded element by element, element i to `Places[i]`
+/// decimal places of `U`:
+/// `rounded_elementwise<unit::Percent, places, RoundingMode::HalfEven>(series<Passing, 5>)`
+/// with `places` a `PlacesTable<5>`.
+template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+[[nodiscard]] constexpr auto rounded_elementwise(S seriesOperand) noexcept
+{
+    return ElementwiseRoundNode<U, Places, Mode, S> { {}, seriesOperand };
 }
 
 /// Which end of a series a running total starts from.
@@ -861,6 +944,39 @@ template <typename Rep = Rational, BinaryOperator Op, typename Left, typename Ri
             combined.elements[at] = *elementResult;
         }
         return combined;
+    }();
+    detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
+}
+
+/// Rounds each element to its own granularity in `U` (`ElementwiseRoundNode`).
+/// An absent element stays absent; a failed operand is relayed; a rounding
+/// that fails -- an overflow converting into `U`, say -- fails the whole
+/// series at that element.
+template <typename Rep = Rational, Unit U, auto Places, RoundingMode Mode, SeriesNode S, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedSeries<Rep, S::length> checked_evaluate_series_si(
+    ElementwiseRoundNode<U, Places, Mode, S> const& node, Env const& environment, Sink sink = {}) noexcept
+{
+    constexpr std::size_t seriesLength = S::length;
+    detail::tell_series_entered<Rep>(sink, node);
+    EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
+        EvaluatedSeries<Rep, seriesLength> const operandResult =
+            detail::dispatch_series<Rep>(node.operand, environment, sink);
+        if (!operandResult.has_value())
+            return std::unexpected { operandResult.error() };
+
+        SeriesValue<Rep, seriesLength> roundedElements;
+        for (std::size_t at = 0; at < seriesLength; ++at)
+        {
+            if (!operandResult->elements[at].has_value())
+                continue;
+            std::expected<Rep, ArithmeticError> const elementResult =
+                RepRounding<Rep>::round_in(*operandResult->elements[at], U, Places[at], Mode);
+            if (!elementResult.has_value())
+                return std::unexpected { SeriesFailure { elementResult.error(), at } };
+            roundedElements.elements[at] = *elementResult;
+        }
+        return roundedElements;
     }();
     detail::tell_series_produced<Rep>(sink, node, evaluated);
     return evaluated;

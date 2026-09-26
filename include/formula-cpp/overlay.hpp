@@ -1663,6 +1663,12 @@ namespace detail
     {
     };
 
+    template <typename Sub, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    struct ConstantRewrite<Sub, ElementwiseRoundNode<U, Places, Mode, S>>:
+        ConstantRewriteOperand<Sub, S, ElementwiseRoundNode<U, Places, Mode, typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
     /// An elementwise operation, either side a series or a broadcast scalar:
     /// a `var<Q>` in the scalar side is replaced as it is anywhere else.
     template <typename Sub, BinaryOperator Op, typename Left, typename Right>
@@ -1918,6 +1924,11 @@ namespace detail
 
     template <SeriesNode S>
     struct SubstitutedIn<SumNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    struct SubstitutedIn<ElementwiseRoundNode<U, Places, Mode, S>>: SubstitutedInOperand<S>
     {
     };
 

@@ -764,3 +764,127 @@ TEST_CASE("a series with nothing measured sums to nothing, never to zero", "[ser
     STATIC_REQUIRE(fromFirst->element(0).is_absent());
     STATIC_REQUIRE(fromFirst->element(4).is_absent());
 }
+
+// ---- Per-element rounding (task 6) ----
+
+namespace
+{
+namespace perElement
+{
+    // Invented: a passing percentage at each of five screens.
+    struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", formula::unit::Percent>
+    {
+    };
+
+    // 62.5, 63.5, 97.2, 41.25 and 8.05 %, with 0, 0, 0, 1 and 1 places: every
+    // mode below differs from every other at some element, and a table used
+    // the wrong way round (1, 1, 0, 0, 0) or flattened (all 0) differs too.
+    // The elements arrive in SI, as fractions (62.5 % is 5/8), and are rounded
+    // in percent: rounded in SI, 5/8 at 0 places would be 1, which is 100 %.
+    constexpr auto screens =
+        formula::environment(formula::measured_series<Passing>(formula::Measured<Passing> { rat(125, 2) },
+                                                               formula::Measured<Passing> { rat(127, 2) },
+                                                               formula::Measured<Passing> { rat(486, 5) },
+                                                               formula::Measured<Passing> { rat(165, 4) },
+                                                               formula::Measured<Passing> { rat(161, 20) }));
+
+    constexpr formula::PlacesTable<5> places { formula::DecimalPlaces { 0 },
+                                               formula::DecimalPlaces { 0 },
+                                               formula::DecimalPlaces { 0 },
+                                               formula::DecimalPlaces { 1 },
+                                               formula::DecimalPlaces { 1 } };
+
+    template <formula::RoundingMode Mode>
+    constexpr auto roundedWith(auto const& inputs)
+    {
+        return formula::checked_evaluate_series<Passing>(
+            formula::rounded_elementwise<formula::unit::Percent, places, Mode>(formula::series<Passing, 5>), inputs);
+    }
+} // namespace perElement
+} // namespace
+
+TEST_CASE("each element is rounded to its own granularity, in the stated unit, under the stated mode", "[series]")
+{
+    using formula::RoundingMode;
+    constexpr auto awayFromZero = perElement::roundedWith<RoundingMode::HalfAwayFromZero>(perElement::screens);
+    STATIC_REQUIRE(awayFromZero.has_value());
+    STATIC_REQUIRE(awayFromZero->element(0).value() == rat(63));
+    STATIC_REQUIRE(awayFromZero->element(1).value() == rat(64));
+    STATIC_REQUIRE(awayFromZero->element(2).value() == rat(97));
+    STATIC_REQUIRE(awayFromZero->element(3).value() == rat(413, 10));
+    STATIC_REQUIRE(awayFromZero->element(4).value() == rat(81, 10));
+
+    // Ties to even: 62.5 down, 41.25 down, 8.05 down -- where a hard-coded
+    // ties-away-from-zero goes up.
+    constexpr auto toEven = perElement::roundedWith<RoundingMode::HalfEven>(perElement::screens);
+    STATIC_REQUIRE(toEven->element(0).value() == rat(62));
+    STATIC_REQUIRE(toEven->element(1).value() == rat(64));
+    STATIC_REQUIRE(toEven->element(2).value() == rat(97));
+    STATIC_REQUIRE(toEven->element(3).value() == rat(206, 5));
+    STATIC_REQUIRE(toEven->element(4).value() == rat(8));
+
+    // Ceiling: 97.2 up to 98, where every nearest mode gives 97.
+    constexpr auto ceiling = perElement::roundedWith<RoundingMode::Ceiling>(perElement::screens);
+    STATIC_REQUIRE(ceiling->element(0).value() == rat(63));
+    STATIC_REQUIRE(ceiling->element(1).value() == rat(64));
+    STATIC_REQUIRE(ceiling->element(2).value() == rat(98));
+    STATIC_REQUIRE(ceiling->element(3).value() == rat(413, 10));
+    STATIC_REQUIRE(ceiling->element(4).value() == rat(81, 10));
+
+    // Floor: 63.5 down to 63, where every other mode here gives 64.
+    constexpr auto floor = perElement::roundedWith<RoundingMode::Floor>(perElement::screens);
+    STATIC_REQUIRE(floor->element(0).value() == rat(62));
+    STATIC_REQUIRE(floor->element(1).value() == rat(63));
+    STATIC_REQUIRE(floor->element(2).value() == rat(97));
+    STATIC_REQUIRE(floor->element(3).value() == rat(206, 5));
+    STATIC_REQUIRE(floor->element(4).value() == rat(8));
+
+    // Ties toward zero coincides with Floor on these positive values, so the
+    // fixture cannot tell the two apart; the mode is handed to checked_round
+    // unchanged, and checked_round's own tests tell them apart.
+    constexpr auto towardZero = perElement::roundedWith<RoundingMode::HalfTowardZero>(perElement::screens);
+    STATIC_REQUIRE(towardZero == floor);
+}
+
+TEST_CASE("a per-element rounding keeps absence, and names the element a failure arose at", "[series]")
+{
+    using perElement::Passing;
+    constexpr auto oneAbsent = formula::environment(formula::measured_series<Passing>(
+        formula::Measured<Passing> { rat(125, 2) }, formula::Measured<Passing> { rat(127, 2) },
+        formula::Measured<Passing>::absent(), formula::Measured<Passing> { rat(165, 4) },
+        formula::Measured<Passing> { rat(161, 20) }));
+    constexpr auto out = perElement::roundedWith<formula::RoundingMode::HalfAwayFromZero>(oneAbsent);
+    STATIC_REQUIRE(out.has_value());
+    STATIC_REQUIRE(out->element(1).value() == rat(64));
+    STATIC_REQUIRE(out->element(2).is_absent());
+    STATIC_REQUIRE(out->element(3).value() == rat(413, 10));
+
+    // Rounding a load stated in kilograms in grams multiplies by 1000, which
+    // overflows for an element near Rational's limit -- the middle one of
+    // three, so neither end is where it fails.
+    using running::Load;
+    constexpr auto heavy = formula::environment(formula::measured_series<Load>(
+        formula::Measured<Load> { rat(1) }, formula::Measured<Load> { rat(running::halfLimit) }, formula::Measured<Load> { rat(2) }));
+    constexpr formula::PlacesTable<3> wholeGrams { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 } };
+    constexpr auto overflowed = formula::detail::dispatch_series<formula::Rational>(
+        formula::rounded_elementwise<formula::unit::Gram, wholeGrams, formula::RoundingMode::HalfAwayFromZero>(
+            formula::series<Load, 3>),
+        heavy,
+        formula::NullSink {});
+    STATIC_REQUIRE(!overflowed.has_value());
+    STATIC_REQUIRE(overflowed.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1 });
+}
+
+TEST_CASE("a per-element rounding is a series node carrying its unit, table and mode", "[series]")
+{
+    using Rounding = decltype(formula::rounded_elementwise<formula::unit::Percent, perElement::places, formula::RoundingMode::Floor>(
+        formula::series<perElement::Passing, 5>));
+    STATIC_REQUIRE(formula::SeriesNode<Rounding>);
+    STATIC_REQUIRE_FALSE(formula::Node<Rounding>);
+    STATIC_REQUIRE(Rounding::length == 5);
+    STATIC_REQUIRE(Rounding::dimension == formula::unit::Percent.dimension);
+    STATIC_REQUIRE(Rounding::unit == formula::unit::Percent);
+    STATIC_REQUIRE(Rounding::places == perElement::places);
+    STATIC_REQUIRE(Rounding::mode == formula::RoundingMode::Floor);
+    STATIC_REQUIRE_FALSE(Rounding::refused);
+}

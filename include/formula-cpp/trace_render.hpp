@@ -629,6 +629,21 @@ namespace detail
         return " [unknown lookup failure]";
     }
 
+    /// A per-element rounding's granularities, `0/0/1`, in the series' order
+    /// -- `render()`'s spelling (`detail::granularities_text` there is the
+    /// same text from a `PlacesTable`).
+    [[nodiscard]] inline std::string granularities_text(std::vector<int> const& granularities)
+    {
+        std::string listed;
+        for (int const elementPlaces: granularities)
+        {
+            if (!listed.empty())
+                listed += "/";
+            listed += std::to_string(elementPlaces);
+        }
+        return listed;
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -742,6 +757,12 @@ namespace detail
                 return "cumulative(" + sole_operand(step) + ", " + std::string { describe(step.cumulativeDirection) } + ")";
             case StepKind::SeriesSum:
                 return "sum(" + sole_operand(step) + ")";
+            // Every granularity, in the series' order, in the unit rounded
+            // in, as `render()` writes it; the mode goes in the suffix, as
+            // for `Round`.
+            case StepKind::ElementwiseRound:
+                return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp of "
+                       + std::string { view(step.unit.symbolText) } + ")";
         }
         return "unknown step kind";
     }
@@ -997,7 +1018,7 @@ namespace detail
         return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant || stepKind == StepKind::ElementwiseNegate
                || stepKind == StepKind::ElementwiseAdd || stepKind == StepKind::ElementwiseSubtract
                || stepKind == StepKind::ElementwiseMultiply || stepKind == StepKind::ElementwiseDivide
-               || stepKind == StepKind::CumulativeSum;
+               || stepKind == StepKind::CumulativeSum || stepKind == StepKind::ElementwiseRound;
     }
 
     /// A series step's line, without its number: the expression, an `=`, and
@@ -1216,6 +1237,10 @@ namespace detail
     {
         // A series first, before anything reads `value`: its values are its
         // elements.
+        // A per-element rounding ends with its mode, as a scalar rounding
+        // does -- after the elements, however many were shown.
+        if (recorded.kind == StepKind::ElementwiseRound)
+            return series_step_line(recorded, budget) + rounding_mode_suffix(recorded.mode);
         if (is_series(recorded.kind))
             return series_step_line(recorded, budget);
         if (recorded.kind == StepKind::Constraint)

@@ -320,6 +320,9 @@ namespace detail
     template <Vocabulary V, SeriesNode S>
     void collect(Walk<V>& walk, SumNode<S> const& node);
 
+    template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -647,6 +650,13 @@ namespace detail
     /// so: the series variable beneath it contributes its series row.
     template <Vocabulary V, SeriesNode S>
     void collect(Walk<V>& walk, SumNode<S> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A per-element rounding names nothing of its own; its series does.
+    template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node)
     {
         collect(walk, node.operand);
     }

@@ -205,6 +205,14 @@ enum class StepKind : std::uint8_t
     /// `Node`. Checked on GCC under `-Wshadow`: the node is `SumNode` and its
     /// factory `sum`, so nothing in namespace `formula` is spelt `SeriesSum`.
     SeriesSum,
+    /// A series rounded element by element (`ElementwiseRoundNode`): one step
+    /// for the whole series, every rounded element in `Step::elements`, each
+    /// element's granularity in `Step::elementGranularities`, the unit
+    /// rounded in in `Step::unit` and the mode in `Step::mode`. Checked on
+    /// GCC under `-Wshadow`: the node is `ElementwiseRoundNode` and its
+    /// factory `rounded_elementwise`, so nothing in namespace `formula` is
+    /// spelt `ElementwiseRound`.
+    ElementwiseRound,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -779,6 +787,11 @@ struct Step
     /// initialises to `FromFirst`, a real direction, so -- as with
     /// `comparison` -- no reader may use it without checking `kind` first.
     CumulativeDirection cumulativeDirection {};
+
+    /// For `ElementwiseRound`: the decimal places each element was rounded
+    /// to, in the series' own order. Empty for every other step, which keeps
+    /// its one granularity in `granularity`.
+    std::vector<int> elementGranularities {};
 };
 
 /// A recorded derivation: a flat arena of steps.
@@ -1047,6 +1060,12 @@ namespace detail
     struct SeriesStepKindOf<CumulativeNode<D, S>>
     {
         static constexpr StepKind value = StepKind::CumulativeSum;
+    };
+
+    template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    struct SeriesStepKindOf<ElementwiseRoundNode<U, Places, Mode, S>>
+    {
+        static constexpr StepKind value = StepKind::ElementwiseRound;
     };
 
     /// The unit a total is shown in: its operand step's, when it claimed one
@@ -1828,6 +1847,16 @@ class RecordingSink
         // none, and keeps the coherent one.
         else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesConstant)
             seriesStep.unit = S::unit;
+        // A per-element rounding, like a scalar one, is shown in the unit it
+        // rounded in -- the fact a reader checks each granularity against --
+        // with every element's granularity and the one mode.
+        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::ElementwiseRound)
+        {
+            seriesStep.unit = S::unit;
+            seriesStep.mode = S::mode;
+            for (DecimalPlaces const elementPlaces: S::places)
+                seriesStep.elementGranularities.push_back(elementPlaces.value);
+        }
 
         // Everything unclaimed from `seriesMark` onwards belongs to this
         // series -- see `produced` above for why this is a `while`.

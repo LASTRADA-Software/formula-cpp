@@ -1362,6 +1362,15 @@ TEST_CASE("render: the Markdown guard tells an escaped character from a live one
     CHECK(unescapedPositions("[", '[') == std::vector<std::size_t> { 0 });
 }
 
+namespace
+{
+// The per-element rounding in the Markdown guard below: three granularities,
+// one of them negative.
+constexpr formula::PlacesTable<3> guardPlaces { formula::DecimalPlaces { 0 },
+                                                formula::DecimalPlaces { -1 },
+                                                formula::DecimalPlaces { 2 } };
+} // namespace
+
 TEST_CASE("render: Markdown output never contains text a CommonMark parser reinterprets, for any node kind",
           "[render][markdown]")
 {
@@ -1462,6 +1471,11 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<Strength, 3>)));
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::sum(formula::series<Strength, 3>))); // SumNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::sum(formula::series<Strength, 3>) * var<Strength>));
+    // A per-element rounding: its table of granularities, which must not be
+    // bracketed the way a list often is.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::rounded_elementwise<formula::unit::Megapascal, guardPlaces, formula::RoundingMode::HalfEven>(
+            formula::series<Strength, 3>))); // ElementwiseRoundNode
 
     // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
@@ -1736,4 +1750,56 @@ TEST_CASE("a running total renders with its direction, and a sum as a call on th
     CHECK(formula::render(formula::sum(fromFirst), everyone) == "sum(cumulative(x_m(i), from first))");
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::sum(fromFirst), everyone)
           == "\\sum \\operatorname{cumulative}_{\\text{from first}}({x_m}_{i})");
+}
+
+namespace
+{
+namespace series_rounding_render
+{
+    struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", formula::unit::Percent>
+    {
+    };
+    struct Opening: formula::Quantity<Opening, "d", "screen opening", formula::unit::Millimetre>
+    {
+    };
+
+    constexpr formula::PlacesTable<5> fivePlaces { formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 1 },
+                                                   formula::DecimalPlaces { 1 } };
+    constexpr formula::PlacesTable<3> threePlaces { formula::DecimalPlaces { 0 },
+                                                    formula::DecimalPlaces { -1 },
+                                                    formula::DecimalPlaces { 2 } };
+} // namespace series_rounding_render
+} // namespace
+
+TEST_CASE("a per-element rounding renders every granularity, in order, and no mode", "[series][render]")
+{
+    using series_rounding_render::Passing;
+    constexpr auto passing =
+        formula::rounded_elementwise<formula::unit::Percent,
+                                     series_rounding_render::fivePlaces,
+                                     formula::RoundingMode::HalfAwayFromZero>(formula::series<Passing, 5>);
+    // The granularities in the series' order, so a table read backwards
+    // (1/1/0/0/0) reads differently; the operand carries the marker.
+    CHECK(formula::render(passing) == "round(p(i), to 0/0/0/1/1 dp of %)");
+    CHECK(formula::render<formula::Dialect::Markdown>(passing) == "round(`p(i)`, to 0/0/0/1/1 dp of %)");
+    // A formula states a granularity, not a tie rule: the mode appears in the
+    // trace only, as for RoundNode.
+    CHECK(formula::render(passing).find("nearest") == std::string::npos);
+    CHECK(formula::render(passing).find('[') == std::string::npos);
+
+    // LaTeX, in millimetres -- percent's `%` is a LaTeX comment character, a
+    // limit every rounding node shares (`unit.hpp`) -- with a negative place.
+    constexpr auto openings =
+        formula::rounded_elementwise<formula::unit::Millimetre,
+                                     series_rounding_render::threePlaces,
+                                     formula::RoundingMode::HalfEven>(formula::series<series_rounding_render::Opening, 3>);
+    CHECK(formula::render(openings) == "round(d(i), to 0/-1/2 dp of mm)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(openings) == "\\operatorname{round}_{0/-1/2\\,\\mathrm{mm}}({d}_{i})");
+    // In a vocabulary, and nested in a product without brackets: the call
+    // groups itself.
+    constexpr auto everyone = formula::vocabulary(formula::renames<Passing>("P"));
+    CHECK(formula::render(passing * rat(2), everyone) == "round(P(i), to 0/0/0/1/1 dp of %) * 2");
 }

@@ -2197,3 +2197,42 @@ TEST_CASE("a running total that overflowed names its element, counted from one",
               "2. cumulative(#1, from first) = overflow in exact arithmetic at element 4\n")
           != std::string::npos);
 }
+
+TEST_CASE("a per-element rounding records each element's granularity and its mode", "[series][trace]")
+{
+    struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", unit::Percent>
+    {
+    };
+    static constexpr formula::PlacesTable<5> places { formula::DecimalPlaces { 0 },
+                                                      formula::DecimalPlaces { 0 },
+                                                      formula::DecimalPlaces { 0 },
+                                                      formula::DecimalPlaces { 1 },
+                                                      formula::DecimalPlaces { 1 } };
+    constexpr auto screens = formula::environment(
+        formula::measured_series<Passing>(formula::Measured<Passing> { formula::Rational { 125, 2 } },
+                                          formula::Measured<Passing> { formula::Rational { 127, 2 } },
+                                          formula::Measured<Passing> { formula::Rational { 486, 5 } },
+                                          formula::Measured<Passing> { formula::Rational { 165, 4 } },
+                                          formula::Measured<Passing> { formula::Rational { 161, 20 } }));
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::rounded_elementwise<unit::Percent, places, formula::RoundingMode::HalfAwayFromZero>(
+            formula::series<Passing, 5>),
+        screens,
+        formula::RecordingSink<> { trace });
+    // Shown in percent, the unit rounded in; the mode in the bracket at the
+    // end, as a scalar rounding step writes it.
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 })
+          == "1. p = 125/2 %; 127/2 %; 486/5 %; 165/4 %; 161/20 %\n"
+             "2. round(#1, to 0/0/0/1/1 dp of %) = 63 %; 64 %; 97 %; 413/10 %; 81/10 % "
+             "[nearest, ties away from zero]\n");
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(trace.steps[1].kind == formula::StepKind::ElementwiseRound);
+    CHECK(trace.steps[1].elementGranularities == std::vector<int> { 0, 0, 0, 1, 1 });
+    CHECK(trace.steps[1].mode == formula::RoundingMode::HalfAwayFromZero);
+
+    // Cut short by the budget, the bracket still ends the line.
+    CHECK(formula::render_trace(trace, { .maxSteps = 8 })
+          == "1. p = 125/2 %; 127/2 %; 486/5 %; 165/4 %; 161/20 %\n"
+             "2. round(#1, to 0/0/0/1/1 dp of %) = 63 %; ... 4 more [nearest, ties away from zero]\n");
+}
