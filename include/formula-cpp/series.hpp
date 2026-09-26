@@ -42,6 +42,7 @@
 #include <formula-cpp/sink.hpp>
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <expected>
 #include <optional>
@@ -79,6 +80,316 @@ struct SeriesVarNode: SeriesNodeBase
 /// units.
 template <Described Q, std::size_t N>
 inline constexpr SeriesVarNode<Q, N> series {};
+
+namespace detail
+{
+    /// Fails to compile when a per-element constant is given a different
+    /// number of values than its length. Named so both counts print.
+    template <std::size_t Given, std::size_t Expected>
+    struct RequireSeriesConstantCountMatches
+    {
+        static_assert(Given == Expected,
+                      "formula: this series constant was given a different number of elements than its length; "
+                      "the two counts appear in this diagnostic as the template arguments Given and Expected of "
+                      "RequireSeriesConstantCountMatches -- give one value per point of the series");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// The values of a per-element constant (`SeriesConstantNode`), one per point
+/// of the series, in the series' own order.
+///
+/// `Corrections<N>`'s idiom (`lookup.hpp`), and for its reasons, in a type of
+/// its own because "corrections" is the wrong word for a vector of factors or
+/// limits. Two arity-disjoint constructors: the matching one builds `values`,
+/// and every other non-zero count reaches a body whose `static_assert` names
+/// both counts, rather than letting `std::array` pad the values nobody typed
+/// with zeros. It is the node's own member type, so aggregate initialisation of
+/// the node with no factory call is refused too. A count of zero is left to the
+/// compiler's words, for `Corrections`' reason: a body reachable from `{}` would
+/// answer every default-constructibility probe.
+///
+/// No `{}` default member initialiser, deliberately (defect class 4): a
+/// constant must state its contents.
+template <std::size_t N>
+struct Elements
+{
+    /// The `N`-value case: the one path that actually builds `values`.
+    template <typename... Rs>
+        requires(sizeof...(Rs) == N) && (std::convertible_to<Rs, Rational> && ...)
+    constexpr Elements(Rs... rs) noexcept:
+        values { rs... }
+    {
+    }
+
+    /// Every other non-zero count: fails to compile, naming both counts
+    /// through `detail::RequireSeriesConstantCountMatches`.
+    template <typename... Rs>
+        requires(sizeof...(Rs) != N) && (sizeof...(Rs) != 0) && (std::convertible_to<Rs, Rational> && ...)
+    constexpr Elements(Rs...) noexcept
+    {
+        static_assert(detail::RequireSeriesConstantCountMatches<sizeof...(Rs), N>::value);
+    }
+
+    /// One value per point, in the unit the constant is stated in.
+    std::array<Rational, N> values;
+
+    /// The value at zero-based position @p at, which must be below `N`.
+    [[nodiscard]] constexpr Rational operator[](std::size_t at) const noexcept
+    {
+        return values[at];
+    }
+
+    /// How many values there are -- `N`.
+    [[nodiscard]] static constexpr std::size_t size() noexcept
+    {
+        return N;
+    }
+};
+
+/// A per-element constant: one value per point of the series, stated in `U` --
+/// factors, offsets, or a limit per screen. Runtime state, as a scalar
+/// `ConstantNode`'s number is, because the values may arrive from master data;
+/// the length and the unit are the method's, and live in the type.
+template <Unit U, std::size_t N>
+struct SeriesConstantNode: SeriesNodeBase
+{
+    /// The values. No `{}` initialiser, deliberately: see `Elements`.
+    Elements<N> elements;
+
+    /// The unit every value is stated in.
+    static constexpr Unit unit = U;
+    /// The dimension of each element: `U`'s.
+    static constexpr Dimension dimension = U.dimension;
+    /// How many elements the series has.
+    static constexpr std::size_t length = N;
+};
+
+/// A per-element constant, its length counted from the values given:
+/// `series_constant<unit::One>(rat(1), rat(2), rat(3))`.
+template <Unit U, typename... Rs>
+    requires(sizeof...(Rs) > 0) && (std::convertible_to<Rs, Rational> && ...)
+[[nodiscard]] constexpr auto series_constant(Rs... values) noexcept
+{
+    return SeriesConstantNode<U, sizeof...(Rs)> { {}, Elements<sizeof...(Rs)> { values... } };
+}
+
+/// A per-element constant whose length is stated, `N`, so that it is tied to
+/// the method's domain: `series_constant<unit::One, Screens>(...)`. A value
+/// left out is refused naming both counts (`Elements`), never padded.
+template <Unit U, std::size_t N, typename... Rs>
+    requires(std::convertible_to<Rs, Rational> && ...)
+[[nodiscard]] constexpr auto series_constant(Rs... values) noexcept
+{
+    return SeriesConstantNode<U, N> { {}, Elements<N> { values... } };
+}
+
+namespace detail
+{
+    /// The length of @p T when it is a series, and zero for a scalar operand
+    /// broadcast to every element.
+    template <typename T>
+    [[nodiscard]] consteval std::size_t series_length_of() noexcept
+    {
+        if constexpr (SeriesNode<T>)
+            return T::length;
+        else
+            return 0;
+    }
+
+    /// Whether two operands of an elementwise operation can be paired element
+    /// by element: always, when one of them is a broadcast scalar.
+    template <typename Left, typename Right>
+    inline constexpr bool series_lengths_agree =
+        !(SeriesNode<Left> && SeriesNode<Right>) || series_length_of<Left>() == series_length_of<Right>();
+
+    /// Fails to compile when two series of different lengths are combined.
+    /// Named so both series, each with its length, print.
+    template <typename Left, typename Right>
+    struct RequireSeriesLengthsAgree
+    {
+        static_assert(series_lengths_agree<Left, Right>,
+                      "formula: the two series combined here have different lengths; the two series appear in "
+                      "this diagnostic as the template arguments of RequireSeriesLengthsAgree, each with its "
+                      "length -- elementwise arithmetic pairs element i with element i, so both sides must have "
+                      "the method's one length");
+
+        static constexpr bool value = true;
+    };
+
+    /// The two operands of an elementwise operation: each a `Node` or a
+    /// `SeriesNode`, and at least one of them a series. Two `Node`s are the
+    /// scalar operators' business (`expression.hpp`).
+    template <typename Left, typename Right>
+    concept ElementwiseOperands =
+        (Node<Left> || SeriesNode<Left>) && (Node<Right> || SeriesNode<Right>) && (SeriesNode<Left> || SeriesNode<Right>);
+
+    /// True for multiplication and division; addition and subtraction go
+    /// through the scalar operators' own guard, `RequireAddendsAgree`, in its
+    /// own words -- the same rule, applied at each element. That guard takes
+    /// any two operands, not only two `Node`s, for this reason.
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct ElementwiseDimensionsAgree: std::true_type
+    {
+    };
+
+    template <typename Left, typename Right>
+    struct ElementwiseDimensionsAgree<BinaryOperator::Add, Left, Right>:
+        std::bool_constant<RequireAddendsAgree<Left, Right>::value>
+    {
+    };
+
+    template <typename Left, typename Right>
+    struct ElementwiseDimensionsAgree<BinaryOperator::Subtract, Left, Right>:
+        std::bool_constant<RequireAddendsAgree<Left, Right>::value>
+    {
+    };
+} // namespace detail
+
+/// A `UnaryOperator` applied to every element of a series: `-m_r(i)`.
+template <UnaryOperator Op, SeriesNode Operand>
+struct ElementwiseUnaryNode: SeriesNodeBase
+{
+    /// The series the operator is applied to. No `{}` initialiser,
+    /// deliberately: see `Corrections` (`lookup.hpp`).
+    Operand operand;
+
+    /// Which operator this is.
+    static constexpr UnaryOperator op = Op;
+    /// Negation keeps each element's dimension.
+    static constexpr Dimension dimension = Operand::dimension;
+    /// As long as its operand.
+    static constexpr std::size_t length = Operand::length;
+};
+
+/// A `BinaryOperator` applied element by element: element i of the result is
+/// element i of each series operand combined with element i of the other, or
+/// with a scalar operand broadcast to every element (`m_r(i) / m_t`).
+///
+/// **A length mismatch is refused once, and gates the dimension check off**:
+/// with the lengths known to disagree, whether the dimensions agree is a
+/// second message about the same mistake, so it is not asked. The node then
+/// takes its left series' length, so that `a + b + c` with a short `b` draws
+/// one message, not a second one at `+ c`.
+template <BinaryOperator Op, typename Left, typename Right>
+    requires detail::ElementwiseOperands<Left, Right>
+struct ElementwiseBinaryNode: SeriesNodeBase
+{
+    static_assert(detail::RequireSeriesLengthsAgree<Left, Right>::value);
+    static_assert(std::conditional_t<detail::series_lengths_agree<Left, Right>,
+                                     detail::ElementwiseDimensionsAgree<Op, Left, Right>,
+                                     std::true_type>::value);
+
+    /// The left-hand operand, a series or a scalar. No `{}` initialiser,
+    /// deliberately: see `Corrections` (`lookup.hpp`).
+    Left lhs;
+    /// The right-hand operand, a series or a scalar.
+    Right rhs;
+
+    /// Which operator this is.
+    static constexpr BinaryOperator op = Op;
+    /// The series operands' length -- the left one's, when they disagree and
+    /// have already been refused.
+    static constexpr std::size_t length =
+        SeriesNode<Left> ? detail::series_length_of<Left>() : detail::series_length_of<Right>();
+    /// Each element's dimension, as the scalar operator computes it.
+    static constexpr Dimension dimension = detail::combined_dimension<Op, Left::dimension, Right::dimension>();
+};
+
+/// Elementwise addition. At least one side is a series, the other a series of
+/// the same length or a scalar broadcast to every element; both must measure
+/// one dimension.
+template <typename Left, typename Right>
+    requires detail::ElementwiseOperands<Left, Right>
+[[nodiscard]] constexpr auto operator+(Left lhs, Right rhs) noexcept
+{
+    return ElementwiseBinaryNode<BinaryOperator::Add, Left, Right> { {}, lhs, rhs };
+}
+
+/// Elementwise subtraction, as elementwise addition.
+template <typename Left, typename Right>
+    requires detail::ElementwiseOperands<Left, Right>
+[[nodiscard]] constexpr auto operator-(Left lhs, Right rhs) noexcept
+{
+    return ElementwiseBinaryNode<BinaryOperator::Subtract, Left, Right> { {}, lhs, rhs };
+}
+
+/// Elementwise multiplication; each element's dimension is the product.
+template <typename Left, typename Right>
+    requires detail::ElementwiseOperands<Left, Right>
+[[nodiscard]] constexpr auto operator*(Left lhs, Right rhs) noexcept
+{
+    return ElementwiseBinaryNode<BinaryOperator::Multiply, Left, Right> { {}, lhs, rhs };
+}
+
+/// Elementwise division; each element's dimension is the quotient.
+template <typename Left, typename Right>
+    requires detail::ElementwiseOperands<Left, Right>
+[[nodiscard]] constexpr auto operator/(Left lhs, Right rhs) noexcept
+{
+    return ElementwiseBinaryNode<BinaryOperator::Divide, Left, Right> { {}, lhs, rhs };
+}
+
+/// Elementwise negation.
+template <SeriesNode Operand>
+[[nodiscard]] constexpr auto operator-(Operand operand) noexcept
+{
+    return ElementwiseUnaryNode<UnaryOperator::Negate, Operand> { {}, operand };
+}
+
+// A bare `Rational` beside a series is a dimensionless coefficient broadcast to
+// every element, spelled out per operator exactly as `expression.hpp` spells
+// it beside a `Node`.
+
+/// `lhs + rhs`, with `rhs` a dimensionless coefficient.
+template <SeriesNode Left>
+[[nodiscard]] constexpr auto operator+(Left lhs, Rational rhs) noexcept
+{
+    return lhs + number(rhs);
+}
+/// `lhs + rhs`, with `lhs` a dimensionless coefficient.
+template <SeriesNode Right>
+[[nodiscard]] constexpr auto operator+(Rational lhs, Right rhs) noexcept
+{
+    return number(lhs) + rhs;
+}
+/// `lhs - rhs`, with `rhs` a dimensionless coefficient.
+template <SeriesNode Left>
+[[nodiscard]] constexpr auto operator-(Left lhs, Rational rhs) noexcept
+{
+    return lhs - number(rhs);
+}
+/// `lhs - rhs`, with `lhs` a dimensionless coefficient.
+template <SeriesNode Right>
+[[nodiscard]] constexpr auto operator-(Rational lhs, Right rhs) noexcept
+{
+    return number(lhs) - rhs;
+}
+/// `lhs * rhs`, with `rhs` a dimensionless coefficient.
+template <SeriesNode Left>
+[[nodiscard]] constexpr auto operator*(Left lhs, Rational rhs) noexcept
+{
+    return lhs * number(rhs);
+}
+/// `lhs * rhs`, with `lhs` a dimensionless coefficient.
+template <SeriesNode Right>
+[[nodiscard]] constexpr auto operator*(Rational lhs, Right rhs) noexcept
+{
+    return number(lhs) * rhs;
+}
+/// `lhs / rhs`, with `rhs` a dimensionless coefficient.
+template <SeriesNode Left>
+[[nodiscard]] constexpr auto operator/(Left lhs, Rational rhs) noexcept
+{
+    return lhs / number(rhs);
+}
+/// `lhs / rhs`, with `lhs` a dimensionless coefficient.
+template <SeriesNode Right>
+[[nodiscard]] constexpr auto operator/(Rational lhs, Right rhs) noexcept
+{
+    return number(lhs) / rhs;
+}
 
 /// An evaluated series in the coherent SI unit of its dimension: one value per
 /// element, each absent when the element was never measured.
@@ -218,6 +529,163 @@ namespace detail
         return checked_evaluate_series_si<Rep>(node, environment, sink);
     }
 } // namespace detail
+
+namespace detail
+{
+    /// Evaluates one operand of an elementwise operation: a series through
+    /// `dispatch_series`, a scalar through `dispatch` -- **once**, however long
+    /// the series, so that a broadcast scalar is one step of the derivation.
+    template <typename Rep, typename Operand, typename Env, typename Sink>
+    [[nodiscard]] constexpr auto evaluate_operand(Operand const& operand, Env const& environment, Sink sink) noexcept
+    {
+        if constexpr (SeriesNode<Operand>)
+            return dispatch_series<Rep>(operand, environment, sink);
+        else
+            return dispatch<Rep>(operand, environment, sink);
+    }
+
+    /// **The broadcast rule, in one place:** element @p at of an evaluated
+    /// series operand, or the evaluated scalar itself, whatever @p at is.
+    template <typename Rep, std::size_t N>
+    [[nodiscard]] constexpr std::optional<Rep> element_operand(SeriesValue<Rep, N> const& evaluatedSeries,
+                                                               std::size_t at) noexcept
+    {
+        return evaluatedSeries.elements[at];
+    }
+
+    /// The scalar half of the broadcast rule: the same value at every element.
+    template <typename Rep>
+    [[nodiscard]] constexpr std::optional<Rep> element_operand(std::optional<Rep> const& evaluatedScalar,
+                                                               std::size_t) noexcept
+    {
+        return evaluatedScalar;
+    }
+
+    /// A failed series operand's failure, relayed as it is.
+    template <typename Rep, std::size_t N>
+    [[nodiscard]] constexpr SeriesFailure operand_failure(EvaluatedSeries<Rep, N> const& failed) noexcept
+    {
+        return failed.error();
+    }
+
+    /// A failed scalar operand's failure: it belongs to no element, since the
+    /// scalar was evaluated once, before any element was computed.
+    template <typename Rep>
+    [[nodiscard]] constexpr SeriesFailure operand_failure(Evaluated<Rep> const& failed) noexcept
+    {
+        return SeriesFailure { failed.error(), std::nullopt };
+    }
+
+    /// `Op` applied to one pair of elements, exactly as the scalar
+    /// `BinaryNode` applies it (`evaluate.hpp`).
+    template <BinaryOperator Op, typename Rep>
+    [[nodiscard]] constexpr std::expected<Rep, ArithmeticError> apply_binary(Rep leftValue, Rep rightValue) noexcept
+    {
+        if constexpr (Op == BinaryOperator::Add)
+            return RepTraits<Rep>::add(leftValue, rightValue);
+        else if constexpr (Op == BinaryOperator::Subtract)
+            return RepTraits<Rep>::subtract(leftValue, rightValue);
+        else if constexpr (Op == BinaryOperator::Multiply)
+            return RepTraits<Rep>::multiply(leftValue, rightValue);
+        else
+            return RepTraits<Rep>::divide(leftValue, rightValue);
+    }
+} // namespace detail
+
+/// Reads each value of a per-element constant into the coherent SI unit of its
+/// dimension. Every element is present; a conversion that overflows fails the
+/// series at that element.
+template <typename Rep = Rational, Unit U, std::size_t N, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedSeries<Rep, N> checked_evaluate_series_si(SeriesConstantNode<U, N> const& node,
+                                                                           Env const&,
+                                                                           Sink sink = {}) noexcept
+{
+    detail::tell_series_entered<Rep>(sink, node);
+    EvaluatedSeries<Rep, N> const evaluated = [&]() -> EvaluatedSeries<Rep, N> {
+        SeriesValue<Rep, N> inCoherentUnit;
+        for (std::size_t at = 0; at < N; ++at)
+        {
+            Evaluated<Rep> const elementInSi = detail::in_si<Rep>(node.elements[at], U);
+            if (!elementInSi.has_value())
+                return std::unexpected { SeriesFailure { elementInSi.error(), at } };
+            inCoherentUnit.elements[at] = **elementInSi;
+        }
+        return inCoherentUnit;
+    }();
+    detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
+}
+
+/// Negates each element. An absent element stays absent; a failure names its
+/// element; a failed operand is relayed unchanged.
+template <typename Rep = Rational, UnaryOperator Op, SeriesNode Operand, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedSeries<Rep, Operand::length> checked_evaluate_series_si(
+    ElementwiseUnaryNode<Op, Operand> const& node, Env const& environment, Sink sink = {}) noexcept
+{
+    static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
+    constexpr std::size_t seriesLength = Operand::length;
+    detail::tell_series_entered<Rep>(sink, node);
+    EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
+        EvaluatedSeries<Rep, seriesLength> const operandResult =
+            detail::dispatch_series<Rep>(node.operand, environment, sink);
+        if (!operandResult.has_value())
+            return std::unexpected { operandResult.error() };
+        SeriesValue<Rep, seriesLength> negated;
+        for (std::size_t at = 0; at < seriesLength; ++at)
+        {
+            if (!operandResult->elements[at].has_value())
+                continue;
+            std::expected<Rep, ArithmeticError> const elementResult = RepTraits<Rep>::negate(*operandResult->elements[at]);
+            if (!elementResult.has_value())
+                return std::unexpected { SeriesFailure { elementResult.error(), at } };
+            negated.elements[at] = *elementResult;
+        }
+        return negated;
+    }();
+    detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
+}
+
+/// Combines the two operands element by element (`detail::element_operand`).
+///
+/// The left operand is evaluated, then the right, each once; a failure of
+/// either fails the whole series at once -- a series operand's with its own
+/// position, a scalar's with none. Only then is each element considered: an
+/// element absent on either side is absent in the result and no other, an
+/// absent scalar makes every element absent (S7), and an arithmetic error at
+/// an element fails the whole series naming that element (S8). There is no
+/// partial result.
+template <typename Rep = Rational, BinaryOperator Op, typename Left, typename Right, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedSeries<Rep, ElementwiseBinaryNode<Op, Left, Right>::length> checked_evaluate_series_si(
+    ElementwiseBinaryNode<Op, Left, Right> const& node, Env const& environment, Sink sink = {}) noexcept
+{
+    constexpr std::size_t seriesLength = ElementwiseBinaryNode<Op, Left, Right>::length;
+    detail::tell_series_entered<Rep>(sink, node);
+    EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
+        auto const leftResult = detail::evaluate_operand<Rep>(node.lhs, environment, sink);
+        if (!leftResult.has_value())
+            return std::unexpected { detail::operand_failure(leftResult) };
+        auto const rightResult = detail::evaluate_operand<Rep>(node.rhs, environment, sink);
+        if (!rightResult.has_value())
+            return std::unexpected { detail::operand_failure(rightResult) };
+
+        SeriesValue<Rep, seriesLength> combined;
+        for (std::size_t at = 0; at < seriesLength; ++at)
+        {
+            std::optional<Rep> const leftElement = detail::element_operand(*leftResult, at);
+            std::optional<Rep> const rightElement = detail::element_operand(*rightResult, at);
+            if (!leftElement.has_value() || !rightElement.has_value())
+                continue;
+            std::expected<Rep, ArithmeticError> const elementResult = detail::apply_binary<Op>(*leftElement, *rightElement);
+            if (!elementResult.has_value())
+                return std::unexpected { SeriesFailure { elementResult.error(), at } };
+            combined.elements[at] = *elementResult;
+        }
+        return combined;
+    }();
+    detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
+}
 
 /// The result of evaluating a series for quantity @p Q: `N` measurements in
 /// `Q`'s declared unit, and where they came from.

@@ -2022,3 +2022,64 @@ TEST_CASE("a series that failed at an element names that element, counted from o
     CHECK(trace.steps[0].failedElement == std::optional<std::size_t> { 2 });
     CHECK(formula::render_trace(trace, { .maxSteps = 20 }) == "1. m_p = overflow in exact arithmetic at element 3\n");
 }
+
+TEST_CASE("an elementwise step names its operands, and a broadcast scalar appears once", "[series][trace]")
+{
+    // S4's reason for existing: m_t is evaluated once and appears once in the
+    // derivation, as an operand of the one elementwise step, however long
+    // the series.
+    constexpr auto screens =
+        formula::environment(formula::measured_series<series_trace::Retained>(series_trace::retained(130),
+                                                                              series_trace::retained(210),
+                                                                              series_trace::retained(95),
+                                                                              series_trace::retained(340),
+                                                                              series_trace::retained(28)),
+                             formula::Measured<series_trace::TotalMass> { formula::Rational { 1000 } });
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(formula::series<series_trace::Retained, 5>
+                                                                   / formula::var<series_trace::TotalMass>,
+                                                               screens,
+                                                               formula::RecordingSink<> { trace });
+    // A computed step has no declared unit, as a scalar quotient has none, so
+    // the fraction is shown in the coherent unit, exactly.
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 })
+          == "1. m_r = 130 g; 210 g; 95 g; 340 g; 28 g\n"
+             "2. m_t = 1000 g\n"
+             "3. #1 / #2 = 13/100; 21/100; 19/200; 17/50; 7/250\n");
+    REQUIRE(trace.steps.size() == 3);
+    CHECK(trace.steps[2].kind == formula::StepKind::ElementwiseDivide);
+    CHECK(trace.steps[2].operands == std::vector<std::size_t> { 0, 1 });
+}
+
+TEST_CASE("a per-element constant and a negation each record one step with every element", "[series][trace]")
+{
+    constexpr auto factors =
+        formula::series_constant<unit::Kilogram>(formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 3 });
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        -factors, formula::environment(), formula::RecordingSink<> { trace });
+    // The constant's line is its values alone, as a scalar constant's is, in
+    // the unit it was written in; the negation names its operand.
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 })
+          == "1. 1 kg; 2 kg; 3 kg\n"
+             "2. -#1 = -1; -2; -3\n");
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(trace.steps[0].kind == formula::StepKind::SeriesConstant);
+    CHECK(trace.steps[1].kind == formula::StepKind::ElementwiseNegate);
+}
+
+TEST_CASE("a failing scalar operand is reported without a position", "[series][trace]")
+{
+    constexpr auto screens = formula::environment(
+        formula::measured_series<series_trace::Retained>(series_trace::retained(130), series_trace::retained(210)),
+        formula::Measured<series_trace::TotalMass> { formula::Rational { 1000 } });
+    constexpr auto total = formula::var<series_trace::TotalMass>;
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<series_trace::Retained, 2> * (total / (total - total)), screens, formula::RecordingSink<> { trace });
+    std::string const text = formula::render_trace(trace, { .maxSteps = 30 });
+    // The elementwise line says what failed and names no element: the
+    // failure was the scalar's, before any element was computed.
+    CHECK(text.find("7. #1 * #6 = division by zero\n") != std::string::npos);
+    CHECK(text.find("at element") == std::string::npos);
+}

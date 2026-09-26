@@ -775,6 +775,9 @@ namespace series_document
     struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
     {
     };
+    struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", formula::unit::Gram>
+    {
+    };
 } // namespace series_document
 } // namespace
 
@@ -825,4 +828,37 @@ TEST_CASE("a series row is one row per quantity, shape and length", "[series][do
     // and length, not by spelling.
     CHECK(rows[0].symbol == rows[1].symbol);
     CHECK(rows[1].symbol == rows[2].symbol);
+}
+
+TEST_CASE("an elementwise formula's symbol table reads left to right, one row per quantity and shape", "[series][document]")
+{
+    using series_document::Retained;
+    using series_document::TotalMass;
+    auto const fraction = formula::document(formula::series<Retained, 5> / formula::var<TotalMass>);
+    REQUIRE(fraction.symbols.size() == 2);
+    CHECK(fraction.symbols[0].symbol == "m_r");
+    CHECK(fraction.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(fraction.symbols[1].symbol == "m_t");
+    CHECK(fraction.symbols[1].shape == formula::ValueShape::Single);
+    CHECK(fraction.formula == "m_r(i) / m_t");
+
+    // Reversed operands, reversed rows: the walk visits lhs, then rhs.
+    auto const reversed = formula::document(formula::var<TotalMass> - formula::series<Retained, 5>);
+    REQUIRE(reversed.symbols.size() == 2);
+    CHECK(reversed.symbols[0].symbol == "m_t");
+    CHECK(reversed.symbols[1].symbol == "m_r");
+
+    // One quantity read both as a series and as a single value: two rows,
+    // one symbol, told apart by shape. A per-element constant reads nothing.
+    auto const both =
+        formula::document((formula::series<Retained, 5>
+                           - formula::var<Retained>) *formula::series_constant<formula::unit::One>(formula::Rational { 1 },
+                                                                                                   formula::Rational { 2 },
+                                                                                                   formula::Rational { 3 },
+                                                                                                   formula::Rational { 4 },
+                                                                                                   formula::Rational { 5 }));
+    REQUIRE(both.symbols.size() == 2);
+    CHECK(both.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(both.symbols[1].shape == formula::ValueShape::Single);
+    CHECK(both.symbols[0].symbol == both.symbols[1].symbol);
 }

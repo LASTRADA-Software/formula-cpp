@@ -717,6 +717,20 @@ namespace detail
             // is a series shows in the list of elements after the `=`.
             case StepKind::SeriesVariable:
                 return std::string { step.symbol };
+            // A per-element constant's expression is its values, as a scalar
+            // constant's is -- see `series_step_line`.
+            case StepKind::SeriesConstant:
+                return {};
+            case StepKind::ElementwiseNegate:
+                return "-" + sole_operand(step);
+            case StepKind::ElementwiseAdd:
+                return binary_expression(step, "+");
+            case StepKind::ElementwiseSubtract:
+                return binary_expression(step, "-");
+            case StepKind::ElementwiseMultiply:
+                return binary_expression(step, "*");
+            case StepKind::ElementwiseDivide:
+                return binary_expression(step, "/");
         }
         return "unknown step kind";
     }
@@ -969,7 +983,9 @@ namespace detail
     /// never `Step::value`. One place, for the reason `is_lookup` gives.
     [[nodiscard]] constexpr bool is_series(StepKind stepKind) noexcept
     {
-        return stepKind == StepKind::SeriesVariable;
+        return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant || stepKind == StepKind::ElementwiseNegate
+               || stepKind == StepKind::ElementwiseAdd || stepKind == StepKind::ElementwiseSubtract
+               || stepKind == StepKind::ElementwiseMultiply || stepKind == StepKind::ElementwiseDivide;
     }
 
     /// A series step's line, without its number: the expression, an `=`, and
@@ -987,7 +1003,10 @@ namespace detail
     /// every element of which was measured.
     [[nodiscard]] inline std::string series_step_line(Step<Rational> const& recorded, std::size_t& budget)
     {
-        std::string lineText = step_expression(recorded) + " = ";
+        // A per-element constant's line is its values alone, as a scalar
+        // constant's is its value alone: `1 kg; 2 kg`, not the tautology
+        // `values = 1 kg; 2 kg`.
+        std::string lineText = recorded.kind == StepKind::SeriesConstant ? std::string {} : step_expression(recorded) + " = ";
         if (recorded.error.has_value())
         {
             lineText += describe(*recorded.error);

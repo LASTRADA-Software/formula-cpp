@@ -289,3 +289,196 @@ TEST_CASE("a series formula declared in a header is one formula in every transla
     CHECK(*there == *here);
     CHECK(there->element(1).value() == formula::Rational { 21 });
 }
+
+// ---- Elementwise arithmetic and per-element constants (task 4) ----
+
+namespace
+{
+namespace elementwise
+{
+    // Invented quantities; the shared fixture's retained masses and a total
+    // of 1000 g.
+    struct FractionRetained: formula::Quantity<FractionRetained, "p_r", "fraction retained", formula::unit::Percent>
+    {
+    };
+    struct Ratio: formula::Quantity<Ratio, "q", "ratio of two masses", formula::unit::One>
+    {
+    };
+    struct PartA: formula::Quantity<PartA, "a", "first part", formula::unit::Gram>
+    {
+    };
+    struct PartB: formula::Quantity<PartB, "b", "second part", formula::unit::Gram>
+    {
+    };
+
+    constexpr auto screenInputs =
+        formula::environment(formula::measured_series<Retained>(
+                                 m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)),
+                             m<TotalMass>(1000));
+
+    constexpr auto absentMiddle = formula::environment(
+        formula::measured_series<Retained>(
+            m<Retained>(130), m<Retained>(210), formula::Measured<Retained>::absent(), m<Retained>(340), m<Retained>(28)),
+        m<TotalMass>(1000));
+
+    constexpr auto absentTotal =
+        formula::environment(formula::measured_series<Retained>(
+                                 m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)),
+                             formula::Measured<TotalMass>::absent());
+
+    constexpr auto twoSeries =
+        formula::environment(formula::measured_series<PartA>(m<PartA>(1), m<PartA>(2), m<PartA>(3)),
+                             formula::measured_series<PartB>(m<PartB>(10), m<PartB>(20), m<PartB>(40)));
+
+    constexpr auto zeroInTheMiddle =
+        formula::environment(formula::measured_series<PartA>(m<PartA>(1), m<PartA>(2), m<PartA>(3)),
+                             formula::measured_series<PartB>(m<PartB>(2), m<PartB>(0), m<PartB>(5)));
+} // namespace elementwise
+} // namespace
+
+TEST_CASE("a scalar divides every element, and each element keeps its own place", "[series]")
+{
+    using elementwise::FractionRetained;
+    constexpr auto fraction = formula::series<Retained, 5> / formula::var<TotalMass>;
+    // (fixture: m_t = 1000 g) -> 13 %, 21 %, 9.5 %, 34 %, 2.8 %. A broadcast
+    // applied to element 0 only, or a reversed operand order, gives
+    // different numbers at every position; all five are asserted.
+    constexpr auto out = formula::checked_evaluate_series<FractionRetained>(fraction, elementwise::screenInputs);
+    STATIC_REQUIRE(out.has_value());
+    STATIC_REQUIRE(out->element(0).value() == rat(13));
+    STATIC_REQUIRE(out->element(1).value() == rat(21));
+    STATIC_REQUIRE(out->element(2).value() == formula::Rational { 19, 2 });
+    STATIC_REQUIRE(out->element(3).value() == rat(34));
+    STATIC_REQUIRE(out->element(4).value() == formula::Rational { 14, 5 });
+    STATIC_REQUIRE(decltype(fraction)::length == 5);
+    STATIC_REQUIRE(decltype(fraction)::dimension == formula::unit::One.dimension);
+}
+
+TEST_CASE("two series combine element by element, never across positions", "[series]")
+{
+    // A = 1, 2, 3 g; B = 10, 20, 40 g -> 11, 22, 43 g. A reversed pairing
+    // gives 41, 22, 13: only the middle matches, so a first-only or a
+    // last-only check would not catch it -- all three are asserted.
+    using elementwise::PartA;
+    using elementwise::PartB;
+    constexpr auto combined = formula::checked_evaluate_series<PartA>(formula::series<PartA, 3> + formula::series<PartB, 3>,
+                                                                      elementwise::twoSeries);
+    STATIC_REQUIRE(combined->element(0).value() == rat(11));
+    STATIC_REQUIRE(combined->element(1).value() == rat(22));
+    STATIC_REQUIRE(combined->element(2).value() == rat(43));
+    // Subtraction keeps its order: B - A, never A - B.
+    constexpr auto difference = formula::checked_evaluate_series<PartA>(
+        formula::series<PartB, 3> - formula::series<PartA, 3>, elementwise::twoSeries);
+    STATIC_REQUIRE(difference->element(0).value() == rat(9));
+    STATIC_REQUIRE(difference->element(2).value() == rat(37));
+}
+
+TEST_CASE("a zero divisor in the middle fails the whole series and names that element", "[series]")
+{
+    // A / B with B = 2, 0, 5 g -> SeriesFailure { DivisionByZero, 1 }; no
+    // partial vector (S8). Review Focus 5.
+    using elementwise::PartA;
+    using elementwise::PartB;
+    constexpr auto quotient = formula::detail::dispatch_series<formula::Rational>(
+        formula::series<PartA, 3> / formula::series<PartB, 3>, elementwise::zeroInTheMiddle, formula::NullSink {});
+    STATIC_REQUIRE(!quotient.has_value());
+    STATIC_REQUIRE(quotient.error() == formula::SeriesFailure { formula::ArithmeticError::DivisionByZero, 1 });
+}
+
+TEST_CASE("a failing scalar operand fails the whole series, and belongs to no element", "[series]")
+{
+    // The scalar is evaluated once, before any element: its failure is not
+    // the failure of element 0, or of any element, so the position is empty.
+    constexpr auto broken =
+        formula::series<Retained, 5> * (formula::var<TotalMass> / (formula::var<TotalMass> - formula::var<TotalMass>) );
+    constexpr auto out =
+        formula::detail::dispatch_series<formula::Rational>(broken, elementwise::screenInputs, formula::NullSink {});
+    STATIC_REQUIRE(!out.has_value());
+    STATIC_REQUIRE(out.error().error == formula::ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(!out.error().element.has_value());
+}
+
+TEST_CASE("an absent scalar makes every element absent; an absent element only itself", "[series]")
+{
+    // S7, both rows of the table.
+    using elementwise::FractionRetained;
+    constexpr auto fraction = formula::series<Retained, 5> / formula::var<TotalMass>;
+
+    constexpr auto oneAbsent = formula::checked_evaluate_series<FractionRetained>(fraction, elementwise::absentMiddle);
+    STATIC_REQUIRE(oneAbsent->element(1).value() == rat(21));
+    STATIC_REQUIRE(oneAbsent->element(2).is_absent());
+    STATIC_REQUIRE(oneAbsent->element(3).value() == rat(34));
+
+    constexpr auto allAbsent = formula::checked_evaluate_series<FractionRetained>(fraction, elementwise::absentTotal);
+    STATIC_REQUIRE(allAbsent.has_value());
+    STATIC_REQUIRE(allAbsent->element(0).is_absent());
+    STATIC_REQUIRE(allAbsent->element(2).is_absent());
+    STATIC_REQUIRE(allAbsent->element(4).is_absent());
+}
+
+TEST_CASE("a scalar or a bare number broadcasts from either side, and negation is per element", "[series]")
+{
+    constexpr auto s = formula::series<Retained, 5>;
+    // m_t - m_r: 870, 790, 905, 660, 972 g. The reversed order gives the
+    // negatives, and a broadcast to element 0 only leaves the rest unchanged.
+    constexpr auto passing =
+        formula::checked_evaluate_series<Retained>(formula::var<TotalMass> - s, elementwise::screenInputs);
+    STATIC_REQUIRE(passing->element(0).value() == rat(870));
+    STATIC_REQUIRE(passing->element(2).value() == rat(905));
+    STATIC_REQUIRE(passing->element(4).value() == rat(972));
+
+    constexpr auto doubled = formula::checked_evaluate_series<Retained>(s * rat(2), elementwise::screenInputs);
+    constexpr auto doubledLeft = formula::checked_evaluate_series<Retained>(rat(2) * s, elementwise::screenInputs);
+    constexpr auto halved = formula::checked_evaluate_series<Retained>(s / rat(2), elementwise::screenInputs);
+    constexpr auto negated = formula::checked_evaluate_series<Retained>(-s, elementwise::screenInputs);
+    STATIC_REQUIRE(doubled->element(3).value() == rat(680));
+    STATIC_REQUIRE(doubledLeft->element(3).value() == rat(680));
+    STATIC_REQUIRE(halved->element(4).value() == rat(14));
+    STATIC_REQUIRE(negated->element(1).value() == rat(-210));
+    STATIC_REQUIRE(negated->element(4).value() == rat(-28));
+}
+
+TEST_CASE("a per-element constant pairs with the series position by position", "[series]")
+{
+    // Factors 1..5 against 130, 210, 95, 340, 28 g: 130, 420, 285, 1360, 140 g.
+    // A reversed pairing gives 650, 840, 285, 680, 28: only the middle agrees.
+    constexpr auto weights = formula::series_constant<formula::unit::One>(rat(1), rat(2), rat(3), rat(4), rat(5));
+    constexpr auto weighted =
+        formula::checked_evaluate_series<Retained>(formula::series<Retained, 5> * weights, elementwise::screenInputs);
+    STATIC_REQUIRE(weighted->element(0).value() == rat(130));
+    STATIC_REQUIRE(weighted->element(1).value() == rat(420));
+    STATIC_REQUIRE(weighted->element(3).value() == rat(1360));
+    STATIC_REQUIRE(weighted->element(4).value() == rat(140));
+    STATIC_REQUIRE(decltype(weights)::length == 5);
+
+    // A constant with a unit is read into coherent SI like any value, so its
+    // unit must not be the coherent one for the fixture to tell: 5 g added to
+    // 130 g is 135 g, where 5 read as kilograms would give 5130 g.
+    constexpr auto offsets = formula::series_constant<formula::unit::Gram, 5>(rat(5), rat(6), rat(7), rat(8), rat(9));
+    constexpr auto shifted =
+        formula::checked_evaluate_series<Retained>(formula::series<Retained, 5> + offsets, elementwise::screenInputs);
+    STATIC_REQUIRE(shifted->element(0).value() == rat(135));
+    STATIC_REQUIRE(shifted->element(2).value() == rat(102));
+    STATIC_REQUIRE(shifted->element(4).value() == rat(37));
+}
+
+TEST_CASE("elementwise nodes are series, empty of state but their operands, and not scalar nodes", "[series]")
+{
+    constexpr auto fraction = formula::series<Retained, 5> / formula::var<TotalMass>;
+    STATIC_REQUIRE(formula::SeriesNode<decltype(fraction)>);
+    STATIC_REQUIRE_FALSE(formula::Node<decltype(fraction)>);
+    STATIC_REQUIRE(formula::SeriesNode<decltype(-formula::series<Retained, 5>)>);
+    STATIC_REQUIRE(formula::SeriesNode<decltype(formula::series_constant<formula::unit::One>(rat(1)))>);
+    // A series constant must state its contents: no default, as a lookup's
+    // corrections have none.
+    STATIC_REQUIRE_FALSE(std::is_default_constructible_v<formula::SeriesConstantNode<formula::unit::One, 3>>);
+}
+
+TEST_CASE("elementwise arithmetic works in double as well as in Rational", "[series]")
+{
+    auto const out = formula::detail::dispatch_series<double>(
+        formula::series<Retained, 5> / formula::var<TotalMass>, elementwise::screenInputs, formula::NullSink {});
+    REQUIRE(out.has_value());
+    CHECK(out->elements[0] == 0.13);
+    CHECK(out->elements[4] == 0.028);
+}

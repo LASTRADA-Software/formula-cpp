@@ -1446,6 +1446,14 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3>));          // SeriesVarNode
+    // The elementwise nodes and a per-element constant, with a scalar
+    // broadcast on either side and a series on both.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(-formula::series<Strength, 3>)); // ElementwiseUnaryNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3> * var<Strength>));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength> - formula::series<Strength, 3>));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3> / formula::series<Strength, 3>));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::series_constant<formula::unit::Megapascal>(rat(1), rat(-2), rat(3, 4)))); // SeriesConstantNode
 
     // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
@@ -1614,6 +1622,9 @@ namespace series_render
     struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
     {
     };
+    struct Total: formula::Quantity<Total, "m_t", "total dry mass", formula::unit::Gram>
+    {
+    };
 } // namespace series_render
 } // namespace
 
@@ -1641,4 +1652,38 @@ TEST_CASE("a series variable is marked as a series in the formula itself, in eve
     constexpr auto parenthesised = formula::vocabulary(formula::renames<Retained>("w(t)"));
     CHECK(formula::render(formula::series<Retained, 5>, parenthesised) == "w(t)(i)");
     CHECK(formula::render<formula::Dialect::Markdown>(formula::series<Retained, 5>, parenthesised) == "`w(t)(i)`");
+}
+
+TEST_CASE("elementwise arithmetic renders as scalar arithmetic does, the series operand marked", "[series][render]")
+{
+    using series_render::Retained;
+    constexpr auto fraction = formula::series<Retained, 5> / formula::var<series_render::Total>;
+    // S14: the series variable carries the marker; the operation adds none.
+    CHECK(formula::render(fraction) == "m_r(i) / m_t");
+    CHECK(formula::render<formula::Dialect::Markdown>(fraction) == "`m_r(i)` / `m_t`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fraction) == "\\frac{{m_r}_{i}}{m_t}");
+    // Brackets exactly where the scalar operators put them: the right side of
+    // a subtraction, a sum inside a product, a negated sum.
+    constexpr auto s = formula::series<Retained, 5>;
+    CHECK(formula::render(formula::var<series_render::Total> - (s - formula::var<series_render::Total>) )
+          == "m_t - (m_r(i) - m_t)");
+    CHECK(formula::render((s + s) * formula::var<series_render::Total>) == "(m_r(i) + m_r(i)) * m_t");
+    CHECK(formula::render(-(s + s)) == "-(m_r(i) + m_r(i))");
+    CHECK(formula::render(-s) == "-m_r(i)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(s * formula::var<series_render::Total>) == "{m_r}_{i} \\cdot m_t");
+}
+
+TEST_CASE("a per-element constant renders as its list of values", "[series][render]")
+{
+    // S14: a series constant prints its rows, which already reads as many
+    // values, so it carries no index marker. Each value is spelled as a
+    // constant holding it would be.
+    constexpr auto factors = formula::series_constant<formula::unit::Millimetre>(rat(7, 10), rat(19, 10), rat(33, 10));
+    CHECK(formula::render(factors) == "values(7/10 mm, 19/10 mm, 33/10 mm)");
+    CHECK(formula::render<formula::Dialect::Markdown>(factors) == "values(7/10 mm, 19/10 mm, 33/10 mm)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(factors)
+          == "\\operatorname{values}(7/10\\,\\mathrm{mm},\\allowbreak 19/10\\,\\mathrm{mm},\\allowbreak 33/10\\,\\mathrm{mm})");
+    constexpr auto plain = formula::series_constant<formula::unit::One>(rat(1), rat(2));
+    CHECK(formula::render(plain) == "values(1, 2)");
+    CHECK(formula::render(formula::series<series_render::Retained, 2> * plain) == "m_r(i) * values(1, 2)");
 }

@@ -305,6 +305,15 @@ namespace detail
     template <Vocabulary V, Described Q, std::size_t N>
     void collect(Walk<V>& walk, SeriesVarNode<Q, N> const& node);
 
+    template <Vocabulary V, Unit U, std::size_t N>
+    void collect(Walk<V>& walk, SeriesConstantNode<U, N> const& node);
+
+    template <Vocabulary V, UnaryOperator Op, SeriesNode Operand>
+    void collect(Walk<V>& walk, ElementwiseUnaryNode<Op, Operand> const& node);
+
+    template <Vocabulary V, BinaryOperator Op, typename Left, typename Right>
+    void collect(Walk<V>& walk, ElementwiseBinaryNode<Op, Left, Right> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -597,6 +606,28 @@ namespace detail
                                                            .unit = Describe<Q>::unit,
                                                            .shape = ValueShape::Series,
                                                            .length = N });
+    }
+
+    /// A per-element constant names no variable, as a scalar constant names
+    /// none.
+    template <Vocabulary V, Unit U, std::size_t N>
+    void collect(Walk<V>&, SeriesConstantNode<U, N> const&)
+    {
+    }
+
+    template <Vocabulary V, UnaryOperator Op, SeriesNode Operand>
+    void collect(Walk<V>& walk, ElementwiseUnaryNode<Op, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// Left before right, as for a scalar `BinaryNode`, so the table reads in
+    /// the formula's order.
+    template <Vocabulary V, BinaryOperator Op, typename Left, typename Right>
+    void collect(Walk<V>& walk, ElementwiseBinaryNode<Op, Left, Right> const& node)
+    {
+        collect(walk, node.lhs);
+        collect(walk, node.rhs);
     }
 } // namespace detail
 

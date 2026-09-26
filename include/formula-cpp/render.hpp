@@ -92,12 +92,29 @@ namespace detail
         static constexpr Precedence value = Precedence::Atom;
     };
 
+    /// How tightly a binary operator binds -- one answer for the scalar
+    /// `BinaryNode` and the elementwise `ElementwiseBinaryNode`, which are
+    /// spelled alike.
+    template <BinaryOperator Op>
+    inline constexpr Precedence binary_precedence =
+        (Op == BinaryOperator::Add || Op == BinaryOperator::Subtract) ? Precedence::Additive : Precedence::Multiplicative;
+
     template <BinaryOperator Op, Node Left, Node Right>
     struct PrecedenceOf<BinaryNode<Op, Left, Right>>
     {
-        static constexpr Precedence value = (Op == BinaryOperator::Add || Op == BinaryOperator::Subtract)
-                                                ? Precedence::Additive
-                                                : Precedence::Multiplicative;
+        static constexpr Precedence value = binary_precedence<Op>;
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct PrecedenceOf<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        static constexpr Precedence value = binary_precedence<Op>;
+    };
+
+    template <UnaryOperator Op, SeriesNode Operand>
+    struct PrecedenceOf<ElementwiseUnaryNode<Op, Operand>>
+    {
+        static constexpr Precedence value = Precedence::Unary;
     };
 
     template <UnaryOperator Op, Node Operand>
@@ -651,6 +668,39 @@ namespace detail
             return "(" + childText + ")";
         return childText;
     }
+
+    /// A binary operation, infix, bracketing each side only where its
+    /// precedence against the operator requires it; division in LaTeX as
+    /// `\frac{}{}`, which groups both sides itself. **The one spelling of the
+    /// four operators**, shared by the scalar `BinaryNode` and the elementwise
+    /// `ElementwiseBinaryNode`, so that `m_r(i) / m_t` is written exactly as
+    /// `m_r / m_t` is, and the two cannot drift apart.
+    template <Dialect D, BinaryOperator Op, typename Left, typename Right, Vocabulary V>
+    [[nodiscard]] std::string render_binary(Left const& leftOperand, Right const& rightOperand, V const& vocabulary)
+    {
+        constexpr Precedence ownPrecedence = binary_precedence<Op>;
+        constexpr Precedence rightContext = (Op == BinaryOperator::Subtract || Op == BinaryOperator::Divide)
+                                                ? static_cast<Precedence>(static_cast<int>(ownPrecedence) + 1)
+                                                : ownPrecedence;
+
+        if constexpr (D == Dialect::LaTeX && Op == BinaryOperator::Divide)
+            // \frac groups both sides itself, so neither operand needs a bracket.
+            return "\\frac{" + render<D>(leftOperand, vocabulary) + "}{" + render<D>(rightOperand, vocabulary) + "}";
+        else
+        {
+            std::string const leftText = render_operand<D>(leftOperand, ownPrecedence, vocabulary);
+            std::string const rightText = render_operand<D>(rightOperand, rightContext, vocabulary);
+
+            if constexpr (Op == BinaryOperator::Add)
+                return leftText + " + " + rightText;
+            else if constexpr (Op == BinaryOperator::Subtract)
+                return leftText + " - " + rightText;
+            else if constexpr (Op == BinaryOperator::Multiply)
+                return D == Dialect::LaTeX ? leftText + " \\cdot " + rightText : leftText + " * " + rightText;
+            else
+                return leftText + " / " + rightText;
+        }
+    }
 } // namespace detail
 
 // One overload per node kind. Each is found by argument-dependent lookup from
@@ -723,28 +773,52 @@ template <Dialect D, UnaryOperator Op, Node Operand, Vocabulary V>
 template <Dialect D, BinaryOperator Op, Node Left, Node Right, Vocabulary V>
 [[nodiscard]] std::string render_node(BinaryNode<Op, Left, Right> const& node, V const& vocabulary)
 {
-    constexpr detail::Precedence ownPrecedence = detail::PrecedenceOf<BinaryNode<Op, Left, Right>>::value;
-    constexpr detail::Precedence rightContext = (Op == BinaryOperator::Subtract || Op == BinaryOperator::Divide)
-                                                    ? static_cast<detail::Precedence>(static_cast<int>(ownPrecedence) + 1)
-                                                    : ownPrecedence;
+    return detail::render_binary<D, Op>(node.lhs, node.rhs, vocabulary);
+}
 
-    if constexpr (D == Dialect::LaTeX && Op == BinaryOperator::Divide)
-        // \frac groups both sides itself, so neither operand needs a bracket.
-        return "\\frac{" + render<D>(node.lhs, vocabulary) + "}{" + render<D>(node.rhs, vocabulary) + "}";
-    else
+/// An elementwise binary node renders exactly as the scalar operator does
+/// (`detail::render_binary`): the operation adds no marker of its own, and a
+/// series operand carries its own (S14).
+template <Dialect D, BinaryOperator Op, typename Left, typename Right, Vocabulary V>
+[[nodiscard]] std::string render_node(ElementwiseBinaryNode<Op, Left, Right> const& node, V const& vocabulary)
+{
+    return detail::render_binary<D, Op>(node.lhs, node.rhs, vocabulary);
+}
+
+/// Elementwise negation renders as scalar negation does.
+template <Dialect D, UnaryOperator Op, SeriesNode Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(ElementwiseUnaryNode<Op, Operand> const& node, V const& vocabulary)
+{
+    static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
+    return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary, vocabulary);
+}
+
+/// A per-element constant renders as its list of values, `values(0.7 mm,
+/// 1.9 mm, ...)`, each spelled as a constant holding it would be
+/// (`detail::number_with_unit`), separated as a lookup's rows are. A list
+/// already reads as many values, so it carries no index marker (S14). A
+/// formula's own values are never truncated.
+template <Dialect D, Unit U, std::size_t N, Vocabulary V>
+[[nodiscard]] std::string render_node(SeriesConstantNode<U, N> const& node, V const&)
+{
+    constexpr Unit statedIn = U;
+    std::string listed;
+    for (std::size_t at = 0; at < N; ++at)
     {
-        std::string const leftText = detail::render_operand<D>(node.lhs, ownPrecedence, vocabulary);
-        std::string const rightText = detail::render_operand<D>(node.rhs, rightContext, vocabulary);
-
-        if constexpr (Op == BinaryOperator::Add)
-            return leftText + " + " + rightText;
-        else if constexpr (Op == BinaryOperator::Subtract)
-            return leftText + " - " + rightText;
-        else if constexpr (Op == BinaryOperator::Multiply)
-            return D == Dialect::LaTeX ? leftText + " \\cdot " + rightText : leftText + " * " + rightText;
+        if (at > 0)
+            listed += detail::lookup_separator<D>();
+        // Each value spelled as a `ConstantNode` holding it is, in every
+        // dialect: in LaTeX its unit set upright and escaped.
+        if constexpr (D == Dialect::LaTeX)
+            listed += detail::number_text(node.elements[at])
+                      + detail::unit_clause("\\,", detail::latex_unit(view(statedIn.symbolText)));
         else
-            return leftText + " / " + rightText;
+            listed += detail::number_with_unit(detail::number_text(node.elements[at]), view(statedIn.symbolText));
     }
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{values}(" + listed + ")";
+    else
+        return "values(" + listed + ")";
 }
 
 /// A power renders as its base with the exponent superscript -- braced in LaTeX.

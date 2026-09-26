@@ -356,6 +356,29 @@ formula_add_negative_test(environment_series_missing_quantity
     "provides no value for this quantity"
     REJECT "holds a single value for this quantity" "holds a series of a different length")
 
+# Elementwise arithmetic (task 4). A length mismatch refuses once and gates
+# the dimension check off, so the REJECT pins that the additive message stays
+# silent; a dimension mismatch between series of one length is the scalar
+# operators' own refusal, and the REJECT pins that no length is blamed.
+formula_add_negative_test(series_elementwise_length_mismatch
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different")
+formula_add_negative_test(series_elementwise_dimension_mismatch
+    "the two sides of this addition or subtraction measure different"
+    REJECT "the two series combined here have different lengths")
+# Both wrong at once: the length is refused, and the dimension check gated
+# behind it stays silent. Removing the gate makes this REJECT fire.
+formula_add_negative_test(series_elementwise_length_and_dimension_mismatch
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different")
+
+# A per-element constant given fewer values than its stated length, through
+# the factory and through aggregate initialisation of the node itself.
+formula_add_negative_test(series_constant_short
+    "this series constant was given a different number of elements than its length")
+formula_add_negative_test(series_constant_short_no_factory
+    "this series constant was given a different number of elements than its length")
+
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
 

@@ -763,3 +763,34 @@ TEST_CASE("a series is written in the page's vocabulary, marked, in every dialec
     CHECK(page.symbols[0].symbol == "S");
     CHECK(page.symbols[0].description == "mass retained on a screen"); // what it is does not change
 }
+
+TEST_CASE("elementwise arithmetic is written in the page's vocabulary on every surface", "[series][vocabulary]")
+{
+    using series_vocabulary::east;
+    using series_vocabulary::Retained;
+    using series_vocabulary::Sieved;
+    using series_vocabulary::west;
+    constexpr auto ratio = formula::series<Retained, 3> / formula::series<Sieved, 3>;
+    CHECK(formula::render(ratio, east) == "R(i) / S(i)");
+    CHECK(formula::render(ratio, west) == "S(i) / R(i)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(ratio, west) == "\\frac{{S}_{i}}{{R}_{i}}");
+
+    auto const page = formula::document(ratio, west);
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "S");
+    CHECK(page.symbols[1].symbol == "R");
+
+    constexpr auto inputs = formula::environment(formula::measured_series<Retained>(formula::Measured<Retained> { rat(1) },
+                                                                                    formula::Measured<Retained> { rat(2) },
+                                                                                    formula::Measured<Retained> { rat(3) }),
+                                                 formula::measured_series<Sieved>(formula::Measured<Sieved> { rat(4) },
+                                                                                  formula::Measured<Sieved> { rat(5) },
+                                                                                  formula::Measured<Sieved> { rat(6) }));
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(ratio, inputs, formula::RecordingSink { trace, west });
+    std::string const text = formula::render_trace(trace, { .maxSteps = 30 });
+    CHECK(text.find("1. S = 1 g; 2 g; 3 g") != std::string::npos);
+    CHECK(text.find("2. R = 4 g; 5 g; 6 g") != std::string::npos);
+    CHECK(text.find("m_r") == std::string::npos);
+    CHECK(text.find("m_s") == std::string::npos);
+}

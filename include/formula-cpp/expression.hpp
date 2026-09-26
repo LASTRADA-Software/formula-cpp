@@ -129,7 +129,7 @@ namespace detail
     /// prints `formula::VarNode<WaterVolume>::dimension ==
     /// formula::VarNode<BeamLength>::dimension` instead, and all three
     /// compilers name the two operand types and the formula's own source line.
-    template <Node Left, Node Right>
+    template <typename Left, typename Right>
     struct RequireAddendsAgree
     {
         static_assert(Left::dimension == Right::dimension,

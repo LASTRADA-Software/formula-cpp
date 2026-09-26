@@ -171,6 +171,27 @@ enum class StepKind : std::uint8_t
     /// is `SeriesVarNode` and its spelling in a formula `series`, so nothing
     /// in namespace `formula` is spelt `SeriesVariable`.
     SeriesVariable,
+    /// A per-element constant (`SeriesConstantNode`): its values, in the unit
+    /// it was written in, in `Step::elements`. Checked on GCC under
+    /// `-Wshadow`: the node carries the `Node` suffix and the factory is
+    /// `series_constant`, so nothing in namespace `formula` is spelt
+    /// `SeriesConstant`.
+    SeriesConstant,
+    /// Elementwise negation (`ElementwiseUnaryNode`). This and the four
+    /// below record one step for the whole series, with every element in
+    /// `Step::elements` and the operands -- a broadcast scalar's step once --
+    /// in `Step::operands`. Checked on GCC under `-Wshadow`: the nodes are
+    /// `ElementwiseUnaryNode` and `ElementwiseBinaryNode`, so nothing in
+    /// namespace `formula` is spelt like these five.
+    ElementwiseNegate,
+    /// Elementwise addition (`ElementwiseBinaryNode`).
+    ElementwiseAdd,
+    /// Elementwise subtraction.
+    ElementwiseSubtract,
+    /// Elementwise multiplication.
+    ElementwiseMultiply,
+    /// Elementwise division.
+    ElementwiseDivide,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -977,6 +998,27 @@ namespace detail
         static constexpr StepKind value = StepKind::SeriesVariable;
     };
 
+    template <Unit U, std::size_t N>
+    struct SeriesStepKindOf<SeriesConstantNode<U, N>>
+    {
+        static constexpr StepKind value = StepKind::SeriesConstant;
+    };
+
+    template <UnaryOperator Op, SeriesNode Operand>
+    struct SeriesStepKindOf<ElementwiseUnaryNode<Op, Operand>>
+    {
+        static constexpr StepKind value = StepKind::ElementwiseNegate;
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct SeriesStepKindOf<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        static constexpr StepKind value = Op == BinaryOperator::Add        ? StepKind::ElementwiseAdd
+                                          : Op == BinaryOperator::Subtract ? StepKind::ElementwiseSubtract
+                                          : Op == BinaryOperator::Multiply ? StepKind::ElementwiseMultiply
+                                                                           : StepKind::ElementwiseDivide;
+    };
+
     /// Whether @p stepKind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
     /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
@@ -1729,6 +1771,11 @@ class RecordingSink
             seriesStep.unit = Describe<typename S::quantity>::unit;
             seriesStep.symbol = symbol_of<typename S::quantity>(_vocabulary);
         }
+        // A per-element constant is shown in the unit it was written in; a
+        // computed series has no declared unit, as a computed scalar has
+        // none, and keeps the coherent one.
+        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesConstant)
+            seriesStep.unit = S::unit;
 
         // Everything unclaimed from `seriesMark` onwards belongs to this
         // series -- see `produced` above for why this is a `while`.

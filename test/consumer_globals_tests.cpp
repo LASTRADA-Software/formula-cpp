@@ -29,7 +29,8 @@
 // `measured_series`, `entered` of a series, `Environment::get_series` and
 // `checked_evaluate_series` of a series variable, derived and entered;
 // `render` and `document` of a series variable, and `explain_series` with
-// its trace rendered;
+// its trace rendered; elementwise arithmetic with a broadcast scalar,
+// negation and a per-element constant, on the same surfaces;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -380,6 +381,19 @@ ConsumerGlobalsProbe probe_consumer_globals()
     auto const explainedSeries = formula::explain_series<EdgeX>(formula::series<EdgeX, 2>, seriesInputs, north);
     probe.checks.push_back(seriesPages == "x_m(i)`x_m(i)`{x_m}_{i}"
                            && seriesDocumentation.symbols[0].shape == formula::ValueShape::Series);
+    // Elementwise arithmetic with a broadcast scalar, negation and a
+    // per-element constant, through evaluation, render, document and trace.
+    auto const weighted =
+        -(formula::series<EdgeX, 2>
+          * formula::series_constant<unit::One>(formula::Rational { 2 }, formula::Rational { 3 }) / var<Factor>);
+    auto const weightedInputs = formula::environment(screens, formula::Measured<Factor> { formula::Rational { 2 } });
+    auto const explainedWeighted = formula::explain_series<EdgeX>(weighted, weightedInputs, north);
+    probe.checks.push_back(explainedWeighted.outcome.has_value()
+                           && explainedWeighted.outcome->element(0).value() == formula::Rational { -150 }
+                           && explainedWeighted.outcome->element(1).is_absent()
+                           && formula::render<formula::Dialect::LaTeX>(weighted).find("values") != std::string::npos
+                           && formula::document(weighted).symbols.size() == 2
+                           && !formula::render_trace(explainedWeighted.trace, { .maxSteps = 20 }).empty());
     probe.checks.push_back(explainedSeries.outcome.has_value()
                            && formula::render_trace(explainedSeries.trace, { .maxSteps = 4 })
                                   == "1. x_m = 150 mm; (not measured)\n");
