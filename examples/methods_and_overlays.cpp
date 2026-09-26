@@ -92,16 +92,24 @@ namespace
 {
 // ---- 1. The method -------------------------------------------------------------
 //
-// Three variants, one per shape, in the order the method publishes them. They
+// Three variants, one per shape, in the order the method publishes them -- the
+// prism first, so that when the south prunes it the other two keep their
+// published positions visibly: still 2nd and 3rd of 3, not 1st and 2nd. They
 // are different expressions of different types; what they must share is the
 // dimension they report, and a pack whose variants disagree does not compile.
+//
+// Kept out of clang-format's hands: it reads `var<ShapeFactor> * var<Force>`
+// as a pointer declaration and writes `var<ShapeFactor>* var<Force>`, and the
+// guide quotes this declaration verbatim.
+// clang-format off
 inline constexpr auto compressiveStrength = formula::method(
-    formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeA> * var<EdgeB>) ),
+    formula::variants(formula::variant<Prism>(var<Force> / (var<EdgeA> * var<EdgeA>)),
+                      formula::variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeA> * var<EdgeB>)),
                       formula::variant<Cylinder>(formula::constant<unit::One>(rat(4)) * var<Force>
-                                                 / (formula::pi * formula::pow<2>(var<Diameter>))),
-                      formula::variant<Prism>(var<Force> / (var<EdgeA> * var<EdgeA>) )),
+                                                 / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
+// clang-format on
 
 // A 150 x 100 mm cube face loaded to 90.1 kN: 6.00666... MPa, so a rounding
 // rule's granularity shows in the number -- 6.0 MPa to one decimal, 6.01 to two.
@@ -240,7 +248,7 @@ int main()
 
     std::string const cylinderTrace = derivationOf<Cylinder>(compressiveStrength);
     std::printf("%s\n", cylinderTrace.c_str());
-    check(cylinderTrace.find("[variant cylinder 150 x 300 mm (2nd of 3), selected by tag]") != std::string::npos,
+    check(cylinderTrace.find("[variant cylinder 150 x 300 mm (3rd of 3), selected by tag]") != std::string::npos,
           "the cylinder variant is named as its TagName spells it, at its published position");
 
     // ---- 2. Overlays ---------------------------------------------------------------
@@ -261,16 +269,16 @@ int main()
     check(exact(formula::evaluate_method<Cylinder>(southern, specimen)) == "5300000 Pa"
               && exact(formula::evaluate_method<Cylinder>(compressiveStrength, specimen)) == "5100000 Pa",
           "the south's replacement formula is the one that ran: 5.3 MPa, not the base method's 5.1");
-    check(southCylinder.find("(2nd of 3)") != std::string::npos,
-          "a variant keeps its published position after another is pruned");
+    check(southCylinder.find("(3rd of 3)") != std::string::npos,
+          "a variant keeps its published position after one before it is pruned");
 
     std::string const eastCube = derivationOf<Cube>(eastern);
-    check(eastCube.find("[variant Cube (1st of 3), selected by tag]") != std::string::npos,
+    check(eastCube.find("[variant Cube (2nd of 3), selected by tag]") != std::string::npos,
           "a pinned variant is still counted in the method as published");
     std::printf("east: %zu variant(s) left after the pin\n\n", std::tuple_size_v<decltype(eastern.variantSet.cases)>);
 
     std::printf("documentation of the south's cube:\n");
-    auto const southCubeFormula = std::get<0>(southern.variantSet.cases).expression;
+    auto const southCubeFormula = std::get<0>(southern.variantSet.cases).expression; // the prism is pruned
     formula::Documentation const southPage = formula::document(southCubeFormula);
     std::printf("  %s\n", southPage.formula.c_str());
     print_symbols(southPage);
@@ -287,7 +295,7 @@ int main()
 
     // ---- 4. A vocabulary --------------------------------------------------------------
     std::printf("== 4. The same formula in two jurisdictions' words ==\n\n");
-    auto const baseCubeFormula = std::get<0>(compressiveStrength.variantSet.cases).expression;
+    auto const baseCubeFormula = std::get<1>(compressiveStrength.variantSet.cases).expression;
     std::string const inNorth = formula::render(baseCubeFormula, northernWords);
     std::string const inSouth = formula::render(baseCubeFormula, southernWords);
     std::printf("north: %s\nsouth: %s\n\n", inNorth.c_str(), inSouth.c_str());
@@ -298,7 +306,9 @@ int main()
     print_symbols(southernPage);
     std::printf("\n");
 
-    std::string const southernTrace = derivationOf<Cube>(compressiveStrength, southernWords);
+    formula::Trace<> trace {};
+    (void) formula::evaluate_method<Cube>(compressiveStrength, specimen, formula::RecordingSink { trace, southernWords });
+    std::string const southernTrace = formula::render_trace(trace, { .maxSteps = 30 });
     std::printf("%s\n", southernTrace.c_str());
     check(southernTrace.find("4. b = 150 mm\n") != std::string::npos, "the trace writes the 150 mm edge as the south does");
 

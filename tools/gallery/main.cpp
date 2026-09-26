@@ -312,8 +312,8 @@ constexpr auto correctedStrength = formula::documented(
 // ---- A method, and the method a jurisdiction's overlay yields --------------
 //
 // Two specimen shapes, one rounding rule. The overlay fixes the shape factor
-// the base method reads from the specimen, replaces the cylinder formula, and
-// reports in its own unit -- each change said in the trace, with what the
+// the base method reads from the specimen and reports in its own unit, to two
+// decimals of N/mm2 -- each change said in the trace, with what the
 // jurisdiction cited.
 
 struct Cube
