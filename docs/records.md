@@ -5,8 +5,8 @@ as a ratio to a reference sample's; a reading is compared with a prior test of
 the same sample; a correction is computed from measurements made on separate
 material. The formula then reads from a record other than the one being
 evaluated, and an audit trail that lists only numbers cannot say whose they
-were. formula-cpp lets a formula read from another record, and every line of
-the trace says which record each value came from.
+were. formula-cpp lets a formula read from another record, and its trace keeps,
+for every step, which record the step was read from.
 
 The worked example is `examples/records.cpp`. The page holds two kinds of
 quoted block. **Program output** is copied verbatim from that program's actual
@@ -38,6 +38,37 @@ struct SecondReference
 };
 ```
 
+The quantities are declared once, as everywhere in this library, and each
+record holds its own values of them. The reference specimen's strength was
+typed in by a person, so its entry is wrapped in `entered(...)`; a value that
+was measured is a plain `Measured<Q>`:
+
+```cpp
+struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit::Megapascal>
+{
+};
+struct Force: formula::Quantity<Force, "F", "load at failure", unit::Newton>
+{
+};
+struct EdgeX: formula::Quantity<EdgeX, "x_m", "measured edge", unit::Millimetre>
+{
+};
+struct EdgeY: formula::Quantity<EdgeY, "y_m", "measured edge", unit::Millimetre>
+{
+};
+```
+
+```cpp
+constexpr auto here = formula::environment(formula::Measured<Strength> { formula::Rational { 30 } },
+                                           formula::Measured<Force> { formula::Rational { 579'630 } },
+                                           formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                           formula::Measured<EdgeY> { formula::Rational { 139 } });
+constexpr auto there = formula::environment(formula::entered(formula::Measured<Strength> { formula::Rational { 20 } }),
+                                            formula::Measured<Force> { formula::Rational { 386'420 } },
+                                            formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                            formula::Measured<EdgeY> { formula::Rational { 139 } });
+```
+
 The formula that divides this specimen's strength by the reference's reads
 the reference through `from_record`:
 
@@ -45,11 +76,9 @@ the reference through `from_record`:
 constexpr auto ratio = var<Strength> / formula::from_record<Reference>(var<Strength>);
 ```
 
-The records are data. Each carries a key -- a sample and a test, two separate
-strong types, so a swapped pair does not compile and a missing one is not
-silently zero -- its own environment, and the lineage keys the laboratory
-states for it (see [Lineage is a gate](#lineage-is-a-gate)). A **context**
-holds this record and the others by role:
+The records are data. Each carries a key, its own environment, and the lineage
+keys the laboratory states for it (see [Lineage is a gate](#lineage-is-a-gate)).
+A **context** holds this record and the others by role:
 
 ```cpp
 constexpr auto records = formula::record_context(
@@ -59,10 +88,18 @@ constexpr auto records = formula::record_context(
                                formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(12)));
 ```
 
-`formula::ThisRecord` is the library's role for the specimen being evaluated.
-A formula that reads from a role the context does not bind is a compile error
-naming the role, never a run-time miss: the set of roles is code, and which
-record plays each one is data.
+- **A key is a sample and a test,** two separate strong types, so a swapped
+  pair does not compile and a missing one is not silently zero.
+- **Keys are integers.** A sample key, a test key and a lineage key are each a
+  `std::uint64_t` -- whatever the laboratory's database uses to identify the
+  row. The trace prints the integers it was given. Turning a key into the
+  label a person reads, such as a sample code, is the report's job, outside
+  the trace.
+- **`formula::ThisRecord`** is the library's role for the specimen being
+  evaluated.
+- **A formula that reads from a role the context does not bind** is a compile
+  error naming the role, never a run-time miss: the set of roles is code, and
+  which record plays each one is data.
 
 **A context is this record's environment.** It inherits it, so everything that
 takes an environment -- `checked_evaluate`, `evaluate_method`, `check_method`,
@@ -70,7 +107,7 @@ takes an environment -- `checked_evaluate`, `evaluate_method`, `check_method`,
 it exactly as from the environment itself:
 
 ```text
-f_c / (f_c of Reference) = 6/5
+f_c / (f_c of Reference) = 3/2
 f_c through the context: 30000000 Pa
 f_c through this record's environment: 30000000 Pa
 ```
@@ -94,7 +131,7 @@ operand of more than one symbol is bracketed, so the role qualifies the whole
 computation and not its last symbol:
 
 ```text
-(F / (x_m * y_m)) of Reference = 25000000 Pa
+(F / (x_m * y_m)) of Reference = 20000000 Pa
 \left(\frac{F}{x_m \cdot y_m}\right)\ \text{of }\mathrm{Reference}
 ```
 
@@ -105,22 +142,28 @@ reads it.
 
 ### What the trace says
 
-Every step inside a scope says which record it was read from, with both keys
--- two tests of one sample share the sample key, so a sample alone could name
-either. The reference's strength was typed in by a person, and the line says
-that too:
+**Every step inside a scope carries the record it was read from**, as a
+structured field of the step (`Step::record`), with both keys -- two tests of
+one sample share the sample key, so a sample alone could name either. The
+rendered line names the record on each value read from it and on the scope's
+own line. A step computed inside the scope carries the record too, but its
+line names only its operands (`#3 * #4`), whose own lines say where their
+values came from. The reference's strength was typed in by a person, and its
+line says that too:
 
 ```text
 1. f_c = 30 MPa
-2. f_c = 25 MPa, from record Reference (sample 23, test 3), entered by hand
-3. #2 from record Reference (sample 23, test 3) = 25 MPa
-4. #1 / #3 = 6/5
+2. f_c = 20 MPa, from record Reference (sample 23, test 3), entered by hand
+3. #2 from record Reference (sample 23, test 3) = 20 MPa
+4. #1 / #3 = 3/2
 ```
 
-The documentation page keeps a row for each record a quantity is read from:
-`f_c` read here and `f_c` read from the reference are two inputs, and one
-merged row would tell a reader to supply one value where the formula reads
-two.
+The documentation `document(ratio)` returns keeps a row in its symbol table
+for each record a quantity is read from: `f_c` read here and `f_c` read from
+the reference are two inputs, and one merged row would tell a reader to supply
+one value where the formula reads two. The example prints the two rows of
+`page.symbols` itself -- the library has no renderer for a symbol table, which
+is the page's job:
 
 ```text
   f_c: compressive strength, this record
@@ -147,6 +190,10 @@ What no library can prevent, stated plainly:
 
 - `Trace::steps` is a public arena. Any code can append a step or edit one.
 - A valid origin the library built can be copied and handed to a sink by hand.
+- An origin is trivially copyable, so `std::bit_cast` from a struct of the
+  same layout builds one holding anything. No access check applies to
+  `bit_cast`, and nothing in the language lets a class refuse it while staying
+  trivially copyable.
 - A caller can wrap a typed-in value as `Measured<Q>`; the keys and the source
   are the caller's statement about its own data, recorded as stated.
 - Explicitly specialising a library template or member is outside the
@@ -156,7 +203,9 @@ What no library can prevent, stated plainly:
 
 The structured fields of each step -- its kind, its origin, its lineage
 comparison -- are what is authoritative; the rendered line is their
-description.
+description. A role displayed as `this record`, in any case, is refused, since
+every value read from it would be traced as read from the record being
+evaluated.
 
 ## Lineage is a gate
 
@@ -173,21 +222,28 @@ structs the example declares. The library knows no attribute and decides
 nothing about which batch a specimen belongs to -- that is the laboratory's
 data. It compares the two keys each record states, before it evaluates the
 operand, and records one line per attribute in the order the requirement names
-them. There are three outcomes.
+them. The rule is:
+
+- **any attribute that differs refuses the read,** whatever the others say;
+- **otherwise, any attribute with an unknown key gives no answer;**
+- **otherwise the value is read.**
 
 **Every attribute agrees:** the value is read.
 
 ```text
 1. same MaterialBatch as this record: 4411 and 4411, satisfied
 2. same TestMethod as this record: 12 and 12, satisfied
-3. f_c = 25 MPa, from record Reference (sample 23, test 3), entered by hand
-4. #3 from record Reference (sample 23, test 3) = 25 MPa
+3. f_c = 20 MPa, from record Reference (sample 23, test 3), entered by hand
+4. #3 from record Reference (sample 23, test 3) = 20 MPa
 ```
 
 **An attribute differs:** the read is refused, and the operand is never
 evaluated. A refusal is an error, not a number, so a caller cannot report it by
-forgetting to look at a verdict. `checked_explain` traces it without throwing,
-and hands back the trace with the error:
+forgetting to look at a verdict. It is reported as
+`ArithmeticError::DomainError`, whose words are *argument outside the domain of
+the operation* -- the same channel a lookup that finds no row uses -- and the
+trace names the attribute that refused it, with both keys. `checked_explain`
+traces it without throwing, and hands back the trace with the error:
 
 ```text
 1. same MaterialBatch as this record: 4411 and 4411, satisfied
@@ -198,9 +254,10 @@ and hands back the trace with the error:
 `explain`, which goes through the throwing `evaluate`, would throw here and
 return no trace at all; use `checked_explain` wherever a read can be refused.
 
-**A key is unknown:** there is no answer. An unknown batch is a missing input,
-not evidence that two batches differ, so the read is absent, as any formula
-with a missing input is:
+**A key is unknown, and nothing differs:** there is no answer. An unknown batch
+is a missing input, not evidence that two batches differ, so the read is
+absent, as any formula with a missing input is. The trace shows an absent value
+as `(not measured)`, the library's one word for absent:
 
 ```text
 1. same MaterialBatch as this record: 4411 and unknown, not checked
@@ -208,22 +265,46 @@ with a missing input is:
 3. from record Reference (sample 23, test 3) = (not measured)
 ```
 
+**A key is unknown, and another differs:** the read is refused. A known
+disagreement is evidence, and an unknown key does not outweigh it:
+
+```text
+1. same MaterialBatch as this record: 4411 and unknown, not checked
+2. same TestMethod as this record: 12 and 13, violated
+3. from record Reference (sample 23, test 3) = argument outside the domain of the operation
+```
+
 `same_lineage<...>()` compares with this record. To compare two other records
 -- neither of them this specimen -- name the other one:
 `same_lineage<MaterialBatch>(formula::against<PriorTest>)`.
 
+**What the gate is not.** It refuses a read; it does not produce a verdict. A
+method whose acceptance logic wants to accept a result *and* flag a batch
+mismatch cannot express that as a constraint yet. Nor does the library model
+where a batch came from or how long it stays valid: plant lifecycles, rolling
+windows and batch assignment stay with the laboratory's own data.
+
 ## A record not yet made
 
 The reference test may not have been done yet. That is ordinary laboratory
-data, so the record keeps its role and has no key, no lineage and no values:
+data, so the record keeps its role, and has no key and no values. It names the
+lineage attributes it would declare in its type -- `unbound()` takes nothing
+to declare them with -- and every one of them is unknown:
 
 ```cpp
 auto const notYetTested = formula::record_context(
-    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
-    formula::Record<Reference, std::remove_cv_t<decltype(there)>>::unbound());
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
+                                         formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(12)),
+    formula::Record<Reference, decltype(there), formula::LineageEntry<MaterialBatch>,
+                    formula::LineageEntry<TestMethod>>::unbound());
 ```
 
-A read from it gives no answer -- never zero -- and checks no lineage:
+`decltype(there)` names the environment's type as it is declared -- `const`,
+for a `constexpr` variable -- and the record is the same type
+`formula::record<Reference>(...)` builds from `there`, so one formula takes
+one context type whether the reference has been tested or not.
+
+A read from it gives no answer -- never zero:
 
 ```text
 1. f_c = 30 MPa
@@ -231,8 +312,24 @@ A read from it gives no answer -- never zero -- and checks no lineage:
 3. #1 / #2 = (not measured)
 ```
 
+and the gated read over it compares no lineage, since every key is unknown and
+no record is there to read:
+
+```text
+1. from record Reference (no record bound) = (not measured)
+```
+
 An entry a person typed in but left empty is not a measurement nobody made. It
-reads as what it is:
+is spelt `entered(Measured<Q>::absent())`:
+
+```cpp
+auto const typedInEmpty = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
+                               formula::environment(formula::entered(formula::Measured<Strength>::absent()))));
+```
+
+and it reads as what it is:
 
 ```text
 1. f_c = 30 MPa
@@ -244,14 +341,15 @@ reads as what it is:
 ## A role's name reads as a name
 
 A role's name is written into formulas in every dialect and into every trace
-line read from its record. It may hold only ASCII letters, digits, underscores
-and single spaces between words. Anything else would read as something the
-method does not do -- `Reference-B` typesets in LaTeX as a subtraction, and a
-role that is a template specialisation, `Batch<2>`, as two comparisons -- so it
-is refused, and the author is pointed at `TagName`:
+line read from its record. It must start with an ASCII letter, and hold only
+ASCII letters, digits, underscores and single spaces between words. Anything
+else would read as something the method does not do -- `Reference-B` typesets
+in LaTeX as a subtraction, a role that is a template specialisation,
+`Batch<2>`, as two comparisons, and `f_c of 9` as arithmetic on a number -- so
+it is refused, and the author is pointed at `TagName`:
 
 ```
-static assertion failed: formula: this record role's displayed name is not identifier-like; a role's name is written into formulas and traces in every dialect, so it may hold only ASCII letters, digits, underscores and single spaces between words -- an operator character such as - < ' * would read as arithmetic, a control character breaks the page, and a non-ASCII character is dropped by some LaTeX fonts; the role appears in this diagnostic as the template argument of RequireIdentifierLikeRoleName -- specialise formula::TagName for it to spell its name so
+static assertion failed: formula: this record role's displayed name is not identifier-like; a role's name is written into formulas and traces in every dialect, so it must start with an ASCII letter and hold only ASCII letters, digits, underscores and single spaces between words -- a leading digit or an operator character such as - < ' * would read as arithmetic, a control character breaks the page, and a non-ASCII character is dropped by some LaTeX fonts; the role appears in this diagnostic as the template argument of RequireIdentifierLikeRoleName -- specialise formula::TagName for it to spell its name so
 ```
 
 `TagName` spells a role as it should read:

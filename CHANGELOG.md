@@ -103,15 +103,18 @@ leave 30 bits or more, but a sample variance of masses read to 0.01 mg leaves 4,
 being evaluated through `from_record<Role>(expression)`: one value, or a computation over the
 other specimen's own measurements. A role is a type the author declares and a record is data --
 a sample and test key, an environment and lineage keys -- held by role in a `record_context`,
-which is this record's environment and so goes wherever an environment goes. Every step read from
-another record says which, with both keys; every input says whether it was measured or typed in,
-and an entry typed in empty says so. `same_lineage<Attrs...>()` gates a read on the two records
-sharing the author's lineage attributes: the value, a refusal naming the attribute, or no answer
-when a key is unknown. A record not yet made gives no answer, never zero. `checked_explain` traces
-a refused read without throwing. On the page a read reads `f_c of Reference`, and `(F / A) of
-Reference` for a computation, with a row per record in the symbol table; a role's name must be
-identifier-like, and `TagName` spells it otherwise. An overlay's constant or derived quantity
-reaches inside a read from another record, as it reaches the rest of the method.
+which is this record's environment and so goes wherever an environment goes. Every step inside
+a read from another record carries which record it was read from, with both keys, and each value
+read from it names the record in its trace line; every input says whether it was measured or
+typed in, and an entry typed in empty says so. `same_lineage<Attrs...>()` gates a read on the two
+records sharing the author's lineage attributes: the value; a refusal (`DomainError`) when any
+attribute differs, with the trace naming it and both keys; or no answer when a key is unknown and
+none differs. A record not yet made gives no answer, never zero. `checked_explain` traces a
+refused read without throwing. On the page a read reads `f_c of Reference`, and `(F / A) of
+Reference` for a computation, with a row per record in the symbol table. A role's name must be
+identifier-like -- starting with a letter, and never `this record` -- and `TagName` spells it
+otherwise. An overlay's constant or derived quantity reaches inside a read from another record,
+as it reaches the rest of the method.
 
 ### Changed
 
@@ -136,7 +139,7 @@ reaches inside a read from another record, as it reaches the rest of the method.
   `-Wunused-but-set-parameter` on the sink, in a consumer's own build under `-Werror`.
 - Locals and parameters in the public headers shared names with ordinary globals such as
   `result`, `value`, `index`, `here` and `origin`, so cl at `/W4 /WX` reported C4459 in a consumer
-  that declared one, and failed to build. They are renamed, and a test declares 268 such globals
+  that declared one, and failed to build. They are renamed, and a test declares some 260 such globals
   before every header.
 - cl names an enumerator that is not one as a cast, `(enum Flag)true`; it was shown as a name, and
   is refused now.

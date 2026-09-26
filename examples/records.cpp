@@ -19,8 +19,8 @@
 //   4. A record not yet made gives no answer, never zero.
 //   5. A role's name is written into formulas, so it must read as a name.
 //
-// Every citation and number here is invented, as in every other example in
-// this repository.
+// Every number here is invented, as in every other example in this
+// repository; nothing here cites a standard.
 
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
@@ -31,7 +31,6 @@
 #include <cstdio>
 #include <string>
 #include <string_view>
-#include <type_traits>
 
 namespace
 {
@@ -91,8 +90,8 @@ constexpr auto here = formula::environment(formula::Measured<Strength> { formula
                                            formula::Measured<Force> { formula::Rational { 579'630 } },
                                            formula::Measured<EdgeX> { formula::Rational { 139 } },
                                            formula::Measured<EdgeY> { formula::Rational { 139 } });
-constexpr auto there = formula::environment(formula::entered(formula::Measured<Strength> { formula::Rational { 25 } }),
-                                            formula::Measured<Force> { formula::Rational { 483'025 } },
+constexpr auto there = formula::environment(formula::entered(formula::Measured<Strength> { formula::Rational { 20 } }),
+                                            formula::Measured<Force> { formula::Rational { 386'420 } },
                                             formula::Measured<EdgeX> { formula::Rational { 139 } },
                                             formula::Measured<EdgeY> { formula::Rational { 139 } });
 
@@ -123,8 +122,8 @@ constexpr auto recordsWith(Batch batch, Method method)
                                    method));
 }
 
-/// A value in coherent SI, exactly, with its unit: `30000000 Pa`, `6/5`, or
-/// `no answer`.
+/// A value in coherent SI, exactly, with its unit: `30000000 Pa` or `3/2`;
+/// `no answer` when it is absent, and `refused` when it is an error.
 std::string exact(formula::Evaluated<formula::Rational> const& evaluated, std::string_view unitText)
 {
     if (!evaluated.has_value())
@@ -166,7 +165,7 @@ int main()
     std::string const ratioText = formula::render(ratio);
     std::string const ratioValue = exact(formula::checked_evaluate_si<formula::Rational>(ratio, records), "");
     std::printf("%s = %s\n", ratioText.c_str(), ratioValue.c_str());
-    check(ratioValue == "6/5", "30 MPa here over the reference's 25 MPa");
+    check(ratioValue == "3/2", "30 MPa here over the reference's 20 MPa");
 
     // The context is this record's environment: anything that takes one takes
     // the context, and reads this record's values from it.
@@ -186,7 +185,7 @@ int main()
 
     std::string const ratioTrace = traceOf(ratio, records);
     std::printf("%s\n", ratioTrace.c_str());
-    check(ratioTrace.find("f_c = 25 MPa, from record Reference (sample 23, test 3), entered by hand")
+    check(ratioTrace.find("f_c = 20 MPa, from record Reference (sample 23, test 3), entered by hand")
               != std::string::npos,
           "the reference's typed-in strength, and whose it is");
 
@@ -219,15 +218,36 @@ int main()
     check(!formula::checked_evaluate_si<formula::Rational>(gated, batchUnknown)->has_value(),
           "an unknown batch gives no answer");
 
+    // A disagreement refuses the read even when another key is unknown: an
+    // unknown key gives no answer only when nothing disagrees.
+    auto const unknownAndOtherMethod =
+        recordsWith(formula::unknown_lineage<MaterialBatch>(), formula::lineage<TestMethod>(13));
+    auto const refusedDespiteUnknown = formula::checked_explain<Strength>(gated, unknownAndOtherMethod);
+    if (!refusedDespiteUnknown.has_value())
+        std::printf("%s\n", formula::render_trace(refusedDespiteUnknown.error().trace, { .maxSteps = 20 }).c_str());
+    check(!refusedDespiteUnknown.has_value()
+              && refusedDespiteUnknown.error().error == formula::ArithmeticError::DomainError,
+          "a different method refuses the read, though the batch is unknown");
+
     std::printf("== 4. A record not yet made ==\n\n");
 
     auto const notYetTested = formula::record_context(
-        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
-        formula::Record<Reference, std::remove_cv_t<decltype(there)>>::unbound());
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
+                                             formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(12)),
+        formula::Record<Reference, decltype(there), formula::LineageEntry<MaterialBatch>,
+                        formula::LineageEntry<TestMethod>>::unbound());
     std::string const unbound = traceOf(ratio, notYetTested);
     std::printf("%s\n", unbound.c_str());
     check(!formula::checked_evaluate_si<formula::Rational>(ratio, notYetTested)->has_value(),
           "no answer, never zero");
+
+    // The same record behind the gated read: every attribute it declares is
+    // unknown, so no lineage is compared, and there is no answer.
+    std::string const unboundGated = traceOf(gated, notYetTested);
+    std::printf("%s\n", unboundGated.c_str());
+    check(!formula::checked_evaluate_si<formula::Rational>(gated, notYetTested)->has_value()
+              && unboundGated.find("same ") == std::string::npos,
+          "a gated read over a record not yet made checks no lineage, and gives no answer");
 
     auto const typedInEmpty = formula::record_context(
         formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),

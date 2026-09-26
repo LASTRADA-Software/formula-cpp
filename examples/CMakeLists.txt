@@ -194,7 +194,7 @@ add_test(NAME docs.series-snippets
 # typed-in reference value with its record, the lineage gate's three outcomes,
 # a record not yet made, an entry left empty by hand, and a role spelt
 # through TagName.
-formula_add_example(records records.cpp [==[\(F / \(x_m \* y_m\)\) of Reference = 25000000 Pa.*f_c = 25 MPa, from record Reference \(sample 23, test 3\), entered by hand.*same TestMethod as this record: 12 and 12, satisfied.*same TestMethod as this record: 12 and 13, violated.*same MaterialBatch as this record: 4411 and unknown, not checked.*from record Reference \(no record bound\).*f_c = \(entered by hand as empty\), from record Reference.*f_c of second reference.*all checks passed: yes]==])
+formula_add_example(records records.cpp [==[\(F / \(x_m \* y_m\)\) of Reference = 20000000 Pa.*f_c = 20 MPa, from record Reference \(sample 23, test 3\), entered by hand.*same TestMethod as this record: 12 and 12, satisfied.*same TestMethod as this record: 12 and 13, violated.*same MaterialBatch as this record: 4411 and unknown, not checked.*same TestMethod as this record: 12 and 13, violated.*from record Reference \(no record bound\).*f_c = \(entered by hand as empty\), from record Reference.*f_c of second reference.*all checks passed: yes]==])
 
 # Every output block of docs/records.md must be a run of lines the example
 # really prints, and every code block must appear in its source.
