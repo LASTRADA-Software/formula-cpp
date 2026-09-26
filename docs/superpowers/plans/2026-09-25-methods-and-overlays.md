@@ -189,7 +189,7 @@ inline constexpr auto broken = formula::variants(
 
 Delete `RequireVariantsAgree`'s `static_assert` and rebuild the negative case. It **must now compile**. If it still fails, it is pinning something else and is worthless — a negative test did exactly that in phase 10 and survived a full review.
 
-- [ ] **Step 8: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 8: Verify on all eight presets, plus Doxygen and mkdocs**
 
 - [ ] **Step 9: Commit**
 
@@ -308,7 +308,7 @@ struct RequireVariantForTag
 
 `test/negative/method_no_matching_variant.cpp` selects a `Prism` from a method declaring only `Cube` and `Cylinder`. Then delete `RequireVariantForTag`'s `static_assert` and confirm the case **compiles**.
 
-- [ ] **Step 7: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 7: Verify on all eight presets, plus Doxygen and mkdocs**
 
 - [ ] **Step 8: Commit**
 
@@ -377,7 +377,7 @@ inline constexpr auto broken = formula::variants(
 
 Delete the guard: the case must **compile**. Then mutate the check to compare only the first pair, only the last pair, and only adjacent pairs — each must fail this one negative test **and nothing else**. Report which test each mutation killed, not merely that the suite went red.
 
-- [ ] **Step 6: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 6: Verify on all eight presets, plus Doxygen and mkdocs**
 
 - [ ] **Step 7: Commit**
 
@@ -440,7 +440,7 @@ In `trace.hpp`'s `StepKind`, after `Documented`:
 
 Change the recorded tag to always be the first variant's. The new test must fail **and nothing else**.
 
-- [ ] **Step 7: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 7: Verify on all eight presets, plus Doxygen and mkdocs**
 
 - [ ] **Step 8: Commit**
 
@@ -505,7 +505,7 @@ static_assert((std::is_same_v<Tag, typename Cs::tag> || ...),
 
 - [ ] **Step 6: Negative test, then the deletion check**
 
-- [ ] **Step 7: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 7: Verify on all eight presets, plus Doxygen and mkdocs**
 
 - [ ] **Step 8: Commit**
 
@@ -549,7 +549,7 @@ TEST_CASE("the trace says where the rounding rule came from", "[trace][overlay]"
 - [ ] **Step 3: Implement `with_rounding` and the provenance-carrying step**
 - [ ] **Step 4: Run the test; confirm the filter selected the expected count**
 - [ ] **Step 5: Mutate the provenance field to a constant and confirm this test alone fails**
-- [ ] **Step 6: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 6: Verify on all eight presets, plus Doxygen and mkdocs**
 - [ ] **Step 7: Commit**
 
 ```bash
@@ -594,7 +594,7 @@ TEST_CASE("an overlay replaces a formula wholesale and the trace still explains 
 - [ ] **Step 3: Implement `replace_variant<Tag>` and `add_derived<Q>`**
 - [ ] **Step 4: Implement the quantity-change refusal, with a message naming both quantities**
 - [ ] **Step 5: Negative test, then the deletion check**
-- [ ] **Step 6: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 6: Verify on all eight presets, plus Doxygen and mkdocs**
 - [ ] **Step 7: Commit**
 
 ```bash
@@ -602,6 +602,33 @@ git commit -m "feat(overlay): replace a variant wholesale, and refuse a silent q
 ```
 
 ---
+
+## Corrections made during execution — read before any remaining task
+
+Found by pre-flight and review while tasks 1–7 ran; every remaining task
+inherits them.
+
+- **Results are coherent SI, rounded by the method's rule.** Several task
+  fixtures stated MPa values, and some chose values that one-decimal
+  rounding leaves unchanged. Choose fixtures whose right and wrong answers
+  stay distinct *after* SI conversion and rounding.
+- **Eight presets, not seven.** `clang-ubsan` is a CI leg.
+- **A method has no typed result.** `evaluate_method` returns SI
+  `Evaluated<Rep>`; the method knows only its variants' dimension. Task 7's
+  C1 ruling and task 11's item 4 are corrected accordingly.
+- **The trace gained steps after this plan was written**: variant selection
+  (task 4), rounding with provenance, overridden constant (task 6), and
+  derived quantity / replacement (task 7). **Task 8's vocabulary must reach
+  every step that carries a quantity symbol, not only the ones that existed
+  when this plan was written.** Task 9's join must include them.
+- **Provenance must not be forgeable** (task 6): anything that makes the
+  trace or `document()` name a source must be settable only by the library.
+- **Task 10:** `with_constant` already rewrites constraints (task 5), and
+  "does nothing" is judged against the produced method; `with_constraints`
+  must compose with both.
+- Every implementer checks their work against
+  `.superpowers/sdd/2026-09-25-methods-and-overlays/defect-classes.md`
+  before handing in.
 
 ## Task 8: The jurisdiction-scoped vocabulary
 
@@ -642,7 +669,7 @@ TEST_CASE("two jurisdictions cross over one pair of symbols", "[vocabulary]")
 - [ ] **Step 4: Thread it through `render.hpp`, `document.hpp` and `RecordingSink`, defaulted so every existing call site is unchanged**
 - [ ] **Step 5: Prove the existing call sites really are unchanged**
 
-The spike compiled all 11 examples and 13 test TUs unchanged — **but on `clang++ 20.1.8` only**, and it **compiled them without running them** (its unestablished items 7 and 8). Do both properly: build **and run** the full suite on all seven presets.
+The spike compiled all 11 examples and 13 test TUs unchanged — **but on `clang++ 20.1.8` only**, and it **compiled them without running them** (its unestablished items 7 and 8). Do both properly: build **and run** the full suite on all eight presets.
 
 - [ ] **Step 6: Prove the trace is right, not only the page**
 
@@ -652,7 +679,7 @@ Render a trace under a non-default vocabulary and assert the *trace's* symbols c
 
 Compile a consumer node defining `render_node` out of line, exactly as the spike did, both with and without a vocabulary argument.
 
-- [ ] **Step 8: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 8: Verify on all eight presets, plus Doxygen and mkdocs**
 - [ ] **Step 9: Commit**
 
 ```bash
@@ -692,7 +719,7 @@ TEST_CASE("an overlaid method's selected variant renders in the jurisdiction's v
 
 Everything the spike compiled was **one translation unit**. Given §13's `decltype([]{})` finding and this repo's existing `*_cross_tu` tests, an `inline constexpr` overlaid method shared across translation units gets the same check: declare it in a header, use it from two TUs, and **link**. Mangling defects only appear at link time — phase 10 shipped one that no compile caught.
 
-- [ ] **Step 6: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 6: Verify on all eight presets, plus Doxygen and mkdocs**
 - [ ] **Step 7: Commit**
 
 ```bash
@@ -730,7 +757,7 @@ TEST_CASE("an overlay supplies acceptance logic of a different arity", "[overlay
 - [ ] **Step 3: Implement `check_method` and `with_constraints(...)`**
 - [ ] **Step 4: Assert every verdict reaches the trace (D5's third bullet)**
 - [ ] **Step 5: Mutate `check_all`'s index correspondence and confirm a named test fails**
-- [ ] **Step 6: Verify on all seven presets, plus Doxygen and mkdocs**
+- [ ] **Step 6: Verify on all eight presets, plus Doxygen and mkdocs**
 - [ ] **Step 7: Commit**
 
 ```bash
@@ -752,7 +779,7 @@ git commit -m "feat(method): check a method's constraints, and let an overlay re
 1. **Why `variant<Tag>` and not the spec's `when<Tag>`** — the shipped ternary, and the silent mis-binding the spike measured.
 2. **Which kinds of selection are checked when** — tag overlap always; tag completeness only against a closed case set; predicate overlap not at all, because it is not in the type.
 3. **That a method matching no variant has no result** — no fallback, no first-match-wins.
-4. **That an overlay changing the declared unit reports a different quantity**, because `Measured<Q>` carries no unit of its own.
+4. **What "changing the declared unit" means for a method** — a method returns coherent SI and knows only its variants' dimension, so a jurisdiction changes the unit it *reports* in through `with_rounding`'s unit, within the dimension; a replacement measuring a different dimension is refused. No unit field exists anywhere, because `Measured<Q>` carries no unit of its own. (Corrected during execution: the original wording assumed a method reports a typed quantity, which it does not.)
 5. **That the jurisdiction set is closed at compile time and indexed at runtime**, and why the alternative costs type erasure that freezes a sink type into a virtual signature.
 
 **Gallery rules, bought this phase:** use `write_worked_formula(out, node)` for any worked section — every "Worked…" section once rendered a trace and never the expression it came from. **Never hand-type a formula, a rendering or an expected output**; regenerate `docs/gallery.md` and confirm `gallery.is-current` passes.
@@ -767,7 +794,7 @@ git commit -m "feat(method): check a method's constraints, and let an overlay re
 - [ ] **Step 4: Write `docs/methods-and-overlays.md`, quoting only captured output**
 - [ ] **Step 5: Add a method and an overlaid method to the gallery; regenerate; confirm `gallery.is-current`**
 - [ ] **Step 6: Wire the guide into `mkdocs.yml`, `README.md` and `docs/index.md`**
-- [ ] **Step 7: Verify on all seven presets, plus the Doxygen target at 1.9.8 and `mkdocs build --strict`**
+- [ ] **Step 7: Verify on all eight presets, plus the Doxygen target at 1.9.8 and `mkdocs build --strict`**
 - [ ] **Step 8: Commit**
 
 ```bash
