@@ -2268,3 +2268,34 @@ TEST_CASE("a per-element rounding records each element's granularity and its mod
              "2. round(#1, to 0/1 dp) = 1; 2/5 [nearest, ties away from zero]\n");
     CHECK(formula::render(roundedShares) == "round(s(i), to 0/1 dp)");
 }
+
+TEST_CASE("a series and a curve escape their symbols and units, as a scalar step does", "[trace-render][escape][series]")
+{
+    // Phase 11's escaping reaches the series lines through `step_line`, the
+    // one entry point: the declared symbol that spells a jurisdiction's
+    // clause, and the author's unit that closes the value's clause, are
+    // escaped on every element, every pair and an interpolation's value.
+    auto const factors = formula::environment(formula::measured_series<ForgingFactor>(
+        formula::Measured<ForgingFactor> { formula::Rational { 1 } }, formula::Measured<ForgingFactor> { formula::Rational { 2 } }));
+    formula::Trace<> factorTrace {};
+    (void) formula::checked_evaluate_series<ForgingFactor>(formula::series<ForgingFactor, 2>, factors,
+                                                           formula::RecordingSink<> { factorTrace });
+    CHECK(formula::render_trace(factorTrace, { .maxSteps = 10 })
+          == "1. k\\] \\[fixed by jurisdiction overlay: Example Standard 9:2022 NA = 1; 2\n");
+
+    constexpr formula::BreakpointTable<2> points { formula::breakpoint(1), formula::breakpoint(2) };
+    auto const loads = formula::environment(formula::measured_series<ForgingLoad>(
+        formula::Measured<ForgingLoad> { formula::Rational { 4 } }, formula::Measured<ForgingLoad> { formula::Rational { 5 } }));
+    formula::Trace<> curveTrace {};
+    (void) formula::checked_evaluate<ForgingLoad>(
+        formula::interpolate_at(formula::curve(formula::domain<unit::Metre, points>(), formula::series<ForgingLoad, 2>),
+                                formula::constant<unit::Metre>(formula::Rational { 3, 2 })),
+        loads,
+        formula::RecordingSink<> { curveTrace });
+    CHECK(formula::render_trace(curveTrace, { .maxSteps = 20 })
+          == "1. 1 m; 2 m\n"
+             "2. P = 4 N\\] \\[x; 5 N\\] \\[x\n"
+             "3. curve(#1, #2) = 1 m: 4 N\\] \\[x; 2 m: 5 N\\] \\[x\n"
+             "4. 3/2 m\n"
+             "5. interpolate(#3, at #4) = 9/2 N\\] \\[x [between 1 and 2 m]\n");
+}
