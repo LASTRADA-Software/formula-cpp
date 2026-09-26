@@ -1630,6 +1630,63 @@ namespace detail
         return 0;
     }
 
+    /// The first two positions of @p names holding the same text, ordered by
+    /// the later position; `{ 0, 0 }` when there are none -- the rule
+    /// `first_repeated_pair` states for types, for the names a trace shows.
+    template <std::size_t Count>
+    [[nodiscard]] consteval PositionPair first_repeated_name(std::array<std::string_view, Count> const& names) noexcept
+    {
+        for (std::size_t later = 1; later < Count; ++later)
+            for (std::size_t earlier = 0; earlier < later; ++earlier)
+                if (names[earlier] == names[later])
+                    return PositionPair { earlier, later };
+        return PositionPair {};
+    }
+
+    /// Fails to compile when two variants of one method are spelt the same
+    /// wherever the library shows a tag -- `TagName<Cube>` spelling
+    /// `"Cylinder"` beside a real `Cylinder`, say. The tags are distinct
+    /// types (`RequireTagDeclaredOnce`), but a trace line naming the variant
+    /// that ran could not tell a reader which one it was but by its position.
+    ///
+    /// Templated on both positions and both tags, for the reason
+    /// `RequireTagDeclaredOnce` is: the diagnostic names the mistake outright.
+    template <std::size_t First, std::size_t Second, typename FirstTag, typename SecondTag>
+    struct RequireTagNamesDistinct
+    {
+        static_assert(First == Second,
+                      "formula: two variants of this method are spelt the same in a trace, so a line naming the "
+                      "variant that ran could not say which of them it was -- the tags appear in this diagnostic "
+                      "as the template arguments FirstTag and SecondTag of RequireTagNamesDistinct, and First and "
+                      "Second are the ZERO-BASED positions of their variants; spell them apart with "
+                      "formula::TagName");
+
+        static constexpr bool value = true;
+    };
+
+    /// True when no two variants of a pack are spelt the same by `tag_name`;
+    /// the refusal is `RequireTagNamesDistinct`'s. Asked by `evaluate_method`,
+    /// where the names are shown, of every variant of the pack -- so a
+    /// `TagName` of any of them is read the first time the method is
+    /// evaluated with any tag.
+    template <typename Vs>
+    struct RequireDistinctTagNames;
+
+    template <typename... Cs>
+    struct RequireDistinctTagNames<Variants<Cs...>>
+    {
+        static constexpr std::array<std::string_view, sizeof...(Cs)> names { tag_name<typename Cs::tag>()... };
+        static constexpr PositionPair repeated = first_repeated_name(names);
+
+        static_assert(
+            RequireTagNamesDistinct<repeated.first,
+                                    repeated.second,
+                                    typename std::tuple_element_t<repeated.first, std::tuple<Cs...>>::tag,
+                                    typename std::tuple_element_t<repeated.second, std::tuple<Cs...>>::tag>::value);
+
+        static constexpr bool value = true;
+    };
+
     /// Selects the variant tagged `Tag` from a variants pack.
     template <typename Tag, typename Vs>
     struct SelectVariant;
@@ -1811,6 +1868,7 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         // published, which an overlay may differ from -- see
         // `Variants::published`.
         constexpr std::string_view selectedTagName = tag_name<Tag>();
+        static_assert(detail::RequireDistinctTagNames<std::remove_cvref_t<decltype(m.variantSet)>>::value);
         VariantSelection const variantSelection {
             selectedTagName,
             m.variantSet.published.position(Selection::index),

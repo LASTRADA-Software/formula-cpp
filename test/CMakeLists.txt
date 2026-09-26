@@ -617,6 +617,11 @@ formula_add_negative_test(method_duplicate_tag
 
 formula_add_negative_test(method_duplicate_tag_position "RequireTagDeclaredOnce<1,")
 
+# Two distinct tags spelt the same by `TagName`: a trace could not say which
+# variant ran but by its position.
+formula_add_negative_test(method_tag_names_spelt_alike
+    "formula: two variants of this method are spelt the same in a trace")
+
 # Two `variant<int>`: a repeated tag that is not a plain class type either.
 # Fixing the tag clears both, so only the tag rule may report it -- the
 # distinct-tag rule is gated on every tag being plain, and the REJECT pins
