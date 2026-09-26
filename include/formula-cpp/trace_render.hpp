@@ -1990,6 +1990,12 @@ namespace detail
             annotation = derived_quantity_suffix(recorded.citation);
         else if (recorded.kind == StepKind::ReplacedVariant)
             annotation = replaced_variant_suffix(recorded.citation);
+        // A typed-in input says so; a measured one says nothing, since
+        // measured is what an input is unless told otherwise. After a comma,
+        // not in a bracket: it is a plain statement about where the number
+        // came from, not a clause qualifying how it was computed.
+        else if (recorded.kind == StepKind::Variable && recorded.inputSource == ValueSource::ManuallyEntered)
+            annotation = ", entered by hand";
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
         // value fell in, and on a failure it is the only thing separating a

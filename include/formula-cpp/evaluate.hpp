@@ -242,8 +242,29 @@ namespace detail
     }
 } // namespace detail
 
+namespace detail
+{
+    /// Tells @p sink whether the value @p environment holds for `Q` was
+    /// measured or typed in, through the optional hook
+    /// `sink.input_source(node, source)` -- only when the sink defines it
+    /// and the environment can answer `Env::is_entered<Q>`. A consumer's own
+    /// environment type without `is_entered` still evaluates, and its trace
+    /// then records no source rather than a guessed one.
+    template <Described Q, typename Env, typename Sink>
+    constexpr void report_input_source(VarNode<Q> const& node, Sink& sink) noexcept
+    {
+        if constexpr (requires { sink.input_source(node, ValueSource::Measured); }
+                      && requires { Env::template is_entered<Q>; })
+            sink.input_source(node, Env::template is_entered<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured);
+    }
+} // namespace detail
+
 /// Looks `Q` up in `environment` and, if present, converts it to the coherent
 /// SI unit of its dimension.
+///
+/// Just before `produced`, and whether or not the value is present, a sink
+/// that asks is told where the value came from -- see
+/// `detail::report_input_source`.
 template <typename Rep = Rational, Described Q, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(VarNode<Q> const& node,
                                                            Env const& environment,
@@ -254,10 +275,12 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
     if (measured.is_absent())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
+        detail::report_input_source<Q, Env>(node, sink);
         sink.produced(node, absent);
         return absent;
     }
     Evaluated<Rep> const evaluated = detail::in_si<Rep>(*measured.stored(), Describe<Q>::unit);
+    detail::report_input_source<Q, Env>(node, sink);
     sink.produced(node, evaluated);
     return evaluated;
 }

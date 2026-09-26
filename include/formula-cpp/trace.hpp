@@ -1087,6 +1087,14 @@ struct Step
     /// selected variant; what it cited is in `citation`. `false` otherwise.
     bool variantPinned {};
 
+    /// For `Variable`: whether the value was measured or typed in by a
+    /// person, as the environment's entry says -- `Measured<Q>` or
+    /// `Entered<Q>` (`environment.hpp`). Never `Derived`: an input is not
+    /// computed. Empty for every other kind, and for a variable read from an
+    /// environment that cannot say (one without `is_entered`), which is
+    /// recorded as not known rather than guessed.
+    std::optional<ValueSource> inputSource {};
+
     /// Indices of the steps this one consumed, in evaluation order.
     ///
     /// **Not necessarily as many as the node kind suggests.** When an operand
@@ -1261,6 +1269,19 @@ struct Trace
 
     /// The rejections in progress, innermost last. Bookkeeping, as `marks` is.
     std::vector<detail::RejectionInProgress> rejectionsInProgress {};
+
+    /// Where the variable being recorded read its value from, between its
+    /// `entered` and its `produced`: `RecordingSink::input_source` writes it
+    /// and `produced` moves it onto the `Variable` step.
+    ///
+    /// A single slot, not a stack as `branchStack` is: a variable has no
+    /// operands, so nothing can be entered between its own `entered` and
+    /// `produced` to need a slot of its own. `entered` empties it for every
+    /// node, and `produced` empties it for every kind, so it never carries
+    /// one variable's source onto another step.
+    ///
+    /// Bookkeeping, as `marks` is, and for the same reason.
+    std::optional<ValueSource> pendingInputSource {};
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
@@ -2203,6 +2224,7 @@ class RecordingSink
         _trace->unclaimed.clear();
         _trace->branchStack.clear();
         _trace->rejectionsInProgress.clear();
+        _trace->pendingInputSource.reset();
     }
 
     /// Remembers how much of the arena predates this node, so `produced` can
@@ -2217,8 +2239,25 @@ class RecordingSink
     void entered(N const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+        _trace->pendingInputSource.reset();
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
             _trace->branchStack.push_back(Branch::Neither);
+    }
+
+    /// Told, by the variable evaluator (`evaluate.hpp`), whether the value it
+    /// just read was measured or typed in; `produced` puts it on the step.
+    /// Optional, as `branch_taken` is: a sink without it pays nothing.
+    ///
+    /// Public, because the evaluator is not this class's friend. A caller
+    /// that calls it by hand, between a variable's own `entered` and
+    /// `produced`, states a source the library did not read -- the same
+    /// boundary `Trace::steps` has always had, since any code may edit a
+    /// recorded step. Called at any other time it is discarded: `entered`
+    /// empties the slot for every node.
+    template <Described Q>
+    void input_source(VarNode<Q> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
     }
 
     /// Told which branch a `WhenNode` selected, right before it dispatches
@@ -2314,6 +2353,14 @@ class RecordingSink
 
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
+        // Only a variable reads an input. For every other kind the slot is
+        // already empty -- `entered` emptied it, and only the variable
+        // evaluator writes it -- and it is emptied again regardless, so that
+        // nothing a caller wrote by hand outlives the step it was written
+        // during.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
+            nodeStep.inputSource = _trace->pendingInputSource;
+        _trace->pendingInputSource.reset();
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             nodeStep.citation = node.citation;
         // What an overlay cited for the value it fixed, the quantity it
