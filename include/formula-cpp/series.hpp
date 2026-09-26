@@ -242,7 +242,9 @@ class SeriesOutcome
     }
 
     /// The element at zero-based position @p at. Past the end it is absent:
-    /// never a neighbour's value, and never a zero.
+    /// never a neighbour's value, and never a zero -- but not reported
+    /// either, so a caller indexes only inside `for (at = 0; at < N; ++at)`,
+    /// never with a position it computed.
     [[nodiscard]] constexpr Measured<Q> element(std::size_t at) const noexcept
     {
         return at < N ? _elements[at] : Measured<Q>::absent();
@@ -298,9 +300,11 @@ template <Described Result, SeriesNode S, typename Env, typename Sink = NullSink
     static_assert(detail::RequireResultDimension<Result, S>::value);
     constexpr std::size_t seriesLength = S::length;
 
-    // Gated, unlike `checked_evaluate`: without it g++ 14.2 follows this one
-    // refusal with three "no matching function for call to ~expected()" errors
-    // from the evaluation below, while cl 19.51 gives one message either way.
+    // Gated, unlike `checked_evaluate`: without it g++ 13.3 and 14.2 follow
+    // this one refusal with errors from the evaluation below, among them "no
+    // matching function for call to ~expected()", while cl 19.51, clang-cl
+    // and clang++ give one message either way. Pinned by the REJECT on
+    // `evaluate_series_result_dimension_mismatch`.
     if constexpr (!(Describe<Result>::dimension == S::dimension))
         return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
     else if constexpr (Env::template is_entered<Result>)

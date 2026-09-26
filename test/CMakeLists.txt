@@ -276,7 +276,13 @@ formula_add_negative_test(evaluate_result_dimension_mismatch
 # "provides no value" would be false.
 formula_add_negative_test(environment_series_read_as_single
     "this environment holds a series for this quantity, not a single value"
-    REJECT "provides no value for this quantity")
+    REJECT "provides no value for this quantity" "cannot convert" "no viable conversion" "could not convert")
+# Pins get()'s `if constexpr` gate, as `method_variants_agreement_gated`
+# pins its own: without it the series entry reaches get()'s scalar return
+# and the compiler adds a conversion error to the library's message -- cl
+# "cannot convert", clang "no viable conversion", g++ "could not convert",
+# measured on cl 19.51, clang-cl 22.1.3, clang++ 20.1.8, g++ 13.3 and
+# g++ 14.2 by the task 2 review. None of the three occurs with the gate.
 
 # A single value read as a series: neither a missing quantity nor a length.
 formula_add_negative_test(environment_single_read_as_series
@@ -312,7 +318,43 @@ formula_add_negative_test(method_variant_holds_series
 # A series result quantity is held to the expression's dimension, with
 # checked_evaluate's own guard.
 formula_add_negative_test(evaluate_series_result_dimension_mismatch
-    "does not measure the dimension this expression computes")
+    "does not measure the dimension this expression computes"
+    REJECT "~expected")
+# The REJECT pins D5's `if constexpr` gate in checked_evaluate_series:
+# without it g++ 13.3 and 14.2 follow the refusal with errors from the
+# evaluation below, among them "no matching function for call to
+# ...~expected()" (3 more errors at 793dda5, 6 more once the series hooks
+# arrived). cl, clang-cl and clang++ give one message either way, so only
+# the gcc legs can see this REJECT fire.
+
+# A braced list std::array would pad with absent elements: every spelling
+# that could reach a std::array parameter, refused because the constructor
+# taking one is deduced. In the compiler's words, which differ by compiler
+# and share only the type's name -- see each case's comment. The one route
+# left open, a std::array the caller built short, is documented on the
+# constructor.
+formula_add_negative_test(measured_series_padded_triple_brace "MeasuredSeries<")
+formula_add_negative_test(measured_series_padded_double_brace "MeasuredSeries<")
+formula_add_negative_test(measured_series_padded_empty "MeasuredSeries<")
+formula_add_negative_test(entered_series_padded "MeasuredSeries<")
+formula_add_negative_test(entered_series_aggregate_padded "MeasuredSeries<")
+
+# Task 2's D3: an entered value is read in the shape the result asks for,
+# and refused in the other shape or another length, never computed over.
+formula_add_negative_test(series_evaluated_over_entered_single
+    "this environment holds a single value for this quantity, not a series"
+    REJECT "provides no value for this quantity" "holds a series of a different length")
+formula_add_negative_test(single_evaluated_over_entered_series
+    "this environment holds a series for this quantity, not a single value"
+    REJECT "provides no value for this quantity")
+formula_add_negative_test(entered_series_length_mismatch
+    "this environment holds a series of a different length for this quantity than the one read"
+    REJECT "holds a single value for this quantity")
+
+# get_series for a quantity the environment lacks: RequireProvided, once.
+formula_add_negative_test(environment_series_missing_quantity
+    "provides no value for this quantity"
+    REJECT "holds a single value for this quantity" "holds a series of a different length")
 
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")

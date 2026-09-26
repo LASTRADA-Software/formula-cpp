@@ -26,6 +26,7 @@
 #include <formula-cpp/quantity.hpp>
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <tuple>
 #include <type_traits>
@@ -83,35 +84,57 @@ template <Described Q, std::size_t N>
 class MeasuredSeries
 {
   public:
-    /// The series, element by element, in the order of the method's domain.
+    /// The series from an array the caller already holds, element by element,
+    /// in the order of the method's domain.
     ///
-    /// `measured_series<Q>(...)` is the ordinary spelling and counts `N` for
-    /// the caller. A braced list written here directly,
-    /// `MeasuredSeries<Q, 5>({ a, b, c })`, reaches the constructor below
-    /// instead when its count is wrong, and is refused naming both counts:
-    /// `std::array`'s own aggregate initialisation would otherwise make the two
-    /// elements nobody typed absent, silently. An array the caller has already
-    /// built is taken as it is -- whatever its own initialisation left in it is
-    /// beyond this type's sight.
-    constexpr explicit MeasuredSeries(std::array<Measured<Q>, N> measurements) noexcept:
+    /// **Deduced, so that no braced list can reach it.** A braced list that
+    /// could initialise a `std::array<Measured<Q>, N>` parameter is one
+    /// `std::array` would pad: its own aggregate initialisation makes every
+    /// element nobody typed absent, silently, for `({ { a, b, c } })`,
+    /// `{ { { a, b, c } } }` and `({})` alike, and through `entered(...)` and
+    /// `EnteredSeries` too. A template parameter cannot be deduced from a
+    /// braced list, so every such spelling now fails to compile, in the
+    /// compiler's words, since no correct reading of them exists to point at.
+    /// (For `({ { a, b, c } })` g++ 13.3 and 14.2 also reach the constructor
+    /// below through the copy constructor, and add its count message, which
+    /// is true; measured with cl 19.51, clang-cl and clang++ giving the
+    /// compiler's words alone.)
+    /// A braced list of the elements themselves goes to the constructor below.
+    ///
+    /// **The one route left open is an array the caller has already built
+    /// short**, `std::array<Measured<Q>, 5> { a, b, c }`: `std::array` has
+    /// padded it before this type sees it, so it is taken as it is. Build a
+    /// series with `measured_series<Q>(...)`, which counts, or with one braced
+    /// list of its elements.
+    template <typename A>
+        requires std::same_as<A, std::array<Measured<Q>, N>>
+    constexpr explicit MeasuredSeries(A const& measurements) noexcept:
         _elements { measurements }
     {
     }
 
-    /// A braced list of any length but `N`: fails to compile, naming both
-    /// counts through `detail::RequireSeriesElementCountMatches`. A list of
-    /// exactly `N` does not reach this constructor, and is taken by the one
-    /// above.
+    /// The series from one braced list of its elements,
+    /// `MeasuredSeries<Q, 5>({ a, b, c, d, e })` or `{ { a, b, c, d, e } }`.
+    /// A list of any other length fails to compile, naming both counts through
+    /// `detail::RequireSeriesElementCountMatches`: an element that was not
+    /// measured is written `Measured<Q>::absent()`, never left out.
+    ///
+    /// `_elements` is default-initialised and then copied, not written `{}`:
+    /// see `SeriesValue::elements` (`series.hpp`) for what value-initialising
+    /// an array of `Measured` costs a consumer on cl.
     template <std::size_t Given>
-        requires(Given != N)
-    constexpr explicit MeasuredSeries(Measured<Q> const (&)[Given]) noexcept:
-        _elements {}
+    constexpr explicit MeasuredSeries(Measured<Q> const (&measurements)[Given]) noexcept
     {
         static_assert(detail::RequireSeriesElementCountMatches<Given, N>::value);
+        if constexpr (Given == N)
+            for (std::size_t at = 0; at < N; ++at)
+                _elements[at] = measurements[at];
     }
 
     /// The element at zero-based position @p at. Past the end it is absent:
-    /// never a neighbour's value, and never a zero.
+    /// never a neighbour's value, and never a zero -- but not reported
+    /// either, so a caller indexes only inside `for (at = 0; at < N; ++at)`,
+    /// never with a position it computed.
     [[nodiscard]] constexpr Measured<Q> element(std::size_t at) const noexcept
     {
         return at < N ? _elements[at] : Measured<Q>::absent();

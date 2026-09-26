@@ -234,16 +234,14 @@ TEST_CASE("an element that cannot be written back in the declared unit names tha
     STATIC_REQUIRE(outcome.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1 });
 }
 
-TEST_CASE("a failure that belongs to no element is not dressed as element 0", "[series]")
+TEST_CASE("a failure's position is optional, so a failure of no element can say so", "[series]")
 {
-    // Nothing in this task produces the empty shape: a series variable fails
-    // only at an element. Later reductions do (a sum's overflow), so the shape
-    // itself is pinned here: no position is not position 0.
+    // A shape pin, not behavioural coverage: nothing in this task produces a
+    // failure of no element (a series variable fails only at an element).
+    // Later reductions do (a sum's overflow), and their tests supply the
+    // behaviour. This line fails if the position reverts to a plain size_t,
+    // which would force such a failure to name element 0.
     STATIC_REQUIRE(std::is_same_v<decltype(formula::SeriesFailure::element), std::optional<std::size_t>>);
-    constexpr formula::SeriesFailure whole { formula::ArithmeticError::Overflow, std::nullopt };
-    constexpr formula::SeriesFailure first { formula::ArithmeticError::Overflow, 0 };
-    STATIC_REQUIRE(!whole.element.has_value());
-    STATIC_REQUIRE(whole != first);
 }
 
 TEST_CASE("a series reads into double as well as into Rational", "[series]")
