@@ -97,10 +97,10 @@ namespace detail
 /// this function cannot assume its argument came from there.
 [[nodiscard]] constexpr std::string_view view(Symbol const& unitSymbol) noexcept
 {
-    std::size_t length = 0;
-    while (length < SymbolCapacity && unitSymbol.characters[length] != '\0')
-        ++length;
-    return std::string_view { unitSymbol.characters, length };
+    std::size_t symbolLength = 0;
+    while (symbolLength < SymbolCapacity && unitSymbol.characters[symbolLength] != '\0')
+        ++symbolLength;
+    return std::string_view { unitSymbol.characters, symbolLength };
 }
 
 /// Deleted: binding a temporary here would return a view into a `Symbol` that
@@ -561,7 +561,7 @@ struct RequireSameUnitDimension
     static constexpr bool value = true;
 };
 
-/// Converts @p amount from @p from into @p to, exactly.
+/// Converts @p magnitude from @p from into @p to, exactly.
 ///
 /// Applies integer factors by multiply-then-divide rather than a precomputed
 /// floating-point factor, so 30 MPa is exactly 30000000 Pa and converts back to
@@ -575,7 +575,7 @@ struct RequireSameUnitDimension
 /// @return the converted value, or an error if the dimensions differ, either
 ///         unit's magnitude is zero, or an intermediate is not representable.
 ///         Never a wrong number.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_convert(Rational amount,
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_convert(Rational magnitude,
                                                                                  Unit from,
                                                                                  Unit to) noexcept
 {
@@ -609,7 +609,7 @@ struct RequireSameUnitDimension
     if (!toOffset)
         return toOffset;
 
-    std::expected<Rational, ArithmeticError> const scaledValue = checked_mul(amount, *fromMagnitude);
+    std::expected<Rational, ArithmeticError> const scaledValue = checked_mul(magnitude, *fromMagnitude);
     if (!scaledValue)
         return scaledValue;
     std::expected<Rational, ArithmeticError> const inSi = checked_add(*scaledValue, *fromOffset);
@@ -622,9 +622,9 @@ struct RequireSameUnitDimension
 }
 
 /// @throws ArithmeticException when the conversion cannot be represented.
-[[nodiscard]] constexpr Rational convert(Rational amount, Unit from, Unit to)
+[[nodiscard]] constexpr Rational convert(Rational magnitude, Unit from, Unit to)
 {
-    return detail::or_throw(checked_convert(amount, from, to));
+    return detail::or_throw(checked_convert(magnitude, from, to));
 }
 
 /// The outcome of checking a value against its unit's declared bounds.
@@ -661,31 +661,31 @@ enum class BoundsCheck : std::uint8_t
     return "unknown bounds outcome";
 }
 
-/// Checks @p amount, expressed in @p unitOfValue, against that unit's bounds.
-[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(Rational amount,
+/// Checks @p magnitude, expressed in @p unitOfValue, against that unit's bounds.
+[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(Rational magnitude,
                                                                                           Unit unitOfValue) noexcept
 {
     if (!unitOfValue.bounds.present)
         return BoundsCheck::NotChecked;
 
-    std::expected<Rational, ArithmeticError> const low =
+    std::expected<Rational, ArithmeticError> const lowBound =
         Rational::make(unitOfValue.bounds.lowNumerator, unitOfValue.bounds.lowDenominator);
-    std::expected<Rational, ArithmeticError> const high =
+    std::expected<Rational, ArithmeticError> const highBound =
         Rational::make(unitOfValue.bounds.highNumerator, unitOfValue.bounds.highDenominator);
-    if (!low)
-        return std::unexpected { low.error() };
-    if (!high)
-        return std::unexpected { high.error() };
+    if (!lowBound)
+        return std::unexpected { lowBound.error() };
+    if (!highBound)
+        return std::unexpected { highBound.error() };
 
     // A unit whose declared minimum exceeds its maximum is a malformed unit,
     // not a value to be judged. Reporting BelowMinimum or AboveMaximum here
     // would be a wrong answer dressed up as a real one; refuse instead.
-    if (*low > *high)
+    if (*lowBound > *highBound)
         return std::unexpected { ArithmeticError::DomainError };
 
-    if (amount < *low)
+    if (magnitude < *lowBound)
         return BoundsCheck::BelowMinimum;
-    if (amount > *high)
+    if (magnitude > *highBound)
         return BoundsCheck::AboveMaximum;
     return BoundsCheck::WithinBounds;
 }
@@ -696,18 +696,17 @@ enum class BoundsCheck : std::uint8_t
     return DecimalPlaces { unitOfValue.decimals };
 }
 
-/// Rounds @p amount to the precision its unit declares.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_declared(Rational amount,
-                                                                                           Unit unitOfValue,
-                                                                                           RoundingMode mode) noexcept
+/// Rounds @p magnitude to the precision its unit declares.
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_declared(
+    Rational magnitude, Unit unitOfValue, RoundingMode roundingMode) noexcept
 {
-    return checked_round(amount, declared_decimals(unitOfValue), mode);
+    return checked_round(magnitude, declared_decimals(unitOfValue), roundingMode);
 }
 
 /// @throws ArithmeticException when the checked form would report an error.
-[[nodiscard]] constexpr Rational round_to_declared(Rational amount, Unit unitOfValue, RoundingMode mode)
+[[nodiscard]] constexpr Rational round_to_declared(Rational magnitude, Unit unitOfValue, RoundingMode roundingMode)
 {
-    return detail::or_throw(checked_round_to_declared(amount, unitOfValue, mode));
+    return detail::or_throw(checked_round_to_declared(magnitude, unitOfValue, roundingMode));
 }
 
 } // namespace formula

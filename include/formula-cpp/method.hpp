@@ -891,11 +891,11 @@ class RoundingRule
   private:
     friend struct detail::RoundingRuleAccess;
 
-    /// An overlay's rule, citing @p source -- reachable only through
+    /// An overlay's rule, citing @p cited -- reachable only through
     /// `detail::RoundingRuleAccess`.
-    constexpr RoundingRule(detail::OverlaidRule, Citation source) noexcept:
+    constexpr RoundingRule(detail::OverlaidRule, Citation cited) noexcept:
         _provenance { RoundingProvenance::JurisdictionOverlay },
-        _source { source }
+        _source { cited }
     {
     }
 
@@ -996,9 +996,9 @@ class OverlaidConstraints
     /// is refused in this library's words rather than the compiler's. The
     /// members are initialised so that the refusal is the only message: a set
     /// holding a lookup has no default to fall back on.
-    constexpr OverlaidConstraints(ConstraintSet<Ps...> replacement, Citation source = {}) noexcept:
+    constexpr OverlaidConstraints(ConstraintSet<Ps...> replacement, Citation cited = {}) noexcept:
         _constraintSet { replacement },
-        _source { source }
+        _source { cited }
     {
         static_assert(detail::RequireLibraryStatesConstraintProvenance<OverlaidConstraints>::value);
     }
@@ -1018,11 +1018,11 @@ class OverlaidConstraints
   private:
     friend struct detail::ConstraintOriginAccess;
 
-    /// The overlay's constraints, citing @p source -- reachable only through
+    /// The overlay's constraints, citing @p cited -- reachable only through
     /// `detail::ConstraintOriginAccess`.
-    constexpr OverlaidConstraints(detail::ConstraintsOverlaid, ConstraintSet<Ps...> replacement, Citation source) noexcept:
+    constexpr OverlaidConstraints(detail::ConstraintsOverlaid, ConstraintSet<Ps...> replacement, Citation cited) noexcept:
         _constraintSet { replacement },
-        _source { source }
+        _source { cited }
     {
     }
 
@@ -1079,11 +1079,11 @@ class ConstraintOrigin
   private:
     friend struct detail::ConstraintOriginAccess;
 
-    /// An overlay's constraints, citing @p source -- reachable only through
+    /// An overlay's constraints, citing @p cited -- reachable only through
     /// `detail::ConstraintOriginAccess`.
-    constexpr ConstraintOrigin(detail::ConstraintsOverlaid, Citation source) noexcept:
+    constexpr ConstraintOrigin(detail::ConstraintsOverlaid, Citation cited) noexcept:
         _provenance { ConstraintProvenance::JurisdictionOverlay },
-        _source { source }
+        _source { cited }
     {
     }
 

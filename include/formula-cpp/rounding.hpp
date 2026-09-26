@@ -47,10 +47,10 @@ enum class RoundingMode : std::uint8_t
     AwayFromZero,
 };
 
-/// `mode` in prose, for a trace or an error message.
-[[nodiscard]] constexpr std::string_view describe(RoundingMode mode) noexcept
+/// `roundingMode` in prose, for a trace or an error message.
+[[nodiscard]] constexpr std::string_view describe(RoundingMode roundingMode) noexcept
 {
-    switch (mode)
+    switch (roundingMode)
     {
         case RoundingMode::HalfAwayFromZero:
             return "nearest, ties away from zero";
@@ -90,13 +90,13 @@ struct SignificantDigits
     [[nodiscard]] constexpr bool operator==(SignificantDigits const&) const noexcept = default;
 };
 
-/// Rounds to a whole number under `mode`.
+/// Rounds to a whole number under `roundingMode`.
 ///
 /// The whole decision is expressed against a floored quotient, so the remainder
 /// is always in `[0, denominator)` and "which side is it on" is a comparison of
 /// `remainder` with `denominator - remainder` -- no doubling, so no overflow.
-[[nodiscard]] constexpr std::expected<Rational::Int, ArithmeticError> checked_round_to_int(Rational unrounded,
-                                                                                           RoundingMode mode) noexcept
+[[nodiscard]] constexpr std::expected<Rational::Int, ArithmeticError> checked_round_to_int(
+    Rational unrounded, RoundingMode roundingMode) noexcept
 {
     auto const split = detail::floor_divmod(unrounded.numerator(), unrounded.denominator());
     if (split.remainder == 0)
@@ -111,7 +111,7 @@ struct SignificantDigits
 
     bool const positive = unrounded.numerator() > 0;
 
-    switch (mode)
+    switch (roundingMode)
     {
         case RoundingMode::Floor:
             return split.quotient;
@@ -132,7 +132,7 @@ struct SignificantDigits
     if (split.remainder > distanceUp)
         return toCeiling();
 
-    switch (mode)
+    switch (roundingMode)
     {
         case RoundingMode::HalfAwayFromZero:
             return positive ? toCeiling() : std::expected<Rational::Int, ArithmeticError> { split.quotient };
@@ -148,37 +148,36 @@ struct SignificantDigits
 }
 
 /// Throwing spelling of `checked_round_to_int`.
-[[nodiscard]] constexpr Rational::Int round_to_int(Rational unrounded, RoundingMode mode)
+[[nodiscard]] constexpr Rational::Int round_to_int(Rational unrounded, RoundingMode roundingMode)
 {
-    return detail::or_throw(checked_round_to_int(unrounded, mode));
+    return detail::or_throw(checked_round_to_int(unrounded, roundingMode));
 }
 
-/// Rounds to a whole number under `mode`, as a `Rational` rather than a bare `Int`.
+/// Rounds to a whole number under `roundingMode`, as a `Rational` rather than a bare `Int`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_integer(Rational unrounded,
-                                                                                          RoundingMode mode) noexcept
+                                                                                          RoundingMode roundingMode) noexcept
 {
-    std::expected<Rational::Int, ArithmeticError> const rounded = checked_round_to_int(unrounded, mode);
+    std::expected<Rational::Int, ArithmeticError> const rounded = checked_round_to_int(unrounded, roundingMode);
     if (!rounded)
         return std::unexpected { rounded.error() };
     return Rational { *rounded };
 }
 
 /// Throwing spelling of `checked_round_to_integer`.
-[[nodiscard]] constexpr Rational round_to_integer(Rational unrounded, RoundingMode mode)
+[[nodiscard]] constexpr Rational round_to_integer(Rational unrounded, RoundingMode roundingMode)
 {
-    return detail::or_throw(checked_round_to_integer(unrounded, mode));
+    return detail::or_throw(checked_round_to_integer(unrounded, roundingMode));
 }
 
-/// Rounds `unrounded` to the nearest multiple of `increment` under `mode`.
+/// Rounds `unrounded` to the nearest multiple of `increment` under `roundingMode`.
 ///
 /// This is the primitive the decimal-place and significant-digit forms are built
 /// on, and it is also what snapping a computed sieve size onto a standard sieve
 /// series needs (spec phase 12).
 ///
 /// @pre `increment` is strictly positive; otherwise DomainError.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_multiple(Rational unrounded,
-                                                                                           Rational increment,
-                                                                                           RoundingMode mode) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_multiple(
+    Rational unrounded, Rational increment, RoundingMode roundingMode) noexcept
 {
     if (increment.sign() <= 0)
         return std::unexpected { ArithmeticError::DomainError };
@@ -187,7 +186,7 @@ struct SignificantDigits
     if (!multiples)
         return multiples;
 
-    std::expected<Rational::Int, ArithmeticError> const steps = checked_round_to_int(*multiples, mode);
+    std::expected<Rational::Int, ArithmeticError> const steps = checked_round_to_int(*multiples, roundingMode);
     if (!steps)
         return std::unexpected { steps.error() };
 
@@ -195,9 +194,9 @@ struct SignificantDigits
 }
 
 /// Throwing spelling of `checked_round_to_multiple`.
-[[nodiscard]] constexpr Rational round_to_multiple(Rational unrounded, Rational increment, RoundingMode mode)
+[[nodiscard]] constexpr Rational round_to_multiple(Rational unrounded, Rational increment, RoundingMode roundingMode)
 {
-    return detail::or_throw(checked_round_to_multiple(unrounded, increment, mode));
+    return detail::or_throw(checked_round_to_multiple(unrounded, increment, roundingMode));
 }
 
 namespace detail
@@ -214,19 +213,19 @@ namespace detail
         {
             if (exponent > 18)
                 return false;
-            std::uint64_t const factor = static_cast<std::uint64_t>(*pow10(exponent));
+            std::uint64_t const powerOfTen = static_cast<std::uint64_t>(*pow10(exponent));
             // denominator * factor > Limit implies the scaled denominator already
             // exceeds any possible numerator, so the quotient is below 10^exponent.
-            if (magnitudeDenominator > Limit / factor)
+            if (magnitudeDenominator > Limit / powerOfTen)
                 return false;
-            return magnitudeNumerator >= magnitudeDenominator * factor;
+            return magnitudeNumerator >= magnitudeDenominator * powerOfTen;
         }
         if (-exponent > 18)
             return true;
-        std::uint64_t const factor = static_cast<std::uint64_t>(*pow10(-exponent));
-        if (magnitudeNumerator > Limit / factor)
+        std::uint64_t const powerOfTen = static_cast<std::uint64_t>(*pow10(-exponent));
+        if (magnitudeNumerator > Limit / powerOfTen)
             return true;
-        return magnitudeNumerator * factor >= magnitudeDenominator;
+        return magnitudeNumerator * powerOfTen >= magnitudeDenominator;
     }
 } // namespace detail
 
@@ -250,10 +249,10 @@ namespace detail
     return exponent;
 }
 
-/// Rounds `unrounded` to `places` decimal places under `mode`.
+/// Rounds `unrounded` to `places` decimal places under `roundingMode`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round(Rational unrounded,
                                                                                DecimalPlaces places,
-                                                                               RoundingMode mode) noexcept
+                                                                               RoundingMode roundingMode) noexcept
 {
     // The step is 10^-places, which must itself be representable.
     if (places.value > 18 || places.value < -18)
@@ -262,19 +261,19 @@ namespace detail
     std::expected<Rational, ArithmeticError> const increment = Rational::from_decimal(1, -places.value);
     if (!increment)
         return increment;
-    return checked_round_to_multiple(unrounded, *increment, mode);
+    return checked_round_to_multiple(unrounded, *increment, roundingMode);
 }
 
 /// Throwing spelling of `checked_round(Rational, DecimalPlaces, RoundingMode)`.
-[[nodiscard]] constexpr Rational round(Rational unrounded, DecimalPlaces places, RoundingMode mode)
+[[nodiscard]] constexpr Rational round(Rational unrounded, DecimalPlaces places, RoundingMode roundingMode)
 {
-    return detail::or_throw(checked_round(unrounded, places, mode));
+    return detail::or_throw(checked_round(unrounded, places, roundingMode));
 }
 
-/// Rounds `unrounded` to `significant` significant digits under `mode`.
+/// Rounds `unrounded` to `significant` significant digits under `roundingMode`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round(Rational unrounded,
                                                                                SignificantDigits significant,
-                                                                               RoundingMode mode) noexcept
+                                                                               RoundingMode roundingMode) noexcept
 {
     if (significant.value < 1)
         return std::unexpected { ArithmeticError::DomainError };
@@ -291,13 +290,13 @@ namespace detail
     if (places > 18 || places < -18)
         return std::unexpected { ArithmeticError::Overflow };
 
-    return checked_round(unrounded, DecimalPlaces { static_cast<std::int32_t>(places) }, mode);
+    return checked_round(unrounded, DecimalPlaces { static_cast<std::int32_t>(places) }, roundingMode);
 }
 
 /// Throwing spelling of `checked_round(Rational, SignificantDigits, RoundingMode)`.
-[[nodiscard]] constexpr Rational round(Rational unrounded, SignificantDigits significant, RoundingMode mode)
+[[nodiscard]] constexpr Rational round(Rational unrounded, SignificantDigits significant, RoundingMode roundingMode)
 {
-    return detail::or_throw(checked_round(unrounded, significant, mode));
+    return detail::or_throw(checked_round(unrounded, significant, roundingMode));
 }
 
 /// Converts a measured `double` onto an exact decimal scale.
@@ -331,12 +330,12 @@ namespace detail
 /// genuinely measured `double`, and only at modest decimal precision.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rational_from_double(double floating,
                                                                                       DecimalPlaces places,
-                                                                                      RoundingMode mode) noexcept
+                                                                                      RoundingMode roundingMode) noexcept
 {
     std::expected<Rational, ArithmeticError> const exactValue = Rational::from_double_exact(floating);
     if (!exactValue)
         return exactValue;
-    return checked_round(*exactValue, places, mode);
+    return checked_round(*exactValue, places, roundingMode);
 }
 
 } // namespace formula

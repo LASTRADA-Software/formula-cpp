@@ -314,11 +314,13 @@ namespace detail
     /// half-open interval in this library, so that a derivation and the
     /// formula it derives cannot name one band two ways. That ruling, and the
     /// published defect that bought it, are in `render.hpp`'s file comment.
-    [[nodiscard]] inline std::string half_open_range_text(LookupRange const& range, std::string_view keySymbol)
+    [[nodiscard]] inline std::string half_open_range_text(LookupRange const& lookupRange, std::string_view keySymbol)
     {
-        return band_text(
-            Band { range.lowNumerator, range.lowDenominator, range.highNumerator, range.highDenominator },
-            keySymbol);
+        return band_text(Band { lookupRange.lowNumerator,
+                                lookupRange.lowDenominator,
+                                lookupRange.highNumerator,
+                                lookupRange.highDenominator },
+                         keySymbol);
     }
 
     /// A **closed** range an interpolating curve runs over: `2 to 19 mm`.
@@ -337,10 +339,10 @@ namespace detail
     /// every other declared bound in this library is printed with, so a curve
     /// whose first row was typed `30/4` reads `15/2` here exactly as it does
     /// in `render()`.
-    [[nodiscard]] inline std::string closed_range_text(LookupRange const& range, std::string_view keySymbol)
+    [[nodiscard]] inline std::string closed_range_text(LookupRange const& lookupRange, std::string_view keySymbol)
     {
-        return number_with_unit(declared_number_text(range.lowNumerator, range.lowDenominator) + " to "
-                                    + declared_number_text(range.highNumerator, range.highDenominator),
+        return number_with_unit(declared_number_text(lookupRange.lowNumerator, lookupRange.lowDenominator) + " to "
+                                    + declared_number_text(lookupRange.highNumerator, lookupRange.highDenominator),
                                 keySymbol);
     }
 
@@ -362,13 +364,13 @@ namespace detail
     /// `closed_range_text`'s `to`. The numbers go through
     /// `declared_number_text` like every other declared bound, so a row typed
     /// `14/4` reads `7/2` here exactly as it does in `render()`.
-    [[nodiscard]] inline std::string segment_text(Segment const& segment, std::string_view keySymbol)
+    [[nodiscard]] inline std::string segment_text(Segment const& lookupSegment, std::string_view keySymbol)
     {
-        std::string const low = declared_number_text(segment.low.numerator, segment.low.denominator);
-        std::string const high = declared_number_text(segment.high.numerator, segment.high.denominator);
-        if (low == high)
-            return "on the row at " + number_with_unit(low, keySymbol);
-        return "between " + number_with_unit(low + " and " + high, keySymbol);
+        std::string const lowText = declared_number_text(lookupSegment.low.numerator, lookupSegment.low.denominator);
+        std::string const highText = declared_number_text(lookupSegment.high.numerator, lookupSegment.high.denominator);
+        if (lowText == highText)
+            return "on the row at " + number_with_unit(lowText, keySymbol);
+        return "between " + number_with_unit(lowText + " and " + highText, keySymbol);
     }
 
     /// Why a lookup found nothing, in one clause -- the clause that stops
@@ -393,12 +395,12 @@ namespace detail
         // and "runs 15/2 to 15/2 mm" would describe it as a range it is not.
         // `at <key>` is the spelling `render()` gives a breakpoint, for the
         // same reason: a row is a point.
-        std::string const low =
+        std::string const lowText =
             declared_number_text(recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator);
-        std::string const high =
+        std::string const highText =
             declared_number_text(recorded.coveredRange->highNumerator, recorded.coveredRange->highDenominator);
-        if (low == high)
-            return "outside the curve, whose only row is at " + number_with_unit(low, keySymbol);
+        if (lowText == highText)
+            return "outside the curve, whose only row is at " + number_with_unit(lowText, keySymbol);
         return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keySymbol);
     }
 
@@ -566,13 +568,14 @@ namespace detail
     [[nodiscard]] inline std::string citation_text(Citation const& citation)
     {
         std::string citationWords;
-        for (std::string_view const part: { citation.title, citation.reference, citation.section, citation.equation })
+        for (std::string_view const citationPart:
+             { citation.title, citation.reference, citation.section, citation.equation })
         {
-            if (part.empty())
+            if (citationPart.empty())
                 continue;
             if (!citationWords.empty())
                 citationWords += ", ";
-            citationWords += part;
+            citationWords += citationPart;
         }
         return citationWords;
     }
@@ -603,9 +606,9 @@ namespace detail
     /// Where a value or a rule came from, when an overlay supplied it:
     /// `jurisdiction overlay`, followed by what the overlay cited, when it
     /// cited anything -- `jurisdiction overlay: Example Standard 12:2021 NA`.
-    [[nodiscard]] inline std::string overlay_source_text(Citation const& source)
+    [[nodiscard]] inline std::string overlay_source_text(Citation const& overlayCitation)
     {
-        std::string const cited = citation_text(source);
+        std::string const cited = citation_text(overlayCitation);
         return cited.empty() ? std::string { "jurisdiction overlay" } : "jurisdiction overlay: " + cited;
     }
 
@@ -615,25 +618,25 @@ namespace detail
     /// Present whether or not the overlay cited anything. The body of the line
     /// -- `k_s = 97/100` -- reads exactly as a variable the specimen supplied,
     /// and this clause is the only thing on it that says otherwise.
-    [[nodiscard]] inline std::string overridden_constant_suffix(Citation const& source)
+    [[nodiscard]] inline std::string overridden_constant_suffix(Citation const& cited)
     {
-        return " [fixed by " + overlay_source_text(source) + "]";
+        return " [fixed by " + overlay_source_text(cited) + "]";
     }
 
     /// A derived quantity's clause: `[derived by jurisdiction overlay: ...]`.
     /// Present whether or not the overlay cited anything, for the reason
     /// `overridden_constant_suffix` gives.
-    [[nodiscard]] inline std::string derived_quantity_suffix(Citation const& source)
+    [[nodiscard]] inline std::string derived_quantity_suffix(Citation const& cited)
     {
-        return " [derived by " + overlay_source_text(source) + "]";
+        return " [derived by " + overlay_source_text(cited) + "]";
     }
 
     /// A replaced variant's clause: `[replaced by jurisdiction overlay: ...]`.
     /// Present whether or not the overlay cited anything: the body of the line
     /// -- `#5 = ...` -- says nothing of whose formula ran.
-    [[nodiscard]] inline std::string replaced_variant_suffix(Citation const& source)
+    [[nodiscard]] inline std::string replaced_variant_suffix(Citation const& cited)
     {
-        return " [replaced by " + overlay_source_text(source) + "]";
+        return " [replaced by " + overlay_source_text(cited) + "]";
     }
 
     /// Whose a `RoundingRuleApplied` step's rule was: `method default`, or
@@ -675,25 +678,25 @@ namespace detail
     /// `11th`, `12th`, `13th` rather than `11st`, `12nd`, `13rd`.
     [[nodiscard]] inline std::string ordinal_text(std::size_t ordinal)
     {
-        std::string_view suffix = "th";
+        std::string_view ordinalSuffix = "th";
         if (ordinal % 100 < 11 || ordinal % 100 > 13)
         {
             switch (ordinal % 10)
             {
                 case 1:
-                    suffix = "st";
+                    ordinalSuffix = "st";
                     break;
                 case 2:
-                    suffix = "nd";
+                    ordinalSuffix = "nd";
                     break;
                 case 3:
-                    suffix = "rd";
+                    ordinalSuffix = "rd";
                     break;
                 default:
                     break;
             }
         }
-        return std::to_string(ordinal) + std::string { suffix };
+        return std::to_string(ordinal) + std::string { ordinalSuffix };
     }
 
     /// Which variant a method selected, and on what, in one bracketed clause:
@@ -791,9 +794,9 @@ namespace detail
     /// function already uses for `Documented` and `NumericValue` has no such
     /// collision, and puts the mode where a reader is already looking for a
     /// step's trailing qualifications.
-    [[nodiscard]] inline std::string rounding_mode_suffix(RoundingMode mode)
+    [[nodiscard]] inline std::string rounding_mode_suffix(RoundingMode roundingMode)
     {
-        return " [" + std::string { describe(mode) } + "]";
+        return " [" + std::string { describe(roundingMode) } + "]";
     }
 
     /// A constraint's outcome in words, unbracketed: `satisfied`, the verdict's
@@ -820,14 +823,14 @@ namespace detail
 
     /// Whose a method's constraints were: `the method's own`, or the overlay
     /// and what it cited, as every overlay clause in this file spells it.
-    [[nodiscard]] inline std::string constraint_provenance_text(ConstraintProvenance provenance, Citation const& source)
+    [[nodiscard]] inline std::string constraint_provenance_text(ConstraintProvenance provenance, Citation const& cited)
     {
         switch (provenance)
         {
             case ConstraintProvenance::MethodOwn:
                 return "the method's own";
             case ConstraintProvenance::JurisdictionOverlay:
-                return overlay_source_text(source);
+                return overlay_source_text(cited);
         }
         // A hand-built `Step` may hold any value of the underlying type, and
         // naming either provenance for it would be a guess.
@@ -923,40 +926,40 @@ namespace detail
             return acceptance_expression(recorded) + acceptance_suffix(recorded);
 
         std::string const valueText = step_value_text(recorded);
-        std::string suffix;
+        std::string annotation;
         if (recorded.kind == StepKind::Documented)
-            suffix = citation_suffix(recorded.citation);
+            annotation = citation_suffix(recorded.citation);
         else if (recorded.kind == StepKind::VariantSelected)
-            suffix = variant_suffix(recorded);
+            annotation = variant_suffix(recorded);
         else if (recorded.kind == StepKind::NumericValue)
-            suffix = justification_suffix(recorded.justification);
+            annotation = justification_suffix(recorded.justification);
         // Only `[no branch]`. A branch that ran is named by the keyword in
         // the body (`... then #3`, `... else #5`), and a suffix repeating it
         // would be noise; `[no branch]` is the one thing the body cannot
         // say, and it is what separates a predicate that never resolved from
         // one that resolved false.
         else if (recorded.kind == StepKind::Conditional && recorded.branch == Branch::Neither)
-            suffix = " [" + std::string { describe(recorded.branch) } + "]";
+            annotation = " [" + std::string { describe(recorded.branch) } + "]";
         else if (recorded.kind == StepKind::Round || recorded.kind == StepKind::RoundSignificant)
-            suffix = rounding_mode_suffix(recorded.mode);
+            annotation = rounding_mode_suffix(recorded.mode);
         else if (recorded.kind == StepKind::RoundingRuleApplied)
-            suffix = rounding_rule_suffix(recorded);
+            annotation = rounding_rule_suffix(recorded);
         else if (recorded.kind == StepKind::OverriddenConstant)
-            suffix = overridden_constant_suffix(recorded.citation);
+            annotation = overridden_constant_suffix(recorded.citation);
         else if (recorded.kind == StepKind::DerivedQuantity)
-            suffix = derived_quantity_suffix(recorded.citation);
+            annotation = derived_quantity_suffix(recorded.citation);
         else if (recorded.kind == StepKind::ReplacedVariant)
-            suffix = replaced_variant_suffix(recorded.citation);
+            annotation = replaced_variant_suffix(recorded.citation);
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
         // value fell in, and on a failure it is the only thing separating a
         // miss from a relayed error. See `lookup_suffix`.
         else if (is_lookup(recorded.kind))
-            suffix = lookup_suffix(recorded);
+            annotation = lookup_suffix(recorded);
 
         if (recorded.kind == StepKind::Constant)
-            return valueText + suffix;
-        return step_expression(recorded) + " = " + valueText + suffix;
+            return valueText + annotation;
+        return step_expression(recorded) + " = " + valueText + annotation;
     }
 } // namespace detail
 

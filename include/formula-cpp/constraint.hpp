@@ -94,11 +94,11 @@ class ConstraintOutcome
     }
 
     /// Evaluating the predicate raised an arithmetic error; carries it.
-    [[nodiscard]] static constexpr ConstraintOutcome invalid(ArithmeticError failure) noexcept
+    [[nodiscard]] static constexpr ConstraintOutcome invalid(ArithmeticError cause) noexcept
     {
         ConstraintOutcome made {};
         made._kind = ConstraintOutcomeKind::Invalid;
-        made._error = failure;
+        made._error = cause;
         return made;
     }
 

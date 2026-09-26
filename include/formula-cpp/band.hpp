@@ -157,11 +157,11 @@ using BandTable = std::array<Band, N>;
 /// malformed bound is treated as not adjacent to anything above.
 [[nodiscard]] constexpr bool band_is_well_formed(Band const& candidate) noexcept
 {
-    auto const low = Rational::make(candidate.lowNumerator, candidate.lowDenominator);
-    auto const high = Rational::make(candidate.highNumerator, candidate.highDenominator);
-    if (!low || !high)
+    auto const lowBound = Rational::make(candidate.lowNumerator, candidate.lowDenominator);
+    auto const highBound = Rational::make(candidate.highNumerator, candidate.highDenominator);
+    if (!lowBound || !highBound)
         return false;
-    return *low < *high;
+    return *lowBound < *highBound;
 }
 
 /// True when `table` is well-formed: every band's own low bound is strictly

@@ -283,9 +283,9 @@ template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typ
         // false -Wmaybe-uninitialized on returning a named std::expected that
         // has been passed to the sink by reference. The error is a plain
         // enumerator, so constructing it twice costs nothing.
-        auto const failure = leftResult.error();
-        sink.produced(node, Evaluated<Rep> { std::unexpected { failure } });
-        return Evaluated<Rep> { std::unexpected { failure } };
+        auto const leftFailure = leftResult.error();
+        sink.produced(node, Evaluated<Rep> { std::unexpected { leftFailure } });
+        return Evaluated<Rep> { std::unexpected { leftFailure } };
     }
     Evaluated<Rep> const rightResult = detail::dispatch<Rep>(node.rhs, environment, sink);
     if (!rightResult.has_value())
@@ -294,9 +294,9 @@ template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typ
         // false -Wmaybe-uninitialized on returning a named std::expected that
         // has been passed to the sink by reference. The error is a plain
         // enumerator, so constructing it twice costs nothing.
-        auto const failure = rightResult.error();
-        sink.produced(node, Evaluated<Rep> { std::unexpected { failure } });
-        return Evaluated<Rep> { std::unexpected { failure } };
+        auto const rightFailure = rightResult.error();
+        sink.produced(node, Evaluated<Rep> { std::unexpected { rightFailure } });
+        return Evaluated<Rep> { std::unexpected { rightFailure } };
     }
 
     // Absence wins over arithmetic, but only after both sides have been asked:

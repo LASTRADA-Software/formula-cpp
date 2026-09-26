@@ -94,11 +94,11 @@ class Outcome
     /// A computed or measured number. An **absent** measurement yields `Empty`,
     /// not a `Value` holding nothing: the two would otherwise be two ways of
     /// saying the same thing, and callers would have to check both.
-    [[nodiscard]] static constexpr Outcome value(Measured<Q> measurement, ValueSource source) noexcept
+    [[nodiscard]] static constexpr Outcome value(Measured<Q> measured, ValueSource valueSource) noexcept
     {
         Outcome made {};
-        made._kind = measurement.has_value() ? OutcomeKind::Value : OutcomeKind::Empty;
-        made._value = Value<Q> { measurement, source };
+        made._kind = measured.has_value() ? OutcomeKind::Value : OutcomeKind::Empty;
+        made._value = Value<Q> { measured, valueSource };
         return made;
     }
 

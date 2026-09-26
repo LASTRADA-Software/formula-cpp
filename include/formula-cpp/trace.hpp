@@ -879,16 +879,16 @@ namespace detail
         static constexpr StepKind value = StepKind::ReplacedVariant;
     };
 
-    /// Whether @p kind is one of the three lookup kinds. Written once because
+    /// Whether @p stepKind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
     /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
     /// appends the clause that keeps a lookup line from lying -- and spelling
     /// the three-way `||` in each is how one of them ends up missing a kind
     /// once a fourth table kind is added.
-    [[nodiscard]] constexpr bool is_lookup(StepKind kind) noexcept
+    [[nodiscard]] constexpr bool is_lookup(StepKind stepKind) noexcept
     {
-        return kind == StepKind::BandedLookup || kind == StepKind::ExactLookup
-               || kind == StepKind::InterpolatingLookup;
+        return stepKind == StepKind::BandedLookup || stepKind == StepKind::ExactLookup
+               || stepKind == StepKind::InterpolatingLookup;
     }
 
     /// Whether any step @p step claimed as an operand failed.
@@ -1487,7 +1487,7 @@ class RecordingSink
     }
 
     /// Records a `StepKind::AcceptanceChecked` step for constraints of
-    /// @p origin, claiming as its operands every verdict recorded since the
+    /// @p constraintOrigin, claiming as its operands every verdict recorded since the
     /// matching `acceptance_entered`, and marks each of those verdicts with
     /// whose it was and what the overlay cited.
     ///
@@ -1496,15 +1496,15 @@ class RecordingSink
     /// checked, so no second record of which method is in progress is kept
     /// beside `marks`. A verdict recorded by `check` or `check_all` outside
     /// any method is claimed by nothing here, and keeps no provenance.
-    void acceptance_produced(ConstraintOrigin const& origin)
+    void acceptance_produced(ConstraintOrigin const& constraintOrigin)
     {
         std::size_t const acceptanceMark = _trace->marks.back();
         _trace->marks.pop_back();
 
         Step<Rep> acceptanceStep {};
         acceptanceStep.kind = StepKind::AcceptanceChecked;
-        acceptanceStep.constraintProvenance = origin.provenance();
-        acceptanceStep.citation = origin.source();
+        acceptanceStep.constraintProvenance = constraintOrigin.provenance();
+        acceptanceStep.citation = constraintOrigin.source();
 
         // Everything unclaimed from `acceptanceMark` onwards belongs to this method's
         // constraints -- see `produced` above for why this is a `while`.
@@ -1516,8 +1516,8 @@ class RecordingSink
 
         for (std::size_t const verdictStep: acceptanceStep.operands)
         {
-            _trace->steps[verdictStep].constraintProvenance = origin.provenance();
-            _trace->steps[verdictStep].citation = origin.source();
+            _trace->steps[verdictStep].constraintProvenance = constraintOrigin.provenance();
+            _trace->steps[verdictStep].citation = constraintOrigin.source();
         }
 
         _trace->steps.push_back(std::move(acceptanceStep));

@@ -21,9 +21,9 @@ namespace formula::detail
 /// ASCII letter, a digit, an underscore, or any byte of a multi-byte UTF-8
 /// sequence -- C++23 identifiers may be Unicode, and all four compilers print
 /// `Uni::Größe` as UTF-8 rather than as a universal-character-name.
-[[nodiscard]] constexpr bool is_identifier_byte(char c) noexcept
+[[nodiscard]] constexpr bool is_identifier_byte(char printed) noexcept
 {
-    auto const byte = static_cast<unsigned char>(c);
+    auto const byte = static_cast<unsigned char>(printed);
     return (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || (byte >= '0' && byte <= '9') || byte == '_'
            || byte >= 0x80;
 }
@@ -36,8 +36,8 @@ namespace formula::detail
 [[nodiscard]] constexpr bool every_character_readable(std::string_view spelling) noexcept
 {
     std::size_t read = 0;
-    for (char const c: spelling)
-        read += c == '\0' ? 0 : 1;
+    for (char const byte: spelling)
+        read += byte == '\0' ? 0 : 1;
     return read <= spelling.size();
 }
 

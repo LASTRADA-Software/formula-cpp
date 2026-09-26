@@ -66,8 +66,8 @@ class Measured
     constexpr Measured() noexcept = default;
 
     /// A present value, in `Q`'s declared unit.
-    constexpr explicit Measured(Rational amount) noexcept:
-        _value { amount }
+    constexpr explicit Measured(Rational measuredValue) noexcept:
+        _value { measuredValue }
     {
     }
 

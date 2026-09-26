@@ -102,22 +102,22 @@ template <auto E>
 [[nodiscard]] consteval std::string_view reflected_enumerator_name() noexcept
 {
 #if defined(_MSC_VER) && !defined(__clang__)
-    constexpr std::string_view tail = ">(void)";
+    constexpr std::string_view closer = ">(void)";
 #else
-    constexpr std::string_view tail = "]";
+    constexpr std::string_view closer = "]";
 #endif
 
     std::string_view signature = enumerator_signature<E>();
-    if (!signature.ends_with(tail))
+    if (!signature.ends_with(closer))
         return {};
-    signature.remove_suffix(tail.size());
+    signature.remove_suffix(closer.size());
 
-    std::size_t start = signature.size();
-    while (start > 0 && is_identifier_byte(signature[start - 1]))
-        --start;
+    std::size_t nameStart = signature.size();
+    while (nameStart > 0 && is_identifier_byte(signature[nameStart - 1]))
+        --nameStart;
 
-    std::string_view const enumeratorName = signature.substr(start);
-    if (enumeratorName.empty() || (start > 0 && signature[start - 1] == ')'))
+    std::string_view const enumeratorName = signature.substr(nameStart);
+    if (enumeratorName.empty() || (nameStart > 0 && signature[nameStart - 1] == ')'))
         return {};
     if (enumeratorName.front() >= '0' && enumeratorName.front() <= '9')
         return {};

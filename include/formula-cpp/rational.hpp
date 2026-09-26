@@ -228,12 +228,12 @@ class Rational
     /// Exact for every representable pair. Uses the continued-fraction
     /// (Euclidean) comparison, which performs no multiplication: cross
     /// multiplication would overflow for operands that are individually fine.
-    [[nodiscard]] constexpr std::strong_ordering operator<=>(Rational const& other) const noexcept
+    [[nodiscard]] constexpr std::strong_ordering operator<=>(Rational const& compared) const noexcept
     {
         Int leftNumerator = _numerator;
         Int leftDenominator = _denominator;
-        Int rightNumerator = other._numerator;
-        Int rightDenominator = other._denominator;
+        Int rightNumerator = compared._numerator;
+        Int rightDenominator = compared._denominator;
         bool reversed = false;
 
         for (;;)
@@ -268,10 +268,10 @@ class Rational
 
     /// Exact equality -- a componentwise comparison, valid because both operands
     /// are always in canonical (lowest-terms, positive-denominator) form.
-    [[nodiscard]] constexpr bool operator==(Rational const& other) const noexcept
+    [[nodiscard]] constexpr bool operator==(Rational const& compared) const noexcept
     {
         // Canonical form makes this a componentwise comparison.
-        return _numerator == other._numerator && _denominator == other._denominator;
+        return _numerator == compared._numerator && _denominator == compared._denominator;
     }
 
   private:
@@ -400,23 +400,23 @@ class Rational
     long long remaining = invertResult ? -static_cast<long long>(exponent) : static_cast<long long>(exponent);
 
     Rational power { 1 };
-    Rational factor = base;
+    Rational multiplier = base;
     while (remaining > 0)
     {
         if ((remaining & 1) != 0)
         {
-            std::expected<Rational, ArithmeticError> const next = checked_mul(power, factor);
-            if (!next)
-                return next;
-            power = *next;
+            std::expected<Rational, ArithmeticError> const raised = checked_mul(power, multiplier);
+            if (!raised)
+                return raised;
+            power = *raised;
         }
         remaining >>= 1;
         if (remaining > 0)
         {
-            std::expected<Rational, ArithmeticError> const squared = checked_mul(factor, factor);
+            std::expected<Rational, ArithmeticError> const squared = checked_mul(multiplier, multiplier);
             if (!squared)
                 return squared;
-            factor = *squared;
+            multiplier = *squared;
         }
     }
 
@@ -526,11 +526,11 @@ namespace detail
         if (radicand < 2)
             return radicand;
 
-        Rational::Int low = 1;
-        Rational::Int high = radicand;
-        while (low <= high)
+        Rational::Int lowGuess = 1;
+        Rational::Int highGuess = radicand;
+        while (lowGuess <= highGuess)
         {
-            Rational::Int const middle = low + (high - low) / 2;
+            Rational::Int const middle = lowGuess + (highGuess - lowGuess) / 2;
 
             // middle^degree, abandoning the moment it exceeds `radicand` so the
             // multiplication can never overflow.
@@ -538,21 +538,21 @@ namespace detail
             bool tooBig = false;
             for (int multiplied = 0; multiplied < degree; ++multiplied)
             {
-                std::optional<Rational::Int> const next = mul_checked_or_none(power, middle);
-                if (!next || *next > radicand)
+                std::optional<Rational::Int> const raised = mul_checked_or_none(power, middle);
+                if (!raised || *raised > radicand)
                 {
                     tooBig = true;
                     break;
                 }
-                power = *next;
+                power = *raised;
             }
 
             if (tooBig)
-                high = middle - 1;
+                highGuess = middle - 1;
             else if (power == radicand)
                 return middle;
             else
-                low = middle + 1;
+                lowGuess = middle + 1;
         }
         return std::nullopt;
     }

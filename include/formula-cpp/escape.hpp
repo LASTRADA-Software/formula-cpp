@@ -53,8 +53,9 @@ namespace detail
     /// plus NUL, which `FixedString` can carry because it is byte-oriented.
     [[nodiscard]] constexpr bool saysSomething(std::string_view justification) noexcept
     {
-        for (char const character: justification)
-            if (character != ' ' && character != '\t' && character != '\n' && character != '\r' && character != '\f' && character != '\v' && character != '\0')
+        for (char const glyph: justification)
+            if (glyph != ' ' && glyph != '\t' && glyph != '\n' && glyph != '\r' && glyph != '\f' && glyph != '\v'
+                && glyph != '\0')
                 return true;
         return false;
     }

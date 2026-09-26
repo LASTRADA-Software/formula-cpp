@@ -569,18 +569,18 @@ namespace detail
     {
         for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
         {
-            std::expected<Rational, ArithmeticError> const low =
+            std::expected<Rational, ArithmeticError> const lowBound =
                 Rational::make(Bands[bandIndex].lowNumerator, Bands[bandIndex].lowDenominator);
-            std::expected<Rational, ArithmeticError> const high =
+            std::expected<Rational, ArithmeticError> const highBound =
                 Rational::make(Bands[bandIndex].highNumerator, Bands[bandIndex].highDenominator);
             // Unreachable for a `Bands` that reached this point: every
             // `BandedLookupNode` instantiates `RequireValidBandTable<Bands>`,
             // which already refuses a malformed bound at compile time. Guarded
             // anyway, for the same reason `band_is_well_formed` itself is: a
             // silent wrong bucket is worse than one skipped comparison.
-            if (!low.has_value() || !high.has_value())
+            if (!lowBound.has_value() || !highBound.has_value())
                 continue;
-            if (*low <= value && value < *high)
+            if (*lowBound <= value && value < *highBound)
                 return bandIndex;
         }
         return std::nullopt;
@@ -1414,11 +1414,11 @@ struct Segment
 /// exists to catch, not a case to silently wave through.
 [[nodiscard]] constexpr bool breakpoints_ascend(Breakpoint const& lowerRow, Breakpoint const& upperRow) noexcept
 {
-    auto const lower = Rational::make(lowerRow.numerator, lowerRow.denominator);
-    auto const upper = Rational::make(upperRow.numerator, upperRow.denominator);
-    if (!lower || !upper)
+    auto const lowerKey = Rational::make(lowerRow.numerator, lowerRow.denominator);
+    auto const upperKey = Rational::make(upperRow.numerator, upperRow.denominator);
+    if (!lowerKey || !upperKey)
         return false;
-    return *lower < *upper;
+    return *lowerKey < *upperKey;
 }
 
 /// True when `table` is well-formed: every row's key is a rational number, AND
@@ -1580,12 +1580,12 @@ namespace detail
     ///
     /// Dividing first is chosen because it is the better order for the tables
     /// this library is actually for. A published curve states its rows on a
-    /// common grid -- 0, 10, 20 mm -- so `offset` and `span` share their
-    /// denominator, `offset / span` cancels to a weight strictly below 1, and
+    /// common grid -- 0, 10, 20 mm -- so `keyOffset` and `keySpan` share their
+    /// denominator, `keyOffset / keySpan` cancels to a weight strictly below 1, and
     /// the key scale never meets the value scale. Multiplying first forms the
     /// one product in the whole computation that mixes key magnitude with value
     /// magnitude, and nothing cancels it. The shape dividing first is worse for
-    /// is the opposite one: a key so fine that `offset / span` cannot cancel,
+    /// is the opposite one: a key so fine that `keyOffset / keySpan` cannot cancel,
     /// against a value that would have cancelled against the offset instead.
     ///
     /// Both of those tables are in `lookup_tests.cpp`, asserted as behaviour --
@@ -1601,19 +1601,19 @@ namespace detail
     [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> interpolate_between(
         Rational lowKey, Rational lowValue, Rational highKey, Rational highValue, Rational atKey) noexcept
     {
-        std::expected<Rational, ArithmeticError> const span = checked_sub(highKey, lowKey);
-        if (!span.has_value())
-            return span;
+        std::expected<Rational, ArithmeticError> const keySpan = checked_sub(highKey, lowKey);
+        if (!keySpan.has_value())
+            return keySpan;
         std::expected<Rational, ArithmeticError> const rise = checked_sub(highValue, lowValue);
         if (!rise.has_value())
             return rise;
-        std::expected<Rational, ArithmeticError> const offset = checked_sub(atKey, lowKey);
-        if (!offset.has_value())
-            return offset;
-        std::expected<Rational, ArithmeticError> const weight = checked_div(*offset, *span);
-        if (!weight.has_value())
-            return weight;
-        std::expected<Rational, ArithmeticError> const share = checked_mul(*weight, *rise);
+        std::expected<Rational, ArithmeticError> const keyOffset = checked_sub(atKey, lowKey);
+        if (!keyOffset.has_value())
+            return keyOffset;
+        std::expected<Rational, ArithmeticError> const fraction = checked_div(*keyOffset, *keySpan);
+        if (!fraction.has_value())
+            return fraction;
+        std::expected<Rational, ArithmeticError> const share = checked_mul(*fraction, *rise);
         if (!share.has_value())
             return share;
         return checked_add(lowValue, *share);
@@ -1660,7 +1660,7 @@ namespace detail
     {
         for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
         {
-            std::expected<Rational, ArithmeticError> const here =
+            std::expected<Rational, ArithmeticError> const rowKey =
                 Rational::make(Points[pointIndex].numerator, Points[pointIndex].denominator);
             // Unreachable for a `Points` that reached this point: every
             // `InterpolatingLookupNode` instantiates
@@ -1668,14 +1668,14 @@ namespace detail
             // malformed key at compile time. Guarded anyway, for the same
             // reason `find_band` guards its own: reporting nothing is better
             // than interpolating against a number that was never there.
-            if (!here.has_value())
+            if (!rowKey.has_value())
                 return std::unexpected { ArithmeticError::DomainError };
 
-            if (*here == key)
+            if (*rowKey == key)
                 return std::pair<Rational, Segment> { corrections[pointIndex],
                                                       Segment { Points[pointIndex], Points[pointIndex] } };
 
-            if (key < *here)
+            if (key < *rowKey)
             {
                 // Below the table's first row: a miss, never an extrapolation
                 // backwards along the first segment's slope.
@@ -1688,7 +1688,7 @@ namespace detail
                     return std::unexpected { ArithmeticError::DomainError };
 
                 std::expected<Rational, ArithmeticError> const answered =
-                    interpolate_between(*previous, corrections[pointIndex - 1], *here, corrections[pointIndex], key);
+                    interpolate_between(*previous, corrections[pointIndex - 1], *rowKey, corrections[pointIndex], key);
                 if (!answered.has_value())
                     return std::unexpected { answered.error() };
 

@@ -143,10 +143,10 @@ struct DivMod
 /// `operandValue * 10^exponent`, or `nullopt` on overflow or an out-of-range exponent.
 [[nodiscard]] constexpr std::optional<Int> mul_pow10(Int operandValue, int exponent) noexcept
 {
-    std::optional<Int> const factor = pow10(exponent);
-    if (!factor)
+    std::optional<Int> const powerOfTen = pow10(exponent);
+    if (!powerOfTen)
         return std::nullopt;
-    return mul_checked_or_none(operandValue, *factor);
+    return mul_checked_or_none(operandValue, *powerOfTen);
 }
 
 } // namespace formula::detail

@@ -157,9 +157,9 @@ namespace detail
 }
 
 /// Raising a dimension to an integer power scales its exponents.
-[[nodiscard]] constexpr Exponent operator*(Exponent exponentValue, std::int32_t factor) noexcept
+[[nodiscard]] constexpr Exponent operator*(Exponent exponentValue, std::int32_t multiplier) noexcept
 {
-    return detail::reduced(static_cast<std::int64_t>(exponentValue.numerator) * factor, exponentValue.denominator);
+    return detail::reduced(static_cast<std::int64_t>(exponentValue.numerator) * multiplier, exponentValue.denominator);
 }
 
 /// Taking an nth root divides them -- the operation integer exponents cannot express.

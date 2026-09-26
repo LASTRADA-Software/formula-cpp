@@ -178,18 +178,17 @@ namespace detail
 
     /// True for `[`, `]`, and the ASCII control characters: below 0x20, and
     /// 0x7f.
-    [[nodiscard]] constexpr bool is_forbidden_in_symbol(char character) noexcept
+    [[nodiscard]] constexpr bool is_forbidden_in_symbol(char glyph) noexcept
     {
-        auto const byte = static_cast<unsigned char>(character);
-        return character == '[' || character == ']' || byte < 0x20 || byte == 0x7f;
+        auto const byte = static_cast<unsigned char>(glyph);
+        return glyph == '[' || glyph == ']' || byte < 0x20 || byte == 0x7f;
     }
 
     /// True for the characters `std::isspace` answers true for in the "C"
     /// locale, which is not `constexpr`.
-    [[nodiscard]] constexpr bool is_blank(char character) noexcept
+    [[nodiscard]] constexpr bool is_blank(char glyph) noexcept
     {
-        return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '\v'
-               || character == '\f';
+        return glyph == ' ' || glyph == '\t' || glyph == '\n' || glyph == '\r' || glyph == '\v' || glyph == '\f';
     }
 
     /// A `false` that depends on @p N, for an assertion that must fire only

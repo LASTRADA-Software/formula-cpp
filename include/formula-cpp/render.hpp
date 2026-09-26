@@ -162,8 +162,8 @@ namespace detail
     template <Unit U>
     [[nodiscard]] constexpr Precedence precedence_of(ConstantNode<U> const& node) noexcept
     {
-        constexpr Unit unit = U;
-        bool const hasUnitSymbol = !view(unit.symbolText).empty();
+        constexpr Unit declaredUnit = U;
+        bool const hasUnitSymbol = !view(declaredUnit.symbolText).empty();
         return node.number.sign() < 0 || hasUnitSymbol ? Precedence::Unary : Precedence::Atom;
     }
 
@@ -310,10 +310,10 @@ namespace detail
             keyText.reserve(words.size());
             for (std::size_t at = 0; at < words.size(); ++at)
             {
-                char const c = words[at];
+                char const byte = words[at];
                 if constexpr (D == Dialect::LaTeX)
                 {
-                    switch (c)
+                    switch (byte)
                     {
                         case '-':
                         case '\'':
@@ -322,8 +322,8 @@ namespace detail
                             // en dash (`---` an em dash), `''` a closing
                             // quote, `,,` a low quote. An empty group
                             // between the two keeps them two characters.
-                            keyText += c;
-                            if (at + 1 < words.size() && words[at + 1] == c)
+                            keyText += byte;
+                            if (at + 1 < words.size() && words[at + 1] == byte)
                                 keyText += "{}";
                             break;
                         case '\\':
@@ -358,16 +358,16 @@ namespace detail
                         case '_':
                         case '%':
                             keyText += '\\';
-                            keyText += c;
+                            keyText += byte;
                             break;
                         default:
-                            keyText += c;
+                            keyText += byte;
                             break;
                     }
                 }
                 else
                 {
-                    switch (c)
+                    switch (byte)
                     {
                         case '<':
                             keyText += "&lt;";
@@ -394,10 +394,10 @@ namespace detail
                         case '[':
                         case ']':
                             keyText += '\\';
-                            keyText += c;
+                            keyText += byte;
                             break;
                         default:
-                            keyText += c;
+                            keyText += byte;
                             break;
                     }
                 }
@@ -675,8 +675,8 @@ template <Dialect D, Described Q, Vocabulary V>
 template <Dialect D, Unit U, Vocabulary V>
 [[nodiscard]] std::string render_node(ConstantNode<U> const& node, V const&)
 {
-    constexpr Unit unit = U;
-    return detail::number_with_unit(detail::number_text(node.number), view(unit.symbolText));
+    constexpr Unit declaredUnit = U;
+    return detail::number_with_unit(detail::number_text(node.number), view(declaredUnit.symbolText));
 }
 
 /// A unary node renders as its operator followed by its (parenthesised if
@@ -695,17 +695,17 @@ template <Dialect D, UnaryOperator Op, Node Operand, Vocabulary V>
 template <Dialect D, BinaryOperator Op, Node Left, Node Right, Vocabulary V>
 [[nodiscard]] std::string render_node(BinaryNode<Op, Left, Right> const& node, V const& vocabulary)
 {
-    constexpr detail::Precedence here = detail::PrecedenceOf<BinaryNode<Op, Left, Right>>::value;
+    constexpr detail::Precedence ownPrecedence = detail::PrecedenceOf<BinaryNode<Op, Left, Right>>::value;
     constexpr detail::Precedence rightContext = (Op == BinaryOperator::Subtract || Op == BinaryOperator::Divide)
-                                                    ? static_cast<detail::Precedence>(static_cast<int>(here) + 1)
-                                                    : here;
+                                                    ? static_cast<detail::Precedence>(static_cast<int>(ownPrecedence) + 1)
+                                                    : ownPrecedence;
 
     if constexpr (D == Dialect::LaTeX && Op == BinaryOperator::Divide)
         // \frac groups both sides itself, so neither operand needs a bracket.
         return "\\frac{" + render<D>(node.lhs, vocabulary) + "}{" + render<D>(node.rhs, vocabulary) + "}";
     else
     {
-        std::string const leftText = detail::render_operand<D>(node.lhs, here, vocabulary);
+        std::string const leftText = detail::render_operand<D>(node.lhs, ownPrecedence, vocabulary);
         std::string const rightText = detail::render_operand<D>(node.rhs, rightContext, vocabulary);
 
         if constexpr (Op == BinaryOperator::Add)
@@ -802,8 +802,8 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Opera
 [[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node, V const& vocabulary)
 {
     std::string const inner = render<D>(node.operand, vocabulary);
-    constexpr Unit unit = U;
-    std::string const unitSymbol { view(unit.symbolText) };
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
     std::string const placesText = std::to_string(Places.value);
 
     if constexpr (D == Dialect::LaTeX)
@@ -821,8 +821,8 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
 [[nodiscard]] std::string render_node(RoundSignificantNode<U, Digits, Mode, Operand> const& node, V const& vocabulary)
 {
     std::string const inner = render<D>(node.operand, vocabulary);
-    constexpr Unit unit = U;
-    std::string const unitSymbol { view(unit.symbolText) };
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
     std::string const digitsText = std::to_string(Digits.value);
 
     if constexpr (D == Dialect::LaTeX)
@@ -850,8 +850,8 @@ template <Dialect D, Unit U, detail::FixedString Justification, Node Operand, Vo
 [[nodiscard]] std::string render_node(NumericValueNode<U, Justification, Operand> const& node, V const& vocabulary)
 {
     std::string const inner = render<D>(node.operand, vocabulary);
-    constexpr Unit unit = U;
-    std::string const unitSymbol { view(unit.symbolText) };
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
 
     if constexpr (D == Dialect::LaTeX)
         return "\\{" + inner + "/\\mathrm{" + unitSymbol + "}\\}";
@@ -935,15 +935,15 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
-    std::string rows;
+    std::string rowText;
     for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
-        rows +=
+        rowText +=
             detail::lookup_separator<D>()
             + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
                 detail::band_text(Bands[bandIndex], view(keyUnit.symbolText)),
                 detail::number_with_unit(detail::number_text(node.corrections[bandIndex]), view(resultUnit.symbolText))));
 
-    return detail::lookup_call<D>("lookup", render<D>(node.operand, vocabulary), rows);
+    return detail::lookup_call<D>("lookup", render<D>(node.operand, vocabulary), rowText);
 }
 
 /// An exact lookup renders as `lookup(<selected key>, <key> gives
@@ -968,14 +968,16 @@ template <Dialect D, KeyTable Keys, Unit ResultUnit, Vocabulary V>
 {
     constexpr Unit resultUnit = ResultUnit;
 
-    std::string rows;
+    std::string rowText;
     for (std::size_t keyIndex = 0; keyIndex < Keys.size(); ++keyIndex)
-        rows += detail::lookup_separator<D>()
-                + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    detail::key_text<D, Keys>(Keys[keyIndex]),
-                    detail::number_with_unit(detail::number_text(node.corrections[keyIndex]), view(resultUnit.symbolText))));
+        rowText +=
+            detail::lookup_separator<D>()
+            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                detail::key_text<D, Keys>(Keys[keyIndex]),
+                detail::number_with_unit(detail::number_text(node.corrections[keyIndex]), view(resultUnit.symbolText))));
 
-    return detail::lookup_call<D>("lookup", detail::lookup_words_in_dialect<D>(detail::key_text<D, Keys>(node.key)), rows);
+    return detail::lookup_call<D>(
+        "lookup", detail::lookup_words_in_dialect<D>(detail::key_text<D, Keys>(node.key)), rowText);
 }
 
 /// An interpolating lookup renders as `interpolate(<operand>, at <key> gives
@@ -995,9 +997,9 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
-    std::string rows;
+    std::string rowText;
     for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
-        rows +=
+        rowText +=
             detail::lookup_separator<D>()
             + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
                 "at "
@@ -1006,7 +1008,7 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
                         view(keyUnit.symbolText)),
                 detail::number_with_unit(detail::number_text(node.corrections[pointIndex]), view(resultUnit.symbolText))));
 
-    return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rows);
+    return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rowText);
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it

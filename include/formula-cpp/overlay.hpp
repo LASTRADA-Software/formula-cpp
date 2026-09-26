@@ -1173,13 +1173,13 @@ namespace detail
 
         /// Refused, in the words of the operation that met it; see
         /// `RequireOverlaySeesNode`.
-        [[nodiscard]] static constexpr type apply(N const& node, Sub const&) noexcept
+        [[nodiscard]] static constexpr type apply(N const& original, Sub const&) noexcept
         {
             if constexpr (IsDerivation<Sub>::value)
                 static_assert(RequireDerivationSeesNode<N>::value);
             else
                 static_assert(RequireOverlaySeesNode<N>::value);
-            return node;
+            return original;
         }
     };
 
@@ -1216,13 +1216,13 @@ namespace detail
         using type = std::conditional_t<isQ, Substituted<Sub>, VarNode<P>>;
 
         /// The rewritten node.
-        [[nodiscard]] static constexpr type apply([[maybe_unused]] VarNode<P> const& node,
+        [[nodiscard]] static constexpr type apply([[maybe_unused]] VarNode<P> const& original,
                                                   [[maybe_unused]] Sub const& overriding) noexcept
         {
             if constexpr (isQ)
                 return substitute(overriding);
             else
-                return node;
+                return original;
         }
     };
 
@@ -1250,13 +1250,13 @@ namespace detail
         using type = std::conditional_t<isQ, Substituted<Sub>, OverriddenConstantNode<P>>;
 
         /// The substitution when it is `Q`'s, and the node otherwise.
-        [[nodiscard]] static constexpr type apply([[maybe_unused]] OverriddenConstantNode<P> const& node,
+        [[nodiscard]] static constexpr type apply([[maybe_unused]] OverriddenConstantNode<P> const& original,
                                                   [[maybe_unused]] Sub const& overriding) noexcept
         {
             if constexpr (isQ)
                 return substitute(overriding);
             else
-                return node;
+                return original;
         }
     };
 
@@ -1292,12 +1292,14 @@ namespace detail
         using type = std::conditional_t<isQ, Substituted<Sub>, DerivedQuantityNode<P, typename Definition::type>>;
 
         /// The rewritten node, keeping its citation when it is kept.
-        [[nodiscard]] static constexpr type apply(DerivedQuantityNode<P, Expr> const& node, Sub const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(DerivedQuantityNode<P, Expr> const& original,
+                                                  Sub const& overriding) noexcept
         {
             if constexpr (isQ)
                 return substitute(overriding);
             else
-                return OverlayNodeAccess::derived<P>(Definition::apply(node.expression(), overriding), node.source());
+                return OverlayNodeAccess::derived<P>(Definition::apply(original.expression(), overriding),
+                                                     original.source());
         }
     };
 
@@ -1316,9 +1318,9 @@ namespace detail
         using type = ReplacedVariantNode<typename Replacement::type>;
 
         /// The marker, around the rewritten replacement, with its citation.
-        [[nodiscard]] static constexpr type apply(ReplacedVariantNode<Expr> const& node, Sub const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(ReplacedVariantNode<Expr> const& original, Sub const& overriding) noexcept
         {
-            return OverlayNodeAccess::replaced(Replacement::apply(node.replacement(), overriding), node.source());
+            return OverlayNodeAccess::replaced(Replacement::apply(original.replacement(), overriding), original.source());
         }
     };
 
@@ -1334,9 +1336,9 @@ namespace detail
         using type = N;
 
         /// The node itself.
-        [[nodiscard]] static constexpr type apply(N const& node, Sub const&) noexcept
+        [[nodiscard]] static constexpr type apply(N const& original, Sub const&) noexcept
         {
-            return node;
+            return original;
         }
     };
 
@@ -1467,9 +1469,9 @@ namespace detail
         using type = DocumentedNode<typename Wrapped::type>;
 
         /// The wrapper, around the rewritten formula, with its citation.
-        [[nodiscard]] static constexpr type apply(DocumentedNode<Inner> const& node, Sub const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(DocumentedNode<Inner> const& original, Sub const& overriding) noexcept
         {
-            return type { {}, Wrapped::apply(node.inner, overriding), node.citation };
+            return type { {}, Wrapped::apply(original.inner, overriding), original.citation };
         }
     };
 
@@ -1489,9 +1491,10 @@ namespace detail
         using type = BinaryNode<Op, typename LeftRewrite::type, typename RightRewrite::type>;
 
         /// The node, over the rewritten sides.
-        [[nodiscard]] static constexpr type apply(BinaryNode<Op, Left, Right> const& node, Sub const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(BinaryNode<Op, Left, Right> const& original,
+                                                  Sub const& overriding) noexcept
         {
-            return type { {}, LeftRewrite::apply(node.lhs, overriding), RightRewrite::apply(node.rhs, overriding) };
+            return type { {}, LeftRewrite::apply(original.lhs, overriding), RightRewrite::apply(original.rhs, overriding) };
         }
     };
 
@@ -1513,9 +1516,10 @@ namespace detail
         using type = PredicateNode<Op, typename LeftRewrite::type, typename RightRewrite::type>;
 
         /// The comparison, over the rewritten sides.
-        [[nodiscard]] static constexpr type apply(PredicateNode<Op, Left, Right> const& node, Sub const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(PredicateNode<Op, Left, Right> const& original,
+                                                  Sub const& overriding) noexcept
         {
-            return type { LeftRewrite::apply(node.lhs, overriding), RightRewrite::apply(node.rhs, overriding) };
+            return type { LeftRewrite::apply(original.lhs, overriding), RightRewrite::apply(original.rhs, overriding) };
         }
     };
 
@@ -1537,12 +1541,12 @@ namespace detail
         using type = WhenNode<typename PredicateRewrite::type, typename ThenRewrite::type, typename ElseRewrite::type>;
 
         /// The conditional, over the rewritten parts.
-        [[nodiscard]] static constexpr type apply(WhenNode<P, Then, Else> const& node, Sub const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(WhenNode<P, Then, Else> const& original, Sub const& overriding) noexcept
         {
             return type { {},
-                          PredicateRewrite::apply(node.predicate, overriding),
-                          ThenRewrite::apply(node.thenBranch, overriding),
-                          ElseRewrite::apply(node.elseBranch, overriding) };
+                          PredicateRewrite::apply(original.predicate, overriding),
+                          ThenRewrite::apply(original.thenBranch, overriding),
+                          ElseRewrite::apply(original.elseBranch, overriding) };
         }
     };
 
@@ -1916,7 +1920,7 @@ namespace detail
     [[nodiscard]] constexpr auto rewrite_constraints(ConstraintSet<Ps...> const& ownSet, Sub const& overriding) noexcept
     {
         return std::apply(
-            [&](auto const&... items) { return formula::constraints(rewrite_constraint(items, overriding)...); },
+            [&](auto const&... predicates) { return formula::constraints(rewrite_constraint(predicates, overriding)...); },
             ownSet.items);
     }
 
