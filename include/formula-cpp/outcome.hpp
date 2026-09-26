@@ -96,10 +96,10 @@ class Outcome
     /// saying the same thing, and callers would have to check both.
     [[nodiscard]] static constexpr Outcome value(Measured<Q> measurement, ValueSource source) noexcept
     {
-        Outcome result {};
-        result._kind = measurement.has_value() ? OutcomeKind::Value : OutcomeKind::Empty;
-        result._value = Value<Q> { measurement, source };
-        return result;
+        Outcome made {};
+        made._kind = measurement.has_value() ? OutcomeKind::Value : OutcomeKind::Empty;
+        made._value = Value<Q> { measurement, source };
+        return made;
     }
 
     /// No value, because an input was never measured.

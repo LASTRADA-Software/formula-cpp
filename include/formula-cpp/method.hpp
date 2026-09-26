@@ -363,12 +363,12 @@ namespace detail
     template <typename... Ts>
     [[nodiscard]] consteval PositionPair first_repeated_pair() noexcept
     {
-        constexpr std::size_t count = sizeof...(Ts);
-        constexpr std::array<std::array<bool, count>, count> same { isSameAsEach<Ts, Ts...>... };
-        for (std::size_t second = 1; second < count; ++second)
-            for (std::size_t first = 0; first < second; ++first)
-                if (same[first][second])
-                    return PositionPair { first, second };
+        constexpr std::size_t typeCount = sizeof...(Ts);
+        constexpr std::array<std::array<bool, typeCount>, typeCount> same { isSameAsEach<Ts, Ts...>... };
+        for (std::size_t later = 1; later < typeCount; ++later)
+            for (std::size_t earlier = 0; earlier < later; ++earlier)
+                if (same[earlier][later])
+                    return PositionPair { earlier, later };
         return PositionPair {};
     }
 
@@ -522,8 +522,8 @@ namespace detail
     [[nodiscard]] constexpr std::array<std::size_t, Count> positions_in_order() noexcept
     {
         std::array<std::size_t, Count> positions {};
-        for (std::size_t index = 0; index < Count; ++index)
-            positions[index] = index;
+        for (std::size_t entryIndex = 0; entryIndex < Count; ++entryIndex)
+            positions[entryIndex] = entryIndex;
         return positions;
     }
 
@@ -541,11 +541,11 @@ namespace detail
     [[nodiscard]] constexpr bool is_published_layout(std::array<std::size_t, Count> const& positions,
                                                      std::size_t total) noexcept
     {
-        for (std::size_t index = 0; index < Count; ++index)
+        for (std::size_t entryIndex = 0; entryIndex < Count; ++entryIndex)
         {
-            if (positions[index] >= total)
+            if (positions[entryIndex] >= total)
                 return false;
-            if (index > 0 && positions[index - 1] >= positions[index])
+            if (entryIndex > 0 && positions[entryIndex - 1] >= positions[entryIndex])
                 return false;
         }
         return true;
@@ -613,14 +613,14 @@ namespace detail
         {
         }
 
-        /// @p published of @p total, refused at compile time unless every
-        /// position is below @p total and above the one before it. `consteval`, so
+        /// @p published of @p publishedCount, refused at compile time unless every
+        /// position is below @p publishedCount and above the one before it. `consteval`, so
         /// that no layout reaches a trace unchecked.
-        consteval PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t total) noexcept:
+        consteval PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t publishedCount) noexcept:
             _positions { published },
-            _total { total }
+            _total { publishedCount }
         {
-            if (!is_published_layout(published, total))
+            if (!is_published_layout(published, publishedCount))
                 published_positions_must_increase_and_stay_below_the_published_count();
         }
 
@@ -642,10 +642,10 @@ namespace detail
                                                       _total };
         }
 
-        /// The ZERO-BASED published position of the variant at @p index.
-        [[nodiscard]] constexpr std::size_t position(std::size_t index) const noexcept
+        /// The ZERO-BASED published position of the variant at @p overlaidIndex.
+        [[nodiscard]] constexpr std::size_t position(std::size_t overlaidIndex) const noexcept
         {
-            return _positions[index];
+            return _positions[overlaidIndex];
         }
 
         /// How many variants the method declares as published.
@@ -664,9 +664,11 @@ namespace detail
         };
 
         /// A layout `select` has already shown valid.
-        constexpr PublishedLayout(Selected, std::array<std::size_t, Count> const& published, std::size_t total) noexcept:
+        constexpr PublishedLayout(Selected,
+                                  std::array<std::size_t, Count> const& published,
+                                  std::size_t publishedCount) noexcept:
             _positions { published },
-            _total { total }
+            _total { publishedCount }
         {
         }
 
@@ -1496,9 +1498,9 @@ namespace detail
     [[nodiscard]] consteval std::size_t variant_index() noexcept
     {
         constexpr bool matches[] = { std::is_same_v<Tag, typename Cs::tag>... };
-        for (std::size_t index = 0; index < sizeof...(Cs); ++index)
-            if (matches[index])
-                return index;
+        for (std::size_t caseIndex = 0; caseIndex < sizeof...(Cs); ++caseIndex)
+            if (matches[caseIndex])
+                return caseIndex;
         return 0;
     }
 

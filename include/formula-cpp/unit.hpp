@@ -69,18 +69,18 @@ namespace detail
 /// `formula_unit_symbol_too_long` -- rather than truncating when the text does
 /// not fit in `SymbolCapacity` bytes including the terminator; every symbol
 /// shipped by this library is well within the limit.
-[[nodiscard]] constexpr Symbol symbol(char const* text) noexcept
+[[nodiscard]] constexpr Symbol symbol(char const* spelling) noexcept
 {
-    Symbol result {};
-    std::size_t index = 0;
-    while (text[index] != '\0')
+    Symbol built {};
+    std::size_t characterIndex = 0;
+    while (spelling[characterIndex] != '\0')
     {
-        if (index + 1 >= SymbolCapacity)
+        if (characterIndex + 1 >= SymbolCapacity)
             detail::formula_unit_symbol_too_long();
-        result.characters[index] = text[index];
-        ++index;
+        built.characters[characterIndex] = spelling[characterIndex];
+        ++characterIndex;
     }
-    return result;
+    return built;
 }
 
 /// Reads a Symbol back as a view. The storage has to be structural; this does not.
@@ -95,12 +95,12 @@ namespace detail
 /// seven bytes of padding: 23 characters returned from a 16-byte array, the
 /// neighbours included. A symbol built by `symbol()` is always terminated, but
 /// this function cannot assume its argument came from there.
-[[nodiscard]] constexpr std::string_view view(Symbol const& value) noexcept
+[[nodiscard]] constexpr std::string_view view(Symbol const& unitSymbol) noexcept
 {
     std::size_t length = 0;
-    while (length < SymbolCapacity && value.characters[length] != '\0')
+    while (length < SymbolCapacity && unitSymbol.characters[length] != '\0')
         ++length;
-    return std::string_view { value.characters, length };
+    return std::string_view { unitSymbol.characters, length };
 }
 
 /// Deleted: binding a temporary here would return a view into a `Symbol` that
@@ -561,7 +561,7 @@ struct RequireSameUnitDimension
     static constexpr bool value = true;
 };
 
-/// Converts @p value from @p from into @p to, exactly.
+/// Converts @p amount from @p from into @p to, exactly.
 ///
 /// Applies integer factors by multiply-then-divide rather than a precomputed
 /// floating-point factor, so 30 MPa is exactly 30000000 Pa and converts back to
@@ -575,7 +575,7 @@ struct RequireSameUnitDimension
 /// @return the converted value, or an error if the dimensions differ, either
 ///         unit's magnitude is zero, or an intermediate is not representable.
 ///         Never a wrong number.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_convert(Rational value,
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_convert(Rational amount,
                                                                                  Unit from,
                                                                                  Unit to) noexcept
 {
@@ -609,10 +609,10 @@ struct RequireSameUnitDimension
     if (!toOffset)
         return toOffset;
 
-    std::expected<Rational, ArithmeticError> const scaled = checked_mul(value, *fromMagnitude);
-    if (!scaled)
-        return scaled;
-    std::expected<Rational, ArithmeticError> const inSi = checked_add(*scaled, *fromOffset);
+    std::expected<Rational, ArithmeticError> const scaledValue = checked_mul(amount, *fromMagnitude);
+    if (!scaledValue)
+        return scaledValue;
+    std::expected<Rational, ArithmeticError> const inSi = checked_add(*scaledValue, *fromOffset);
     if (!inSi)
         return inSi;
     std::expected<Rational, ArithmeticError> const shifted = checked_sub(*inSi, *toOffset);
@@ -622,9 +622,9 @@ struct RequireSameUnitDimension
 }
 
 /// @throws ArithmeticException when the conversion cannot be represented.
-[[nodiscard]] constexpr Rational convert(Rational value, Unit from, Unit to)
+[[nodiscard]] constexpr Rational convert(Rational amount, Unit from, Unit to)
 {
-    return detail::or_throw(checked_convert(value, from, to));
+    return detail::or_throw(checked_convert(amount, from, to));
 }
 
 /// The outcome of checking a value against its unit's declared bounds.
@@ -648,9 +648,9 @@ enum class BoundsCheck : std::uint8_t
 };
 
 /// `outcome` in prose, for a trace or an error message.
-[[nodiscard]] constexpr std::string_view describe(BoundsCheck outcome) noexcept
+[[nodiscard]] constexpr std::string_view describe(BoundsCheck boundsCheck) noexcept
 {
-    switch (outcome)
+    switch (boundsCheck)
     {
         case BoundsCheck::WithinBounds: return "within the declared bounds";
         case BoundsCheck::BelowMinimum: return "below the declared minimum";
@@ -661,9 +661,9 @@ enum class BoundsCheck : std::uint8_t
     return "unknown bounds outcome";
 }
 
-/// Checks @p value, expressed in @p unitOfValue, against that unit's bounds.
-[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(
-    Rational value, Unit unitOfValue) noexcept
+/// Checks @p amount, expressed in @p unitOfValue, against that unit's bounds.
+[[nodiscard]] constexpr std::expected<BoundsCheck, ArithmeticError> checked_within_bounds(Rational amount,
+                                                                                          Unit unitOfValue) noexcept
 {
     if (!unitOfValue.bounds.present)
         return BoundsCheck::NotChecked;
@@ -683,9 +683,9 @@ enum class BoundsCheck : std::uint8_t
     if (*low > *high)
         return std::unexpected { ArithmeticError::DomainError };
 
-    if (value < *low)
+    if (amount < *low)
         return BoundsCheck::BelowMinimum;
-    if (value > *high)
+    if (amount > *high)
         return BoundsCheck::AboveMaximum;
     return BoundsCheck::WithinBounds;
 }
@@ -696,17 +696,18 @@ enum class BoundsCheck : std::uint8_t
     return DecimalPlaces { unitOfValue.decimals };
 }
 
-/// Rounds @p value to the precision its unit declares.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_declared(
-    Rational value, Unit unitOfValue, RoundingMode mode) noexcept
+/// Rounds @p amount to the precision its unit declares.
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_declared(Rational amount,
+                                                                                           Unit unitOfValue,
+                                                                                           RoundingMode mode) noexcept
 {
-    return checked_round(value, declared_decimals(unitOfValue), mode);
+    return checked_round(amount, declared_decimals(unitOfValue), mode);
 }
 
 /// @throws ArithmeticException when the checked form would report an error.
-[[nodiscard]] constexpr Rational round_to_declared(Rational value, Unit unitOfValue, RoundingMode mode)
+[[nodiscard]] constexpr Rational round_to_declared(Rational amount, Unit unitOfValue, RoundingMode mode)
 {
-    return detail::or_throw(checked_round_to_declared(value, unitOfValue, mode));
+    return detail::or_throw(checked_round_to_declared(amount, unitOfValue, mode));
 }
 
 } // namespace formula

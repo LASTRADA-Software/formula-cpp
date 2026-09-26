@@ -213,13 +213,13 @@ template <Described Q, std::size_t N>
     if constexpr (N > 1)
     {
         bool blank = true;
-        for (std::size_t index = 0; index + 1 < N; ++index)
+        for (std::size_t characterIndex = 0; characterIndex + 1 < N; ++characterIndex)
         {
-            if (symbol[index] == '\0')
+            if (symbol[characterIndex] == '\0')
                 detail::renames_symbol_must_be_a_string_with_no_embedded_nul();
-            if (detail::is_forbidden_in_symbol(symbol[index]))
+            if (detail::is_forbidden_in_symbol(symbol[characterIndex]))
                 detail::renames_symbol_must_not_hold_a_bracket_or_a_control_character();
-            blank = blank && detail::is_blank(symbol[index]);
+            blank = blank && detail::is_blank(symbol[characterIndex]);
         }
         if (symbol[N - 1] != '\0')
             detail::renames_symbol_must_be_a_string_with_no_embedded_nul();
@@ -260,10 +260,10 @@ namespace detail
     template <typename Q, typename... Es>
     inline constexpr std::size_t renamingIndex = [] {
         constexpr bool matches[] = { std::is_same_v<std::remove_cv_t<typename Es::quantity>, std::remove_cv_t<Q>>... };
-        std::size_t index = 0;
-        while (!matches[index])
-            ++index;
-        return index;
+        std::size_t entryIndex = 0;
+        while (!matches[entryIndex])
+            ++entryIndex;
+        return entryIndex;
     }();
 
     /// True when no two of @p Es rename the same quantity -- and, so that a

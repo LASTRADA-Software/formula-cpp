@@ -19,25 +19,27 @@ inline constexpr Int IntMax = 9223372036854775807LL;
 inline constexpr Int IntMin = -IntMax - 1;
 
 /// True when `lhs + rhs` is not representable.
-[[nodiscard]] constexpr bool add_overflows(Int lhs, Int rhs) noexcept
+[[nodiscard]] constexpr bool add_overflows(Int leftOperand, Int rightOperand) noexcept
 {
-    return (rhs > 0 && lhs > IntMax - rhs) || (rhs < 0 && lhs < IntMin - rhs);
+    return (rightOperand > 0 && leftOperand > IntMax - rightOperand)
+           || (rightOperand < 0 && leftOperand < IntMin - rightOperand);
 }
 
 /// True when `lhs - rhs` is not representable.
-[[nodiscard]] constexpr bool sub_overflows(Int lhs, Int rhs) noexcept
+[[nodiscard]] constexpr bool sub_overflows(Int leftOperand, Int rightOperand) noexcept
 {
-    return (rhs < 0 && lhs > IntMax + rhs) || (rhs > 0 && lhs < IntMin + rhs);
+    return (rightOperand < 0 && leftOperand > IntMax + rightOperand)
+           || (rightOperand > 0 && leftOperand < IntMin + rightOperand);
 }
 
 /// True when `lhs * rhs` is not representable.
-[[nodiscard]] constexpr bool mul_overflows(Int lhs, Int rhs) noexcept
+[[nodiscard]] constexpr bool mul_overflows(Int leftOperand, Int rightOperand) noexcept
 {
-    if (lhs == 0 || rhs == 0)
+    if (leftOperand == 0 || rightOperand == 0)
         return false;
-    if (lhs > 0)
-        return rhs > 0 ? lhs > IntMax / rhs : rhs < IntMin / lhs;
-    return rhs > 0 ? lhs < IntMin / rhs : lhs < IntMax / rhs;
+    if (leftOperand > 0)
+        return rightOperand > 0 ? leftOperand > IntMax / rightOperand : rightOperand < IntMin / leftOperand;
+    return rightOperand > 0 ? leftOperand < IntMin / rightOperand : leftOperand < IntMax / rightOperand;
 }
 
 // Named *_or_none, not checked_*: `checked_` is reserved elsewhere in this
@@ -45,45 +47,45 @@ inline constexpr Int IntMin = -IntMax - 1;
 // return `std::optional<Int>` -- a different contract that must not share the
 // prefix meant to promise the first one.
 
-[[nodiscard]] constexpr std::optional<Int> add_checked_or_none(Int lhs, Int rhs) noexcept
+[[nodiscard]] constexpr std::optional<Int> add_checked_or_none(Int leftOperand, Int rightOperand) noexcept
 {
-    if (add_overflows(lhs, rhs))
+    if (add_overflows(leftOperand, rightOperand))
         return std::nullopt;
-    return lhs + rhs;
+    return leftOperand + rightOperand;
 }
 
-[[nodiscard]] constexpr std::optional<Int> sub_checked_or_none(Int lhs, Int rhs) noexcept
+[[nodiscard]] constexpr std::optional<Int> sub_checked_or_none(Int leftOperand, Int rightOperand) noexcept
 {
-    if (sub_overflows(lhs, rhs))
+    if (sub_overflows(leftOperand, rightOperand))
         return std::nullopt;
-    return lhs - rhs;
+    return leftOperand - rightOperand;
 }
 
-[[nodiscard]] constexpr std::optional<Int> mul_checked_or_none(Int lhs, Int rhs) noexcept
+[[nodiscard]] constexpr std::optional<Int> mul_checked_or_none(Int leftOperand, Int rightOperand) noexcept
 {
-    if (mul_overflows(lhs, rhs))
+    if (mul_overflows(leftOperand, rightOperand))
         return std::nullopt;
-    return lhs * rhs;
+    return leftOperand * rightOperand;
 }
 
 /// Absolute value as an unsigned quantity. Exists because `-IntMin` overflows
 /// but `magnitude(IntMin)` is an ordinary number.
-[[nodiscard]] constexpr std::uint64_t magnitude(Int value) noexcept
+[[nodiscard]] constexpr std::uint64_t magnitude(Int operandValue) noexcept
 {
-    return value < 0 ? ~static_cast<std::uint64_t>(value) + 1U : static_cast<std::uint64_t>(value);
+    return operandValue < 0 ? ~static_cast<std::uint64_t>(operandValue) + 1U : static_cast<std::uint64_t>(operandValue);
 }
 
 /// Greatest common divisor. `gcd(0, n) == n` and `gcd(0, 0) == 0`.
 /// Unsigned so that `magnitude(IntMin)` is a legal argument.
-[[nodiscard]] constexpr std::uint64_t gcd(std::uint64_t lhs, std::uint64_t rhs) noexcept
+[[nodiscard]] constexpr std::uint64_t gcd(std::uint64_t leftOperand, std::uint64_t rightOperand) noexcept
 {
-    while (rhs != 0)
+    while (rightOperand != 0)
     {
-        std::uint64_t const remainder = lhs % rhs;
-        lhs = rhs;
-        rhs = remainder;
+        std::uint64_t const remainder = leftOperand % rightOperand;
+        leftOperand = rightOperand;
+        rightOperand = remainder;
     }
-    return lhs;
+    return leftOperand;
 }
 
 struct DivMod
@@ -98,19 +100,19 @@ struct DivMod
 /// which only reads cleanly with a non-negative remainder.
 ///
 /// @pre `denominator > 0`.
-[[nodiscard]] constexpr DivMod floor_divmod(Int numerator, Int denominator) noexcept
+[[nodiscard]] constexpr DivMod floor_divmod(Int dividend, Int divisor) noexcept
 {
-    Int quotient = numerator / denominator;
-    Int remainder = numerator % denominator;
+    Int truncated = dividend / divisor;
+    Int remainder = dividend % divisor;
     if (remainder < 0)
     {
         // Safe: a non-zero remainder means |quotient| is strictly below
         // |numerator| / denominator, so the decrement cannot reach IntMin, and
         // remainder is greater than -denominator.
-        --quotient;
-        remainder += denominator;
+        --truncated;
+        remainder += divisor;
     }
-    return { quotient, remainder };
+    return { truncated, remainder };
 }
 
 /// `10^exponent` for `0 <= exponent <= 18`; `nullopt` otherwise. 10^18 is the
@@ -119,32 +121,32 @@ struct DivMod
 {
     if (exponent < 0 || exponent > 18)
         return std::nullopt;
-    Int result = 1;
-    for (int step = 0; step < exponent; ++step)
-        result *= 10;
-    return result;
+    Int power = 1;
+    for (int multiplied = 0; multiplied < exponent; ++multiplied)
+        power *= 10;
+    return power;
 }
 
 /// Number of decimal digits in `|value|`. Zero has one digit.
-[[nodiscard]] constexpr int decimal_digits(Int value) noexcept
+[[nodiscard]] constexpr int decimal_digits(Int operandValue) noexcept
 {
-    std::uint64_t remaining = magnitude(value);
-    int digits = 1;
+    std::uint64_t remaining = magnitude(operandValue);
+    int digitCount = 1;
     while (remaining >= 10U)
     {
         remaining /= 10U;
-        ++digits;
+        ++digitCount;
     }
-    return digits;
+    return digitCount;
 }
 
 /// `value * 10^exponent`, or `nullopt` on overflow or an out-of-range exponent.
-[[nodiscard]] constexpr std::optional<Int> mul_pow10(Int value, int exponent) noexcept
+[[nodiscard]] constexpr std::optional<Int> mul_pow10(Int operandValue, int exponent) noexcept
 {
     std::optional<Int> const factor = pow10(exponent);
     if (!factor)
         return std::nullopt;
-    return mul_checked_or_none(value, *factor);
+    return mul_checked_or_none(operandValue, *factor);
 }
 
 } // namespace formula::detail

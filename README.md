@@ -298,6 +298,11 @@ consumer who only evaluates numbers should not compile those into every translat
 them by name when you want text, or a trace, or both — see
 [the tracing guide](docs/tracing.md) for `trace.hpp` and `trace_render.hpp` specifically.
 
+The headers build cleanly under cl `/W4 /WX` and g++ `-Wshadow -Werror` in a translation unit that
+declares ordinary globals such as `result`, `value` or `index` before including them: no header
+declares a local or parameter that would hide one of the 47 common names
+`test/consumer_globals_tests.cpp` declares, and that test fails the build if one comes back.
+
 ## Build options
 
 | Option | Default | Effect |

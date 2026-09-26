@@ -193,9 +193,9 @@ namespace detail
 
     /// Whether a row is marked as substituted by an overlay: fixed, or
     /// derived.
-    [[nodiscard]] inline bool is_substituted(SymbolEntry const& entry) noexcept
+    [[nodiscard]] inline bool is_substituted(SymbolEntry const& symbolEntry) noexcept
     {
-        return entry.fixedValue.has_value() || entry.derivedAs.has_value();
+        return symbolEntry.fixedValue.has_value() || symbolEntry.derivedAs.has_value();
     }
 
     // Not load-bearing, just this file's convention: every collect() call's
@@ -281,13 +281,13 @@ namespace detail
     template <Described Q, Vocabulary V>
     bool add_row(Walk<V>& walk, std::size_t& row)
     {
-        void const* const key = &quantityIdentity<Q>;
+        void const* const identity = &quantityIdentity<Q>;
         row = 0;
-        while (row < walk.seenQuantities.size() && walk.seenQuantities[row] != key)
+        while (row < walk.seenQuantities.size() && walk.seenQuantities[row] != identity)
             ++row;
         if (row < walk.seenQuantities.size())
             return false;
-        walk.seenQuantities.push_back(key);
+        walk.seenQuantities.push_back(identity);
         walk.documentation.symbols.push_back(SymbolEntry {
             .symbol = symbol_of<Q>(walk.vocabulary), .description = Describe<Q>::description, .unit = Describe<Q>::unit });
         return true;
@@ -305,12 +305,12 @@ namespace detail
     template <Vocabulary V, Described Q>
     void collect(Walk<V>& walk, VarNode<Q> const&)
     {
-        std::size_t row = 0;
-        if (add_row<Q>(walk, row))
+        std::size_t symbolRow = 0;
+        if (add_row<Q>(walk, symbolRow))
             return;
-        SymbolEntry& entry = walk.documentation.symbols[row];
-        if (is_substituted(entry))
-            entry.alsoReadAsInput = true;
+        SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
+        if (is_substituted(symbolEntry))
+            symbolEntry.alsoReadAsInput = true;
     }
 
     /// An overridden constant contributes its quantity's row as a variable

@@ -116,12 +116,12 @@ template <auto E>
     while (start > 0 && is_identifier_byte(signature[start - 1]))
         --start;
 
-    std::string_view const name = signature.substr(start);
-    if (name.empty() || (start > 0 && signature[start - 1] == ')'))
+    std::string_view const enumeratorName = signature.substr(start);
+    if (enumeratorName.empty() || (start > 0 && signature[start - 1] == ')'))
         return {};
-    if (name.front() >= '0' && name.front() <= '9')
+    if (enumeratorName.front() >= '0' && enumeratorName.front() <= '9')
         return {};
-    return name;
+    return enumeratorName;
 }
 
 } // namespace formula::detail

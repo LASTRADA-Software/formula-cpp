@@ -910,8 +910,8 @@ namespace detail
     template <typename Rep>
     [[nodiscard]] bool an_operand_failed(std::vector<Step<Rep>> const& steps, Step<Rep> const& step)
     {
-        for (std::size_t const operand: step.operands)
-            if (steps[operand].error.has_value())
+        for (std::size_t const operandIndex: step.operands)
+            if (steps[operandIndex].error.has_value())
                 return true;
         return false;
     }
@@ -1000,8 +1000,8 @@ namespace detail
                 return;
             }
 
-            std::optional<Rational> const value = sole_operand_value(steps, step);
-            if (!value.has_value())
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
             {
                 // No value to locate: either the operand was absent -- in
                 // which case nothing was looked up and nothing failed -- or
@@ -1013,15 +1013,15 @@ namespace detail
             }
 
             std::expected<Rational, ArithmeticError> const valueInKey =
-                checked_convert(*value, coherent(keyUnit.dimension), keyUnit);
+                checked_convert(*operandValue, coherent(keyUnit.dimension), keyUnit);
             if (!valueInKey.has_value())
             {
                 step.lookupFailure = LookupFailure::Conversion;
                 return;
             }
 
-            std::optional<std::size_t> const index = find_band<Bands>(*valueInKey);
-            if (!index.has_value())
+            std::optional<std::size_t> const matchedBand = find_band<Bands>(*valueInKey);
+            if (!matchedBand.has_value())
             {
                 step.lookupFailure = LookupFailure::Missed;
                 step.coveredRange = bands_cover<Bands>();
@@ -1034,7 +1034,7 @@ namespace detail
             if (step.error.has_value())
                 step.lookupFailure = LookupFailure::Conversion;
             else
-                step.selectedBand = Bands[*index];
+                step.selectedBand = Bands[*matchedBand];
         }
     }
 
@@ -1100,8 +1100,8 @@ namespace detail
                 return;
             }
 
-            std::optional<Rational> const value = sole_operand_value(steps, step);
-            if (!value.has_value())
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
             {
                 if (step.error.has_value())
                     step.lookupFailure = LookupFailure::Undetermined;
@@ -1109,7 +1109,7 @@ namespace detail
             }
 
             std::expected<Rational, ArithmeticError> const valueInKey =
-                checked_convert(*value, coherent(keyUnit.dimension), keyUnit);
+                checked_convert(*operandValue, coherent(keyUnit.dimension), keyUnit);
             if (!valueInKey.has_value())
             {
                 step.lookupFailure = LookupFailure::Conversion;
@@ -1240,12 +1240,12 @@ class RecordingSink
     template <Node N>
     void produced(N const& node, Evaluated<Rep> const& result)
     {
-        std::size_t const mark = _trace->marks.back();
+        std::size_t const nodeMark = _trace->marks.back();
         _trace->marks.pop_back();
 
-        Step<Rep> step {};
-        step.kind = detail::StepKindOf<N>::value;
-        step.dimension = N::dimension;
+        Step<Rep> nodeStep {};
+        nodeStep.kind = detail::StepKindOf<N>::value;
+        nodeStep.dimension = N::dimension;
 
         // Anything computed has no declared unit, so the coherent SI one is
         // the truthful answer; a variable overrides it with the unit its
@@ -1273,16 +1273,16 @@ class RecordingSink
         constexpr bool namesQuantity = detail::StepKindOf<N>::value == StepKind::Variable
                                        || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
                                        || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
-        step.unit = coherent(N::dimension);
+        nodeStep.unit = coherent(N::dimension);
         if constexpr (namesQuantity)
-            step.unit = Describe<typename N::quantity>::unit;
+            nodeStep.unit = Describe<typename N::quantity>::unit;
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
-            step.unit = N::unit;
+            nodeStep.unit = N::unit;
 
         if constexpr (namesQuantity)
-            step.symbol = symbol_of<typename N::quantity>(_vocabulary);
+            nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
-            step.citation = node.citation;
+            nodeStep.citation = node.citation;
         // What an overlay cited for the value it fixed, the quantity it
         // defined, the formula it replaced or the rule it set -- the
         // provenance each of these four steps exists to carry, read through
@@ -1290,16 +1290,16 @@ class RecordingSink
         if constexpr (detail::StepKindOf<N>::value == StepKind::OverriddenConstant
                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity
                       || detail::StepKindOf<N>::value == StepKind::ReplacedVariant)
-            step.citation = node.source();
+            nodeStep.citation = node.source();
         if constexpr (detail::StepKindOf<N>::value == StepKind::RoundingRuleApplied)
         {
-            step.roundingProvenance = node.rule().provenance();
-            step.citation = node.rule().source();
+            nodeStep.roundingProvenance = node.rule().provenance();
+            nodeStep.citation = node.rule().source();
         }
         if constexpr (detail::StepKindOf<N>::value == StepKind::NumericValue)
         {
-            step.justification = N::justification;
-            step.sourceUnit = N::unit;
+            nodeStep.justification = N::justification;
+            nodeStep.sourceUnit = N::unit;
         }
         // The banded and the interpolating lookup declare a key unit that is
         // independent of their own: a band's bounds are stated in it, and the
@@ -1309,22 +1309,22 @@ class RecordingSink
         // The exact lookup has none: its key is a discriminator, not a
         // quantity.
         if constexpr (requires { N::keyUnit; })
-            step.sourceUnit = N::keyUnit;
+            nodeStep.sourceUnit = N::keyUnit;
         if constexpr (requires { N::exponent; })
-            step.exponent = N::exponent;
+            nodeStep.exponent = N::exponent;
         else if constexpr (requires { N::degree; })
-            step.exponent = N::degree;
+            nodeStep.exponent = N::degree;
 
         if constexpr (requires { N::places; })
-            step.granularity = N::places.value;
+            nodeStep.granularity = N::places.value;
         else if constexpr (requires { N::digits; })
-            step.granularity = N::digits.value;
+            nodeStep.granularity = N::digits.value;
 
         // `RoundNode` and `RoundSignificantNode` are the only kinds that
         // declare one, so the `requires` alone selects them -- the same shape
         // `exponent` and `granularity` above use.
         if constexpr (requires { N::mode; })
-            step.mode = N::mode;
+            nodeStep.mode = N::mode;
 
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
         {
@@ -1334,22 +1334,22 @@ class RecordingSink
             // constant expression and `WhenNode` needs no re-export of its
             // own -- the same way `citation` above is read straight off a
             // `DocumentedNode`.
-            step.comparison = std::remove_cvref_t<decltype(node.predicate)>::comparison;
-            step.branch = _trace->branchStack.back();
+            nodeStep.comparison = std::remove_cvref_t<decltype(node.predicate)>::comparison;
+            nodeStep.branch = _trace->branchStack.back();
             _trace->branchStack.pop_back();
         }
 
         if (!result.has_value())
-            step.error = result.error();
+            nodeStep.error = result.error();
         else if (result->has_value())
-            step.value = **result;
+            nodeStep.value = **result;
 
         // Everything unclaimed from `mark` onwards belongs to this node.
-        auto first = _trace->unclaimed.begin();
-        while (first != _trace->unclaimed.end() && *first < mark)
-            ++first;
-        step.operands.assign(first, _trace->unclaimed.end());
-        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < nodeMark)
+            ++firstClaimed;
+        nodeStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means
@@ -1357,9 +1357,9 @@ class RecordingSink
         // happened. See `LookupFailure` for the ambiguity this closes, and
         // `detail::record_lookup` for how each kind closes it.
         if constexpr (detail::is_lookup(detail::StepKindOf<N>::value))
-            detail::record_lookup(node, step, _trace->steps);
+            detail::record_lookup(node, nodeStep, _trace->steps);
 
-        _trace->steps.push_back(std::move(step));
+        _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
@@ -1388,29 +1388,29 @@ class RecordingSink
     template <Predicate P>
     void constraint_produced(Constraint<P> const& constraint, ConstraintOutcome const& outcome)
     {
-        std::size_t const mark = _trace->marks.back();
+        std::size_t const constraintMark = _trace->marks.back();
         _trace->marks.pop_back();
 
-        Step<Rep> step {};
-        step.kind = StepKind::Constraint;
+        Step<Rep> constraintStep {};
+        constraintStep.kind = StepKind::Constraint;
         // Read straight off the constraint's own predicate, the same way
         // `produced` above reads a `Conditional` step's comparison off
         // `node.predicate` -- `PredicateNode::comparison` is a public
         // `static constexpr`, so this needs no member added to `Constraint`
         // to expose it.
-        step.comparison = std::remove_cvref_t<decltype(constraint.predicate)>::comparison;
-        step.outcome = outcome;
+        constraintStep.comparison = std::remove_cvref_t<decltype(constraint.predicate)>::comparison;
+        constraintStep.outcome = outcome;
 
         // Everything unclaimed from `mark` onwards belongs to this
         // constraint -- see `produced` above for why this is a `while`
         // rather than an index computed from `mark` directly.
-        auto first = _trace->unclaimed.begin();
-        while (first != _trace->unclaimed.end() && *first < mark)
-            ++first;
-        step.operands.assign(first, _trace->unclaimed.end());
-        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < constraintMark)
+            ++firstClaimed;
+        constraintStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
-        _trace->steps.push_back(std::move(step));
+        _trace->steps.push_back(std::move(constraintStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
@@ -1428,7 +1428,7 @@ class RecordingSink
         _trace->marks.push_back(_trace->steps.size());
     }
 
-    /// Records a `StepKind::VariantSelected` step for @p selection, claiming
+    /// Records a `StepKind::VariantSelected` step for @p variantSelection, claiming
     /// as its operand the step the selected variant produced -- so the
     /// selection is the walk's root, and the formula that ran sits under it.
     ///
@@ -1440,37 +1440,37 @@ class RecordingSink
     /// since the rounding node it wraps is always traced -- the step records
     /// the selection and its error, if any, and no value it could not state
     /// the unit of.
-    void variant_produced(VariantSelection const& selection, Evaluated<Rep> const& result)
+    void variant_produced(VariantSelection const& variantSelection, Evaluated<Rep> const& produced)
     {
-        std::size_t const mark = _trace->marks.back();
+        std::size_t const selectionMark = _trace->marks.back();
         _trace->marks.pop_back();
 
-        Step<Rep> step {};
-        step.kind = StepKind::VariantSelected;
-        step.variantTag = selection.tag;
-        step.variantIndex = selection.index;
-        step.variantCount = selection.count;
+        Step<Rep> selectionStep {};
+        selectionStep.kind = StepKind::VariantSelected;
+        selectionStep.variantTag = variantSelection.tag;
+        selectionStep.variantIndex = variantSelection.index;
+        selectionStep.variantCount = variantSelection.count;
 
         // Everything unclaimed from `mark` onwards belongs to this selection
         // -- see `produced` above for why this is a `while`.
-        auto first = _trace->unclaimed.begin();
-        while (first != _trace->unclaimed.end() && *first < mark)
-            ++first;
-        step.operands.assign(first, _trace->unclaimed.end());
-        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < selectionMark)
+            ++firstClaimed;
+        selectionStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
-        if (!step.operands.empty())
+        if (!selectionStep.operands.empty())
         {
-            Step<Rep> const& variant = _trace->steps[step.operands.back()];
-            step.dimension = variant.dimension;
-            step.unit = variant.unit;
+            Step<Rep> const& variant = _trace->steps[selectionStep.operands.back()];
+            selectionStep.dimension = variant.dimension;
+            selectionStep.unit = variant.unit;
         }
-        if (!result.has_value())
-            step.error = result.error();
-        else if (result->has_value() && !step.operands.empty())
-            step.value = **result;
+        if (!produced.has_value())
+            selectionStep.error = produced.error();
+        else if (produced->has_value() && !selectionStep.operands.empty())
+            selectionStep.value = **produced;
 
-        _trace->steps.push_back(std::move(step));
+        _trace->steps.push_back(std::move(selectionStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
@@ -1581,8 +1581,8 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
                   "double computation.");
 
     Explained<Result, Rep> explained {};
-    RecordingSink<Rep, V> sink { explained.trace, vocabulary };
-    explained.outcome = evaluate<Result>(expression, environment, sink);
+    RecordingSink<Rep, V> recordingSink { explained.trace, vocabulary };
+    explained.outcome = evaluate<Result>(expression, environment, recordingSink);
     return explained;
 }
 

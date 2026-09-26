@@ -136,10 +136,10 @@ using BandTable = std::array<Band, N>;
 /// denominator, or an overflow) is treated as not adjacent to anything: a
 /// malformed bound is exactly the kind of typo this validation exists to
 /// catch, not a case to silently wave through.
-[[nodiscard]] constexpr bool bands_are_adjacent(Band const& first, Band const& second) noexcept
+[[nodiscard]] constexpr bool bands_are_adjacent(Band const& lowerBand, Band const& upperBand) noexcept
 {
-    auto const firstHigh = Rational::make(first.highNumerator, first.highDenominator);
-    auto const secondLow = Rational::make(second.lowNumerator, second.lowDenominator);
+    auto const firstHigh = Rational::make(lowerBand.highNumerator, lowerBand.highDenominator);
+    auto const secondLow = Rational::make(upperBand.lowNumerator, upperBand.lowDenominator);
     if (!firstHigh || !secondLow)
         return false;
     return *firstHigh == *secondLow;
@@ -155,10 +155,10 @@ using BandTable = std::array<Band, N>;
 /// reasons `bands_are_adjacent` does. A malformed bound (a zero denominator,
 /// or an overflow) is treated as not well-formed, for the same reason a
 /// malformed bound is treated as not adjacent to anything above.
-[[nodiscard]] constexpr bool band_is_well_formed(Band const& value) noexcept
+[[nodiscard]] constexpr bool band_is_well_formed(Band const& candidate) noexcept
 {
-    auto const low = Rational::make(value.lowNumerator, value.lowDenominator);
-    auto const high = Rational::make(value.highNumerator, value.highDenominator);
+    auto const low = Rational::make(candidate.lowNumerator, candidate.lowDenominator);
+    auto const high = Rational::make(candidate.highNumerator, candidate.highDenominator);
     if (!low || !high)
         return false;
     return *low < *high;

@@ -197,11 +197,11 @@ namespace detail
     }
 
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
-    [[nodiscard]] inline std::string number_text(Rational value)
+    [[nodiscard]] inline std::string number_text(Rational shownNumber)
     {
-        if (value.denominator() == 1)
-            return std::to_string(value.numerator());
-        return std::to_string(value.numerator()) + "/" + std::to_string(value.denominator());
+        if (shownNumber.denominator() == 1)
+            return std::to_string(shownNumber.numerator());
+        return std::to_string(shownNumber.numerator()) + "/" + std::to_string(shownNumber.denominator());
     }
 
     /// A number followed by its unit's symbol, or the number alone when the
@@ -212,9 +212,9 @@ namespace detail
     /// a table states a number in a unit on every one of its rows, and a row
     /// that spelled a number differently from a constant holding that same
     /// number would be two surfaces disagreeing inside one rendered formula.
-    [[nodiscard]] inline std::string number_with_unit(std::string const& text, std::string_view symbol)
+    [[nodiscard]] inline std::string number_with_unit(std::string const& numberText, std::string_view symbol)
     {
-        return symbol.empty() ? text : text + " " + std::string { symbol };
+        return symbol.empty() ? numberText : numberText + " " + std::string { symbol };
     }
 
     /// A bound a table declared as a numerator/denominator pair -- a band's
@@ -228,21 +228,21 @@ namespace detail
     /// at compile time -- and is guarded anyway for the reason
     /// `detail::find_band` (`lookup.hpp`) guards the identical call: printing
     /// back the pair the author typed is better than dereferencing an error.
-    [[nodiscard]] inline std::string declared_number_text(std::int64_t numerator, std::int64_t denominator)
+    [[nodiscard]] inline std::string declared_number_text(std::int64_t declaredNumerator, std::int64_t declaredDenominator)
     {
-        std::expected<Rational, ArithmeticError> const value = Rational::make(numerator, denominator);
-        if (value.has_value())
-            return number_text(*value);
-        return std::to_string(numerator) + "/" + std::to_string(denominator);
+        std::expected<Rational, ArithmeticError> const declared = Rational::make(declaredNumerator, declaredDenominator);
+        if (declared.has_value())
+            return number_text(*declared);
+        return std::to_string(declaredNumerator) + "/" + std::to_string(declaredDenominator);
     }
 
     /// A half-open band as text: `10 to under 20 mm`. **The one spelling of a
     /// half-open interval in this library** -- see this file's comment for the
     /// ruling and for the published defect that bought it.
-    [[nodiscard]] inline std::string band_text(Band const& value, std::string_view keySymbol)
+    [[nodiscard]] inline std::string band_text(Band const& shownBand, std::string_view keySymbol)
     {
-        return number_with_unit(declared_number_text(value.lowNumerator, value.lowDenominator) + " to under "
-                                    + declared_number_text(value.highNumerator, value.highDenominator),
+        return number_with_unit(declared_number_text(shownBand.lowNumerator, shownBand.lowDenominator) + " to under "
+                                    + declared_number_text(shownBand.highNumerator, shownBand.highDenominator),
                                 keySymbol);
     }
 
@@ -306,8 +306,8 @@ namespace detail
             return std::string { words };
         else
         {
-            std::string text;
-            text.reserve(words.size());
+            std::string keyText;
+            keyText.reserve(words.size());
             for (std::size_t at = 0; at < words.size(); ++at)
             {
                 char const c = words[at];
@@ -322,33 +322,33 @@ namespace detail
                             // en dash (`---` an em dash), `''` a closing
                             // quote, `,,` a low quote. An empty group
                             // between the two keeps them two characters.
-                            text += c;
+                            keyText += c;
                             if (at + 1 < words.size() && words[at + 1] == c)
-                                text += "{}";
+                                keyText += "{}";
                             break;
                         case '\\':
-                            text += "\\textbackslash{}";
+                            keyText += "\\textbackslash{}";
                             break;
                         case '^':
-                            text += "\\textasciicircum{}";
+                            keyText += "\\textasciicircum{}";
                             break;
                         case '~':
-                            text += "\\textasciitilde{}";
+                            keyText += "\\textasciitilde{}";
                             break;
                         case '`':
-                            text += "\\textasciigrave{}";
+                            keyText += "\\textasciigrave{}";
                             break;
                         case '<':
-                            text += "\\textless{}";
+                            keyText += "\\textless{}";
                             break;
                         case '>':
-                            text += "\\textgreater{}";
+                            keyText += "\\textgreater{}";
                             break;
                         case '|':
-                            text += "\\textbar{}";
+                            keyText += "\\textbar{}";
                             break;
                         case '"':
-                            text += "{\\ttfamily\\char34}";
+                            keyText += "{\\ttfamily\\char34}";
                             break;
                         case '{':
                         case '}':
@@ -357,11 +357,11 @@ namespace detail
                         case '#':
                         case '_':
                         case '%':
-                            text += '\\';
-                            text += c;
+                            keyText += '\\';
+                            keyText += c;
                             break;
                         default:
-                            text += c;
+                            keyText += c;
                             break;
                     }
                 }
@@ -370,22 +370,22 @@ namespace detail
                     switch (c)
                     {
                         case '<':
-                            text += "&lt;";
+                            keyText += "&lt;";
                             break;
                         case '>':
-                            text += "&gt;";
+                            keyText += "&gt;";
                             break;
                         case '&':
-                            text += "&amp;";
+                            keyText += "&amp;";
                             break;
                         case '$':
-                            text += "&#36;";
+                            keyText += "&#36;";
                             break;
                         case '|':
-                            text += "&#124;";
+                            keyText += "&#124;";
                             break;
                         case '~':
-                            text += "&#126;";
+                            keyText += "&#126;";
                             break;
                         case '\\':
                         case '`':
@@ -393,16 +393,16 @@ namespace detail
                         case '_':
                         case '[':
                         case ']':
-                            text += '\\';
-                            text += c;
+                            keyText += '\\';
+                            keyText += c;
                             break;
                         default:
-                            text += c;
+                            keyText += c;
                             break;
                     }
                 }
             }
-            return text;
+            return keyText;
         }
     }
 
@@ -437,9 +437,9 @@ namespace detail
     template <Dialect D, KeyTable Keys>
     [[nodiscard]] std::string key_text(KeyOf<Keys> key)
     {
-        std::string_view const name = key_name<Keys>(key);
-        if (!name.empty())
-            return "key " + literal_words_in_dialect<D>(name);
+        std::string_view const keyName = key_name<Keys>(key);
+        if (!keyName.empty())
+            return "key " + literal_words_in_dialect<D>(keyName);
 
         using Underlying = std::underlying_type_t<KeyOf<Keys>>;
         if constexpr (std::is_signed_v<Underlying>)
@@ -451,9 +451,9 @@ namespace detail
     /// One row of a rendered lookup table: what selects the row, then what the
     /// row gives. `10 to under 20 mm gives 19/20`, `key Cylinder gives 1`,
     /// `at 25 mm gives 6/5`.
-    [[nodiscard]] inline std::string lookup_row_text(std::string const& selector, std::string const& value)
+    [[nodiscard]] inline std::string lookup_row_text(std::string const& selector, std::string const& correction)
     {
-        return selector + " gives " + value;
+        return selector + " gives " + correction;
     }
 
     /// A run of words a lookup contributes, as the dialect writes it: a row,
@@ -637,10 +637,10 @@ namespace detail
     template <Dialect D, Node Child, Vocabulary V>
     [[nodiscard]] std::string render_operand(Child const& child, Precedence context, V const& vocabulary)
     {
-        std::string text = render<D>(child, vocabulary);
+        std::string childText = render<D>(child, vocabulary);
         if (static_cast<int>(precedence_of(child)) < static_cast<int>(context))
-            return "(" + text + ")";
-        return text;
+            return "(" + childText + ")";
+        return childText;
     }
 } // namespace detail
 
@@ -705,17 +705,17 @@ template <Dialect D, BinaryOperator Op, Node Left, Node Right, Vocabulary V>
         return "\\frac{" + render<D>(node.lhs, vocabulary) + "}{" + render<D>(node.rhs, vocabulary) + "}";
     else
     {
-        std::string const lhs = detail::render_operand<D>(node.lhs, here, vocabulary);
-        std::string const rhs = detail::render_operand<D>(node.rhs, rightContext, vocabulary);
+        std::string const leftText = detail::render_operand<D>(node.lhs, here, vocabulary);
+        std::string const rightText = detail::render_operand<D>(node.rhs, rightContext, vocabulary);
 
         if constexpr (Op == BinaryOperator::Add)
-            return lhs + " + " + rhs;
+            return leftText + " + " + rightText;
         else if constexpr (Op == BinaryOperator::Subtract)
-            return lhs + " - " + rhs;
+            return leftText + " - " + rightText;
         else if constexpr (Op == BinaryOperator::Multiply)
-            return D == Dialect::LaTeX ? lhs + " \\cdot " + rhs : lhs + " * " + rhs;
+            return D == Dialect::LaTeX ? leftText + " \\cdot " + rightText : leftText + " * " + rightText;
         else
-            return lhs + " / " + rhs;
+            return leftText + " / " + rightText;
     }
 }
 
@@ -936,12 +936,12 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
     constexpr Unit resultUnit = ResultUnit;
 
     std::string rows;
-    for (std::size_t index = 0; index < Bands.size(); ++index)
-        rows += detail::lookup_separator<D>()
-                + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    detail::band_text(Bands[index], view(keyUnit.symbolText)),
-                    detail::number_with_unit(detail::number_text(node.corrections[index]),
-                                             view(resultUnit.symbolText))));
+    for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
+        rows +=
+            detail::lookup_separator<D>()
+            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                detail::band_text(Bands[bandIndex], view(keyUnit.symbolText)),
+                detail::number_with_unit(detail::number_text(node.corrections[bandIndex]), view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>("lookup", render<D>(node.operand, vocabulary), rows);
 }
@@ -969,11 +969,11 @@ template <Dialect D, KeyTable Keys, Unit ResultUnit, Vocabulary V>
     constexpr Unit resultUnit = ResultUnit;
 
     std::string rows;
-    for (std::size_t index = 0; index < Keys.size(); ++index)
+    for (std::size_t keyIndex = 0; keyIndex < Keys.size(); ++keyIndex)
         rows += detail::lookup_separator<D>()
                 + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    detail::key_text<D, Keys>(Keys[index]),
-                    detail::number_with_unit(detail::number_text(node.corrections[index]), view(resultUnit.symbolText))));
+                    detail::key_text<D, Keys>(Keys[keyIndex]),
+                    detail::number_with_unit(detail::number_text(node.corrections[keyIndex]), view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>("lookup", detail::lookup_words_in_dialect<D>(detail::key_text<D, Keys>(node.key)), rows);
 }
@@ -996,15 +996,15 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
     constexpr Unit resultUnit = ResultUnit;
 
     std::string rows;
-    for (std::size_t index = 0; index < Points.size(); ++index)
-        rows += detail::lookup_separator<D>()
-                + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    "at "
-                        + detail::number_with_unit(
-                            detail::declared_number_text(Points[index].numerator, Points[index].denominator),
-                            view(keyUnit.symbolText)),
-                    detail::number_with_unit(detail::number_text(node.corrections[index]),
-                                             view(resultUnit.symbolText))));
+    for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
+        rows +=
+            detail::lookup_separator<D>()
+            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                "at "
+                    + detail::number_with_unit(
+                        detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator),
+                        view(keyUnit.symbolText)),
+                detail::number_with_unit(detail::number_text(node.corrections[pointIndex]), view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rows);
 }
@@ -1025,8 +1025,8 @@ template <Dialect D, Comparison Op, Node Left, Node Right, Vocabulary V>
 {
     constexpr detail::Precedence operandContext =
         static_cast<detail::Precedence>(static_cast<int>(detail::PrecedenceOf<PredicateNode<Op, Left, Right>>::value) + 1);
-    std::string const lhs = detail::render_operand<D>(node.lhs, operandContext, vocabulary);
-    std::string const rhs = detail::render_operand<D>(node.rhs, operandContext, vocabulary);
+    std::string const leftText = detail::render_operand<D>(node.lhs, operandContext, vocabulary);
+    std::string const rightText = detail::render_operand<D>(node.rhs, operandContext, vocabulary);
 
     char const* const symbol = [] {
         if constexpr (Op == Comparison::Less)
@@ -1043,7 +1043,7 @@ template <Dialect D, Comparison Op, Node Left, Node Right, Vocabulary V>
             return D == Dialect::LaTeX ? "\\neq" : "!=";
     }();
 
-    return lhs + " " + symbol + " " + rhs;
+    return leftText + " " + symbol + " " + rightText;
 }
 
 /// A constraint renders as its rule alone -- `require <lhs> <comparison>

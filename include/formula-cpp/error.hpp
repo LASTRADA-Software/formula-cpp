@@ -45,9 +45,9 @@ enum class ArithmeticError : std::uint8_t
 /// A lowercase noun phrase with no trailing punctuation, so callers can embed it
 /// in a longer sentence. Spec phase 5 renders this into the `invalid` arm of the
 /// evaluation result.
-[[nodiscard]] constexpr std::string_view describe(ArithmeticError error) noexcept
+[[nodiscard]] constexpr std::string_view describe(ArithmeticError failure) noexcept
 {
-    switch (error)
+    switch (failure)
     {
         case ArithmeticError::DivisionByZero:
             return "division by zero";
@@ -74,8 +74,8 @@ class ArithmeticException: public std::exception
     /// `or_throw` stays `constexpr` regardless: a `throw` is allowed in a
     /// constexpr function as long as it is not reached at compile time, and when
     /// it is reached the result is the compile error we want.
-    explicit ArithmeticException(ArithmeticError error) noexcept:
-        _error { error }
+    explicit ArithmeticException(ArithmeticError failure) noexcept:
+        _error { failure }
     {
     }
 

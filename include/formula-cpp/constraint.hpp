@@ -70,36 +70,36 @@ class ConstraintOutcome
     /// The predicate held.
     [[nodiscard]] static constexpr ConstraintOutcome satisfied() noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::Satisfied;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::Satisfied;
+        return made;
     }
 
     /// The predicate did not hold; carries the verdict the constraint was
     /// declared with.
     [[nodiscard]] static constexpr ConstraintOutcome violated(Verdict verdict) noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::Violated;
-        result._verdict = verdict;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::Violated;
+        made._verdict = verdict;
+        return made;
     }
 
     /// The predicate never resolved -- an input was never measured.
     [[nodiscard]] static constexpr ConstraintOutcome not_checked() noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::NotChecked;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::NotChecked;
+        return made;
     }
 
     /// Evaluating the predicate raised an arithmetic error; carries it.
     [[nodiscard]] static constexpr ConstraintOutcome invalid(ArithmeticError error) noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::Invalid;
-        result._error = error;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::Invalid;
+        made._error = error;
+        return made;
     }
 
     /// Which alternative this outcome holds.
@@ -236,23 +236,23 @@ template <typename Rep = Rational, typename P, typename Env, typename Sink = Nul
     if constexpr (requires { sink.constraint_entered(subject); })
         sink.constraint_entered(subject);
 
-    std::expected<std::optional<bool>, ArithmeticError> const result =
+    std::expected<std::optional<bool>, ArithmeticError> const checkedPredicate =
         checked_evaluate_predicate<Rep>(subject.predicate, environment, sink);
 
-    ConstraintOutcome outcome {};
-    if (!result.has_value())
-        outcome = ConstraintOutcome::invalid(result.error());
-    else if (!result->has_value())
-        outcome = ConstraintOutcome::not_checked();
-    else if (**result)
-        outcome = ConstraintOutcome::satisfied();
+    ConstraintOutcome reached {};
+    if (!checkedPredicate.has_value())
+        reached = ConstraintOutcome::invalid(checkedPredicate.error());
+    else if (!checkedPredicate->has_value())
+        reached = ConstraintOutcome::not_checked();
+    else if (**checkedPredicate)
+        reached = ConstraintOutcome::satisfied();
     else
-        outcome = ConstraintOutcome::violated(subject.verdict);
+        reached = ConstraintOutcome::violated(subject.verdict);
 
-    if constexpr (requires { sink.constraint_produced(subject, outcome); })
-        sink.constraint_produced(subject, outcome);
+    if constexpr (requires { sink.constraint_produced(subject, reached); })
+        sink.constraint_produced(subject, reached);
 
-    return outcome;
+    return reached;
 }
 
 /// A set of constraints checked together, in declaration order:

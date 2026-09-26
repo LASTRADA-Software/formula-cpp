@@ -147,9 +147,9 @@ struct RepFunctions<Rational>
     ///
     /// `RootNode` rejects a degree below 1 at compile time, so that case is
     /// reachable only by calling this directly.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> root(Rational value, int degree) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> root(Rational radicand, int degree) noexcept
     {
-        return checked_exact_nth_root(value, degree);
+        return checked_exact_nth_root(radicand, degree);
     }
 
     /// Pi, as the library's own rational approximation -- see `Pi`.
@@ -172,13 +172,13 @@ struct RepFunctions<double>
     /// The `degree`-th root of `value`. An even-degree root of a negative value
     /// has no real result and is reported as `ArithmeticError::DomainError`; an
     /// odd-degree root of a negative value returns the negative real root.
-    [[nodiscard]] static std::expected<double, ArithmeticError> root(double value, int degree) noexcept
+    [[nodiscard]] static std::expected<double, ArithmeticError> root(double radicand, int degree) noexcept
     {
-        if (value < 0.0 && degree % 2 == 0)
+        if (radicand < 0.0 && degree % 2 == 0)
             return std::unexpected { ArithmeticError::DomainError };
-        if (value < 0.0)
-            return -std::pow(-value, 1.0 / static_cast<double>(degree));
-        return std::pow(value, 1.0 / static_cast<double>(degree));
+        if (radicand < 0.0)
+            return -std::pow(-radicand, 1.0 / static_cast<double>(degree));
+        return std::pow(radicand, 1.0 / static_cast<double>(degree));
     }
 
     /// Pi, to `double` precision.
@@ -195,25 +195,25 @@ template <typename Rep = Rational, int Exponent, Node Operand, typename Env, typ
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
         return absent;
     }
 
-    std::expected<Rep, ArithmeticError> const raised = RepFunctions<Rep>::raise(**operand, Exponent);
-    Evaluated<Rep> const result =
+    std::expected<Rep, ArithmeticError> const raised = RepFunctions<Rep>::raise(**evaluatedOperand, Exponent);
+    Evaluated<Rep> const evaluated =
         raised.has_value() ? detail::present<Rep>(*raised) : Evaluated<Rep> { std::unexpected { raised.error() } };
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// Evaluates the operand, then takes its `Degree`-th root via `RepFunctions<Rep>`.
@@ -223,25 +223,25 @@ template <typename Rep = Rational, int Degree, Node Operand, typename Env, typen
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
         return absent;
     }
 
-    std::expected<Rep, ArithmeticError> const rooted = RepFunctions<Rep>::root(**operand, Degree);
-    Evaluated<Rep> const result =
+    std::expected<Rep, ArithmeticError> const rooted = RepFunctions<Rep>::root(**evaluatedOperand, Degree);
+    Evaluated<Rep> const evaluated =
         rooted.has_value() ? detail::present<Rep>(*rooted) : Evaluated<Rep> { std::unexpected { rooted.error() } };
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// Pi is always present; produces it in `Rep` via `RepFunctions<Rep>::pi_value`.

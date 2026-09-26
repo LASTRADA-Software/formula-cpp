@@ -128,12 +128,12 @@ template <typename Rep = Rational, Predicate P, Node Then, Node Else, typename E
     }
 
     bool const thenTaken = **verdict;
-    Evaluated<Rep> const result = thenTaken ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
+    Evaluated<Rep> const evaluated = thenTaken ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
                                              : detail::dispatch<Rep>(node.elseBranch, environment, sink);
     if constexpr (requires { sink.branch_taken(node, thenTaken); })
         sink.branch_taken(node, thenTaken);
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

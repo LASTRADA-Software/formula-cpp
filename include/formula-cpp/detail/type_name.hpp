@@ -72,10 +72,10 @@ template <typename T>
     std::size_t const start = signature.find(head);
     if (start == std::string_view::npos || !signature.ends_with(tail))
         return {};
-    std::size_t const first = start + head.size();
-    if (first > signature.size() - tail.size())
+    std::size_t const nameStart = start + head.size();
+    if (nameStart > signature.size() - tail.size())
         return {};
-    return signature.substr(first, signature.size() - tail.size() - first);
+    return signature.substr(nameStart, signature.size() - tail.size() - nameStart);
 }
 
 /// A type's name with what the compiler adds around it taken away, and at
@@ -92,22 +92,22 @@ struct NormalizedTypeName
     bool qualified = false;
 };
 
-/// True when @p text at @p position begins with @p word as a whole word --
+/// True when @p spelling at @p offset begins with @p word as a whole word --
 /// neither preceded nor followed by an identifier byte.
-[[nodiscard]] constexpr bool word_at(std::string_view text, std::size_t position, std::string_view word) noexcept
+[[nodiscard]] constexpr bool word_at(std::string_view spelling, std::size_t offset, std::string_view word) noexcept
 {
-    if (!text.substr(position).starts_with(word))
+    if (!spelling.substr(offset).starts_with(word))
         return false;
-    std::size_t const end = position + word.size();
-    return (position == 0 || !is_identifier_byte(text[position - 1]))
-           && (end == text.size() || !is_identifier_byte(text[end]));
+    std::size_t const end = offset + word.size();
+    return (offset == 0 || !is_identifier_byte(spelling[offset - 1]))
+           && (end == spelling.size() || !is_identifier_byte(spelling[end]));
 }
 
-/// True when @p text at @p position begins with @p word followed by a space.
-[[nodiscard]] constexpr bool starts_with_word(std::string_view text, std::size_t position, std::string_view word) noexcept
+/// True when @p spelling at @p offset begins with @p word followed by a space.
+[[nodiscard]] constexpr bool starts_with_word(std::string_view spelling, std::size_t offset, std::string_view word) noexcept
 {
-    return text.substr(position).starts_with(word) && position + word.size() < text.size()
-           && text[position + word.size()] == ' ';
+    return spelling.substr(offset).starts_with(word) && offset + word.size() < spelling.size()
+           && spelling[offset + word.size()] == ' ';
 }
 
 /// @p argument -- a type as `type_argument_text` found it -- reduced to the
@@ -171,7 +171,7 @@ struct NormalizedTypeName
 template <std::size_t Capacity>
 [[nodiscard]] consteval NormalizedTypeName<Capacity> normalized_type_name(std::string_view argument) noexcept
 {
-    NormalizedTypeName<Capacity> result {};
+    NormalizedTypeName<Capacity> normalized {};
     // Where the component being written began, per level of `<` nesting.
     std::array<std::size_t, Capacity + 1> componentStart {};
     std::size_t depth = 0;
@@ -185,48 +185,48 @@ template <std::size_t Capacity>
     std::array<bool, Capacity + 1> listed {};
 
     auto const push = [&](char c) {
-        if (result.size < Capacity)
-            result.chars[result.size++] = c;
+        if (normalized.size < Capacity)
+            normalized.chars[normalized.size++] = c;
     };
 
-    std::size_t position = 0;
-    while (position < argument.size())
+    std::size_t cursor = 0;
+    while (cursor < argument.size())
     {
-        char const c = argument[position];
-        bool const atComponentStart = result.size == componentStart[depth];
+        char const c = argument[cursor];
+        bool const atComponentStart = normalized.size == componentStart[depth];
 
-        if (word_at(argument, position, "const") || word_at(argument, position, "volatile"))
+        if (word_at(argument, cursor, "const") || word_at(argument, cursor, "volatile"))
             own[depth] = true;
 
         if (atComponentStart
-            && (starts_with_word(argument, position, "struct") || starts_with_word(argument, position, "class")
-                || starts_with_word(argument, position, "union") || starts_with_word(argument, position, "enum")))
+            && (starts_with_word(argument, cursor, "struct") || starts_with_word(argument, cursor, "class")
+                || starts_with_word(argument, cursor, "union") || starts_with_word(argument, cursor, "enum")))
         {
-            while (argument[position] != ' ')
-                ++position;
-            ++position;
+            while (argument[cursor] != ' ')
+                ++cursor;
+            ++cursor;
         }
-        else if (argument.substr(position).starts_with("::"))
+        else if (argument.substr(cursor).starts_with("::"))
         {
-            result.size = componentStart[depth];
+            normalized.size = componentStart[depth];
             // The scope being cut away is discarded, and so is anything its
             // own argument list said; a cv word of this level still
             // qualifies the name that follows.
             nested[depth] = false;
-            position += 2;
+            cursor += 2;
         }
         else if (c == '<')
         {
             push(c);
             ++depth;
-            componentStart[depth] = result.size;
+            componentStart[depth] = normalized.size;
             own[depth] = nested[depth] = listed[depth] = false;
-            ++position;
+            ++cursor;
         }
         else if (c == '>')
         {
-            if (result.size > 0 && result.chars[result.size - 1] == ' ')
-                --result.size;
+            if (normalized.size > 0 && normalized.chars[normalized.size - 1] == ' ')
+                --normalized.size;
             push(c);
             if (depth > 0)
             {
@@ -234,27 +234,27 @@ template <std::size_t Capacity>
                 --depth;
                 nested[depth] = nested[depth] || closedQualified;
             }
-            ++position;
+            ++cursor;
         }
         else if (c == ',')
         {
             push(',');
             push(' ');
-            ++position;
-            while (position < argument.size() && argument[position] == ' ')
-                ++position;
-            componentStart[depth] = result.size;
+            ++cursor;
+            while (cursor < argument.size() && argument[cursor] == ' ')
+                ++cursor;
+            componentStart[depth] = normalized.size;
             listed[depth] = listed[depth] || own[depth] || nested[depth];
             own[depth] = nested[depth] = false;
         }
         else
         {
             push(c);
-            ++position;
+            ++cursor;
         }
     }
-    result.qualified = own[0] || nested[0] || listed[0];
-    return result;
+    normalized.qualified = own[0] || nested[0] || listed[0];
+    return normalized;
 }
 
 /// True when a normalized name reads as a class name and its template
@@ -295,34 +295,36 @@ template <std::size_t Capacity>
 /// A name, or an argument, that begins with a non-ASCII letter -- a legal
 /// C++23 identifier -- is refused too, which is the price of stating the
 /// rule in bytes.
-[[nodiscard]] constexpr bool is_plain_type_name(std::string_view name) noexcept
+[[nodiscard]] constexpr bool is_plain_type_name(std::string_view typeName) noexcept
 {
-    if (name.empty())
+    if (typeName.empty())
         return false;
-    char const first = name.front();
-    if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_'))
+    char const leadingCharacter = typeName.front();
+    if (!((leadingCharacter >= 'a' && leadingCharacter <= 'z') || (leadingCharacter >= 'A' && leadingCharacter <= 'Z')
+          || leadingCharacter == '_'))
         return false;
     // Every argument starts with a letter, a digit, `_` or `-` (a negative
     // number) -- never a `<`, which is how a compiler's placeholder survives
     // inside an argument list once the `::` cut has taken its scope.
-    for (std::size_t index = 0; index < name.size(); ++index)
+    for (std::size_t characterIndex = 0; characterIndex < typeName.size(); ++characterIndex)
     {
         bool const startsArgument =
-            name[index] == '<' || (name[index] == ' ' && index > 0 && name[index - 1] == ',');
+            typeName[characterIndex] == '<'
+            || (typeName[characterIndex] == ' ' && characterIndex > 0 && typeName[characterIndex - 1] == ',');
         if (!startsArgument)
             continue;
-        if (index + 1 == name.size())
+        if (characterIndex + 1 == typeName.size())
             return false;
-        char const next = name[index + 1];
+        char const next = typeName[characterIndex + 1];
         // An empty list, `Box<>`, is a specialization whose every argument
         // was defaulted, as clang and GCC print it.
-        if (name[index] == '<' && next == '>')
+        if (typeName[characterIndex] == '<' && next == '>')
             continue;
         if (!((next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') || (next >= '0' && next <= '9')
               || next == '_' || next == '-'))
             return false;
     }
-    return name.find_first_of("(){}`\\/.*&'\"") == std::string_view::npos;
+    return typeName.find_first_of("(){}`\\/.*&'\"") == std::string_view::npos;
 }
 
 /// The first `Size - 1` bytes of @p name, followed by a nul.
@@ -330,8 +332,8 @@ template <std::size_t Size, std::size_t Capacity>
 [[nodiscard]] consteval std::array<char, Size> trimmed(NormalizedTypeName<Capacity> const& name) noexcept
 {
     std::array<char, Size> chars {};
-    for (std::size_t index = 0; index + 1 < Size && index < name.size; ++index)
-        chars[index] = name.chars[index];
+    for (std::size_t characterIndex = 0; characterIndex + 1 < Size && characterIndex < name.size; ++characterIndex)
+        chars[characterIndex] = name.chars[characterIndex];
     return chars;
 }
 

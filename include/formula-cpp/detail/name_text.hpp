@@ -28,17 +28,17 @@ namespace formula::detail
            || byte >= 0x80;
 }
 
-/// Reads every character of @p text and answers `true`. Only interesting
+/// Reads every character of @p spelling and answers `true`. Only interesting
 /// inside a constant expression, where reading a character that is not
 /// there -- a destroyed local, freed storage, a mutable static -- makes the
 /// whole expression not a constant expression. The first gate `EnumeratorName`
 /// and `TagName` both describe.
-[[nodiscard]] constexpr bool every_character_readable(std::string_view text) noexcept
+[[nodiscard]] constexpr bool every_character_readable(std::string_view spelling) noexcept
 {
     std::size_t read = 0;
-    for (char const c: text)
+    for (char const c: spelling)
         read += c == '\0' ? 0 : 1;
-    return read <= text.size();
+    return read <= spelling.size();
 }
 
 } // namespace formula::detail

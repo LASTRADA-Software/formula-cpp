@@ -207,14 +207,14 @@ namespace detail
     [[nodiscard]] constexpr Evaluated<Rep> round_to_places(N const& node, Env const& environment, Sink sink) noexcept
     {
         sink.entered(node);
-        Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-        if (!operand.has_value())
+        Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+        if (!evaluatedOperand.has_value())
         {
-            Evaluated<Rep> const failed = std::unexpected { operand.error() };
+            Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
             sink.produced(node, failed);
             return failed;
         }
-        if (!operand->has_value())
+        if (!evaluatedOperand->has_value())
         {
             Evaluated<Rep> const absent = detail::nothing<Rep>();
             sink.produced(node, absent);
@@ -222,11 +222,11 @@ namespace detail
         }
 
         std::expected<Rep, ArithmeticError> const rounded =
-            RepRounding<Rep>::round_in(**operand, N::unit, N::places, N::mode);
-        Evaluated<Rep> const result =
+            RepRounding<Rep>::round_in(**evaluatedOperand, N::unit, N::places, N::mode);
+        Evaluated<Rep> const evaluated =
             rounded.has_value() ? detail::present<Rep>(*rounded) : Evaluated<Rep> { std::unexpected { rounded.error() } };
-        sink.produced(node, result);
-        return result;
+        sink.produced(node, evaluated);
+        return evaluated;
     }
 } // namespace detail
 
@@ -249,25 +249,25 @@ template <typename Rep = Rational, Unit U, SignificantDigits Digits, RoundingMod
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
         return absent;
     }
 
-    std::expected<Rep, ArithmeticError> const rounded = RepRounding<Rep>::round_in(**operand, U, Digits, Mode);
-    Evaluated<Rep> const result =
+    std::expected<Rep, ArithmeticError> const rounded = RepRounding<Rep>::round_in(**evaluatedOperand, U, Digits, Mode);
+    Evaluated<Rep> const evaluated =
         rounded.has_value() ? detail::present<Rep>(*rounded) : Evaluated<Rep> { std::unexpected { rounded.error() } };
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

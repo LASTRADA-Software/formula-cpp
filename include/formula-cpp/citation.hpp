@@ -92,9 +92,9 @@ template <typename Rep = Rational, Node Inner, typename Env, typename Sink = Nul
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::dispatch<Rep>(node.inner, environment, sink);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::dispatch<Rep>(node.inner, environment, sink);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

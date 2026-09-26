@@ -427,9 +427,9 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::in_si<Rep>(node.value(), Describe<Q>::unit);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.value(), Describe<Q>::unit);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// A derived quantity evaluates to its expression, against the same
@@ -445,9 +445,9 @@ template <typename Rep = Rational, Described Q, Node Expr, typename Env, typenam
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::dispatch<Rep>(node.expression(), environment, sink);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::dispatch<Rep>(node.expression(), environment, sink);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// A replaced variant evaluates to its replacement; the sink is told about
@@ -2033,10 +2033,10 @@ namespace detail
     {
         constexpr bool matches[] = { std::is_same_v<Tag, typename Cs::tag>... };
         std::array<std::size_t, sizeof...(Cs) - 1> kept {};
-        std::size_t count = 0;
-        for (std::size_t index = 0; index < sizeof...(Cs); ++index)
-            if (!matches[index])
-                kept[count++] = index;
+        std::size_t keptCount = 0;
+        for (std::size_t caseIndex = 0; caseIndex < sizeof...(Cs); ++caseIndex)
+            if (!matches[caseIndex])
+                kept[keptCount++] = caseIndex;
         return kept;
     }
 

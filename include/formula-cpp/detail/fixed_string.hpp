@@ -42,18 +42,18 @@ struct FixedString
 {
     char characters[N] {};
 
-    constexpr FixedString(char const (&text)[N]) noexcept
+    constexpr FixedString(char const (&literal)[N]) noexcept
     {
         // The parameter is any char array, not only a string literal, and
         // `view()` below drops the last byte on the assumption that it is a
         // terminator. Given `char const raw[] = {'a','b','c'}` that assumption
         // is false and the 'c' disappears in silence -- measured on all three
         // compilers before this check existed. Refuse instead.
-        if (text[N - 1] != '\0')
+        if (literal[N - 1] != '\0')
             formula_fixed_string_must_be_null_terminated();
 
-        for (std::size_t index = 0; index < N; ++index)
-            characters[index] = text[index];
+        for (std::size_t characterIndex = 0; characterIndex < N; ++characterIndex)
+            characters[characterIndex] = literal[characterIndex];
     }
 
     /// The text without its terminator.
