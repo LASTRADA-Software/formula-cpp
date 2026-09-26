@@ -6,12 +6,27 @@
 #include <string_view>
 #include <type_traits>
 
+using formula::ArithmeticError;
+using formula::ArithmeticException;
 using formula::Dimension;
+using formula::Rational;
 using formula::Symbol;
 using formula::Unit;
 
 namespace dim = formula::dim;
 namespace unit = formula::unit;
+
+namespace
+{
+/// The coherent SI unit of @p value's dimension: magnitude one, offset zero, no
+/// symbol. Written out here rather than taken from `evaluate.hpp`'s
+/// `coherent()`, which sits a layer above `unit.hpp` and has no business being
+/// pulled down into this header's own test.
+[[nodiscard]] constexpr Unit coherentSi(Unit value) noexcept
+{
+    return Unit { .dimension = value.dimension };
+}
+} // namespace
 
 // ---- the symbol ----
 
@@ -146,7 +161,7 @@ TEST_CASE("every named unit carries a plausible declared precision", "[unit]")
 
 TEST_CASE("every named unit's dimension, magnitude and declared decimals match the physics", "[unit]")
 {
-    // The loop above enumerates only 12 of the 20 named units, and even that
+    // The loop above enumerates only 12 of the 21 named units, and even that
     // one checks general sanity (decimals in range, denominators positive),
     // never a specific value. Centimetre, SquareMetre and Millilitre in
     // particular appear in no test, no example and no documentation code
@@ -172,26 +187,57 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
     Expected const table[] = {
         { unit::One, dim::Scalar, 1, 1, 3 },
         { unit::Percent, dim::Scalar, 1, 100, 1 },
+        { unit::PerMille, dim::Scalar, 1, 1000, 1 },
+        { unit::PartsPerMillion, dim::Scalar, 1, 1000000, 0 },
+        { unit::MilligramPerKilogram, dim::Scalar, 1, 1000000, 0 },
         { unit::Metre, dim::Length, 1, 1, 3 },
         { unit::Centimetre, dim::Length, 1, 100, 1 },
         { unit::Millimetre, dim::Length, 1, 1000, 1 },
+        { unit::Decimillimetre, dim::Length, 1, 10000, 0 },
+        { unit::Micrometre, dim::Length, 1, 1000000, 0 },
         { unit::Kilometre, dim::Length, 1000, 1, 3 },
         { unit::SquareMetre, dim::Area, 1, 1, 4 },
+        { unit::SquareCentimetre, dim::Area, 1, 10000, 2 },
+        { unit::SquareMillimetre, dim::Area, 1, 1000000, 0 },
         { unit::CubicMetre, dim::Volume, 1, 1, 4 },
         { unit::Litre, dim::Volume, 1, 1000, 1 },
         { unit::Millilitre, dim::Volume, 1, 1000000, 1 },
+        { unit::CubicCentimetre, dim::Volume, 1, 1000000, 1 },
+        { unit::CubicMillimetre, dim::Volume, 1, 1000000000, 0 },
         { unit::Kilogram, dim::Mass, 1, 1, 3 },
         { unit::Gram, dim::Mass, 1, 1000, 1 },
+        { unit::Milligram, dim::Mass, 1, 1000000, 1 },
         { unit::Tonne, dim::Mass, 1000, 1, 3 },
         { unit::Second, dim::Time, 1, 1, 2 },
         { unit::Minute, dim::Time, 60, 1, 2 },
         { unit::Hour, dim::Time, 3600, 1, 2 },
+        { unit::Day, dim::Time, 86400, 1, 0 },
         { unit::Kelvin, dim::Temperature, 1, 1, 2 },
         { unit::Celsius, dim::Temperature, 1, 1, 1 },
+        { unit::Newton, dim::Force, 1, 1, 1 },
+        { unit::Kilonewton, dim::Force, 1000, 1, 2 },
         { unit::Pascal, dim::Pressure, 1, 1, 0 },
+        { unit::Kilopascal, dim::Pressure, 1000, 1, 1 },
         { unit::Megapascal, dim::Pressure, 1000000, 1, 1 },
+        { unit::NewtonPerSquareMillimetre, dim::Pressure, 1000000, 1, 1 },
+        { unit::Gigapascal, dim::Pressure, 1000000000, 1, 1 },
+        { unit::Joule, dim::Energy, 1, 1, 1 },
+        { unit::Kilojoule, dim::Energy, 1000, 1, 1 },
+        { unit::Hertz, dim::Frequency, 1, 1, 1 },
+        { unit::MetrePerSecond, dim::Velocity, 1, 1, 3 },
+        { unit::MillimetrePerMinute, dim::Velocity, 1, 60000, 2 },
+        { unit::KilogramPerCubicMetre, dim::Density, 1, 1, 0 },
+        { unit::GramPerCubicCentimetre, dim::Density, 1000, 1, 3 },
+        { unit::MegagramPerCubicMetre, dim::Density, 1000, 1, 3 },
+        { unit::KilogramPerSquareMetre, dim::MassPerArea, 1, 1, 3 },
+        { unit::GramPerSquareMetre, dim::MassPerArea, 1, 1000, 0 },
+        { unit::KilonewtonPerMetre, dim::ForcePerLength, 1000, 1, 1 },
+        { unit::NewtonPerMillimetre, dim::ForcePerLength, 1000, 1, 1 },
+        { unit::PascalSecond, dim::DynamicViscosity, 1, 1, 3 },
+        { unit::MillipascalSecond, dim::DynamicViscosity, 1, 1000, 1 },
+        { unit::SquareMillimetrePerSecond, dim::KinematicViscosity, 1, 1000000, 1 },
     };
-    CHECK(std::size(table) == 20); // every named unit, not a subset
+    CHECK(std::size(table) == 51); // every named unit, not a subset
 
     for (Expected const& row: table)
     {
@@ -201,13 +247,187 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
         CHECK(row.actual.magnitudeDenominator == row.magnitudeDenominator);
         CHECK(row.actual.decimals == row.decimals);
     }
+
+    // The same table, put through the conversion machinery rather than read
+    // field by field. One of any unit, converted into the coherent SI unit of
+    // its dimension, IS that unit's magnitude -- as an exact `Rational`, never
+    // a double comparison. This is the check that a declared factor is also the
+    // factor `checked_convert` applies; the field checks above only prove the
+    // struct holds what it was written to hold.
+    std::size_t convertedRows = 0;
+    for (Expected const& row: table)
+    {
+        // Celsius is affine, so one degree Celsius is not one kelvin times a
+        // magnitude; its offset is pinned by the static_asserts further down
+        // instead. Counted rather than silently skipped -- see the round-trip
+        // case below for why a `continue` that nobody counts is how a loop
+        // quietly stops testing anything.
+        if (row.actual.offsetNumerator != 0)
+            continue;
+
+        INFO(formula::view(row.actual.symbolText));
+        auto const inSi = formula::checked_convert(*Rational::make(1, 1), row.actual, coherentSi(row.actual));
+        REQUIRE(inSi.has_value());
+        CHECK(*inSi == *Rational::make(row.magnitudeNumerator, row.magnitudeDenominator));
+        ++convertedRows;
+    }
+    CHECK(convertedRows == std::size(table) - 1); // Celsius is the only affine one
+}
+
+TEST_CASE("every named unit's symbol is readable, unique and safe to render", "[unit]")
+{
+    // `symbol()` already refuses anything that does not fit `SymbolCapacity` --
+    // that is a compile error, not a runtime one, and test/negative/
+    // unit_symbol_too_long.cpp pins it. What is checked here is what compiles
+    // fine and is still wrong.
+    Unit const all[] = { unit::One,
+                         unit::Percent,
+                         unit::PerMille,
+                         unit::PartsPerMillion,
+                         unit::MilligramPerKilogram,
+                         unit::Metre,
+                         unit::Centimetre,
+                         unit::Millimetre,
+                         unit::Decimillimetre,
+                         unit::Micrometre,
+                         unit::Kilometre,
+                         unit::SquareMetre,
+                         unit::SquareCentimetre,
+                         unit::SquareMillimetre,
+                         unit::CubicMetre,
+                         unit::Litre,
+                         unit::Millilitre,
+                         unit::CubicCentimetre,
+                         unit::CubicMillimetre,
+                         unit::Kilogram,
+                         unit::Gram,
+                         unit::Milligram,
+                         unit::Tonne,
+                         unit::Second,
+                         unit::Minute,
+                         unit::Hour,
+                         unit::Day,
+                         unit::Kelvin,
+                         unit::Celsius,
+                         unit::Newton,
+                         unit::Kilonewton,
+                         unit::Pascal,
+                         unit::Kilopascal,
+                         unit::Megapascal,
+                         unit::NewtonPerSquareMillimetre,
+                         unit::Gigapascal,
+                         unit::Joule,
+                         unit::Kilojoule,
+                         unit::Hertz,
+                         unit::MetrePerSecond,
+                         unit::MillimetrePerMinute,
+                         unit::KilogramPerCubicMetre,
+                         unit::GramPerCubicCentimetre,
+                         unit::MegagramPerCubicMetre,
+                         unit::KilogramPerSquareMetre,
+                         unit::GramPerSquareMetre,
+                         unit::KilonewtonPerMetre,
+                         unit::NewtonPerMillimetre,
+                         unit::PascalSecond,
+                         unit::MillipascalSecond,
+                         unit::SquareMillimetrePerSecond };
+    CHECK(std::size(all) == 51);
+
+    for (Unit const& u: all)
+    {
+        std::string_view const text = formula::view(u.symbolText);
+        INFO(text);
+
+        // Terminated inside its storage: `view()` scans at most
+        // `SymbolCapacity` bytes, so a symbol that filled the array would come
+        // back exactly that long and have run out of room for the terminator.
+        CHECK(text.size() < formula::SymbolCapacity);
+
+        // `render.hpp` appends this text to a number with no escaping, in
+        // every dialect -- measured, not assumed. An asterisk is Markdown
+        // emphasis, and two of them on one rendered line italicise everything
+        // between; brackets and a parenthesis read as a Markdown link, which
+        // `render_tests.cpp` already guards for the same reason. A unit symbol
+        // must therefore carry none of them. This is why a pascal second is
+        // spelled `Pa.s` here rather than `Pa*s`.
+        CHECK(text.find('*') == std::string_view::npos);
+        CHECK(text.find('[') == std::string_view::npos);
+        CHECK(text.find(']') == std::string_view::npos);
+        CHECK(text.find('(') == std::string_view::npos);
+        CHECK(text.find(')') == std::string_view::npos);
+    }
+
+    // Only `One` is unlabelled; every other unit has to print as something.
+    std::size_t empty = 0;
+    for (Unit const& u: all)
+        if (formula::view(u.symbolText).empty())
+            ++empty;
+    CHECK(empty == 1);
+
+    // And no two units share a symbol. Two units printing the same text would
+    // make a report ambiguous about which one a number is in, and a
+    // copy-and-pasted declaration is exactly how that happens.
+    for (std::size_t i = 0; i < std::size(all); ++i)
+        for (std::size_t j = i + 1; j < std::size(all); ++j)
+        {
+            INFO(formula::view(all[i].symbolText) << " vs " << formula::view(all[j].symbolText));
+            CHECK_FALSE(all[i].symbolText == all[j].symbolText);
+        }
+}
+
+TEST_CASE("units that are two names for one magnitude stay exactly equal", "[unit]")
+{
+    // Several quantities in this vocabulary have two spellings that are the
+    // same magnitude, because both spellings are written in practice. That is
+    // deliberate, not duplication -- but nothing in the type system ties the
+    // two declarations together, so an edit to one can move it away from the
+    // other in silence. These pin them.
+    struct Pair
+    {
+        Unit left;
+        Unit right;
+    };
+    Pair const pairs[] = {
+        { unit::Megapascal, unit::NewtonPerSquareMillimetre },  // a newton on a square millimetre
+        { unit::PartsPerMillion, unit::MilligramPerKilogram },  // a milligram in a kilogram
+        { unit::Millilitre, unit::CubicCentimetre },            // a millilitre is a cubic centimetre
+        { unit::GramPerCubicCentimetre, unit::MegagramPerCubicMetre },
+        { unit::KilonewtonPerMetre, unit::NewtonPerMillimetre },
+    };
+
+    std::int64_t const numerators[] = { -7, 0, 1, 3, 450, 30000 };
+    std::size_t checkedValues = 0;
+
+    for (Pair const& pair: pairs)
+    {
+        INFO(formula::view(pair.left.symbolText) << " vs " << formula::view(pair.right.symbolText));
+
+        // Same dimension and same exact factor, read off the descriptors.
+        CHECK(pair.left.dimension == pair.right.dimension);
+        CHECK(*Rational::make(pair.left.magnitudeNumerator, pair.left.magnitudeDenominator)
+              == *Rational::make(pair.right.magnitudeNumerator, pair.right.magnitudeDenominator));
+
+        // And the conversion itself is the identity, both ways round -- which
+        // is the property a caller actually depends on.
+        for (std::int64_t numerator: numerators)
+        {
+            auto const value = Rational::make(numerator, 4);
+            REQUIRE(value.has_value());
+
+            auto const rightwards = formula::checked_convert(*value, pair.left, pair.right);
+            REQUIRE(rightwards.has_value());
+            CHECK(*rightwards == *value);
+
+            auto const leftwards = formula::checked_convert(*value, pair.right, pair.left);
+            REQUIRE(leftwards.has_value());
+            CHECK(*leftwards == *value);
+            ++checkedValues;
+        }
+    }
+    CHECK(checkedValues == std::size(pairs) * std::size(numerators));
 }
 
 // ---- exact conversion ----
-
-using formula::ArithmeticError;
-using formula::ArithmeticException;
-using formula::Rational;
 
 namespace
 {
@@ -238,6 +458,73 @@ static_assert(converted(30000000, 1, unit::Pascal, unit::Megapascal) == *Rationa
 // A percentage is a scalar with a magnitude, not a special case.
 static_assert(converted(50, 1, unit::Percent, unit::One) == *Rational::make(1, 2));
 static_assert(converted(1, 2, unit::One, unit::Percent) == *Rational::make(50, 1));
+
+// ---- the broader vocabulary, in a constant expression ----
+//
+// The runtime table above walks every named unit; these are the individual
+// conversions worth reading as sentences, proved during translation rather than
+// at run time. Each expected value is the physics written out, not the
+// initialiser in unit.hpp re-derived.
+
+// A penetration is a whole number of tenths of a millimetre: 40 of them is
+// exactly 4 mm, and exactly 4/1000 of a metre.
+static_assert(converted(40, 1, unit::Decimillimetre, unit::Millimetre) == *Rational::make(4, 1));
+static_assert(converted(40, 1, unit::Decimillimetre, unit::Metre) == *Rational::make(1, 250));
+// A sieve aperture: 63 um is 63/1000 mm.
+static_assert(converted(63, 1, unit::Micrometre, unit::Millimetre) == *Rational::make(63, 1000));
+// Areas and volumes scale by the square and the cube, and the factors are exact.
+static_assert(converted(1, 1, unit::SquareCentimetre, unit::SquareMillimetre) == *Rational::make(100, 1));
+static_assert(converted(1, 1, unit::SquareMetre, unit::SquareMillimetre) == *Rational::make(1000000, 1));
+static_assert(converted(1, 1, unit::CubicCentimetre, unit::CubicMillimetre) == *Rational::make(1000, 1));
+static_assert(converted(1, 1, unit::Litre, unit::CubicCentimetre) == *Rational::make(1000, 1));
+// A curing age: 28 days is 28 * 86400 seconds, and 672 hours.
+static_assert(converted(28, 1, unit::Day, unit::Hour) == *Rational::make(672, 1));
+static_assert(converted(28, 1, unit::Day, unit::Second) == *Rational::make(2419200, 1));
+// A load frame's reading.
+static_assert(converted(1, 1, unit::Kilonewton, unit::Newton) == *Rational::make(1000, 1));
+// A loading rate: 50 mm/min is exactly 1/1200 m/s -- and back, with nothing lost.
+static_assert(converted(50, 1, unit::MillimetrePerMinute, unit::MetrePerSecond) == *Rational::make(1, 1200));
+static_assert(converted(1, 1200, unit::MetrePerSecond, unit::MillimetrePerMinute) == *Rational::make(50, 1));
+// A density: 2,4 g/cm3 is exactly 2400 kg/m3.
+static_assert(converted(12, 5, unit::GramPerCubicCentimetre, unit::KilogramPerCubicMetre)
+              == *Rational::make(2400, 1));
+static_assert(converted(2400, 1, unit::KilogramPerCubicMetre, unit::GramPerCubicCentimetre)
+              == *Rational::make(12, 5));
+// Mass per area, which is NOT a density: 200 g/m2 is exactly 1/5 kg/m2.
+static_assert(converted(200, 1, unit::GramPerSquareMetre, unit::KilogramPerSquareMetre) == *Rational::make(1, 5));
+// Force per width, which is NOT a stress.
+static_assert(converted(1, 1, unit::NewtonPerMillimetre, unit::KilonewtonPerMetre) == *Rational::make(1, 1));
+// The two viscosities, each within its own dimension.
+static_assert(converted(1, 1, unit::PascalSecond, unit::MillipascalSecond) == *Rational::make(1000, 1));
+static_assert(converted(1, 1, unit::SquareMillimetrePerSecond, coherentSi(unit::SquareMillimetrePerSecond))
+              == *Rational::make(1, 1000000));
+static_assert(converted(1, 1, unit::PascalSecond, coherentSi(unit::PascalSecond)) == *Rational::make(1, 1));
+// A per-mille and a part per million are ordinary scalars with a magnitude.
+static_assert(converted(5, 1, unit::PerMille, unit::Percent) == *Rational::make(1, 2));
+static_assert(converted(2500, 1, unit::PartsPerMillion, unit::Percent) == *Rational::make(1, 4));
+
+// ---- the same-magnitude pairs, pinned during translation ----
+//
+// Both spellings occur in practice and both are declared here; nothing in the
+// type system links the two declarations, so an edit to one could move it away
+// from the other in silence. The runtime case further down sweeps every such
+// pair over a range of values; these two are the ones the vocabulary was asked
+// to guarantee by name.
+static_assert(converted(30, 1, unit::Megapascal, unit::NewtonPerSquareMillimetre) == *Rational::make(30, 1));
+static_assert(converted(30, 1, unit::NewtonPerSquareMillimetre, unit::Megapascal) == *Rational::make(30, 1));
+static_assert(converted(1, 1, unit::NewtonPerSquareMillimetre, unit::Pascal) == *Rational::make(1000000, 1));
+static_assert(converted(250, 1, unit::MilligramPerKilogram, unit::PartsPerMillion) == *Rational::make(250, 1));
+static_assert(converted(250, 1, unit::PartsPerMillion, unit::MilligramPerKilogram) == *Rational::make(250, 1));
+
+// The two viscosities are NOT such a pair, and must never become one: they
+// differ by a density, so the dimensions differ and no conversion between them
+// exists. The runtime refusal is checked in the case further down; this says it
+// during translation, where `RequireSameUnitDimension` would also catch it.
+static_assert(!formula::SameDimension<unit::PascalSecond.dimension, unit::SquareMillimetrePerSecond.dimension>);
+static_assert(!formula::SameDimension<unit::KilogramPerSquareMetre.dimension, unit::KilogramPerCubicMetre.dimension>);
+static_assert(!formula::SameDimension<unit::KilonewtonPerMetre.dimension, unit::Megapascal.dimension>);
+static_assert(formula::RequireSameUnitDimension<unit::PascalSecond, unit::MillipascalSecond>::value);
+static_assert(formula::RequireSameUnitDimension<unit::GramPerSquareMetre, unit::KilogramPerSquareMetre>::value);
 
 // ---- the affine case, which is why Unit carries an offset ----
 
@@ -273,10 +560,30 @@ TEST_CASE("conversion round-trips exactly, in both directions", "[unit]")
         Unit from;
         Unit to;
     };
-    Pair const pairs[] = { { unit::Litre, unit::CubicMetre }, { unit::Millimetre, unit::Metre },
-                           { unit::Metre, unit::Kilometre },  { unit::Gram, unit::Kilogram },
-                           { unit::Minute, unit::Hour },      { unit::Celsius, unit::Kelvin },
-                           { unit::Megapascal, unit::Pascal }, { unit::Percent, unit::One } };
+    Pair const pairs[] = { { unit::Litre, unit::CubicMetre },
+                           { unit::Millimetre, unit::Metre },
+                           { unit::Metre, unit::Kilometre },
+                           { unit::Gram, unit::Kilogram },
+                           { unit::Minute, unit::Hour },
+                           { unit::Celsius, unit::Kelvin },
+                           { unit::Megapascal, unit::Pascal },
+                           { unit::Percent, unit::One },
+                           // and the same property across the broadened vocabulary
+                           { unit::Decimillimetre, unit::Micrometre },
+                           { unit::SquareMillimetre, unit::SquareCentimetre },
+                           { unit::CubicMillimetre, unit::CubicCentimetre },
+                           { unit::Milligram, unit::Gram },
+                           { unit::Day, unit::Hour },
+                           { unit::Kilonewton, unit::Newton },
+                           { unit::Gigapascal, unit::Kilopascal },
+                           { unit::Kilojoule, unit::Joule },
+                           { unit::MillimetrePerMinute, unit::MetrePerSecond },
+                           { unit::GramPerCubicCentimetre, unit::KilogramPerCubicMetre },
+                           { unit::GramPerSquareMetre, unit::KilogramPerSquareMetre },
+                           { unit::NewtonPerMillimetre, unit::KilonewtonPerMetre },
+                           { unit::MillipascalSecond, unit::PascalSecond },
+                           { unit::SquareMillimetrePerSecond, unit::SquareMillimetrePerSecond },
+                           { unit::PerMille, unit::PartsPerMillion } };
 
     std::int64_t const numerators[] = { -7, -1, 0, 1, 3, 450, 30000 };
     std::size_t roundTripped = 0;
@@ -389,6 +696,22 @@ TEST_CASE("checked_convert refuses a dimension mismatch at run time", "[unit]")
     auto const result = formula::checked_convert(*Rational::make(450, 1), unit::Litre, unit::Kilogram);
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error() == ArithmeticError::DomainError);
+
+    // The pair a reader is most likely to assume interchangeable. A dynamic
+    // viscosity and a kinematic one differ by a density, so there is no factor
+    // between them and asking for one has to be refused rather than answered
+    // with the number that would come out if the dimensions were ignored.
+    auto const viscosities =
+        formula::checked_convert(*Rational::make(1, 1), unit::PascalSecond, unit::SquareMillimetrePerSecond);
+    REQUIRE_FALSE(viscosities.has_value());
+    CHECK(viscosities.error() == ArithmeticError::DomainError);
+
+    // And mass per area against density, which is one length apart.
+    auto const perAreaAgainstDensity = formula::checked_convert(*Rational::make(200, 1),
+                                                                unit::KilogramPerSquareMetre,
+                                                                unit::KilogramPerCubicMetre);
+    REQUIRE_FALSE(perAreaAgainstDensity.has_value());
+    CHECK(perAreaAgainstDensity.error() == ArithmeticError::DomainError);
 }
 
 // ---- bounds ----

@@ -81,17 +81,18 @@ the `Trace` it writes into. Its constructor takes one by reference and keeps
 only a pointer:
 
 ```cpp
-explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace }
-{
-    _trace->marks.clear();
-    _trace->unclaimed.clear();
-}
+explicit constexpr RecordingSink(Trace<Rep>& trace, V vocabulary = V {}) noexcept:
+    _trace { &trace },
+    _vocabulary { vocabulary }
 ```
 
 and that pointer, `Trace<Rep>* _trace`, is the whole of `RecordingSink`'s
-storage (`trace.hpp`). `RecordingSink` is a **handle**, not an owner: the
-caller owns the `Trace` and it must outlive the walk. One pointer copies for
-free at every node; a `Trace` copied at every node would not.
+storage when no vocabulary is given (`trace.hpp`): the default vocabulary is
+empty and takes no space. `RecordingSink` is a **handle** to the `Trace`, not
+its owner: the caller owns the `Trace` and it must outlive the walk. One
+pointer copies for free at every node; a `Trace` copied at every node would
+not. A jurisdiction's vocabulary, when one is given, is copied with the sink
+-- a few views of string literals, see [Whose symbols](#whose-symbols).
 
 There is a second consequence, and it is not optional the way "keep it
 small" is a matter of degree: **a sink must not throw.** Every
@@ -296,6 +297,324 @@ actually dispatched, not what the node's arity would predict -- when an
 operand fails, its parent returns without evaluating the remaining ones, so a
 `Divide` may hold one recorded operand, or, in the rare case above, none.
 
+## Which variant a method chose
+
+A method reports one quantity by more than one formula -- a cube, a cylinder
+and a prism each have their own -- and which one applies is a property of the
+specimen, stated by the caller as a tag: `evaluate_method<Cylinder>(...)`.
+Spec section 9.1 asks that an inspector reading the result can ask *"why the
+cylinder formula?"* and get an answer, so the selection is recorded as a step
+of its own, `StepKind::VariantSelected`, and a derivation says which variant
+fired and on what:
+
+```cpp
+formula::Trace<> trace {};
+formula::RecordingSink<> sink { trace };
+(void) formula::evaluate_method<specimen::Cube>(compressiveStrength, inputs, sink);
+std::printf("%s", formula::render_trace(trace, { .maxSteps = 20 }).c_str());
+```
+
+```
+1. F = 562 kN
+2. 22500 mm2
+3. #1 / #2 = 224800000/9
+4. round(#3, in MPa) = 25 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]
+```
+
+(`test/trace_render_tests.cpp`, `"a variant step reads as its operand, with the
+variant and its position in brackets"`, whose method has an invented cube,
+cylinder and prism.) The selection is the last line and the walk's one root:
+its operand is the variant that ran, rounded by the method's rule, and its
+value is exactly what `evaluate_method` returned. The bracket carries both
+halves of the answer. The tag's name is the discriminator the caller selected
+with; the position -- one-based here, zero-based in `Step::variantIndex` --
+is what a reader counts back to in the method's `variants(...)`, and it
+survives even where the name cannot be read. It is the position in the
+method **as published**: a jurisdiction's overlay that prunes the cube leaves
+the cylinder the 2nd of 3, not the 1st of 2, because the published
+`variants(...)` is the only one in the source to count in. `selected by tag` says how the
+choice was made rather than only that it was. Nothing in the line names a
+variant that was not taken: the neighbouring test selects the cylinder and
+checks that the word `Cube` appears nowhere in its derivation.
+
+When a jurisdiction's overlay narrowed the variants first, the bracket says so
+in a second clause, with what the overlay cited: `pin_variant<Cylinder>(annex)`
+gives `[variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction
+overlay: ...]`, and a prune gives `; 1 of 3 pruned by jurisdiction overlay:
+...` -- or, after prunes by more than one overlay, `; 2 of 3 pruned, the last
+by jurisdiction overlay: ...`, naming what the last one cited. One overlay
+cannot both pin and prune, but one jurisdiction may prune what a later one
+pins, and then both clauses appear, the prune first. Both citations are
+required, and escaped as every other piece of author text is.
+(`test/overlay_tests.cpp`, `"a pin says which jurisdiction made the variant
+mandatory"` and the three cases after it.)
+
+A method tells a sink about its choice through two optional members,
+`variant_entered` and `variant_produced`, with a `VariantSelection`
+(`sink.hpp`) -- a method is not a node, so it cannot come through `entered`
+and `produced`. A sink defines both or neither; `NullSink` defines neither and
+pays nothing.
+
+**The tag's name is recovered from the compiler**, the way an enumerator's is,
+and it is the name as written, unqualified: `Cube`, whichever namespace or
+class declares it, and never with an anonymous namespace in front of it --
+which the four compilers this library is measured on would otherwise spell
+in three different ways, and cl alone in two. A class template specialization keeps its arguments,
+`Sized<150>`, with their qualification stripped the same way. One difference
+cannot be evened out: cl prints a `bool`, `char` or enumeration argument as a
+number, `Flag<1>` where the others print `Flag<true>`, and it prints a
+defaulted argument the others leave out, `Opt<Cube, void>` for `Opt<Cube>`.
+And some tags have no reflected name that could be shown at all: a lambda or
+an unnamed class, or a specialization with one as an argument, or over a
+`const` type, a function type, a pointer or a cast. The compilers print those
+as file paths, as placeholders, as fragments, or -- for `TagBox<const ns::A>`
+-- as a name that, once its qualifiers are gone, is `TagBox<A>`: the name of
+a different type. A `char`, floating-point or class-type value as an argument
+is refused too, because the compilers print it differently: `Ch<'x'>` from
+clang and GCC is `Ch<120>` from cl, which cl then accepts, so such a tag
+compiles on cl and nowhere else until it is named. Rather than record a wrong
+name, the library refuses to compile such a tag and says to name it. An author who wants a
+tag to read the same everywhere, or to read the way a published method words
+the variant, specializes `formula::TagName` (`tag.hpp`), which has the shape
+and the refusals of `EnumeratorName`:
+
+```cpp
+template <>
+struct formula::TagName<Cylinder>
+{
+    static constexpr std::string_view of() noexcept { return "cylinder 150 x 300 mm"; }
+};
+```
+
+## Whose rounding rule, and whose constant
+
+The rounding line above is a step of its own kind,
+`StepKind::RoundingRuleApplied`, rather than an ordinary rounding step. Spec
+section 9.1 asks the trace to record which rounding rule applied **and where
+it came from**, and `rounded to 1 dp` alone is true whether the method's
+author chose the rule or a jurisdiction did. So the bracket says whose it was:
+`(method default)` for the rule the method was declared with, and
+`(jurisdiction overlay: ...)` for one an overlay's `with_rounding` put in its
+place, followed by what the overlay cited:
+
+```
+8. round(#7, in MPa) = 601/100 MPa [rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, NA.4.1); nearest, ties away from zero]
+```
+
+(`test/overlay_tests.cpp`, `"the trace says where the rounding rule came
+from"`.) A jurisdiction that restates the method's own granularity still gets
+`(jurisdiction overlay: ...)`: the rule is then its rule, and the trace does
+not decide whose it was by comparing numbers. The provenance is in
+`Step::roundingProvenance`, and the citation in `Step::citation`.
+
+Every overlay operation takes a citation argument, but an empty one compiles:
+`with_rounding<...>({})`, `pin_variant<Cube>({})`, or an operation's aggregate
+built directly, such as `VariantPin<Cube> {}`. Every clause an overlay adds then
+says so, `(jurisdiction overlay (no citation given))` here and `[fixed by
+jurisdiction overlay (no citation given)]` below, rather than a bare
+`jurisdiction overlay` that a reader could take for a cited one.
+(`test/overlay_tests.cpp`, `"an operation given an empty citation says so in
+every clause"`.)
+
+A constant an overlay fixed with `with_constant` is traced the same way, as
+`StepKind::OverriddenConstant` rather than as a variable. It reads as its
+quantity, but it says the value was not the specimen's:
+
+```
+1. k_s = 97/100 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.3]
+```
+
+(`test/overlay_tests.cpp`, `"an overridden constant is traced as fixed by the
+overlay, holding its value"`.) `document()` marks it too: the quantity's row
+in the symbol table carries `fixedValue` and `fixedBy`, so a documentation
+page does not ask a reader to supply a value the formula never reads. A formula
+assembled by hand that both fixes a quantity and reads it from the specimen
+gets a row saying both: `alsoReadAsInput` is set beside the fixed value.
+
+A quantity a jurisdiction defines by an expression, with `add_derived`, is
+traced as `StepKind::DerivedQuantity`: the quantity, equal to the step its
+definition produced, marked as the overlay's:
+
+```
+3. #1 / #2 = 2/3
+4. k_s = #3 = 2/3 [derived by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.3]
+```
+
+(`test/overlay_tests.cpp`, `"a derived quantity is traced as derived by the
+overlay"`.) Its row in `document()`'s symbol table carries the definition in
+the page's dialect as `derivedAs`, and the citation as `derivedBy`. A variant
+whose formula a jurisdiction replaced wholesale, with `replace_variant`, is
+traced as `StepKind::ReplacedVariant`, a step of its own under the variant
+selection whose line ends `[replaced by jurisdiction overlay: ...]`. It is a
+step of its own because what it marks is the formula that ran, not the choice
+of which variant ran.
+
+## Whose constraints
+
+A method's constraints are checked with `check_method`, which answers one
+outcome per constraint the method holds -- `check_all` over the set it
+holds, handed over whole: `check_all(m.constraintSet, inputs)` for a method's
+own constraints, `check_all(m.constraintSet.constraintSet(), inputs)` for a
+jurisdiction's -- and tells a sink whose constraints they are. The verdicts are gathered under a step of their own,
+`StepKind::AcceptanceChecked`, whose operands are the verdicts in the order
+`check_method` returns them, and each verdict's bracket says whose check it
+was:
+
+```
+1. F = 90000 N
+2. 50000 N
+3. require #1 >= #2 [satisfied; the method's own constraint]
+4. acceptance(#3) [the method's own constraints]
+```
+
+(`test/overlay_tests.cpp`, `"each verdict says whether the method or a
+jurisdiction's overlay supplied it"`.) An overlay's `with_constraints`
+replaces the constraints wholesale, with as many as the jurisdiction states,
+and every verdict of the overlaid method then ends `; jurisdiction overlay:`
+and what the overlay cited. A jurisdiction that removes every constraint
+still gets a line, so the removal is never silent:
+
+```
+1. acceptance(none) [jurisdiction overlay: Acceptance, Example Standard 12:2021 NA, NA.6]
+```
+
+(`test/overlay_tests.cpp`, `"an overlay removes every constraint, and the
+trace says by whose authority"`.) The provenance is in
+`Step::constraintProvenance`, set on the gathering step and on each verdict
+it holds, with the overlay's citation in `Step::citation`. A constraint
+checked on its own, with `check` or `check_all`, belongs to no method, and
+its line reads as it always did. A method tells a sink about its constraints
+through two optional members, `acceptance_entered` and `acceptance_produced`,
+given a `ConstraintOrigin` read off the method's constraints; a sink defines
+both or neither.
+
+## Only the library states a provenance
+
+The provenance a trace records in a `Step`'s fields is only ever the library's
+to state. The nodes
+an overlay leaves behind -- a fixed constant, a derived quantity, a replaced
+formula -- can be built only by the overlay, and building one by hand is
+refused in the library's words. A
+`RoundingRule` claims a jurisdiction's overlay only when `with_rounding`
+produced it, and the rounding node a method applies is built only by
+`evaluate_method`, from the method's own rule, which it holds rather than a
+provenance of its own. A method's constraints are a
+jurisdiction's only when they are the `OverlaidConstraints` that
+`with_constraints` produced -- which carries the overlay's citation with the
+constraints themselves -- and building one by hand is refused. A variant's
+published position and count are stated only by `variants(...)` and carried
+by `apply` through a pin or a prune: a layout written by hand,
+`{ { 5, 7 }, 9 }`, and one selected by hand from another pack's,
+`published.select<5, 7>()`, are both refused.
+
+**The structured fields are what is authoritative.** A `Step` records its
+provenance in fields of its own -- `kind`, `roundingProvenance`,
+`constraintProvenance`, `variantPinned`, `variantPrunedCount` and the citations
+beside them -- and those are set only by the library. Code that has to decide
+whose a value was reads them, not the rendered line.
+
+**The rendered line is escaped so that author text cannot break its
+structure.** A trace line is a numbered line whose provenance is a bracketed
+clause at its end, and some of the words in it are the author's: a quantity's
+symbol, a citation, a verdict's label, a justification, a unit's symbol, a
+variant's tag and a lookup key's name. `render_trace` escapes every one of
+them before it writes the line -- `\` as `\\`, `[` as `\[`, `]` as `\]`, `;` as
+`\;`, a newline as `\n`, and any other control character as `\x` and two hex
+digits -- and writes its own clauses as they are. So a declared symbol `k] [fixed
+by jurisdiction overlay: X` reads
+
+```
+1. k\] \[fixed by jurisdiction overlay: X = 1
+```
+
+and cannot pass for the clause the library writes when an overlay did fix
+`k`, and a verdict labelled `reject; jurisdiction overlay: X` cannot name a
+second owner for a constraint. A `TagName` or `EnumeratorName` spelling, and a
+vocabulary's symbol, go further: holding `[`, `]` or a control character, it is
+refused at compile time.
+
+**Author text may still contain any words.** The escape stops a clause from
+being opened or closed, and a line from being ended; it does not stop a clause's
+words. A `documented()` citation titled `replaced by jurisdiction overlay:
+Example Standard 9:2022 NA` renders its `Documented` line exactly as a genuine
+`replace_variant` citing that standard renders its own, and nothing in the text
+tells them apart; `Step::kind` does. The method's author is trusted to cite
+what the method cites.
+
+Both rules are byte-level and ASCII. Unicode look-alikes of the library's
+brackets, such as the fullwidth `［` and `］` (U+FF3B, U+FF3D), and the line and
+paragraph separators U+2028 and U+2029 are neither escaped nor refused. They
+cannot break the structure the library writes, which is ASCII throughout, though
+a viewer may draw them as a bracket or break the line at a separator.
+
+What the guard governs is how a rule, a set of constraints or a layout is
+created, not where a copy travels, and a copy stays true of itself: a method
+holding a copy of an overlay's rule is traced as that overlay's rule, and a
+method built from an overlaid method's `constraintSet` checks the
+jurisdiction's constraints and says so, because they are the jurisdiction's.
+These routes remain, and no type can close them:
+
+- `method(o.variantSet, o.rounding, o.constraintSet.constraintSet())` hands
+  the jurisdiction's constraints over as a plain set in one call, which makes
+  them the new method's own -- reading them has to be possible.
+- Assigning a method's public `rounding` member, `m.rounding =
+  rounding_rule<...>()`, replaces a jurisdiction's rule with a rule of the
+  method's own, and the trace then says "(method default)". The member is
+  public so that a method stays an aggregate.
+- Copying a pack's layout, `pack.published = other.published`, or resetting it
+  to declaration order with `pack.published = {}`, gives it a layout the
+  library made for another pack -- positions, count and any pin or prune
+  with what it cited. A pruned pack reset this way reports its variants as the
+  1st and 2nd of 2 rather than where they were published, and says nothing of
+  the prune.
+- Reinterpreting an object's bytes makes it anything.
+- Explicitly specialising a library template, or a member of one, forges
+  anything, and no C++ library can stop it. An explicit specialisation of a
+  member -- a constructor, an accessor such as `RoundingRule<...>::provenance()`,
+  a defaulted default constructor -- is a member definition, with a member's
+  access to the private fields; friend injection names a `detail::` type
+  without spelling `detail::`. Both were measured making a method no overlay
+  touched trace a jurisdiction's rounding rule. The only supported
+  customisation points are `TagName`, `EnumeratorName`, `Describe`,
+  `RepTraits` and the vocabulary. Specialising any other formula-cpp template
+  or member is outside the contract, and can make the trace say anything.
+
+Nor does the guard reach a sink's own hooks, which are public: code that calls
+them by hand, or fills in a `Step` by hand, writes whatever trace it likes.
+
+## Whose symbols
+
+A `Variable`, `OverriddenConstant` or `DerivedQuantity` step records its
+quantity's symbol **when the formula is evaluated**, and `render_trace` only
+reads it back. So a jurisdiction's vocabulary (see [Citations and rendering](citations.md)) has to
+be given to the sink, not only to `render()` -- a page rendered in one
+vocabulary and a trace recorded in another would name one quantity with two
+different letters:
+
+```cpp
+formula::Trace<> southern {};
+(void) formula::check(limit, crossedInputs, formula::RecordingSink { southern, south });
+```
+
+```
+1. E = 30 MPa
+2. R = 12 MPa
+3. require #1 >= #2 [satisfied]
+```
+
+(`test/vocabulary_tests.cpp`, `"a constraint's trace names quantities in the
+sink's vocabulary"`.) `explain` takes the vocabulary as an optional third
+argument. Those three step kinds are the only ones that name a quantity.
+Every other step names none -- arithmetic, a lookup, a rounding rule, a
+constraint, a method's constraints, a variant selection and a replaced
+variant refer to their operands by number -- and so reaches the vocabulary through the steps beneath
+it.
+
+The sink keeps its own copy of the vocabulary -- plain data holding views of
+string literals -- so, unlike the `Trace`, the vocabulary need not outlive
+the evaluation, and a temporary one is fine.
+
 ## The bound is a required argument, not a default
 
 ```cpp
@@ -431,11 +750,25 @@ arithmetic for free and a traced subtree for nothing -- no warning, no
 diagnostic, just a derivation with a gap in it exactly where that node stood.
 `render_trace` cannot even show the gap, because nothing was ever recorded to
 show; the tree beneath an untraced node vanishes from the derivation as
-completely as if the formula had been written without it. A consumer who wants
-their own node traced writes the third-parameter overload -- calling
-`sink.entered(node)` before evaluating its operands and `sink.produced(node,
-result)` after, the same shape every evaluator overload in this library
-already follows.
+completely as if the formula had been written without it.
+
+**That graceful degradation belongs to the two-parameter overload alone.** It
+would be natural to conclude that a consumer who wants their node traced
+writes the three-parameter overload instead -- calling `sink.entered(node)`
+before evaluating its operands and `sink.produced(node, result)` after, the
+shape every evaluator overload in this library follows. Against `NullSink`, or
+a sink of the consumer's own, that compiles and works. Against
+`RecordingSink` it **does not compile**: `RecordingSink` looks up every node's
+kind in `detail::StepKindOf` (`trace.hpp`), a closed registry whose primary
+template is deliberately left undefined, and a consumer's node has no entry
+there. g++ 13.3 reports "incomplete type
+`formula::detail::StepKindOf<AwareNode>` used in nested name specifier", and
+cl 19.51 reports C2027, "use of undefined type". So today a consumer's own
+node cannot appear in a recorded trace at all. What does compile is a
+three-parameter overload that only hands the sink on to its operands'
+`detail::dispatch` and reports nothing of its own: its operands are traced,
+and it is not -- measured on the same two compilers. Opening the registry to consumers is a separate change from
+anything this guide describes.
 
 ## Every citation here is invented
 

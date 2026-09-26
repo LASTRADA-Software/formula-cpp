@@ -3,6 +3,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
+#include <iterator>
 #include <type_traits>
 
 using formula::Exponent;
@@ -180,11 +182,17 @@ TEST_CASE("dimension algebra composes the way physics does", "[dimension]")
     CHECK(dim::Energy == Dimension { .length = exponent(2), .mass = exponent(1), .time = exponent(-2) });
     CHECK(dim::Frequency == Dimension { .time = exponent(-1) });
     CHECK(dim::Density == Dimension { .length = exponent(-3), .mass = exponent(1) });
+    CHECK(dim::MassPerArea == Dimension { .length = exponent(-2), .mass = exponent(1) });
+    CHECK(dim::ForcePerLength == Dimension { .mass = exponent(1), .time = exponent(-2) });
+    CHECK(dim::DynamicViscosity
+          == Dimension { .length = exponent(-1), .mass = exponent(1), .time = exponent(-1) });
+    CHECK(dim::KinematicViscosity == Dimension { .length = exponent(2), .time = exponent(-1) });
 
     // The four base dimensions none of these touch must stay at exactly zero --
     // a stray exponent there is invisible to every check above.
     for (Dimension const& d: { dim::Velocity, dim::Acceleration, dim::Force, dim::Pressure, dim::Energy,
-                               dim::Frequency, dim::Density })
+                               dim::Frequency, dim::Density, dim::MassPerArea, dim::ForcePerLength,
+                               dim::DynamicViscosity, dim::KinematicViscosity })
     {
         CHECK(d.current == exponent(0));
         CHECK(d.temperature == exponent(0));
@@ -193,10 +201,57 @@ TEST_CASE("dimension algebra composes the way physics does", "[dimension]")
     }
 }
 
+TEST_CASE("the derived dimensions that read alike are still not equal", "[dimension]")
+{
+    // Equality across the whole exponent vector is what keeps two quantities
+    // from being substituted for each other, and the pairs below are the ones a
+    // reader is most likely to assume interchangeable. Each is checked against
+    // the OTHER member of the pair rather than against a written-out vector:
+    // the vectors are pinned in the case above, and what matters here is the
+    // inequality itself.
+    //
+    // Dynamic and kinematic viscosity are the pair this exists for -- both are
+    // called "viscosity", and they differ by a factor of density, so a value in
+    // one is simply not a value in the other.
+    CHECK_FALSE(dim::DynamicViscosity == dim::KinematicViscosity);
+    CHECK(dim::DynamicViscosity == dim::KinematicViscosity * dim::Density);
+
+    // Mass per area is one length away from a density, which is exactly close
+    // enough to be mistaken for it.
+    CHECK_FALSE(dim::MassPerArea == dim::Density);
+    CHECK(dim::Density == dim::MassPerArea / dim::Length);
+
+    // Force per length is not a pressure: a force divided by a width is not a
+    // force divided by an area.
+    CHECK_FALSE(dim::ForcePerLength == dim::Pressure);
+    CHECK(dim::Pressure == dim::ForcePerLength / dim::Length);
+
+    // And no two of the four new ones collide with each other or with anything
+    // the library already had. A pairwise sweep, because a new dimension that
+    // silently equals an existing one would let the type system pass a value of
+    // one where the other was meant -- the single failure this whole layer
+    // exists to prevent.
+    Dimension const named[] = { dim::Scalar,           dim::Length,        dim::Mass,
+                                dim::Time,             dim::Area,          dim::Volume,
+                                dim::Density,          dim::Velocity,      dim::Acceleration,
+                                dim::Force,            dim::Pressure,      dim::Energy,
+                                dim::Frequency,        dim::MassPerArea,   dim::ForcePerLength,
+                                dim::DynamicViscosity, dim::KinematicViscosity };
+    for (std::size_t i = 0; i < std::size(named); ++i)
+        for (std::size_t j = i + 1; j < std::size(named); ++j)
+        {
+            INFO("named dimensions " << i << " and " << j);
+            CHECK_FALSE(named[i] == named[j]);
+        }
+}
+
 TEST_CASE("multiplying by a dimension and dividing by it again is an identity", "[dimension]")
 {
-    Dimension const all[] = { dim::Scalar,  dim::Length, dim::Mass,   dim::Time,     dim::Area,
-                              dim::Volume,  dim::Density, dim::Force, dim::Pressure, dim::Energy };
+    Dimension const all[] = { dim::Scalar,           dim::Length,         dim::Mass,
+                              dim::Time,             dim::Area,           dim::Volume,
+                              dim::Density,          dim::Force,          dim::Pressure,
+                              dim::Energy,           dim::MassPerArea,    dim::ForcePerLength,
+                              dim::DynamicViscosity, dim::KinematicViscosity };
     for (Dimension const& a: all)
     {
         for (Dimension const& b: all)

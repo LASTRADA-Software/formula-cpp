@@ -214,7 +214,14 @@ at all — and while the member was a raw array, that route bypassed the check
 entirely and the untyped rows evaluated to `0` on all three kinds. The factory's
 parameter cannot see a call that never happens. A consequence worth knowing:
 a lookup node has no default constructor, because `{}` for a table of three
-rows is a count of zero, which is exactly the mistake being refused.
+rows is a count of zero, which is exactly the mistake being refused. The
+standard traits say so (`std::is_default_constructible_v` and
+`std::default_initializable` are `false`), and so they do for anything holding
+a lookup, which is what lets a method's variants and constraints, each kept in
+a `std::tuple`, hold one. An explicitly empty list is refused in the
+compiler's own words ("no matching constructor") rather than in the sentence
+naming both counts, because an empty list and that trait question are one and
+the same request.
 
 ## A miss is not a value
 
@@ -300,26 +307,142 @@ A repeated key is refused at compile time too, naming both offending keys. It is
 not harmless: the second row becomes unreachable, so a correction somebody
 entered is silently never selected.
 
-### The key renders as its underlying value, not the enumerator's name
+### The key renders as its enumerator's name
 
 ```
-exact:         lookup(key 7, key 3 gives 100 %, key 7 gives 97 %, key 11 gives 92 %)
+exact:         lookup(key Cylinder, key Cube gives 100 %, key Cylinder gives 97 %, key Prism gives 92 %)
 ```
 
-`key 7` is `Cylinder`, and the rendering cannot say so. **A C++ enumerator has
-no name at run time** — there is no portable way to get `Cylinder` back out of a
-`LookupExampleShape` — so what a reader is given is the underlying value, which
-is the only thing that survives. It is the *value*, not the row's index: an
-author who numbers theirs `{ Cube = 3, Cylinder = 7 }` -- as the example
-above does, for exactly this reason -- sees 3 and 7, numbers that appear in
-their own source and nowhere in a row count.
+`Cylinder` is the enumerator's name exactly as your source spells it, without
+its enumeration's qualification. It is recovered at compile time, from the
+compiler's own spelling of a function signature that names the enumerator as a
+template argument — the technique of
+[reflection-cpp](https://github.com/contour-terminal/reflection-cpp), adapted
+into this library rather than depended on, so the library still needs nothing
+but a C++23 compiler. `formula::enumerator_name<LookupExampleShape::Cylinder>()`
+gives you the same name, as a `std::string_view` usable in a constant
+expression.
 
-**So a reader reconciling a rendered exact lookup against a published table has
-to carry your `enum class` declaration across.** `key 7` says which row, not
-which variant. Per-row labels are deliberately not modelled on the node — a
-table's identity is `documented()`'s job, not a field smuggled into the
-arithmetic — so if you publish a rendering of an exact lookup, publish the
-enumeration next to it.
+Only a key that names **no row of the table** falls back to a number — and a
+miss is exactly such a key:
+
+```
+exact miss:    lookup(key 13, key Cube gives 100 %, key Cylinder gives 97 %, key Prism gives 92 %)
+1. lookup(key 13) = argument outside the domain of the operation [no row has this key]
+```
+
+`DrilledCore` has a name in the example's source, but the table has no row for
+it, and a key is named only among the keys its own table declares. What is
+shown instead is its underlying *value*, not an index: an author who numbers
+theirs `{ Cube = 3, Cylinder = 7, Prism = 11, DrilledCore = 13 }` — as the
+example above does, for exactly this reason — sees 13, a number that appears in
+their own source and nowhere in a row count. A reflected name is an identifier
+and cannot begin with a digit, so the two spellings cannot be confused — unless
+you customize a name into a number yourself (a row spelled `"150"`, below, reads
+exactly like a value).
+
+A table may also declare a row under a value that names no enumerator —
+`static_cast<LookupExampleShape>(9)` is a legal key — and that row, and a hit
+on it, show the value too, because there is no name to show.
+
+Two things follow from the name being the *compiler's* view of the enumerator:
+two enumerators declared with the same value are one value, and both are shown
+under the name of the first one declared; and the extraction has been measured
+on cl 19.51, clang-cl 22, clang 20 and g++ 13. A compiler whose signature does
+not end the way the extraction expects gets the value fallback rather than a
+guess; that is the only format change it detects, and the test suite is what
+would notice any other.
+
+### Spelling a key the published table's way
+
+An enumerator's name is still the author's spelling, and a published table may
+word the row differently. Say so once, for the whole enumeration, by
+specializing `formula::EnumeratorName` — every table keyed on it, `render()` and
+every trace then follow:
+
+```cpp
+enum class LookupExampleCuring : std::uint8_t
+{
+    Water = 1,
+    Sealed = 2,
+    Air = 3,
+};
+
+template <>
+struct formula::EnumeratorName<LookupExampleCuring>
+{
+    static constexpr std::string_view of(LookupExampleCuring curing) noexcept
+    {
+        switch (curing)
+        {
+            case LookupExampleCuring::Water:
+                return "water bath";
+            case LookupExampleCuring::Sealed:
+                return "sealed in foil";
+            case LookupExampleCuring::Air:
+                return {};
+        }
+        return {};
+    }
+};
+
+// Constant expressions, so a spelling can be checked where it is declared.
+static_assert(formula::enumerator_name<LookupExampleCuring::Sealed>() == "sealed in foil");
+static_assert(formula::enumerator_name<LookupExampleCuring::Air>() == "Air");
+
+inline constexpr formula::KeyTable<LookupExampleCuring, 3> CuringKeys {
+    LookupExampleCuring::Water,
+    LookupExampleCuring::Sealed,
+    LookupExampleCuring::Air,
+};
+```
+
+```
+customized:    lookup(key sealed in foil, key water bath gives 100 %, key sealed in foil gives 96 %, key Air gives 90 %)
+1. lookup(key sealed in foil) = 96 %
+```
+
+The rules are few, and each is enforced:
+
+- **`of` is read at compile time.** It is a `static constexpr` function taking
+  the enumeration and returning something convertible to `std::string_view`, and
+  `enumerator_name` is `consteval`, so a spelling can be checked with
+  `static_assert` where it is declared, as above.
+- **Return an empty view to leave an enumerator alone.** `Air` falls back to its
+  own name. A `switch` that falls off its end without returning is not usable
+  in a constant expression, and is refused rather than read as empty.
+- **What `of` returns must be readable at compile time** — a string literal,
+  or a view of a namespace-scope or `static` `constexpr` array (one local to
+  `of` is a local buffer, and is refused) — which is what guarantees it has static
+  storage duration. A trace keeps the view for as long as the trace lives,
+  which may be long after the formula that recorded it is gone. A view of a
+  destroyed local buffer, of a `std::string` returned by value, of a mutable
+  static, or of a `const char name[]` that is not `constexpr` is refused. The
+  library reads every character of the view in a constant expression and
+  refuses in its own words on cl, clang-cl and clang; `enumerator_name` is also
+  `consteval`, so the compiler refuses such a view in its own words too, which
+  is where g++ 13 catches the local-buffer case.
+- **Declare the specialization next to the enumeration, before anything uses
+  it, and on the unqualified type.** Declared later in the same file than a
+  use, it is normally a compile error ("specialization after instantiation" —
+  measured on all four compilers; cl alone lets a use inside a never-used
+  template through). Declared in a header another file does not include, it is
+  simply not there for that file, which uses the enumerator's own name with
+  nothing to say so. `EnumeratorName<LookupExampleCuring const>`, with no
+  specialization for the unqualified type, is refused outright: the library
+  never asks about the qualified type, so it could never take effect. A
+  constrained partial specialization covering every enumeration is fine.
+- **A specialization the library can see but cannot read is refused, never
+  ignored.** A misspelt `of`, one that is not `constexpr`, or one returning the
+  wrong type is a compile error in the library's own words — "this EnumeratorName
+  specialisation does not have the shape the library reads", or
+  "EnumeratorName<Enum>::of(E) is not usable in a constant expression". Read as
+  "not customized", any of them would silently drop your wording.
+
+A spelling can hold any characters. The Markdown and LaTeX renderings escape
+the name so it shows as written — `\_` and `\*` in Markdown, `\_`, `\%` and
+`\textless{}` in LaTeX, among others — and the plain rendering and the trace
+show it untouched.
 
 ### Give each translation unit's key enumeration a name of its own
 
@@ -554,7 +677,7 @@ an interpolating one — collecting the citation and the symbol table. Here it i
 over a banded and an exact lookup inside one formula:
 
 ```
-method:        f_m * lookup(d, 0 to under 100 mm gives 95 %, 100 to under 150 mm gives 100 %, 150 to under 200 mm gives 105 %) * lookup(key 7, key 3 gives 100 %, key 7 gives 97 %, key 11 gives 92 %)
+method:        f_m * lookup(d, 0 to under 100 mm gives 95 %, 100 to under 150 mm gives 100 %, 150 to under 200 mm gives 105 %) * lookup(key Cylinder, key Cube gives 100 %, key Cylinder gives 97 %, key Prism gives 92 %)
 cited:         Corrected compressive strength, Example Standard 8:2020, 7.3 (5)
 symbol:        f_m = measured compressive strength [MPa]
 symbol:        d = specimen diameter [mm]
@@ -576,7 +699,7 @@ interpolation drew on:
 2. d = 120 mm
 3. lookup(#2) = 100 % [100 to under 150 mm]
 4. #1 * #3 = 40000000
-5. lookup(key 7) = 97 %
+5. lookup(key Cylinder) = 97 %
 6. #4 * #5 = 38800000
 7. #6 = 38800000 [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
 ```

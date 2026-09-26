@@ -33,6 +33,7 @@
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -157,8 +158,8 @@ constexpr auto waterCementRatio =
 struct MeasuredDensity: formula::Quantity<MeasuredDensity, "rho_m", "measured bulk density", KilogramPerCubicMetre>
 {
 };
-struct AdjustedBulkDensity
-    : formula::Quantity<AdjustedBulkDensity, "rho_adj", "compaction-adjusted bulk density", KilogramPerCubicMetre>
+struct AdjustedBulkDensity:
+    formula::Quantity<AdjustedBulkDensity, "rho_adj", "compaction-adjusted bulk density", KilogramPerCubicMetre>
 {
 };
 
@@ -168,7 +169,8 @@ struct AdjustedBulkDensity
 // exactly as measured.
 constexpr auto compactionAdjustedDensity = formula::documented(
     formula::when(var<MeasuredDensity> < formula::constant<KilogramPerCubicMetre>(formula::Rational { 1800 }),
-                 var<MeasuredDensity> * formula::Rational { 11, 10 }, var<MeasuredDensity>),
+                  var<MeasuredDensity>* formula::Rational { 11, 10 },
+                  var<MeasuredDensity>),
     { .title = "Compaction-adjusted bulk density",
       .reference = "Example Standard 5:2020",
       .section = "4.5",
@@ -226,12 +228,11 @@ inline constexpr formula::BandTable<3> GallerySizeBands {
 // (`lookup.hpp` measures the mechanism). Hence `GalleryMould` and not `Mould`.
 //
 // **Numbered explicitly, and not contiguously, on purpose.** An exact lookup
-// renders its rows as `key <underlying value>` -- a C++ enumerator has no name
-// at run time, so the value is the only thing that survives into the rendered
-// formula. Leaving these to default would print 0, 1, 2, which a reader could
-// just as easily take for row indices; 3, 7 and 11 can only be the
-// enumerators' own values, so the page demonstrates the rule rather than
-// leaving docs/lookup-tables.md to assert it in prose alone.
+// renders a key by its enumerator's name -- `key Cylinder` -- recovered at
+// compile time (`enumerator.hpp`), and falls back to the underlying value only
+// for a key that names no row. Numbered anyway so that a renderer printing a
+// number where a name belongs would put 3, 7 or 11 on the page, which cannot
+// pass for anything, rather than a plausible 0, 1, 2.
 enum class GalleryMould : std::uint8_t
 {
     Cube = 3,
@@ -258,17 +259,14 @@ inline constexpr formula::BreakpointTable<3> GalleryAgeCurve {
 // The structure (the bands, the keys, the breakpoints, and the two units) is
 // the method and lives in each node's type; the contents -- the number each row
 // gives -- are a registered table's data and arrive at runtime.
-constexpr auto sizeAllowanceTable =
-    formula::banded_lookup<unit::Millimetre, GallerySizeBands, unit::Megapascal>(
-        var<Diameter>, { formula::Rational { 2 }, formula::Rational { 1 }, formula::Rational { 0 } });
+constexpr auto sizeAllowanceTable = formula::banded_lookup<unit::Millimetre, GallerySizeBands, unit::Megapascal>(
+    var<Diameter>, { formula::Rational { 2 }, formula::Rational { 1 }, formula::Rational { 0 } });
 
 constexpr auto mouldFactorTable = formula::exact_lookup<GalleryMouldKeys, unit::One>(
     GalleryMould::Cylinder, { formula::Rational { 1 }, formula::Rational { 19, 20 }, formula::Rational { 9, 10 } });
 
-constexpr auto maturityFactorTable =
-    formula::interpolating_lookup<unit::Hour, GalleryAgeCurve, unit::One>(
-        var<CuringAge>,
-        { formula::Rational { 3, 5 }, formula::Rational { 17, 20 }, formula::Rational { 1 } });
+constexpr auto maturityFactorTable = formula::interpolating_lookup<unit::Hour, GalleryAgeCurve, unit::One>(
+    var<CuringAge>, { formula::Rational { 3, 5 }, formula::Rational { 17, 20 }, formula::Rational { 1 } });
 
 constexpr auto sizeAllowance =
     formula::documented(sizeAllowanceTable,
@@ -285,10 +283,9 @@ constexpr auto mouldFactor =
                         { .title = "Mould factor by specimen mould",
                           .reference = "Example Standard 7:2020",
                           .section = "8.3",
-                          .text = "A category key names a row directly. The key renders as its underlying value, "
-                                  "not the enumerator's name, because a C++ enumerator has no name at run time -- "
-                                  "a reader reconciling this against a published table carries the author's own "
-                                  "enum class across." });
+                          .text = "A category key names a row directly, and renders under its enumerator's name. "
+                                  "An author whose published table words a row differently spells it once, for "
+                                  "the whole enumeration, through formula::EnumeratorName." });
 
 constexpr auto maturityFactor =
     formula::documented(maturityFactorTable,
@@ -311,6 +308,64 @@ constexpr auto correctedStrength = formula::documented(
       .equation = "(8)",
       .text = "The measured strength less its size allowance, scaled by the mould factor and by the maturity "
               "factor -- one banded, one exact and one interpolating table inside a single expression." });
+
+// ---- A method, and the method a jurisdiction's overlay yields --------------
+//
+// Two specimen shapes, one rounding rule, one acceptance check. The overlay
+// replaces the acceptance check with two of its own, fixes the shape factor the
+// base method reads from the specimen -- inside the new checks too, because the
+// constant is listed after them -- and reports in its own unit, to two decimals
+// of N/mm2. Each change is said in the trace, with what the jurisdiction cited.
+
+struct Cube
+{
+};
+struct Cylinder
+{
+};
+
+struct FailureLoad: formula::Quantity<FailureLoad, "F", "maximum load at failure", unit::Newton>
+{
+};
+struct LoadedEdge: formula::Quantity<LoadedEdge, "a", "loaded edge", unit::Millimetre>
+{
+};
+struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", unit::One>
+{
+};
+
+constexpr auto cubeStrengthMethod = formula::method(
+    formula::variants(
+        formula::variant<Cube>(var<ShapeFactor> * var<FailureLoad> / formula::pow<2>(var<LoadedEdge>)),
+        formula::variant<Cylinder>(formula::constant<unit::One>(formula::Rational { 4 }) * var<FailureLoad>
+                                          / (formula::pi * formula::pow<2>(var<Diameter>)))),
+    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints(
+        formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 150 }),
+                            formula::Verdict { "the load at failure is below 150 kN" })));
+
+constexpr formula::Citation galleryAcceptanceAnnex { .title = "Acceptance",
+                                                     .reference = "Example Standard 7:2020 NA",
+                                                     .section = "NA.6" };
+constexpr formula::Citation galleryAnnex { .title = "Shape factor",
+                                           .reference = "Example Standard 7:2020 NA",
+                                           .section = "NA.2" };
+constexpr formula::Citation galleryRoundingAnnex { .reference = "Example Standard 7:2020 NA", .section = "NA.4" };
+
+constexpr auto galleryOverlay = formula::overlay(
+    formula::with_constraints(
+        formula::constraints(
+            formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 250 }),
+                                formula::Verdict { "the load at failure is below 250 kN" }),
+            formula::constraint(var<ShapeFactor> <= formula::number(formula::Rational { 1 }),
+                                formula::Verdict { "the shape factor exceeds one" })),
+        galleryAcceptanceAnnex),
+    formula::with_constant<ShapeFactor>(formula::Rational { 19, 20 }, galleryAnnex),
+    formula::with_rounding<unit::NewtonPerSquareMillimetre,
+                           formula::DecimalPlaces { 2 },
+                           formula::RoundingMode::HalfAwayFromZero>(galleryRoundingAnnex));
+
+constexpr auto overlaidStrengthMethod = formula::apply(galleryOverlay, cubeStrengthMethod);
 
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
@@ -552,7 +607,7 @@ int main(int argc, char** argv)
     write_worked_formula(out, density);
 
     auto const densityInputs = formula::environment(formula::Measured<SpecimenMass> { formula::Rational { 1200 } },
-                                                     formula::Measured<SpecimenVolume> { formula::Rational { 1, 2 } });
+                                                    formula::Measured<SpecimenVolume> { formula::Rational { 1, 2 } });
     formula::Explained<BulkDensity> const explained = formula::explain<BulkDensity>(density, densityInputs);
     if (!explained.outcome.is_value())
     {
@@ -599,8 +654,7 @@ int main(int argc, char** argv)
     auto const oversizedSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 200 } });
     formula::Trace<> constraintTrace {};
     formula::RecordingSink<> constraintSink { constraintTrace };
-    formula::ConstraintOutcome const diameterOutcome =
-        formula::check(maximumDiameter, oversizedSpecimen, constraintSink);
+    formula::ConstraintOutcome const diameterOutcome = formula::check(maximumDiameter, oversizedSpecimen, constraintSink);
     if (!diameterOutcome.is_violated())
     {
         std::fprintf(stderr, "formula-cpp-gallery: the worked constraint did not violate as expected\n");
@@ -615,10 +669,9 @@ int main(int argc, char** argv)
 
     out << "## Worked derivation: size- and age-corrected crushing strength\n\n";
     // The key is written out of the enumerator rather than typed, so this
-    // sentence cannot drift from the row the lookup below actually selects --
-    // which is the whole hazard of an enumerator whose value is not its index.
-    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key "
-        << static_cast<int>(GalleryMould::Cylinder)
+    // sentence cannot drift from the row the lookup below actually selects,
+    // nor from the spelling render() and the trace give it.
+    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key " << formula::enumerator_name<GalleryMould::Cylinder>()
         << "`. Each table names the row it answered "
            "from: the banded one its interval, the interpolating one the two rows it drew on. The exact "
            "lookup adds nothing there -- its key is already the subject of its own line.\n\n";
@@ -668,6 +721,91 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << formula::render_trace(missTrace, { .maxSteps = 5 });
+    out << "```\n\n";
+
+    // ---- A method's selected variant, and the same method overlaid ----
+    //
+    // Traced through a RecordingSink: a method is evaluated by
+    // `evaluate_method`, which answers in coherent SI and names, in the trace,
+    // the variant it selected and whose rounding rule it applied.
+
+    out << "## Worked derivation: a method's selected variant, and the same method overlaid\n\n";
+    out << "`F` = 226 kN, `a` = 150 mm, `k_s` = 1, the cube variant selected by tag. The method rounds by "
+           "its own rule, and the trace says which variant ran and whose rule rounded it:\n\n";
+
+    write_worked_formula(out, std::get<0>(cubeStrengthMethod.variantSet.cases).expression);
+
+    auto const cubeSpecimen = formula::environment(formula::Measured<FailureLoad> { formula::Rational { 226'000 } },
+                                                   formula::Measured<LoadedEdge> { formula::Rational { 150 } },
+                                                   formula::Measured<Diameter> { formula::Rational { 150 } },
+                                                   formula::Measured<ShapeFactor> { formula::Rational { 1 } });
+    formula::Trace<> methodTrace {};
+    auto const baseStrength =
+        formula::evaluate_method<Cube>(cubeStrengthMethod, cubeSpecimen, formula::RecordingSink<> { methodTrace });
+    if (!baseStrength.has_value() || !baseStrength->has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked method did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(methodTrace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    out << "The same specimen under a jurisdiction's overlay, which fixes the shape factor and reports in "
+           "N/mm2 to two decimals:\n\n";
+
+    write_worked_formula(out, std::get<0>(overlaidStrengthMethod.variantSet.cases).expression);
+
+    formula::Trace<> overlaidTrace {};
+    auto const overlaidStrength = formula::evaluate_method<Cube>(
+        overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidTrace });
+    if (!overlaidStrength.has_value() || !overlaidStrength->has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked overlaid method did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(overlaidTrace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    // ---- Whose acceptance checks ----
+    //
+    // `check_method` checks every constraint the method holds, and the trace
+    // says beside each verdict whether the method or a jurisdiction's overlay
+    // supplied it.
+
+    out << "## Worked acceptance: the method's own checks, and a jurisdiction's\n\n";
+    out << "The same specimen checked by the method's own acceptance check:\n\n";
+
+    formula::Trace<> ownAcceptance {};
+    auto const ownOutcomes =
+        formula::check_method(cubeStrengthMethod, cubeSpecimen, formula::RecordingSink<> { ownAcceptance });
+    if (ownOutcomes.size() != 1 || !ownOutcomes[0].is_satisfied())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the method's own check did not hold\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(ownAcceptance, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    out << "And by the overlay's two checks in its place. The overlay lists the shape factor's constant after "
+           "its checks, so the constant reaches inside them:\n\n";
+
+    formula::Trace<> overlaidAcceptance {};
+    auto const overlaidOutcomes =
+        formula::check_method(overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidAcceptance });
+    if (overlaidOutcomes.size() != 2 || !overlaidOutcomes[0].is_violated() || !overlaidOutcomes[1].is_satisfied())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the overlay's checks did not answer as expected\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(overlaidAcceptance, { .maxSteps = 20 });
     out << "```\n\n";
 
     out.flush();

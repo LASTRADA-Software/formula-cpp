@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0
+#pragma once
+
+/// @file
+/// Byte-level helpers shared by the two places the library recovers a name
+/// from the compiler and lets an author replace it: an enumerator's
+/// (`enumerator.hpp`, `detail/enum_name.hpp`) and a method tag's (`tag.hpp`,
+/// `detail/type_name.hpp`) -- and, for the characters a trace line cannot
+/// hold, by the third place an author names something a trace shows: a
+/// vocabulary's symbol (`vocabulary.hpp`).
+///
+/// One statement of each rule, so that the customization points cannot come
+/// to disagree about what an identifier byte is or what makes a spelling safe
+/// to keep.
+
+#include <cstddef>
+#include <string_view>
+
+namespace formula::detail
+{
+
+/// True for a byte that can appear in an identifier the compiler printed: an
+/// ASCII letter, a digit, an underscore, or any byte of a multi-byte UTF-8
+/// sequence -- C++23 identifiers may be Unicode, and all four compilers print
+/// `Uni::Größe` as UTF-8 rather than as a universal-character-name.
+[[nodiscard]] constexpr bool is_identifier_byte(char printed) noexcept
+{
+    auto const byte = static_cast<unsigned char>(printed);
+    return (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || (byte >= '0' && byte <= '9') || byte == '_'
+           || byte >= 0x80;
+}
+
+/// Reads every character of @p spelling and answers `true`. Only interesting
+/// inside a constant expression, where reading a character that is not
+/// there -- a destroyed local, freed storage, a mutable static -- makes the
+/// whole expression not a constant expression. The first gate `EnumeratorName`
+/// and `TagName` both describe.
+[[nodiscard]] constexpr bool every_character_readable(std::string_view spelling) noexcept
+{
+    std::size_t read = 0;
+    for (char const byte: spelling)
+        read += byte == '\0' ? 0 : 1;
+    return read <= spelling.size();
+}
+
+/// True for `[`, `]`, and the ASCII control characters: below 0x20, and
+/// 0x7f. What an author's spelling of a name a trace shows may not hold: a
+/// trace line is a numbered line whose provenance is a bracketed clause at
+/// its end, so a bracket could write such a clause, and a newline a whole
+/// line -- provenance only the library may state.
+[[nodiscard]] constexpr bool is_forbidden_in_trace_name(char glyph) noexcept
+{
+    auto const byte = static_cast<unsigned char>(glyph);
+    return glyph == '[' || glyph == ']' || byte < 0x20 || byte == 0x7f;
+}
+
+/// True when @p spelling holds a character `is_forbidden_in_trace_name`
+/// refuses.
+[[nodiscard]] constexpr bool holds_character_forbidden_in_trace_name(std::string_view spelling) noexcept
+{
+    for (char const glyph: spelling)
+        if (is_forbidden_in_trace_name(glyph))
+            return true;
+    return false;
+}
+
+} // namespace formula::detail

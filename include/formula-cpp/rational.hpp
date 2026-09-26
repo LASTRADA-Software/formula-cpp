@@ -86,38 +86,38 @@ class Rational
     }
 
     /// @throws ArithmeticException on a zero denominator or on overflow.
-    constexpr Rational(Int numerator, Int denominator):
-        Rational { detail::or_throw(make(numerator, denominator)) }
+    constexpr Rational(Int dividend, Int divisor):
+        Rational { detail::or_throw(make(dividend, divisor)) }
     {
     }
 
     /// Canonicalising factory. The only place the class invariants are established.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> make(Int numerator, Int denominator) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> make(Int dividend, Int divisor) noexcept
     {
-        if (denominator == 0)
+        if (divisor == 0)
             return std::unexpected { ArithmeticError::DivisionByZero };
-        if (numerator == 0)
+        if (dividend == 0)
             return Rational {};
 
         // Reduce in the unsigned domain so that IntMin is an ordinary operand.
-        std::uint64_t const numeratorMagnitude = detail::magnitude(numerator);
-        std::uint64_t const denominatorMagnitude = detail::magnitude(denominator);
+        std::uint64_t const numeratorMagnitude = detail::magnitude(dividend);
+        std::uint64_t const denominatorMagnitude = detail::magnitude(divisor);
         std::uint64_t const common = detail::gcd(numeratorMagnitude, denominatorMagnitude);
         std::uint64_t const reducedNumerator = numeratorMagnitude / common;
         std::uint64_t const reducedDenominator = denominatorMagnitude / common;
 
-        bool const negative = (numerator < 0) != (denominator < 0);
+        bool const negative = (dividend < 0) != (divisor < 0);
 
         constexpr std::uint64_t PositiveLimit = static_cast<std::uint64_t>(detail::IntMax);
         std::uint64_t const numeratorLimit = negative ? PositiveLimit + 1U : PositiveLimit;
         if (reducedDenominator > PositiveLimit || reducedNumerator > numeratorLimit)
             return std::unexpected { ArithmeticError::Overflow };
 
-        Rational result {};
+        Rational made {};
         // Well defined since C++20: conversion to a signed type is modular.
-        result._numerator = negative ? static_cast<Int>(0U - reducedNumerator) : static_cast<Int>(reducedNumerator);
-        result._denominator = static_cast<Int>(reducedDenominator);
-        return result;
+        made._numerator = negative ? static_cast<Int>(0U - reducedNumerator) : static_cast<Int>(reducedNumerator);
+        made._denominator = static_cast<Int>(reducedDenominator);
+        return made;
     }
 
     /// `mantissa * 10^exponent`, exactly. The preferred way to write a decimal:
@@ -128,25 +128,25 @@ class Rational
             return Rational {};
         if (exponent >= 0)
         {
-            std::optional<Int> const scaled = detail::mul_pow10(mantissa, exponent);
-            if (!scaled)
+            std::optional<Int> const scaledMantissa = detail::mul_pow10(mantissa, exponent);
+            if (!scaledMantissa)
                 return std::unexpected { ArithmeticError::Overflow };
-            return Rational { *scaled };
+            return Rational { *scaledMantissa };
         }
-        std::optional<Int> const denominator = detail::pow10(-exponent);
-        if (!denominator)
+        std::optional<Int> const powerOfTen = detail::pow10(-exponent);
+        if (!powerOfTen)
             return std::unexpected { ArithmeticError::Overflow };
-        return make(mantissa, *denominator);
+        return make(mantissa, *powerOfTen);
     }
 
     /// The exact value of the double, which is a dyadic rational. Usually not
     /// what a norm means: 0,45 as a double is not 9/20. Prefer from_decimal, or
     /// rational_from_double when the input genuinely is a measured double.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_double_exact(double value) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_double_exact(double floating) noexcept
     {
         static_assert(std::numeric_limits<double>::is_iec559, "formula: from_double_exact assumes IEEE-754 doubles");
 
-        std::uint64_t const bits = std::bit_cast<std::uint64_t>(value);
+        std::uint64_t const bits = std::bit_cast<std::uint64_t>(floating);
         bool const negative = (bits >> 63) != 0U;
         auto const rawExponent = static_cast<int>((bits >> 52) & 0x7FFU);
         std::uint64_t const rawMantissa = bits & 0xF'FFFF'FFFF'FFFFULL;
@@ -171,23 +171,23 @@ class Rational
 
         if (reduced > static_cast<std::uint64_t>(detail::IntMax))
             return std::unexpected { ArithmeticError::Overflow };
-        auto numerator = static_cast<Int>(reduced);
+        auto scaledReduced = static_cast<Int>(reduced);
         if (negative)
-            numerator = -numerator;
+            scaledReduced = -scaledReduced;
 
         if (shifted >= 0)
         {
             if (shifted >= 63)
                 return std::unexpected { ArithmeticError::Overflow };
-            std::optional<Int> const scaled = detail::mul_checked_or_none(numerator, Int { 1 } << shifted);
-            if (!scaled)
+            std::optional<Int> const scaledNumerator = detail::mul_checked_or_none(scaledReduced, Int { 1 } << shifted);
+            if (!scaledNumerator)
                 return std::unexpected { ArithmeticError::Overflow };
-            return Rational { *scaled };
+            return Rational { *scaledNumerator };
         }
 
         if (-shifted >= 63)
             return std::unexpected { ArithmeticError::Overflow };
-        return make(numerator, Int { 1 } << -shifted);
+        return make(scaledReduced, Int { 1 } << -shifted);
     }
 
     /// The numerator, in lowest terms.
@@ -228,50 +228,50 @@ class Rational
     /// Exact for every representable pair. Uses the continued-fraction
     /// (Euclidean) comparison, which performs no multiplication: cross
     /// multiplication would overflow for operands that are individually fine.
-    [[nodiscard]] constexpr std::strong_ordering operator<=>(Rational const& other) const noexcept
+    [[nodiscard]] constexpr std::strong_ordering operator<=>(Rational const& compared) const noexcept
     {
         Int leftNumerator = _numerator;
         Int leftDenominator = _denominator;
-        Int rightNumerator = other._numerator;
-        Int rightDenominator = other._denominator;
+        Int rightNumerator = compared._numerator;
+        Int rightDenominator = compared._denominator;
         bool reversed = false;
 
         for (;;)
         {
-            auto const left = detail::floor_divmod(leftNumerator, leftDenominator);
-            auto const right = detail::floor_divmod(rightNumerator, rightDenominator);
+            auto const leftParts = detail::floor_divmod(leftNumerator, leftDenominator);
+            auto const rightParts = detail::floor_divmod(rightNumerator, rightDenominator);
 
-            if (left.quotient != right.quotient)
+            if (leftParts.quotient != rightParts.quotient)
             {
-                std::strong_ordering const order = left.quotient <=> right.quotient;
+                std::strong_ordering const order = leftParts.quotient <=> rightParts.quotient;
                 return reversed ? detail::invert(order) : order;
             }
 
-            if (left.remainder == 0 || right.remainder == 0)
+            if (leftParts.remainder == 0 || rightParts.remainder == 0)
             {
                 std::strong_ordering order = std::strong_ordering::equal;
-                if (left.remainder == 0 && right.remainder != 0)
+                if (leftParts.remainder == 0 && rightParts.remainder != 0)
                     order = std::strong_ordering::less;
-                else if (left.remainder != 0 && right.remainder == 0)
+                else if (leftParts.remainder != 0 && rightParts.remainder == 0)
                     order = std::strong_ordering::greater;
                 return reversed ? detail::invert(order) : order;
             }
 
             // Compare the reciprocals of the fractional parts, which flips the sense.
             leftNumerator = leftDenominator;
-            leftDenominator = left.remainder;
+            leftDenominator = leftParts.remainder;
             rightNumerator = rightDenominator;
-            rightDenominator = right.remainder;
+            rightDenominator = rightParts.remainder;
             reversed = !reversed;
         }
     }
 
     /// Exact equality -- a componentwise comparison, valid because both operands
     /// are always in canonical (lowest-terms, positive-denominator) form.
-    [[nodiscard]] constexpr bool operator==(Rational const& other) const noexcept
+    [[nodiscard]] constexpr bool operator==(Rational const& compared) const noexcept
     {
         // Canonical form makes this a componentwise comparison.
-        return _numerator == other._numerator && _denominator == other._denominator;
+        return _numerator == compared._numerator && _denominator == compared._denominator;
     }
 
   private:
@@ -282,21 +282,21 @@ class Rational
 /// Reciprocal. Fails on zero, and on the one value whose reciprocal is not
 /// representable. Checked-only: there is no natural infallible-looking
 /// spelling for this operation the way negation has unary `-`.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_reciprocal(Rational value) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_reciprocal(Rational operandValue) noexcept
 {
-    if (value.is_zero())
+    if (operandValue.is_zero())
         return std::unexpected { ArithmeticError::DivisionByZero };
-    return Rational::make(value.denominator(), value.numerator());
+    return Rational::make(operandValue.denominator(), operandValue.numerator());
 }
 
 /// Sign flip. Fails only for the one numerator whose negation is not
 /// representable. Its throwing counterpart is unary `operator-`.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_negate(Rational value) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_negate(Rational operandValue) noexcept
 {
-    if (value.numerator() == detail::IntMin)
+    if (operandValue.numerator() == detail::IntMin)
         return std::unexpected { ArithmeticError::Overflow };
     // Already canonical: negating the numerator preserves both invariants.
-    return Rational::make(-value.numerator(), value.denominator());
+    return Rational::make(-operandValue.numerator(), operandValue.denominator());
 }
 
 /// Exact addition.
@@ -311,42 +311,45 @@ class Rational
 /// never occurs for numerators below roughly 10^6. The failure direction is
 /// safe (a refusal, never a wrong number); lifting it needs 128-bit
 /// intermediates, which MSVC cannot express portably.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_add(Rational lhs, Rational rhs) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_add(Rational leftOperand,
+                                                                             Rational rightOperand) noexcept
 {
     // Scale by the least common multiple rather than by the product: with
     // denominators 6 and 10 this uses 30, not 60 -- the difference between
     // fitting and overflowing once denominators get large.
-    auto const common = static_cast<Rational::Int>(
-        detail::gcd(static_cast<std::uint64_t>(lhs.denominator()), static_cast<std::uint64_t>(rhs.denominator())));
-    Rational::Int const leftScale = lhs.denominator() / common;
-    Rational::Int const rightScale = rhs.denominator() / common;
+    auto const common = static_cast<Rational::Int>(detail::gcd(static_cast<std::uint64_t>(leftOperand.denominator()),
+                                                               static_cast<std::uint64_t>(rightOperand.denominator())));
+    Rational::Int const leftScale = leftOperand.denominator() / common;
+    Rational::Int const rightScale = rightOperand.denominator() / common;
 
-    std::optional<Rational::Int> const leftTerm = detail::mul_checked_or_none(lhs.numerator(), rightScale);
-    std::optional<Rational::Int> const rightTerm = detail::mul_checked_or_none(rhs.numerator(), leftScale);
+    std::optional<Rational::Int> const leftTerm = detail::mul_checked_or_none(leftOperand.numerator(), rightScale);
+    std::optional<Rational::Int> const rightTerm = detail::mul_checked_or_none(rightOperand.numerator(), leftScale);
     if (!leftTerm || !rightTerm)
         return std::unexpected { ArithmeticError::Overflow };
 
-    std::optional<Rational::Int> const numerator = detail::add_checked_or_none(*leftTerm, *rightTerm);
-    std::optional<Rational::Int> const denominator = detail::mul_checked_or_none(leftScale, rhs.denominator());
-    if (!numerator || !denominator)
+    std::optional<Rational::Int> const sumNumerator = detail::add_checked_or_none(*leftTerm, *rightTerm);
+    std::optional<Rational::Int> const sumDenominator = detail::mul_checked_or_none(leftScale, rightOperand.denominator());
+    if (!sumNumerator || !sumDenominator)
         return std::unexpected { ArithmeticError::Overflow };
 
-    return Rational::make(*numerator, *denominator);
+    return Rational::make(*sumNumerator, *sumDenominator);
 }
 
 /// Exact subtraction. Implemented as negate-then-add, so it fails under
 /// exactly the same conditions as `checked_negate` and `checked_add`.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_sub(Rational lhs, Rational rhs) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_sub(Rational leftOperand,
+                                                                             Rational rightOperand) noexcept
 {
-    std::expected<Rational, ArithmeticError> const negated = checked_negate(rhs);
+    std::expected<Rational, ArithmeticError> const negated = checked_negate(rightOperand);
     if (!negated)
         return negated;
-    return checked_add(lhs, *negated);
+    return checked_add(leftOperand, *negated);
 }
 
 /// Exact multiplication, cross-reducing before multiplying so that a product
 /// which is exactly representable does not overflow on the way there.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_mul(Rational lhs, Rational rhs) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_mul(Rational leftOperand,
+                                                                             Rational rightOperand) noexcept
 {
     // Cross-reduce before multiplying: (IntMax/3) * (3/IntMax) is exactly 1, but
     // multiplying the numerators first would overflow.
@@ -355,34 +358,35 @@ class Rational
     // Signed division by it is therefore always safe -- the only signed division
     // that can overflow is IntMin / -1.
     auto const leftCross = static_cast<Rational::Int>(
-        detail::gcd(detail::magnitude(lhs.numerator()), static_cast<std::uint64_t>(rhs.denominator())));
+        detail::gcd(detail::magnitude(leftOperand.numerator()), static_cast<std::uint64_t>(rightOperand.denominator())));
     auto const rightCross = static_cast<Rational::Int>(
-        detail::gcd(detail::magnitude(rhs.numerator()), static_cast<std::uint64_t>(lhs.denominator())));
+        detail::gcd(detail::magnitude(rightOperand.numerator()), static_cast<std::uint64_t>(leftOperand.denominator())));
 
-    Rational::Int const leftNumerator = lhs.numerator() / leftCross;
-    Rational::Int const rightNumerator = rhs.numerator() / rightCross;
-    Rational::Int const leftDenominator = lhs.denominator() / rightCross;
-    Rational::Int const rightDenominator = rhs.denominator() / leftCross;
+    Rational::Int const leftNumerator = leftOperand.numerator() / leftCross;
+    Rational::Int const rightNumerator = rightOperand.numerator() / rightCross;
+    Rational::Int const leftDenominator = leftOperand.denominator() / rightCross;
+    Rational::Int const rightDenominator = rightOperand.denominator() / leftCross;
 
-    std::optional<Rational::Int> const numerator = detail::mul_checked_or_none(leftNumerator, rightNumerator);
-    std::optional<Rational::Int> const denominator = detail::mul_checked_or_none(leftDenominator, rightDenominator);
-    if (!numerator || !denominator)
+    std::optional<Rational::Int> const productNumerator = detail::mul_checked_or_none(leftNumerator, rightNumerator);
+    std::optional<Rational::Int> const productDenominator = detail::mul_checked_or_none(leftDenominator, rightDenominator);
+    if (!productNumerator || !productDenominator)
         return std::unexpected { ArithmeticError::Overflow };
 
-    return Rational::make(*numerator, *denominator);
+    return Rational::make(*productNumerator, *productDenominator);
 }
 
 /// Exact division. Implemented as reciprocal-then-multiply, so it fails under
 /// division by zero and under exactly the conditions `checked_reciprocal` and
 /// `checked_mul` do.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_div(Rational lhs, Rational rhs) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_div(Rational leftOperand,
+                                                                             Rational rightOperand) noexcept
 {
-    if (rhs.is_zero())
+    if (rightOperand.is_zero())
         return std::unexpected { ArithmeticError::DivisionByZero };
-    std::expected<Rational, ArithmeticError> const inverted = checked_reciprocal(rhs);
+    std::expected<Rational, ArithmeticError> const inverted = checked_reciprocal(rightOperand);
     if (!inverted)
         return inverted;
-    return checked_mul(lhs, *inverted);
+    return checked_mul(leftOperand, *inverted);
 }
 
 /// Integer power. A negative exponent inverts, so `pow(0, -1)` is a division by zero.
@@ -395,102 +399,102 @@ class Rational
     // Widen before negating: -INT_MIN would overflow int.
     long long remaining = invertResult ? -static_cast<long long>(exponent) : static_cast<long long>(exponent);
 
-    Rational result { 1 };
-    Rational factor = base;
+    Rational power { 1 };
+    Rational multiplier = base;
     while (remaining > 0)
     {
         if ((remaining & 1) != 0)
         {
-            std::expected<Rational, ArithmeticError> const next = checked_mul(result, factor);
-            if (!next)
-                return next;
-            result = *next;
+            std::expected<Rational, ArithmeticError> const raised = checked_mul(power, multiplier);
+            if (!raised)
+                return raised;
+            power = *raised;
         }
         remaining >>= 1;
         if (remaining > 0)
         {
-            std::expected<Rational, ArithmeticError> const squared = checked_mul(factor, factor);
+            std::expected<Rational, ArithmeticError> const squared = checked_mul(multiplier, multiplier);
             if (!squared)
                 return squared;
-            factor = *squared;
+            multiplier = *squared;
         }
     }
 
     if (!invertResult)
-        return result;
-    return checked_reciprocal(result);
+        return power;
+    return checked_reciprocal(power);
 }
 
 // ---- the operator layer: total-looking, but never silently wrong ----
 
 /// Throwing addition -- `ArithmeticException` on overflow. See `checked_add`.
-[[nodiscard]] constexpr Rational operator+(Rational lhs, Rational rhs)
+[[nodiscard]] constexpr Rational operator+(Rational leftOperand, Rational rightOperand)
 {
-    return detail::or_throw(checked_add(lhs, rhs));
+    return detail::or_throw(checked_add(leftOperand, rightOperand));
 }
 /// Throwing subtraction -- `ArithmeticException` on overflow. See `checked_sub`.
-[[nodiscard]] constexpr Rational operator-(Rational lhs, Rational rhs)
+[[nodiscard]] constexpr Rational operator-(Rational leftOperand, Rational rightOperand)
 {
-    return detail::or_throw(checked_sub(lhs, rhs));
+    return detail::or_throw(checked_sub(leftOperand, rightOperand));
 }
 /// Throwing multiplication -- `ArithmeticException` on overflow. See `checked_mul`.
-[[nodiscard]] constexpr Rational operator*(Rational lhs, Rational rhs)
+[[nodiscard]] constexpr Rational operator*(Rational leftOperand, Rational rightOperand)
 {
-    return detail::or_throw(checked_mul(lhs, rhs));
+    return detail::or_throw(checked_mul(leftOperand, rightOperand));
 }
 /// Throwing division -- `ArithmeticException` on division by zero or overflow.
 /// See `checked_div`.
-[[nodiscard]] constexpr Rational operator/(Rational lhs, Rational rhs)
+[[nodiscard]] constexpr Rational operator/(Rational leftOperand, Rational rightOperand)
 {
-    return detail::or_throw(checked_div(lhs, rhs));
+    return detail::or_throw(checked_div(leftOperand, rightOperand));
 }
 
 /// Throwing compound addition. See `operator+`.
-constexpr Rational& operator+=(Rational& lhs, Rational rhs)
+constexpr Rational& operator+=(Rational& leftOperand, Rational rightOperand)
 {
-    return lhs = lhs + rhs;
+    return leftOperand = leftOperand + rightOperand;
 }
 /// Throwing compound subtraction. See `operator-`.
-constexpr Rational& operator-=(Rational& lhs, Rational rhs)
+constexpr Rational& operator-=(Rational& leftOperand, Rational rightOperand)
 {
-    return lhs = lhs - rhs;
+    return leftOperand = leftOperand - rightOperand;
 }
 /// Throwing compound multiplication. See `operator*`.
-constexpr Rational& operator*=(Rational& lhs, Rational rhs)
+constexpr Rational& operator*=(Rational& leftOperand, Rational rightOperand)
 {
-    return lhs = lhs * rhs;
+    return leftOperand = leftOperand * rightOperand;
 }
 /// Throwing compound division. See `operator/`.
-constexpr Rational& operator/=(Rational& lhs, Rational rhs)
+constexpr Rational& operator/=(Rational& leftOperand, Rational rightOperand)
 {
-    return lhs = lhs / rhs;
+    return leftOperand = leftOperand / rightOperand;
 }
 
 /// Unary plus. A no-op; present for symmetry with unary minus.
-[[nodiscard]] constexpr Rational operator+(Rational value) noexcept
+[[nodiscard]] constexpr Rational operator+(Rational operandValue) noexcept
 {
-    return value;
+    return operandValue;
 }
 /// Throwing negation -- `ArithmeticException` for the one numerator whose sign
 /// cannot be flipped. See `checked_negate`.
-[[nodiscard]] constexpr Rational operator-(Rational value)
+[[nodiscard]] constexpr Rational operator-(Rational operandValue)
 {
-    return detail::or_throw(checked_negate(value));
+    return detail::or_throw(checked_negate(operandValue));
 }
 
 /// Absolute value. Fails only where negation would: the one numerator whose
 /// sign cannot be flipped.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_abs(Rational value) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_abs(Rational operandValue) noexcept
 {
-    if (value.sign() >= 0)
-        return value;
-    return checked_negate(value);
+    if (operandValue.sign() >= 0)
+        return operandValue;
+    return checked_negate(operandValue);
 }
 
 /// Throwing absolute value. See `checked_abs`.
-[[nodiscard]] constexpr Rational abs(Rational value)
+[[nodiscard]] constexpr Rational abs(Rational operandValue)
 {
-    return detail::or_throw(checked_abs(value));
+    return detail::or_throw(checked_abs(operandValue));
 }
 
 /// Throwing integer power. See `checked_pow`.
@@ -511,61 +515,62 @@ inline constexpr Rational Pi { 245'850'922, 78'256'779 };
 
 namespace detail
 {
-    /// The integer @p degree-th root of @p value, or nothing when it is not
+    /// The integer @p degree-th root of @p radicand, or nothing when it is not
     /// exact. Binary search rather than Newton: the search space is bounded by
     /// the value itself, every step stays inside `Int`, and there is no
     /// convergence question to get wrong.
-    [[nodiscard]] constexpr std::optional<Rational::Int> exact_integer_root(Rational::Int value, int degree) noexcept
+    [[nodiscard]] constexpr std::optional<Rational::Int> exact_integer_root(Rational::Int radicand, int degree) noexcept
     {
-        if (value < 0)
+        if (radicand < 0)
             return std::nullopt;
-        if (value < 2)
-            return value;
+        if (radicand < 2)
+            return radicand;
 
-        Rational::Int low = 1;
-        Rational::Int high = value;
-        while (low <= high)
+        Rational::Int lowGuess = 1;
+        Rational::Int highGuess = radicand;
+        while (lowGuess <= highGuess)
         {
-            Rational::Int const middle = low + (high - low) / 2;
+            Rational::Int const middle = lowGuess + (highGuess - lowGuess) / 2;
 
-            // middle^degree, abandoning the moment it exceeds `value` so the
+            // middle^degree, abandoning the moment it exceeds `radicand` so the
             // multiplication can never overflow.
             Rational::Int power = 1;
             bool tooBig = false;
-            for (int step = 0; step < degree; ++step)
+            for (int multiplied = 0; multiplied < degree; ++multiplied)
             {
-                std::optional<Rational::Int> const next = mul_checked_or_none(power, middle);
-                if (!next || *next > value)
+                std::optional<Rational::Int> const raised = mul_checked_or_none(power, middle);
+                if (!raised || *raised > radicand)
                 {
                     tooBig = true;
                     break;
                 }
-                power = *next;
+                power = *raised;
             }
 
             if (tooBig)
-                high = middle - 1;
-            else if (power == value)
+                highGuess = middle - 1;
+            else if (power == radicand)
                 return middle;
             else
-                low = middle + 1;
+                lowGuess = middle + 1;
         }
         return std::nullopt;
     }
 } // namespace detail
 
-/// The exact @p degree-th root of @p value.
+/// The exact @p degree-th root of @p radicand.
 ///
 /// Answers only when the answer is a rational number: the root of 4 is 2 and the
 /// root of 9/4 is 3/2, but the root of 2 is `ArithmeticError::Inexact` rather
 /// than a nearby fraction. A layer whose promise is "never a wrong number" has
 /// no business rounding silently; a formula that needs an irrational root is
 /// evaluated in a representation that has room for one.
-[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_exact_nth_root(Rational value, int degree) noexcept
+[[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_exact_nth_root(Rational radicand,
+                                                                                        int degree) noexcept
 {
     if (degree < 1)
         return std::unexpected { ArithmeticError::DomainError };
-    if (value.sign() < 0 && degree % 2 == 0)
+    if (radicand.sign() < 0 && degree % 2 == 0)
         return std::unexpected { ArithmeticError::DomainError };
 
     // IntMin has no positive counterpart Int can hold -- its magnitude is
@@ -579,11 +584,11 @@ namespace detail
     // unsigned magnitude to rescue this one input would add new numeric code
     // at the end of a phase to save a single edge case, which risks a worse
     // bug than the one it fixes.
-    if (value.numerator() == detail::IntMin)
+    if (radicand.numerator() == detail::IntMin)
         return std::unexpected { ArithmeticError::Overflow };
 
-    bool const negative = value.sign() < 0;
-    Rational::Int const numerator = negative ? -value.numerator() : value.numerator();
+    bool const negative = radicand.sign() < 0;
+    Rational::Int const magnitudeNumerator = negative ? -radicand.numerator() : radicand.numerator();
 
     // At degree 63 or higher, exact_integer_root's binary search is
     // pathological rather than merely slow: once it probes middle == 1, power
@@ -598,13 +603,13 @@ namespace detail
     // of searched for.
     if (degree >= 63)
     {
-        if (numerator > 1 || value.denominator() > 1)
+        if (magnitudeNumerator > 1 || radicand.denominator() > 1)
             return std::unexpected { ArithmeticError::Inexact };
-        return value;
+        return radicand;
     }
 
-    std::optional<Rational::Int> const rootedNumerator = detail::exact_integer_root(numerator, degree);
-    std::optional<Rational::Int> const rootedDenominator = detail::exact_integer_root(value.denominator(), degree);
+    std::optional<Rational::Int> const rootedNumerator = detail::exact_integer_root(magnitudeNumerator, degree);
+    std::optional<Rational::Int> const rootedDenominator = detail::exact_integer_root(radicand.denominator(), degree);
     if (!rootedNumerator || !rootedDenominator)
         return std::unexpected { ArithmeticError::Inexact };
 

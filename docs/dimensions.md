@@ -50,7 +50,8 @@ template and is always evaluated.
 Nobody spells out `Dimension{.length = exponent(2)}` for an area. The
 `dim::` namespace supplies the seven base dimensions and a handful of derived
 ones (`Area`, `Volume`, `Density`, `Velocity`, `Acceleration`, `Force`,
-`Pressure`, `Energy`, `Frequency`), and the arithmetic operators build the
+`Pressure`, `Energy`, `Frequency`, and `MassPerArea`, `ForcePerLength`,
+`DynamicViscosity`, `KinematicViscosity`), and the arithmetic operators build the
 rest: `operator*` adds two dimensions' exponents (composing quantities that
 multiply), `operator/` subtracts them, `power` scales by an integer exponent,
 and `nth_root` divides them by the degree of the root. From the example:
@@ -124,10 +125,22 @@ here, with the convenient types (`Rational`, `std::string_view`) appearing
 only at the point of use, via `formula::view()` and the conversion functions
 below.
 
-The `formula::unit::` namespace declares twenty of these: the coherent SI
-units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Pascal`, ...) alongside scaled
-ones (`Millimetre`, `Tonne`, `Hour`, `Megapascal`, ...) and the two dimensionless
-units, `One` and `Percent`. Their `decimals` values are ordinary engineering
+The `formula::unit::` namespace declares fifty-one of these: the coherent SI
+units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Newton`, `Pascal`, ...) alongside
+scaled ones (`Millimetre`, `Tonne`, `Hour`, `Megapascal`, ...), compound ones
+(`KilogramPerCubicMetre`, `MillimetrePerMinute`, `PascalSecond`, ...) and five
+dimensionless ones (`One`, `Percent`, `PerMille`, `PartsPerMillion`,
+`MilligramPerKilogram`). Two pairs are deliberately the same magnitude under two
+names -- `Megapascal` and `NewtonPerSquareMillimetre`, `PartsPerMillion` and
+`MilligramPerKilogram` -- because both spellings are in ordinary use, and a test
+pins that each pair converts into the other exactly.
+
+There is no angle unit. A degree is pi/180 radians, which is not a rational
+number, and every conversion here is by exact rational magnitude; a `Degree`
+would have to be either inexact or unconvertible, and neither is a choice to
+make silently.
+
+Their `decimals` values are ordinary engineering
 defaults, not a requirement taken from any standard -- a caller that needs a
 different precision states it at the point of use.
 

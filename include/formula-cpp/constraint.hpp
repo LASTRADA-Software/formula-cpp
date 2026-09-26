@@ -70,36 +70,36 @@ class ConstraintOutcome
     /// The predicate held.
     [[nodiscard]] static constexpr ConstraintOutcome satisfied() noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::Satisfied;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::Satisfied;
+        return made;
     }
 
     /// The predicate did not hold; carries the verdict the constraint was
     /// declared with.
     [[nodiscard]] static constexpr ConstraintOutcome violated(Verdict verdict) noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::Violated;
-        result._verdict = verdict;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::Violated;
+        made._verdict = verdict;
+        return made;
     }
 
     /// The predicate never resolved -- an input was never measured.
     [[nodiscard]] static constexpr ConstraintOutcome not_checked() noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::NotChecked;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::NotChecked;
+        return made;
     }
 
     /// Evaluating the predicate raised an arithmetic error; carries it.
-    [[nodiscard]] static constexpr ConstraintOutcome invalid(ArithmeticError error) noexcept
+    [[nodiscard]] static constexpr ConstraintOutcome invalid(ArithmeticError cause) noexcept
     {
-        ConstraintOutcome result {};
-        result._kind = ConstraintOutcomeKind::Invalid;
-        result._error = error;
-        return result;
+        ConstraintOutcome made {};
+        made._kind = ConstraintOutcomeKind::Invalid;
+        made._error = cause;
+        return made;
     }
 
     /// Which alternative this outcome holds.
@@ -185,7 +185,12 @@ template <Predicate P>
 struct Constraint
 {
     /// The condition that must hold for this constraint to be satisfied.
-    P predicate {};
+    ///
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// whose constraint holds a lookup fails to compile on clang++ and
+    /// clang-cl, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
+    P predicate;
     /// What the outcome is when `predicate` does not hold.
     Verdict verdict {};
     /// Where this constraint comes from.
@@ -231,23 +236,23 @@ template <typename Rep = Rational, typename P, typename Env, typename Sink = Nul
     if constexpr (requires { sink.constraint_entered(subject); })
         sink.constraint_entered(subject);
 
-    std::expected<std::optional<bool>, ArithmeticError> const result =
+    std::expected<std::optional<bool>, ArithmeticError> const checkedPredicate =
         checked_evaluate_predicate<Rep>(subject.predicate, environment, sink);
 
-    ConstraintOutcome outcome {};
-    if (!result.has_value())
-        outcome = ConstraintOutcome::invalid(result.error());
-    else if (!result->has_value())
-        outcome = ConstraintOutcome::not_checked();
-    else if (**result)
-        outcome = ConstraintOutcome::satisfied();
+    ConstraintOutcome reached {};
+    if (!checkedPredicate.has_value())
+        reached = ConstraintOutcome::invalid(checkedPredicate.error());
+    else if (!checkedPredicate->has_value())
+        reached = ConstraintOutcome::not_checked();
+    else if (**checkedPredicate)
+        reached = ConstraintOutcome::satisfied();
     else
-        outcome = ConstraintOutcome::violated(subject.verdict);
+        reached = ConstraintOutcome::violated(subject.verdict);
 
-    if constexpr (requires { sink.constraint_produced(subject, outcome); })
-        sink.constraint_produced(subject, outcome);
+    if constexpr (requires { sink.constraint_produced(subject, reached); })
+        sink.constraint_produced(subject, reached);
 
-    return outcome;
+    return reached;
 }
 
 /// A set of constraints checked together, in declaration order:
@@ -256,10 +261,10 @@ template <typename Rep = Rational, typename P, typename Env, typename Sink = Nul
 /// Bundles `Constraint`s the same way `environment()` bundles entries in
 /// `environment.hpp` -- a factory taking a pack by value, returning a class
 /// template over that pack -- so a reader who already knows `environment(...)`
-/// recognises this immediately. Phase 11 will hold one of these as an
-/// ordinary member of `Method` (spec section 9.1: `formula::constraints(dimensional_
-/// tolerance)` inside `formula::method(...)`), and pass it straight to
-/// `check_all()` below without unpacking it first -- the reason this is a
+/// recognises this immediately. `Method` (`method.hpp`) holds one of these as
+/// an ordinary member (spec section 9.1: `formula::constraints(dimensional_
+/// tolerance)` inside `formula::method(...)`), and `check_method` passes it
+/// straight to `check_all()` below without unpacking it first -- the reason this is a
 /// bundle type rather than only a variadic `check_all(environment, sink,
 /// constraints...)` over a raw pack, which `Method` would then have to
 /// re-expand on every check.
@@ -277,7 +282,12 @@ struct ConstraintSet
     /// `check_all()` reports one `ConstraintOutcome` per element of this
     /// tuple, at the same index -- see `check_all()` for why that order is
     /// part of the contract.
-    std::tuple<Constraint<Ps>...> items {};
+    ///
+    /// Deliberately no `{}` default member initialiser. With one, no method
+    /// fails to compile, but asking whether this type -- or a tuple holding
+    /// it -- is default-constructible hard-errors or answers `true` when a
+    /// lookup is inside; see `Corrections` (`lookup.hpp`).
+    std::tuple<Constraint<Ps>...> items;
 };
 
 /// Builds a constraint set: `constraints(a, b, c)`. See `ConstraintSet`.
@@ -300,6 +310,11 @@ namespace detail
         std::tuple<Constraint<Ps>...> const& items, Env const& environment, Sink sink,
         std::index_sequence<Is...>) noexcept
     {
+        // An empty set -- a method declared with `constraints()`, or an
+        // overlay's `with_constraints(constraints(), source)` -- expands the pack
+        // below to nothing, and g++ 13 then reports `sink` as set but not
+        // used, an error under `-Werror`.
+        static_cast<void>(sink);
         return { check<Rep>(std::get<Is>(items), environment, sink)... };
     }
 } // namespace detail

@@ -235,6 +235,7 @@ because all of it came from the same line of code.
 | [Rounding and conditionals](docs/rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](docs/constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Lookup tables](docs/lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
+| [Methods and overlays](docs/methods-and-overlays.md) | Variants selected by tag, a method's own rounding rule and constraints, jurisdiction overlays and their provenance in the trace, a jurisdiction's own acceptance logic, and jurisdiction-scoped vocabularies |
 | [Gallery](docs/gallery.md) | A documentation page the library generated about itself |
 
 Every example in the documentation uses generic physics with invented `Example Standard`
@@ -257,7 +258,8 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Rounding nodes (decimal places, significant digits), conditionals (`when()`) | shipped |
 | Constraints, verdicts, checking a set without short-circuit | shipped |
 | Lookup tables: banded, exact and interpolating | shipped |
-| Methods, series, statistics | planned |
+| Methods: variants, rounding rules, constraints, jurisdiction overlays, vocabularies | shipped |
+| Series, statistics | planned |
 
 ## Requirements
 
@@ -297,6 +299,14 @@ target_link_libraries(your_target PRIVATE formula-cpp::formula-cpp)
 consumer who only evaluates numbers should not compile those into every translation unit. Include
 them by name when you want text, or a trace, or both — see
 [the tracing guide](docs/tracing.md) for `trace.hpp` and `trace_render.hpp` specifically.
+
+`test/consumer_globals_tests.cpp` declares 258 ordinary globals such as `result`, `value`, `x` and
+`index` before including every header, and builds under cl `/W4 /WX` and g++ `-Wshadow -Werror`:
+no header's local or parameter hides one of them in anything that test instantiates -- evaluation
+of every node kind, `render`, `document` and the trace in every dialect, constraints, methods and
+every overlay operation (the test lists them). cl reports a template's local only in a template
+that is instantiated, and never a function template's parameter, so a template the test does not
+reach is not covered by it.
 
 ## Build options
 

@@ -73,9 +73,14 @@ struct PredicateNode
     static_assert(detail::RequireComparandsAgree<Left, Right>::value);
 
     /// The left-hand child expression.
-    Left lhs {};
+    ///
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
+    Left lhs;
     /// The right-hand child expression.
-    Right rhs {};
+    Right rhs;
 
     /// Which comparison this is.
     static constexpr Comparison comparison = Op;
@@ -174,30 +179,30 @@ template <typename Rep = Rational, Comparison Op, Node Left, Node Right, typenam
 checked_evaluate_predicate(PredicateNode<Op, Left, Right> const& predicate, Env const& environment,
                            Sink sink = {}) noexcept
 {
-    Evaluated<Rep> const lhs = detail::dispatch<Rep>(predicate.lhs, environment, sink);
-    if (!lhs.has_value())
-        return std::unexpected { lhs.error() };
+    Evaluated<Rep> const leftOperand = detail::dispatch<Rep>(predicate.lhs, environment, sink);
+    if (!leftOperand.has_value())
+        return std::unexpected { leftOperand.error() };
 
-    Evaluated<Rep> const rhs = detail::dispatch<Rep>(predicate.rhs, environment, sink);
-    if (!rhs.has_value())
-        return std::unexpected { rhs.error() };
+    Evaluated<Rep> const rightOperand = detail::dispatch<Rep>(predicate.rhs, environment, sink);
+    if (!rightOperand.has_value())
+        return std::unexpected { rightOperand.error() };
 
-    if (!lhs->has_value() || !rhs->has_value())
+    if (!leftOperand->has_value() || !rightOperand->has_value())
         return std::optional<bool> {};
 
     bool const verdict = [&] {
         if constexpr (Op == Comparison::Less)
-            return **lhs < **rhs;
+            return **leftOperand < **rightOperand;
         else if constexpr (Op == Comparison::LessOrEqual)
-            return **lhs <= **rhs;
+            return **leftOperand <= **rightOperand;
         else if constexpr (Op == Comparison::Greater)
-            return **lhs > **rhs;
+            return **leftOperand > **rightOperand;
         else if constexpr (Op == Comparison::GreaterOrEqual)
-            return **lhs >= **rhs;
+            return **leftOperand >= **rightOperand;
         else if constexpr (Op == Comparison::Equal)
-            return **lhs == **rhs;
+            return **leftOperand == **rightOperand;
         else
-            return **lhs != **rhs;
+            return **leftOperand != **rightOperand;
     }();
     return std::optional<bool> { verdict };
 }

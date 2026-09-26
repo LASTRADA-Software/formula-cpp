@@ -37,7 +37,7 @@ namespace formula
 
 namespace detail
 {
-    /// Whether @p text actually says something, rather than merely occupying
+    /// Whether @p justification actually says something, rather than merely occupying
     /// bytes.
     ///
     /// A plain `size() > 0` check counts bytes, not content, so a single
@@ -51,10 +51,11 @@ namespace detail
     /// locale-dependent and not `constexpr`, and this has to run during
     /// translation. These are the characters a person types by accident,
     /// plus NUL, which `FixedString` can carry because it is byte-oriented.
-    [[nodiscard]] constexpr bool saysSomething(std::string_view text) noexcept
+    [[nodiscard]] constexpr bool saysSomething(std::string_view justification) noexcept
     {
-        for (char const character: text)
-            if (character != ' ' && character != '\t' && character != '\n' && character != '\r' && character != '\f' && character != '\v' && character != '\0')
+        for (char const glyph: justification)
+            if (glyph != ' ' && glyph != '\t' && glyph != '\n' && glyph != '\r' && glyph != '\f' && glyph != '\v'
+                && glyph != '\0')
                 return true;
         return false;
     }
@@ -88,7 +89,12 @@ struct NumericValueNode: NodeBase
     static_assert(detail::RequireEscapeUnitMatches<U, Operand>::value);
 
     /// The expression whose numeric value is taken.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
+    Operand operand;
 
     /// The unit the number must be read in. The coefficients of the rule this
     /// escape hatch exists for only work for this one unit; that is what makes
@@ -130,25 +136,26 @@ template <typename Rep = Rational,
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
         return absent;
     }
 
-    std::expected<Rep, ArithmeticError> const converted = checked_convert(**operand, coherent(U.dimension), U);
-    Evaluated<Rep> const result =
-        converted.has_value() ? detail::present<Rep>(*converted) : Evaluated<Rep> { std::unexpected { converted.error() } };
-    sink.produced(node, result);
-    return result;
+    std::expected<Rep, ArithmeticError> const inCoherentUnit = checked_convert(**evaluatedOperand, coherent(U.dimension), U);
+    Evaluated<Rep> const evaluated = inCoherentUnit.has_value()
+                                         ? detail::present<Rep>(*inCoherentUnit)
+                                         : Evaluated<Rep> { std::unexpected { inCoherentUnit.error() } };
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

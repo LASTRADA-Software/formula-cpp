@@ -76,11 +76,16 @@ struct WhenNode: NodeBase
     static_assert(detail::RequireBranchesAgree<Then, Else>::value);
 
     /// The condition that selects a branch.
-    P predicate {};
+    ///
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
+    P predicate;
     /// Evaluated, and only evaluated, when `predicate` holds.
-    Then thenBranch {};
+    Then thenBranch;
     /// Evaluated, and only evaluated, when `predicate` does not hold.
-    Else elseBranch {};
+    Else elseBranch;
 
     /// The two branches already agree; this is that (shared) dimension.
     static constexpr Dimension dimension = Then::dimension;
@@ -123,12 +128,12 @@ template <typename Rep = Rational, Predicate P, Node Then, Node Else, typename E
     }
 
     bool const thenTaken = **verdict;
-    Evaluated<Rep> const result = thenTaken ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
+    Evaluated<Rep> const evaluated = thenTaken ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
                                              : detail::dispatch<Rep>(node.elseBranch, environment, sink);
     if constexpr (requires { sink.branch_taken(node, thenTaken); })
         sink.branch_taken(node, thenTaken);
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

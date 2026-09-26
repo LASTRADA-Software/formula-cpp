@@ -144,17 +144,17 @@ The allowance deducted from a measured crushing strength, selected by the band t
 ## Mould factor by specimen mould
 
 ```
-lookup(key 7, key 3 gives 1, key 7 gives 19/20, key 11 gives 9/10)
+lookup(key Cylinder, key Cube gives 1, key Cylinder gives 19/20, key Prism gives 9/10)
 ```
 
 $$
-\operatorname{lookup}(\text{key 7},\allowbreak \text{key 3 gives 1},\allowbreak \text{key 7 gives 19/20},\allowbreak \text{key 11 gives 9/10})
+\operatorname{lookup}(\text{key Cylinder},\allowbreak \text{key Cube gives 1},\allowbreak \text{key Cylinder gives 19/20},\allowbreak \text{key Prism gives 9/10})
 $$
 
 - Reference: Example Standard 7:2020
 - Section: 8.3
 
-A category key names a row directly. The key renders as its underlying value, not the enumerator's name, because a C++ enumerator has no name at run time -- a reader reconciling this against a published table carries the author's own enum class across.
+A category key names a row directly, and renders under its enumerator's name. An author whose published table words a row differently spells it once, for the whole enumeration, through formula::EnumeratorName.
 
 ## Maturity factor by curing age
 
@@ -179,11 +179,11 @@ A curve stated at three ages. A specimen tested between two of them gets the val
 ## Size- and age-corrected crushing strength
 
 ```
-(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key 7, key 3 gives 1, key 7 gives 19/20, key 11 gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key Cylinder, key Cube gives 1, key Cylinder gives 19/20, key Prism gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
 ```
 
 $$
-(f - \operatorname{lookup}(d,\allowbreak \text{0 to under 100 mm gives 2 MPa},\allowbreak \text{100 to under 150 mm gives 1 MPa},\allowbreak \text{150 to under 200 mm gives 0 MPa})) \cdot \operatorname{lookup}(\text{key 7},\allowbreak \text{key 3 gives 1},\allowbreak \text{key 7 gives 19/20},\allowbreak \text{key 11 gives 9/10}) \cdot \operatorname{interpolate}(t,\allowbreak \text{at 24 h gives 3/5},\allowbreak \text{at 72 h gives 17/20},\allowbreak \text{at 168 h gives 1})
+(f - \operatorname{lookup}(d,\allowbreak \text{0 to under 100 mm gives 2 MPa},\allowbreak \text{100 to under 150 mm gives 1 MPa},\allowbreak \text{150 to under 200 mm gives 0 MPa})) \cdot \operatorname{lookup}(\text{key Cylinder},\allowbreak \text{key Cube gives 1},\allowbreak \text{key Cylinder gives 19/20},\allowbreak \text{key Prism gives 9/10}) \cdot \operatorname{interpolate}(t,\allowbreak \text{at 24 h gives 3/5},\allowbreak \text{at 72 h gives 17/20},\allowbreak \text{at 168 h gives 1})
 $$
 
 | Symbol | Description | Unit |
@@ -263,10 +263,10 @@ pi * d^2 / 4
 
 ## Worked derivation: size- and age-corrected crushing strength
 
-`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key 7`. Each table names the row it answered from: the banded one its interval, the interpolating one the two rows it drew on. The exact lookup adds nothing there -- its key is already the subject of its own line.
+`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key Cylinder`. Each table names the row it answered from: the banded one its interval, the interpolating one the two rows it drew on. The exact lookup adds nothing there -- its key is already the subject of its own line.
 
 ```
-(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key 7, key 3 gives 1, key 7 gives 19/20, key 11 gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key Cylinder, key Cube gives 1, key Cylinder gives 19/20, key Prism gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
 ```
 
 ```
@@ -274,7 +274,7 @@ pi * d^2 / 4
 2. d = 120 mm
 3. lookup(#2) = 1 MPa [100 to under 150 mm]
 4. #1 - #3 = 31000000
-5. lookup(key 7) = 19/20
+5. lookup(key Cylinder) = 19/20
 6. #4 * #5 = 29450000
 7. t = 48 h
 8. interpolate(#7) = 29/40 [between 24 and 72 h]
@@ -294,5 +294,64 @@ lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to
 1. d = 250 mm
 2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 200 mm]
 3. #2 = argument outside the domain of the operation [Size allowance by specimen diameter, Example Standard 7:2020, 8.2]
+```
+
+## Worked derivation: a method's selected variant, and the same method overlaid
+
+`F` = 226 kN, `a` = 150 mm, `k_s` = 1, the cube variant selected by tag. The method rounds by its own rule, and the trace says which variant ran and whose rule rounded it:
+
+```
+k_s * F / a^2
+```
+
+```
+1. k_s = 1
+2. F = 226000 N
+3. #1 * #2 = 226000
+4. a = 150 mm
+5. #4^2 = 9/400
+6. #3 / #5 = 90400000/9
+7. round(#6, in MPa) = 10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+8. #7 = 10 MPa [variant Cube (1st of 2), selected by tag]
+```
+
+The same specimen under a jurisdiction's overlay, which fixes the shape factor and reports in N/mm2 to two decimals:
+
+```
+k_s * F / a^2
+```
+
+```
+1. k_s = 19/20 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
+2. F = 226000 N
+3. #1 * #2 = 214700
+4. a = 150 mm
+5. #4^2 = 9/400
+6. #3 / #5 = 85880000/9
+7. round(#6, in N/mm2) = 477/50 N/mm2 [rounded to 2 dp (jurisdiction overlay: Example Standard 7:2020 NA, NA.4); nearest, ties away from zero]
+8. #7 = 477/50 N/mm2 [variant Cube (1st of 2), selected by tag]
+```
+
+## Worked acceptance: the method's own checks, and a jurisdiction's
+
+The same specimen checked by the method's own acceptance check:
+
+```
+1. F = 226000 N
+2. 150 kN
+3. require #1 >= #2 [satisfied; the method's own constraint]
+4. acceptance(#3) [the method's own constraints]
+```
+
+And by the overlay's two checks in its place. The overlay lists the shape factor's constant after its checks, so the constant reaches inside them:
+
+```
+1. F = 226000 N
+2. 250 kN
+3. require #1 >= #2 [the load at failure is below 250 kN; jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
+4. k_s = 19/20 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
+5. 1
+6. require #4 <= #5 [satisfied; jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
+7. acceptance(#3, #6) [jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
 ```
 

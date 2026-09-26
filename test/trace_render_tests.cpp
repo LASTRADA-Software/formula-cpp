@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,6 +36,26 @@ struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Mil
 {
 };
 struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Megapascal>
+{
+};
+
+// Author text that would forge a trace line printed as written: each spells a
+// provenance clause only the library may state, or opens a line of its own.
+// Final review of phase 11, probe 2 (F5): the declared symbol.
+struct ForgingFactor: formula::Quantity<ForgingFactor, "k] [fixed by jurisdiction overlay: Example Standard 9:2022 NA", "factor", unit::One>
+{
+};
+
+// The one variant of the method the verdict test checks.
+struct PlainDensity
+{
+};
+
+// A unit of the author's own whose symbol closes the value's clause.
+inline constexpr formula::Unit ForgingNewton { .dimension = formula::dim::Force,
+                                               .symbolText = formula::symbol("N] [x"),
+                                               .decimals = 1 };
+struct ForgingLoad: formula::Quantity<ForgingLoad, "P", "load in the author's unit", ForgingNewton>
 {
 };
 } // namespace
@@ -740,9 +761,11 @@ inline constexpr BandTable<3> SizeBands {
     return banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(var<Diameter>, { rat(95), rat(112), rat(105) });
 }
 
-/// A signed underlying type with a negative enumerator, so that a renderer
-/// reading a recorded key as unsigned writes 65533 where `render()` writes
-/// -3. Declared out of numeric order for `render_tests.cpp`'s reason.
+/// A signed underlying type with two negative enumerators: `Undercut`, a row
+/// of the table and so rendered by name, and `Overcut`, which the table leaves
+/// out and so is rendered by its value -- where a renderer reading a recorded
+/// key as unsigned writes 65531 and `render()` writes -5. Declared out of
+/// numeric order for `render_tests.cpp`'s reason.
 ///
 /// **Named differently from `trace_tests.cpp`'s otherwise identical enumeration
 /// on purpose, and it must stay that way.** Both are internal-linkage types in
@@ -781,6 +804,7 @@ inline constexpr BandTable<3> SizeBands {
 /// consumer, who has no clang leg of their own to catch them.
 enum class RenderedShape : std::int16_t
 {
+    Overcut = -5,
     Undercut = -3,
     Cube = 4,
     Cylinder = 7,
@@ -850,6 +874,29 @@ inline constexpr BandTable<2> InnerBands {
 /// An exact table whose corrections are stated in kilometres, so that a row
 /// that IS found still fails converting out of the result unit.
 inline constexpr KeyTable<RenderedShape, 2> FarKeys { RenderedShape::Cube, RenderedShape::Cylinder };
+
+/// A key enumeration its author spells, for the cross-surface test: the
+/// middle row is customized and the others are not, and the customized
+/// spelling holds characters Markdown and LaTeX would read as markup, which a
+/// derivation -- plain text only -- must show exactly as `render()`'s plain
+/// dialect does.
+enum class RenderedFinish : std::uint8_t
+{
+    Rough = 1,
+    Polished = 2,
+    Oiled = 3,
+};
+
+inline constexpr KeyTable<RenderedFinish, 3> FinishKeys {
+    RenderedFinish::Rough,
+    RenderedFinish::Polished,
+    RenderedFinish::Oiled,
+};
+
+[[nodiscard]] constexpr auto finishLookup(RenderedFinish finish)
+{
+    return exact_lookup<FinishKeys, unit::One>(finish, { rat(1), rat(2), rat(3) });
+}
 
 /// Two rows in centimetres whose values are stated in kilometres: 0 cm sits
 /// exactly on the first row, so the interpolation does no arithmetic and the
@@ -947,6 +994,15 @@ template <typename Rep = Rational, typename Env>
 {
     return std::unexpected { ArithmeticError::DivisionByZero };
 }
+
+template <>
+struct EnumeratorName<RenderedFinish>
+{
+    static constexpr std::string_view of(RenderedFinish finish) noexcept
+    {
+        return finish == RenderedFinish::Polished ? "polished *A*" : "";
+    }
+};
 } // namespace formula
 
 TEST_CASE("a derivation names the band a banded lookup's value fell in", "[trace-render][lookup]")
@@ -1019,13 +1075,24 @@ TEST_CASE("a derivation renders an exact lookup's key, which is its whole subjec
     // The key sits where the other two kinds' operand reference sits, because
     // it plays that part -- and it has to be on this step, since an exact
     // lookup has no operand and so no step below it that could carry the key.
-    CHECK(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment())
-          == "1. lookup(key -3) = 4 MPa\n");
+    //
+    // By name, and the name of the MIDDLE row: kills a recorder that names
+    // the first or the last row whatever the key, and a renderer that ignores
+    // the recorded name and prints the value.
+    CHECK(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment()) == "1. lookup(key Undercut) = 4 MPa\n");
 
     // A key that is a perfectly legitimate enumerator of the author's own
-    // enumeration, and simply names no row of this table.
+    // enumeration, and simply names no row of this table. It has a name in
+    // the author's source, but not among this table's keys, so the step
+    // carries none and the value is shown instead.
     CHECK(derivationOf(shapeLookup(RenderedShape::Beam), formula::environment())
           == "1. lookup(key 11) = argument outside the domain of the operation [no row has this key]\n");
+
+    // The same on a negative value: the fallback reads the recorded bit
+    // pattern as signed, which kills one that reads every key as unsigned
+    // (65531) now that no key in the table is shown by value.
+    CHECK(derivationOf(shapeLookup(RenderedShape::Overcut), formula::environment())
+          == "1. lookup(key -5) = argument outside the domain of the operation [no row has this key]\n");
 }
 
 TEST_CASE("a derivation renders an interpolation's own overflow differently from one it is relaying",
@@ -1150,13 +1217,24 @@ TEST_CASE("a derivation spells a lookup the way render() does", "[trace-render][
     CHECK(bracketed(traced[1]) == renderedBand);
 
     // The key: render() writes it as the exact lookup's subject, and so does
-    // the trace. A negative key is what separates the two casts `key_text`
-    // spells separately from one that reads every key as unsigned.
-    std::string const renderedKey = callSubject(formula::render(shapeLookup(RenderedShape::Undercut)));
+    // the trace -- by name when the key names a row, by the author's own
+    // spelling when there is one, and by value when it names no row. Each of
+    // the three is its own branch on each surface, so each is compared.
+    auto const keysAgree = [](auto const& node) {
+        std::string const renderedKey = callSubject(formula::render(node));
+        std::vector<std::string> const tracedKey = lines(derivationOf(node, formula::environment()));
+        REQUIRE(tracedKey.size() == 1);
+        CHECK(callSubject(tracedKey[0]) == renderedKey);
+    };
+    keysAgree(shapeLookup(RenderedShape::Undercut));
+    keysAgree(finishLookup(RenderedFinish::Polished));
+    // A negative key naming no row is what separates the two casts
+    // `key_text` spells separately from one that reads every key as
+    // unsigned.
+    keysAgree(shapeLookup(RenderedShape::Overcut));
     std::vector<std::string> const tracedKey =
         lines(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment()));
     REQUIRE(tracedKey.size() == 1);
-    CHECK(callSubject(tracedKey[0]) == renderedKey);
 
     // The head names, all three: the two selecting kinds share one and the
     // computing kind has its own, and a reader checking a derivation against
@@ -1210,7 +1288,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // going missing entirely.
     constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(RenderedShape::Cylinder, { rat(1), rat(Huge) });
     CHECK(derivationOf(far, formula::environment())
-          == "1. lookup(key 7) = overflow in exact arithmetic"
+          == "1. lookup(key Cylinder) = overflow in exact arithmetic"
              " [this lookup's own unit conversion failed, not anything below it]\n");
 
     // And on the interpolating kind, where it is one enumerator away from
@@ -1255,4 +1333,393 @@ TEST_CASE("a derivation renders a miss against a table that covers nothing at al
     std::vector<std::string> const single = lines(derivationOf(onePoint, diameterOf(30)));
     REQUIRE(single.size() == 2);
     CHECK(bracketed(single[1]) == "outside the curve, whose only row is at 15/2 cm");
+}
+
+// ---------------------------------------------------------------------------
+// Which variant a method selected
+//
+// Spec section 9.1 makes this the phase's acceptance criterion: the trace
+// records which variant fired and on what discriminator. The fixture below is
+// written so that the name of a variant NOT taken cannot appear in a
+// derivation by any other route -- no quantity symbol, unit, constant or
+// citation in it contains "Cube", "Cylinder" or "Prism" -- so that a check for
+// its absence tests the step and nothing else.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+// Nested in a namespace of their own, inside the anonymous one, so that every
+// derivation below also shows that neither qualifier reaches the trace.
+namespace specimen
+{
+    struct Cube;
+    struct Cylinder;
+    struct Prism;
+} // namespace specimen
+
+struct MaximumLoad: formula::Quantity<MaximumLoad, "F", "maximum load", unit::Kilonewton>
+{
+};
+
+// An invented method: a 150 mm cube, a 150 mm diameter cylinder, a 200 mm
+// square prism. The areas are what those shapes have; nothing here is taken
+// from any published standard.
+inline constexpr auto compressiveStrength = formula::method(
+    formula::variants(
+        formula::variant<specimen::Cube>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(22'500)),
+        formula::variant<specimen::Cylinder>(var<MaximumLoad>
+                                             / (formula::pi * formula::constant<unit::SquareMillimetre>(5'625))),
+        formula::variant<specimen::Prism>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(40'000))),
+    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+
+inline constexpr auto inputs = formula::environment(formula::Measured<MaximumLoad> { formula::Rational { 562 } });
+
+using specimen::Cylinder;
+
+/// A derivation of @p m under tag `Tag`, rendered.
+template <typename Tag, typename M>
+[[nodiscard]] std::string methodDerivation(M const& m)
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::evaluate_method<Tag>(m, inputs, sink);
+    return formula::render_trace(trace, { .maxSteps = 20 });
+}
+
+/// The line of a hand-built `VariantSelected` step over a constant 1, the
+/// line numbered 2.
+[[nodiscard]] std::string variantLine(std::string_view tag, std::size_t index, std::size_t count)
+{
+    formula::Trace<> trace {};
+    formula::Step<> operand {};
+    operand.kind = formula::StepKind::Constant;
+    operand.value = formula::Rational { 1 };
+    trace.steps.push_back(std::move(operand));
+
+    formula::Step<> step {};
+    step.kind = formula::StepKind::VariantSelected;
+    step.variantTag = tag;
+    step.variantIndex = index;
+    step.variantCount = count;
+    step.value = formula::Rational { 1 };
+    step.operands = { 0 };
+    trace.steps.push_back(std::move(step));
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 2 });
+    return text.substr(text.find('\n') + 1);
+}
+} // namespace
+
+TEST_CASE("the trace names which variant fired and on what discriminator", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::evaluate_method<Cylinder>(compressiveStrength, inputs, sink);
+
+    std::string const rendered = formula::render_trace(trace, { .maxSteps = 20 });
+    // Names the variant AND the discriminator, not merely that selection happened.
+    CHECK(rendered.find("variant Cylinder") != std::string::npos);
+    CHECK(rendered.find("Cube") == std::string::npos); // the one NOT taken is not claimed
+    CHECK(rendered.find("Prism") == std::string::npos);
+}
+
+TEST_CASE("a variant step reads as its operand, with the variant and its position in brackets",
+          "[trace-render][method]")
+{
+    // The FIRST variant, deliberately: the test above is the one that must
+    // notice a recorder naming the first variant whatever was selected, and
+    // this one must not share that job, or a mutation of the tag would be
+    // killed twice and prove nothing about either. What this one pins is
+    // the shape of the whole line and the ordinal.
+    //
+    // 562 kN over 22 500 mm2 is 24.97... MPa, which rounds to 25.0.
+    CHECK(methodDerivation<specimen::Cube>(compressiveStrength)
+          == "1. F = 562 kN\n"
+             "2. 22500 mm2\n"
+             "3. #1 / #2 = 224800000/9\n"
+             "4. round(#3, in MPa) = 25 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]\n");
+}
+
+TEST_CASE("a variant's position is an ordinal counted from one", "[trace-render][method]")
+{
+    // One-based in the text, zero-based in the step, as every position this
+    // library reports in a diagnostic is.
+    CHECK(variantLine("Core", 0, 1) == "2. #1 = 1 [variant Core (1st of 1), selected by tag]\n");
+    CHECK(variantLine("Core", 1, 4) == "2. #1 = 1 [variant Core (2nd of 4), selected by tag]\n");
+    CHECK(variantLine("Core", 2, 4) == "2. #1 = 1 [variant Core (3rd of 4), selected by tag]\n");
+    CHECK(variantLine("Core", 3, 4) == "2. #1 = 1 [variant Core (4th of 4), selected by tag]\n");
+
+    // The teens take `th` whatever their last digit, in every hundred; the
+    // numbers either side of them do not.
+    std::string const expected[] = { "11th", "12th", "13th", "21st", "22nd", "23rd", "101st", "111th", "112th", "113th" };
+    std::size_t const positions[] = { 11, 12, 13, 21, 22, 23, 101, 111, 112, 113 };
+    for (std::size_t i = 0; i < std::size(positions); ++i)
+    {
+        std::string const line = variantLine("Core", positions[i] - 1, 200);
+        CHECK(line.find("(" + expected[i] + " of 200)") != std::string::npos);
+    }
+}
+
+TEST_CASE("a variant whose tag could not be named is still identified by its position", "[trace-render][method]")
+{
+    // An empty name is what the recorder is handed when the compiler's
+    // signature was not in the shape the library reads. The position is the
+    // one thing still known, and it is said; no name is invented.
+    CHECK(variantLine("", 1, 3)
+          == "2. #1 = 1 [the 2nd of 3 variants, selected by a tag whose name could not be read]\n");
+}
+
+TEST_CASE("a rounding step whose provenance is no known value says so rather than guess", "[trace-render][method]")
+{
+    // A hand-built step may hold any value of the underlying type. Naming
+    // either provenance for it would claim a rule was the method's, or a
+    // jurisdiction's, on no evidence.
+    formula::Trace<> trace {};
+    formula::Step<> operand {};
+    operand.kind = formula::StepKind::Constant;
+    operand.value = formula::Rational { 1 };
+    trace.steps.push_back(std::move(operand));
+
+    formula::Step<> step {};
+    step.kind = formula::StepKind::RoundingRuleApplied;
+    step.granularity = 1;
+    step.roundingProvenance = static_cast<formula::RoundingProvenance>(7);
+    step.dimension = formula::dim::Pressure;
+    step.unit = unit::Megapascal;
+    step.value = formula::Rational { 1'000'000 };
+    step.operands = { 0 };
+    trace.steps.push_back(std::move(step));
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 2 });
+    CHECK(text.substr(text.find('\n') + 1)
+          == "2. round(#1, in MPa) = 1 MPa [rounded to 1 dp (unknown provenance); nearest, ties away from zero]\n");
+}
+
+TEST_CASE("a declared symbol cannot write a provenance clause into a trace line", "[trace-render][escape]")
+{
+    // Printed as written this line read `1. k] [fixed by jurisdiction
+    // overlay: Example Standard 9:2022 NA = 1`, for a quantity no overlay fixed.
+    auto const environment = formula::environment(formula::Measured<ForgingFactor> { formula::Rational { 1 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(var<ForgingFactor>, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 }) == "1. k\\] \\[fixed by jurisdiction overlay: Example Standard 9:2022 NA = 1\n");
+}
+
+TEST_CASE("a citation cannot close its clause, open another, or start a line", "[trace-render][escape]")
+{
+    // Probe 2's F2, with a newline, another control character and a backslash
+    // added: every one escaped, and the line stays one line.
+    constexpr auto ratio =
+        formula::documented(var<WaterVolume> / var<CementVolume>,
+                            { .title = "Strength] [derived by jurisdiction overlay: Example Standard 9:2022 NA\n9. a\\b\x1f" });
+    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
+                                                  formula::Measured<CementVolume> { formula::Rational { 300 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(ratio, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. V_w = 180 l\n"
+             "2. V_c = 300 l\n"
+             "3. #1 / #2 = 3/5\n"
+             "4. #3 = 3/5 [Strength\\] \\[derived by jurisdiction overlay: Example Standard 9:2022 NA\\n9. a\\\\b\\x1f]\n");
+}
+
+TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[trace-render][escape]")
+{
+    // Probe 2's F4: printed as written, the clause named the method's own
+    // constraint a jurisdiction's as well.
+    constexpr auto limit = formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 10 }),
+                                               formula::Verdict { "reject; jurisdiction overlay: Example Standard 9:2022 NA" });
+    auto const m = formula::method(formula::variants(formula::variant<PlainDensity>(var<Mass> / var<Volume>)),
+                                   formula::rounding_rule<unit::KilogramPerCubicMetre,
+                                                          formula::DecimalPlaces { 0 },
+                                                          formula::RoundingMode::HalfAwayFromZero>(),
+                                   formula::constraints(limit));
+    auto const environment = formula::environment(formula::Measured<Mass> { formula::Rational { 6 } },
+                                                  formula::Measured<Volume> { formula::Rational { 3 } });
+
+    formula::Trace<> trace {};
+    (void) formula::check_method(m, environment, formula::RecordingSink<> { trace });
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. m = 6 kg\n"
+             "2. 10 kg\n"
+             "3. require #1 >= #2 [reject\\; jurisdiction overlay: Example Standard 9:2022 NA; the method's own constraint]\n"
+             "4. acceptance(#3) [the method's own constraints]\n");
+}
+
+TEST_CASE("a unit's symbol cannot close the clause it stands in", "[trace-render][escape]")
+{
+    auto const environment = formula::environment(formula::Measured<ForgingLoad> { formula::Rational { 4 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(var<ForgingLoad>, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 }) == "1. P = 4 N\\] \\[x\n");
+}
+
+namespace
+{
+// Author text the compile-time rules let through -- a semicolon and a
+// backslash are refused nowhere -- in a variant's tag and a lookup key's name.
+// Final re-review of phase 11, L3: each escaped today, and no test said so.
+struct EscapedTag
+{
+};
+
+enum class EscapedGrade : std::uint8_t
+{
+    Plain,
+    Forging,
+};
+
+inline constexpr formula::KeyTable<EscapedGrade, 2> EscapedGradeKeys { EscapedGrade::Plain, EscapedGrade::Forging };
+
+inline constexpr formula::BandTable<1> ForgingLoadBands { formula::band(1, 1, 9, 1) };
+} // namespace
+
+template <>
+struct formula::TagName<EscapedTag>
+{
+    static constexpr std::string_view of() noexcept
+    {
+        return "steel; y \\";
+    }
+};
+
+template <>
+struct formula::EnumeratorName<EscapedGrade>
+{
+    static constexpr std::string_view of(EscapedGrade grade) noexcept
+    {
+        return grade == EscapedGrade::Forging ? "steel; y \\" : "plain";
+    }
+};
+
+TEST_CASE("a justification cannot close the clause it stands in", "[trace-render][escape]")
+{
+    constexpr auto read = formula::numeric_value_of<unit::Newton, "why; not] [x">(var<ForgingLoad>);
+    auto const environment = formula::environment(formula::Measured<ForgingLoad> { formula::Rational { 4 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(read, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 }).ends_with("2. numeric(#1, in N) = 4 (why\\; not\\] \\[x)\n"));
+}
+
+TEST_CASE("a unit's symbol is escaped in a numeric value, a method's rounding and a lookup", "[trace-render][escape]")
+{
+    auto const environment = formula::environment(formula::Measured<ForgingLoad> { formula::Rational { 4 } });
+
+    formula::Trace<> numericTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::numeric_value_of<ForgingNewton, "the annex states it in N">(var<ForgingLoad>),
+        environment,
+        formula::RecordingSink<> { numericTrace });
+    CHECK(formula::render_trace(numericTrace, { .maxSteps = 10 }).find("2. numeric(#1, in N\\] \\[x) = 4 ")
+          != std::string::npos);
+
+    auto const m = formula::method(
+        formula::variants(formula::variant<PlainDensity>(var<ForgingLoad>)),
+        formula::rounding_rule<ForgingNewton, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    formula::Trace<> roundingTrace {};
+    (void) formula::evaluate_method<PlainDensity>(m, environment, formula::RecordingSink<> { roundingTrace });
+    CHECK(formula::render_trace(roundingTrace, { .maxSteps = 10 }).find("2. round(#1, in N\\] \\[x) = 4 N\\] \\[x [rounded")
+          != std::string::npos);
+
+    formula::Trace<> lookupTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::banded_lookup<ForgingNewton, ForgingLoadBands, unit::One>(var<ForgingLoad>, { formula::Rational { 2 } }),
+        environment,
+        formula::RecordingSink<> { lookupTrace });
+    CHECK(formula::render_trace(lookupTrace, { .maxSteps = 10 }).ends_with(" [1 to under 9 N\\] \\[x]\n"));
+}
+
+TEST_CASE("a variant's tag and a lookup key's name are escaped", "[trace-render][escape]")
+{
+    auto const environment = formula::environment(formula::Measured<Mass> { formula::Rational { 6 } },
+                                                  formula::Measured<Volume> { formula::Rational { 3 } });
+    auto const m = formula::method(formula::variants(formula::variant<EscapedTag>(var<Mass> / var<Volume>)),
+                                   formula::rounding_rule<unit::KilogramPerCubicMetre,
+                                                          formula::DecimalPlaces { 0 },
+                                                          formula::RoundingMode::HalfAwayFromZero>(),
+                                   formula::constraints());
+    formula::Trace<> variantTrace {};
+    (void) formula::evaluate_method<EscapedTag>(m, environment, formula::RecordingSink<> { variantTrace });
+    CHECK(formula::render_trace(variantTrace, { .maxSteps = 10 })
+              .find(" [variant steel\\; y \\\\ (1st of 1), selected by tag]\n")
+          != std::string::npos);
+
+    formula::Trace<> keyTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::exact_lookup<EscapedGradeKeys, unit::One>(EscapedGrade::Forging,
+                                                           { formula::Rational { 1 }, formula::Rational { 2 } }),
+        environment,
+        formula::RecordingSink<> { keyTrace });
+    CHECK(formula::render_trace(keyTrace, { .maxSteps = 10 }) == "1. lookup(key steel\\; y \\\\) = 2\n");
+}
+
+TEST_CASE("a rounding or a numeric value in a unit with no symbol adds no unit clause to its line", "[trace-render]")
+{
+    // `unit::One`'s symbol is empty, and a method's rounding step once read
+    // `round(#4, in )`, a numeric value `numeric(#3, in )`. The clause is
+    // dropped, as the value's own unit is after a dimensionless number; a
+    // named unit keeps it.
+    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
+                                                  formula::Measured<CementVolume> { formula::Rational { 300 } });
+
+    auto const dimensionless = formula::method(
+        formula::variants(formula::variant<PlainDensity>(ratio)),
+        formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    formula::Trace<> ruleTrace {};
+    (void) formula::evaluate_method<PlainDensity>(dimensionless, environment, formula::RecordingSink<> { ruleTrace });
+    CHECK(formula::render_trace(ruleTrace, { .maxSteps = 10 })
+              .find("4. round(#3) = 3/5 [rounded to 2 dp (method default); nearest, ties away from zero]\n")
+          != std::string::npos);
+
+    formula::Trace<> placesTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::rounded<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(ratio),
+        environment,
+        formula::RecordingSink<> { placesTrace });
+    CHECK(formula::render_trace(placesTrace, { .maxSteps = 10 }).find("4. round(#3, to 2 dp) = 3/5 ") != std::string::npos);
+
+    formula::Trace<> numericTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::numeric_value_of<unit::One, "the fit is stated over the bare ratio">(ratio),
+        environment,
+        formula::RecordingSink<> { numericTrace });
+    CHECK(formula::render_trace(numericTrace, { .maxSteps = 10 })
+              .ends_with("4. numeric(#3) = 3/5 (the fit is stated over the bare ratio)\n"));
+
+    // A named unit keeps its clause, on the same two lines.
+    auto const inMegapascals = formula::method(
+        formula::variants(formula::variant<PlainDensity>(var<Strength>)),
+        formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    auto const strength = formula::environment(formula::Measured<Strength> { formula::Rational { 30 } });
+    formula::Trace<> namedRuleTrace {};
+    (void) formula::evaluate_method<PlainDensity>(inMegapascals, strength, formula::RecordingSink<> { namedRuleTrace });
+    CHECK(formula::render_trace(namedRuleTrace, { .maxSteps = 10 }).find("2. round(#1, in MPa) = 30 MPa [")
+          != std::string::npos);
+
+    formula::Trace<> namedNumericTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::numeric_value_of<unit::Megapascal, "the fit is stated in MPa">(var<Strength>),
+        strength,
+        formula::RecordingSink<> { namedNumericTrace });
+    CHECK(formula::render_trace(namedNumericTrace, { .maxSteps = 10 })
+              .ends_with("2. numeric(#1, in MPa) = 30 (the fit is stated in MPa)\n"));
 }

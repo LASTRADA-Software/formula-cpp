@@ -194,7 +194,12 @@
 /// documentation facts -- `documented()`/`Citation` (`citation.hpp`) -- which
 /// is where a table's identity belongs for the exact lookup for exactly the
 /// same reason it does for the banded one. Per-row labels are not modelled
-/// here and are not smuggled into the node.
+/// here and are not smuggled into the node. What a key is *called* when it
+/// is shown is a fact about the author's enumeration, not about any one
+/// table, so it lives with the enumeration: `render()` and a trace show the
+/// enumerator's own name (`key Cylinder`), and an author whose published
+/// table words the row differently specializes `EnumeratorName`
+/// (`enumerator.hpp`) once for the type, and every table keyed on it follows.
 ///
 /// `std::is_scoped_enum_v` is required -- not enumerations generally, and not
 /// `int`. An unscoped enumeration and an integer both convert to and from
@@ -467,6 +472,7 @@
 /// composes a sentence that would make saying it harder.
 
 #include <formula-cpp/band.hpp>
+#include <formula-cpp/enumerator.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/sink.hpp>
@@ -478,6 +484,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 
@@ -560,21 +567,21 @@ namespace detail
     template <BandTable Bands>
     [[nodiscard]] constexpr std::optional<std::size_t> find_band(Rational value) noexcept
     {
-        for (std::size_t index = 0; index < Bands.size(); ++index)
+        for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
         {
-            std::expected<Rational, ArithmeticError> const low =
-                Rational::make(Bands[index].lowNumerator, Bands[index].lowDenominator);
-            std::expected<Rational, ArithmeticError> const high =
-                Rational::make(Bands[index].highNumerator, Bands[index].highDenominator);
+            std::expected<Rational, ArithmeticError> const lowBound =
+                Rational::make(Bands[bandIndex].lowNumerator, Bands[bandIndex].lowDenominator);
+            std::expected<Rational, ArithmeticError> const highBound =
+                Rational::make(Bands[bandIndex].highNumerator, Bands[bandIndex].highDenominator);
             // Unreachable for a `Bands` that reached this point: every
             // `BandedLookupNode` instantiates `RequireValidBandTable<Bands>`,
             // which already refuses a malformed bound at compile time. Guarded
             // anyway, for the same reason `band_is_well_formed` itself is: a
             // silent wrong bucket is worse than one skipped comparison.
-            if (!low.has_value() || !high.has_value())
+            if (!lowBound.has_value() || !highBound.has_value())
                 continue;
-            if (*low <= value && value < *high)
-                return index;
+            if (*lowBound <= value && value < *highBound)
+                return bandIndex;
         }
         return std::nullopt;
     }
@@ -621,21 +628,43 @@ namespace detail
 /// `node.corrections[index]` meaning what it always meant in the renderer, the
 /// tracer and the evaluator alike.
 ///
-/// **Neither the trait nor the concept will tell you a node is not
-/// default-constructible, and they fail differently.** The refusal is a
-/// `static_assert` in a constructor *body*, so
-/// `std::is_default_constructible_v<SomeLookupNode>` answers **`true`** -- a
-/// trait only asks whether a constructor is viable, and never instantiates one
-/// to find out. `std::default_initializable` and `std::semiregular` do
-/// instantiate it, and so do not answer at all: they **hard-error**. Measured
-/// on cl 19.51 and clang-cl 22, with a deleted-default-constructor control
-/// that both traits and both concepts answer `false` for cleanly, so the
-/// instruments are shown able to say it. The error text is this library's own
-/// sentence naming both counts (`0` and `3`), which is the good message -- but
-/// it arrives from inside `<concepts>`, at a line the caller never wrote, and
-/// **a concept that hard-errors cannot be used as a predicate**: it will not
-/// constrain an overload, pick a branch or SFINAE anything. Generic code over
-/// nodes must not ask. The honest check is whether a factory was called.
+/// **Asked whether a node is default-constructible, the traits and the
+/// concepts answer `false`, cleanly**, and so does anything holding a lookup
+/// node: every node kind with one under it, a `VariantCase`, a `Constraint`,
+/// the `Variants` and `ConstraintSet` packs, a `Method`, and a `std::tuple` of
+/// methods. `method_lookup_tests.cpp` asks each of them. That takes two
+/// things, and both are load bearing:
+///
+///  - A count of zero is refused by the wrong-count constructor's
+///    *constraint*, not by its body -- see that constructor below. With
+///    `{}` reaching a `static_assert` in a body instead, the traits answered
+///    `true` and the concepts hard-errored, and `std::tuple` -- whose default
+///    constructor asks that question of every element -- reached the body
+///    from `Variants`, so **a method could not hold a lookup at all**.
+///    Measured on clang++ 20 with libstdc++ 14 and on g++ 14 for a method of
+///    one variant, and on g++ 13 and on clang++ 20 with libc++ 22 once the
+///    method had two; cl and clang-cl accepted it.
+///  - Every member that holds a child expression is declared **without** a
+///    `{}` default member initialiser (`Operand operand;`, `Left lhs;`,
+///    `Expr expression;` and so on). An omitted member is still
+///    copy-initialised from `{}` by aggregate initialisation, so nothing that
+///    initialises a node changes -- but a `{}` written as a *default member
+///    initialiser* is instantiated on its own, outside the probe's immediate
+///    context. Restoring it on one member at a time, measured on all six
+///    toolchains above: for every node member, a method holding a lookup
+///    under it fails to compile on clang++ (either library), clang-cl and
+///    g++ 13 and 14, while cl compiles the method and answers the trait
+///    `true` instead. `VariantCase::expression` and `Constraint::predicate`
+///    behave the same, except that g++ accepts them. The four pack members
+///    -- `Variants::cases`, `ConstraintSet::items`, `Method::variantSet` and
+///    `Method::constraintSet` -- break no method; with a `{}` on one, the
+///    trait asked of the pack, of the method or by a tuple of methods
+///    hard-errors or answers `true`, on clang++ with libstdc++ for all four,
+///    and on cl and clang-cl for all but `Method::variantSet`, which only a
+///    tuple of methods reaches. A lookup's own `operand` is reached only
+///    under a table of no rows, since otherwise `corrections`, declared
+///    before it, refuses first. `method_lookup_tests.cpp` has a row for each
+///    member, and fails on cl too for every one but `Method::variantSet`.
 ///
 /// **`corrections` is no longer a range, and `operator[]` is const and returns
 /// by value.** So `for (auto& correction: node.corrections)`,
@@ -653,6 +682,19 @@ namespace detail
 /// and its `static_assert` (through `RequireCorrectionCountMatches`) names
 /// both counts -- rather than the compiler's own generic "no matching
 /// constructor for call", which names neither.
+///
+/// **Except a count of zero, and that is a trade-off, not an oversight.**
+/// `{}` is value-initialisation, and value-initialisation is exactly what a
+/// default-constructibility probe performs, so no route can refuse an empty
+/// list in this library's words without also refusing every probe -- the
+/// defect described above. An empty list for a table with rows therefore
+/// selects no constructor at all, and is refused in the compiler's own words
+/// ("no matching constructor", "no appropriate default constructor"), which
+/// still name `Corrections<N>`; `lookup_empty_corrections_no_factory.cpp`
+/// pins that it is refused. Every *non-empty* wrong count -- the list with a
+/// row forgotten, which is the mistake anybody actually makes -- still gets
+/// the sentence naming both counts. A table of no rows takes `{}` through the
+/// matching-arity constructor, as it always did.
 ///
 /// Each element is constrained by `std::convertible_to<Rational>`, not
 /// `std::same_as<Rational>`: the arity check is what closes the actual hole
@@ -679,10 +721,12 @@ struct Corrections
     {
     }
 
-    /// Every other count: fails to compile, naming both counts through
-    /// `RequireCorrectionCountMatches`'s template arguments.
+    /// Every other non-zero count: fails to compile, naming both counts
+    /// through `RequireCorrectionCountMatches`'s template arguments. Zero is
+    /// left out by the constraint rather than refused in the body -- see the
+    /// class comment for why a body reachable from `{}` breaks `std::tuple`.
     template <typename... Rs>
-        requires(sizeof...(Rs) != N) && (std::convertible_to<Rs, Rational> && ...)
+        requires(sizeof...(Rs) != N) && (sizeof...(Rs) != 0) && (std::convertible_to<Rs, Rational> && ...)
     constexpr Corrections(Rs...) noexcept
     {
         static_assert(detail::RequireCorrectionCountMatches<sizeof...(Rs), N>::value);
@@ -693,7 +737,7 @@ struct Corrections
     /// interpolating one.
     std::array<Rational, N> values {};
 
-    /// The correction at @p index, so that every consumer reads a table's
+    /// The correction at @p rowIndex, so that every consumer reads a table's
     /// contents the way it read them when this was a bare `std::array`.
     ///
     /// Present so that becoming a node's member type costs the rest of the
@@ -701,9 +745,9 @@ struct Corrections
     /// in the renderer, the tracer and the evaluator alike. `values` stays
     /// public alongside it -- this is a transparent aggregate of the table's
     /// contents, not an encapsulation.
-    [[nodiscard]] constexpr Rational operator[](std::size_t index) const noexcept
+    [[nodiscard]] constexpr Rational operator[](std::size_t rowIndex) const noexcept
     {
-        return values[index];
+        return values[rowIndex];
     }
 
     /// How many corrections there are -- `N`, and a row count is a thing a
@@ -738,7 +782,11 @@ struct BandedLookupNode: NodeBase
     Corrections<Bands.size()> corrections;
 
     /// The expression whose evaluated value selects a band.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`.
+    /// The probe reaches this member only under a table of no rows: with any
+    /// row, `corrections`, declared before it, refuses first.
+    Operand operand;
 
     /// The unit band boundaries are declared in, and the unit `operand`'s
     /// value is compared against them in -- part of the table's *structure*.
@@ -790,14 +838,14 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
@@ -825,7 +873,7 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
     else
     {
         std::expected<Rational, ArithmeticError> const valueInKey =
-            checked_convert(**operand, coherent(KeyUnit.dimension), KeyUnit);
+            checked_convert(**evaluatedOperand, coherent(KeyUnit.dimension), KeyUnit);
         if (!valueInKey.has_value())
         {
             Evaluated<Rep> const failed = std::unexpected { valueInKey.error() };
@@ -833,8 +881,8 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
             return failed;
         }
 
-        std::optional<std::size_t> const index = detail::find_band<Bands>(*valueInKey);
-        if (!index.has_value())
+        std::optional<std::size_t> const matchedBand = detail::find_band<Bands>(*valueInKey);
+        if (!matchedBand.has_value())
         {
             // A miss is not a value: no default, no nearest-band, no
             // first-band fallback. `DomainError` is literally true here, not
@@ -844,9 +892,9 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
             return missed;
         }
 
-        Evaluated<Rep> const result = detail::in_si<Rep>(node.corrections[*index], ResultUnit);
-        sink.produced(node, result);
-        return result;
+        Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.corrections[*matchedBand], ResultUnit);
+        sink.produced(node, evaluated);
+        return evaluated;
     }
 }
 
@@ -966,9 +1014,9 @@ template <typename Key>
 template <typename Key, std::size_t N>
 [[nodiscard]] constexpr bool key_table_is_well_formed(KeyTable<Key, N> const& table) noexcept
 {
-    for (std::size_t first = 0; first + 1 < N; ++first)
-        for (std::size_t second = first + 1; second < N; ++second)
-            if (keys_match(table[first], table[second]))
+    for (std::size_t earlier = 0; earlier + 1 < N; ++earlier)
+        for (std::size_t later = earlier + 1; later < N; ++later)
+            if (keys_match(table[earlier], table[later]))
                 return false;
     return true;
 }
@@ -1047,10 +1095,50 @@ namespace detail
     template <KeyTable Keys>
     [[nodiscard]] constexpr std::optional<std::size_t> find_key(KeyOf<Keys> key) noexcept
     {
-        for (std::size_t index = 0; index < Keys.size(); ++index)
-            if (keys_match(Keys[index], key))
-                return index;
+        for (std::size_t keyIndex = 0; keyIndex < Keys.size(); ++keyIndex)
+            if (keys_match(Keys[keyIndex], key))
+                return keyIndex;
         return std::nullopt;
+    }
+
+    /// The spelling of every key of @p Keys, in row order, each computed by
+    /// `enumerator_name` at compile time. See `key_name`.
+    template <KeyTable Keys, std::size_t... Index>
+    [[nodiscard]] consteval std::array<std::string_view, Keys.size()> key_names(std::index_sequence<Index...>) noexcept
+    {
+        return { enumerator_name<Keys[Index]>()... };
+    }
+
+    /// `key_names`, computed once per table.
+    template <KeyTable Keys>
+    inline constexpr std::array<std::string_view, Keys.size()> keyNames =
+        key_names<Keys>(std::make_index_sequence<Keys.size()> {});
+
+    /// The spelling of @p key -- a value only known at run time -- **among the
+    /// keys @p Keys declares, and nowhere else**: the row's key's
+    /// `enumerator_name` when @p key names a row, and an empty view when it
+    /// names none -- or when the row it names was declared under a value that
+    /// is no enumerator (`static_cast<Shape>(9)`), which has no name to give.
+    ///
+    /// A key that names no row is exactly how an exact lookup misses, and it
+    /// may be a perfectly good enumerator of the author's type that the table
+    /// simply has no row for. It is still answered with an empty view: this
+    /// function knows the names of a table's keys, which were fixed at
+    /// compile time, and knows nothing about values outside that set. A
+    /// general value-to-name scan would need a range of values to search, and
+    /// nothing gives this library one.
+    ///
+    /// Which row "names" @p key is decided by `find_key`, the one predicate
+    /// the evaluator also selects with, so a name shown for a key is always
+    /// the name of the row that key selected. Every view returned has static
+    /// storage duration -- see `enumerator_name`.
+    template <KeyTable Keys>
+    [[nodiscard]] constexpr std::string_view key_name(KeyOf<Keys> key) noexcept
+    {
+        std::optional<std::size_t> const matchedRow = find_key<Keys>(key);
+        if (!matchedRow.has_value())
+            return {};
+        return keyNames<Keys>[*matchedRow];
     }
 } // namespace detail
 
@@ -1209,8 +1297,8 @@ template <typename Rep = Rational, KeyTable Keys, Unit ResultUnit, typename Env,
     }
     else
     {
-        std::optional<std::size_t> const index = detail::find_key<Keys>(node.key);
-        if (!index.has_value())
+        std::optional<std::size_t> const matchedRow = detail::find_key<Keys>(node.key);
+        if (!matchedRow.has_value())
         {
             // A miss is not a value: no default, no first-row fallback.
             // `DomainError` is literally true here -- an exact table's domain
@@ -1220,9 +1308,9 @@ template <typename Rep = Rational, KeyTable Keys, Unit ResultUnit, typename Env,
             return missed;
         }
 
-        Evaluated<Rep> const result = detail::in_si<Rep>(node.corrections[*index], ResultUnit);
-        sink.produced(node, result);
-        return result;
+        Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.corrections[*matchedRow], ResultUnit);
+        sink.produced(node, evaluated);
+        return evaluated;
     }
 }
 
@@ -1258,9 +1346,9 @@ struct Breakpoint
 /// curve stated at whole-numbered keys then reads
 /// `{ breakpoint(0), breakpoint(10), breakpoint(20) }` rather than carrying a
 /// column of `1`s that says nothing.
-[[nodiscard]] constexpr Breakpoint breakpoint(std::int64_t numerator, std::int64_t denominator = 1) noexcept
+[[nodiscard]] constexpr Breakpoint breakpoint(std::int64_t keyNumerator, std::int64_t keyDenominator = 1) noexcept
 {
-    return { numerator, denominator };
+    return { keyNumerator, keyDenominator };
 }
 
 /// A table of breakpoints, declared in strictly ascending order. An alias
@@ -1307,9 +1395,9 @@ struct Segment
 /// rows -- a single `Breakpoint` either names a number or it does not, and
 /// `breakpoints_ascend` alone cannot answer this for a one-row table, where
 /// there is no pair for it to look at.
-[[nodiscard]] constexpr bool breakpoint_is_well_formed(Breakpoint const& value) noexcept
+[[nodiscard]] constexpr bool breakpoint_is_well_formed(Breakpoint const& candidate) noexcept
 {
-    return Rational::make(value.numerator, value.denominator).has_value();
+    return Rational::make(candidate.numerator, candidate.denominator).has_value();
 }
 
 /// The other predicate, alongside `breakpoint_is_well_formed`: true when
@@ -1324,13 +1412,13 @@ struct Segment
 /// not a representable rational is treated as not ascending with anything, in
 /// either position: a malformed row is exactly the kind of typo this validation
 /// exists to catch, not a case to silently wave through.
-[[nodiscard]] constexpr bool breakpoints_ascend(Breakpoint const& first, Breakpoint const& second) noexcept
+[[nodiscard]] constexpr bool breakpoints_ascend(Breakpoint const& lowerRow, Breakpoint const& upperRow) noexcept
 {
-    auto const lower = Rational::make(first.numerator, first.denominator);
-    auto const upper = Rational::make(second.numerator, second.denominator);
-    if (!lower || !upper)
+    auto const lowerKey = Rational::make(lowerRow.numerator, lowerRow.denominator);
+    auto const upperKey = Rational::make(upperRow.numerator, upperRow.denominator);
+    if (!lowerKey || !upperKey)
         return false;
-    return *lower < *upper;
+    return *lowerKey < *upperKey;
 }
 
 /// True when `table` is well-formed: every row's key is a rational number, AND
@@ -1353,11 +1441,11 @@ struct Segment
 template <std::size_t N>
 [[nodiscard]] constexpr bool breakpoint_table_is_well_formed(BreakpointTable<N> const& table) noexcept
 {
-    for (std::size_t index = 0; index < N; ++index)
-        if (!breakpoint_is_well_formed(table[index]))
+    for (std::size_t pointIndex = 0; pointIndex < N; ++pointIndex)
+        if (!breakpoint_is_well_formed(table[pointIndex]))
             return false;
-    for (std::size_t index = 0; index + 1 < N; ++index)
-        if (!breakpoints_ascend(table[index], table[index + 1]))
+    for (std::size_t pointIndex = 0; pointIndex + 1 < N; ++pointIndex)
+        if (!breakpoints_ascend(table[pointIndex], table[pointIndex + 1]))
             return false;
     return true;
 }
@@ -1492,12 +1580,12 @@ namespace detail
     ///
     /// Dividing first is chosen because it is the better order for the tables
     /// this library is actually for. A published curve states its rows on a
-    /// common grid -- 0, 10, 20 mm -- so `offset` and `span` share their
-    /// denominator, `offset / span` cancels to a weight strictly below 1, and
+    /// common grid -- 0, 10, 20 mm -- so `keyOffset` and `keySpan` share their
+    /// denominator, `keyOffset / keySpan` cancels to a weight strictly below 1, and
     /// the key scale never meets the value scale. Multiplying first forms the
     /// one product in the whole computation that mixes key magnitude with value
     /// magnitude, and nothing cancels it. The shape dividing first is worse for
-    /// is the opposite one: a key so fine that `offset / span` cannot cancel,
+    /// is the opposite one: a key so fine that `keyOffset / keySpan` cannot cancel,
     /// against a value that would have cancelled against the offset instead.
     ///
     /// Both of those tables are in `lookup_tests.cpp`, asserted as behaviour --
@@ -1511,21 +1599,21 @@ namespace detail
     /// no runtime test for it here. `checked_div` would report
     /// `DivisionByZero` rather than trap if that guarantee were ever broken.
     [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> interpolate_between(
-        Rational lowKey, Rational lowValue, Rational highKey, Rational highValue, Rational key) noexcept
+        Rational lowKey, Rational lowValue, Rational highKey, Rational highValue, Rational atKey) noexcept
     {
-        std::expected<Rational, ArithmeticError> const span = checked_sub(highKey, lowKey);
-        if (!span.has_value())
-            return span;
+        std::expected<Rational, ArithmeticError> const keySpan = checked_sub(highKey, lowKey);
+        if (!keySpan.has_value())
+            return keySpan;
         std::expected<Rational, ArithmeticError> const rise = checked_sub(highValue, lowValue);
         if (!rise.has_value())
             return rise;
-        std::expected<Rational, ArithmeticError> const offset = checked_sub(key, lowKey);
-        if (!offset.has_value())
-            return offset;
-        std::expected<Rational, ArithmeticError> const weight = checked_div(*offset, *span);
-        if (!weight.has_value())
-            return weight;
-        std::expected<Rational, ArithmeticError> const share = checked_mul(*weight, *rise);
+        std::expected<Rational, ArithmeticError> const keyOffset = checked_sub(atKey, lowKey);
+        if (!keyOffset.has_value())
+            return keyOffset;
+        std::expected<Rational, ArithmeticError> const fraction = checked_div(*keyOffset, *keySpan);
+        if (!fraction.has_value())
+            return fraction;
+        std::expected<Rational, ArithmeticError> const share = checked_mul(*fraction, *rise);
         if (!share.has_value())
             return share;
         return checked_add(lowValue, *share);
@@ -1570,41 +1658,41 @@ namespace detail
     [[nodiscard]] constexpr std::expected<std::pair<Rational, Segment>, ArithmeticError> locate_and_interpolate(
         Rational key, Corrections<Points.size()> const& corrections) noexcept
     {
-        for (std::size_t index = 0; index < Points.size(); ++index)
+        for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
         {
-            std::expected<Rational, ArithmeticError> const here =
-                Rational::make(Points[index].numerator, Points[index].denominator);
+            std::expected<Rational, ArithmeticError> const rowKey =
+                Rational::make(Points[pointIndex].numerator, Points[pointIndex].denominator);
             // Unreachable for a `Points` that reached this point: every
             // `InterpolatingLookupNode` instantiates
             // `RequireValidBreakpointTable<Points>`, which already refuses a
             // malformed key at compile time. Guarded anyway, for the same
             // reason `find_band` guards its own: reporting nothing is better
             // than interpolating against a number that was never there.
-            if (!here.has_value())
+            if (!rowKey.has_value())
                 return std::unexpected { ArithmeticError::DomainError };
 
-            if (*here == key)
-                return std::pair<Rational, Segment> { corrections[index], Segment { Points[index], Points[index] } };
+            if (*rowKey == key)
+                return std::pair<Rational, Segment> { corrections[pointIndex],
+                                                      Segment { Points[pointIndex], Points[pointIndex] } };
 
-            if (key < *here)
+            if (key < *rowKey)
             {
                 // Below the table's first row: a miss, never an extrapolation
                 // backwards along the first segment's slope.
-                if (index == 0)
+                if (pointIndex == 0)
                     return std::unexpected { ArithmeticError::DomainError };
 
                 std::expected<Rational, ArithmeticError> const previous =
-                    Rational::make(Points[index - 1].numerator, Points[index - 1].denominator);
+                    Rational::make(Points[pointIndex - 1].numerator, Points[pointIndex - 1].denominator);
                 if (!previous.has_value())
                     return std::unexpected { ArithmeticError::DomainError };
 
                 std::expected<Rational, ArithmeticError> const answered =
-                    interpolate_between(*previous, corrections[index - 1], *here, corrections[index], key);
+                    interpolate_between(*previous, corrections[pointIndex - 1], *rowKey, corrections[pointIndex], key);
                 if (!answered.has_value())
                     return std::unexpected { answered.error() };
 
-                return std::pair<Rational, Segment> { *answered,
-                                                      Segment { Points[index - 1], Points[index] } };
+                return std::pair<Rational, Segment> { *answered, Segment { Points[pointIndex - 1], Points[pointIndex] } };
             }
         }
         // Past the table's last row -- or an empty table, which is past its
@@ -1658,7 +1746,11 @@ struct InterpolatingLookupNode: NodeBase
     Corrections<Points.size()> corrections;
 
     /// The expression whose evaluated value is located against `breakpoints`.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser -- see `Corrections`.
+    /// The probe reaches this member only under a table of no rows: with any
+    /// row, `corrections`, declared before it, refuses first.
+    Operand operand;
 
     /// The unit breakpoints are declared in, and the unit `operand`'s value is
     /// compared against them in -- part of the table's *structure*. The
@@ -1713,14 +1805,14 @@ template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Points, Unit Re
     Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
@@ -1749,7 +1841,7 @@ template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Points, Unit Re
     else
     {
         std::expected<Rational, ArithmeticError> const valueInKey =
-            checked_convert(**operand, coherent(KeyUnit.dimension), KeyUnit);
+            checked_convert(**evaluatedOperand, coherent(KeyUnit.dimension), KeyUnit);
         if (!valueInKey.has_value())
         {
             Evaluated<Rep> const failed = std::unexpected { valueInKey.error() };
@@ -1770,9 +1862,9 @@ template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Points, Unit Re
             return failed;
         }
 
-        Evaluated<Rep> const result = detail::in_si<Rep>(*interpolated, ResultUnit);
-        sink.produced(node, result);
-        return result;
+        Evaluated<Rep> const evaluated = detail::in_si<Rep>(*interpolated, ResultUnit);
+        sink.produced(node, evaluated);
+        return evaluated;
     }
 }
 

@@ -61,9 +61,9 @@ namespace detail
         static constexpr ValueSource source = ValueSource::Measured;
         static constexpr bool isEntered = false;
 
-        [[nodiscard]] static constexpr Measured<Q> measurement(Measured<Q> entry) noexcept
+        [[nodiscard]] static constexpr Measured<Q> measurement(Measured<Q> measuredEntry) noexcept
         {
-            return entry;
+            return measuredEntry;
         }
     };
 
@@ -74,9 +74,9 @@ namespace detail
         static constexpr ValueSource source = ValueSource::ManuallyEntered;
         static constexpr bool isEntered = true;
 
-        [[nodiscard]] static constexpr Measured<Q> measurement(Entered<Q> entry) noexcept
+        [[nodiscard]] static constexpr Measured<Q> measurement(Entered<Q> enteredEntry) noexcept
         {
-            return entry.measurement;
+            return enteredEntry.measurement;
         }
     };
 
@@ -180,9 +180,9 @@ class Environment
         // one would do, three from clang-cl where one would do.
         if constexpr (provides<Q>)
         {
-            constexpr std::size_t index = index_of<Q>();
-            using Entry = std::tuple_element_t<index, std::tuple<Entries...>>;
-            return detail::EntryTraits<Entry>::measurement(std::get<index>(_entries));
+            constexpr std::size_t entryIndex = index_of<Q>();
+            using Entry = std::tuple_element_t<entryIndex, std::tuple<Entries...>>;
+            return detail::EntryTraits<Entry>::measurement(std::get<entryIndex>(_entries));
         }
         else
             return Measured<Q>::absent();
@@ -204,8 +204,8 @@ class Environment
         static_assert(detail::RequireProvided<Q, Environment>::value);
         if constexpr (provides<Q>)
         {
-            constexpr std::size_t index = index_of<Q>();
-            return detail::EntryTraits<std::tuple_element_t<index, std::tuple<Entries...>>>::source;
+            constexpr std::size_t entryIndex = index_of<Q>();
+            return detail::EntryTraits<std::tuple_element_t<entryIndex, std::tuple<Entries...>>>::source;
         }
         else
             return ValueSource::Derived;
@@ -215,10 +215,10 @@ class Environment
     template <Described Q>
     [[nodiscard]] static constexpr std::size_t index_of() noexcept
     {
-        std::size_t found = sizeof...(Entries);
-        std::size_t position = 0;
-        (((detail::entry_is_for<Q, Entries> ? (found = position) : found), ++position), ...);
-        return found;
+        std::size_t foundAt = sizeof...(Entries);
+        std::size_t scanned = 0;
+        (((detail::entry_is_for<Q, Entries> ? (foundAt = scanned) : foundAt), ++scanned), ...);
+        return foundAt;
     }
 
     std::tuple<Entries...> _entries {};

@@ -42,7 +42,10 @@ target_sources(formula-cpp INTERFACE
     BASE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/include"
     FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/checked_int.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/enum_name.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/fixed_string.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/name_text.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_name.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/band.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/citation.hpp"
@@ -50,6 +53,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/constraint.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/dimension.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/document.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/enumerator.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/environment.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/error.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/escape.hpp"
@@ -59,7 +63,9 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/function.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/lookup.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/measured.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/method.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/outcome.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/overlay.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/predicate.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/quantity.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/render.hpp"
@@ -67,10 +73,12 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding_node.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/sink.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/tag.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace_render.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/unit.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/vocabulary.hpp")
 
 # These three are workarounds for cl's non-conformance and are REQUIRED to
 # compile this library's headers at all, so they are INTERFACE, not PRIVATE:

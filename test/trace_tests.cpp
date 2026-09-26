@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -1042,6 +1043,10 @@ TEST_CASE("an exact lookup step records the key it selected with, which no other
     CHECK(hit.steps[0].operands.empty());
     CHECK(hit.steps[0].lookupKeyIsSigned);
     CHECK(static_cast<long long>(hit.steps[0].lookupKey) == -3);
+    // The middle row's name, recorded while the key's type was still known.
+    // Kills a recorder that leaves the name empty, and one that names the
+    // first or last row whatever the key.
+    CHECK(hit.steps[0].lookupKeyName == "Undercut");
     CHECK(hit.steps[0].lookupFailure == formula::LookupFailure::None);
     CHECK(hit.steps[0].unit == unit::Megapascal);
     CHECK(hit.steps[0].value == rat(4000000)); // 4 MPa, in pascals
@@ -1061,6 +1066,10 @@ TEST_CASE("an exact lookup step records the key it selected with, which no other
     CHECK(miss.steps[0].error == formula::ArithmeticError::DomainError);
     CHECK(miss.steps[0].lookupFailure == formula::LookupFailure::Missed);
     CHECK(static_cast<long long>(miss.steps[0].lookupKey) == 11);
+    // `Beam` has a name in the author's source, but the table has no row for
+    // it, and a step's name comes from matching against the table's own keys.
+    // Kills a recorder that names a missed key anyway.
+    CHECK(miss.steps[0].lookupKeyName.empty());
     // Nothing to cover: an exact table's domain is a set of keys, not an
     // interval, so there is no range to report and none is invented.
     CHECK(!miss.steps[0].coveredRange.has_value());
@@ -1080,7 +1089,37 @@ TEST_CASE("an exact lookup step records an unsigned key that no signed type coul
     REQUIRE(trace.steps.size() == 1);
     CHECK(!trace.steps[0].lookupKeyIsSigned);
     CHECK(trace.steps[0].lookupKey == 18446744073709551615ULL);
+    // The name is matched against the table by the key's value, and this
+    // value is the top of `unsigned long long`: the only test in which the
+    // recorder names a key no signed type could hold.
+    CHECK(trace.steps[0].lookupKeyName == "Legacy");
     CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::None);
+}
+
+/// A table that declares a row under a value naming no enumerator -- legal,
+/// since a `KeyTable` holds values of the enumeration, not only its
+/// enumerators. Its values differ from `ShapeKeys`' so the two cannot share a
+/// template parameter object (see `trace_render_tests.cpp`'s `RenderedShape`).
+inline constexpr KeyTable<SpecimenShape, 2> UnnamedRowKeys { SpecimenShape::Cube, static_cast<SpecimenShape>(9) };
+
+TEST_CASE("an exact lookup step that hits a row whose key names no enumerator records no name, and no miss",
+          "[trace][lookup]")
+{
+    // An empty `lookupKeyName` is not a miss by itself: this lookup HIT the
+    // second row, whose key has no name to record. `lookupFailure` is what
+    // says whether it missed. Kills a reading of "empty name" as "missed", and
+    // a recorder that invents a name for the row.
+    constexpr auto node = exact_lookup<UnnamedRowKeys, unit::One>(static_cast<SpecimenShape>(9), { rat(1), rat(2) });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, formula::environment(), sink);
+
+    REQUIRE(trace.steps.size() == 1);
+    CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::None);
+    CHECK(trace.steps[0].value == rat(2));
+    CHECK(trace.steps[0].lookupKeyName.empty());
+    CHECK(static_cast<long long>(trace.steps[0].lookupKey) == 9);
 }
 
 TEST_CASE("an interpolating lookup step tells its own overflow apart from an operand's", "[trace][lookup]")
@@ -1374,4 +1413,337 @@ TEST_CASE("a lookup whose operand was never measured records absence, not a fail
     CHECK(!trace.steps[1].error.has_value());
     CHECK(trace.steps[1].lookupFailure == formula::LookupFailure::None);
     CHECK(!trace.steps[1].selectedBand.has_value());
+}
+
+// ---------------------------------------------------------------------------
+// A method's variant selection, recorded
+//
+// The step's NAME is pinned in `trace_render_tests.cpp` -- "the trace names
+// which variant fired and on what discriminator" -- and, apart from the
+// customized spelling below, these tests select the FIRST variant whenever
+// they read `variantTag`, so that a recorder naming the first variant
+// whatever was selected is killed by that one test alone. Everything else the
+// step carries is pinned here.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+struct Plate;
+struct Disc;
+struct Ring;
+
+struct Load: formula::Quantity<Load, "F", "applied load", unit::Kilonewton>
+{
+};
+struct Side: formula::Quantity<Side, "a", "loaded side", unit::Millimetre>
+{
+};
+
+// A spelling of the author's own for the first variant's tag, as a published
+// method might word it.
+struct Core;
+} // namespace
+
+template <>
+struct formula::TagName<Core>
+{
+    static constexpr std::string_view of() noexcept { return "core drilled 100 mm"; }
+};
+
+namespace
+{
+inline constexpr auto rule =
+    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>();
+
+inline constexpr auto bearing = formula::method(
+    formula::variants(formula::variant<Plate>(var<Load> / (var<Side> * var<Side>)),
+                      formula::variant<Disc>(var<Load> / (formula::pi * var<Side> * var<Side>)),
+                      formula::variant<Ring>(var<Load> / (var<Side> * var<Side> * formula::Rational { 2 }))),
+    rule,
+    formula::constraints());
+
+[[nodiscard]] auto loadOn(long long load, long long side)
+{
+    return formula::environment(formula::Measured<Load> { formula::Rational { load } },
+                                formula::Measured<Side> { formula::Rational { side } });
+}
+
+/// A sink that defines only half of the variant pair, and counts it.
+struct HalfVariantSink
+{
+    int* told;
+
+    template <formula::Node N>
+    constexpr void entered(N const&) noexcept
+    {
+    }
+
+    template <formula::Node N, typename V>
+    constexpr void produced(N const&, V const&) noexcept
+    {
+    }
+
+    void variant_entered(formula::VariantSelection const&) noexcept { ++*told; }
+};
+} // namespace
+
+TEST_CASE("a method's selection is the root step, and claims the rounded variant as its operand", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::evaluate_method<Disc>(bearing, loadOn(100, 50), sink);
+
+    REQUIRE(!trace.empty());
+    formula::Step<> const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::VariantSelected);
+
+    // The second of three, zero-based.
+    CHECK(root.variantIndex == 1);
+    CHECK(root.variantCount == 3);
+
+    // One operand: the rounding step, which is the variant that ran. The
+    // selection is the walk's one root, and nothing is left unclaimed.
+    REQUIRE(root.operands.size() == 1);
+    formula::Step<> const& variant = trace.steps[root.operands.front()];
+    CHECK(variant.kind == formula::StepKind::RoundingRuleApplied);
+    CHECK(trace.unclaimed.size() == 1);
+    CHECK(trace.marks.empty());
+
+    // The step's value is exactly what the method returned, in the unit the
+    // variant was rounded in.
+    REQUIRE(result.has_value());
+    REQUIRE(result->has_value());
+    REQUIRE(root.value.has_value());
+    CHECK(*root.value == **result);
+    CHECK(*root.value == *variant.value);
+    CHECK(root.dimension == formula::dim::Pressure);
+    CHECK(root.unit == unit::Megapascal);
+}
+
+TEST_CASE("a selection records the tag's name, or the author's spelling of it", "[trace][method]")
+{
+    // The first variant, whose tag is named the author's way.
+    constexpr auto cored = formula::method(
+        formula::variants(formula::variant<Core>(var<Load> / (var<Side> * var<Side>)),
+                          formula::variant<Plate>(var<Load> / (var<Side> * var<Side> * formula::Rational { 2 }))),
+        rule,
+        formula::constraints());
+
+    formula::Trace<> customized {};
+    (void) formula::evaluate_method<Core>(cored, loadOn(100, 50), formula::RecordingSink<> { customized });
+    CHECK(customized.steps[customized.root()].variantTag == "core drilled 100 mm");
+
+    // And a tag nobody customized, by its own name: unqualified, with the
+    // anonymous namespace it is declared in nowhere in sight.
+    formula::Trace<> reflected {};
+    (void) formula::evaluate_method<Plate>(bearing, loadOn(100, 50), formula::RecordingSink<> { reflected });
+    CHECK(reflected.steps[reflected.root()].variantTag == "Plate");
+}
+
+TEST_CASE("a selected variant that fails is recorded with its failure, not a value", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::evaluate_method<Plate>(bearing, loadOn(100, 0), sink);
+
+    REQUIRE(!result.has_value());
+    formula::Step<> const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::VariantSelected);
+    REQUIRE(root.error.has_value());
+    CHECK(*root.error == result.error());
+    CHECK(!root.value.has_value());
+    // Still one operand, which carries the same failure, and still one root.
+    REQUIRE(root.operands.size() == 1);
+    CHECK(trace.steps[root.operands.front()].error == root.error);
+    CHECK(trace.unclaimed.size() == 1);
+}
+
+TEST_CASE("a selected variant with an absent input is recorded as absent, not as failed", "[trace][method]")
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const result = formula::evaluate_method<Plate>(
+        bearing,
+        formula::environment(formula::Measured<Load>::absent(), formula::Measured<Side> { formula::Rational { 50 } }),
+        sink);
+
+    REQUIRE(result.has_value());
+    CHECK(!result->has_value());
+    formula::Step<> const& root = trace.steps[trace.root()];
+    CHECK(root.kind == formula::StepKind::VariantSelected);
+    CHECK(!root.value.has_value());
+    CHECK(!root.error.has_value());
+}
+
+TEST_CASE("a sink that defines half of the variant pair is told nothing", "[trace][method]")
+{
+    // Both or neither, asked in one `requires`: a sink told of an entry it
+    // will never see closed would leave its own bookkeeping unbalanced.
+    int told = 0;
+    auto const result = formula::evaluate_method<Plate>(bearing, loadOn(100, 50), HalfVariantSink { &told });
+
+    REQUIRE(result.has_value());
+    CHECK(result->has_value());
+    CHECK(told == 0);
+}
+
+TEST_CASE("an overlaid method's selection is counted in the method as published", "[trace][method][overlay]")
+{
+    // A reader counts back in the only `variants(...)` in the source, the
+    // published one; the overlay that pinned or pruned is elsewhere. So the
+    // position a trace reports must not move when a variant before it is
+    // removed. Tags are not read here -- see the note above this section.
+    constexpr auto pruned = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        bearing);
+    formula::Trace<> afterPrune {};
+    (void) formula::evaluate_method<Disc>(pruned, loadOn(100, 50), formula::RecordingSink<> { afterPrune });
+    formula::Step<> const& prunedRoot = afterPrune.steps[afterPrune.root()];
+    CHECK(prunedRoot.variantIndex == 1);
+    CHECK(prunedRoot.variantCount == 3);
+
+    // The last variant, with the first pruned: 3rd of 3, not 2nd of 2.
+    formula::Trace<> lastAfterPrune {};
+    (void) formula::evaluate_method<Ring>(pruned, loadOn(100, 50), formula::RecordingSink<> { lastAfterPrune });
+    CHECK(lastAfterPrune.steps[lastAfterPrune.root()].variantIndex == 2);
+    CHECK(lastAfterPrune.steps[lastAfterPrune.root()].variantCount == 3);
+
+    // A pin leaves one variant, which is still the 2nd of 3, not the 1st of 1.
+    constexpr auto pinned = formula::apply(
+        formula::overlay(formula::pin_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        bearing);
+    formula::Trace<> afterPin {};
+    (void) formula::evaluate_method<Disc>(pinned, loadOn(100, 50), formula::RecordingSink<> { afterPin });
+    CHECK(afterPin.steps[afterPin.root()].variantIndex == 1);
+    CHECK(afterPin.steps[afterPin.root()].variantCount == 3);
+
+    // And through an operation that rewrites every variant, after the prune
+    // that moved them: the positions survive the rewrite too.
+    constexpr auto rewritten = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::with_constant<Side>(formula::Rational { 50 },
+                                                      formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        bearing);
+    formula::Trace<> afterRewrite {};
+    (void) formula::evaluate_method<Ring>(rewritten, loadOn(100, 7), formula::RecordingSink<> { afterRewrite });
+    CHECK(afterRewrite.steps[afterRewrite.root()].variantIndex == 2);
+    CHECK(afterRewrite.steps[afterRewrite.root()].variantCount == 3);
+}
+
+TEST_CASE("an overlay applied at run time still counts in the method as published", "[trace][method][overlay]")
+{
+    // Nothing here is a constant expression: each method is an ordinary local
+    // built from the one before it, so the layout each overlay starts from is
+    // run time data. The second prune starts from a layout the first one
+    // moved, `{ 1, 2 }` of 3, so a layout rebuilt from the tags alone -- or
+    // from the pack's own order -- would report the Ring as the 1st of 1.
+    auto const base = bearing;
+    auto const withoutPlate = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        base);
+    auto const ringOnly = formula::apply(
+        formula::overlay(formula::prune_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        withoutPlate);
+
+    formula::Trace<> afterTwoPrunes {};
+    (void) formula::evaluate_method<Ring>(ringOnly, loadOn(100, 50), formula::RecordingSink<> { afterTwoPrunes });
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantIndex == 2);
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantCount == 3);
+
+    // A pin over the moved layout: the Disc is still the 2nd of 3.
+    auto const discOnly = formula::apply(
+        formula::overlay(formula::pin_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        withoutPlate);
+    formula::Trace<> afterPin {};
+    (void) formula::evaluate_method<Disc>(discOnly, loadOn(100, 50), formula::RecordingSink<> { afterPin });
+    CHECK(afterPin.steps[afterPin.root()].variantIndex == 1);
+    CHECK(afterPin.steps[afterPin.root()].variantCount == 3);
+}
+
+TEST_CASE("overlay steps compose, and the position still counts in the method as published", "[trace][method][overlay]")
+{
+    // Two prunes in ONE overlay: the second is applied to the method the
+    // first produced, whose layout is already `{ 1, 2 }` of 3.
+    constexpr auto twoPrunes = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::prune_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        bearing);
+    formula::Trace<> afterTwoPrunes {};
+    (void) formula::evaluate_method<Ring>(twoPrunes, loadOn(100, 50), formula::RecordingSink<> { afterTwoPrunes });
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantIndex == 2);
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantCount == 3);
+
+    // A prune, then a pin: two `apply` calls, since one overlay refuses both.
+    // The pin picks from the pruned layout, and keeps the Ring's own place.
+    constexpr auto pruneThenPin = formula::apply(
+        formula::overlay(formula::pin_variant<Ring>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        formula::apply(formula::overlay(
+                           formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       bearing));
+    formula::Trace<> afterPruneThenPin {};
+    (void) formula::evaluate_method<Ring>(pruneThenPin, loadOn(100, 50), formula::RecordingSink<> { afterPruneThenPin });
+    CHECK(afterPruneThenPin.steps[afterPruneThenPin.root()].variantIndex == 2);
+    CHECK(afterPruneThenPin.steps[afterPruneThenPin.root()].variantCount == 3);
+
+    // Two prunes by two `apply` calls, in the order that removes the MIDDLE
+    // variant first, so the second prune acts on the layout `{ 0, 2 }`.
+    constexpr auto twoApplies = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        formula::apply(
+            formula::overlay(formula::prune_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+            bearing));
+    formula::Trace<> afterTwoApplies {};
+    (void) formula::evaluate_method<Ring>(twoApplies, loadOn(100, 50), formula::RecordingSink<> { afterTwoApplies });
+    CHECK(afterTwoApplies.steps[afterTwoApplies.root()].variantIndex == 2);
+    CHECK(afterTwoApplies.steps[afterTwoApplies.root()].variantCount == 3);
+}
+
+TEST_CASE("a result told without its entry is dropped, never read off an empty stack", "[trace]")
+{
+    // A consumer's own evaluator that calls `produced` but forgot `entered`:
+    // there is no mark to claim from. Reading one off the empty stack was
+    // undefined behaviour -- cl's debug library aborts the program -- so the
+    // sink drops the step instead. The same for each of the other three
+    // pairs a sink is told.
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const value = formula::Evaluated<formula::Rational> { std::optional { formula::Rational { 1 } } };
+
+    sink.produced(var<Mass>, value);
+    constexpr auto limit = formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 1 }),
+                                               formula::Verdict { "too light" });
+    sink.constraint_produced(limit, formula::ConstraintOutcome::satisfied());
+    sink.variant_produced(formula::VariantSelection { "Cube", 0, 1 }, value);
+    sink.acceptance_produced(formula::ConstraintOrigin {});
+
+    CHECK(trace.steps.empty());
+    CHECK(trace.marks.empty());
+
+    // And the sink still records a walk that follows, whole.
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        var<Mass>, formula::environment(formula::Measured<Mass> { formula::Rational { 6 } }), sink);
+    CHECK(trace.steps.size() == 1);
+}
+
+TEST_CASE("a branch told with no when() entered is dropped, never read off an empty stack", "[trace]")
+{
+    // The same consumer mistake as above, for the pending branch a `when()`
+    // pushes in `entered`: `branch_taken` with nothing entered, and a
+    // `when()`'s `produced` after only some other node's `entered`. Both read
+    // `back()` of an empty stack, which is undefined behaviour.
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const value = formula::Evaluated<formula::Rational> { std::optional { formula::Rational { 1 } } };
+
+    sink.branch_taken(chosen, true);
+    CHECK(trace.branchStack.empty());
+
+    sink.entered(var<Strength>);
+    sink.produced(chosen, value);
+    CHECK(trace.steps.empty());
+    CHECK(trace.branchStack.empty());
+    // The mark `var<Strength>` pushed is left for it, and it claims it.
+    sink.produced(var<Strength>, value);
+    CHECK(trace.steps.size() == 1);
+    CHECK(trace.marks.empty());
 }

@@ -38,9 +38,9 @@ namespace formula
 ///
 /// Every `Unit` already states its own exact conversion to this one, so it is
 /// the single scale on which values from different units can meet.
-[[nodiscard]] constexpr Unit coherent(Dimension value) noexcept
+[[nodiscard]] constexpr Unit coherent(Dimension dimensionOfUnit) noexcept
 {
-    return Unit { .dimension = value };
+    return Unit { .dimension = dimensionOfUnit };
 }
 
 /// How arithmetic is done for one representation.
@@ -66,34 +66,38 @@ struct RepTraits<Rational>
 {
     /// A value already in `Rational`, unchanged -- present so `detail::in_si`
     /// can call `RepTraits<Rep>::from` uniformly for every representation.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from(Rational value) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from(Rational exact) noexcept
     {
-        return value;
+        return exact;
     }
     /// Exact addition; an overflowing sum is reported, never wrapped.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> add(Rational lhs, Rational rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> add(Rational leftOperand,
+                                                                                Rational rightOperand) noexcept
     {
-        return checked_add(lhs, rhs);
+        return checked_add(leftOperand, rightOperand);
     }
     /// Exact subtraction; an overflowing difference is reported, never wrapped.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> subtract(Rational lhs, Rational rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> subtract(Rational leftOperand,
+                                                                                     Rational rightOperand) noexcept
     {
-        return checked_sub(lhs, rhs);
+        return checked_sub(leftOperand, rightOperand);
     }
     /// Exact multiplication; an overflowing product is reported, never wrapped.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> multiply(Rational lhs, Rational rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> multiply(Rational leftOperand,
+                                                                                     Rational rightOperand) noexcept
     {
-        return checked_mul(lhs, rhs);
+        return checked_mul(leftOperand, rightOperand);
     }
     /// Exact division; division by zero is reported, never a trap or an infinity.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> divide(Rational lhs, Rational rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> divide(Rational leftOperand,
+                                                                                   Rational rightOperand) noexcept
     {
-        return checked_div(lhs, rhs);
+        return checked_div(leftOperand, rightOperand);
     }
     /// Exact negation.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> negate(Rational value) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> negate(Rational operandValue) noexcept
     {
-        return checked_negate(value);
+        return checked_negate(operandValue);
     }
 };
 
@@ -108,37 +112,41 @@ template <>
 struct RepTraits<double>
 {
     /// Converts an exact `Rational` (already in the coherent SI unit) to `double`.
-    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> from(Rational value) noexcept
+    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> from(Rational exact) noexcept
     {
-        return value.to_double();
+        return exact.to_double();
     }
     /// Ordinary floating-point addition.
-    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> add(double lhs, double rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> add(double leftOperand,
+                                                                              double rightOperand) noexcept
     {
-        return lhs + rhs;
+        return leftOperand + rightOperand;
     }
     /// Ordinary floating-point subtraction.
-    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> subtract(double lhs, double rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> subtract(double leftOperand,
+                                                                                   double rightOperand) noexcept
     {
-        return lhs - rhs;
+        return leftOperand - rightOperand;
     }
     /// Ordinary floating-point multiplication.
-    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> multiply(double lhs, double rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> multiply(double leftOperand,
+                                                                                   double rightOperand) noexcept
     {
-        return lhs * rhs;
+        return leftOperand * rightOperand;
     }
     /// Floating-point division, except that division by zero is reported as
     /// `ArithmeticError::DivisionByZero` rather than becoming `inf` or `nan`.
-    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> divide(double lhs, double rhs) noexcept
+    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> divide(double leftOperand,
+                                                                                 double rightOperand) noexcept
     {
-        if (rhs == 0.0)
+        if (rightOperand == 0.0)
             return std::unexpected { ArithmeticError::DivisionByZero };
-        return lhs / rhs;
+        return leftOperand / rightOperand;
     }
     /// Ordinary floating-point negation.
-    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> negate(double value) noexcept
+    [[nodiscard]] static constexpr std::expected<double, ArithmeticError> negate(double operandValue) noexcept
     {
-        return -value;
+        return -operandValue;
     }
 };
 
@@ -183,11 +191,12 @@ namespace detail
     template <typename Rep>
     [[nodiscard]] constexpr Evaluated<Rep> in_si(Rational value, Unit from) noexcept
     {
-        std::expected<Rational, ArithmeticError> const converted = checked_convert(value, from, coherent(from.dimension));
-        if (!converted.has_value())
-            return std::unexpected { converted.error() };
+        std::expected<Rational, ArithmeticError> const inCoherentUnit =
+            checked_convert(value, from, coherent(from.dimension));
+        if (!inCoherentUnit.has_value())
+            return std::unexpected { inCoherentUnit.error() };
 
-        std::expected<Rep, ArithmeticError> const represented = RepTraits<Rep>::from(*converted);
+        std::expected<Rep, ArithmeticError> const represented = RepTraits<Rep>::from(*inCoherentUnit);
         if (!represented.has_value())
             return std::unexpected { represented.error() };
         return present<Rep>(*represented);
@@ -209,9 +218,9 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
         sink.produced(node, absent);
         return absent;
     }
-    Evaluated<Rep> const result = detail::in_si<Rep>(*measured.stored(), Describe<Q>::unit);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::in_si<Rep>(*measured.stored(), Describe<Q>::unit);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// A literal coefficient is always present; converts it to the coherent SI unit.
@@ -221,9 +230,9 @@ template <typename Rep = Rational, Unit U, typename Env, typename Sink = NullSin
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::in_si<Rep>(node.number, U);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.number, U);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// Evaluates the operand, then applies `Op` -- absence and arithmetic errors
@@ -234,14 +243,14 @@ template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env,
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
@@ -249,11 +258,11 @@ template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env,
     }
 
     static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
-    std::expected<Rep, ArithmeticError> const negated = RepTraits<Rep>::negate(**operand);
-    Evaluated<Rep> const result =
+    std::expected<Rep, ArithmeticError> const negated = RepTraits<Rep>::negate(**evaluatedOperand);
+    Evaluated<Rep> const evaluated =
         negated.has_value() ? detail::present<Rep>(*negated) : Evaluated<Rep> { std::unexpected { negated.error() } };
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// Evaluates the left operand, then the right, and only then considers
@@ -267,33 +276,33 @@ template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typ
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const lhs = detail::dispatch<Rep>(node.lhs, environment, sink);
-    if (!lhs.has_value())
+    Evaluated<Rep> const leftResult = detail::dispatch<Rep>(node.lhs, environment, sink);
+    if (!leftResult.has_value())
     {
         // Built twice rather than held in a named local: GCC 13 reports a
         // false -Wmaybe-uninitialized on returning a named std::expected that
         // has been passed to the sink by reference. The error is a plain
         // enumerator, so constructing it twice costs nothing.
-        auto const failure = lhs.error();
-        sink.produced(node, Evaluated<Rep> { std::unexpected { failure } });
-        return Evaluated<Rep> { std::unexpected { failure } };
+        auto const leftFailure = leftResult.error();
+        sink.produced(node, Evaluated<Rep> { std::unexpected { leftFailure } });
+        return Evaluated<Rep> { std::unexpected { leftFailure } };
     }
-    Evaluated<Rep> const rhs = detail::dispatch<Rep>(node.rhs, environment, sink);
-    if (!rhs.has_value())
+    Evaluated<Rep> const rightResult = detail::dispatch<Rep>(node.rhs, environment, sink);
+    if (!rightResult.has_value())
     {
         // Built twice rather than held in a named local: GCC 13 reports a
         // false -Wmaybe-uninitialized on returning a named std::expected that
         // has been passed to the sink by reference. The error is a plain
         // enumerator, so constructing it twice costs nothing.
-        auto const failure = rhs.error();
-        sink.produced(node, Evaluated<Rep> { std::unexpected { failure } });
-        return Evaluated<Rep> { std::unexpected { failure } };
+        auto const rightFailure = rightResult.error();
+        sink.produced(node, Evaluated<Rep> { std::unexpected { rightFailure } });
+        return Evaluated<Rep> { std::unexpected { rightFailure } };
     }
 
     // Absence wins over arithmetic, but only after both sides have been asked:
     // an arithmetic error in the side that *is* present is still an error, and
     // hiding it behind the other side's absence would lose it.
-    if (!lhs->has_value() || !rhs->has_value())
+    if (!leftResult->has_value() || !rightResult->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
@@ -302,18 +311,18 @@ template <typename Rep = Rational, BinaryOperator Op, Node Left, Node Right, typ
 
     std::expected<Rep, ArithmeticError> const combined = [&] {
         if constexpr (Op == BinaryOperator::Add)
-            return RepTraits<Rep>::add(**lhs, **rhs);
+            return RepTraits<Rep>::add(**leftResult, **rightResult);
         else if constexpr (Op == BinaryOperator::Subtract)
-            return RepTraits<Rep>::subtract(**lhs, **rhs);
+            return RepTraits<Rep>::subtract(**leftResult, **rightResult);
         else if constexpr (Op == BinaryOperator::Multiply)
-            return RepTraits<Rep>::multiply(**lhs, **rhs);
+            return RepTraits<Rep>::multiply(**leftResult, **rightResult);
         else
-            return RepTraits<Rep>::divide(**lhs, **rhs);
+            return RepTraits<Rep>::divide(**leftResult, **rightResult);
     }();
-    Evaluated<Rep> const result =
+    Evaluated<Rep> const evaluated =
         combined.has_value() ? detail::present<Rep>(*combined) : Evaluated<Rep> { std::unexpected { combined.error() } };
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// Evaluates @p expression for quantity @p Result.

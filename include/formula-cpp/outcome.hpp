@@ -94,12 +94,12 @@ class Outcome
     /// A computed or measured number. An **absent** measurement yields `Empty`,
     /// not a `Value` holding nothing: the two would otherwise be two ways of
     /// saying the same thing, and callers would have to check both.
-    [[nodiscard]] static constexpr Outcome value(Measured<Q> measurement, ValueSource source) noexcept
+    [[nodiscard]] static constexpr Outcome value(Measured<Q> measured, ValueSource valueSource) noexcept
     {
-        Outcome result {};
-        result._kind = measurement.has_value() ? OutcomeKind::Value : OutcomeKind::Empty;
-        result._value = Value<Q> { measurement, source };
-        return result;
+        Outcome made {};
+        made._kind = measured.has_value() ? OutcomeKind::Value : OutcomeKind::Empty;
+        made._value = Value<Q> { measured, valueSource };
+        return made;
     }
 
     /// No value, because an input was never measured.
@@ -111,19 +111,19 @@ class Outcome
     /// A decision in place of a number: "reject the specimen".
     [[nodiscard]] static constexpr Outcome verdict(Verdict decision) noexcept
     {
-        Outcome result {};
-        result._kind = OutcomeKind::Verdict;
-        result._verdict = decision;
-        return result;
+        Outcome made {};
+        made._kind = OutcomeKind::Verdict;
+        made._verdict = decision;
+        return made;
     }
 
     /// The result is discarded entirely, for `reason`.
     [[nodiscard]] static constexpr Outcome invalid(InvalidReason reason) noexcept
     {
-        Outcome result {};
-        result._kind = OutcomeKind::Invalid;
-        result._reason = reason;
-        return result;
+        Outcome made {};
+        made._kind = OutcomeKind::Invalid;
+        made._reason = reason;
+        return made;
     }
 
     /// Which alternative this outcome holds.

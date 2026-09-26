@@ -38,10 +38,12 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/overlay.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/unit.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -160,8 +162,8 @@ namespace detail
     template <Unit U>
     [[nodiscard]] constexpr Precedence precedence_of(ConstantNode<U> const& node) noexcept
     {
-        constexpr Unit unit = U;
-        bool const hasUnitSymbol = !view(unit.symbolText).empty();
+        constexpr Unit declaredUnit = U;
+        bool const hasUnitSymbol = !view(declaredUnit.symbolText).empty();
         return node.number.sign() < 0 || hasUnitSymbol ? Precedence::Unary : Precedence::Atom;
     }
 
@@ -179,12 +181,27 @@ namespace detail
         return precedence_of(node.inner);
     }
 
-    /// An exact rational as text: `4`, or `1/4` when it is not whole.
-    [[nodiscard]] inline std::string number_text(Rational value)
+    /// A jurisdiction's replacement formula renders as the formula, so it
+    /// brackets as the formula does -- type and runtime answer both, for the
+    /// reason `DocumentedNode`'s two forward theirs.
+    template <Node Expr>
+    struct PrecedenceOf<ReplacedVariantNode<Expr>>
     {
-        if (value.denominator() == 1)
-            return std::to_string(value.numerator());
-        return std::to_string(value.numerator()) + "/" + std::to_string(value.denominator());
+        static constexpr Precedence value = PrecedenceOf<Expr>::value;
+    };
+
+    template <Node Expr>
+    [[nodiscard]] constexpr Precedence precedence_of(ReplacedVariantNode<Expr> const& node) noexcept
+    {
+        return precedence_of(node.replacement());
+    }
+
+    /// An exact rational as text: `4`, or `1/4` when it is not whole.
+    [[nodiscard]] inline std::string number_text(Rational shownNumber)
+    {
+        if (shownNumber.denominator() == 1)
+            return std::to_string(shownNumber.numerator());
+        return std::to_string(shownNumber.numerator()) + "/" + std::to_string(shownNumber.denominator());
     }
 
     /// A number followed by its unit's symbol, or the number alone when the
@@ -195,9 +212,28 @@ namespace detail
     /// a table states a number in a unit on every one of its rows, and a row
     /// that spelled a number differently from a constant holding that same
     /// number would be two surfaces disagreeing inside one rendered formula.
-    [[nodiscard]] inline std::string number_with_unit(std::string const& text, std::string_view symbol)
+    [[nodiscard]] inline std::string number_with_unit(std::string const& numberText, std::string_view unitSymbol)
     {
-        return symbol.empty() ? text : text + " " + std::string { symbol };
+        return unitSymbol.empty() ? numberText : numberText + " " + std::string { unitSymbol };
+    }
+
+    /// @p lead followed by a unit's symbol -- `, in MPa`, ` dp of mm` -- or
+    /// nothing when the unit has none (`unit::One`), so that a rounding or a
+    /// numeric value in a dimensionless unit reads `round(x, to 2 dp)` and
+    /// `numeric(x)` rather than `round(x, to 2 dp of )` and `numeric(x, in )`.
+    /// The clause is dropped rather than a name written in its place, as
+    /// `number_with_unit` drops the symbol after a dimensionless number: a
+    /// value with no unit is shown with none, everywhere.
+    [[nodiscard]] inline std::string unit_clause(std::string_view lead, std::string_view unitSymbol)
+    {
+        return unitSymbol.empty() ? std::string {} : std::string { lead } + std::string { unitSymbol };
+    }
+
+    /// A unit's symbol set upright in LaTeX, `\mathrm{mm}`, or nothing for a
+    /// unit with none, for `unit_clause` to drop.
+    [[nodiscard]] inline std::string latex_unit(std::string_view unitSymbol)
+    {
+        return unitSymbol.empty() ? std::string {} : "\\mathrm{" + std::string { unitSymbol } + "}";
     }
 
     /// A bound a table declared as a numerator/denominator pair -- a band's
@@ -211,39 +247,205 @@ namespace detail
     /// at compile time -- and is guarded anyway for the reason
     /// `detail::find_band` (`lookup.hpp`) guards the identical call: printing
     /// back the pair the author typed is better than dereferencing an error.
-    [[nodiscard]] inline std::string declared_number_text(std::int64_t numerator, std::int64_t denominator)
+    [[nodiscard]] inline std::string declared_number_text(std::int64_t declaredNumerator, std::int64_t declaredDenominator)
     {
-        std::expected<Rational, ArithmeticError> const value = Rational::make(numerator, denominator);
-        if (value.has_value())
-            return number_text(*value);
-        return std::to_string(numerator) + "/" + std::to_string(denominator);
+        std::expected<Rational, ArithmeticError> const declared = Rational::make(declaredNumerator, declaredDenominator);
+        if (declared.has_value())
+            return number_text(*declared);
+        return std::to_string(declaredNumerator) + "/" + std::to_string(declaredDenominator);
     }
 
     /// A half-open band as text: `10 to under 20 mm`. **The one spelling of a
     /// half-open interval in this library** -- see this file's comment for the
     /// ruling and for the published defect that bought it.
-    [[nodiscard]] inline std::string band_text(Band const& value, std::string_view keySymbol)
+    [[nodiscard]] inline std::string band_text(Band const& shownBand, std::string_view keySymbol)
     {
-        return number_with_unit(declared_number_text(value.lowNumerator, value.lowDenominator) + " to under "
-                                    + declared_number_text(value.highNumerator, value.highDenominator),
+        return number_with_unit(declared_number_text(shownBand.lowNumerator, shownBand.lowDenominator) + " to under "
+                                    + declared_number_text(shownBand.highNumerator, shownBand.highDenominator),
                                 keySymbol);
     }
 
-    /// A category key as text: `key 2`.
+    /// Author-supplied words -- a key's name -- made literal in dialect @p D,
+    /// so that whatever characters they hold are shown rather than obeyed.
     ///
-    /// **What this costs, stated rather than hidden.** An enumerator's *name*
-    /// does not exist at run time in C++ -- there is no portable way to get
-    /// `Cylinder` back out of a `Shape` -- so what a reader is given is the
-    /// enumerator's underlying value, which is the only thing that does
-    /// survive. A reader reconciling this against a published table therefore
-    /// has to carry the author's own `enum class` declaration across: `key 2`
-    /// says which row, not which *variant*. The alternative would be per-row
-    /// labels on the node, and `lookup.hpp` declines those deliberately ("Per-
-    /// row labels are not modelled here and are not smuggled into the node"),
-    /// because a table's identity is `documented()`'s job. A later task that
-    /// wants names has one honest seam: a `Describe`-style trait over the
-    /// author's enumeration, opted into the way `Quantity` already is -- not a
-    /// field on the node.
+    /// Needed because a key's name is the one piece of text in a rendering
+    /// that this library did not write. A reflected name is an identifier,
+    /// and an identifier's underscore is already enough to break LaTeX:
+    /// `\text{key Hollow_Core}` is a "Missing $ inserted" error, because `_`
+    /// is a math-mode character even inside `\text`. A customized spelling
+    /// (`EnumeratorName`, `enumerator.hpp`) may hold anything at all --
+    /// `[150 mm]`, `*` -- which in Markdown is exactly the link and emphasis
+    /// syntax this file's ruling and the guard test in `render_tests.cpp`
+    /// exist to keep out.
+    ///
+    /// **LaTeX** escapes its ten special characters the way a text-mode author
+    /// would -- `^` and `~` as `\textasciicircum{}` and `\textasciitilde{}`,
+    /// which are ASCII glyphs under T1 and TU where `\^{}` and `\~{}` are
+    /// accents over nothing -- and five more that are not special but print as
+    /// the wrong glyph. Under pdflatex's default OT1 font encoding `<`, `>`,
+    /// `|` and a double quote come out as an inverted exclamation mark, an
+    /// inverted question mark, an em dash and a closing curly quote, and a
+    /// backtick comes out as an opening curly quote in every encoding. They
+    /// become `\textless{}`, `\textgreater{}`, `\textbar{}` and
+    /// `\textasciigrave{}`, which need no package on a LaTeX kernel from
+    /// 2020-02 or later (the one that absorbed textcomp). The quote becomes a
+    /// typewriter `\char34`, because `\textquotedbl` -- the obvious spelling --
+    /// is "unavailable in encoding OT1" without a package, and even under TU a
+    /// bare `"` is turned into a curly quote. Finally, TeX's ligatures are
+    /// broken with an empty group: `--`, `---`, `''` and `,,` would otherwise
+    /// print as an en dash, an em dash, a closing double quote and a low
+    /// double quote -- measured in OT1, T1 and TU alike -- so each such pair is
+    /// written `-{}-`, `'{}'`, `,{}`. A lone `'` is left alone: it prints as a
+    /// right single quote, which is how TeX sets an apostrophe.
+    ///
+    /// **Markdown** backslash-escapes the six characters that open inline
+    /// markup -- a backslash, a backtick, `*`, `_`, `[`, `]` -- and writes six
+    /// more as entities: `<`, `>` and `&`, which are HTML's; `$`, which the
+    /// site's `pymdownx.arithmatex` reads as a maths delimiter; `|`, which
+    /// splits a GFM table cell; and `~`, whose pair is GFM strikethrough.
+    /// Entities rather than backslashes for those six, because python-markdown
+    /// with the site's extensions shows a backslash before `|` or `~`
+    /// literally, where CommonMark would drop it.
+    ///
+    /// Measured, not reasoned. The LaTeX set was compiled with tectonic 0.17.0
+    /// forced to OT1 (`\usepackage[OT1]{fontenc}`), where the four wrong glyphs
+    /// reproduce, and also under T1 and TU; the escaped text reads back as
+    /// the original in all three. The Markdown set was rendered by
+    /// python-markdown with exactly the extensions `mkdocs.yml` enables
+    /// (admonition, pymdownx.highlight, pymdownx.superfences,
+    /// pymdownx.arithmatex in generic mode), and by pandoc's CommonMark and
+    /// GFM readers, in a paragraph and in a GFM table cell, and reads back as
+    /// the original in every one. Plain changes nothing. Text with none of
+    /// these characters is the same in all three dialects, which is what the
+    /// cross-dialect test relies on.
+    template <Dialect D>
+    [[nodiscard]] std::string literal_words_in_dialect(std::string_view words)
+    {
+        if constexpr (D == Dialect::Plain)
+            return std::string { words };
+        else
+        {
+            std::string keyText;
+            keyText.reserve(words.size());
+            for (std::size_t at = 0; at < words.size(); ++at)
+            {
+                char const byte = words[at];
+                if constexpr (D == Dialect::LaTeX)
+                {
+                    switch (byte)
+                    {
+                        case '-':
+                        case '\'':
+                        case ',':
+                            // Harmless alone, a ligature in pairs: `--` is an
+                            // en dash (`---` an em dash), `''` a closing
+                            // quote, `,,` a low quote. An empty group
+                            // between the two keeps them two characters.
+                            keyText += byte;
+                            if (at + 1 < words.size() && words[at + 1] == byte)
+                                keyText += "{}";
+                            break;
+                        case '\\':
+                            keyText += "\\textbackslash{}";
+                            break;
+                        case '^':
+                            keyText += "\\textasciicircum{}";
+                            break;
+                        case '~':
+                            keyText += "\\textasciitilde{}";
+                            break;
+                        case '`':
+                            keyText += "\\textasciigrave{}";
+                            break;
+                        case '<':
+                            keyText += "\\textless{}";
+                            break;
+                        case '>':
+                            keyText += "\\textgreater{}";
+                            break;
+                        case '|':
+                            keyText += "\\textbar{}";
+                            break;
+                        case '"':
+                            keyText += "{\\ttfamily\\char34}";
+                            break;
+                        case '{':
+                        case '}':
+                        case '$':
+                        case '&':
+                        case '#':
+                        case '_':
+                        case '%':
+                            keyText += '\\';
+                            keyText += byte;
+                            break;
+                        default:
+                            keyText += byte;
+                            break;
+                    }
+                }
+                else
+                {
+                    switch (byte)
+                    {
+                        case '<':
+                            keyText += "&lt;";
+                            break;
+                        case '>':
+                            keyText += "&gt;";
+                            break;
+                        case '&':
+                            keyText += "&amp;";
+                            break;
+                        case '$':
+                            keyText += "&#36;";
+                            break;
+                        case '|':
+                            keyText += "&#124;";
+                            break;
+                        case '~':
+                            keyText += "&#126;";
+                            break;
+                        case '\\':
+                        case '`':
+                        case '*':
+                        case '_':
+                        case '[':
+                        case ']':
+                            keyText += '\\';
+                            keyText += byte;
+                            break;
+                        default:
+                            keyText += byte;
+                            break;
+                    }
+                }
+            }
+            return keyText;
+        }
+    }
+
+    /// A category key as text: `key Cylinder`, in dialect @p D.
+    ///
+    /// The key's name is `key_name` (`lookup.hpp`): the name of the row of
+    /// @p Keys that @p key selects, which is the enumerator's own name as
+    /// written in the author's source unless the author spelled it
+    /// differently through `EnumeratorName` (`enumerator.hpp`). A reader
+    /// reconciling this against a published table reads the author's word for
+    /// the row, not a number they would have to look up in the author's code.
+    /// The name is made literal in the dialect by `literal_words_in_dialect`.
+    ///
+    /// **The underlying value is the fallback, and only the fallback**: `key
+    /// 9` for a key that names no row of the table, which is exactly the key
+    /// a missing lookup holds. It may even be a real enumerator the table
+    /// has no row for; `key_name` answers only among the table's own keys,
+    /// so this does too. The one other case is a row the table declares under
+    /// a value that names no enumerator (`static_cast<Shape>(9)` is a valid
+    /// key): a hit on it has no name to show either, and shows its value. The
+    /// spelling is the one this function used before it had names, so a miss
+    /// reads the same as it always has. A reflected name
+    /// is an identifier and cannot begin with a digit, so the two spellings
+    /// cannot be confused unless an author customizes a name into a number.
     ///
     /// The underlying value, not the row's index: the two coincide only for an
     /// enumeration whose enumerators were left to default, and an author who
@@ -251,10 +453,14 @@ namespace detail
     /// numbers that appear nowhere in their own code. The signed and unsigned
     /// casts are spelled separately because an underlying type may be
     /// `unsigned long long`, whose top half no signed type can hold.
-    template <typename Key>
-    [[nodiscard]] std::string key_text(Key key)
+    template <Dialect D, KeyTable Keys>
+    [[nodiscard]] std::string key_text(KeyOf<Keys> key)
     {
-        using Underlying = std::underlying_type_t<Key>;
+        std::string_view const keyName = key_name<Keys>(key);
+        if (!keyName.empty())
+            return "key " + literal_words_in_dialect<D>(keyName);
+
+        using Underlying = std::underlying_type_t<KeyOf<Keys>>;
         if constexpr (std::is_signed_v<Underlying>)
             return "key " + std::to_string(static_cast<long long>(key));
         else
@@ -262,11 +468,11 @@ namespace detail
     }
 
     /// One row of a rendered lookup table: what selects the row, then what the
-    /// row gives. `10 to under 20 mm gives 19/20`, `key 7 gives 1`,
+    /// row gives. `10 to under 20 mm gives 19/20`, `key Cylinder gives 1`,
     /// `at 25 mm gives 6/5`.
-    [[nodiscard]] inline std::string lookup_row_text(std::string const& selector, std::string const& value)
+    [[nodiscard]] inline std::string lookup_row_text(std::string const& selector, std::string const& correction)
     {
-        return selector + " gives " + value;
+        return selector + " gives " + correction;
     }
 
     /// A run of words a lookup contributes, as the dialect writes it: a row,
@@ -431,30 +637,53 @@ template <Dialect D, Predicate P>
 template <Dialect D, Predicate P>
 [[nodiscard]] std::string render(Constraint<P> const& node);
 
+/// Renders @p node in dialect @p D, writing every quantity's symbol as
+/// @p vocabulary says (`vocabulary.hpp`). The three overloads above are these
+/// three with `DefaultVocabulary`, which renames nothing.
+template <Dialect D, Node N, Vocabulary V>
+[[nodiscard]] std::string render(N const& node, V const& vocabulary);
+
+/// The `Predicate` counterpart of the overload above.
+template <Dialect D, Predicate P, Vocabulary V>
+[[nodiscard]] std::string render(P const& node, V const& vocabulary);
+
+/// The `Constraint` counterpart of the overload above.
+template <Dialect D, Predicate P, Vocabulary V>
+[[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary);
+
 namespace detail
 {
-    template <Dialect D, Node Child>
-    [[nodiscard]] std::string render_operand(Child const& child, Precedence context)
+    template <Dialect D, Node Child, Vocabulary V>
+    [[nodiscard]] std::string render_operand(Child const& child, Precedence context, V const& vocabulary)
     {
-        std::string text = render<D>(child);
+        std::string childText = render<D>(child, vocabulary);
         if (static_cast<int>(precedence_of(child)) < static_cast<int>(context))
-            return "(" + text + ")";
-        return text;
+            return "(" + childText + ")";
+        return childText;
     }
 } // namespace detail
 
 // One overload per node kind. Each is found by argument-dependent lookup from
 // `render` below, exactly as the evaluator's overloads are.
+//
+// Every overload takes the vocabulary as a second argument, and one whose node
+// names a quantity or holds a sub-expression hands it on. The ones whose node
+// does neither (a constant, pi, an exact lookup) take it too and ignore it:
+// a one-argument `render_node` in this namespace is refused, so that a node
+// kind added later cannot render its operands in the declared symbols without
+// anything saying so -- see `detail::render_in_vocabulary`.
 
-/// A variable renders as its quantity's symbol -- backtick-quoted in Markdown.
-template <Dialect D, Described Q>
-[[nodiscard]] std::string render_node(VarNode<Q> const&)
+/// A variable renders as its quantity's symbol under @p vocabulary --
+/// backtick-quoted in Markdown. An overridden constant (`overlay.hpp`) renders
+/// here too, as the `VarNode` it derives from.
+template <Dialect D, Described Q, Vocabulary V>
+[[nodiscard]] std::string render_node(VarNode<Q> const&, V const& vocabulary)
 {
-    std::string symbol { Describe<Q>::symbol };
+    std::string quantitySymbol { symbol_of<Q>(vocabulary) };
     if constexpr (D == Dialect::Markdown)
-        return "`" + symbol + "`";
+        return "`" + quantitySymbol + "`";
     else
-        return symbol;
+        return quantitySymbol;
 }
 
 /// A constant renders as its number, followed by its unit's symbol when it has one.
@@ -462,58 +691,58 @@ template <Dialect D, Described Q>
 /// The number-and-unit spelling is `detail::number_with_unit`, shared with the
 /// lookup tables below so that a table's row states a number exactly as a
 /// constant holding the same number does -- see that helper.
-template <Dialect D, Unit U>
-[[nodiscard]] std::string render_node(ConstantNode<U> const& node)
+template <Dialect D, Unit U, Vocabulary V>
+[[nodiscard]] std::string render_node(ConstantNode<U> const& node, V const&)
 {
-    constexpr Unit unit = U;
-    return detail::number_with_unit(detail::number_text(node.number), view(unit.symbolText));
+    constexpr Unit declaredUnit = U;
+    return detail::number_with_unit(detail::number_text(node.number), view(declaredUnit.symbolText));
 }
 
 /// A unary node renders as its operator followed by its (parenthesised if
 /// necessary) operand.
-template <Dialect D, UnaryOperator Op, Node Operand>
-[[nodiscard]] std::string render_node(UnaryNode<Op, Operand> const& node)
+template <Dialect D, UnaryOperator Op, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(UnaryNode<Op, Operand> const& node, V const& vocabulary)
 {
     static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
-    return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary);
+    return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary, vocabulary);
 }
 
 /// A binary node renders infix, bracketing each side only where its precedence
 /// against the parent operator requires it -- see the file comment. Division
 /// in `Dialect::LaTeX` renders as `\frac{}{}` instead, which needs no brackets
 /// at all because the fraction bar already groups both sides.
-template <Dialect D, BinaryOperator Op, Node Left, Node Right>
-[[nodiscard]] std::string render_node(BinaryNode<Op, Left, Right> const& node)
+template <Dialect D, BinaryOperator Op, Node Left, Node Right, Vocabulary V>
+[[nodiscard]] std::string render_node(BinaryNode<Op, Left, Right> const& node, V const& vocabulary)
 {
-    constexpr detail::Precedence here = detail::PrecedenceOf<BinaryNode<Op, Left, Right>>::value;
+    constexpr detail::Precedence ownPrecedence = detail::PrecedenceOf<BinaryNode<Op, Left, Right>>::value;
     constexpr detail::Precedence rightContext = (Op == BinaryOperator::Subtract || Op == BinaryOperator::Divide)
-                                                    ? static_cast<detail::Precedence>(static_cast<int>(here) + 1)
-                                                    : here;
+                                                    ? static_cast<detail::Precedence>(static_cast<int>(ownPrecedence) + 1)
+                                                    : ownPrecedence;
 
     if constexpr (D == Dialect::LaTeX && Op == BinaryOperator::Divide)
         // \frac groups both sides itself, so neither operand needs a bracket.
-        return "\\frac{" + render<D>(node.lhs) + "}{" + render<D>(node.rhs) + "}";
+        return "\\frac{" + render<D>(node.lhs, vocabulary) + "}{" + render<D>(node.rhs, vocabulary) + "}";
     else
     {
-        std::string const lhs = detail::render_operand<D>(node.lhs, here);
-        std::string const rhs = detail::render_operand<D>(node.rhs, rightContext);
+        std::string const leftText = detail::render_operand<D>(node.lhs, ownPrecedence, vocabulary);
+        std::string const rightText = detail::render_operand<D>(node.rhs, rightContext, vocabulary);
 
         if constexpr (Op == BinaryOperator::Add)
-            return lhs + " + " + rhs;
+            return leftText + " + " + rightText;
         else if constexpr (Op == BinaryOperator::Subtract)
-            return lhs + " - " + rhs;
+            return leftText + " - " + rightText;
         else if constexpr (Op == BinaryOperator::Multiply)
-            return D == Dialect::LaTeX ? lhs + " \\cdot " + rhs : lhs + " * " + rhs;
+            return D == Dialect::LaTeX ? leftText + " \\cdot " + rightText : leftText + " * " + rightText;
         else
-            return lhs + " / " + rhs;
+            return leftText + " / " + rightText;
     }
 }
 
 /// A power renders as its base with the exponent superscript -- braced in LaTeX.
-template <Dialect D, int Exponent, Node Operand>
-[[nodiscard]] std::string render_node(PowerNode<Exponent, Operand> const& node)
+template <Dialect D, int Exponent, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(PowerNode<Exponent, Operand> const& node, V const& vocabulary)
 {
-    std::string const base = detail::render_operand<D>(node.operand, detail::Precedence::Atom);
+    std::string const base = detail::render_operand<D>(node.operand, detail::Precedence::Atom, vocabulary);
     if constexpr (D == Dialect::LaTeX)
         return base + "^{" + std::to_string(Exponent) + "}";
     else
@@ -522,10 +751,10 @@ template <Dialect D, int Exponent, Node Operand>
 
 /// A root renders as `\sqrt{}` (or `\sqrt[n]{}` for a degree other than 2) in
 /// LaTeX, and as `sqrt(...)` / `rootN(...)` in every other dialect.
-template <Dialect D, int Degree, Node Operand>
-[[nodiscard]] std::string render_node(RootNode<Degree, Operand> const& node)
+template <Dialect D, int Degree, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(RootNode<Degree, Operand> const& node, V const& vocabulary)
 {
-    std::string const inner = render<D>(node.operand);
+    std::string const inner = render<D>(node.operand, vocabulary);
     if constexpr (D == Dialect::LaTeX)
     {
         if constexpr (Degree == 2)
@@ -588,18 +817,19 @@ template <Dialect D, int Degree, Node Operand>
 /// *this* number came out as it did, and the tie rule can be the entire
 /// reason a value is 13 rather than 12. Leaving the mode out of the formula
 /// text is a decision; leaving it out of the trace would be a defect.
-template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
-[[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node)
+template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node, V const& vocabulary)
 {
-    std::string const inner = render<D>(node.operand);
-    constexpr Unit unit = U;
-    std::string const unitSymbol { view(unit.symbolText) };
+    std::string const inner = render<D>(node.operand, vocabulary);
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
     std::string const placesText = std::to_string(Places.value);
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + "\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}("
+               + inner + ")";
     else
-        return "round(" + inner + ", to " + placesText + " dp of " + unitSymbol + ")";
+        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
 }
 
 /// A significant-digits rounding node, spelled the same way as `RoundNode`
@@ -607,18 +837,19 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Opera
 /// overload for why no precedence override is needed, why `RoundingMode` is
 /// left out, and why the granularity is a comma-separated second argument
 /// rather than a trailing suffix or a `[...]` prefix.
-template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
-[[nodiscard]] std::string render_node(RoundSignificantNode<U, Digits, Mode, Operand> const& node)
+template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(RoundSignificantNode<U, Digits, Mode, Operand> const& node, V const& vocabulary)
 {
-    std::string const inner = render<D>(node.operand);
-    constexpr Unit unit = U;
-    std::string const unitSymbol { view(unit.symbolText) };
+    std::string const inner = render<D>(node.operand, vocabulary);
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
     std::string const digitsText = std::to_string(Digits.value);
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf},\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+        return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf}"
+               + detail::unit_clause(",\\,", detail::latex_unit(unitSymbol)) + "}(" + inner + ")";
     else
-        return "round(" + inner + ", to " + digitsText + " sf of " + unitSymbol + ")";
+        return "round(" + inner + ", to " + digitsText + " sf" + detail::unit_clause(" of ", unitSymbol) + ")";
 }
 
 /// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,
@@ -636,22 +867,22 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
 /// states. `render_trace` (`trace_render.hpp`) writes it as a bracketed
 /// clause on the step itself; `Documentation` has no field for it and
 /// `collect()` records none, so `document()` does not carry it either.
-template <Dialect D, Unit U, detail::FixedString Justification, Node Operand>
-[[nodiscard]] std::string render_node(NumericValueNode<U, Justification, Operand> const& node)
+template <Dialect D, Unit U, detail::FixedString Justification, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(NumericValueNode<U, Justification, Operand> const& node, V const& vocabulary)
 {
-    std::string const inner = render<D>(node.operand);
-    constexpr Unit unit = U;
-    std::string const unitSymbol { view(unit.symbolText) };
+    std::string const inner = render<D>(node.operand, vocabulary);
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\{" + inner + "/\\mathrm{" + unitSymbol + "}\\}";
+        return "\\{" + inner + detail::unit_clause("/", detail::latex_unit(unitSymbol)) + "\\}";
     else
-        return "numeric(" + inner + ", in " + unitSymbol + ")";
+        return "numeric(" + inner + detail::unit_clause(", in ", unitSymbol) + ")";
 }
 
 /// Pi renders as `\pi` in LaTeX, and as `pi` in every other dialect.
-template <Dialect D>
-[[nodiscard]] inline std::string render_node(PiNode const&)
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(PiNode const&, V const&)
 {
     if constexpr (D == Dialect::LaTeX)
         return "\\pi";
@@ -661,10 +892,20 @@ template <Dialect D>
 
 /// A citation is documentation, not arithmetic: it does not appear in the
 /// rendered formula. `document()` is what surfaces it.
-template <Dialect D, Node Inner>
-[[nodiscard]] std::string render_node(DocumentedNode<Inner> const& node)
+template <Dialect D, Node Inner, Vocabulary V>
+[[nodiscard]] std::string render_node(DocumentedNode<Inner> const& node, V const& vocabulary)
 {
-    return render<D>(node.inner);
+    return render<D>(node.inner, vocabulary);
+}
+
+/// A variant's formula as a jurisdiction replaced it renders as the
+/// replacement: the formula is what runs. That it is a jurisdiction's is the
+/// trace's to say, and the citation `document()`'s -- as `DocumentedNode`'s
+/// citation is.
+template <Dialect D, Node Expr, Vocabulary V>
+[[nodiscard]] std::string render_node(ReplacedVariantNode<Expr> const& node, V const& vocabulary)
+{
+    return render<D>(node.replacement(), vocabulary);
 }
 
 // ------------------------------------------------------- phase 10: lookups
@@ -679,7 +920,7 @@ template <Dialect D, Node Inner>
 // `lookup.hpp` calls out as deliberate: a banded and an exact table *select* a
 // number their author wrote down, while an interpolating table *computes* one
 // that appears in no row of it. Which of band or key did the selecting is
-// visible in every row already (`10 to under 20 mm` against `key 7`), so
+// visible in every row already (`10 to under 20 mm` against `key Cylinder`), so
 // spending the head name on that instead would name the difference a reader
 // can see and leave the one they cannot.
 //
@@ -709,21 +950,21 @@ template <Dialect D, Node Inner>
 /// then what that interval gives. That the structure is compile-time and the
 /// contents are not is a fact about how a formula is *built* (`lookup.hpp`),
 /// and a reader of the formula's text has no use for it.
-template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
-[[nodiscard]] std::string render_node(BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node)
+template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node, V const& vocabulary)
 {
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
-    std::string rows;
-    for (std::size_t index = 0; index < Bands.size(); ++index)
-        rows += detail::lookup_separator<D>()
-                + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    detail::band_text(Bands[index], view(keyUnit.symbolText)),
-                    detail::number_with_unit(detail::number_text(node.corrections[index]),
-                                             view(resultUnit.symbolText))));
+    std::string rowText;
+    for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
+        rowText +=
+            detail::lookup_separator<D>()
+            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                detail::band_text(Bands[bandIndex], view(keyUnit.symbolText)),
+                detail::number_with_unit(detail::number_text(node.corrections[bandIndex]), view(resultUnit.symbolText))));
 
-    return detail::lookup_call<D>("lookup", render<D>(node.operand), rows);
+    return detail::lookup_call<D>("lookup", render<D>(node.operand, vocabulary), rowText);
 }
 
 /// An exact lookup renders as `lookup(<selected key>, <key> gives
@@ -735,29 +976,29 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
 /// sub-expression -- an exact lookup has no operand at all (`lookup.hpp`) --
 /// but that is a fact about where the value comes from, not about what the
 /// text says, and the text says the same thing either way. It does change one
-/// thing, and only in LaTeX: `key 7` is words, not mathematics, so it is set
+/// thing, and only in LaTeX: `key Cylinder` is words, not mathematics, so it is set
 /// as text like the rows are, where the other two kinds' operands stay in math
 /// mode because they really are expressions.
 ///
-/// **A key renders as its underlying value, not its name.** See
-/// `detail::key_text` for why no library can do better without help from the
-/// author's own enumeration, and for what it costs a reader.
-template <Dialect D, KeyTable Keys, Unit ResultUnit>
-[[nodiscard]] std::string render_node(ExactLookupNode<Keys, ResultUnit> const& node)
+/// **A key renders as its name** -- `key Cylinder`, or the author's own
+/// spelling of it through `EnumeratorName` (`enumerator.hpp`) -- and as its
+/// underlying value only when it names no row of the table. See
+/// `detail::key_text`.
+template <Dialect D, KeyTable Keys, Unit ResultUnit, Vocabulary V>
+[[nodiscard]] std::string render_node(ExactLookupNode<Keys, ResultUnit> const& node, V const&)
 {
     constexpr Unit resultUnit = ResultUnit;
 
-    std::string rows;
-    for (std::size_t index = 0; index < Keys.size(); ++index)
-        rows += detail::lookup_separator<D>()
-                + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    detail::key_text(Keys[index]),
-                    detail::number_with_unit(detail::number_text(node.corrections[index]),
-                                             view(resultUnit.symbolText))));
+    std::string rowText;
+    for (std::size_t keyIndex = 0; keyIndex < Keys.size(); ++keyIndex)
+        rowText +=
+            detail::lookup_separator<D>()
+            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                detail::key_text<D, Keys>(Keys[keyIndex]),
+                detail::number_with_unit(detail::number_text(node.corrections[keyIndex]), view(resultUnit.symbolText))));
 
-    return detail::lookup_call<D>("lookup",
-                                 detail::lookup_words_in_dialect<D>(detail::key_text(node.key)),
-                                 rows);
+    return detail::lookup_call<D>(
+        "lookup", detail::lookup_words_in_dialect<D>(detail::key_text<D, Keys>(node.key)), rowText);
 }
 
 /// An interpolating lookup renders as `interpolate(<operand>, at <key> gives
@@ -770,24 +1011,25 @@ template <Dialect D, KeyTable Keys, Unit ResultUnit>
 /// spelled these rows as intervals would be claiming the table said something
 /// it does not -- and, at the last row, would exclude the one key the table
 /// states most directly (`lookup.hpp`).
-template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
-[[nodiscard]] std::string render_node(InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node)
+template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node,
+                                      V const& vocabulary)
 {
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
-    std::string rows;
-    for (std::size_t index = 0; index < Points.size(); ++index)
-        rows += detail::lookup_separator<D>()
-                + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                    "at "
-                        + detail::number_with_unit(
-                            detail::declared_number_text(Points[index].numerator, Points[index].denominator),
-                            view(keyUnit.symbolText)),
-                    detail::number_with_unit(detail::number_text(node.corrections[index]),
-                                             view(resultUnit.symbolText))));
+    std::string rowText;
+    for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
+        rowText +=
+            detail::lookup_separator<D>()
+            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                "at "
+                    + detail::number_with_unit(
+                        detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator),
+                        view(keyUnit.symbolText)),
+                detail::number_with_unit(detail::number_text(node.corrections[pointIndex]), view(resultUnit.symbolText))));
 
-    return detail::lookup_call<D>("interpolate", render<D>(node.operand), rows);
+    return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rowText);
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
@@ -801,15 +1043,15 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
 /// `<=`, `>=` and `!=` get the mathematical spelling in LaTeX (`\leq`,
 /// `\geq`, `\neq`) rather than the code-like tokens the other dialects use,
 /// the same way `BinaryNode`'s `*` becomes `\cdot` there.
-template <Dialect D, Comparison Op, Node Left, Node Right>
-[[nodiscard]] std::string render_node(PredicateNode<Op, Left, Right> const& node)
+template <Dialect D, Comparison Op, Node Left, Node Right, Vocabulary V>
+[[nodiscard]] std::string render_node(PredicateNode<Op, Left, Right> const& node, V const& vocabulary)
 {
     constexpr detail::Precedence operandContext =
         static_cast<detail::Precedence>(static_cast<int>(detail::PrecedenceOf<PredicateNode<Op, Left, Right>>::value) + 1);
-    std::string const lhs = detail::render_operand<D>(node.lhs, operandContext);
-    std::string const rhs = detail::render_operand<D>(node.rhs, operandContext);
+    std::string const leftText = detail::render_operand<D>(node.lhs, operandContext, vocabulary);
+    std::string const rightText = detail::render_operand<D>(node.rhs, operandContext, vocabulary);
 
-    char const* const symbol = [] {
+    char const* const comparisonToken = [] {
         if constexpr (Op == Comparison::Less)
             return "<";
         else if constexpr (Op == Comparison::LessOrEqual)
@@ -824,7 +1066,7 @@ template <Dialect D, Comparison Op, Node Left, Node Right>
             return D == Dialect::LaTeX ? "\\neq" : "!=";
     }();
 
-    return lhs + " " + symbol + " " + rhs;
+    return leftText + " " + comparisonToken + " " + rightText;
 }
 
 /// A constraint renders as its rule alone -- `require <lhs> <comparison>
@@ -868,10 +1110,10 @@ template <Dialect D, Comparison Op, Node Left, Node Right>
 /// place a verdict is a fact about what actually happened, not a rule stated
 /// in the abstract. Leaving it out of this text is a decision; leaving it
 /// out of the trace would be a defect.
-template <Dialect D, Predicate P>
-[[nodiscard]] std::string render_node(Constraint<P> const& node)
+template <Dialect D, Predicate P, Vocabulary V>
+[[nodiscard]] std::string render_node(Constraint<P> const& node, V const& vocabulary)
 {
-    std::string const predicateText = render<D>(node.predicate);
+    std::string const predicateText = render<D>(node.predicate, vocabulary);
     if constexpr (D == Dialect::LaTeX)
         return "\\text{require } " + predicateText;
     else
@@ -900,14 +1142,14 @@ template <Dialect D, Predicate P>
 /// LaTeX needs no bracket in either position: its `\begin{cases}` block is a
 /// visibly distinct construct nested inside a cell, not text a reader could
 /// mistake for a continuation of the outer one.
-template <Dialect D, Predicate P, Node Then, Node Else>
-[[nodiscard]] std::string render_node(WhenNode<P, Then, Else> const& node)
+template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
+[[nodiscard]] std::string render_node(WhenNode<P, Then, Else> const& node, V const& vocabulary)
 {
-    std::string const predicateText = render<D>(node.predicate);
+    std::string const predicateText = render<D>(node.predicate, vocabulary);
     std::string const thenText = D == Dialect::LaTeX
-                                     ? render<D>(node.thenBranch)
-                                     : detail::render_operand<D>(node.thenBranch, detail::Precedence::Additive);
-    std::string const elseText = render<D>(node.elseBranch);
+                                     ? render<D>(node.thenBranch, vocabulary)
+                                     : detail::render_operand<D>(node.thenBranch, detail::Precedence::Additive, vocabulary);
+    std::string const elseText = render<D>(node.elseBranch, vocabulary);
 
     if constexpr (D == Dialect::LaTeX)
         return "\\begin{cases} " + thenText + " & \\text{if } " + predicateText + " \\\\ " + elseText
@@ -916,11 +1158,91 @@ template <Dialect D, Predicate P, Node Then, Node Else>
         return "if " + predicateText + " then " + thenText + " else " + elseText;
 }
 
+namespace detail
+{
+    /// Renders @p node through the `render_node` it has, and refuses a node of
+    /// this library's whose `render_node` would not take the vocabulary.
+    ///
+    /// **This library's nodes** all render through the two-argument form,
+    /// `render_node(node, vocabulary)`. Which overloads are this library's is
+    /// answered by *qualified* lookup, `::formula::render_node`: that finds
+    /// only the overloads declared in `formula` before this point, which is
+    /// every one this library defines, and never a consumer's -- a consumer's
+    /// lives in their own namespace, and is found only by the unqualified,
+    /// argument-dependent calls. A one-argument overload of this library's is
+    /// refused outright: it would render its node's operands in the declared
+    /// symbols under every vocabulary, the defect the phase-11 review found
+    /// waiting for the join with derived and replaced variants, and one no
+    /// test that lacks such a node would see.
+    ///
+    /// **A consumer's nodes** keep the extension point every earlier phase
+    /// published, `template <Dialect D> std::string render_node(TheirNode
+    /// const&)`. Passing the vocabulary as a second argument would leave every
+    /// such overload unreachable -- measured by the phase-11 spike on clang++
+    /// 20.1.8 ("no matching function for call to 'render_node'"), and again on
+    /// cl 19.51 by deleting the fallback below (C2672). So, in order:
+    ///
+    ///  1. a two-argument overload that is not this library's -- the consumer
+    ///     opted in -- is called with the vocabulary;
+    ///  2. otherwise a one-argument overload, which by then can only be the
+    ///     consumer's, is called without it. `sink.hpp`'s `detail::dispatch`
+    ///     makes the same two-step choice for evaluation;
+    ///  3. otherwise this library's two-argument overload is called.
+    ///
+    /// Step 2 comes before step 3 for a consumer's node that **derives from
+    /// one of this library's**, `struct Labelled: formula::VarNode<Q>`: it
+    /// renders through its own one-argument overload, as it did before
+    /// vocabularies existed, rather than as the base it derives from. That
+    /// node's own text is then in the declared symbols; to receive the
+    /// vocabulary it defines the two-argument form **instead**. Were it to
+    /// define both, the one-argument form would win, because its two-argument
+    /// overload cannot be told apart from its base's by lookup alone.
+    ///
+    /// **What the fallback cannot do** is carry the vocabulary into a
+    /// one-argument overload: whatever such a node renders of its own, and any
+    /// operand it renders with `render<D>(operand)`, is written in the default
+    /// vocabulary. A consumer who wants their node's operands renamed writes
+    /// `template <Dialect D, Vocabulary V> std::string render_node(TheirNode
+    /// const&, V const& vocabulary)`, and hands the vocabulary on with
+    /// `render<D>(operand, vocabulary)`.
+    template <Dialect D, typename N, Vocabulary V>
+    [[nodiscard]] std::string render_in_vocabulary(N const& node, V const& vocabulary)
+    {
+        constexpr bool libraryTakesVocabulary = requires { ::formula::render_node<D>(node, vocabulary); };
+        constexpr bool libraryIgnoresVocabulary = requires { ::formula::render_node<D>(node); };
+        static_assert(!libraryIgnoresVocabulary,
+                      "formula: a render_node of this library takes no vocabulary, so it would render this node "
+                      "in the declared symbols under every vocabulary. Give it the second parameter, "
+                      "Vocabulary V const& vocabulary, and hand it on to every operand it renders");
+
+        if constexpr (!libraryTakesVocabulary && requires { render_node<D>(node, vocabulary); })
+            return render_node<D>(node, vocabulary);
+        else if constexpr (requires { render_node<D>(node); })
+            return render_node<D>(node);
+        else
+            return render_node<D>(node, vocabulary);
+    }
+} // namespace detail
+
+/// Renders @p node in dialect @p D, writing symbols as @p vocabulary says.
+template <Dialect D, Node N, Vocabulary V>
+[[nodiscard]] std::string render(N const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders @p node as plain text, writing symbols as @p vocabulary says.
+template <Node N, Vocabulary V>
+[[nodiscard]] std::string render(N const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
 /// Renders @p node in dialect @p D.
 template <Dialect D, Node N>
 [[nodiscard]] std::string render(N const& node)
 {
-    return render_node<D>(node);
+    return render<D>(node, DefaultVocabulary {});
 }
 
 /// Renders @p node as plain text.
@@ -930,12 +1252,28 @@ template <Node N>
     return render<Dialect::Plain>(node);
 }
 
+/// Renders @p node in dialect @p D, writing symbols as @p vocabulary says.
+/// See the forward declaration above for why this overload -- for
+/// `Predicate`, not `Node` -- exists separately.
+template <Dialect D, Predicate P, Vocabulary V>
+[[nodiscard]] std::string render(P const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders @p node as plain text, writing symbols as @p vocabulary says.
+template <Predicate P, Vocabulary V>
+[[nodiscard]] std::string render(P const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
 /// Renders @p node in dialect @p D. See the forward declaration above for why
 /// this overload -- for `Predicate`, not `Node` -- exists separately.
 template <Dialect D, Predicate P>
 [[nodiscard]] std::string render(P const& node)
 {
-    return render_node<D>(node);
+    return render<D>(node, DefaultVocabulary {});
 }
 
 /// Renders @p node as plain text.
@@ -945,13 +1283,29 @@ template <Predicate P>
     return render<Dialect::Plain>(node);
 }
 
+/// Renders @p node in dialect @p D, writing symbols as @p vocabulary says.
+/// See the forward declaration above for why this overload -- for
+/// `Constraint`, not `Node` or `Predicate` -- exists separately.
+template <Dialect D, Predicate P, Vocabulary V>
+[[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders @p node as plain text, writing symbols as @p vocabulary says.
+template <Predicate P, Vocabulary V>
+[[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
 /// Renders @p node in dialect @p D. See the forward declaration above for why
 /// this overload -- for `Constraint`, not `Node` or `Predicate` -- exists
 /// separately.
 template <Dialect D, Predicate P>
 [[nodiscard]] std::string render(Constraint<P> const& node)
 {
-    return render_node<D>(node);
+    return render<D>(node, DefaultVocabulary {});
 }
 
 /// Renders @p node as plain text.

@@ -66,7 +66,10 @@ class Measured
     constexpr Measured() noexcept = default;
 
     /// A present value, in `Q`'s declared unit.
-    constexpr explicit Measured(Rational value) noexcept: _value { value } {}
+    constexpr explicit Measured(Rational measuredValue) noexcept:
+        _value { measuredValue }
+    {
+    }
 
     /// Not measured -- equivalent to the default constructor, but named for
     /// readability at the call site.
@@ -180,11 +183,11 @@ template <Described R, Described Q>
     if (value.is_absent())
         return Measured<R> {};
 
-    std::expected<Rational, ArithmeticError> const converted =
+    std::expected<Rational, ArithmeticError> const inTargetUnit =
         checked_convert(value.value(), Describe<Q>::unit, Describe<R>::unit);
-    if (!converted)
-        return std::unexpected { converted.error() };
-    return Measured<R> { *converted };
+    if (!inTargetUnit)
+        return std::unexpected { inTargetUnit.error() };
+    return Measured<R> { *inTargetUnit };
 }
 
 /// Checks a measurement against its quantity's unit's declared bounds.

@@ -95,9 +95,9 @@ template <Unit U>
 ///
 /// There is deliberately no overload that guesses a unit for a bare number.
 /// Guessing wrong is exactly the failure the dimension layer exists to prevent.
-[[nodiscard]] constexpr ConstantNode<unit::One> number(Rational value) noexcept
+[[nodiscard]] constexpr ConstantNode<unit::One> number(Rational coefficient) noexcept
 {
-    return constant<unit::One>(value);
+    return constant<unit::One>(coefficient);
 }
 
 /// Which unary operation a `UnaryNode` performs.
@@ -175,8 +175,8 @@ namespace detail
 template <UnaryOperator Op, Node Operand>
 struct UnaryNode: NodeBase
 {
-    /// The child expression the operator is applied to.
-    Operand operand {};
+    /// The child expression the operator is applied to. No `{}` initialiser, deliberately: see `Corrections`.
+    Operand operand;
 
     /// Which operator this is.
     static constexpr UnaryOperator op = Op;
@@ -190,10 +190,10 @@ struct BinaryNode: NodeBase
 {
     static_assert(detail::AdditiveDimensionsAgree<Op, Left, Right>::value);
 
-    /// The left-hand child expression.
-    Left lhs {};
+    /// The left-hand child expression. No `{}` initialiser, deliberately: see `Corrections` (`lookup.hpp`).
+    Left lhs;
     /// The right-hand child expression.
-    Right rhs {};
+    Right rhs;
 
     /// Which operator this is.
     static constexpr BinaryOperator op = Op;

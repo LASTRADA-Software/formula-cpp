@@ -18,8 +18,11 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/method.hpp>
+#include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -51,6 +54,24 @@ enum class StepKind : std::uint8_t
     Power,
     Root,
     Documented,
+    /// A method selecting one of its variants. Carries the tag's name and
+    /// the discriminator it matched, because "a variant was selected" is
+    /// true of every outcome and therefore answers nothing.
+    ///
+    /// The discriminator is the tag itself: `evaluate_method<Cylinder>`
+    /// selects the variant declared `variant<Cylinder>(...)` and no other, so
+    /// the step records the tag's name (`Step::variantTag`) together with the
+    /// variant's position among its siblings (`Step::variantIndex`,
+    /// `Step::variantCount`). Its one operand is the selected variant,
+    /// rounded by the method's rule.
+    ///
+    /// Recorded by `RecordingSink::variant_produced`, not through
+    /// `detail::StepKindOf`: a method is not a `Node`, so it has no entry in
+    /// that registry and needs none. Checked on GCC under `-Wshadow`, the way
+    /// `PiConstant` above had to be: nothing in namespace `formula` is spelt
+    /// `VariantSelected` -- the plain data the step is built from is
+    /// `VariantSelection` (`sink.hpp`) -- and that was compiled, not assumed.
+    VariantSelected,
     /// A `RoundNode`: rounded to a number of decimal places. Checked against
     /// `formula::round` (`rounding.hpp`) the same way `PiConstant` above was
     /// checked against `formula::Pi` -- different case, so it does not
@@ -88,6 +109,56 @@ enum class StepKind : std::uint8_t
     /// and the answer is the value those rows imply at that point -- a number
     /// that appears in no row of the table.
     InterpolatingLookup,
+    /// A method's rounding rule, applied to the variant it selected
+    /// (`RoundingRuleNode`, `method.hpp`). Rounds exactly as `Round` does,
+    /// and carries what `Round` cannot: where the rule came from --
+    /// `Step::roundingProvenance`, and for an overlay's rule what it cited,
+    /// in `Step::citation`. A step naming only the granularity is true
+    /// whether the method or a jurisdiction chose it, and so answers only
+    /// half of what spec section 9.1 asks.
+    ///
+    /// Checked on GCC under `-Wshadow`, the way `PiConstant` above had to
+    /// be: nothing in namespace `formula` is spelt `RoundingRuleApplied` --
+    /// the rule is `RoundingRule` and its node `RoundingRuleNode`.
+    RoundingRuleApplied,
+    /// A quantity an overlay fixed (`OverriddenConstantNode`, `overlay.hpp`):
+    /// the quantity's symbol and unit, the overlay's value, and what the
+    /// overlay cited, in `Step::citation`. Not a `Variable` step, which
+    /// reads as a number the specimen supplied.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node type carries the `Node`
+    /// suffix, so nothing in namespace `formula` is spelt
+    /// `OverriddenConstant`.
+    OverriddenConstant,
+    /// A quantity a jurisdiction defined by an expression
+    /// (`DerivedQuantityNode`, `overlay.hpp`): the quantity's symbol and unit,
+    /// the value its definition produced, the definition's derivation as its
+    /// operand, and what the overlay cited, in `Step::citation`.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node type carries the `Node`
+    /// suffix and the operation is `QuantityDerivation`, so nothing in
+    /// namespace `formula` is spelt `DerivedQuantity`.
+    DerivedQuantity,
+    /// A variant's formula a jurisdiction replaced wholesale
+    /// (`ReplacedVariantNode`, `overlay.hpp`): the replacement's derivation as
+    /// its operand, and what the overlay cited, in `Step::citation`.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `ReplacedVariantNode` and
+    /// the operation `VariantReplacement`, so nothing in namespace `formula`
+    /// is spelt `ReplacedVariant`.
+    ReplacedVariant,
+    /// A method's constraints, checked by `check_method` (`method.hpp`): whose
+    /// they are, in `Step::constraintProvenance` and, for an overlay's, what
+    /// it cited, in `Step::citation`; its operands are the constraints'
+    /// verdicts, in the order `check_method` returns them. Recorded even for
+    /// a method with no constraints, which then has no operands -- so a trace
+    /// of a method whose overlay removed every check still says so.
+    ///
+    /// Recorded by `RecordingSink::acceptance_produced`, not through
+    /// `detail::StepKindOf`: a method is not a `Node`. Checked on GCC under
+    /// `-Wshadow`: nothing in namespace `formula` is spelt
+    /// `AcceptanceChecked`.
+    AcceptanceChecked,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -228,12 +299,32 @@ struct Step
     /// Which kind of node produced this step.
     StepKind kind {};
 
-    /// For `Variable`: how the quantity is written. Points into the static
-    /// storage of the quantity's `Describe` specialisation, so it outlives any
-    /// trace -- the same guarantee `document.hpp`'s `SymbolEntry` relies on.
+    /// For `Variable`, `OverriddenConstant` and `DerivedQuantity`: how the
+    /// quantity is written, under the vocabulary the `RecordingSink` was given
+    /// (`vocabulary.hpp`).
+    /// Points into static storage -- the quantity's `Describe` specialisation,
+    /// or the string literal `renames` was given -- so it outlives any trace,
+    /// the same guarantee `document.hpp`'s `SymbolEntry` relies on.
+    ///
+    /// Written here, while the formula is **evaluated**, and only read by
+    /// `render_trace`: a trace recorded in one vocabulary cannot be rendered
+    /// in another afterwards. These three kinds are the only steps that name
+    /// a quantity; every other step refers to its operands by position, so a
+    /// rounding, lookup, constraint, variant or replacement step reaches the
+    /// vocabulary through the steps beneath it.
     std::string_view symbol {};
 
-    /// For `Documented`: what the wrapped formula cites.
+    /// For `Documented`: what the wrapped formula cites. For
+    /// `OverriddenConstant`, `DerivedQuantity`, `ReplacedVariant` and `RoundingRuleApplied`:
+    /// what the overlay that fixed the value, defined the quantity, replaced the formula or set
+    /// the rule cited, empty when it cited nothing --
+    /// and always empty for a method's own rule. For `VariantSelected`: what
+    /// the overlay that pinned the method to that variant cited, when one did
+    /// (`variantPinned`); a prune's citation is `variantPrunedBy`. For `AcceptanceChecked`, and
+    /// for a `Constraint` it holds: what the overlay that replaced the
+    /// method's constraints cited, empty for the method's own. A
+    /// `Constraint`'s own citation is `render()`'s and `document()`'s to show,
+    /// and is not copied here.
     Citation citation {};
 
     /// For `NumericValue`: why the dimension was dropped -- the compile-time
@@ -246,8 +337,8 @@ struct Step
     /// For `Power`: the exponent. For `Root`: the degree. Zero otherwise.
     int exponent {};
 
-    /// For `Round`: the decimal places kept. For `RoundSignificant`: the
-    /// significant digits kept. Zero otherwise.
+    /// For `Round` and `RoundingRuleApplied`: the decimal places kept. For
+    /// `RoundSignificant`: the significant digits kept. Zero otherwise.
     ///
     /// A field of its own rather than a third and fourth meaning piled onto
     /// `exponent` above, which already carries two (`Power`'s exponent,
@@ -290,8 +381,8 @@ struct Step
     /// exact same exception for the same reason.
     Comparison comparison {};
 
-    /// For `Round` and `RoundSignificant`: the tie-breaking rule the node
-    /// rounded under.
+    /// For `Round`, `RoundSignificant` and `RoundingRuleApplied`: the
+    /// tie-breaking rule the node rounded under.
     ///
     /// Two rounding nodes differing only in their mode produce different
     /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
@@ -303,15 +394,39 @@ struct Step
     ///
     /// As with `comparison` above, the zero value is a real mode
     /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
-    /// sentinel: meaningful only for the two rounding kinds.
+    /// sentinel: meaningful only for the three rounding kinds.
     RoundingMode mode {};
+
+    /// For `RoundingRuleApplied`: where the rule came from -- the method's
+    /// own, or a jurisdiction's overlay. The other half of what spec section
+    /// 9.1 asks of a rounding step; `granularity`, `unit` and `mode` are the
+    /// first.
+    ///
+    /// As with `mode` above, the zero value is a real provenance
+    /// (`RoundingProvenance::MethodDefault`) and not a "not applicable"
+    /// sentinel: meaningful only for `RoundingRuleApplied`.
+    RoundingProvenance roundingProvenance {};
+
+    /// For `AcceptanceChecked`, and for each `Constraint` step it holds as an
+    /// operand: whose constraints they were -- the method's own, or a
+    /// jurisdiction's overlay. Spec section 9.1 asks the trace for every
+    /// constraint verdict, and section 16.7 lets a jurisdiction supply its
+    /// own acceptance logic; a verdict that does not say which is true of
+    /// both and answers neither.
+    ///
+    /// Empty for a constraint checked on its own, by `check` or `check_all`
+    /// (`constraint.hpp`), where there is no method to be anyone's -- which
+    /// is why this is optional where `roundingProvenance` is not: a
+    /// `RoundingRuleApplied` step always has a method behind it.
+    std::optional<ConstraintProvenance> constraintProvenance {};
 
     /// The dimension of what this step produced.
     Dimension dimension {};
 
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
-    /// for a variable, the constant's own unit for a constant, the node's own
-    /// unit for a `Round` or `RoundSignificant` step, and the coherent SI unit
+    /// for a variable or an overridden constant, the constant's own unit for
+    /// a constant, the node's own unit for a `Round`, `RoundSignificant` or
+    /// `RoundingRuleApplied` step, and the coherent SI unit
     /// of `dimension` for anything else computed, which has no declared unit
     /// of its own.
     ///
@@ -469,7 +584,8 @@ struct Step
     std::optional<LookupRange> coveredRange {};
 
     /// For `ExactLookup`: the key this lookup selected with, as the
-    /// underlying value of the author's enumerator.
+    /// underlying value of the author's enumerator. Its name, when it has
+    /// one, is `lookupKeyName` below.
     ///
     /// Recorded here because there is nowhere else it could survive. An
     /// exact lookup has **no operand**, so unlike a banded or an
@@ -477,11 +593,9 @@ struct Step
     /// sitting in the operand's own step -- a key that names no row would
     /// otherwise appear in no step of the derivation at all.
     ///
-    /// The underlying **value**, not the enumerator's name: a C++ enumerator
-    /// has no name at run time, so the value is the only part of it that
-    /// survives to a trace. The cost is real and is stated in full by
-    /// `detail::key_text` (`render.hpp`), which shows the same number for the
-    /// same reason.
+    /// The value is recorded even when the key has a name, because it is the
+    /// only thing a key that names no row still has: a miss is exactly a key
+    /// the table does not declare, and `lookupKeyName` is empty for it.
     ///
     /// Stored as the bit pattern with `lookupKeyIsSigned` beside it rather
     /// than as one signed integer, because an enumeration's underlying type
@@ -492,6 +606,92 @@ struct Step
     /// Whether `lookupKey` above is to be read as a signed value. Meaningful
     /// only when `kind` is `ExactLookup`, exactly as `lookupKey` itself is.
     bool lookupKeyIsSigned {};
+
+    /// For `ExactLookup`: the name of the key this lookup selected with --
+    /// `Cylinder`, or the author's own spelling of it through
+    /// `EnumeratorName` (`enumerator.hpp`) -- and empty when the key names no
+    /// row of the table, or when the row it names has a key that is itself no
+    /// enumerator.
+    ///
+    /// **Empty does not by itself mean a miss.** A table may declare a row
+    /// under a value that names no enumerator -- `static_cast<Shape>(9)` is a
+    /// perfectly good key -- and a hit on that row records no name, because
+    /// there is none to record. `lookupFailure` is what says whether the
+    /// lookup missed.
+    ///
+    /// **Carried here because nothing downstream can compute it.** A `Step`
+    /// has erased the key's type, so `trace_render.hpp` cannot ask the
+    /// author's enumeration for a name the way `render()` does; the name has
+    /// to be captured while the type is still known, at record time. It is
+    /// matched against the table's declared keys by `detail::key_name`
+    /// (`lookup.hpp`), using the same predicate the evaluator selects with,
+    /// so it is always the name of the row the lookup actually selected. A
+    /// key outside the table has no name here even if it is a real
+    /// enumerator of the author's type.
+    ///
+    /// **A view, and safe to keep for the life of the trace and beyond.**
+    /// Every name `enumerator_name` produces has static storage duration: a
+    /// reflected name points into the compiler's function-signature literal,
+    /// and a customized one is refused at compile time unless it passes the
+    /// three gates described on `EnumeratorName` (`enumerator.hpp`) -- the
+    /// library's own check, in its own words, on cl, clang-cl and clang; the
+    /// compiler's `consteval` result rule, in the compiler's words, which is
+    /// where g++ 13 refuses a view of a dead local buffer. So a trace
+    /// outliving the formula, the table and the environment that produced it
+    /// still holds a valid name. The one limit is the code image itself: a
+    /// name recorded by a shared library or plugin points into that image's
+    /// read-only data, and a trace kept after it is unloaded holds a dangling
+    /// view.
+    std::string_view lookupKeyName {};
+
+    /// For `VariantSelected`: the selected variant's tag, as `tag_name`
+    /// (`tag.hpp`) spells it -- `Cylinder`, or the author's own spelling of
+    /// it through `TagName`. Empty for every other kind, and for a selection
+    /// whose tag the compiler's signature did not let the library read, in
+    /// which case `variantIndex` is what still identifies the variant.
+    ///
+    /// **A view, and safe to keep for the life of the trace and beyond,** for
+    /// the reason `lookupKeyName` above gives, with one difference in where
+    /// the characters live. A reflected tag name is **not** a substring of
+    /// the compiler's signature literal -- stripping a qualifier from inside
+    /// a template argument list leaves nothing contiguous to point at -- so
+    /// it is written into a `static constexpr` array of its own
+    /// (`detail::TypeNameStorage`, `detail/type_name.hpp`), which has static
+    /// storage duration exactly as the literal does. A customized one passes
+    /// the gates described on `TagName`. The same limit applies: a name
+    /// recorded by a shared library or plugin dangles once that image is
+    /// unloaded.
+    std::string_view variantTag {};
+
+    /// For `VariantSelected`: the selected variant's ZERO-BASED position in
+    /// the method's `variants(...)` **as published** -- the order `Variants`
+    /// makes part of its contract so that a reader can count back to the
+    /// declaration. An overlay that pinned or pruned does not move it: the
+    /// published `variants(...)` is the only one in the source to count in
+    /// (`Variants::published`).
+    /// `trace_render.hpp` prints it one-based, as an ordinal. Zero otherwise,
+    /// which is a real position, so -- as with `comparison` -- no reader may
+    /// use it without checking `kind` first.
+    std::size_t variantIndex {};
+
+    /// For `VariantSelected`: how many variants the method declares as
+    /// published, however many an overlay left. Zero
+    /// otherwise -- never a real count, since a method with no variants is
+    /// refused where it is declared.
+    std::size_t variantCount {};
+
+    /// For `VariantSelected`: how many variants overlays pruned before it
+    /// was selected (`VariantSelection::prunedCount`, `sink.hpp`). Zero
+    /// otherwise, and when none did.
+    std::size_t variantPrunedCount {};
+
+    /// For `VariantSelected`: what the last overlay that pruned cited. Empty
+    /// otherwise.
+    Citation variantPrunedBy {};
+
+    /// For `VariantSelected`: whether an overlay pinned the method to the
+    /// selected variant; what it cited is in `citation`. `false` otherwise.
+    bool variantPinned {};
 
     /// Indices of the steps this one consumed, in evaluation order.
     ///
@@ -662,16 +862,48 @@ namespace detail
         static constexpr StepKind value = StepKind::InterpolatingLookup;
     };
 
-    /// Whether @p kind is one of the three lookup kinds. Written once because
+    /// Required, not a refinement: a partial specialisation never matches a
+    /// derived class, so without this a `RoundingRuleNode` -- which derives
+    /// from `RoundNode` -- would have no entry at all, rather than the
+    /// `Round` entry of its base.
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct StepKindOf<RoundingRuleNode<U, Places, Mode, Operand>>
+    {
+        static constexpr StepKind value = StepKind::RoundingRuleApplied;
+    };
+
+    /// Required for the same reason: `OverriddenConstantNode` derives from
+    /// `VarNode`, whose entry does not reach it.
+    template <Described Q>
+    struct StepKindOf<OverriddenConstantNode<Q>>
+    {
+        static constexpr StepKind value = StepKind::OverriddenConstant;
+    };
+
+    /// Required for the same reason: `DerivedQuantityNode` derives from
+    /// `VarNode`.
+    template <Described Q, Node Expr>
+    struct StepKindOf<DerivedQuantityNode<Q, Expr>>
+    {
+        static constexpr StepKind value = StepKind::DerivedQuantity;
+    };
+
+    template <Node Expr>
+    struct StepKindOf<ReplacedVariantNode<Expr>>
+    {
+        static constexpr StepKind value = StepKind::ReplacedVariant;
+    };
+
+    /// Whether @p stepKind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
     /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
     /// appends the clause that keeps a lookup line from lying -- and spelling
     /// the three-way `||` in each is how one of them ends up missing a kind
     /// once a fourth table kind is added.
-    [[nodiscard]] constexpr bool is_lookup(StepKind kind) noexcept
+    [[nodiscard]] constexpr bool is_lookup(StepKind stepKind) noexcept
     {
-        return kind == StepKind::BandedLookup || kind == StepKind::ExactLookup
-               || kind == StepKind::InterpolatingLookup;
+        return stepKind == StepKind::BandedLookup || stepKind == StepKind::ExactLookup
+               || stepKind == StepKind::InterpolatingLookup;
     }
 
     /// Whether any step @p step claimed as an operand failed.
@@ -693,8 +925,8 @@ namespace detail
     template <typename Rep>
     [[nodiscard]] bool an_operand_failed(std::vector<Step<Rep>> const& steps, Step<Rep> const& step)
     {
-        for (std::size_t const operand: step.operands)
-            if (steps[operand].error.has_value())
+        for (std::size_t const operandIndex: step.operands)
+            if (steps[operandIndex].error.has_value())
                 return true;
         return false;
     }
@@ -783,8 +1015,8 @@ namespace detail
                 return;
             }
 
-            std::optional<Rational> const value = sole_operand_value(steps, step);
-            if (!value.has_value())
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
             {
                 // No value to locate: either the operand was absent -- in
                 // which case nothing was looked up and nothing failed -- or
@@ -796,15 +1028,15 @@ namespace detail
             }
 
             std::expected<Rational, ArithmeticError> const valueInKey =
-                checked_convert(*value, coherent(keyUnit.dimension), keyUnit);
+                checked_convert(*operandValue, coherent(keyUnit.dimension), keyUnit);
             if (!valueInKey.has_value())
             {
                 step.lookupFailure = LookupFailure::Conversion;
                 return;
             }
 
-            std::optional<std::size_t> const index = find_band<Bands>(*valueInKey);
-            if (!index.has_value())
+            std::optional<std::size_t> const matchedBand = find_band<Bands>(*valueInKey);
+            if (!matchedBand.has_value())
             {
                 step.lookupFailure = LookupFailure::Missed;
                 step.coveredRange = bands_cover<Bands>();
@@ -817,7 +1049,7 @@ namespace detail
             if (step.error.has_value())
                 step.lookupFailure = LookupFailure::Conversion;
             else
-                step.selectedBand = Bands[*index];
+                step.selectedBand = Bands[*matchedBand];
         }
     }
 
@@ -838,6 +1070,7 @@ namespace detail
                        std::vector<Step<Rep>> const&)
     {
         using Underlying = std::underlying_type_t<KeyOf<Keys>>;
+        step.lookupKeyName = key_name<Keys>(node.key);
         step.lookupKeyIsSigned = std::is_signed_v<Underlying>;
         step.lookupKey = step.lookupKeyIsSigned ? static_cast<std::uint64_t>(static_cast<long long>(node.key))
                                                 : static_cast<std::uint64_t>(static_cast<unsigned long long>(node.key));
@@ -882,8 +1115,8 @@ namespace detail
                 return;
             }
 
-            std::optional<Rational> const value = sole_operand_value(steps, step);
-            if (!value.has_value())
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
             {
                 if (step.error.has_value())
                     step.lookupFailure = LookupFailure::Undetermined;
@@ -891,7 +1124,7 @@ namespace detail
             }
 
             std::expected<Rational, ArithmeticError> const valueInKey =
-                checked_convert(*value, coherent(keyUnit.dimension), keyUnit);
+                checked_convert(*operandValue, coherent(keyUnit.dimension), keyUnit);
             if (!valueInKey.has_value())
             {
                 step.lookupFailure = LookupFailure::Conversion;
@@ -942,21 +1175,44 @@ namespace detail
 ///
 /// A `Trace` may therefore be walked repeatedly **in sequence, but never by
 /// two sinks at once**: constructing a second `RecordingSink` on a `Trace`
-/// whose walk is still in progress clears the bookkeeping that walk is using,
-/// and the outer walk's next `produced` then reads `marks.back()` on an empty
-/// vector -- undefined behaviour. Nothing in this library does that; only a
-/// consumer sharing one `Trace` with an evaluation already under way can, and
-/// no runtime guard is levied on every walk to prevent it.
-template <typename Rep = Rational>
+/// whose walk is still in progress clears the bookkeeping that walk is using.
+/// Nothing in this library does that; only a consumer sharing one `Trace` with
+/// an evaluation already under way can. The outer walk's next `produced` then
+/// finds no mark to claim from, and drops its step rather than read an empty
+/// stack -- as every `..._produced` does when told of a result without the
+/// matching `..._entered`, which a consumer's own evaluator may forget, and as
+/// `produced` of a `when()` and `branch_taken` do when no `when()` was
+/// entered. The trace is then incomplete, and says less rather than something
+/// false.
+///
+/// **A vocabulary, when one is given, is held by value**, and every step
+/// naming a quantity writes its symbol through it (`Step::symbol`). By value
+/// and not, like the `Trace`, by pointer: a vocabulary is plain data holding
+/// views of static storage, so a copy has no lifetime to outlive, where a
+/// pointer to one declared in a function that returned would dangle. The
+/// default vocabulary is empty and takes no space (`FORMULA_NO_UNIQUE_ADDRESS`),
+/// so a sink that names none is the one pointer it always was; a scoped one
+/// adds one `std::string_view` per renamed quantity to every copy the evaluator
+/// makes.
+/// The symbol is written *here*, during evaluation: rendering the page in a
+/// vocabulary does not make the trace agree with it, so give the sink the one
+/// `render()` and `document()` are given.
+///
+///     formula::RecordingSink sink { trace, north };
+template <typename Rep = Rational, Vocabulary V = DefaultVocabulary>
 class RecordingSink
 {
   public:
     /// @p trace must outlive the evaluation. Begins a new walk: see the class
     /// comment for why this clears `trace.marks`, `trace.unclaimed`, and
-    /// `trace.branchStack`.
+    /// `trace.branchStack`. Writes every symbol as @p vocabulary says, and
+    /// keeps a copy of it; left out, it is the default vocabulary, which
+    /// renames nothing.
     ///
     /// @pre no other `RecordingSink` is part-way through a walk of @p trace.
-    explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace }
+    explicit constexpr RecordingSink(Trace<Rep>& trace, V vocabulary = V {}) noexcept:
+        _trace { &trace },
+        _vocabulary { vocabulary }
     {
         _trace->marks.clear();
         _trace->unclaimed.clear();
@@ -992,9 +1248,15 @@ class RecordingSink
     /// push-in-`entered`, pop-in-`produced` discipline as `marks`, and for
     /// the same reason: a `when()` nested inside another's branch must not
     /// clobber its still-open parent's pending entry.
+    ///
+    /// Told of a branch with no `when()` entered -- a consumer's own
+    /// evaluator out of step, as `produced` below describes -- there is no
+    /// entry to update, and nothing is recorded.
     template <Node N>
     void branch_taken(N const&, bool thenTaken) noexcept
     {
+        if (_trace->branchStack.empty())
+            return;
         _trace->branchStack.back() = thenTaken ? Branch::Then : Branch::Else;
     }
 
@@ -1003,12 +1265,25 @@ class RecordingSink
     template <Node N>
     void produced(N const& node, Evaluated<Rep> const& result)
     {
-        std::size_t const mark = _trace->marks.back();
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
+        // The same, for a `when()` whose `entered` was never told: no pending
+        // branch to pop. Dropped before the mark is taken, so that the mark,
+        // which some other node's `entered` pushed, stays for that node.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
+            if (_trace->branchStack.empty())
+                return;
+        std::size_t const nodeMark = _trace->marks.back();
         _trace->marks.pop_back();
 
-        Step<Rep> step {};
-        step.kind = detail::StepKindOf<N>::value;
-        step.dimension = N::dimension;
+        Step<Rep> nodeStep {};
+        nodeStep.kind = detail::StepKindOf<N>::value;
+        nodeStep.dimension = N::dimension;
 
         // Anything computed has no declared unit, so the coherent SI one is
         // the truthful answer; a variable overrides it with the unit its
@@ -1029,20 +1304,40 @@ class RecordingSink
         // `checked_convert(value, coherent(dimension), unit)` would refuse
         // every such step as a dimension mismatch. See `Step::sourceUnit`,
         // which is where that unit goes instead.
-        step.unit = coherent(N::dimension);
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
-            step.unit = Describe<typename N::quantity>::unit;
+        //
+        // An overridden constant and a derived quantity are variables to this
+        // branch: each is `Q`, at the overlay's value or its definition's, in
+        // `Q`'s declared unit.
+        constexpr bool namesQuantity = detail::StepKindOf<N>::value == StepKind::Variable
+                                       || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
+                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
+        nodeStep.unit = coherent(N::dimension);
+        if constexpr (namesQuantity)
+            nodeStep.unit = Describe<typename N::quantity>::unit;
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
-            step.unit = N::unit;
+            nodeStep.unit = N::unit;
 
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
-            step.symbol = Describe<typename N::quantity>::symbol;
+        if constexpr (namesQuantity)
+            nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
-            step.citation = node.citation;
+            nodeStep.citation = node.citation;
+        // What an overlay cited for the value it fixed, the quantity it
+        // defined, the formula it replaced or the rule it set -- the
+        // provenance each of these four steps exists to carry, read through
+        // accessors of nodes only an overlay builds.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OverriddenConstant
+                      || detail::StepKindOf<N>::value == StepKind::DerivedQuantity
+                      || detail::StepKindOf<N>::value == StepKind::ReplacedVariant)
+            nodeStep.citation = node.source();
+        if constexpr (detail::StepKindOf<N>::value == StepKind::RoundingRuleApplied)
+        {
+            nodeStep.roundingProvenance = node.rule().provenance();
+            nodeStep.citation = node.rule().source();
+        }
         if constexpr (detail::StepKindOf<N>::value == StepKind::NumericValue)
         {
-            step.justification = N::justification;
-            step.sourceUnit = N::unit;
+            nodeStep.justification = N::justification;
+            nodeStep.sourceUnit = N::unit;
         }
         // The banded and the interpolating lookup declare a key unit that is
         // independent of their own: a band's bounds are stated in it, and the
@@ -1052,22 +1347,22 @@ class RecordingSink
         // The exact lookup has none: its key is a discriminator, not a
         // quantity.
         if constexpr (requires { N::keyUnit; })
-            step.sourceUnit = N::keyUnit;
+            nodeStep.sourceUnit = N::keyUnit;
         if constexpr (requires { N::exponent; })
-            step.exponent = N::exponent;
+            nodeStep.exponent = N::exponent;
         else if constexpr (requires { N::degree; })
-            step.exponent = N::degree;
+            nodeStep.exponent = N::degree;
 
         if constexpr (requires { N::places; })
-            step.granularity = N::places.value;
+            nodeStep.granularity = N::places.value;
         else if constexpr (requires { N::digits; })
-            step.granularity = N::digits.value;
+            nodeStep.granularity = N::digits.value;
 
         // `RoundNode` and `RoundSignificantNode` are the only kinds that
         // declare one, so the `requires` alone selects them -- the same shape
         // `exponent` and `granularity` above use.
         if constexpr (requires { N::mode; })
-            step.mode = N::mode;
+            nodeStep.mode = N::mode;
 
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
         {
@@ -1077,22 +1372,22 @@ class RecordingSink
             // constant expression and `WhenNode` needs no re-export of its
             // own -- the same way `citation` above is read straight off a
             // `DocumentedNode`.
-            step.comparison = std::remove_cvref_t<decltype(node.predicate)>::comparison;
-            step.branch = _trace->branchStack.back();
+            nodeStep.comparison = std::remove_cvref_t<decltype(node.predicate)>::comparison;
+            nodeStep.branch = _trace->branchStack.back();
             _trace->branchStack.pop_back();
         }
 
         if (!result.has_value())
-            step.error = result.error();
+            nodeStep.error = result.error();
         else if (result->has_value())
-            step.value = **result;
+            nodeStep.value = **result;
 
-        // Everything unclaimed from `mark` onwards belongs to this node.
-        auto first = _trace->unclaimed.begin();
-        while (first != _trace->unclaimed.end() && *first < mark)
-            ++first;
-        step.operands.assign(first, _trace->unclaimed.end());
-        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+        // Everything unclaimed from `nodeMark` onwards belongs to this node.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < nodeMark)
+            ++firstClaimed;
+        nodeStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means
@@ -1100,9 +1395,9 @@ class RecordingSink
         // happened. See `LookupFailure` for the ambiguity this closes, and
         // `detail::record_lookup` for how each kind closes it.
         if constexpr (detail::is_lookup(detail::StepKindOf<N>::value))
-            detail::record_lookup(node, step, _trace->steps);
+            detail::record_lookup(node, nodeStep, _trace->steps);
 
-        _trace->steps.push_back(std::move(step));
+        _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
@@ -1131,35 +1426,177 @@ class RecordingSink
     template <Predicate P>
     void constraint_produced(Constraint<P> const& constraint, ConstraintOutcome const& outcome)
     {
-        std::size_t const mark = _trace->marks.back();
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `constraint_entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const constraintMark = _trace->marks.back();
         _trace->marks.pop_back();
 
-        Step<Rep> step {};
-        step.kind = StepKind::Constraint;
+        Step<Rep> constraintStep {};
+        constraintStep.kind = StepKind::Constraint;
         // Read straight off the constraint's own predicate, the same way
         // `produced` above reads a `Conditional` step's comparison off
         // `node.predicate` -- `PredicateNode::comparison` is a public
         // `static constexpr`, so this needs no member added to `Constraint`
         // to expose it.
-        step.comparison = std::remove_cvref_t<decltype(constraint.predicate)>::comparison;
-        step.outcome = outcome;
+        constraintStep.comparison = std::remove_cvref_t<decltype(constraint.predicate)>::comparison;
+        constraintStep.outcome = outcome;
 
-        // Everything unclaimed from `mark` onwards belongs to this
+        // Everything unclaimed from `constraintMark` onwards belongs to this
         // constraint -- see `produced` above for why this is a `while`
-        // rather than an index computed from `mark` directly.
-        auto first = _trace->unclaimed.begin();
-        while (first != _trace->unclaimed.end() && *first < mark)
-            ++first;
-        step.operands.assign(first, _trace->unclaimed.end());
-        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+        // rather than an index computed from `constraintMark` directly.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < constraintMark)
+            ++firstClaimed;
+        constraintStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
-        _trace->steps.push_back(std::move(step));
+        _trace->steps.push_back(std::move(constraintStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a method is about to evaluate the variant it selected.
+    /// Remembers where the arena stood, exactly as `entered` does for a
+    /// `Node`, so that `variant_produced` below can claim the variant's own
+    /// step as its operand.
+    ///
+    /// A method is not a `Node`, so it cannot come through `entered`; it
+    /// comes through this pair instead, which `evaluate_method`
+    /// (`method.hpp`) calls when a sink defines both -- see
+    /// `VariantSelection` (`sink.hpp`).
+    void variant_entered(VariantSelection const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records a `StepKind::VariantSelected` step for @p variantSelection, claiming
+    /// as its operand the step the selected variant produced -- so the
+    /// selection is the walk's root, and the formula that ran sits under it.
+    ///
+    /// The step's value is what the method returned, which is exactly what
+    /// the variant produced; its dimension and unit are copied from the
+    /// variant's step rather than passed in, since that step already says
+    /// what the number is, and a second source for the same facts would be
+    /// one obliged to agree with it. Absent an operand step -- which no method in this library leaves,
+    /// since the rounding node it wraps is always traced -- the step records
+    /// the selection and its error, if any, and no value it could not state
+    /// the unit of.
+    void variant_produced(VariantSelection const& variantSelection, Evaluated<Rep> const& produced)
+    {
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `variant_entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const selectionMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> selectionStep {};
+        selectionStep.kind = StepKind::VariantSelected;
+        selectionStep.variantTag = variantSelection.tag;
+        selectionStep.variantIndex = variantSelection.index;
+        selectionStep.variantCount = variantSelection.count;
+        selectionStep.variantPrunedCount = variantSelection.prunedCount;
+        if (variantSelection.prunedBy != nullptr)
+            selectionStep.variantPrunedBy = *variantSelection.prunedBy;
+        selectionStep.variantPinned = variantSelection.pinnedBy != nullptr;
+        if (variantSelection.pinnedBy != nullptr)
+            selectionStep.citation = *variantSelection.pinnedBy;
+
+        // Everything unclaimed from `selectionMark` onwards belongs to this selection
+        // -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < selectionMark)
+            ++firstClaimed;
+        selectionStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        if (!selectionStep.operands.empty())
+        {
+            Step<Rep> const& variant = _trace->steps[selectionStep.operands.back()];
+            selectionStep.dimension = variant.dimension;
+            selectionStep.unit = variant.unit;
+        }
+        if (!produced.has_value())
+            selectionStep.error = produced.error();
+        else if (produced->has_value() && !selectionStep.operands.empty())
+            selectionStep.value = **produced;
+
+        _trace->steps.push_back(std::move(selectionStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a method is about to check its constraints. Remembers where
+    /// the arena stood, exactly as `entered` does for a `Node`, so that
+    /// `acceptance_produced` below can claim the verdicts as its operands.
+    ///
+    /// Called by `check_method` (`method.hpp`) when a sink defines both this
+    /// and `acceptance_produced`, as `evaluate_method` calls
+    /// `variant_entered` and `variant_produced`.
+    void acceptance_entered(ConstraintOrigin const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records a `StepKind::AcceptanceChecked` step for constraints of
+    /// @p constraintOrigin, claiming as its operands every verdict recorded since the
+    /// matching `acceptance_entered`, and marks each of those verdicts with
+    /// whose it was and what the overlay cited.
+    ///
+    /// Marked here, after the checks, rather than as each verdict is recorded:
+    /// the verdicts claimed are exactly the constraints `check_method`
+    /// checked, so no second record of which method is in progress is kept
+    /// beside `marks`. A verdict recorded by `check` or `check_all` outside
+    /// any method is claimed by nothing here, and keeps no provenance.
+    void acceptance_produced(ConstraintOrigin const& constraintOrigin)
+    {
+        // Told what a walk produced without having been told it began -- a
+        // consumer's own evaluator that skipped the matching `acceptance_entered`, or
+        // a second sink that cleared the bookkeeping mid-walk. There is no
+        // mark to claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const acceptanceMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> acceptanceStep {};
+        acceptanceStep.kind = StepKind::AcceptanceChecked;
+        acceptanceStep.constraintProvenance = constraintOrigin.provenance();
+        acceptanceStep.citation = constraintOrigin.source();
+
+        // Everything unclaimed from `acceptanceMark` onwards belongs to this method's
+        // constraints -- see `produced` above for why this is a `while`.
+        auto firstVerdict = _trace->unclaimed.begin();
+        while (firstVerdict != _trace->unclaimed.end() && *firstVerdict < acceptanceMark)
+            ++firstVerdict;
+        acceptanceStep.operands.assign(firstVerdict, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstVerdict, _trace->unclaimed.end());
+
+        for (std::size_t const verdictStep: acceptanceStep.operands)
+        {
+            _trace->steps[verdictStep].constraintProvenance = constraintOrigin.provenance();
+            _trace->steps[verdictStep].citation = constraintOrigin.source();
+        }
+
+        _trace->steps.push_back(std::move(acceptanceStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
   private:
     Trace<Rep>* _trace;
+    FORMULA_NO_UNIQUE_ADDRESS V _vocabulary;
 };
+
+/// `RecordingSink { trace, vocabulary }` records in @p vocabulary's terms.
+template <typename Rep, Vocabulary V>
+RecordingSink(Trace<Rep>&, V) -> RecordingSink<Rep, V>;
 
 /// An outcome together with the derivation that produced it.
 template <Described Result, typename Rep = Rational>
@@ -1192,8 +1629,14 @@ struct Explained
 /// below turns that mismatch into one sentence instead of a template-frame
 /// dump. Call `checked_evaluate_si<Rep>` directly with your own
 /// `RecordingSink<Rep>` to trace a `double` computation.
-template <Described Result, typename Rep = Rational, Node Expression, typename Env>
-[[nodiscard]] Explained<Result, Rep> explain(Expression const& expression, Env const& environment)
+///
+/// Every step naming a quantity writes its symbol as @p vocabulary says
+/// (`vocabulary.hpp`) -- pass the one the page is rendered in, so that the
+/// trace and the page agree.
+template <Described Result, typename Rep = Rational, Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Explained<Result, Rep> explain(Expression const& expression,
+                                             Env const& environment,
+                                             V const& vocabulary = V {})
 {
     static_assert(std::is_same_v<Rep, Rational>,
                   "formula: explain only supports Rep = Rational -- evaluate<Result> always computes "
@@ -1203,8 +1646,8 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
                   "double computation.");
 
     Explained<Result, Rep> explained {};
-    RecordingSink<Rep> sink { explained.trace };
-    explained.outcome = evaluate<Result>(expression, environment, sink);
+    RecordingSink<Rep, V> recordingSink { explained.trace, vocabulary };
+    explained.outcome = evaluate<Result>(expression, environment, recordingSink);
     return explained;
 }
 

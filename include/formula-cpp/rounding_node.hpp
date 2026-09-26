@@ -51,7 +51,12 @@ struct RoundNode: NodeBase
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
 
     /// The expression being rounded.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
+    Operand operand;
 
     /// The unit the rounding happens in.
     static constexpr Unit unit = U;
@@ -70,7 +75,12 @@ struct RoundSignificantNode: NodeBase
     static_assert(detail::RequireRoundingUnitMatches<U, Operand>::value);
 
     /// The expression being rounded.
-    Operand operand {};
+    ///
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
+    Operand operand;
 
     /// The unit the rounding happens in.
     static constexpr Unit unit = U;
@@ -182,6 +192,44 @@ struct RepRounding<double>
     }
 };
 
+namespace detail
+{
+    /// Evaluates @p node's operand, converts into its unit, rounds to its
+    /// decimal places, and converts back -- reporting @p node to @p sink as
+    /// the node it is.
+    ///
+    /// Written once for every node that rounds to decimal places: the
+    /// `RoundNode` overload below, and the node a method's rounding rule
+    /// becomes (`RoundingRuleNode`, `method.hpp`), which derives from
+    /// `RoundNode` and must reach the sink as its own type so that a trace
+    /// can say where the rule came from.
+    template <typename Rep, Node N, typename Env, typename Sink>
+    [[nodiscard]] constexpr Evaluated<Rep> round_to_places(N const& node, Env const& environment, Sink sink) noexcept
+    {
+        sink.entered(node);
+        Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+        if (!evaluatedOperand.has_value())
+        {
+            Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
+            sink.produced(node, failed);
+            return failed;
+        }
+        if (!evaluatedOperand->has_value())
+        {
+            Evaluated<Rep> const absent = detail::nothing<Rep>();
+            sink.produced(node, absent);
+            return absent;
+        }
+
+        std::expected<Rep, ArithmeticError> const rounded =
+            RepRounding<Rep>::round_in(**evaluatedOperand, N::unit, N::places, N::mode);
+        Evaluated<Rep> const evaluated =
+            rounded.has_value() ? detail::present<Rep>(*rounded) : Evaluated<Rep> { std::unexpected { rounded.error() } };
+        sink.produced(node, evaluated);
+        return evaluated;
+    }
+} // namespace detail
+
 /// Evaluates the operand, converts into `U`, rounds, and converts back.
 template <typename Rep = Rational, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand, typename Env,
           typename Sink = NullSink>
@@ -189,26 +237,7 @@ template <typename Rep = Rational, Unit U, DecimalPlaces Places, RoundingMode Mo
                                                            Env const& environment,
                                                            Sink sink = {}) noexcept
 {
-    sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
-    {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
-        sink.produced(node, failed);
-        return failed;
-    }
-    if (!operand->has_value())
-    {
-        Evaluated<Rep> const absent = detail::nothing<Rep>();
-        sink.produced(node, absent);
-        return absent;
-    }
-
-    std::expected<Rep, ArithmeticError> const rounded = RepRounding<Rep>::round_in(**operand, U, Places, Mode);
-    Evaluated<Rep> const result =
-        rounded.has_value() ? detail::present<Rep>(*rounded) : Evaluated<Rep> { std::unexpected { rounded.error() } };
-    sink.produced(node, result);
-    return result;
+    return detail::round_to_places<Rep>(node, environment, sink);
 }
 
 /// Evaluates the operand, converts into `U`, rounds to `Digits` significant
@@ -220,25 +249,25 @@ template <typename Rep = Rational, Unit U, SignificantDigits Digits, RoundingMod
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
         return absent;
     }
 
-    std::expected<Rep, ArithmeticError> const rounded = RepRounding<Rep>::round_in(**operand, U, Digits, Mode);
-    Evaluated<Rep> const result =
+    std::expected<Rep, ArithmeticError> const rounded = RepRounding<Rep>::round_in(**evaluatedOperand, U, Digits, Mode);
+    Evaluated<Rep> const evaluated =
         rounded.has_value() ? detail::present<Rep>(*rounded) : Evaluated<Rep> { std::unexpected { rounded.error() } };
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

@@ -68,10 +68,14 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #    itself does not drift.
 #  - `at 100 mm gives 95 %` -- the interpolating table's point spelling, which
 #    must NOT read as an interval: a breakpoint is a row, not a boundary.
-#  - `key 7 gives 97 %` -- an exact key renders as its underlying value, not
-#    its name (an enumerator has none at run time) and not its row index. The
-#    example numbers its enumerators 3, 7, 11 and 13 precisely so a value and
-#    an index cannot be confused, which is why this pins 7 and not 1.
+#  - `key Cylinder gives 97 %` -- an exact key renders as its enumerator's
+#    name, recovered at compile time, not as a number of any kind.
+#  - `lookup(key 13)` -- the trace of a key that names no row, which falls
+#    back to the underlying value. The example numbers its enumerators 3, 7,
+#    11 and 13 precisely so a value and an index cannot be confused, which is
+#    why this pins 13 and not 3.
+#  - `key sealed in foil gives 96 %` -- a key its author spelled through
+#    `EnumeratorName`, rendered that way.
 #  - `[between 100 and 150 mm]`, `[90 to under 100 %]` and
 #    `[on the row at 200 mm]` -- the trace clauses that say where an answer
 #    came from, in the order the program prints them. Three rather than two:
@@ -91,4 +95,29 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #
 # A `[==[ ... ]==]` bracket argument for the reason the constraints entry
 # gives: the regex needs literal backslash escapes around `[` and `]`.
-formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key 7 gives 97 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])
+formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key Cylinder gives 97 %.*lookup\(key 13\).*key sealed in foil gives 96 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])
+
+# docs/methods-and-overlays.md quotes this program's output verbatim. Pinned
+# here, in the order the program prints them: the selection step naming a tag
+# through its TagName spelling at its published position, a method's own
+# rounding rule, a jurisdiction's rounding rule with its citation, the fixed
+# and derived provenance clauses, the replacement marker, and the southern
+# vocabulary's crossed-over edge in a trace line.
+formula_add_example(methods_and_overlays methods_and_overlays.cpp [==[\[variant Cube \(2nd of 3\), selected by tag\].*\(method default\).*\[variant cylinder 150 x 300 mm \(3rd of 3\), selected by tag\].*fixed by jurisdiction overlay: Shape factor.*jurisdiction overlay: Example Standard 12:2021 NA, NA\.4.*derived by jurisdiction overlay.*replaced by jurisdiction overlay: Example Standard 7:2019 A, A\.5.*1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A\.1.*pinned by jurisdiction overlay: Example Standard 3:2023 E, E\.1.*4\. b = 150 mm.*all checks passed: yes]==])
+
+# Every line of docs/methods-and-overlays.md's output blocks must be a line the
+# example really prints -- see the script for why the regex above cannot be
+# that check.
+add_test(NAME docs.methods-and-overlays-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-methods_and_overlays>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/methods-and-overlays.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+
+# Every ```cpp block of docs/methods-and-overlays.md must appear in the
+# example's source as consecutive lines, indentation aside -- see the script.
+add_test(NAME docs.methods-and-overlays-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/methods_and_overlays.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/methods-and-overlays.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")

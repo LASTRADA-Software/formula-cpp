@@ -125,9 +125,9 @@ using BandTable = std::array<Band, N>;
 /// so the two checks cannot drift the way this project's checks have four
 /// times before.
 ///
-/// True when `first`'s high bound and `second`'s low bound are the exact same
-/// rational number: neither a gap (first ends before second begins) nor an
-/// overlap (first ends after second begins) between them. Compares through
+/// True when `lowerBand`'s high bound and `upperBand`'s low bound are the
+/// exact same rational number: neither a gap (the lower band ends before the
+/// upper begins) nor an overlap (it ends after the upper begins) between them. Compares through
 /// `Rational::make`, which reduces to lowest terms in the unsigned domain and
 /// reports overflow, rather than cross-multiplying the raw numerator and
 /// denominator directly -- the same overflow `Rational::operator<=>`'s own
@@ -136,17 +136,17 @@ using BandTable = std::array<Band, N>;
 /// denominator, or an overflow) is treated as not adjacent to anything: a
 /// malformed bound is exactly the kind of typo this validation exists to
 /// catch, not a case to silently wave through.
-[[nodiscard]] constexpr bool bands_are_adjacent(Band const& first, Band const& second) noexcept
+[[nodiscard]] constexpr bool bands_are_adjacent(Band const& lowerBand, Band const& upperBand) noexcept
 {
-    auto const firstHigh = Rational::make(first.highNumerator, first.highDenominator);
-    auto const secondLow = Rational::make(second.lowNumerator, second.lowDenominator);
+    auto const firstHigh = Rational::make(lowerBand.highNumerator, lowerBand.highDenominator);
+    auto const secondLow = Rational::make(upperBand.lowNumerator, upperBand.lowDenominator);
     if (!firstHigh || !secondLow)
         return false;
     return *firstHigh == *secondLow;
 }
 
 /// The other predicate well-formedness is built on, alongside
-/// `bands_are_adjacent`: true when `value`'s own declared low bound is
+/// `bands_are_adjacent`: true when `candidate`'s own declared low bound is
 /// strictly below its own declared high bound. Nothing about a pair of
 /// bands -- a single `Band` either makes sense on its own or it does not,
 /// and `bands_are_adjacent` alone cannot tell an inverted band from a sound
@@ -155,13 +155,13 @@ using BandTable = std::array<Band, N>;
 /// reasons `bands_are_adjacent` does. A malformed bound (a zero denominator,
 /// or an overflow) is treated as not well-formed, for the same reason a
 /// malformed bound is treated as not adjacent to anything above.
-[[nodiscard]] constexpr bool band_is_well_formed(Band const& value) noexcept
+[[nodiscard]] constexpr bool band_is_well_formed(Band const& candidate) noexcept
 {
-    auto const low = Rational::make(value.lowNumerator, value.lowDenominator);
-    auto const high = Rational::make(value.highNumerator, value.highDenominator);
-    if (!low || !high)
+    auto const lowBound = Rational::make(candidate.lowNumerator, candidate.lowDenominator);
+    auto const highBound = Rational::make(candidate.highNumerator, candidate.highDenominator);
+    if (!lowBound || !highBound)
         return false;
-    return *low < *high;
+    return *lowBound < *highBound;
 }
 
 /// True when `table` is well-formed: every band's own low bound is strictly
@@ -192,11 +192,11 @@ using BandTable = std::array<Band, N>;
 template <std::size_t N>
 [[nodiscard]] constexpr bool band_table_is_well_formed(BandTable<N> const& table) noexcept
 {
-    for (std::size_t index = 0; index < N; ++index)
-        if (!band_is_well_formed(table[index]))
+    for (std::size_t bandIndex = 0; bandIndex < N; ++bandIndex)
+        if (!band_is_well_formed(table[bandIndex]))
             return false;
-    for (std::size_t index = 0; index + 1 < N; ++index)
-        if (!bands_are_adjacent(table[index], table[index + 1]))
+    for (std::size_t bandIndex = 0; bandIndex + 1 < N; ++bandIndex)
+        if (!bands_are_adjacent(table[bandIndex], table[bandIndex + 1]))
             return false;
     return true;
 }

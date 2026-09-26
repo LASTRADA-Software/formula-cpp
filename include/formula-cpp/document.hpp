@@ -14,8 +14,13 @@
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/overlay.hpp>
+#include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -40,6 +45,48 @@ struct SymbolEntry
     /// The unit its values are expressed in.
     Unit unit {};
 
+    /// The value an overlay fixed this quantity at, in `unit`; empty for a
+    /// quantity the formula reads from the specimen.
+    ///
+    /// A row for an overridden constant (`OverriddenConstantNode`,
+    /// `overlay.hpp`) that looked like any other would tell a reader to supply
+    /// a value the formula will never read, and hide the one it does -- the
+    /// gap a trace step that said "variable" had, on the documentation page
+    /// instead of in the derivation.
+    std::optional<Rational> fixedValue {};
+
+    /// What the overlay that fixed the value cited for it; empty when it cited
+    /// nothing, and for a quantity nothing fixed. Whether the row is fixed is
+    /// `fixedValue`'s to say, not this.
+    Citation fixedBy {};
+
+    /// The expression a jurisdiction defined this quantity by, rendered in the
+    /// dialect `document()` was asked for; empty for a quantity nothing
+    /// defined.
+    ///
+    /// A row for a derived quantity (`DerivedQuantityNode`, `overlay.hpp`)
+    /// that looked like any other would ask a reader to supply a value the
+    /// formula computes instead, and hide how it computes it -- the reason
+    /// `fixedValue` exists, for a definition rather than a number. The
+    /// quantities the definition reads have rows of their own, after this one.
+    std::optional<std::string> derivedAs {};
+
+    /// What the overlay that defined the quantity cited for the definition;
+    /// empty when it cited nothing, and for a quantity nothing defined.
+    /// Whether the row is derived is `derivedAs`'s to say, not this.
+    Citation derivedBy {};
+
+    /// For a fixed or derived row: whether the formula ALSO reads this
+    /// quantity from the environment somewhere, besides where an overlay fixed
+    /// or defined it. False for a row that is neither, which is read and
+    /// nothing else.
+    ///
+    /// Only a formula assembled by hand has both -- `apply` substitutes every
+    /// use -- and then a row saying only "fixed at 97/100" would hide that the
+    /// specimen's value is read as well, and one saying only "read" would hide
+    /// the fixed value. It says both, in whichever order the two were met.
+    bool alsoReadAsInput {};
+
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
 };
@@ -57,12 +104,32 @@ struct Documentation
     /// The variables the formula reads, each once, in the order they first
     /// appear when the formula is read left to right.
     std::vector<SymbolEntry> symbols {};
+    /// One entry per formula a jurisdiction replaced wholesale
+    /// (`ReplacedVariantNode`, `overlay.hpp`), in the order met: what the
+    /// overlay cited, or an empty `Citation` when it cited nothing.
+    ///
+    /// An entry even for a replacement that cited nothing, for the reason
+    /// `SymbolEntry::fixedValue` marks a constant whatever its citation: a
+    /// page that said nothing of an uncited replacement would read exactly as
+    /// the base standard's page for a formula that is not the base
+    /// standard's. A cited replacement's citation also joins `citations`.
+    std::vector<Citation> replacedBy {};
 };
 
 namespace detail
 {
     /// A distinct address per @tparam Q, used to deduplicate the symbol table
     /// by quantity *type* without reaching for RTTI (`typeid`, `<typeindex>`).
+    ///
+    /// **Writable, and deliberately not `constexpr` or `const`.** Identical
+    /// COMDAT folding -- cl's `/OPT:ICF`, lld's `--icf=all` -- may give two
+    /// read-only objects of identical contents one address, and every
+    /// `quantityIdentity<Q>` has the same contents. Folded, two quantities
+    /// would share one symbol-table row. Writable data is never folded, so an
+    /// address of this object is one per type however the program is linked.
+    /// Nothing writes to it. (The folding was not reproduced here: this
+    /// removes the dependence on its not happening rather than a failure
+    /// seen.)
     /// This library depends on neither elsewhere, and a header-only library
     /// should not make a consumer who builds with RTTI disabled pay for one
     /// bit of bookkeeping inside a single opt-in header.
@@ -81,21 +148,58 @@ namespace detail
     /// one per translation unit on g++ and one per program on the other two,
     /// a difference this library has already been bitten by once elsewhere.
     template <typename Q>
-    inline constexpr bool quantityIdentity = false;
+    inline bool quantityIdentity = false;
 
     /// The walk's own state: the `Documentation` being assembled, plus which
     /// quantities have already contributed a row, tracked in parallel because
     /// a `std::vector<SymbolEntry>` holds no type to check against. Not part
     /// of the published surface -- `document()` unwraps `documentation` before
     /// returning it.
+    ///
+    /// `vocabulary` is the one `document()` was given, held whole rather than
+    /// as a list of what it renames: a derived quantity's definition is
+    /// rendered with it, in the page's words (`render_in`), and a row's symbol
+    /// is `symbol_of<Q>(walk.vocabulary)`, resolved by the quantity's type
+    /// exactly as `render()` and the trace resolve it.
+    template <Vocabulary V>
     struct Walk
     {
         Documentation documentation {};
         std::vector<void const*> seenQuantities {};
+        /// The dialect `document()` was asked for, which a derived quantity's
+        /// definition is rendered in.
+        Dialect dialect = Dialect::Plain;
+        V vocabulary;
     };
 
+    /// @p node rendered in @p dialect, chosen at run time, and in
+    /// @p vocabulary -- for the one place a walk renders a sub-expression
+    /// rather than the whole formula, which must be in the same words as the
+    /// formula it sits beside.
+    template <Node N, Vocabulary V>
+    [[nodiscard]] std::string render_in(Dialect dialect, N const& node, V const& vocabulary)
+    {
+        switch (dialect)
+        {
+            case Dialect::Plain:
+                break;
+            case Dialect::Markdown:
+                return render<Dialect::Markdown>(node, vocabulary);
+            case Dialect::LaTeX:
+                return render<Dialect::LaTeX>(node, vocabulary);
+        }
+        return render<Dialect::Plain>(node, vocabulary);
+    }
+
+    /// Whether a row is marked as substituted by an overlay: fixed, or
+    /// derived.
+    [[nodiscard]] inline bool is_substituted(SymbolEntry const& symbolEntry) noexcept
+    {
+        return symbolEntry.fixedValue.has_value() || symbolEntry.derivedAs.has_value();
+    }
+
     // Not load-bearing, just this file's convention: every collect() call's
-    // first argument is `Walk&`, so `formula::detail` -- Walk's namespace --
+    // first argument is a `Walk<V>&`, so `formula::detail` -- Walk's namespace --
     // is always in ADL's search set, which is why every overload below is
     // found regardless of declaration order. Re-measured when the three lookup
     // overloads below were added: deleting all 17 declarations in this block
@@ -109,104 +213,209 @@ namespace detail
     // That is an implementation detail, not a guarantee, so each overload
     // stays declared here rather than relying on it.
 
-    template <Described Q>
-    void collect(Walk& walk, VarNode<Q> const& node);
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, VarNode<Q> const& node);
 
-    template <Unit U>
-    void collect(Walk& walk, ConstantNode<U> const& node);
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, OverriddenConstantNode<Q> const& node);
 
-    void collect(Walk& walk, PiNode const& node);
+    template <Vocabulary V, Described Q, Node Expr>
+    void collect(Walk<V>& walk, DerivedQuantityNode<Q, Expr> const& node);
 
-    template <UnaryOperator Op, Node Operand>
-    void collect(Walk& walk, UnaryNode<Op, Operand> const& node);
+    template <Vocabulary V, Node Expr>
+    void collect(Walk<V>& walk, ReplacedVariantNode<Expr> const& node);
 
-    template <int Exponent, Node Operand>
-    void collect(Walk& walk, PowerNode<Exponent, Operand> const& node);
+    template <Vocabulary V, Unit U>
+    void collect(Walk<V>& walk, ConstantNode<U> const& node);
 
-    template <int Degree, Node Operand>
-    void collect(Walk& walk, RootNode<Degree, Operand> const& node);
+    template <Vocabulary V>
+    void collect(Walk<V>& walk, PiNode const& node);
 
-    template <BinaryOperator Op, Node Left, Node Right>
-    void collect(Walk& walk, BinaryNode<Op, Left, Right> const& node);
+    template <Vocabulary V, UnaryOperator Op, Node Operand>
+    void collect(Walk<V>& walk, UnaryNode<Op, Operand> const& node);
 
-    template <Node Inner>
-    void collect(Walk& walk, DocumentedNode<Inner> const& node);
+    template <Vocabulary V, int Exponent, Node Operand>
+    void collect(Walk<V>& walk, PowerNode<Exponent, Operand> const& node);
 
-    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
-    void collect(Walk& walk, RoundNode<U, Places, Mode, Operand> const& node);
+    template <Vocabulary V, int Degree, Node Operand>
+    void collect(Walk<V>& walk, RootNode<Degree, Operand> const& node);
 
-    template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
-    void collect(Walk& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node);
+    template <Vocabulary V, BinaryOperator Op, Node Left, Node Right>
+    void collect(Walk<V>& walk, BinaryNode<Op, Left, Right> const& node);
 
-    template <Unit U, FixedString Justification, Node Operand>
-    void collect(Walk& walk, NumericValueNode<U, Justification, Operand> const& node);
+    template <Vocabulary V, Node Inner>
+    void collect(Walk<V>& walk, DocumentedNode<Inner> const& node);
 
-    template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
-    void collect(Walk& walk, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node);
+    template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundNode<U, Places, Mode, Operand> const& node);
 
-    template <KeyTable Keys, Unit ResultUnit>
-    void collect(Walk& walk, ExactLookupNode<Keys, ResultUnit> const& node);
+    template <Vocabulary V, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node);
 
-    template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
-    void collect(Walk& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node);
+    template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
+    void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node);
 
-    template <Comparison Op, Node Left, Node Right>
-    void collect(Walk& walk, PredicateNode<Op, Left, Right> const& node);
+    template <Vocabulary V, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    void collect(Walk<V>& walk, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node);
 
-    template <Predicate P, Node Then, Node Else>
-    void collect(Walk& walk, WhenNode<P, Then, Else> const& node);
+    template <Vocabulary V, KeyTable Keys, Unit ResultUnit>
+    void collect(Walk<V>& walk, ExactLookupNode<Keys, ResultUnit> const& node);
 
-    template <Predicate P>
-    void collect(Walk& walk, Constraint<P> const& node);
+    template <Vocabulary V, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    void collect(Walk<V>& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node);
+
+    template <Vocabulary V, Comparison Op, Node Left, Node Right>
+    void collect(Walk<V>& walk, PredicateNode<Op, Left, Right> const& node);
+
+    template <Vocabulary V, Predicate P, Node Then, Node Else>
+    void collect(Walk<V>& walk, WhenNode<P, Then, Else> const& node);
+
+    template <Vocabulary V, Predicate P>
+    void collect(Walk<V>& walk, Constraint<P> const& node);
+
+    /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
+    /// none yet; @p row is its index. True when the row was added now.
+    ///
+    /// Deduplicated by quantity type -- see `SymbolEntry`. `seenQuantities`
+    /// and `symbols` grow together, so one index names both.
+    template <Described Q, Vocabulary V>
+    bool add_row(Walk<V>& walk, std::size_t& row)
+    {
+        void const* const identity = &quantityIdentity<Q>;
+        row = 0;
+        while (row < walk.seenQuantities.size() && walk.seenQuantities[row] != identity)
+            ++row;
+        if (row < walk.seenQuantities.size())
+            return false;
+        walk.seenQuantities.push_back(identity);
+        walk.documentation.symbols.push_back(SymbolEntry {
+            .symbol = symbol_of<Q>(walk.vocabulary), .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+        return true;
+    }
 
     /// A variable contributes one row to the symbol table -- unless its
     /// quantity type has already contributed one, in which case the second
     /// use of that quantity adds nothing. A different quantity that merely
     /// renders the same symbol is not caught by this check and gets its own
     /// row; see the note on `SymbolEntry`.
-    template <Described Q>
-    void collect(Walk& walk, VarNode<Q> const&)
+    ///
+    /// A quantity an overlay fixed or defined earlier in the same walk --
+    /// possible only in a formula assembled by hand -- keeps its marked row,
+    /// which is marked as also read: see `SymbolEntry::alsoReadAsInput`.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, VarNode<Q> const&)
     {
-        void const* const key = &quantityIdentity<Q>;
-        for (void const* seen: walk.seenQuantities)
-            if (seen == key)
-                return;
-        walk.seenQuantities.push_back(key);
-        walk.documentation.symbols.push_back(SymbolEntry {
-            .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+        std::size_t symbolRow = 0;
+        if (add_row<Q>(walk, symbolRow))
+            return;
+        SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
+        if (is_substituted(symbolEntry))
+            symbolEntry.alsoReadAsInput = true;
+    }
+
+    /// An overridden constant contributes its quantity's row as a variable
+    /// does, marked as fixed: the overlay's value, and what it cited. See
+    /// `SymbolEntry::fixedValue` for why a plain row would mislead.
+    ///
+    /// Chosen over the `VarNode` overload above, which it derives from, for
+    /// the reason its `checked_evaluate_si` overload is (`overlay.hpp`).
+    ///
+    /// A quantity read plainly earlier in the same walk -- possible only in a
+    /// formula assembled by hand, since `apply` fixes every use of it -- has
+    /// its row marked fixed and also read, rather than left plain: the formula
+    /// reads both, and a page must say so whichever order the two uses were
+    /// met in. See `SymbolEntry::alsoReadAsInput`.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, OverriddenConstantNode<Q> const& node)
+    {
+        std::size_t symbolRow = 0;
+        bool const added = add_row<Q>(walk, symbolRow);
+        SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
+        if (symbolEntry.fixedValue.has_value())
+            return;
+        // An existing row that no overlay marked was contributed by a plain
+        // read.
+        if (!added && !is_substituted(symbolEntry))
+            symbolEntry.alsoReadAsInput = true;
+        symbolEntry.fixedValue = node.value();
+        symbolEntry.fixedBy = node.source();
+    }
+
+    /// A derived quantity contributes its quantity's row, marked as derived:
+    /// the definition, rendered in the page's dialect, and what the overlay
+    /// cited -- see `SymbolEntry::derivedAs`. Then the definition is walked,
+    /// after the row, for the quantities it reads: they are inputs of the
+    /// formula as much as any other.
+    ///
+    /// A plain read of the same quantity, before or after, marks the row as
+    /// also read, as it does for a fixed row.
+    template <Vocabulary V, Described Q, Node Expr>
+    void collect(Walk<V>& walk, DerivedQuantityNode<Q, Expr> const& node)
+    {
+        std::size_t symbolRow = 0;
+        bool const added = add_row<Q>(walk, symbolRow);
+        {
+            SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
+            if (!symbolEntry.derivedAs.has_value())
+            {
+                if (!added && !is_substituted(symbolEntry))
+                    symbolEntry.alsoReadAsInput = true;
+                symbolEntry.derivedAs = render_in(walk.dialect, node.expression(), walk.vocabulary);
+                symbolEntry.derivedBy = node.source();
+            }
+        }
+        // After the entry reference is done with: walking may add rows, and
+        // a vector that grows invalidates references into it.
+        collect(walk, node.expression());
+    }
+
+    /// A replaced formula is marked as replaced, cited or not -- see
+    /// `Documentation::replacedBy` -- and walked as the formula; what the
+    /// overlay cited for it also joins the citations when it cited anything,
+    /// the guard `collect(Walk&, Constraint<P> const&)` has, for its reason.
+    template <Vocabulary V, Node Expr>
+    void collect(Walk<V>& walk, ReplacedVariantNode<Expr> const& node)
+    {
+        walk.documentation.replacedBy.push_back(node.source());
+        if (!(node.source() == Citation {}))
+            walk.documentation.citations.push_back(node.source());
+        collect(walk, node.replacement());
     }
 
     /// A literal coefficient names no variable.
-    template <Unit U>
-    void collect(Walk&, ConstantNode<U> const&)
+    template <Vocabulary V, Unit U>
+    void collect(Walk<V>&, ConstantNode<U> const&)
     {
     }
 
     /// Pi is a constant, not a variable.
-    inline void collect(Walk&, PiNode const&) {}
+    template <Vocabulary V>
+    void collect(Walk<V>&, PiNode const&)
+    {
+    }
 
-    template <UnaryOperator Op, Node Operand>
-    void collect(Walk& walk, UnaryNode<Op, Operand> const& node)
+    template <Vocabulary V, UnaryOperator Op, Node Operand>
+    void collect(Walk<V>& walk, UnaryNode<Op, Operand> const& node)
     {
         collect(walk, node.operand);
     }
 
-    template <int Exponent, Node Operand>
-    void collect(Walk& walk, PowerNode<Exponent, Operand> const& node)
+    template <Vocabulary V, int Exponent, Node Operand>
+    void collect(Walk<V>& walk, PowerNode<Exponent, Operand> const& node)
     {
         collect(walk, node.operand);
     }
 
-    template <int Degree, Node Operand>
-    void collect(Walk& walk, RootNode<Degree, Operand> const& node)
+    template <Vocabulary V, int Degree, Node Operand>
+    void collect(Walk<V>& walk, RootNode<Degree, Operand> const& node)
     {
         collect(walk, node.operand);
     }
 
     /// Left before right -- what makes first-appearance order match reading
     /// order, rather than some incidental order of construction.
-    template <BinaryOperator Op, Node Left, Node Right>
-    void collect(Walk& walk, BinaryNode<Op, Left, Right> const& node)
+    template <Vocabulary V, BinaryOperator Op, Node Left, Node Right>
+    void collect(Walk<V>& walk, BinaryNode<Op, Left, Right> const& node)
     {
         collect(walk, node.lhs);
         collect(walk, node.rhs);
@@ -215,32 +424,32 @@ namespace detail
     /// Pushing the citation before recursing is what makes the citation list
     /// outermost-first: the node closest to the root of the tree is visited,
     /// and therefore pushed, first.
-    template <Node Inner>
-    void collect(Walk& walk, DocumentedNode<Inner> const& node)
+    template <Vocabulary V, Node Inner>
+    void collect(Walk<V>& walk, DocumentedNode<Inner> const& node)
     {
         walk.documentation.citations.push_back(node.citation);
         collect(walk, node.inner);
     }
 
     /// Rounding changes a number, not the variables it depends on.
-    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
-    void collect(Walk& walk, RoundNode<U, Places, Mode, Operand> const& node)
+    template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundNode<U, Places, Mode, Operand> const& node)
     {
         collect(walk, node.operand);
     }
 
     /// Rounding to significant digits changes a number, not the variables it
     /// depends on.
-    template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
-    void collect(Walk& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node)
+    template <Vocabulary V, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node)
     {
         collect(walk, node.operand);
     }
 
     /// The escape hatch still reads a variable, even though what it produces
     /// no longer carries a dimension.
-    template <Unit U, FixedString Justification, Node Operand>
-    void collect(Walk& walk, NumericValueNode<U, Justification, Operand> const& node)
+    template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
+    void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node)
     {
         collect(walk, node.operand);
     }
@@ -251,8 +460,8 @@ namespace detail
     /// formula *reads*. The operand is the one thing here that reads anything,
     /// and it is walked for the reason `RoundNode`'s operand is walked: the
     /// table decides which number comes out, not which variables went in.
-    template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
-    void collect(Walk& walk, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node)
+    template <Vocabulary V, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    void collect(Walk<V>& walk, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const& node)
     {
         collect(walk, node.operand);
     }
@@ -262,13 +471,13 @@ namespace detail
     /// (`lookup.hpp`). Its key is a discriminator rather than a quantity, so it
     /// reaches the node as runtime state instead of as a sub-expression, and
     /// there is no child to walk. Rendering does put that key where the other
-    /// two kinds put their operand -- `lookup(key 7, ...)` -- so the subject
+    /// two kinds put their operand -- `lookup(key Cylinder, ...)` -- so the subject
     /// position of the rendered formula is occupied by something a reader may
     /// well take for a variable; it names none, has no unit and earns no row.
     /// Empty for the reason `collect(Walk&, ConstantNode<U> const&)` is empty,
     /// not for want of looking.
-    template <KeyTable Keys, Unit ResultUnit>
-    void collect(Walk&, ExactLookupNode<Keys, ResultUnit> const&)
+    template <Vocabulary V, KeyTable Keys, Unit ResultUnit>
+    void collect(Walk<V>&, ExactLookupNode<Keys, ResultUnit> const&)
     {
     }
 
@@ -276,16 +485,16 @@ namespace detail
     /// does. What is particular to this kind changes nothing about it: the
     /// answer between two rows is computed rather than read off the table, and
     /// a computed number is still a number, not a variable.
-    template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
-    void collect(Walk& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node)
+    template <Vocabulary V, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    void collect(Walk<V>& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node)
     {
         collect(walk, node.operand);
     }
 
     /// `PredicateNode` is not a `Node`, but its two sides are; both still name
     /// variables that belong in the symbol table.
-    template <Comparison Op, Node Left, Node Right>
-    void collect(Walk& walk, PredicateNode<Op, Left, Right> const& node)
+    template <Vocabulary V, Comparison Op, Node Left, Node Right>
+    void collect(Walk<V>& walk, PredicateNode<Op, Left, Right> const& node)
     {
         collect(walk, node.lhs);
         collect(walk, node.rhs);
@@ -300,8 +509,8 @@ namespace detail
     /// the documentation depend on which inputs happened to be passed in,
     /// which a formula's description must not do. Do not "fix" this to match
     /// evaluation's short-circuiting.
-    template <Predicate P, Node Then, Node Else>
-    void collect(Walk& walk, WhenNode<P, Then, Else> const& node)
+    template <Vocabulary V, Predicate P, Node Then, Node Else>
+    void collect(Walk<V>& walk, WhenNode<P, Then, Else> const& node)
     {
         collect(walk, node.predicate);
         collect(walk, node.thenBranch);
@@ -330,8 +539,8 @@ namespace detail
     /// constraint", and would render a bare, five-blank-field citation entry
     /// on a generated page. `Citation`'s memberwise `operator==` against a
     /// value-initialised `Citation {}` is exactly "every field empty".
-    template <Predicate P>
-    void collect(Walk& walk, Constraint<P> const& node)
+    template <Vocabulary V, Predicate P>
+    void collect(Walk<V>& walk, Constraint<P> const& node)
     {
         if (!(node.citation == Citation {}))
             walk.documentation.citations.push_back(node.citation);
@@ -341,12 +550,27 @@ namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
 /// citations and symbol table a documentation page needs.
+///
+/// Every symbol -- in the rendered formula and in the symbol table alike -- is
+/// written as @p vocabulary says (`vocabulary.hpp`); each row's description
+/// and unit stay the quantity's own, because a vocabulary renames how a
+/// quantity is written, never what it is.
+template <Dialect D = Dialect::Plain, Node N, Vocabulary V>
+[[nodiscard]] Documentation document(N const& node, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents @p node in the default vocabulary, which renames nothing.
 template <Dialect D = Dialect::Plain, Node N>
 [[nodiscard]] Documentation document(N const& node)
 {
-    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
-    detail::collect(walk, node);
-    return std::move(walk.documentation);
+    return document<D>(node, DefaultVocabulary {});
 }
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
@@ -368,12 +592,24 @@ template <Dialect D = Dialect::Plain, Node N>
 /// pushes the constraint's citation and walks its predicate for the symbol
 /// table. Nothing here is new machinery; this overload is what makes that
 /// existing machinery reachable from the public API at all.
+///
+/// Every symbol is written as @p vocabulary says, as in the `Node` overload.
+template <Dialect D = Dialect::Plain, Predicate P, Vocabulary V>
+[[nodiscard]] Documentation document(Constraint<P> const& node, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents @p node in the default vocabulary, which renames nothing.
 template <Dialect D = Dialect::Plain, Predicate P>
 [[nodiscard]] Documentation document(Constraint<P> const& node)
 {
-    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
-    detail::collect(walk, node);
-    return std::move(walk.documentation);
+    return document<D>(node, DefaultVocabulary {});
 }
 
 } // namespace formula

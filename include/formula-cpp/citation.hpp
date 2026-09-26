@@ -59,7 +59,12 @@ template <Node Inner>
 struct DocumentedNode: NodeBase
 {
     /// The wrapped expression.
-    Inner inner {};
+    ///
+    /// Deliberately no `{}` default member initialiser: with one, a method
+    /// holding a lookup under this member fails to compile on clang++,
+    /// clang-cl or g++, and cl answers the trait wrongly -- see `Corrections`
+    /// (`lookup.hpp`).
+    Inner inner;
     /// Where `inner` comes from.
     Citation citation {};
 
@@ -87,9 +92,9 @@ template <typename Rep = Rational, Node Inner, typename Env, typename Sink = Nul
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::dispatch<Rep>(node.inner, environment, sink);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::dispatch<Rep>(node.inner, environment, sink);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

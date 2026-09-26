@@ -312,6 +312,14 @@ actually asked for, not avoiding a meaningless one. A specimen can fail two
 checks at once, and a report naming only the first sends someone back for a
 second round of testing they should not have needed.
 
+A method holds its `ConstraintSet` whole, as the third part of
+`formula::method(...)`, and `formula::check_method(m, environment)` is
+`check_all` over it: one outcome per constraint the method holds, at the
+index it holds it. A jurisdiction's overlay can replace the set with
+`with_constraints(...)` -- more constraints, fewer, or none -- and the trace
+then says beside each verdict that it was the jurisdiction's; see
+[Tracing and audit trails](tracing.md#whose-constraints).
+
 ## Every citation here is invented
 
 Every citation used to demonstrate constraints on this page and in

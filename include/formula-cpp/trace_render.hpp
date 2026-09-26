@@ -86,11 +86,164 @@ struct TraceRenderOptions
 
 namespace detail
 {
+    /// Author text, made safe to stand in a trace line: `\` becomes `\\`,
+    /// `[` becomes `\[`, `]` becomes `\]`, `;` becomes `\;`, a newline,
+    /// carriage return or tab becomes `\n`, `\r` or `\t`, and any other
+    /// control character -- below 0x20, or 0x7f -- becomes `\x` and two hex
+    /// digits.
+    ///
+    /// **Why.** A trace line is a numbered line whose provenance is a
+    /// bracketed clause at its end -- `[fixed by jurisdiction overlay: ...]`,
+    /// `(method default)`, `; the method's own constraint` -- and only the
+    /// library may state provenance. A quantity's declared symbol, a
+    /// citation, a verdict's label, a justification, a tag's or an
+    /// enumerator's spelling and a unit's symbol are the author's, and
+    /// printed as written, one holding `] [derived by jurisdiction overlay:
+    /// ...` wrote a clause no overlay made, and one holding a newline wrote a
+    /// line that is no step. Escaped, an author's bracket can never close or
+    /// open a clause, nor an author's newline end a line. The semicolon,
+    /// because a verdict's clause is `[<label>; <whose constraint>]`: a label
+    /// holding `; jurisdiction overlay: ...` would otherwise name a second,
+    /// false owner beside the true one. The backslash, so that an author's `\[` cannot pass for an
+    /// escaped bracket.
+    ///
+    /// **What it does not do.** It stops author text from breaking a line's
+    /// structure, not from holding a clause's words: a `documented()` citation
+    /// titled `replaced by jurisdiction overlay: ...` renders as a genuine
+    /// replacement's clause does. The structured fields of a `Step` -- `kind`,
+    /// the provenance enums, `variantPinned` and so on -- are what is
+    /// authoritative, and the method's author is trusted. Nor does it touch
+    /// anything but ASCII: a Unicode look-alike of a bracket (U+FF3B, U+FF3D)
+    /// or the line separator U+2028 is written as it is, since it cannot
+    /// break the ASCII structure the library writes.
+    ///
+    /// Applied by `step_line`, once, to every piece of author text a step
+    /// holds -- see `EscapedStep` and `unit_symbol_text` -- and nowhere else:
+    /// the words this file writes itself go into the line as they are.
+    [[nodiscard]] inline std::string escaped_author_text(std::string_view authored)
+    {
+        constexpr std::string_view hexDigits = "0123456789abcdef";
+        std::string escaped;
+        escaped.reserve(authored.size());
+        for (char const glyph: authored)
+        {
+            auto const byte = static_cast<unsigned char>(glyph);
+            if (glyph == '\\' || glyph == '[' || glyph == ']' || glyph == ';')
+            {
+                escaped += '\\';
+                escaped += glyph;
+            }
+            else if (glyph == '\n')
+                escaped += "\\n";
+            else if (glyph == '\r')
+                escaped += "\\r";
+            else if (glyph == '\t')
+                escaped += "\\t";
+            else if (byte < 0x20 || byte == 0x7f)
+            {
+                escaped += "\\x";
+                escaped += hexDigits[byte / 16];
+                escaped += hexDigits[byte % 16];
+            }
+            else
+                escaped += glyph;
+        }
+        return escaped;
+    }
+
+    /// A unit's symbol as a trace line shows it, escaped as author text: a
+    /// unit may be the author's own, and `Symbol` is a public aggregate that
+    /// `symbol()` does not have to have built. Read here rather than through
+    /// `EscapedStep`, because a `Step` holds its units as fixed-capacity
+    /// `Symbol` values, which an escaped symbol may not fit.
+    [[nodiscard]] inline std::string unit_symbol_text(Unit const& shownUnit)
+    {
+        return escaped_author_text(view(shownUnit.symbolText));
+    }
+
+    /// A citation's five fields, escaped by `escaped_author_text` and held
+    /// here, for a copy of the citation to point at -- see `EscapedStep`.
+    struct EscapedCitation
+    {
+        explicit EscapedCitation(Citation const& cited):
+            title { escaped_author_text(cited.title) },
+            reference { escaped_author_text(cited.reference) },
+            section { escaped_author_text(cited.section) },
+            equation { escaped_author_text(cited.equation) },
+            text { escaped_author_text(cited.text) }
+        {
+        }
+
+        EscapedCitation(EscapedCitation const&) = delete;
+        EscapedCitation& operator=(EscapedCitation const&) = delete;
+
+        /// The escaped citation, pointing into this object.
+        [[nodiscard]] Citation cited() const noexcept
+        {
+            return Citation {
+                .title = title, .reference = reference, .section = section, .equation = equation, .text = text
+            };
+        }
+
+        std::string title;
+        std::string reference;
+        std::string section;
+        std::string equation;
+        std::string text;
+    };
+
+    /// A copy of a step whose every piece of author text -- the symbol, both
+    /// citations (the step's own, and a selection's prune's), the
+    /// justification, the variant tag, the lookup key's name and a violated
+    /// constraint's verdict label -- is escaped by `escaped_author_text`,
+    /// held here, and pointed at by the copy's views.
+    ///
+    /// `step_line` renders from this copy and never from the step it was
+    /// given, so no helper below can print author text unescaped by reading
+    /// the wrong field. Neither copyable nor movable: the copy's views point
+    /// into this object's own strings.
+    struct EscapedStep
+    {
+        explicit EscapedStep(Step<Rational> const& recorded):
+            symbol { escaped_author_text(recorded.symbol) },
+            justification { escaped_author_text(recorded.justification) },
+            variantTag { escaped_author_text(recorded.variantTag) },
+            lookupKeyName { escaped_author_text(recorded.lookupKeyName) },
+            citation { recorded.citation },
+            variantPrunedBy { recorded.variantPrunedBy },
+            verdictLabel { recorded.outcome.verdict().has_value() ? escaped_author_text(recorded.outcome.verdict()->label)
+                                                                  : std::string {} },
+            step { recorded }
+        {
+            step.symbol = symbol;
+            step.justification = justification;
+            step.variantTag = variantTag;
+            step.lookupKeyName = lookupKeyName;
+            step.citation = citation.cited();
+            step.variantPrunedBy = variantPrunedBy.cited();
+            if (recorded.outcome.kind() == ConstraintOutcomeKind::Violated)
+                step.outcome = ConstraintOutcome::violated(Verdict { verdictLabel });
+        }
+
+        EscapedStep(EscapedStep const&) = delete;
+        EscapedStep& operator=(EscapedStep const&) = delete;
+
+        std::string symbol;
+        std::string justification;
+        std::string variantTag;
+        std::string lookupKeyName;
+        EscapedCitation citation;
+        EscapedCitation variantPrunedBy;
+        std::string verdictLabel;
+        /// The step to render.
+        Step<Rational> step;
+    };
+
     /// `#3` -- how a step refers to one of its operands. Steps are numbered
     /// from one in the rendered text, so this is the stored index plus one.
-    [[nodiscard]] inline std::string operand_reference(std::size_t index)
+    [[nodiscard]] inline std::string operand_reference(std::size_t stepIndex)
     {
-        return "#" + std::to_string(index + 1);
+        return "#" + std::to_string(stepIndex + 1);
     }
 
     /// The infix spelling of a binary step.
@@ -111,10 +264,10 @@ namespace detail
             return operand_reference(step.operands[0]) + " " + std::string { operatorText } + " "
                    + operand_reference(step.operands[1]);
 
-        std::string text { operatorText };
-        for (std::size_t const operand: step.operands)
-            text += " " + operand_reference(operand);
-        return text;
+        std::string operatorExpression { operatorText };
+        for (std::size_t const operandIndex: step.operands)
+            operatorExpression += " " + operand_reference(operandIndex);
+        return operatorExpression;
     }
 
     /// The operand a one-operand step consumed, or an empty string when it
@@ -123,6 +276,25 @@ namespace detail
     [[nodiscard]] std::string sole_operand(Step<Rep> const& step)
     {
         return step.operands.empty() ? std::string {} : operand_reference(step.operands[0]);
+    }
+
+    /// A method's constraints, as the verdicts they reached:
+    /// `acceptance(#3, #6, #9)`, in the order `check_method` returned them,
+    /// and `acceptance(none)` for a method with no constraints -- which is
+    /// the line that says an overlay removed every check.
+    template <typename Rep>
+    [[nodiscard]] std::string acceptance_expression(Step<Rep> const& step)
+    {
+        if (step.operands.empty())
+            return "acceptance(none)";
+        std::string acceptanceText = "acceptance(";
+        for (std::size_t operandPosition = 0; operandPosition < step.operands.size(); ++operandPosition)
+        {
+            if (operandPosition != 0)
+                acceptanceText += ", ";
+            acceptanceText += operand_reference(step.operands[operandPosition]);
+        }
+        return acceptanceText + ")";
     }
 
     /// The token a comparison is written with in a derivation: `>`, `<=`.
@@ -203,15 +375,15 @@ namespace detail
         bool const branchRan = step.branch != Branch::Neither && !step.operands.empty();
         std::size_t const predicateOperands = step.operands.size() - (branchRan ? 1u : 0u);
 
-        std::string text = "if";
+        std::string conditionalText = "if";
         if (predicateOperands >= 1)
-            text += " " + operand_reference(step.operands[0]);
+            conditionalText += " " + operand_reference(step.operands[0]);
         if (predicateOperands >= 2)
-            text += " " + std::string { comparison_symbol(step.comparison) } + " "
-                    + operand_reference(step.operands[1]);
+            conditionalText +=
+                " " + std::string { comparison_symbol(step.comparison) } + " " + operand_reference(step.operands[1]);
         if (branchRan)
-            text += " " + std::string { describe(step.branch) } + " " + operand_reference(step.operands.back());
-        return text;
+            conditionalText += " " + std::string { describe(step.branch) } + " " + operand_reference(step.operands.back());
+        return conditionalText;
     }
 
     /// A `Constraint` step's expression, in a shape that borrows no name from
@@ -255,33 +427,37 @@ namespace detail
     template <typename Rep>
     [[nodiscard]] std::string constraint_expression(Step<Rep> const& step)
     {
-        std::string text = "require";
+        std::string constraintText = "require";
         if (!step.operands.empty())
-            text += " " + operand_reference(step.operands[0]);
+            constraintText += " " + operand_reference(step.operands[0]);
         if (step.operands.size() >= 2)
-            text += " " + std::string { comparison_symbol(step.comparison) } + " "
-                    + operand_reference(step.operands[1]);
-        return text;
+            constraintText +=
+                " " + std::string { comparison_symbol(step.comparison) } + " " + operand_reference(step.operands[1]);
+        return constraintText;
     }
 
-    /// An exact lookup's key, spelled the way `render()` spells it: `key 7`.
+    /// An exact lookup's key, spelled the way `render()` spells it in its
+    /// plain dialect: `key Cylinder`, or `key 9` for a key that names no row
+    /// (or a row whose key is itself no enumerator).
     ///
-    /// The underlying value rather than the enumerator's name, for the reason
-    /// `detail::key_text` (`render.hpp`) sets out in full: a C++ enumerator
-    /// has no name at run time. This cannot call that function -- it is a
-    /// template on the author's enumeration, and a `Step` has erased the type
-    /// -- so the two spellings are independent and the cross-surface test in
-    /// `trace_render_tests.cpp` is what ties them together, exactly as it
-    /// does for the six comparison tokens.
+    /// The name is the one the step recorded (`Step::lookupKeyName`), and the
+    /// underlying value is the fallback for an empty one, for the reasons
+    /// `detail::key_text` (`render.hpp`) gives. This cannot call that
+    /// function -- it is a template on the author's enumeration, and a `Step`
+    /// has erased the type -- so the two spellings are independent and the
+    /// cross-surface test in `trace_render_tests.cpp` is what ties them
+    /// together, exactly as it does for the six comparison tokens.
     ///
     /// The two casts are spelled separately for `key_text`'s own reason: an
     /// enumeration's underlying type may be `unsigned long long`, whose top
     /// half no signed type can hold.
-    [[nodiscard]] inline std::string lookup_key_text(Step<Rational> const& step)
+    [[nodiscard]] inline std::string lookup_key_text(Step<Rational> const& recorded)
     {
+        if (!recorded.lookupKeyName.empty())
+            return "key " + std::string { recorded.lookupKeyName };
         return "key "
-               + (step.lookupKeyIsSigned ? std::to_string(static_cast<long long>(step.lookupKey))
-                                         : std::to_string(step.lookupKey));
+               + (recorded.lookupKeyIsSigned ? std::to_string(static_cast<long long>(recorded.lookupKey))
+                                             : std::to_string(recorded.lookupKey));
     }
 
     /// A half-open interval a lookup step reports about -- a selected band,
@@ -291,11 +467,13 @@ namespace detail
     /// half-open interval in this library, so that a derivation and the
     /// formula it derives cannot name one band two ways. That ruling, and the
     /// published defect that bought it, are in `render.hpp`'s file comment.
-    [[nodiscard]] inline std::string half_open_range_text(LookupRange const& range, std::string_view keySymbol)
+    [[nodiscard]] inline std::string half_open_range_text(LookupRange const& lookupRange, std::string_view keySymbol)
     {
-        return band_text(
-            Band { range.lowNumerator, range.lowDenominator, range.highNumerator, range.highDenominator },
-            keySymbol);
+        return band_text(Band { lookupRange.lowNumerator,
+                                lookupRange.lowDenominator,
+                                lookupRange.highNumerator,
+                                lookupRange.highDenominator },
+                         keySymbol);
     }
 
     /// A **closed** range an interpolating curve runs over: `2 to 19 mm`.
@@ -314,10 +492,10 @@ namespace detail
     /// every other declared bound in this library is printed with, so a curve
     /// whose first row was typed `30/4` reads `15/2` here exactly as it does
     /// in `render()`.
-    [[nodiscard]] inline std::string closed_range_text(LookupRange const& range, std::string_view keySymbol)
+    [[nodiscard]] inline std::string closed_range_text(LookupRange const& lookupRange, std::string_view keySymbol)
     {
-        return number_with_unit(declared_number_text(range.lowNumerator, range.lowDenominator) + " to "
-                                    + declared_number_text(range.highNumerator, range.highDenominator),
+        return number_with_unit(declared_number_text(lookupRange.lowNumerator, lookupRange.lowDenominator) + " to "
+                                    + declared_number_text(lookupRange.highNumerator, lookupRange.highDenominator),
                                 keySymbol);
     }
 
@@ -339,13 +517,13 @@ namespace detail
     /// `closed_range_text`'s `to`. The numbers go through
     /// `declared_number_text` like every other declared bound, so a row typed
     /// `14/4` reads `7/2` here exactly as it does in `render()`.
-    [[nodiscard]] inline std::string segment_text(Segment const& segment, std::string_view keySymbol)
+    [[nodiscard]] inline std::string segment_text(Segment const& lookupSegment, std::string_view keySymbol)
     {
-        std::string const low = declared_number_text(segment.low.numerator, segment.low.denominator);
-        std::string const high = declared_number_text(segment.high.numerator, segment.high.denominator);
-        if (low == high)
-            return "on the row at " + number_with_unit(low, keySymbol);
-        return "between " + number_with_unit(low + " and " + high, keySymbol);
+        std::string const lowText = declared_number_text(lookupSegment.low.numerator, lookupSegment.low.denominator);
+        std::string const highText = declared_number_text(lookupSegment.high.numerator, lookupSegment.high.denominator);
+        if (lowText == highText)
+            return "on the row at " + number_with_unit(lowText, keySymbol);
+        return "between " + number_with_unit(lowText + " and " + highText, keySymbol);
     }
 
     /// Why a lookup found nothing, in one clause -- the clause that stops
@@ -355,27 +533,28 @@ namespace detail
     /// Each kind says it in its own terms, because the three misses are
     /// genuinely different questions: a value in none of a table's bands, a
     /// key in none of its rows, a value off the ends of a curve.
-    [[nodiscard]] inline std::string lookup_miss_text(Step<Rational> const& step, std::string_view keySymbol)
+    [[nodiscard]] inline std::string lookup_miss_text(Step<Rational> const& recorded, std::string_view keySymbol)
     {
-        if (step.kind == StepKind::ExactLookup)
+        if (recorded.kind == StepKind::ExactLookup)
             return "no row has this key";
 
-        if (!step.coveredRange.has_value())
-            return step.kind == StepKind::BandedLookup ? "the table declares no bands" : "the curve declares no rows";
+        if (!recorded.coveredRange.has_value())
+            return recorded.kind == StepKind::BandedLookup ? "the table declares no bands" : "the curve declares no rows";
 
-        if (step.kind == StepKind::BandedLookup)
-            return "in no band; the bands cover " + half_open_range_text(*step.coveredRange, keySymbol);
+        if (recorded.kind == StepKind::BandedLookup)
+            return "in no band; the bands cover " + half_open_range_text(*recorded.coveredRange, keySymbol);
 
         // A curve with exactly one row covers that one key and nothing else,
         // and "runs 15/2 to 15/2 mm" would describe it as a range it is not.
         // `at <key>` is the spelling `render()` gives a breakpoint, for the
         // same reason: a row is a point.
-        std::string const low = declared_number_text(step.coveredRange->lowNumerator, step.coveredRange->lowDenominator);
-        std::string const high =
-            declared_number_text(step.coveredRange->highNumerator, step.coveredRange->highDenominator);
-        if (low == high)
-            return "outside the curve, whose only row is at " + number_with_unit(low, keySymbol);
-        return "outside the curve, which runs " + closed_range_text(*step.coveredRange, keySymbol);
+        std::string const lowText =
+            declared_number_text(recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator);
+        std::string const highText =
+            declared_number_text(recorded.coveredRange->highNumerator, recorded.coveredRange->highDenominator);
+        if (lowText == highText)
+            return "outside the curve, whose only row is at " + number_with_unit(lowText, keySymbol);
+        return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keySymbol);
     }
 
     /// A lookup step's trailing clause: which row it selected, or -- when it
@@ -400,10 +579,10 @@ namespace detail
     /// trailing qualifications, and the plain `--` this project's prose uses
     /// for a secondary aside would train them to skim past exactly the fact
     /// that must not be skimmed.
-    [[nodiscard]] inline std::string lookup_suffix(Step<Rational> const& step)
+    [[nodiscard]] inline std::string lookup_suffix(Step<Rational> const& recorded)
     {
-        std::string_view const keySymbol = view(step.sourceUnit.symbolText);
-        switch (step.lookupFailure)
+        std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
+        switch (recorded.lookupFailure)
         {
             case LookupFailure::None:
                 // Nothing failed, so the clause names where the answer came
@@ -417,13 +596,13 @@ namespace detail
                 // in the operand's own step, and an operand evaluated through
                 // the two-parameter extension point (`sink.hpp`) contributes
                 // none.
-                if (step.selectedBand.has_value())
-                    return " [" + band_text(*step.selectedBand, keySymbol) + "]";
-                if (step.selectedSegment.has_value())
-                    return " [" + segment_text(*step.selectedSegment, keySymbol) + "]";
+                if (recorded.selectedBand.has_value())
+                    return " [" + band_text(*recorded.selectedBand, keySymbol) + "]";
+                if (recorded.selectedSegment.has_value())
+                    return " [" + segment_text(*recorded.selectedSegment, keySymbol) + "]";
                 return {};
             case LookupFailure::Missed:
-                return " [" + lookup_miss_text(step, keySymbol) + "]";
+                return " [" + lookup_miss_text(recorded, keySymbol) + "]";
             case LookupFailure::Computation:
                 return " [the interpolation itself overflowed, not anything below it]";
             case LookupFailure::Conversion:
@@ -435,8 +614,8 @@ namespace detail
                 // construction -- that is how the recorder knew -- but
                 // `Step` is a public aggregate and a caller may fill one in
                 // by hand, so the reference is not assumed into existence.
-                return step.operands.empty() ? std::string { " [carried up from the operand]" }
-                                             : " [carried up from " + sole_operand(step) + "]";
+                return recorded.operands.empty() ? std::string { " [carried up from the operand]" }
+                                                 : " [carried up from " + sole_operand(recorded) + "]";
             case LookupFailure::Undetermined:
                 return " [this lookup or something below it: the operand recorded no step]";
         }
@@ -453,8 +632,24 @@ namespace detail
     {
         switch (step.kind)
         {
+            // An overridden constant reads as its quantity, as it does in
+            // `render()`; that the overlay fixed it goes in the suffix -- see
+            // `overridden_constant_suffix`.
             case StepKind::Variable:
+            case StepKind::OverriddenConstant:
                 return std::string { step.symbol };
+            // The quantity, equal to the step its definition produced:
+            // `k_s = #3`, so that the line reads `k_s = #3 = 97/100`. That it
+            // is a jurisdiction's definition goes in the suffix -- see
+            // `derived_quantity_suffix`. With no step to name -- an untraced
+            // consumer node as the whole definition -- the quantity alone.
+            case StepKind::DerivedQuantity:
+                return step.operands.empty() ? std::string { step.symbol }
+                                             : std::string { step.symbol } + " = " + sole_operand(step);
+            // Its operand, as `Documented`'s is: the replacement computed the
+            // value; the step says only whose formula it was.
+            case StepKind::ReplacedVariant:
+                return sole_operand(step);
             case StepKind::Constant:
                 return {};
             case StepKind::PiConstant:
@@ -476,19 +671,29 @@ namespace detail
                                           : "root" + std::to_string(step.exponent) + "(" + sole_operand(step) + ")";
             case StepKind::Documented:
                 return sole_operand(step);
+            // Its operand, exactly as `Documented`'s is: the selection chose
+            // which formula ran, and computed nothing of its own. What it
+            // chose goes in the suffix -- see `variant_suffix`.
+            case StepKind::VariantSelected:
+                return sole_operand(step);
             case StepKind::Round:
-                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp of "
-                       + std::string { view(step.unit.symbolText) } + ")";
+                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
             case StepKind::RoundSignificant:
-                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf of "
-                       + std::string { view(step.unit.symbolText) } + ")";
+                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf"
+                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
+            // The unit only: the granularity belongs with whose rule it is,
+            // in the suffix -- see `rounding_rule_suffix`.
+            case StepKind::RoundingRuleApplied:
+                return "round(" + sole_operand(step) + unit_clause(", in ", unit_symbol_text(step.unit)) + ")";
             case StepKind::NumericValue:
-                return "numeric(" + sole_operand(step) + ", in " + std::string { view(step.sourceUnit.symbolText) }
-                       + ")";
+                return "numeric(" + sole_operand(step) + unit_clause(", in ", unit_symbol_text(step.sourceUnit)) + ")";
             case StepKind::Conditional:
                 return conditional_expression(step);
             case StepKind::Constraint:
                 return constraint_expression(step);
+            case StepKind::AcceptanceChecked:
+                return acceptance_expression(step);
             // The head names are `render()`'s own, and the split between them
             // is the one `render.hpp` makes deliberately: the two *selecting*
             // kinds share `lookup`, and the one that *computes* a number
@@ -509,6 +714,31 @@ namespace detail
         return "unknown step kind";
     }
 
+    /// What a clause says in place of a citation that names nothing. Every
+    /// operation of an overlay takes a citation argument, but an empty one
+    /// compiles -- `pin_variant<Cube>({})`, or an operation's aggregate built
+    /// directly -- and a clause that then read `fixed by jurisdiction overlay`
+    /// would look cited to a reader who does not know it could have said more.
+    inline constexpr std::string_view noCitationGiven = "(no citation given)";
+
+    /// What a citation identifies itself by, unbracketed: its title,
+    /// reference, section and equation, each that is not empty, joined by
+    /// commas. Empty when all four are.
+    [[nodiscard]] inline std::string citation_text(Citation const& citation)
+    {
+        std::string citationWords;
+        for (std::string_view const citationPart:
+             { citation.title, citation.reference, citation.section, citation.equation })
+        {
+            if (citationPart.empty())
+                continue;
+            if (!citationWords.empty())
+                citationWords += ", ";
+            citationWords += citationPart;
+        }
+        return citationWords;
+    }
+
     /// What a citation says, in one bracketed clause:
     /// `[Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]`.
     ///
@@ -523,18 +753,166 @@ namespace detail
     /// derivation is a line-per-step record, and a paragraph inside one line
     /// would defeat the bound the caller chose. A page that wants the full
     /// text has the `Citation` itself, through `document()`.
+    ///
+    /// The bracket goes around `citation_text`, which the overlay clauses
+    /// below share, so that a source reads the same wherever it is cited.
     [[nodiscard]] inline std::string citation_suffix(Citation const& citation)
     {
-        std::string text;
-        for (std::string_view const part: { citation.title, citation.reference, citation.section, citation.equation })
+        std::string const citationWords = citation_text(citation);
+        return citationWords.empty() ? citationWords : " [" + citationWords + "]";
+    }
+
+    /// Where a value or a rule came from, when an overlay supplied it:
+    /// `jurisdiction overlay: `, followed by what the overlay cited --
+    /// `jurisdiction overlay: Example Standard 12:2021 NA` -- or
+    /// `jurisdiction overlay (no citation given)` when the citation names
+    /// nothing. Every overlay clause is built on this, so none of them reads
+    /// as cited when it was not.
+    [[nodiscard]] inline std::string overlay_source_text(Citation const& overlayCitation)
+    {
+        std::string const cited = citation_text(overlayCitation);
+        return cited.empty() ? "jurisdiction overlay " + std::string { noCitationGiven } : "jurisdiction overlay: " + cited;
+    }
+
+    /// An overridden constant's clause: `[fixed by jurisdiction overlay:
+    /// Example Standard 12:2021 NA, NA.2.3]`.
+    ///
+    /// Present whether or not the overlay cited anything. The body of the line
+    /// -- `k_s = 97/100` -- reads exactly as a variable the specimen supplied,
+    /// and this clause is the only thing on it that says otherwise.
+    [[nodiscard]] inline std::string overridden_constant_suffix(Citation const& cited)
+    {
+        return " [fixed by " + overlay_source_text(cited) + "]";
+    }
+
+    /// A derived quantity's clause: `[derived by jurisdiction overlay: ...]`.
+    /// Present whether or not the overlay cited anything, for the reason
+    /// `overridden_constant_suffix` gives.
+    [[nodiscard]] inline std::string derived_quantity_suffix(Citation const& cited)
+    {
+        return " [derived by " + overlay_source_text(cited) + "]";
+    }
+
+    /// A replaced variant's clause: `[replaced by jurisdiction overlay: ...]`.
+    /// Present whether or not the overlay cited anything: the body of the line
+    /// -- `#5 = ...` -- says nothing of whose formula ran.
+    [[nodiscard]] inline std::string replaced_variant_suffix(Citation const& cited)
+    {
+        return " [replaced by " + overlay_source_text(cited) + "]";
+    }
+
+    /// Whose a `RoundingRuleApplied` step's rule was: `method default`, or
+    /// the overlay and what it cited.
+    [[nodiscard]] inline std::string rounding_provenance_text(Step<Rational> const& recorded)
+    {
+        switch (recorded.roundingProvenance)
         {
-            if (part.empty())
-                continue;
-            if (!text.empty())
-                text += ", ";
-            text += part;
+            case RoundingProvenance::MethodDefault:
+                return "method default";
+            case RoundingProvenance::JurisdictionOverlay:
+                return overlay_source_text(recorded.citation);
         }
-        return text.empty() ? text : " [" + text + "]";
+        // A hand-built `Step` may hold any value of the underlying type, and
+        // naming either provenance for it would be a guess.
+        return "unknown provenance";
+    }
+
+    /// A method's rounding rule, and whose it was, in one bracketed clause:
+    /// `[rounded to 1 dp (method default); nearest, ties away from zero]`, or
+    /// `[rounded to 2 dp (jurisdiction overlay: ...); ...]`.
+    ///
+    /// **The provenance is the point.** Spec section 9.1 asks the trace to
+    /// say which rule applied and where it came from; `rounded to 1 dp` alone
+    /// is true of both, so the parenthesis is what makes the line answer the
+    /// second half. It sits beside the granularity, not after the mode, because
+    /// what it qualifies is the rule, and the granularity is the rule.
+    ///
+    /// A semicolon before the tie-breaking rule, not the comma
+    /// `rounding_mode_suffix` could otherwise have been joined with: a cited
+    /// source has commas of its own, and so does every half mode.
+    [[nodiscard]] inline std::string rounding_rule_suffix(Step<Rational> const& recorded)
+    {
+        return " [rounded to " + std::to_string(recorded.granularity) + " dp (" + rounding_provenance_text(recorded) + "); "
+               + std::string { describe(recorded.mode) } + "]";
+    }
+
+    /// @p ordinal as an English ordinal: `1st`, `2nd`, `3rd`, `4th`, and
+    /// `11th`, `12th`, `13th` rather than `11st`, `12nd`, `13rd`.
+    [[nodiscard]] inline std::string ordinal_text(std::size_t ordinal)
+    {
+        std::string_view ordinalSuffix = "th";
+        if (ordinal % 100 < 11 || ordinal % 100 > 13)
+        {
+            switch (ordinal % 10)
+            {
+                case 1:
+                    ordinalSuffix = "st";
+                    break;
+                case 2:
+                    ordinalSuffix = "nd";
+                    break;
+                case 3:
+                    ordinalSuffix = "rd";
+                    break;
+                default:
+                    break;
+            }
+        }
+        return std::to_string(ordinal) + std::string { ordinalSuffix };
+    }
+
+    /// What jurisdictions' overlays did to the variants before one was
+    /// selected, as further clauses of the variant's bracket: the prunes,
+    /// `; 1 of 3 pruned by jurisdiction overlay: ...` -- or, when overlays
+    /// pruned more than one, `; 2 of 3 pruned, the last by jurisdiction
+    /// overlay: ...`, naming what the last one cited -- and then a pin, `;
+    /// pinned by jurisdiction overlay: ...`. Both when one jurisdiction
+    /// pruned and a later one pinned; one overlay cannot do both. Empty when
+    /// none pinned or pruned.
+    [[nodiscard]] inline std::string variant_narrowing_clause(Step<Rational> const& recorded)
+    {
+        std::string narrowingText;
+        if (recorded.variantPrunedCount > 0)
+            narrowingText += "; " + std::to_string(recorded.variantPrunedCount) + " of "
+                             + std::to_string(recorded.variantCount)
+                             + (recorded.variantPrunedCount == 1 ? " pruned by " : " pruned, the last by ")
+                             + overlay_source_text(recorded.variantPrunedBy);
+        if (recorded.variantPinned)
+            narrowingText += "; pinned by " + overlay_source_text(recorded.citation);
+        return narrowingText;
+    }
+
+    /// Which variant a method selected, and on what, in one bracketed clause:
+    /// `[variant Cylinder (2nd of 3), selected by tag]`.
+    ///
+    /// **Both the name and the position, because each answers what the other
+    /// cannot.** The name is the discriminator the caller selected with, and
+    /// what an inspector asking "why the cylinder formula?" reads; the
+    /// position is what they count back to in the method's `variants(...)`,
+    /// and it survives even where the name does not -- a tag the compiler's
+    /// signature did not let the library read, recorded with an empty name,
+    /// still says which variant ran: `[the 2nd of 3 variants, selected by a
+    /// tag whose name could not be read]`. Printed one-based, as an ordinal,
+    /// because a person counts from one; `Step::variantIndex` stays
+    /// zero-based, as every position this library reports in a diagnostic
+    /// is.
+    ///
+    /// `selected by tag` names **how** the choice was made, not only that it
+    /// was: a tag is the only discriminator a method has in this phase, and
+    /// saying so now is what will keep this line true once there is a second.
+    ///
+    /// The same bracket `citation_suffix` and `lookup_suffix` use, for the
+    /// reason `lookup_suffix` gives: it is where a reader already looks for
+    /// the fact about a step that must not be skimmed.
+    [[nodiscard]] inline std::string variant_suffix(Step<Rational> const& recorded)
+    {
+        std::string const ordinalPosition =
+            ordinal_text(recorded.variantIndex + 1) + " of " + std::to_string(recorded.variantCount);
+        if (recorded.variantTag.empty())
+            return " [the " + ordinalPosition + " variants, selected by a tag whose name could not be read"
+                   + variant_narrowing_clause(recorded) + "]";
+        return " [variant " + std::string { recorded.variantTag } + " (" + ordinalPosition + "), selected by tag"
+               + variant_narrowing_clause(recorded) + "]";
     }
 
     /// What a step produced, as a person should read it.
@@ -544,15 +922,15 @@ namespace detail
     /// appends that unit's symbol, so an input entered as 180 l reads
     /// `180 l`. A step that failed shows why, and one with no value at all
     /// says so -- absence is not an error and must not be rendered as one.
-    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& step)
+    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded)
     {
-        if (step.error.has_value())
-            return std::string { describe(*step.error) };
-        if (!step.value.has_value())
+        if (recorded.error.has_value())
+            return std::string { describe(*recorded.error) };
+        if (!recorded.value.has_value())
             return "(not measured)";
 
         std::expected<Rational, ArithmeticError> const shown =
-            checked_convert(*step.value, coherent(step.dimension), step.unit);
+            checked_convert(*recorded.value, coherent(recorded.dimension), recorded.unit);
         // Unreachable for a `Step` the recorder built -- it records a unit of
         // the step's own dimension -- but a `Step` is a public aggregate and a
         // caller may fill one in by hand. Refusing to print is the only
@@ -561,11 +939,11 @@ namespace detail
         if (!shown)
             return "(not shown: " + std::string { describe(shown.error()) } + ")";
 
-        std::string text = number_text(*shown);
-        std::string_view const unitSymbol = view(step.unit.symbolText);
+        std::string valueText = number_text(*shown);
+        std::string const unitSymbol = unit_symbol_text(recorded.unit);
         if (!unitSymbol.empty())
-            text += " " + std::string { unitSymbol };
-        return text;
+            valueText += " " + unitSymbol;
+        return valueText;
     }
 
     /// A `NumericValue` step's justification, in one bracketed clause. Empty
@@ -601,14 +979,85 @@ namespace detail
     /// function already uses for `Documented` and `NumericValue` has no such
     /// collision, and puts the mode where a reader is already looking for a
     /// step's trailing qualifications.
-    [[nodiscard]] inline std::string rounding_mode_suffix(RoundingMode mode)
+    [[nodiscard]] inline std::string rounding_mode_suffix(RoundingMode roundingMode)
     {
-        return " [" + std::string { describe(mode) } + "]";
+        return " [" + std::string { describe(roundingMode) } + "]";
+    }
+
+    /// A constraint's outcome in words, unbracketed: `satisfied`, the verdict's
+    /// label, `not checked`, or the arithmetic error that made it impossible
+    /// to check at all.
+    [[nodiscard]] inline std::string constraint_outcome_text(ConstraintOutcome const& checkedOutcome)
+    {
+        switch (checkedOutcome.kind())
+        {
+            case ConstraintOutcomeKind::Satisfied:
+                return "satisfied";
+            case ConstraintOutcomeKind::Violated:
+                // `verdict()` is guaranteed present here -- `kind()` just
+                // said `Violated`, the only state it is set for.
+                return std::string { checkedOutcome.verdict()->label };
+            case ConstraintOutcomeKind::NotChecked:
+                return "not checked";
+            case ConstraintOutcomeKind::Invalid:
+                // Likewise guaranteed present for `Invalid`.
+                return std::string { describe(*checkedOutcome.error()) };
+        }
+        return "unknown outcome";
+    }
+
+    /// Whose a method's constraints were: `the method's own`, or the overlay
+    /// and what it cited, as every overlay clause in this file spells it.
+    [[nodiscard]] inline std::string constraint_provenance_text(ConstraintProvenance provenance, Citation const& cited)
+    {
+        switch (provenance)
+        {
+            case ConstraintProvenance::MethodOwn:
+                return "the method's own";
+            case ConstraintProvenance::JurisdictionOverlay:
+                return overlay_source_text(cited);
+        }
+        // A hand-built `Step` may hold any value of the underlying type, and
+        // naming either provenance for it would be a guess.
+        return "unknown provenance";
+    }
+
+    /// A verdict's second clause, after a semicolon: `; the method's own
+    /// constraint`, or `; jurisdiction overlay: ...`. Empty for a constraint
+    /// checked outside any method, which is no one's -- so a trace of
+    /// `check` or `check_all` reads exactly as it did before methods had
+    /// constraints.
+    ///
+    /// A semicolon, not a comma, for `rounding_rule_suffix`'s reason: a cited
+    /// source has commas of its own.
+    [[nodiscard]] inline std::string constraint_provenance_clause(Step<Rational> const& recorded)
+    {
+        if (!recorded.constraintProvenance.has_value())
+            return {};
+        if (*recorded.constraintProvenance == ConstraintProvenance::MethodOwn)
+            return "; " + constraint_provenance_text(*recorded.constraintProvenance, recorded.citation) + " constraint";
+        return "; " + constraint_provenance_text(*recorded.constraintProvenance, recorded.citation);
+    }
+
+    /// A method's constraints step's clause: `[the method's own constraints]`,
+    /// or `[jurisdiction overlay: ...]`. Present whatever the provenance, for
+    /// the reason `overridden_constant_suffix` gives: the body of the line
+    /// says nothing of whose checks they were.
+    [[nodiscard]] inline std::string acceptance_suffix(Step<Rational> const& recorded)
+    {
+        if (!recorded.constraintProvenance.has_value())
+            return {};
+        if (*recorded.constraintProvenance == ConstraintProvenance::MethodOwn)
+            return " [" + constraint_provenance_text(*recorded.constraintProvenance, recorded.citation) + " constraints]";
+        return " [" + constraint_provenance_text(*recorded.constraintProvenance, recorded.citation) + "]";
     }
 
     /// A `Constraint` step's outcome, in one bracketed clause: `[satisfied]`,
     /// `[reject the specimen]`, `[not checked]`, or the arithmetic error that
-    /// made it impossible to check at all.
+    /// made it impossible to check at all -- followed, for a method's
+    /// constraint, by whose it was: `[satisfied; the method's own
+    /// constraint]`, `[reject the specimen; jurisdiction overlay: ...]` (see
+    /// `constraint_provenance_clause`).
     ///
     /// Present for **every** outcome, unlike the other bracketed suffixes in
     /// this file. `Conditional` needs `[no branch]` only for the one case its
@@ -633,66 +1082,82 @@ namespace detail
     /// rather than a single word (`[Bulk density of a compacted specimen,
     /// Example Standard 1:2020, 4.2, (3)]`), so there is no shape a verdict
     /// label needs that the existing convention cannot give it.
-    [[nodiscard]] inline std::string constraint_outcome_suffix(ConstraintOutcome const& outcome)
+    [[nodiscard]] inline std::string constraint_outcome_suffix(Step<Rational> const& recorded)
     {
-        switch (outcome.kind())
-        {
-            case ConstraintOutcomeKind::Satisfied:
-                return " [satisfied]";
-            case ConstraintOutcomeKind::Violated:
-                // `verdict()` is guaranteed present here -- `kind()` just
-                // said `Violated`, the only state it is set for.
-                return " [" + std::string { outcome.verdict()->label } + "]";
-            case ConstraintOutcomeKind::NotChecked:
-                return " [not checked]";
-            case ConstraintOutcomeKind::Invalid:
-                // Likewise guaranteed present for `Invalid`.
-                return " [" + std::string { describe(*outcome.error()) } + "]";
-        }
-        return " [unknown outcome]";
+        return " [" + constraint_outcome_text(recorded.outcome) + constraint_provenance_clause(recorded) + "]";
     }
 
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the kinds that need one -- a citation for
-    /// `Documented`, a justification for `NumericValue`, the tie-breaking rule
-    /// for the two rounding kinds, for a `Conditional` whose predicate never
+    /// `Documented`, the variant and its discriminator for `VariantSelected`,
+    /// a justification for `NumericValue`, the tie-breaking rule
+    /// for the two rounding kinds, the granularity, provenance and tie rule
+    /// for a method's rounding rule, the overlay that fixed an overridden
+    /// constant, for a `Conditional` whose predicate never
     /// resolved `[no branch]`, and for the three lookup kinds the row selected
     /// or the failure's origin (see `lookup_suffix`).
     ///
     /// `Constraint` is handled separately, first: a constraint produces a
     /// verdict, not a quantity (`constraint.hpp`'s own file comment explains
     /// why), so there is no value at all for `step_value_text` to convert or
-    /// print. The expression and the outcome suffix are the whole line.
-    [[nodiscard]] inline std::string step_line(Step<Rational> const& step)
+    /// print. The expression and the outcome suffix are the whole line. So is
+    /// `AcceptanceChecked`, for the same reason: it gathers verdicts, and has
+    /// no value of its own.
+    ///
+    /// Renders an `EscapedStep`'s copy, never the step itself -- see
+    /// `step_line`, which makes it.
+    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded)
     {
-        if (step.kind == StepKind::Constraint)
-            return constraint_expression(step) + constraint_outcome_suffix(step.outcome);
+        if (recorded.kind == StepKind::Constraint)
+            return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
+        if (recorded.kind == StepKind::AcceptanceChecked)
+            return acceptance_expression(recorded) + acceptance_suffix(recorded);
 
-        std::string const value = step_value_text(step);
-        std::string suffix;
-        if (step.kind == StepKind::Documented)
-            suffix = citation_suffix(step.citation);
-        else if (step.kind == StepKind::NumericValue)
-            suffix = justification_suffix(step.justification);
+        std::string const valueText = step_value_text(recorded);
+        std::string annotation;
+        if (recorded.kind == StepKind::Documented)
+            annotation = citation_suffix(recorded.citation);
+        else if (recorded.kind == StepKind::VariantSelected)
+            annotation = variant_suffix(recorded);
+        else if (recorded.kind == StepKind::NumericValue)
+            annotation = justification_suffix(recorded.justification);
         // Only `[no branch]`. A branch that ran is named by the keyword in
         // the body (`... then #3`, `... else #5`), and a suffix repeating it
         // would be noise; `[no branch]` is the one thing the body cannot
         // say, and it is what separates a predicate that never resolved from
         // one that resolved false.
-        else if (step.kind == StepKind::Conditional && step.branch == Branch::Neither)
-            suffix = " [" + std::string { describe(step.branch) } + "]";
-        else if (step.kind == StepKind::Round || step.kind == StepKind::RoundSignificant)
-            suffix = rounding_mode_suffix(step.mode);
+        else if (recorded.kind == StepKind::Conditional && recorded.branch == Branch::Neither)
+            annotation = " [" + std::string { describe(recorded.branch) } + "]";
+        else if (recorded.kind == StepKind::Round || recorded.kind == StepKind::RoundSignificant)
+            annotation = rounding_mode_suffix(recorded.mode);
+        else if (recorded.kind == StepKind::RoundingRuleApplied)
+            annotation = rounding_rule_suffix(recorded);
+        else if (recorded.kind == StepKind::OverriddenConstant)
+            annotation = overridden_constant_suffix(recorded.citation);
+        else if (recorded.kind == StepKind::DerivedQuantity)
+            annotation = derived_quantity_suffix(recorded.citation);
+        else if (recorded.kind == StepKind::ReplacedVariant)
+            annotation = replaced_variant_suffix(recorded.citation);
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
         // value fell in, and on a failure it is the only thing separating a
         // miss from a relayed error. See `lookup_suffix`.
-        else if (is_lookup(step.kind))
-            suffix = lookup_suffix(step);
+        else if (is_lookup(recorded.kind))
+            annotation = lookup_suffix(recorded);
 
-        if (step.kind == StepKind::Constant)
-            return value + suffix;
-        return step_expression(step) + " = " + value + suffix;
+        if (recorded.kind == StepKind::Constant)
+            return valueText + annotation;
+        return step_expression(recorded) + " = " + valueText + annotation;
+    }
+
+    /// One step's line, without its number -- see `escaped_step_line` for
+    /// what it holds. The one place author text is escaped: every piece of it
+    /// in @p recorded is escaped into an `EscapedStep` here, before anything
+    /// reads it, and the line is rendered from that copy.
+    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded)
+    {
+        EscapedStep const escaped { recorded };
+        return escaped_step_line(escaped.step);
     }
 } // namespace detail
 
@@ -722,28 +1187,27 @@ template <typename Rep = Rational>
     std::size_t const shown =
         trace.steps.size() < options.maxSteps.value ? trace.steps.size() : options.maxSteps.value;
 
-    std::string text;
-    for (std::size_t index = 0; index < shown; ++index)
+    std::string renderedTrace;
+    for (std::size_t stepIndex = 0; stepIndex < shown; ++stepIndex)
     {
-        text += std::to_string(index + 1);
-        text += ". ";
-        text += detail::step_line(trace.steps[index]);
-        text += "\n";
+        renderedTrace += std::to_string(stepIndex + 1);
+        renderedTrace += ". ";
+        renderedTrace += detail::step_line(trace.steps[stepIndex]);
+        renderedTrace += "\n";
     }
 
     if (trace.steps.size() > shown)
     {
-        text += "... ";
-        text += std::to_string(trace.steps.size() - shown);
+        renderedTrace += "... ";
+        renderedTrace += std::to_string(trace.steps.size() - shown);
         // Singular when there is one. A derivation is read by a person
         // checking a number they are about to sign off on; "1 further
         // steps" reads as carelessness, and carelessness is the last
         // impression an audit trail should give.
-        text += (trace.steps.size() - shown) == 1 ? " further step not shown\n"
-                                                 : " further steps not shown\n";
+        renderedTrace += (trace.steps.size() - shown) == 1 ? " further step not shown\n" : " further steps not shown\n";
     }
 
-    return text;
+    return renderedTrace;
 }
 
 } // namespace formula

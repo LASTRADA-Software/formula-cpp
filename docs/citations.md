@@ -341,6 +341,76 @@ both get a row"`.) A literal coefficient and `formula::pi` name no variable
 and contribute nothing to the table (`test/document_tests.cpp`, `"document: a
 constant contributes no symbol"`).
 
+## Whose symbols: a jurisdiction's vocabulary
+
+A symbol is not a quantity. The same letter can name different quantities in
+different countries -- in the case that made this necessary, two
+jurisdictions use one pair of symbols **crossed over**, each one's word
+meaning the other's quantity. A page rendered in the wrong jurisdiction's
+words then states the wrong formula, so `render()` and `document()` both take
+an optional vocabulary (`vocabulary.hpp`) saying which symbol names which
+quantity there:
+
+```cpp
+inline constexpr auto north = formula::vocabulary(formula::renames<Strength>("R"), formula::renames<Modulus>("E"));
+inline constexpr auto south = formula::vocabulary(formula::renames<Strength>("E"), formula::renames<Modulus>("R"));
+
+inline constexpr auto f = var<Strength> / var<Modulus>;
+```
+
+```cpp
+CHECK(formula::render(f, north) == "R / E");
+CHECK(formula::render(f, south) == "E / R");
+```
+
+(`test/vocabulary_tests.cpp`, `"two jurisdictions cross over one pair of
+symbols"`.) `formula::render(f)` is still `f_c / E_m`, the symbols the two
+quantities declare: every surface that takes a vocabulary defaults to
+`formula::DefaultVocabulary`, which renames nothing, and a quantity a
+vocabulary does not name keeps its declared symbol.
+
+**A vocabulary renames how a quantity is written, never what it is.** In
+`document(f, south)` the first row's symbol is `E` and its description is
+still `compressive strength`: the word moved, the quantity it names did not
+(`"the documentation renames the symbol and keeps the meaning"`). The
+description and the unit stay `Describe<Q>`'s. A quantity a jurisdiction derives
+(`add_derived`) has its definition, `derivedAs`, rendered in the same
+vocabulary as the formula beside it, and a variant it replaced renders its
+replacement in it too (`"every node kind documents in the vocabulary, in every
+dialect"`).
+
+Three things a vocabulary does not do:
+
+- **It does not reach the trace by itself.** A trace's symbols are written
+  while the formula is evaluated, by the sink, so a sink records in the
+  vocabulary it is given -- see [Tracing](tracing.md#whose-symbols). Give
+  `render()`, `document()` and the sink the same one.
+- **It renames quantities only.** A variant's tag (`TagName`) and a lookup
+  key's name (`EnumeratorName`) name a case or a row, not a quantity, and
+  have customisation traits of their own; a vocabulary leaves them alone.
+- **It does not reach inside a node kind of your own** that renders through
+  the one-argument `render_node` extension point. Such a node still renders,
+  and the vocabulary still reaches the library's nodes around it, but
+  anything it renders itself is in the declared symbols. Write the
+  two-argument form, `render_node(TheirNode const&, V const& vocabulary)`,
+  and hand `vocabulary` on to `formula::render<D>(operand, vocabulary)` to
+  opt in (`"a consumer's two-argument render_node receives the
+  vocabulary"`). A node of yours that derives from one of the library's --
+  `struct Labelled: formula::VarNode<Q>` -- keeps its own one-argument
+  `render_node`, as before, rather than rendering as the node it derives
+  from; to receive the vocabulary it defines the two-argument form instead
+  of the one-argument one, not beside it.
+
+A vocabulary renaming one quantity twice does not compile, and neither does
+`renames<Q>("")`, which would leave a blank where the quantity stands; nor
+does a symbol that is all whitespace or holds a NUL, nor one holding a square
+bracket or a control character such as a newline, with which a vocabulary
+could write a trace line's `[fixed by jurisdiction overlay]` clause, or a
+whole trace line, itself. `renames` is `consteval`
+and takes a `const` character array, so it accepts a string literal and
+refuses a buffer on the stack or one that is not `const`: a trace keeps a
+view of the symbol for as long as it lives.
+
 ## Generating a page
 
 Everything above -- the rendered formula, its citations, its symbol table --
