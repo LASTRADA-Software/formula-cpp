@@ -79,6 +79,18 @@ a conformity check -- is evaluated with `Rational` only, and refuses any other `
 time. A new guide, *Series and grading curves*, works a screen analysis through
 all of it, and the gallery gains a series, a grading curve and a binning.
 
+**Phase 13: statistics.** A sample of determinations reduced to one value: `sample_count`,
+`sample_mean`, `sample_variance` (over n - 1, in two passes) and `sample_range`, strict about
+absence, exact, and naming the determination at which an overflow happened. `rounded_sqrt` rounds a
+square root exactly to a declared granularity, so a standard deviation is the correctly rounded
+decimal and never a rounded floating-point one. `critical_value` reads an author's table by sample
+size and misses rather than guessing a neighbouring row. `precision_limit` evaluates a
+repeatability or reproducibility limit at the level of the results it checks, in two declared
+passes, with `precision_level` read only inside it. `without_outliers` rejects outliers from a
+sample by a criterion (a deviation from the mean or in standard deviations), re-running the mean
+until nothing more is rejected; a declared bound turns one rejection too many, or too few left,
+into the author's verdict. Every pass and every rejected value is its own step in the trace.
+
 ### Changed
 
 - Invented example numbers replaced so none resembles a published table: the band edges, lookup
