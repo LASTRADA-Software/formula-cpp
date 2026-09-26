@@ -440,17 +440,65 @@ TEST_CASE("a scalar or a bare number broadcasts from either side, and negation i
     STATIC_REQUIRE(negated->element(4).value() == rat(-28));
 }
 
+TEST_CASE("a bare number combines with a series from either side, each in its own order", "[series]")
+{
+    // A dimensionless series q = 1/2, 2, 5 -- no element its own reciprocal,
+    // none equal to 3 -- so an operand swap in a subtraction negates every
+    // element and one in a division inverts it.
+    using elementwise::Ratio;
+    constexpr auto ratios = formula::environment(formula::measured_series<Ratio>(
+        formula::Measured<Ratio> { rat(1, 2) }, formula::Measured<Ratio> { rat(2) }, formula::Measured<Ratio> { rat(5) }));
+    constexpr auto q = formula::series<Ratio, 3>;
+
+    // q(i) + 3 and 3 + q(i): 7/2, 5, 8.
+    constexpr auto plusRight = formula::checked_evaluate_series<Ratio>(q + rat(3), ratios);
+    constexpr auto plusLeft = formula::checked_evaluate_series<Ratio>(rat(3) + q, ratios);
+    STATIC_REQUIRE(plusRight->element(0).value() == rat(7, 2));
+    STATIC_REQUIRE(plusRight->element(2).value() == rat(8));
+    STATIC_REQUIRE(plusLeft->element(0).value() == rat(7, 2));
+    STATIC_REQUIRE(plusLeft->element(2).value() == rat(8));
+
+    // q(i) - 3: -5/2, -1, 2. And 3 - q(i): 5/2, 1, -2.
+    constexpr auto minusRight = formula::checked_evaluate_series<Ratio>(q - rat(3), ratios);
+    constexpr auto minusLeft = formula::checked_evaluate_series<Ratio>(rat(3) - q, ratios);
+    STATIC_REQUIRE(minusRight->element(0).value() == rat(-5, 2));
+    STATIC_REQUIRE(minusRight->element(1).value() == rat(-1));
+    STATIC_REQUIRE(minusRight->element(2).value() == rat(2));
+    STATIC_REQUIRE(minusLeft->element(0).value() == rat(5, 2));
+    STATIC_REQUIRE(minusLeft->element(1).value() == rat(1));
+    STATIC_REQUIRE(minusLeft->element(2).value() == rat(-2));
+
+    // 3 / q(i): 6, 3/2, 3/5. And q(i) / 3: 1/6, 2/3, 5/3.
+    constexpr auto overLeft = formula::checked_evaluate_series<Ratio>(rat(3) / q, ratios);
+    constexpr auto overRight = formula::checked_evaluate_series<Ratio>(q / rat(3), ratios);
+    STATIC_REQUIRE(overLeft->element(0).value() == rat(6));
+    STATIC_REQUIRE(overLeft->element(1).value() == rat(3, 2));
+    STATIC_REQUIRE(overLeft->element(2).value() == rat(3, 5));
+    STATIC_REQUIRE(overRight->element(0).value() == rat(1, 6));
+    STATIC_REQUIRE(overRight->element(2).value() == rat(5, 3));
+
+    // A bare number is dimensionless: dividing it by a mass series gives an
+    // inverse mass, and the other way round a mass.
+    constexpr auto mass = formula::series<Retained, 5>;
+    STATIC_REQUIRE(decltype(rat(3) / mass)::dimension == formula::unit::One.dimension / formula::unit::Gram.dimension);
+    STATIC_REQUIRE(decltype(mass / rat(3))::dimension == formula::unit::Gram.dimension);
+    STATIC_REQUIRE(decltype(rat(3) - q)::dimension == formula::unit::One.dimension);
+}
+
 TEST_CASE("a per-element constant pairs with the series position by position", "[series]")
 {
-    // Factors 1..5 against 130, 210, 95, 340, 28 g: 130, 420, 285, 1360, 140 g.
-    // A reversed pairing gives 650, 840, 285, 680, 28: only the middle agrees.
-    constexpr auto weights = formula::series_constant<formula::unit::One>(rat(1), rat(2), rat(3), rat(4), rat(5));
+    // Factors 2..6 against 130, 210, 95, 340, 28 g: 260, 630, 380, 1700, 168 g.
+    // No factor is 1, so a value the constant dropped, or one defaulted to the
+    // identity, shows at every position. A reversed pairing gives 780, 1050,
+    // 380, 1020, 56: only the middle agrees.
+    constexpr auto weights = formula::series_constant<formula::unit::One>(rat(2), rat(3), rat(4), rat(5), rat(6));
     constexpr auto weighted =
         formula::checked_evaluate_series<Retained>(formula::series<Retained, 5> * weights, elementwise::screenInputs);
-    STATIC_REQUIRE(weighted->element(0).value() == rat(130));
-    STATIC_REQUIRE(weighted->element(1).value() == rat(420));
-    STATIC_REQUIRE(weighted->element(3).value() == rat(1360));
-    STATIC_REQUIRE(weighted->element(4).value() == rat(140));
+    STATIC_REQUIRE(weighted->element(0).value() == rat(260));
+    STATIC_REQUIRE(weighted->element(1).value() == rat(630));
+    STATIC_REQUIRE(weighted->element(2).value() == rat(380));
+    STATIC_REQUIRE(weighted->element(3).value() == rat(1700));
+    STATIC_REQUIRE(weighted->element(4).value() == rat(168));
     STATIC_REQUIRE(decltype(weights)::length == 5);
 
     // A constant with a unit is read into coherent SI like any value, so its
@@ -471,6 +519,10 @@ TEST_CASE("elementwise nodes are series, empty of state but their operands, and 
     STATIC_REQUIRE_FALSE(formula::Node<decltype(fraction)>);
     STATIC_REQUIRE(formula::SeriesNode<decltype(-formula::series<Retained, 5>)>);
     STATIC_REQUIRE(formula::SeriesNode<decltype(formula::series_constant<formula::unit::One>(rat(1)))>);
+    // A well-formed node is not refused, so the nodes built over it still
+    // check their own lengths and dimensions.
+    STATIC_REQUIRE_FALSE(decltype(fraction)::refused);
+    STATIC_REQUIRE_FALSE(decltype(-formula::series<Retained, 5>)::refused);
     // A series constant must state its contents: no default, as a lookup's
     // corrections have none.
     STATIC_REQUIRE_FALSE(std::is_default_constructible_v<formula::SeriesConstantNode<formula::unit::One, 3>>);

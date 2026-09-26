@@ -2053,16 +2053,19 @@ TEST_CASE("an elementwise step names its operands, and a broadcast scalar appear
 
 TEST_CASE("a per-element constant and a negation each record one step with every element", "[series][trace]")
 {
+    // Grams, not the coherent kilogram: a line that printed the stored SI
+    // values beside the constant's symbol would read 1/1000 g.
     constexpr auto factors =
-        formula::series_constant<unit::Kilogram>(formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 3 });
+        formula::series_constant<unit::Gram>(formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 3 });
     formula::Trace<> trace {};
     (void) formula::detail::dispatch_series<formula::Rational>(
         -factors, formula::environment(), formula::RecordingSink<> { trace });
     // The constant's line is its values alone, as a scalar constant's is, in
-    // the unit it was written in; the negation names its operand.
+    // the unit it was written in; the negation, computed, names its operand
+    // and reads in the coherent unit.
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
-          == "1. 1 kg; 2 kg; 3 kg\n"
-             "2. -#1 = -1; -2; -3\n");
+          == "1. 1 g; 2 g; 3 g\n"
+             "2. -#1 = -1/1000; -1/500; -3/1000\n");
     REQUIRE(trace.steps.size() == 2);
     CHECK(trace.steps[0].kind == formula::StepKind::SeriesConstant);
     CHECK(trace.steps[1].kind == formula::StepKind::ElementwiseNegate);
@@ -2082,6 +2085,27 @@ TEST_CASE("a failing scalar operand is reported without a position", "[series][t
     // failure was the scalar's, before any element was computed.
     CHECK(text.find("7. #1 * #6 = division by zero\n") != std::string::npos);
     CHECK(text.find("at element") == std::string::npos);
+}
+
+TEST_CASE("an elementwise step whose left operand failed names only that operand, in prefix form", "[series][trace]")
+{
+    // Inherited from the scalar operators (binary_expression): the right side
+    // is never evaluated, so the line names one operand -- the LEFT one, #5,
+    // which failed -- as `* #5`. Pinned so the spelling is a decision.
+    constexpr auto screens = formula::environment(
+        formula::measured_series<series_trace::Retained>(series_trace::retained(130), series_trace::retained(210)),
+        formula::Measured<series_trace::TotalMass> { formula::Rational { 1250 } });
+    constexpr auto s = formula::series<series_trace::Retained, 2>;
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        s / (s - s) * formula::var<series_trace::TotalMass>, screens, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 })
+          == "1. m_r = 130 g; 210 g\n"
+             "2. m_r = 130 g; 210 g\n"
+             "3. m_r = 130 g; 210 g\n"
+             "4. #2 - #3 = 0; 0\n"
+             "5. #1 / #4 = division by zero at element 1\n"
+             "6. * #5 = division by zero at element 1\n");
 }
 
 TEST_CASE("a running total is one step naming its end, in the operand's unit", "[series][trace]")

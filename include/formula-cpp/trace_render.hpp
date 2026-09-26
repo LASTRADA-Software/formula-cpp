@@ -254,6 +254,11 @@ namespace detail
     /// never dispatched the right one -- leaves exactly **one** recorded
     /// operand, not zero: dividing by zero itself only happens after both
     /// sides have run, so a real `Divide` that fails this way always has two.
+    /// The one operand named is then the **left** one, the operand that
+    /// failed: `+ #5 = division by zero` means "#5 failed, and the right side
+    /// was never evaluated", though it can read as "something plus #5". The
+    /// elementwise steps (`ElementwiseAdd` and the rest) share this spelling,
+    /// and `trace_render_tests.cpp` pins it for one.
     /// Zero operands is rarer still: it takes both children being untraced
     /// extension-point nodes (`sink.hpp`) that produced no step of their own
     /// to consume. A `Divide` with nothing recorded therefore renders as a
