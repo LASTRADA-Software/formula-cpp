@@ -1066,7 +1066,7 @@ struct formula::EnumeratorName<MouldFinish>
 {
     static constexpr std::string_view of(MouldFinish finish) noexcept
     {
-        return finish == MouldFinish::Polished ? "polished *[A]* 100% & oiled" : "";
+        return finish == MouldFinish::Polished ? "polished *A* 100% & oiled" : "";
     }
 };
 
@@ -1077,14 +1077,14 @@ TEST_CASE("render: an exact lookup shows the author's own spelling of a key when
     // renderer that ignores `EnumeratorName`, and one that applies it to the
     // subject but not to the rows or the other way round.
     CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Polished))
-          == "lookup(key polished *[A]* 100% & oiled, key polished *[A]* 100% & oiled gives 1, key Hollow_Core gives 2)");
+          == "lookup(key polished *A* 100% & oiled, key polished *A* 100% & oiled gives 1, key Hollow_Core gives 2)");
 }
 
 TEST_CASE("render: a key's name is shown literally in every dialect, whatever characters it holds",
           "[render][lookup][markdown][latex]")
 {
     // The one piece of text in a rendering this library did not write. In
-    // Markdown, `*[A]*` unescaped is an emphasised link label, `_` can open
+    // Markdown, `*A*` unescaped is emphasis, `_` can open
     // emphasis and `&` can start an entity; in LaTeX, `_` and `&` are errors
     // and `%` silently eats the rest of the line, even inside `\text{...}`.
     // So each dialect escapes the name the way an author writing in it by
@@ -1097,13 +1097,13 @@ TEST_CASE("render: a key's name is shown literally in every dialect, whatever ch
     // Markdown string does the same through python-markdown and pandoc's
     // CommonMark and GFM readers.
     CHECK(formula::render<Dialect::Markdown>(finishLookup(MouldFinish::Hollow_Core))
-          == "lookup(key Hollow\\_Core, key polished \\*\\[A\\]\\* 100% &amp; oiled gives 1, key Hollow\\_Core gives 2)");
+          == "lookup(key Hollow\\_Core, key polished \\*A\\* 100% &amp; oiled gives 1, key Hollow\\_Core gives 2)");
     CHECK(formula::render<Dialect::LaTeX>(finishLookup(MouldFinish::Hollow_Core))
-          == "\\operatorname{lookup}(\\text{key Hollow\\_Core},\\allowbreak \\text{key polished *[A]* 100\\% \\& oiled "
+          == "\\operatorname{lookup}(\\text{key Hollow\\_Core},\\allowbreak \\text{key polished *A* 100\\% \\& oiled "
              "gives 1},\\allowbreak \\text{key Hollow\\_Core gives 2})");
     // Plain is for a terminal, where nothing is markup, so nothing is escaped.
     CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Hollow_Core))
-          == "lookup(key Hollow_Core, key polished *[A]* 100% & oiled gives 1, key Hollow_Core gives 2)");
+          == "lookup(key Hollow_Core, key polished *A* 100% & oiled gives 1, key Hollow_Core gives 2)");
 }
 
 namespace
@@ -1125,7 +1125,7 @@ struct formula::EnumeratorName<MouldMarking>
     static constexpr std::string_view of(MouldMarking) noexcept
     {
         // The tail is TeX's ligature pairs: `--`, `---`, `''`, `,,`.
-        return "a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
+        return "a\\b`c*d_efg<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
     }
 };
 
@@ -1138,17 +1138,25 @@ TEST_CASE("render: every character either dialect escapes in a key's name is esc
     constexpr auto node = exact_lookup<MarkingKeys, unit::One>(MouldMarking::Stamped, { rat(1) });
 
     // Markdown has no ligatures to break: the pairs pass through unchanged.
-    std::string const markdown = "a\\\\b\\`c\\*d\\_e\\[f\\]g&lt;h&gt;i&amp;j&#124;k&#126;l&#36;m^n{o}p#q%r\"s--t---u''v,,w";
+    std::string const markdown = "a\\\\b\\`c\\*d\\_efg&lt;h&gt;i&amp;j&#124;k&#126;l&#36;m^n{o}p#q%r\"s--t---u''v,,w";
     CHECK(formula::render<Dialect::Markdown>(node) == "lookup(key " + markdown + ", key " + markdown + " gives 1)");
 
-    std::string const latex = "a\\textbackslash{}b\\textasciigrave{}c*d\\_e[f]g\\textless{}h\\textgreater{}i\\&j\\textbar{}"
+    std::string const latex = "a\\textbackslash{}b\\textasciigrave{}c*d\\_efg\\textless{}h\\textgreater{}i\\&j\\textbar{}"
                               "k\\textasciitilde{}l\\$m\\textasciicircum{}n\\{o\\}p\\#q\\%r{\\ttfamily\\char34}s"
                               "-{}-t-{}-{}-u'{}'v,{},w";
     CHECK(formula::render<Dialect::LaTeX>(node)
           == "\\operatorname{lookup}(\\text{key " + latex + "},\\allowbreak \\text{key " + latex + " gives 1})");
 
-    std::string const plain = "a\\b`c*d_e[f]g<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
+    std::string const plain = "a\\b`c*d_efg<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
     CHECK(formula::render<Dialect::Plain>(node) == "lookup(key " + plain + ", key " + plain + " gives 1)");
+
+    // A spelling can no longer hold a square bracket -- `EnumeratorName`
+    // refuses one, since it could forge a trace's provenance clause -- so
+    // the two bracket branches are asked of the escaping function itself.
+    // Kept rather than deleted, as a second line behind that refusal: a
+    // Markdown link label is the defect they prevent.
+    CHECK(formula::detail::literal_words_in_dialect<Dialect::Markdown>("e[f]g") == "e\\[f\\]g");
+    CHECK(formula::detail::literal_words_in_dialect<Dialect::LaTeX>("e[f]g") == "e[f]g");
 }
 
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")

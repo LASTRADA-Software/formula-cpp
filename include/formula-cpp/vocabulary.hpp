@@ -53,6 +53,7 @@
 /// does it change `Measured<Q>::quantity_symbol()` (`measured.hpp`), which
 /// reports `Describe<Q>`'s metadata and renders nothing.
 
+#include <formula-cpp/detail/name_text.hpp>
 #include <formula-cpp/quantity.hpp>
 
 #include <cstddef>
@@ -177,11 +178,11 @@ namespace detail
     inline void renames_symbol_must_not_hold_a_bracket_or_a_control_character() noexcept {}
 
     /// True for `[`, `]`, and the ASCII control characters: below 0x20, and
-    /// 0x7f.
+    /// 0x7f -- the rule `TagName` and `EnumeratorName` spellings are held to
+    /// as well, stated once in `detail/name_text.hpp`.
     [[nodiscard]] constexpr bool is_forbidden_in_symbol(char glyph) noexcept
     {
-        auto const byte = static_cast<unsigned char>(glyph);
-        return glyph == '[' || glyph == ']' || byte < 0x20 || byte == 0x7f;
+        return is_forbidden_in_trace_name(glyph);
     }
 
     /// True for the characters `std::isspace` answers true for in the "C"

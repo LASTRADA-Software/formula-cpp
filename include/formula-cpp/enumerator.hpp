@@ -99,6 +99,12 @@ namespace detail
 /// only ever asks about the unqualified type, so such a specialization could
 /// never take effect.
 ///
+/// **A spelling may not hold `[`, `]` or a control character** -- a newline,
+/// a tab, any byte below 0x20, or 0x7f. A key is written into a trace line
+/// that ends in a bracketed clause saying where things came from, so such a
+/// spelling could write a clause no overlay made, or a line of its own; see
+/// `RequireEnumeratorNameSpelling`.
+///
 /// **Return an empty view to leave an enumerator alone.** A specialization
 /// may cover some enumerators and return `{}` for the rest; those fall back
 /// to the enumerator's own name. A `switch` with no `default` that falls off
@@ -220,6 +226,32 @@ struct RequireEnumeratorName
     static constexpr bool value = true;
 };
 
+/// Fails to compile when `EnumeratorName`'s spelling of @p E holds `[`, `]`
+/// or a control character -- the rule `RequireTagNameSpelling` (`tag.hpp`)
+/// states for a tag, for the same reason: an exact lookup's key is written
+/// into a trace line, `lookup(key steel] [replaced by jurisdiction overlay:
+/// ...`, whose bracketed clause could then claim a replacement no overlay
+/// made, and a newline would write a line that is no step. Measured before
+/// the rule, on cl 19.51: exactly that line was printed.
+///
+/// Asked only of a spelling the library could read at all
+/// (`RequireEnumeratorName`), so a broken specialization gets that message
+/// alone.
+template <auto E>
+struct RequireEnumeratorNameSpelling
+{
+    static_assert(!detail::holds_character_forbidden_in_trace_name(detail::customized_enumerator_name<E>()),
+                  "formula: this EnumeratorName spelling holds a square bracket or a control character (a newline, "
+                  "a tab, any byte below 0x20, or 0x7f); a trace line ends in a bracketed clause saying where "
+                  "a value came from, and a line ends at a newline, so such a spelling could make a trace "
+                  "claim an overlay replaced or fixed something no overlay touched, or add a line that is no "
+                  "step -- the enumerator appears in this diagnostic as template argument E of "
+                  "RequireEnumeratorNameSpelling -- spell it without them");
+
+    /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
+    static constexpr bool value = true;
+};
+
 /// Fails to compile when `EnumeratorName` is specialized for a const-qualified
 /// @p Enum -- `EnumeratorName<Shape const>` -- and not for @p Enum itself.
 /// The library only ever asks `EnumeratorName<Shape>`, so that specialization
@@ -292,6 +324,7 @@ template <auto E>
         // wording to pin that.
         if constexpr (detail::ConstantEnumeratorName<E>)
         {
+            static_assert(RequireEnumeratorNameSpelling<E>::value);
             std::string_view const customized = detail::customized_enumerator_name<E>();
             if (!customized.empty())
                 return customized;

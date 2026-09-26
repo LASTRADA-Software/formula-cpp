@@ -980,7 +980,7 @@ struct EnumeratorName<RenderedFinish>
 {
     static constexpr std::string_view of(RenderedFinish finish) noexcept
     {
-        return finish == RenderedFinish::Polished ? "polished *[A]*" : "";
+        return finish == RenderedFinish::Polished ? "polished *A*" : "";
     }
 };
 } // namespace formula

@@ -438,6 +438,18 @@ formula_add_negative_test(tag_name_not_constexpr
            "called in a constant expression"
            "expression did not evaluate to a constant")
 
+# A TagName or EnumeratorName spelling that could forge a trace line: a
+# bracketed clause of its own, or a line. One case per kind of character, as
+# for a vocabulary's symbol.
+formula_add_negative_test(tag_name_holds_bracket
+    "formula: this TagName spelling holds a square bracket or a control character")
+formula_add_negative_test(tag_name_holds_newline
+    "formula: this TagName spelling holds a square bracket or a control character")
+formula_add_negative_test(enumerator_name_holds_bracket
+    "formula: this EnumeratorName spelling holds a square bracket or a control character")
+formula_add_negative_test(enumerator_name_holds_control
+    "formula: this EnumeratorName spelling holds a square bracket or a control character")
+
 formula_add_negative_test(tag_name_cv_qualified
     "formula: TagName is specialised for a const-qualified tag")
 

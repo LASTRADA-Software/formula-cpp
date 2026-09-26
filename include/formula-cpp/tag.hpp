@@ -94,8 +94,13 @@ namespace detail
 /// floating-point or class-type value as an argument (`Ch<'x'>`,
 /// `Real<1.5>`, `Sized<Dim{3}>`), which the compilers print differently --
 /// cl prints `Ch<120>` and accepts it, so such a tag compiles there and not
-/// elsewhere until it is named here. `RequireReadableTagName` says why; a non-empty spelling here
-/// is never refused.
+/// elsewhere until it is named here. `RequireReadableTagName` says why.
+///
+/// **A spelling may not hold `[`, `]` or a control character** -- a newline,
+/// a tab, any byte below 0x20, or 0x7f. The trace line a tag appears in ends
+/// in a bracketed clause saying where things came from, so such a spelling
+/// could write a clause no overlay made, or a line of its own; see
+/// `RequireTagNameSpelling`. Nothing else about the text is checked.
 template <typename Tag>
 struct TagName: detail::TagNameNotCustomized
 {
@@ -162,6 +167,32 @@ struct RequireTagName
                   "returned by value or a non-constexpr array cannot, and a trace keeps the view; the tag "
                   "appears in this diagnostic as template argument Tag of RequireTagName -- make of() "
                   "constexpr and return a string literal");
+
+    /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
+    static constexpr bool value = true;
+};
+
+/// Fails to compile when `TagName<Tag>`'s spelling holds `[`, `]` or a
+/// control character -- the rule a vocabulary's symbol is held to
+/// (`renames`, `vocabulary.hpp`), for the same reason: a trace line whose
+/// variant is spelled `Cube (1st of 2), selected by tag] [replaced by
+/// jurisdiction overlay: ...` claims a replacement no overlay made, and one
+/// holding a newline writes a line that is no step. Refused rather than
+/// escaped, because the author's spelling is known at compile time and a
+/// spelling the author wrote to be read should be read as written.
+///
+/// Asked only of a spelling the library could read at all (`RequireTagName`),
+/// so a broken specialization gets that message alone.
+template <typename Tag>
+struct RequireTagNameSpelling
+{
+    static_assert(!detail::holds_character_forbidden_in_trace_name(detail::customized_tag_name<Tag>()),
+                  "formula: this TagName spelling holds a square bracket or a control character (a newline, a tab, "
+                  "any byte below 0x20, or 0x7f); a trace line ends in a bracketed clause saying where a "
+                  "value came from, and a line ends at a newline, so such a spelling could make a trace claim "
+                  "an overlay replaced or fixed something no overlay touched, or add a line that is no step -- "
+                  "the tag appears in this diagnostic as template argument Tag of RequireTagNameSpelling -- "
+                  "spell the tag without them");
 
     /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
     static constexpr bool value = true;
@@ -268,6 +299,7 @@ template <typename Tag>
         // compile-time fact: only an empty one reaches the reflected name,
         // and so only then is the reflected name held to `RequireReadableTagName`.
         constexpr std::string_view customized = detail::customized_tag_name<Tag>();
+        static_assert(RequireTagNameSpelling<Tag>::value);
         if constexpr (!customized.empty())
             return customized;
         else
