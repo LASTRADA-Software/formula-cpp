@@ -187,6 +187,63 @@ template <SeriesNode D, SeriesNode V>
     return CurveNode<D, V> { {}, domainSeries, valueSeries };
 }
 
+namespace detail
+{
+    /// Fails to compile when `curve` is given a single value where a series
+    /// belongs. Named so the operand prints.
+    template <typename Operand>
+    struct RequireCurveOfSeries
+    {
+        static_assert(SeriesNode<Operand>,
+                      "formula: a curve pairs a series of points with a series of values, and this is a single "
+                      "value, not a series; the operand appears in this diagnostic as the template argument of "
+                      "RequireCurveOfSeries -- read a quantity measured at every point with series<Q, N>, or declare "
+                      "the points with domain<U, Points>()");
+
+        static constexpr bool value = true;
+    };
+
+    /// @p T as a curve's half: a series as it is, and a single value as a
+    /// series refused already (`RefusedSeries`), which silences every check
+    /// the curve and anything over it would otherwise make.
+    template <typename T>
+    struct AsCurveHalf
+    {
+        using type = T;
+    };
+
+    template <Node N>
+    struct AsCurveHalf<N>
+    {
+        using type = RefusedSeries<N::dimension>;
+    };
+
+    /// The half itself: the series, or a refused stand-in for a single value.
+    template <typename T>
+    [[nodiscard]] constexpr typename AsCurveHalf<T>::type as_curve_half(T const& half) noexcept
+    {
+        if constexpr (Node<T>)
+            return RefusedSeries<T::dimension> {};
+        else
+            return half;
+    }
+} // namespace detail
+
+/// A single value handed to `curve`, for its points, its values or both:
+/// refused in this library's words, once, naming the first single value --
+/// the task 5 ruling for `sum` and `cumulative`. It returns a curve of refused
+/// series, which every check over it takes as already refused. The return
+/// type is deduced, for `cumulative`'s reason.
+template <typename D, typename V>
+    requires(Node<D> || Node<V>) && (Node<D> || SeriesNode<D>) && (Node<V> || SeriesNode<V>)
+[[nodiscard]] constexpr auto curve(D domainHalf, V valueHalf) noexcept
+{
+    static_assert(detail::RequireCurveOfSeries<std::conditional_t<Node<D>, D, V>>::value);
+    return CurveNode<typename detail::AsCurveHalf<D>::type, typename detail::AsCurveHalf<V>::type> {
+        {}, detail::as_curve_half(domainHalf), detail::as_curve_half(valueHalf)
+    };
+}
+
 /// The direction a spliced curve's values must run in. **Required**, with no
 /// default: which way a curve runs is the method's, and a splice that assumed
 /// one would pass a curve running the other way silently.
@@ -280,6 +337,59 @@ template <Monotone M, CurveExpression A, CurveExpression B>
 [[nodiscard]] constexpr SpliceNode<M, A, B> splice(A firstCurve, B secondCurve) noexcept
 {
     return SpliceNode<M, A, B> { {}, firstCurve, secondCurve };
+}
+
+namespace detail
+{
+    /// Fails to compile when `splice` is given a single value where a curve
+    /// belongs. Named so the operand prints.
+    template <typename Operand>
+    struct RequireSpliceOfCurves
+    {
+        static_assert(CurveExpression<Operand>,
+                      "formula: splice joins two curves, and this is a single value, not a curve; the operand "
+                      "appears in this diagnostic as the template argument of RequireSpliceOfCurves -- pair a "
+                      "series of points with a series of values with curve(points, values)");
+
+        static constexpr bool value = true;
+    };
+
+    /// @p T as a spliced curve: a curve as it is, and a single value as a
+    /// curve of refused series, which silences the splice's own checks.
+    template <typename T>
+    struct AsSplicedCurve
+    {
+        using type = T;
+    };
+
+    template <Node N>
+    struct AsSplicedCurve<N>
+    {
+        using type = CurveNode<RefusedSeries<N::dimension>, RefusedSeries<N::dimension>>;
+    };
+
+    /// The curve itself, or a refused stand-in for a single value.
+    template <typename T>
+    [[nodiscard]] constexpr typename AsSplicedCurve<T>::type as_spliced_curve(T const& candidate) noexcept
+    {
+        if constexpr (Node<T>)
+            return typename AsSplicedCurve<T>::type { {}, RefusedSeries<T::dimension> {}, RefusedSeries<T::dimension> {} };
+        else
+            return candidate;
+    }
+} // namespace detail
+
+/// A single value handed to `splice`: refused in this library's words, once,
+/// naming the first single value, as `curve` refuses one. It returns a splice
+/// of a refused curve, so nothing over it refuses again.
+template <Monotone M, typename A, typename B>
+    requires(Node<A> || Node<B>) && (Node<A> || CurveExpression<A>) && (Node<B> || CurveExpression<B>)
+[[nodiscard]] constexpr auto splice(A firstOperand, B secondOperand) noexcept
+{
+    static_assert(detail::RequireSpliceOfCurves<std::conditional_t<Node<A>, A, B>>::value);
+    return SpliceNode<M, typename detail::AsSplicedCurve<A>::type, typename detail::AsSplicedCurve<B>::type> {
+        {}, detail::as_spliced_curve(firstOperand), detail::as_spliced_curve(secondOperand)
+    };
 }
 
 namespace detail

@@ -487,6 +487,18 @@ formula_add_negative_test(domain_descending
     REJECT "must be initialized by a constant expression" "this curve pairs a domain and values of different lengths")
 formula_add_negative_test(curve_rep_not_rational
     "formula: a curve can only be evaluated with Rep = Rational")
+# Task 9 concern 5, ruled: a single value given to curve() or splice() is
+# refused once in the library's words, as sum and cumulative refuse one.
+formula_add_negative_test(curve_of_single_value
+    "formula: a curve pairs a series of points with a series of values, and this is a single value"
+    REJECT "no matching" "this curve pairs a domain and values of different lengths"
+           "this curve is read at a point that does not measure")
+formula_add_negative_test(curve_of_single_values
+    "formula: a curve pairs a series of points with a series of values, and this is a single value"
+    REJECT "no matching")
+formula_add_negative_test(splice_of_single_value
+    "formula: splice joins two curves, and this is a single value, not a curve"
+    REJECT "no matching" "have domains of different dimensions" "have values of different dimensions")
 
 # Task 5: sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT
