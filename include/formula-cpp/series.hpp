@@ -116,9 +116,17 @@ namespace detail
 /// and every other non-zero count reaches a body whose `static_assert` names
 /// both counts, rather than letting `std::array` pad the values nobody typed
 /// with zeros. It is the node's own member type, so aggregate initialisation of
-/// the node with no factory call is refused too. A count of zero is left to the
-/// compiler's words, for `Corrections`' reason: a body reachable from `{}` would
-/// answer every default-constructibility probe.
+/// the node with no factory call is refused too.
+///
+/// **A count of zero is left to the compiler's words**, by the one rule
+/// `Envelope` (`conformity.hpp`) follows too: a type an expression holds
+/// leaves `{}` undeclared, and a type no expression holds may refuse `{}` in
+/// this library's words. An `Elements` sits inside a method's variant, which
+/// `std::tuple` holds, and `std::tuple` asks whether its members are
+/// default-constructible: a constructor reachable from `{}` would answer
+/// `true` for a node that cannot be built, as `Corrections`' would
+/// (`lookup.hpp`). `series_constant` with no values is refused in words
+/// already, so no author's spelling reaches the compiler's.
 ///
 /// No `{}` default member initialiser, deliberately (defect class 4): a
 /// constant must state its contents.

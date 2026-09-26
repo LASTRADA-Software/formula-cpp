@@ -43,6 +43,7 @@
 #include <cstddef>
 #include <expected>
 #include <optional>
+#include <span>
 #include <type_traits>
 #include <utility>
 
@@ -185,8 +186,22 @@ namespace detail
 /// member type, so aggregate initialisation of the check with no factory is
 /// refused too.
 ///
+/// A loader holding rows read from master data builds one from a
+/// `std::array` of `N` rows, or, when the count is only known at run time,
+/// with `envelope_from`, which checks it.
+///
 /// No `{}` default member initialiser, deliberately (defect class 4): an
 /// envelope must state its contents.
+///
+/// **`{}` is refused in this library's words**, naming both counts as every
+/// other wrong count is, by the one rule `Elements` (`series.hpp`) follows
+/// too: a type an expression holds leaves `{}` undeclared, and a type no
+/// expression holds may refuse `{}` in words. An envelope belongs to a
+/// conformity check, which no expression and no method's variant holds, and
+/// `.envelope = {}` is a spelling an author filling one from master data
+/// writes. The price is stated: `std::is_default_constructible_v` answers
+/// `true` for an `Envelope<N>` and a `Conformity` that holds one, though
+/// constructing either with `{}` does not compile.
 template <std::size_t N>
 struct Envelope
 {
@@ -207,6 +222,23 @@ struct Envelope
         static_assert(detail::RequireEnvelopeRowCountMatches<sizeof...(Rs), N>::value);
     }
 
+    /// No rows for a series with some: fails to compile, naming both counts.
+    /// Declared rather than left out, so that `{}` reaches this library's
+    /// words instead of the compiler's -- see the rule above.
+    constexpr Envelope() noexcept
+        requires(N != 0)
+        : rows { detail::unbounded_rows<N>() }
+    {
+        static_assert(detail::RequireEnvelopeRowCountMatches<0, N>::value);
+    }
+
+    /// Rows a loader has already gathered, one per point: the count is the
+    /// array's, so it is checked by the type.
+    constexpr explicit Envelope(std::array<LimitRow, N> const& loadedRows) noexcept:
+        rows { loadedRows }
+    {
+    }
+
     /// One row per point, in the unit the check states its limits in.
     std::array<LimitRow, N> rows;
 
@@ -223,6 +255,33 @@ struct Envelope
     }
 };
 
+/// Why `envelope_from` refused: the rows given, and the rows the series
+/// needs.
+struct EnvelopeRowCountMismatch
+{
+    /// How many rows the loader had.
+    std::size_t given;
+    /// How many the envelope needs: its series' length.
+    std::size_t expected;
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(EnvelopeRowCountMismatch const&) const noexcept = default;
+};
+
+/// An `Envelope<N>` from rows whose count is only known at run time -- read
+/// from master data -- or, when there are not exactly `N`, the two counts.
+/// Never pads a short list nor drops the rows of a long one.
+template <std::size_t N>
+[[nodiscard]] constexpr std::expected<Envelope<N>, EnvelopeRowCountMismatch> envelope_from(
+    std::span<LimitRow const> loadedRows) noexcept
+{
+    if (loadedRows.size() != N)
+        return std::unexpected(EnvelopeRowCountMismatch { .given = loadedRows.size(), .expected = N });
+    return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        return Envelope<N> { std::array<LimitRow, N> { loadedRows[Is]... } };
+    }(std::make_index_sequence<N> {});
+}
+
 namespace detail
 {
     /// Fails to compile when a conformity check's unit does not measure its
@@ -237,6 +296,40 @@ namespace detail
                       "the template arguments of RequireConformityUnitMatches");
 
         static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a conformity check is given a single value to
+    /// judge. Named so the subject prints.
+    template <typename Subject>
+    struct RequireConformityOfSeries
+    {
+        static_assert(SeriesNode<Subject>,
+                      "formula: a conformity check judges each element of a series against its own row, and this "
+                      "subject is a single value, not a series; the subject appears in this diagnostic as the "
+                      "template argument of RequireConformityOfSeries -- read a quantity measured at every point "
+                      "with series<Q, N>, or check a single value with a Constraint");
+
+        static constexpr bool value = true;
+    };
+
+    /// Whatever a caller wrote for the envelope of a single-value subject --
+    /// limit rows, an `Envelope` of any length, or `{}` -- so that the
+    /// refusing `conformity` overload is the one chosen and the subject is
+    /// the one thing reported. Holds nothing: the program does not compile.
+    struct AnyEnvelope
+    {
+        constexpr AnyEnvelope() noexcept = default;
+
+        template <typename... Rs>
+            requires(sizeof...(Rs) != 0) && (std::convertible_to<Rs, LimitRow> && ...)
+        constexpr AnyEnvelope(Rs...) noexcept
+        {
+        }
+
+        template <std::size_t M>
+        constexpr AnyEnvelope(Envelope<M> const&) noexcept
+        {
+        }
     };
 } // namespace detail
 
@@ -279,6 +372,19 @@ template <Unit U, SeriesNode S>
                                                     Citation citation = {}) noexcept
 {
     return Conformity<U, S> { subject, envelope, verdict, citation };
+}
+
+/// A single value given a conformity check: refused in this library's words,
+/// returning a check of a refused series (`detail::RefusedSeries`) that
+/// silences every check downstream. The return type is deduced, as
+/// `cumulative`'s refusing overload's is, and for its reason.
+template <Unit U, Node N>
+[[nodiscard]] constexpr auto conformity(N, detail::AnyEnvelope, Verdict verdict, Citation citation = {}) noexcept
+{
+    static_assert(detail::RequireConformityOfSeries<N>::value);
+    return Conformity<U, detail::RefusedSeries<N::dimension>> {
+        detail::RefusedSeries<N::dimension> {}, Envelope<1> { LimitRow { unbounded, unbounded } }, verdict, citation
+    };
 }
 
 namespace detail

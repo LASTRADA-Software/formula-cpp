@@ -438,6 +438,14 @@ formula_add_negative_test(conformity_envelope_short_no_factory
 formula_add_negative_test(conformity_unit_dimension_mismatch
     "this conformity check states its limits in a unit that does not measure the dimension of its subject"
     REJECT "this envelope was given a different number of rows")
+# Task 7 review, L3: a single value as the subject, and an envelope of {},
+# each refused once in the library's words.
+formula_add_negative_test(conformity_single_value_subject
+    "a conformity check judges each element of a series against its own row, and this subject is a single value"
+    REJECT "no matching" "this conformity check states its limits in a unit that does not measure")
+formula_add_negative_test(conformity_empty_envelope
+    "this envelope was given a different number of rows than its series has elements"
+    REJECT "no matching" "could not convert")
 
 # Task 8: an empty permitted set refuses once, with the breakpoint validation
 # and the key check gated off; a descending set is the shipped breakpoint

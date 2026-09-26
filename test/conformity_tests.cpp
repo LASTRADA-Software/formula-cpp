@@ -10,8 +10,10 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <span>
 #include <string>
 #include <type_traits>
+#include <vector>
 
 namespace
 {
@@ -148,7 +150,14 @@ TEST_CASE("a limit is a value or explicitly unbounded, never a value nobody fill
 {
     STATIC_REQUIRE_FALSE(std::is_default_constructible_v<formula::Limit>);
     STATIC_REQUIRE_FALSE(std::is_default_constructible_v<LimitRow>);
-    STATIC_REQUIRE_FALSE(std::is_default_constructible_v<formula::Envelope<3>>);
+    // An `Envelope` declares a default constructor only to refuse it in this
+    // library's words, so `{}` gets one message rather than the compiler's
+    // (`conformity_empty_envelope`); the trait therefore answers true. An
+    // `Elements`, which an expression holds, leaves `{}` undeclared and the
+    // trait answers false. Both pinned, since the one rule that decides each
+    // is stated on the two types (final review, L4).
+    STATIC_REQUIRE(std::is_default_constructible_v<formula::Envelope<2>>);
+    STATIC_REQUIRE_FALSE(std::is_default_constructible_v<formula::Elements<2>>);
     STATIC_REQUIRE(limit(rat(3)).value() == rat(3));
     STATIC_REQUIRE_FALSE(limit(rat(3)).is_unbounded());
     STATIC_REQUIRE(unbounded.is_unbounded());
@@ -303,4 +312,25 @@ TEST_CASE("a limit whose conversion fails makes its element invalid, on either s
         one);
     STATIC_REQUIRE(lowerSide[0] == ConstraintOutcome::invalid(formula::ArithmeticError::Overflow));
     STATIC_REQUIRE(upperSide[0] == ConstraintOutcome::invalid(formula::ArithmeticError::Overflow));
+}
+
+TEST_CASE("a loader builds an envelope from rows read at run time, its count checked", "[conformity]")
+{
+    // From an array of the right length, at compile time.
+    constexpr std::array<LimitRow, 2> loadedArray { LimitRow { limit(rat(1)), limit(rat(2)) }, LimitRow { unbounded, limit(rat(3)) } };
+    constexpr formula::Envelope<2> fromArray { loadedArray };
+    STATIC_REQUIRE(fromArray[1] == (LimitRow { unbounded, limit(rat(3)) }));
+
+    // From a span of rows whose count is only known at run time.
+    std::vector<LimitRow> const loaded(envelope.rows.begin(), envelope.rows.end());
+    auto const fromSpan = formula::envelope_from<5>(std::span<LimitRow const> { loaded });
+    REQUIRE(fromSpan.has_value());
+    CHECK(fromSpan->rows == envelope.rows);
+    CHECK(formula::check_conformity(formula::conformity<unit::Percent>(formula::series<Passing, 5>, *fromSpan, reject), measuredPassing)
+          == formula::check_conformity(measuredCheck, measuredPassing));
+
+    // Four rows for five elements: refused at run time, naming both counts.
+    auto const tooFew = formula::envelope_from<5>(std::span<LimitRow const> { loaded }.first(4));
+    REQUIRE_FALSE(tooFew.has_value());
+    CHECK(tooFew.error() == (formula::EnvelopeRowCountMismatch { 4, 5 }));
 }
