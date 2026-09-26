@@ -84,6 +84,8 @@ int main()
                                                formula::RoundingMode::HalfAwayFromZero>(),
                         formula::constraints());
     constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(var<EdgeY> / var<EdgeX>)), opaque);
+        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(
+                           var<EdgeY> / var<EdgeX>, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       opaque);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 1 ? 0 : 1;
 }

@@ -42,7 +42,8 @@ int main()
     constexpr auto overlaid =
         formula::apply(formula::overlay(formula::with_rounding<formula::unit::Millimetre,
                                                                formula::DecimalPlaces { 1 },
-                                                               formula::RoundingMode::HalfAwayFromZero>()),
+                                                               formula::RoundingMode::HalfAwayFromZero>(
+                           formula::Citation { .reference = "Example Standard 12:2021 NA" })),
                        m);
     return overlaid.rounding.places.value == 1 ? 0 : 1;
 }

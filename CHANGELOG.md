@@ -50,10 +50,11 @@ none. Lookup keys are shown by their enumerator names, or by an author's own spe
 rule and constraints; `evaluate_method` and `check_method` evaluate and check it, and the trace
 names the variant that ran and its position in the method as published. An overlay pins or prunes
 variants, fixes a quantity with `with_constant`, defines one with `add_derived`, replaces a
-variant's formula, changes the rounding rule and replaces the constraints. Each change is recorded
-in the trace with what the overlay cited, a fixed, derived or replaced part is marked as such in
-the generated documentation, and an overlay that would silently do nothing is refused. Overlays stack, the later one holding. A vocabulary renders
-a formula and its trace in a jurisdiction's own symbols, and `TagName` spells a variant's tag.
+variant's formula, changes the rounding rule and replaces the constraints. Every operation requires
+a citation, each change is recorded in the trace with what the overlay cited, a fixed, derived or
+replaced part is marked as such in the generated documentation, and an overlay that would silently
+do nothing is refused. Overlays stack, the later one holding. A vocabulary renders a formula and its
+trace in a jurisdiction's own symbols, and `TagName` spells a variant's tag.
 
 ### Fixed
 

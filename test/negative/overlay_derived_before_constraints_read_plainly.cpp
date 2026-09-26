@@ -66,6 +66,10 @@ inline constexpr auto readsLoad = formula::constraints(
 int main()
 {
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::add_derived<Ratio>(var<EdgeY> / var<EdgeX>), formula::with_constraints(readsRatio)), m);
+        formula::overlay(
+            formula::add_derived<Ratio>(var<EdgeY> / var<EdgeX>,
+                                        formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+            formula::with_constraints(readsRatio, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        m);
     return formula::constraint_origin(overlaid).provenance() == formula::ConstraintProvenance::JurisdictionOverlay ? 0 : 1;
 }

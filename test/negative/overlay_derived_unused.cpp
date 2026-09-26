@@ -54,6 +54,9 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto overlaid = formula::apply(formula::overlay(formula::add_derived<Ratio>(var<EdgeY> / var<EdgeX>)), m);
+    constexpr auto overlaid =
+        formula::apply(formula::overlay(formula::add_derived<Ratio>(
+                           var<EdgeY> / var<EdgeX>, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

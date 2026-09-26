@@ -899,7 +899,7 @@ enum class RoundingProvenance : std::uint8_t
 {
     /// The rule the method was declared with: `method(..., rounding_rule<...>(), ...)`.
     MethodDefault,
-    /// A rule a jurisdiction's overlay put in its place: `with_rounding<...>()`
+    /// A rule a jurisdiction's overlay put in its place: `with_rounding<...>(source)`
     /// (`overlay.hpp`).
     JurisdictionOverlay,
 };
@@ -1067,7 +1067,7 @@ enum class ConstraintProvenance : std::uint8_t
     /// The constraints the method was declared with: `method(..., constraints(...))`.
     MethodOwn,
     /// Constraints a jurisdiction's overlay put in their place:
-    /// `with_constraints(...)` (`overlay.hpp`).
+    /// `with_constraints(..., source)` (`overlay.hpp`).
     JurisdictionOverlay,
 };
 

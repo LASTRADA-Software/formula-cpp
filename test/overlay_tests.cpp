@@ -101,7 +101,8 @@ inline constexpr formula::Citation roundingAnnex { .reference = "Example Standar
 
 /// Two decimal places of a megapascal where the base method keeps one.
 inline constexpr auto tighterRounding = formula::overlay(
-    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>());
+    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::Citation { .reference = "Example Standard 12:2021 NA" }));
 
 /// The same, citing where the jurisdiction states it.
 inline constexpr auto citedTighterRounding = formula::overlay(
@@ -110,7 +111,8 @@ inline constexpr auto citedTighterRounding = formula::overlay(
 
 /// The base method's own granularity, restated by a jurisdiction.
 inline constexpr auto sameRounding = formula::overlay(
-    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>());
+    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::Citation { .reference = "Example Standard 12:2021 NA" }));
 
 // 90100 N over 150 mm by 100 mm is 6.00666... MPa: 6.0 to one decimal and
 // 6.01 to two, so a rounding rule that did not change shows in the value.
@@ -133,7 +135,8 @@ template <typename M>
 template <typename Expr>
 [[nodiscard]] constexpr auto withRatioFixedAtFourMethod(Expr expression)
 {
-    constexpr auto fixed = formula::overlay(formula::with_constant<Ratio>(formula::Rational { 4 }));
+    constexpr auto fixed = formula::overlay(formula::with_constant<Ratio>(
+        formula::Rational { 4 }, formula::Citation { .reference = "Example Standard 12:2021 NA" }));
     return formula::apply(
         fixed,
         formula::method(
@@ -236,7 +239,9 @@ TEST_CASE("an overlay's constant is stated in its quantity's declared unit", "[o
     // 150 mm by 120 mm, 5 MPa. Read as 120 m -- the coherent SI unit -- it
     // would give 5 kPa, which rounds to 0.0 MPa.
     constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::with_constant<EdgeY>(formula::Rational { 120 })), baseMethod);
+        formula::apply(formula::overlay(formula::with_constant<EdgeY>(
+                           formula::Rational { 120 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       baseMethod);
 
     // No edge Y in the environment, so that only the overlay's can be read.
     constexpr auto withoutEdgeY = formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
@@ -331,7 +336,9 @@ TEST_CASE("an overlay fixes a constant in every variant and every constraint", "
                                                  formula::Verdict { "the shape factor exceeds one" },
                                                  nationalAnnex)));
     constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 11, 10 })), everywhere);
+        formula::apply(formula::overlay(formula::with_constant<ShapeFactor>(
+                           formula::Rational { 11, 10 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       everywhere);
 
     // The second variant, against an environment without the factor: this
     // compiles only if the rewrite reached past the first variant. 90000 N
@@ -522,8 +529,9 @@ TEST_CASE("an overridden constant is traced as fixed by the overlay, holding its
 
 TEST_CASE("an overridden constant the overlay cited nothing for is still traced as fixed", "[overlay][trace]")
 {
-    constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 })), baseMethod);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, formula::Citation {})),
+        baseMethod);
 
     formula::Trace<> trace;
     (void) formula::evaluate_method<Cube>(overlaid, inputsWithoutShapeFactor, formula::RecordingSink<> { trace });
@@ -537,7 +545,7 @@ TEST_CASE("the trace says where the rounding rule came from", "[trace][overlay]"
     CHECK(fromMethod.find("rounded to 1 dp (method default)") != std::string::npos);
 
     auto const fromOverlay = traceOf(formula::apply(tighterRounding, baseMethod));
-    CHECK(fromOverlay.find("rounded to 2 dp (jurisdiction overlay)") != std::string::npos);
+    CHECK(fromOverlay.find("rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA)") != std::string::npos);
 
     // The two must differ. A test asserting only one provenance passes
     // whether or not the distinction exists.
@@ -546,7 +554,7 @@ TEST_CASE("the trace says where the rounding rule came from", "[trace][overlay]"
     // Nor may the granularity be what tells them apart: the base method's own
     // rule, restated by a jurisdiction, is the jurisdiction's.
     auto const restated = traceOf(formula::apply(sameRounding, baseMethod));
-    CHECK(restated.find("rounded to 1 dp (jurisdiction overlay)") != std::string::npos);
+    CHECK(restated.find("rounded to 1 dp (jurisdiction overlay: Example Standard 12:2021 NA)") != std::string::npos);
     CHECK(restated != fromMethod);
 
     // And which jurisdiction, when the overlay says.
@@ -628,11 +636,11 @@ TEST_CASE("with_rounding rounds the method's result by the overlay's rule", "[ov
 
     // Every variant, not only the first. The second is checked at a coarser
     // rule, against a load that lands on a tie there.
-    constexpr auto coarser =
-        formula::apply(formula::overlay(formula::with_rounding<unit::Megapascal,
-                                                               formula::DecimalPlaces { 0 },
-                                                               formula::RoundingMode::HalfAwayFromZero>()),
-                       baseMethod);
+    constexpr auto coarser = formula::apply(
+        formula::overlay(
+            formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+                formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        baseMethod);
     constexpr auto slanted = formula::environment(formula::Measured<Force> { formula::Rational { 101'250 } },
                                                   formula::Measured<EdgeX> { formula::Rational { 150 } },
                                                   formula::Measured<EdgeY> { formula::Rational { 100 } });
@@ -775,7 +783,8 @@ inline constexpr auto edgeRatio = var<EdgeY> / var<EdgeX>;
 
 TEST_CASE("an overlay replaces a formula wholesale and the trace still explains it", "[overlay]")
 {
-    constexpr auto nationalB = formula::overlay(formula::replace_variant<Cylinder>(areaFromDiameter));
+    constexpr auto nationalB = formula::overlay(formula::replace_variant<Cylinder>(
+        areaFromDiameter, formula::Citation { .reference = "Example Standard 12:2021 NA" }));
     constexpr auto overlaid = formula::apply(nationalB, baseMethod);
 
     auto const rendered = traceOfVariant<Cylinder>(overlaid, roundSpecimen);
@@ -828,8 +837,10 @@ TEST_CASE("the documentation marks a replaced formula as replaced even when noth
     // is not the base standard's. The trace says "replaced by jurisdiction
     // overlay"; the page must say so too.
     constexpr auto replaced =
-        std::get<1>(formula::apply(formula::overlay(formula::replace_variant<Cylinder>(areaFromDiameter)), baseMethod)
-                        .variantSet.cases)
+        std::get<1>(
+            formula::apply(formula::overlay(formula::replace_variant<Cylinder>(areaFromDiameter, formula::Citation {})),
+                           baseMethod)
+                .variantSet.cases)
             .expression;
     auto const documentation = formula::document(replaced);
     CHECK(documentation.citations.empty());
@@ -868,7 +879,8 @@ TEST_CASE("a derived quantity is traced as derived by the overlay", "[overlay][t
           != std::string::npos);
 
     // Uncited, it still says so.
-    constexpr auto uncited = formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), baseMethod);
+    constexpr auto uncited =
+        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio, formula::Citation {})), baseMethod);
     CHECK(traceOfVariant<Cube>(uncited, roundSpecimen).find("4. k_s = #3 = 2/3 [derived by jurisdiction overlay]\n")
           != std::string::npos);
 }
@@ -906,8 +918,10 @@ TEST_CASE("the documentation marks a derived quantity as derived, with its defin
 TEST_CASE("a quantity read plainly and derived is documented as both, in either order", "[overlay][document]")
 {
     constexpr auto derivedFactor =
-        std::get<0>(
-            formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), baseMethod).variantSet.cases)
+        std::get<0>(formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(
+                                       edgeRatio, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                                   baseMethod)
+                        .variantSet.cases)
             .expression.lhs.lhs;
 
     auto const readFirst = formula::document(var<ShapeFactor> + derivedFactor);
@@ -925,9 +939,14 @@ TEST_CASE("a later constant reaches inside an earlier definition", "[overlay]")
     // later overlay. `r` is read only inside the definition, so this compiles
     // only if the constant reached it there -- and the specimen supplies no
     // `r` at all. 6.0 MPa * 4/5 = 4.8 MPa.
-    constexpr auto defined = formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>)), baseMethod);
+    constexpr auto defined =
+        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(
+                           var<Ratio>, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       baseMethod);
     constexpr auto fixed =
-        formula::apply(formula::overlay(formula::with_constant<Ratio>(formula::Rational { 4, 5 })), defined);
+        formula::apply(formula::overlay(formula::with_constant<Ratio>(
+                           formula::Rational { 4, 5 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       defined);
     STATIC_REQUIRE(formula::evaluate_method<Cube>(fixed, inputsWithoutShapeFactor)->value()
                    == formula::Rational { 4'800'000 });
 }
@@ -936,13 +955,18 @@ TEST_CASE("a later substitution for a quantity holds over an earlier one, of eit
 {
     // Defined, then fixed: the constant holds, 6.0 * 0.97 = 5.82 -> 5.8 MPa.
     constexpr auto definedThenFixed =
-        formula::apply(national, formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), baseMethod));
+        formula::apply(national,
+                       formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(
+                                          edgeRatio, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                                      baseMethod));
     STATIC_REQUIRE(formula::evaluate_method<Cube>(definedThenFixed, roundSpecimen)->value()
                    == formula::Rational { 5'800'000 });
 
     // Fixed, then defined: the definition holds, 4.0 MPa.
     constexpr auto fixedThenDefined =
-        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), formula::apply(national, baseMethod));
+        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(
+                           edgeRatio, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       formula::apply(national, baseMethod));
     STATIC_REQUIRE(formula::evaluate_method<Cube>(fixedThenDefined, roundSpecimen)->value()
                    == formula::Rational { 4'000'000 });
 }
@@ -954,8 +978,11 @@ TEST_CASE("a constant reaches inside a replacement listed before it", "[overlay]
     // the specimen's, and the specimen supplies none. 90000 N * 0.97 over
     // 150 mm by 150 mm is 3.88 MPa, which rounds to 3.9.
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::replace_variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeX> * var<EdgeX>) ),
-                         formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 })),
+        formula::overlay(
+            formula::replace_variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeX> * var<EdgeX>),
+                                           formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+            formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 },
+                                                formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         baseMethod);
     STATIC_REQUIRE(formula::evaluate_method<Cube>(overlaid, inputsWithoutShapeFactor)->value()
                    == formula::Rational { 3'900'000 });
@@ -971,13 +998,16 @@ TEST_CASE("an overlay whose operations hold expressions says it cannot be defaul
     // tuple's probe (see `Corrections`, `lookup.hpp`).
     constexpr auto lookup = formula::banded_lookup<unit::One, RatioBands, unit::One>(
         var<Ratio>, { formula::Rational { 1 }, formula::Rational { 7 } });
-    using Replacing =
-        decltype(formula::overlay(formula::replace_variant<Cube>(lookup * var<Force> / (var<EdgeX> * var<EdgeY>) )));
-    using Deriving = decltype(formula::overlay(formula::add_derived<ShapeFactor>(lookup)));
+    using Replacing = decltype(formula::overlay(formula::replace_variant<Cube>(
+        lookup * var<Force> / (var<EdgeX> * var<EdgeY>), formula::Citation { .reference = "Example Standard 12:2021 NA" })));
+    using Deriving = decltype(formula::overlay(
+        formula::add_derived<ShapeFactor>(lookup, formula::Citation { .reference = "Example Standard 12:2021 NA" })));
     // Constraints hold predicates, which hold expressions, so a replacement
     // of them is held to the same.
-    using Constraining = decltype(formula::overlay(formula::with_constraints(formula::constraints(formula::constraint(
-        lookup > formula::number(formula::Rational { 0 }), formula::Verdict { "the correction is not positive" })))));
+    using Constraining = decltype(formula::overlay(formula::with_constraints(
+        formula::constraints(formula::constraint(lookup > formula::number(formula::Rational { 0 }),
+                                                 formula::Verdict { "the correction is not positive" })),
+        formula::Citation { .reference = "Example Standard 12:2021 NA" })));
 
     STATIC_REQUIRE(!std::is_default_constructible_v<Replacing>);
     STATIC_REQUIRE(!std::default_initializable<Replacing>);
@@ -1122,11 +1152,15 @@ TEST_CASE("an overlay's constraints stay the jurisdiction's through every other 
     constexpr auto pin = formula::pin_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" });
     constexpr auto prune =
         formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" });
-    constexpr auto replace = formula::replace_variant<Cylinder>(var<Force> / (var<EdgeY> * var<EdgeY>) );
+    constexpr auto replace = formula::replace_variant<Cylinder>(
+        var<Force> / (var<EdgeY> * var<EdgeY>), formula::Citation { .reference = "Example Standard 12:2021 NA" });
     constexpr auto round =
-        formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>();
-    constexpr auto fix = formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 });
-    constexpr auto derive = formula::add_derived<ShapeFactor>(var<EdgeY> / var<EdgeX>);
+        formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            formula::Citation { .reference = "Example Standard 12:2021 NA" });
+    constexpr auto fix = formula::with_constant<ShapeFactor>(
+        formula::Rational { 97, 100 }, formula::Citation { .reference = "Example Standard 12:2021 NA" });
+    constexpr auto derive = formula::add_derived<ShapeFactor>(
+        var<EdgeY> / var<EdgeX>, formula::Citation { .reference = "Example Standard 12:2021 NA" });
 
     STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(constrain, pin), baseMethod)));
     STATIC_REQUIRE(isTheOverlays(formula::apply(formula::overlay(pin, constrain), baseMethod)));
@@ -1155,7 +1189,9 @@ TEST_CASE("a constant listed after an overlay's constraints reaches inside them"
     // constraints -- it reads the overlay's 1.1, and is violated.
     constexpr auto overlaid =
         formula::apply(formula::overlay(formula::with_constraints(threeConstraintSet, acceptanceAnnex),
-                                        formula::with_constant<ShapeFactor>(formula::Rational { 11, 10 })),
+                                        formula::with_constant<ShapeFactor>(
+                                            formula::Rational { 11, 10 },
+                                            formula::Citation { .reference = "Example Standard 12:2021 NA" })),
                        baseMethod);
     constexpr auto outcomes = formula::check_method(overlaid, inputsWithoutShapeFactor);
     STATIC_REQUIRE(outcomes.size() == 3);

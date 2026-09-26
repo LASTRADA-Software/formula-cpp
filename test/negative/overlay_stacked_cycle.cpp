@@ -59,7 +59,12 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto first = formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>)), m);
-    constexpr auto second = formula::apply(formula::overlay(formula::add_derived<Ratio>(var<ShapeFactor>)), first);
+    constexpr auto first = formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(
+                                              var<Ratio>, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                                          m);
+    constexpr auto second =
+        formula::apply(formula::overlay(formula::add_derived<Ratio>(
+                           var<ShapeFactor>, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       first);
     return std::tuple_size_v<decltype(second.variantSet.cases)> == 2 ? 0 : 1;
 }

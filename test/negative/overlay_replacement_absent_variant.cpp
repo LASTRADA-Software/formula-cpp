@@ -57,7 +57,9 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::replace_variant<Prism>(var<Force> / (var<EdgeY> * var<EdgeY>) )), m);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::replace_variant<Prism>(var<Force> / (var<EdgeY> * var<EdgeY>),
+                                                         formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

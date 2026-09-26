@@ -68,9 +68,11 @@ inline constexpr auto readsOther = formula::constraints(formula::constraint(
 
 int main()
 {
-    constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::add_derived<Other>(var<Ratio> * formula::number(formula::Rational { 2 })),
-                                        formula::add_derived<Ratio>(var<Other> * formula::number(formula::Rational { 3 }))),
-                       m);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::add_derived<Other>(var<Ratio> * formula::number(formula::Rational { 2 }),
+                                                     formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::add_derived<Ratio>(var<Other> * formula::number(formula::Rational { 3 }),
+                                                     formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        m);
     return std::tuple_size_v<decltype(overlaid.constraintSet.items)> == 1 ? 0 : 1;
 }

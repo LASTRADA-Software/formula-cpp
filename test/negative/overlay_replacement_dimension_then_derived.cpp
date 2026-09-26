@@ -60,8 +60,11 @@ inline constexpr auto m =
 int main()
 {
     static_cast<void>(m);
-    constexpr auto overlaid = formula::apply(formula::overlay(formula::replace_variant<Cylinder>(var<Ratio> * var<EdgeX>),
-                                                              formula::add_derived<Ratio>(var<EdgeY> / var<EdgeX>)),
-                                             m);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::replace_variant<Cylinder>(
+                             var<Ratio> * var<EdgeX>, formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::add_derived<Ratio>(var<EdgeY> / var<EdgeX>,
+                                                     formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

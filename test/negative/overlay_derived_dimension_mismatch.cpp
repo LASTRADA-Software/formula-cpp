@@ -62,7 +62,8 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto deriving = formula::add_derived<ShapeFactor>(var<EdgeX> * var<EdgeY> / var<EdgeX>);
+    constexpr auto deriving = formula::add_derived<ShapeFactor>(
+        var<EdgeX> * var<EdgeY> / var<EdgeX>, formula::Citation { .reference = "Example Standard 12:2021 NA" });
     constexpr auto overlaid = formula::apply(formula::overlay(deriving), m);
     return deriving.source.title.empty() && std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

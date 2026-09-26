@@ -226,7 +226,8 @@ inline constexpr auto crossedMethod = formula::method(
     OneDecimalOfMegapascal {},
     formula::constraints());
 
-inline constexpr auto fixedFactor = formula::overlay(formula::with_constant<Factor>(rat(97, 100)));
+inline constexpr auto fixedFactor = formula::overlay(
+    formula::with_constant<Factor>(rat(97, 100), formula::Citation { .reference = "Example Standard 12:2021 NA" }));
 
 // 30 MPa, 12 MPa and 200 mm, each distinct from the others, so a symbol
 // attached to the wrong quantity attaches to the wrong number.
@@ -264,7 +265,7 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
     constexpr auto overlaid = formula::apply(fixedFactor, crossedMethod);
 
     CHECK(traceOf(overlaid, everyNamedQuantity)
-          == "1. k_s = 97/100 [fixed by jurisdiction overlay]\n"
+          == "1. k_s = 97/100 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. E = 30 MPa\n"
              "3. #1 * #2 = 29100000\n"
              "4. D = 200 mm\n"
@@ -279,7 +280,7 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
     // known to differ from the declared symbols in exactly the four places
     // that name a quantity, and nowhere else.
     CHECK(traceOf(overlaid)
-          == "1. k = 97/100 [fixed by jurisdiction overlay]\n"
+          == "1. k = 97/100 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. f_c = 30 MPa\n"
              "3. #1 * #2 = 29100000\n"
              "4. d = 200 mm\n"
@@ -590,10 +591,12 @@ inline constexpr auto everyMethod = formula::method(
     formula::rounding_rule<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 
-inline constexpr auto everyOverlay =
-    formula::overlay(formula::with_constant<EveryFixed>(rat(3, 2)),
-                     formula::add_derived<EveryDerived>(var<EveryDiameter> / formula::constant<unit::Millimetre>(rat(100))),
-                     formula::replace_variant<EveryCylinder>(var<EveryModulus> / var<EveryStrength>));
+inline constexpr auto everyOverlay = formula::overlay(
+    formula::with_constant<EveryFixed>(rat(3, 2), formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+    formula::add_derived<EveryDerived>(var<EveryDiameter> / formula::constant<unit::Millimetre>(rat(100)),
+                                       formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+    formula::replace_variant<EveryCylinder>(var<EveryModulus> / var<EveryStrength>,
+                                            formula::Citation { .reference = "Example Standard 12:2021 NA" }));
 
 inline constexpr auto everyOverlaid = formula::apply(everyOverlay, everyMethod);
 
@@ -688,14 +691,15 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
     CHECK(cube.starts_with("1. E = 30 MPa\n"
                            "2. R = 12 MPa\n"));
     CHECK(cube.find("34. D = 200 mm\n") != std::string::npos);
-    CHECK(cube.find("37. k_n = #36 = 2 [derived by jurisdiction overlay]\n") != std::string::npos);
-    CHECK(cube.find("39. x_n = 3/2 [fixed by jurisdiction overlay]\n") != std::string::npos);
+    CHECK(cube.find("37. k_n = #36 = 2 [derived by jurisdiction overlay: Example Standard 12:2021 NA]\n")
+          != std::string::npos);
+    CHECK(cube.find("39. x_n = 3/2 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n") != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"
              "2. E = 30 MPa\n"
              "3. #1 / #2 = 2/5\n"
-             "4. #3 = 2/5 [replaced by jurisdiction overlay]\n"
+             "4. #3 = 2/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "5. round(#4, in %) = 40 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "6. #5 = 40 % [variant EveryCylinder (2nd of 2), selected by tag]\n");
 }

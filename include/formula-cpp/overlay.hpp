@@ -22,19 +22,19 @@
 ///
 /// This header provides seven operations:
 ///
-///  - `with_constant<Q>(value)` fixes the quantity `Q` to `value` wherever the
+///  - `with_constant<Q>(value, source)` fixes the quantity `Q` to `value` wherever the
 ///    method uses it -- the national body fixing a constant the base standard
 ///    left open;
-///  - `add_derived<Q>(expression)` defines `Q` by an expression over other
+///  - `add_derived<Q>(expression, source)` defines `Q` by an expression over other
 ///    inputs wherever the method uses it -- the jurisdiction computing what
 ///    the base standard left to the specimen;
 ///  - `pin_variant<Tag>(source)` keeps only the variant tagged `Tag`, making it
 ///    mandatory;
 ///  - `prune_variant<Tag>(source)` deletes the variant tagged `Tag` outright;
-///  - `replace_variant<Tag>(expression)` replaces the formula of the variant
+///  - `replace_variant<Tag>(expression, source)` replaces the formula of the variant
 ///    tagged `Tag` wholesale;
-///  - `with_rounding<U, Places, Mode>()` replaces the method's rounding rule;
-///  - `with_constraints(constraints(...))` replaces the method's constraints
+///  - `with_rounding<U, Places, Mode>(source)` replaces the method's rounding rule;
+///  - `with_constraints(constraints(...), source)` replaces the method's constraints
 ///    wholesale, with as many as the jurisdiction states -- more, fewer or
 ///    none.
 ///
@@ -113,7 +113,7 @@
 ///
 /// A `with_constraints` is accepted whatever it holds, for the same reason:
 /// the base method's own constraints restated make them the jurisdiction's,
-/// and `with_constraints(constraints())` -- no constraints at all -- is a
+/// and `with_constraints(constraints(), source)` -- no constraints at all -- is a
 /// jurisdiction that checks nothing the base standard checks. A method
 /// declared with `constraints()` is already well formed, and the removal is
 /// not silent: `check_method` records a step for a method's constraints even
@@ -128,8 +128,8 @@
 /// Operations apply **in the order the overlay lists them**, each to the method
 /// the previous one produced. "Nothing" in the rule above is nothing in the
 /// method the overlay produces, not in the method as it stood when one
-/// operation was applied. So `overlay(pin_variant<Cube>(source), with_constant<Q>(v))`
-/// and `overlay(with_constant<Q>(v), prune_variant<Cylinder>(source))` are both
+/// operation was applied. So `overlay(pin_variant<Cube>(source), with_constant<Q>(v, source))`
+/// and `overlay(with_constant<Q>(v, source), prune_variant<Cylinder>(source))` are both
 /// refused when only the variant that goes away reads `Q`: in either order,
 /// the method produced never reads it.
 
@@ -190,7 +190,7 @@ namespace detail
     };
 } // namespace detail
 
-/// A quantity whose value an overlay has fixed: what `with_constant<Q>(value)`
+/// A quantity whose value an overlay has fixed: what `with_constant<Q>(value, source)`
 /// leaves where the method had `var<Q>`.
 ///
 /// **It keeps `Q`'s identity**, and that is the reason it exists rather than
@@ -267,7 +267,7 @@ class OverriddenConstantNode: public VarNode<Q>
 };
 
 /// A quantity a jurisdiction defines by an expression over other inputs: what
-/// `add_derived<Q>(expression)` leaves where the method had `var<Q>`.
+/// `add_derived<Q>(expression, source)` leaves where the method had `var<Q>`.
 ///
 /// It keeps `Q`'s identity for the reason `OverriddenConstantNode` does, and
 /// reads as `Q` in `render()` through the same `VarNode` overload. Where it
@@ -327,7 +327,7 @@ class DerivedQuantityNode: public VarNode<Q>
 };
 
 /// A variant's formula as a jurisdiction replaced it wholesale: what
-/// `replace_variant<Tag>(expression)` leaves as the variant's expression.
+/// `replace_variant<Tag>(expression, source)` leaves as the variant's expression.
 ///
 /// It evaluates and renders as the replacement, and adds what the replacement
 /// alone cannot say: that the formula is not the method's but a
@@ -468,7 +468,7 @@ template <typename Rep = Rational, Node Expr, typename Env, typename Sink = Null
     return evaluated;
 }
 
-/// The operation `with_constant<Q>(value)` builds: fix `Q` to `value`.
+/// The operation `with_constant<Q>(value, source)` builds: fix `Q` to `value`.
 template <Described Q>
 struct ConstantOverride
 {
@@ -492,13 +492,27 @@ struct ConstantOverride
 /// constant means: the value is no longer the specimen's to state.
 ///
 /// @p source records where the value comes from -- a national annex, say --
-/// and travels with every node the override leaves behind.
+/// and travels with every node the override leaves behind. It is required:
+/// the trace exists to say why a value is what it is, and "fixed by
+/// jurisdiction overlay" with no citation says nothing a reader can check.
 ///
 /// Refused when no variant or constraint uses `Q`: see the file comment.
 template <Described Q>
-[[nodiscard]] constexpr ConstantOverride<Q> with_constant(Rational value, Citation source = {}) noexcept
+[[nodiscard]] constexpr ConstantOverride<Q> with_constant(Rational value, Citation source) noexcept
 {
     return ConstantOverride<Q> { value, source };
+}
+
+/// Refuses a constant with no citation, in the library's words rather than
+/// the compiler's "too few arguments". A template on @p Stated only so that
+/// the refusal waits for a call.
+template <Described Q, bool Stated = false>
+[[nodiscard]] constexpr ConstantOverride<Q> with_constant(Rational value) noexcept
+{
+    static_assert(Stated,
+                  "formula: with_constant<Q>(value) was given no citation; a fixed value is a jurisdiction's "
+                  "decision, and a trace must say whose -- pass the Citation of the clause that states it");
+    return ConstantOverride<Q> { value, {} };
 }
 
 /// The operation `pin_variant<Tag>(source)` builds: keep only the variant tagged
@@ -544,9 +558,9 @@ template <typename Tag, bool Stated = false>
 [[nodiscard]] constexpr VariantPin<Tag> pin_variant() noexcept
 {
     static_assert(Stated,
-                  "formula: pin_variant<Tag>() was given no citation; which variant is mandatory is a jurisdiction's "
-                  "decision, and a trace must say whose -- pass the Citation of the clause that makes it, "
-                  "pin_variant<Tag>(citation)");
+                  "formula: pin_variant<Tag>() was given no citation; which variant is mandatory is a "
+                  "jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that "
+                  "makes it, pin_variant<Tag>(citation)");
     return {};
 }
 
@@ -591,7 +605,7 @@ template <typename Tag, bool Stated = false>
     return {};
 }
 
-/// The operation `with_rounding<U, Places, Mode>()` builds: replace the
+/// The operation `with_rounding<U, Places, Mode>(source)` builds: replace the
 /// method's rounding rule.
 template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 struct RoundingOverride
@@ -616,19 +630,32 @@ struct RoundingOverride
 /// (method default)`. Which rule applied is half of what spec section 9.1
 /// asks for; where it came from is the other half.
 ///
-/// @p source cites where the rule comes from, as `with_constant`'s does;
-/// "jurisdiction overlay" alone does not say which jurisdiction.
+/// @p source cites where the rule comes from, and is required, as
+/// `with_constant`'s is; "jurisdiction overlay" alone does not say which
+/// jurisdiction.
 ///
 /// Refused when `U` does not measure what the method reports, by the method
 /// the overlay produces, and when one overlay lists it twice: see the file
 /// comment. Across overlays, the later one's rule holds.
 template <Unit U, DecimalPlaces Places, RoundingMode Mode>
-[[nodiscard]] constexpr RoundingOverride<U, Places, Mode> with_rounding(Citation source = {}) noexcept
+[[nodiscard]] constexpr RoundingOverride<U, Places, Mode> with_rounding(Citation source) noexcept
 {
     return RoundingOverride<U, Places, Mode> { source };
 }
 
-/// The operation `replace_variant<Tag>(expression)` builds: replace the
+/// Refuses a rounding rule with no citation, as `with_constant`'s overload
+/// refuses a constant.
+template <Unit U, DecimalPlaces Places, RoundingMode Mode, bool Stated = false>
+[[nodiscard]] constexpr RoundingOverride<U, Places, Mode> with_rounding() noexcept
+{
+    static_assert(Stated,
+                  "formula: with_rounding<U, Places, Mode>() was given no citation; a rounding rule is a "
+                  "jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that "
+                  "states it");
+    return RoundingOverride<U, Places, Mode> {};
+}
+
+/// The operation `replace_variant<Tag>(expression, source)` builds: replace the
 /// formula of the variant tagged `Tag` wholesale.
 ///
 /// `Tag` obeys the tag rule, as `VariantPin` says. No `{}` default member
@@ -659,13 +686,28 @@ struct VariantReplacement
 /// either order), when @p expression measures a different dimension from the
 /// method's, and when one overlay replaces the same variant twice: see the
 /// file comment.
+///
+/// @p source cites whose formula it is, and is required, as `with_constant`'s
+/// is.
 template <typename Tag, Node Expr>
-[[nodiscard]] constexpr VariantReplacement<Tag, Expr> replace_variant(Expr expression, Citation source = {}) noexcept
+[[nodiscard]] constexpr VariantReplacement<Tag, Expr> replace_variant(Expr expression, Citation source) noexcept
 {
     return VariantReplacement<Tag, Expr> { expression, source };
 }
 
-/// The operation `with_constraints(constraints(...))` builds: replace the
+/// Refuses a replacement with no citation, as `with_constant`'s overload
+/// refuses a constant.
+template <typename Tag, bool Stated = false, Node Expr>
+[[nodiscard]] constexpr VariantReplacement<Tag, Expr> replace_variant(Expr expression) noexcept
+{
+    static_assert(Stated,
+                  "formula: replace_variant<Tag>(expression) was given no citation; a replaced formula is a "
+                  "jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that "
+                  "states it");
+    return VariantReplacement<Tag, Expr> { expression, {} };
+}
+
+/// The operation `with_constraints(constraints(...), source)` builds: replace the
 /// method's constraints wholesale.
 ///
 /// No `{}` default member initialiser on the constraint set: it holds
@@ -711,14 +753,29 @@ struct ConstraintsOverride
 /// earlier overlay's constant or definition reached, which is accepted, as a
 /// later `replace_variant` of the only variant reading one is: the earlier
 /// substitution then no longer applies.
+///
+/// @p source cites whose constraints they are, and is required, as
+/// `with_constant`'s is.
 template <Predicate... Ps>
 [[nodiscard]] constexpr ConstraintsOverride<Ps...> with_constraints(ConstraintSet<Ps...> replacement,
-                                                                    Citation source = {}) noexcept
+                                                                    Citation source) noexcept
 {
     return ConstraintsOverride<Ps...> { replacement, source };
 }
 
-/// The operation `add_derived<Q>(expression)` builds; defined below the
+/// Refuses constraints with no citation, as `with_constant`'s overload
+/// refuses a constant.
+template <bool Stated = false, Predicate... Ps>
+[[nodiscard]] constexpr ConstraintsOverride<Ps...> with_constraints(ConstraintSet<Ps...> replacement) noexcept
+{
+    static_assert(Stated,
+                  "formula: with_constraints(constraints(...)) was given no citation; a method's acceptance checks "
+                  "are a jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause "
+                  "that states it");
+    return ConstraintsOverride<Ps...> { replacement, {} };
+}
+
+/// The operation `add_derived<Q>(expression, source)` builds; defined below the
 /// rewrite machinery its class body asks.
 template <Described Q, Node Expr>
 struct QuantityDerivation;
@@ -774,9 +831,10 @@ namespace detail
     {
         static_assert(IsOverlayOperation<Operation>::value,
                       "formula: this argument of overlay(...) is not an overlay operation; every argument "
-                      "must be what with_constant<Q>(value), add_derived<Q>(expression), pin_variant<Tag>(citation), "
-                      "prune_variant<Tag>(citation), replace_variant<Tag>(expression), with_rounding<U, Places, "
-                      "Mode>() or with_constraints(constraints(...)) returns -- the offending argument appears in this "
+                      "must be what with_constant<Q>(value, citation), add_derived<Q>(expression, citation), "
+                      "pin_variant<Tag>(citation), prune_variant<Tag>(citation), replace_variant<Tag>(expression, "
+                      "citation), with_rounding<U, Places, Mode>(citation) or with_constraints(constraints(...), "
+                      "citation) returns -- the offending argument appears in this "
                       "diagnostic as the template argument Operation of RequireOverlayOperation, and Index is "
                       "its ZERO-BASED position, so 0 is the first argument");
 
@@ -1032,7 +1090,7 @@ struct Overlay
     std::tuple<Ops...> operations;
 };
 
-/// Builds an overlay: `overlay(with_constant<Q>(v), prune_variant<Cube>(source))`.
+/// Builds an overlay: `overlay(with_constant<Q>(v, source), prune_variant<Cube>(source))`.
 ///
 /// An empty `overlay()` is accepted, and applying it yields the method
 /// unchanged. It declares no change rather than a change that silently fails
@@ -2012,7 +2070,7 @@ namespace detail
     };
 } // namespace detail
 
-/// The operation `add_derived<Q>(expression)` builds: define `Q` by
+/// The operation `add_derived<Q>(expression, source)` builds: define `Q` by
 /// `expression` wherever the method uses it.
 ///
 /// Its class body refuses, where the overlay is written: an expression of a
@@ -2064,16 +2122,27 @@ struct QuantityDerivation
 /// environment need not supply `Q`. A trace records the definition as its own
 /// step and `document()` marks `Q`'s row as derived: see `DerivedQuantityNode`.
 ///
-/// @p source records where the definition comes from, as `with_constant`'s
-/// does.
+/// @p source records where the definition comes from, and is required, as
+/// `with_constant`'s is.
 ///
 /// Refused when @p expression measures a different dimension from `Q`, when
 /// it reads `Q`, and when no variant or constraint of the method the overlay
 /// produces uses `Q`: see the file comment.
 template <Described Q, Node Expr>
-[[nodiscard]] constexpr QuantityDerivation<Q, Expr> add_derived(Expr expression, Citation source = {}) noexcept
+[[nodiscard]] constexpr QuantityDerivation<Q, Expr> add_derived(Expr expression, Citation source) noexcept
 {
     return QuantityDerivation<Q, Expr> { expression, source };
+}
+
+/// Refuses a definition with no citation, as `with_constant`'s overload
+/// refuses a constant.
+template <Described Q, bool Stated = false, Node Expr>
+[[nodiscard]] constexpr QuantityDerivation<Q, Expr> add_derived(Expr expression) noexcept
+{
+    static_assert(Stated,
+                  "formula: add_derived<Q>(expression) was given no citation; a definition is a jurisdiction's "
+                  "decision, and a trace must say whose -- pass the Citation of the clause that states it");
+    return QuantityDerivation<Q, Expr> { expression, {} };
 }
 
 namespace detail
@@ -2286,7 +2355,7 @@ namespace detail
             return formula::method(pack, rounding, constraintSet);
     }
 
-    /// `with_constraints(...)`: the same variants and rounding rule, checked
+    /// `with_constraints(..., source)`: the same variants and rounding rule, checked
     /// against the overlay's constraints, which the method records as the
     /// overlay's, with what the overlay cited. The constraints replaced are
     /// dropped whole, of whatever number, and so is whose they were.
@@ -2646,8 +2715,8 @@ namespace detail
     /// Asked of the **result**, never of the method as it stands when the
     /// constant is applied. The rule is that an override doing nothing in the
     /// method the overlay produces is refused, and asked per step it would
-    /// depend on order: `overlay(with_constant<Q>(v), pin_variant<Cube>(source))`
-    /// and `overlay(pin_variant<Cube>(source), with_constant<Q>(v))` produce the same
+    /// depend on order: `overlay(with_constant<Q>(v, source), pin_variant<Cube>(source))`
+    /// and `overlay(pin_variant<Cube>(source), with_constant<Q>(v, source))` produce the same
     /// method, and a per-step check refused only the second.
     template <typename M, typename Input, typename... Ops>
     struct RequireOverridesRead

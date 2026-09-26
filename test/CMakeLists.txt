@@ -747,6 +747,19 @@ formula_add_negative_test(overlay_pin_without_citation
 formula_add_negative_test(overlay_prune_without_citation
     "formula: prune_variant<Tag>() was given no citation")
 
+# Every overlay operation must cite the clause it comes from: one case per
+# operation, besides the pin's and the prune's above.
+formula_add_negative_test(overlay_constant_without_citation
+    "formula: with_constant<Q>(value) was given no citation")
+formula_add_negative_test(overlay_derived_without_citation
+    "formula: add_derived<Q>(expression) was given no citation")
+formula_add_negative_test(overlay_replacement_without_citation
+    "formula: replace_variant<Tag>(expression) was given no citation")
+formula_add_negative_test(overlay_rounding_without_citation
+    "formula: with_rounding<U, Places, Mode>() was given no citation")
+formula_add_negative_test(overlay_constraints_without_citation
+    "formula: with_constraints(constraints(...)) was given no citation")
+
 formula_add_negative_test(overlay_pin_tag_cv_qualified
     "formula: this tag is not a plain class type"
     REJECT "formula: this overlay pins or prunes a variant the method does not declare")

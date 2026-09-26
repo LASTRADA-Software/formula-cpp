@@ -191,9 +191,12 @@ inline constexpr auto baseMethod = formula::method(
 /// `apply_operation` and every result check.
 inline constexpr auto everyOperation = formula::overlay(
     formula::with_constraints(formula::constraints(forceLimit), formula::Citation { .reference = "Example Standard 2" }),
-    formula::replace_variant<Cylinder>(formula::number(formula::Rational { 2 }) * var<Force> / (var<EdgeX> * var<EdgeX>) ),
-    formula::with_constant<Factor>(formula::Rational { 1 }),
-    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>());
+    formula::replace_variant<Cylinder>(formula::number(formula::Rational { 2 }) * var<Force> / (var<EdgeX> * var<EdgeX>),
+                                       formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+    formula::with_constant<Factor>(formula::Rational { 1 },
+                                   formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::Citation { .reference = "Example Standard 12:2021 NA" }));
 
 inline constexpr auto overlaid = formula::apply(everyOperation, baseMethod);
 inline constexpr auto pinned = formula::apply(
@@ -203,7 +206,9 @@ inline constexpr auto pruned = formula::apply(
     formula::overlay(formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
     baseMethod);
 inline constexpr auto derived =
-    formula::apply(formula::overlay(formula::add_derived<Factor>(var<EdgeX> / var<EdgeX>)), baseMethod);
+    formula::apply(formula::overlay(formula::add_derived<Factor>(
+                       var<EdgeX> / var<EdgeX>, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                   baseMethod);
 
 inline constexpr auto specimen = formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
                                                       formula::Measured<EdgeX> { formula::Rational { 150 } },

@@ -59,8 +59,10 @@ int main()
 {
     static_cast<void>(m);
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
-                         formula::replace_variant<Cylinder>(var<Force> / (var<EdgeY> * var<EdgeY>) )),
+        formula::overlay(
+            formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+            formula::replace_variant<Cylinder>(var<Force> / (var<EdgeY> * var<EdgeY>),
+                                               formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 1 ? 0 : 1;
 }

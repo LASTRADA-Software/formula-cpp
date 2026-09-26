@@ -1621,7 +1621,8 @@ TEST_CASE("an overlaid method's selection is counted in the method as published"
     // that moved them: the positions survive the rewrite too.
     constexpr auto rewritten = formula::apply(
         formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
-                         formula::with_constant<Side>(formula::Rational { 50 })),
+                         formula::with_constant<Side>(formula::Rational { 50 },
+                                                      formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         bearing);
     formula::Trace<> afterRewrite {};
     (void) formula::evaluate_method<Ring>(rewritten, loadOn(100, 7), formula::RecordingSink<> { afterRewrite });

@@ -311,7 +311,7 @@ namespace detail
         std::index_sequence<Is...>) noexcept
     {
         // An empty set -- a method declared with `constraints()`, or an
-        // overlay's `with_constraints(constraints())` -- expands the pack
+        // overlay's `with_constraints(constraints(), source)` -- expands the pack
         // below to nothing, and g++ 13 then reports `sink` as set but not
         // used, an error under `-Werror`.
         static_cast<void>(sink);

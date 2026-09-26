@@ -63,8 +63,11 @@ inline constexpr auto m =
 int main()
 {
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::with_constant<Other>(formula::Rational { 1, 2 }),
-                         formula::replace_variant<Cylinder>(var<Other> * var<Force> / (var<EdgeX> * var<EdgeX>) )),
+        formula::overlay(
+            formula::with_constant<Other>(formula::Rational { 1, 2 },
+                                          formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+            formula::replace_variant<Cylinder>(var<Other> * var<Force> / (var<EdgeX> * var<EdgeX>),
+                                               formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

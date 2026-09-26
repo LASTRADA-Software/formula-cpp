@@ -38,10 +38,12 @@ int main()
 {
     constexpr auto twice = formula::overlay(formula::with_rounding<formula::unit::Megapascal,
                                                                    formula::DecimalPlaces { 2 },
-                                                                   formula::RoundingMode::HalfAwayFromZero>(),
+                                                                   formula::RoundingMode::HalfAwayFromZero>(
+                                                formula::Citation { .reference = "Example Standard 12:2021 NA" }),
                                             formula::with_rounding<formula::unit::Megapascal,
                                                                    formula::DecimalPlaces { 0 },
-                                                                   formula::RoundingMode::HalfAwayFromZero>());
+                                                                   formula::RoundingMode::HalfAwayFromZero>(
+                                                formula::Citation { .reference = "Example Standard 12:2021 NA" }));
     constexpr auto overlaid = formula::apply(twice, m);
     return overlaid.rounding.places.value == 0 ? 0 : 1;
 }
