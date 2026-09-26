@@ -463,6 +463,18 @@ namespace detail
             case StepKind::Variable:
             case StepKind::OverriddenConstant:
                 return std::string { step.symbol };
+            // The quantity, equal to the step its definition produced:
+            // `k_s = #3`, so that the line reads `k_s = #3 = 97/100`. That it
+            // is a jurisdiction's definition goes in the suffix -- see
+            // `derived_quantity_suffix`. With no step to name -- an untraced
+            // consumer node as the whole definition -- the quantity alone.
+            case StepKind::DerivedQuantity:
+                return step.operands.empty() ? std::string { step.symbol }
+                                             : std::string { step.symbol } + " = " + sole_operand(step);
+            // Its operand, as `Documented`'s is: the replacement computed the
+            // value; the step says only whose formula it was.
+            case StepKind::ReplacedVariant:
+                return sole_operand(step);
             case StepKind::Constant:
                 return {};
             case StepKind::PiConstant:
@@ -584,6 +596,22 @@ namespace detail
     [[nodiscard]] inline std::string overridden_constant_suffix(Citation const& source)
     {
         return " [fixed by " + overlay_source_text(source) + "]";
+    }
+
+    /// A derived quantity's clause: `[derived by jurisdiction overlay: ...]`.
+    /// Present whether or not the overlay cited anything, for the reason
+    /// `overridden_constant_suffix` gives.
+    [[nodiscard]] inline std::string derived_quantity_suffix(Citation const& source)
+    {
+        return " [derived by " + overlay_source_text(source) + "]";
+    }
+
+    /// A replaced variant's clause: `[replaced by jurisdiction overlay: ...]`.
+    /// Present whether or not the overlay cited anything: the body of the line
+    /// -- `#5 = ...` -- says nothing of whose formula ran.
+    [[nodiscard]] inline std::string replaced_variant_suffix(Citation const& source)
+    {
+        return " [replaced by " + overlay_source_text(source) + "]";
     }
 
     /// Whose a `RoundingRuleApplied` step's rule was: `method default`, or
@@ -831,6 +859,10 @@ namespace detail
             suffix = rounding_rule_suffix(step);
         else if (step.kind == StepKind::OverriddenConstant)
             suffix = overridden_constant_suffix(step.citation);
+        else if (step.kind == StepKind::DerivedQuantity)
+            suffix = derived_quantity_suffix(step.citation);
+        else if (step.kind == StepKind::ReplacedVariant)
+            suffix = replaced_variant_suffix(step.citation);
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
         // value fell in, and on a failure it is the only thing separating a

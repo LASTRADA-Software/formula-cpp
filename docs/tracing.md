@@ -410,7 +410,28 @@ page does not ask a reader to supply a value the formula never reads. A formula
 assembled by hand that both fixes a quantity and reads it from the specimen
 gets a row saying both: `alsoReadAsInput` is set beside the fixed value.
 
-The provenance a trace reports is only ever the library's to state. A
+A quantity a jurisdiction defines by an expression, with `add_derived`, is
+traced as `StepKind::DerivedQuantity`: the quantity, equal to the step its
+definition produced, marked as the overlay's:
+
+```
+3. #1 / #2 = 2/3
+4. k_s = #3 = 2/3 [derived by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.3]
+```
+
+(`test/overlay_tests.cpp`, `"a derived quantity is traced as derived by the
+overlay"`.) Its row in `document()`'s symbol table carries the definition in
+the page's dialect as `derivedAs`, and the citation as `derivedBy`. A variant
+whose formula a jurisdiction replaced wholesale, with `replace_variant`, is
+traced as `StepKind::ReplacedVariant`, a step of its own under the variant
+selection whose line ends `[replaced by jurisdiction overlay: ...]`. It is a
+step of its own because what it marks is the formula that ran, not the choice
+of which variant ran.
+
+The provenance a trace reports is only ever the library's to state. The nodes
+an overlay leaves behind -- a fixed constant, a derived quantity, a replaced
+formula -- can be built only by the overlay, and building one by hand is
+refused in the library's words. A
 `RoundingRule` claims a jurisdiction's overlay only when `with_rounding`
 produced it, and the rounding node a method applies holds the rule itself
 rather than a provenance of its own, so neither can be hand-built to say

@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -84,6 +85,15 @@ inline constexpr formula::Citation nationalAnnex { .title = "Shape factor",
 
 inline constexpr auto national =
     formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, nationalAnnex));
+
+/// The shape factor as `national` fixes it, taken out of the method `apply`
+/// produced: only an overlay builds an overridden constant, so a formula that
+/// both fixes and reads a quantity is assembled from a copy of one.
+[[nodiscard]] constexpr auto fixedShapeFactor()
+{
+    // `k_s * F / (...)` parses as `(k_s * F) / (...)`.
+    return std::get<0>(formula::apply(national, baseMethod).variantSet.cases).expression.lhs.lhs;
+}
 
 inline constexpr formula::Citation roundingAnnex { .reference = "Example Standard 12:2021 NA", .section = "NA.4.1" };
 
@@ -199,8 +209,8 @@ TEST_CASE("an overridden constant keeps its quantity's identity", "[overlay]")
     using Factor = std::remove_cvref_t<decltype(cube.lhs.lhs)>;
     STATIC_REQUIRE(std::is_same_v<Factor, formula::OverriddenConstantNode<ShapeFactor>>);
     STATIC_REQUIRE(std::is_same_v<Factor::quantity, ShapeFactor>);
-    STATIC_REQUIRE(cube.lhs.lhs.value == formula::Rational { 97, 100 });
-    STATIC_REQUIRE(cube.lhs.lhs.source == nationalAnnex);
+    STATIC_REQUIRE(cube.lhs.lhs.value() == formula::Rational { 97, 100 });
+    STATIC_REQUIRE(cube.lhs.lhs.source() == nationalAnnex);
 
     // It reads as the shape factor, not as 97/100: the question a reader asks
     // of a jurisdiction's constant is which quantity it fixes.
@@ -241,7 +251,7 @@ TEST_CASE("a quantity read plainly and then fixed is documented as both", "[over
     // use. The plain use comes first, so a walk keeping the first row it met
     // would hide the fixed value the formula does read -- and one that only
     // marked it fixed would hide that the specimen's value is read too.
-    constexpr formula::OverriddenConstantNode<ShapeFactor> fixed { {}, formula::Rational { 97, 100 }, nationalAnnex };
+    constexpr auto fixed = fixedShapeFactor();
     auto const documentation = formula::document(var<ShapeFactor> + fixed);
 
     REQUIRE(documentation.symbols.size() == 1);
@@ -255,7 +265,7 @@ TEST_CASE("a quantity fixed and then read plainly is documented as both", "[over
     // The other order: the fixed use comes first, so a walk that let the
     // later plain read change nothing would say only "fixed at 97/100" of a
     // quantity the formula also takes from the specimen.
-    constexpr formula::OverriddenConstantNode<ShapeFactor> fixed { {}, formula::Rational { 97, 100 }, nationalAnnex };
+    constexpr auto fixed = fixedShapeFactor();
     auto const documentation = formula::document(fixed + var<ShapeFactor>);
 
     REQUIRE(documentation.symbols.size() == 1);
@@ -413,7 +423,7 @@ TEST_CASE("a later overlay fixes a constant an earlier one fixed", "[overlay]")
                    == formula::Rational { 5'400'000 });
     STATIC_REQUIRE(formula::evaluate_method<Cube>(second, inputsWithoutShapeFactor)->value()
                    == formula::Rational { 5'800'000 });
-    STATIC_REQUIRE(std::get<0>(second.variantSet.cases).expression.lhs.lhs.source == nationalAnnex);
+    STATIC_REQUIRE(std::get<0>(second.variantSet.cases).expression.lhs.lhs.source() == nationalAnnex);
 }
 
 TEST_CASE("an empty overlay yields the method unchanged", "[overlay]")
@@ -587,4 +597,239 @@ TEST_CASE("a later overlay's rounding rule holds over an earlier one's", "[overl
     STATIC_REQUIRE(formula::evaluate_method<Cube>(second, unevenInputs)->value() == formula::Rational { 6'000'000 });
     STATIC_REQUIRE(second.rounding.source() == roundingAnnex);
     STATIC_REQUIRE(second.rounding.provenance() == formula::RoundingProvenance::JurisdictionOverlay);
+}
+
+// ---------------------------------------------------------------------------
+// Wholesale replacement and derived quantities (task 7)
+//
+// Results are coherent SI and rounded by the method's one-decimal rule, so
+// every fixture below is chosen so that the right and the plausible wrong
+// answer stay apart after both: the base Cylinder is 4.0 MPa, its replacement
+// 5.1 MPa; the base Cube 6.0 MPa, with a derived shape factor 4.0 MPa.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+struct Diameter: formula::Quantity<Diameter, "d_m", "measured diameter", unit::Millimetre>
+{
+};
+
+// The specimen with a diameter and no shape factor: a formula evaluated
+// against it provably never asks for the shape factor.
+inline constexpr auto roundSpecimen = formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
+                                                           formula::Measured<EdgeX> { formula::Rational { 150 } },
+                                                           formula::Measured<EdgeY> { formula::Rational { 100 } },
+                                                           formula::Measured<Diameter> { formula::Rational { 150 } });
+
+inline constexpr formula::Citation replacementAnnex { .reference = "Example Standard 12:2021 NA", .section = "NA.3.1" };
+
+// A cylinder's area from its measured diameter: 90000 N over pi * 150^2 / 4
+// mm^2 is 5.09... MPa, which the method's rule rounds to 5.1.
+inline constexpr auto areaFromDiameter =
+    var<Force> / (formula::pi * formula::pow<2>(var<Diameter>) / formula::Rational { 4 });
+
+/// The derivation of @p m's `Tag` variant against @p environment, rendered.
+template <typename Tag, typename M, typename Env>
+[[nodiscard]] std::string traceOfVariant(M const& m, Env const& environment)
+{
+    formula::Trace<> trace {};
+    (void) formula::evaluate_method<Tag>(m, environment, formula::RecordingSink<> { trace });
+    return formula::render_trace(trace, { .maxSteps = 40 });
+}
+
+// The shape factor defined as the ratio of the two edges: 100 mm over 150 mm
+// is 2/3, so the Cube reads 90000 N * 2/3 over 150 mm by 100 mm = 4.0 MPa
+// where the base method's factor of 1 gives 6.0.
+inline constexpr auto edgeRatio = var<EdgeY> / var<EdgeX>;
+} // namespace
+
+TEST_CASE("an overlay replaces a formula wholesale and the trace still explains it", "[overlay]")
+{
+    constexpr auto nationalB = formula::overlay(formula::replace_variant<Cylinder>(areaFromDiameter));
+    constexpr auto overlaid = formula::apply(nationalB, baseMethod);
+
+    auto const rendered = traceOfVariant<Cylinder>(overlaid, roundSpecimen);
+    CHECK(rendered.find("variant Cylinder") != std::string::npos);
+    CHECK(rendered.find("replaced by jurisdiction overlay") != std::string::npos);
+
+    // The replacement is what ran: 5.1 MPa, where the base formula gives 4.0.
+    STATIC_REQUIRE(formula::evaluate_method<Cylinder>(baseMethod, roundSpecimen)->value()
+                   == formula::Rational { 4'000'000 });
+    STATIC_REQUIRE(formula::evaluate_method<Cylinder>(overlaid, roundSpecimen)->value() == formula::Rational { 5'100'000 });
+
+    // The variant NOT replaced says nothing of a replacement, and still runs
+    // the base formula.
+    CHECK(traceOfVariant<Cube>(overlaid, inputs).find("replaced") == std::string::npos);
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(overlaid, inputs)->value() == formula::Rational { 6'000'000 });
+}
+
+TEST_CASE("a replacement names whose formula it is, and keeps the variant's place", "[overlay][trace]")
+{
+    // The Cube pruned first, so that the Cylinder sits at position 0 of the
+    // pack the replacement meets: a replacement that rebuilt the layout
+    // instead of carrying it would report the 1st of 2.
+    constexpr auto cited =
+        formula::apply(formula::overlay(formula::prune_variant<Cube>(),
+                                        formula::replace_variant<Cylinder>(areaFromDiameter, replacementAnnex)),
+                       threeVariants);
+    auto const rendered = traceOfVariant<Cylinder>(cited, roundSpecimen);
+
+    // Which jurisdiction, and the variant still the 2nd of 3 as published.
+    CHECK(rendered.find(" [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n") != std::string::npos);
+    CHECK(rendered.find("[variant Cylinder (2nd of 3), selected by tag]") != std::string::npos);
+
+    // It renders as the formula that runs, and documents its citation.
+    constexpr auto replaced = std::get<0>(cited.variantSet.cases).expression;
+    CHECK(formula::render(replaced) == formula::render(areaFromDiameter));
+    auto const documentation = formula::document(replaced);
+    REQUIRE(documentation.citations.size() == 1);
+    CHECK(documentation.citations[0] == replacementAnnex);
+}
+
+TEST_CASE("an overlay derives a quantity, and the method reads the definition", "[overlay]")
+{
+    constexpr auto derived =
+        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio, nationalAnnex)), baseMethod);
+
+    // Against a specimen with no shape factor: this compiles only if every use
+    // of it was replaced by the definition.
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(derived, roundSpecimen)->value() == formula::Rational { 4'000'000 });
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(baseMethod, inputs)->value() == formula::Rational { 6'000'000 });
+
+    // It keeps the quantity's identity: it renders as the shape factor.
+    constexpr auto cube = std::get<0>(derived.variantSet.cases).expression;
+    CHECK(formula::render(cube) == "k_s * F / (x_m * y_m)");
+}
+
+TEST_CASE("a derived quantity is traced as derived by the overlay", "[overlay][trace]")
+{
+    constexpr auto derived =
+        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio, nationalAnnex)), baseMethod);
+    auto const rendered = traceOfVariant<Cube>(derived, roundSpecimen);
+
+    // The definition's own derivation first, then the quantity, equal to it.
+    CHECK(rendered.find("3. #1 / #2 = 2/3\n"
+                        "4. k_s = #3 = 2/3 [derived by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, "
+                        "NA.2.3]\n")
+          != std::string::npos);
+
+    // Uncited, it still says so.
+    constexpr auto uncited = formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), baseMethod);
+    CHECK(traceOfVariant<Cube>(uncited, roundSpecimen).find("4. k_s = #3 = 2/3 [derived by jurisdiction overlay]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("the documentation marks a derived quantity as derived, with its definition and citation", "[overlay][document]")
+{
+    constexpr auto cube =
+        std::get<0>(formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio, nationalAnnex)), baseMethod)
+                        .variantSet.cases)
+            .expression;
+    auto const documentation = formula::document(cube);
+
+    // The quantity's row, then the inputs its definition reads, then the rest.
+    REQUIRE(documentation.symbols.size() == 4);
+    formula::SymbolEntry const& factor = documentation.symbols[0];
+    CHECK(factor.symbol == "k_s");
+    REQUIRE(factor.derivedAs.has_value());
+    CHECK(*factor.derivedAs == "y_m / x_m");
+    CHECK(factor.derivedBy == nationalAnnex);
+    CHECK(!factor.fixedValue.has_value());
+    CHECK(!factor.alsoReadAsInput);
+    CHECK(documentation.symbols[1].symbol == "y_m");
+    CHECK(documentation.symbols[2].symbol == "x_m");
+    CHECK(documentation.symbols[3].symbol == "F");
+    for (std::size_t row = 1; row < documentation.symbols.size(); ++row)
+        CHECK(!documentation.symbols[row].derivedAs.has_value());
+
+    // In the page's own dialect, not always plain text.
+    auto const latex = formula::document<formula::Dialect::LaTeX>(cube);
+    REQUIRE(latex.symbols[0].derivedAs.has_value());
+    CHECK(*latex.symbols[0].derivedAs == formula::render<formula::Dialect::LaTeX>(edgeRatio));
+    CHECK(*latex.symbols[0].derivedAs != "y_m / x_m");
+}
+
+TEST_CASE("a quantity read plainly and derived is documented as both, in either order", "[overlay][document]")
+{
+    constexpr auto derivedFactor =
+        std::get<0>(
+            formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), baseMethod).variantSet.cases)
+            .expression.lhs.lhs;
+
+    auto const readFirst = formula::document(var<ShapeFactor> + derivedFactor);
+    REQUIRE(readFirst.symbols[0].derivedAs.has_value());
+    CHECK(readFirst.symbols[0].alsoReadAsInput);
+
+    auto const derivedFirst = formula::document(derivedFactor + var<ShapeFactor>);
+    REQUIRE(derivedFirst.symbols[0].derivedAs.has_value());
+    CHECK(derivedFirst.symbols[0].alsoReadAsInput);
+}
+
+TEST_CASE("a later constant reaches inside an earlier definition", "[overlay]")
+{
+    // The shape factor defined as the ratio `r`, then `r` fixed at 4/5 by a
+    // later overlay. `r` is read only inside the definition, so this compiles
+    // only if the constant reached it there -- and the specimen supplies no
+    // `r` at all. 6.0 MPa * 4/5 = 4.8 MPa.
+    constexpr auto defined = formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>)), baseMethod);
+    constexpr auto fixed =
+        formula::apply(formula::overlay(formula::with_constant<Ratio>(formula::Rational { 4, 5 })), defined);
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(fixed, inputsWithoutShapeFactor)->value()
+                   == formula::Rational { 4'800'000 });
+}
+
+TEST_CASE("a later substitution for a quantity holds over an earlier one, of either kind", "[overlay]")
+{
+    // Defined, then fixed: the constant holds, 6.0 * 0.97 = 5.82 -> 5.8 MPa.
+    constexpr auto definedThenFixed =
+        formula::apply(national, formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), baseMethod));
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(definedThenFixed, roundSpecimen)->value()
+                   == formula::Rational { 5'800'000 });
+
+    // Fixed, then defined: the definition holds, 4.0 MPa.
+    constexpr auto fixedThenDefined =
+        formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio)), formula::apply(national, baseMethod));
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(fixedThenDefined, roundSpecimen)->value()
+                   == formula::Rational { 4'000'000 });
+}
+
+TEST_CASE("a constant reaches inside a replacement listed before it", "[overlay]")
+{
+    // The Cube replaced by a formula that reads the shape factor, which the
+    // same overlay then fixes: the replacement reads the overlay's 0.97, not
+    // the specimen's, and the specimen supplies none. 90000 N * 0.97 over
+    // 150 mm by 150 mm is 3.88 MPa, which rounds to 3.9.
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::replace_variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeX> * var<EdgeX>) ),
+                         formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 })),
+        baseMethod);
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(overlaid, inputsWithoutShapeFactor)->value()
+                   == formula::Rational { 3'900'000 });
+}
+
+TEST_CASE("an overlay whose operations hold expressions says it cannot be default-constructed", "[overlay]")
+{
+    // A replacement and a definition each hold an expression, and one holding
+    // a lookup cannot be default-constructed -- its corrections have to be
+    // stated. The overlay holding them, and a tuple of such overlays, must
+    // SAY so, rather than answer yes or fail to compile, which is what a
+    // default member initialiser on an expression member does under a
+    // tuple's probe (see `Corrections`, `lookup.hpp`).
+    constexpr auto lookup = formula::banded_lookup<unit::One, RatioBands, unit::One>(
+        var<Ratio>, { formula::Rational { 1 }, formula::Rational { 7 } });
+    using Replacing =
+        decltype(formula::overlay(formula::replace_variant<Cube>(lookup * var<Force> / (var<EdgeX> * var<EdgeY>) )));
+    using Deriving = decltype(formula::overlay(formula::add_derived<ShapeFactor>(lookup)));
+
+    STATIC_REQUIRE(!std::is_default_constructible_v<Replacing>);
+    STATIC_REQUIRE(!std::default_initializable<Replacing>);
+    STATIC_REQUIRE(!std::is_default_constructible_v<std::tuple<Replacing, Replacing>>);
+    STATIC_REQUIRE(!std::is_default_constructible_v<Deriving>);
+    STATIC_REQUIRE(!std::default_initializable<Deriving>);
+    STATIC_REQUIRE(!std::is_default_constructible_v<std::tuple<Deriving, Deriving>>);
+
+    // The control: both are still copyable, which `overlay()` and `apply`
+    // rely on.
+    STATIC_REQUIRE(std::is_copy_constructible_v<Replacing>);
+    STATIC_REQUIRE(std::is_copy_constructible_v<Deriving>);
 }

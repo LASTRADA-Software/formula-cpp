@@ -59,12 +59,29 @@ struct SymbolEntry
     /// `fixedValue`'s to say, not this.
     Citation fixedBy {};
 
-    /// For a fixed row: whether the formula ALSO reads this quantity from the
-    /// environment somewhere, besides where the overlay fixed it. False for a
-    /// row that is not fixed, which is read and nothing else.
+    /// The expression a jurisdiction defined this quantity by, rendered in the
+    /// dialect `document()` was asked for; empty for a quantity nothing
+    /// defined.
     ///
-    /// Only a formula assembled by hand has both -- `apply` fixes every use --
-    /// and then a row saying only "fixed at 97/100" would hide that the
+    /// A row for a derived quantity (`DerivedQuantityNode`, `overlay.hpp`)
+    /// that looked like any other would ask a reader to supply a value the
+    /// formula computes instead, and hide how it computes it -- the reason
+    /// `fixedValue` exists, for a definition rather than a number. The
+    /// quantities the definition reads have rows of their own, after this one.
+    std::optional<std::string> derivedAs {};
+
+    /// What the overlay that defined the quantity cited for the definition;
+    /// empty when it cited nothing, and for a quantity nothing defined.
+    /// Whether the row is derived is `derivedAs`'s to say, not this.
+    Citation derivedBy {};
+
+    /// For a fixed or derived row: whether the formula ALSO reads this
+    /// quantity from the environment somewhere, besides where an overlay fixed
+    /// or defined it. False for a row that is neither, which is read and
+    /// nothing else.
+    ///
+    /// Only a formula assembled by hand has both -- `apply` substitutes every
+    /// use -- and then a row saying only "fixed at 97/100" would hide that the
     /// specimen's value is read as well, and one saying only "read" would hide
     /// the fixed value. It says both, in whichever order the two were met.
     bool alsoReadAsInput {};
@@ -121,7 +138,34 @@ namespace detail
     {
         Documentation documentation {};
         std::vector<void const*> seenQuantities {};
+        /// The dialect `document()` was asked for, which a derived quantity's
+        /// definition is rendered in.
+        Dialect dialect = Dialect::Plain;
     };
+
+    /// @p node rendered in @p dialect, chosen at run time -- for the one
+    /// place a walk renders a sub-expression rather than the whole formula.
+    template <Node N>
+    [[nodiscard]] std::string render_in(Dialect dialect, N const& node)
+    {
+        switch (dialect)
+        {
+            case Dialect::Plain:
+                break;
+            case Dialect::Markdown:
+                return render<Dialect::Markdown>(node);
+            case Dialect::LaTeX:
+                return render<Dialect::LaTeX>(node);
+        }
+        return render<Dialect::Plain>(node);
+    }
+
+    /// Whether a row is marked as substituted by an overlay: fixed, or
+    /// derived.
+    [[nodiscard]] inline bool is_substituted(SymbolEntry const& entry) noexcept
+    {
+        return entry.fixedValue.has_value() || entry.derivedAs.has_value();
+    }
 
     // Not load-bearing, just this file's convention: every collect() call's
     // first argument is `Walk&`, so `formula::detail` -- Walk's namespace --
@@ -143,6 +187,12 @@ namespace detail
 
     template <Described Q>
     void collect(Walk& walk, OverriddenConstantNode<Q> const& node);
+
+    template <Described Q, Node Expr>
+    void collect(Walk& walk, DerivedQuantityNode<Q, Expr> const& node);
+
+    template <Node Expr>
+    void collect(Walk& walk, ReplacedVariantNode<Expr> const& node);
 
     template <Unit U>
     void collect(Walk& walk, ConstantNode<U> const& node);
@@ -217,9 +267,9 @@ namespace detail
     /// renders the same symbol is not caught by this check and gets its own
     /// row; see the note on `SymbolEntry`.
     ///
-    /// A quantity an overlay fixed earlier in the same walk -- possible only in
-    /// a formula assembled by hand -- keeps its fixed row, which is marked as
-    /// also read: see `SymbolEntry::alsoReadAsInput`.
+    /// A quantity an overlay fixed or defined earlier in the same walk --
+    /// possible only in a formula assembled by hand -- keeps its marked row,
+    /// which is marked as also read: see `SymbolEntry::alsoReadAsInput`.
     template <Described Q>
     void collect(Walk& walk, VarNode<Q> const&)
     {
@@ -227,7 +277,7 @@ namespace detail
         if (add_row<Q>(walk, row))
             return;
         SymbolEntry& entry = walk.documentation.symbols[row];
-        if (entry.fixedValue.has_value())
+        if (is_substituted(entry))
             entry.alsoReadAsInput = true;
     }
 
@@ -251,11 +301,51 @@ namespace detail
         SymbolEntry& entry = walk.documentation.symbols[row];
         if (entry.fixedValue.has_value())
             return;
-        // An existing row that is not fixed was contributed by a plain read.
-        if (!added)
+        // An existing row that no overlay marked was contributed by a plain
+        // read.
+        if (!added && !is_substituted(entry))
             entry.alsoReadAsInput = true;
-        entry.fixedValue = node.value;
-        entry.fixedBy = node.source;
+        entry.fixedValue = node.value();
+        entry.fixedBy = node.source();
+    }
+
+    /// A derived quantity contributes its quantity's row, marked as derived:
+    /// the definition, rendered in the page's dialect, and what the overlay
+    /// cited -- see `SymbolEntry::derivedAs`. Then the definition is walked,
+    /// after the row, for the quantities it reads: they are inputs of the
+    /// formula as much as any other.
+    ///
+    /// A plain read of the same quantity, before or after, marks the row as
+    /// also read, as it does for a fixed row.
+    template <Described Q, Node Expr>
+    void collect(Walk& walk, DerivedQuantityNode<Q, Expr> const& node)
+    {
+        std::size_t row = 0;
+        bool const added = add_row<Q>(walk, row);
+        {
+            SymbolEntry& entry = walk.documentation.symbols[row];
+            if (!entry.derivedAs.has_value())
+            {
+                if (!added && !is_substituted(entry))
+                    entry.alsoReadAsInput = true;
+                entry.derivedAs = render_in(walk.dialect, node.expression());
+                entry.derivedBy = node.source();
+            }
+        }
+        // After the entry reference is done with: walking may add rows, and
+        // a vector that grows invalidates references into it.
+        collect(walk, node.expression());
+    }
+
+    /// A replaced formula is walked as the formula, and what the overlay cited
+    /// for it joins the citations when it cited anything -- the guard
+    /// `collect(Walk&, Constraint<P> const&)` has, for its reason.
+    template <Node Expr>
+    void collect(Walk& walk, ReplacedVariantNode<Expr> const& node)
+    {
+        if (!(node.source() == Citation {}))
+            walk.documentation.citations.push_back(node.source());
+        collect(walk, node.replacement());
     }
 
     /// A literal coefficient names no variable.
@@ -426,7 +516,7 @@ namespace detail
 template <Dialect D = Dialect::Plain, Node N>
 [[nodiscard]] Documentation document(N const& node)
 {
-    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
+    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) }, .dialect = D };
     detail::collect(walk, node);
     return std::move(walk.documentation);
 }
@@ -453,7 +543,7 @@ template <Dialect D = Dialect::Plain, Node N>
 template <Dialect D = Dialect::Plain, Predicate P>
 [[nodiscard]] Documentation document(Constraint<P> const& node)
 {
-    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) } };
+    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) }, .dialect = D };
     detail::collect(walk, node);
     return std::move(walk.documentation);
 }

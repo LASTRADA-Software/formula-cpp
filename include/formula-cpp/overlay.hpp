@@ -20,16 +20,39 @@
 /// is closed and lives in the type; which one applies is a runtime choice made
 /// among methods that already exist.
 ///
-/// This header provides four operations:
+/// This header provides six operations:
 ///
 ///  - `with_constant<Q>(value)` fixes the quantity `Q` to `value` wherever the
 ///    method uses it -- the national body fixing a constant the base standard
 ///    left open;
+///  - `add_derived<Q>(expression)` defines `Q` by an expression over other
+///    inputs wherever the method uses it -- the jurisdiction computing what
+///    the base standard left to the specimen;
 ///  - `pin_variant<Tag>()` keeps only the variant tagged `Tag`, making it
 ///    mandatory;
 ///  - `prune_variant<Tag>()` deletes the variant tagged `Tag` outright;
-///  - `with_rounding<U, Places, Mode>()` replaces the method's rounding rule,
-///    and a trace then says the rule applied was the overlay's.
+///  - `replace_variant<Tag>(expression)` replaces the formula of the variant
+///    tagged `Tag` wholesale;
+///  - `with_rounding<U, Places, Mode>()` replaces the method's rounding rule.
+///
+/// Every one of them is **said** in the trace, not merely done: a fixed
+/// constant, a derived quantity, a replaced formula and an overlay's rounding
+/// rule each record a step naming the jurisdiction's overlay and what it
+/// cited, and the nodes and rules those steps are read from can be built only
+/// by this header -- see `detail::OverlayNodeAccess` and `RoundingRule`.
+///
+/// **A declared unit is not an overlay's to change, and none of these
+/// operations touches one.** Spec section 16.7 asks that an overlay can
+/// "change the declared unit"; `measured.hpp` makes a `Measured<Q>` a value in
+/// `Q`'s declared unit that carries no unit of its own, so a number can never
+/// disagree with its label, and that invariant stands. A method has no typed
+/// result to relabel in any case: `evaluate_method` answers in the coherent SI
+/// unit of the variants' dimension, and the unit a jurisdiction *reports* in
+/// is its rounding unit, which `with_rounding` changes. What a jurisdiction
+/// cannot change is the dimension a method reports -- `replace_variant`
+/// refuses a formula of another dimension, and `add_derived` a definition of
+/// another dimension from its quantity's. A method whose result is a typed
+/// `Measured<Q>` is outside this header, and recorded as a follow-up.
 ///
 /// **An override that would silently do nothing is refused.** An overlay is
 /// written once per jurisdiction and read by nobody until an inspector asks why
@@ -38,21 +61,33 @@
 /// that is the base method under a jurisdiction's name. So each of these is a
 /// build error, in words of this library's own:
 ///
-///  - `with_constant<Q>` for a `Q` no variant or constraint of the method the
-///    overlay **produces** uses -- judged of the result, so that the answer
-///    never depends on the order the operations are listed in;
-///  - `pin_variant` or `prune_variant` of a tag no variant declares;
+///  - `with_constant<Q>` or `add_derived<Q>` for a `Q` no variant or
+///    constraint of the method the overlay **produces** uses -- judged of the
+///    result, so that the answer never depends on the order the operations
+///    are listed in;
+///  - `with_constant<Q>` or `add_derived<Q>` followed by an operation that
+///    reads `Q` again unsubstituted -- a replacement, or another definition --
+///    which would read the environment while every other use reads the
+///    overlay;
+///  - `pin_variant`, `prune_variant` or `replace_variant` of a tag no variant
+///    declares, and a `replace_variant` whose variant the produced method no
+///    longer holds, in either order;
+///  - `replace_variant` with a formula of a different dimension from the
+///    method's, and `add_derived<Q>` with an expression of a different
+///    dimension from `Q`'s or one that reads `Q` itself;
 ///  - pruning every variant -- refused here, before the empty pack would be,
 ///    because the empty pack's own message says the author declared no
 ///    variants, which is false of the author's method;
 ///  - one overlay listing the same operation twice, which leaves the first
 ///    silently overridden by the second -- and two `with_rounding` of any
-///    granularities are the same operation, since a method has one rule;
+///    granularities are the same operation, since a method has one rule, as
+///    are a `with_constant<Q>` and an `add_derived<Q>`, and two replacements
+///    of one variant;
 ///  - one overlay that both pins and prunes: a pin already states the whole
 ///    selection, so a prune beside it either does nothing or contradicts it;
-///  - `with_constant` over an expression holding a node kind this header cannot
-///    see inside, where a use of `Q` would silently keep reading the
-///    environment.
+///  - `with_constant` or `add_derived` over an expression holding a node kind
+///    this header cannot see inside, where a use of `Q` would silently keep
+///    reading the environment.
 ///
 /// Pinning a method's only variant is deliberately **not** refused, although
 /// it changes nothing. The refusals above exist to catch a *mistaken name*,
@@ -99,6 +134,39 @@
 namespace formula
 {
 
+namespace detail
+{
+    struct OverlayNodeAccess;
+
+    /// Marks the one constructor of each overlay node that builds it -- the
+    /// private one `OverlayNodeAccess` calls.
+    struct OverlayMade
+    {
+    };
+
+    /// A dependent `false`, so that a refusal inside a template fires only
+    /// when that template is instantiated.
+    template <typename>
+    inline constexpr bool alwaysFalse = false;
+
+    /// Fails to compile when an author builds a node only an overlay may
+    /// build. Each such node makes a trace or `document()` say that a
+    /// jurisdiction fixed a value, defined a quantity or replaced a formula;
+    /// one built by hand would say so of something no overlay did.
+    template <typename OverlayNode>
+    struct RequireOverlayMadeNode
+    {
+        static_assert(alwaysFalse<OverlayNode>,
+                      "formula: only an overlay builds this node; it makes a trace say a jurisdiction fixed a "
+                      "value, defined a quantity or replaced a formula, so one built by hand would say so of "
+                      "something no overlay did -- use with_constant, add_derived or replace_variant in an "
+                      "overlay(...) given to apply; the node appears in this diagnostic as the template argument "
+                      "OverlayNode of RequireOverlayMadeNode");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
 /// A quantity whose value an overlay has fixed: what `with_constant<Q>(value)`
 /// leaves where the method had `var<Q>`.
 ///
@@ -125,15 +193,206 @@ namespace formula
 /// step would be true of the value and false of where it came from: it reads
 /// as a number the specimen supplied. `document()` marks it the same way, as
 /// a symbol row fixed at `value` (`SymbolEntry::fixedValue`).
+///
+/// **Only an overlay makes one.** Its value and citation are private, and the
+/// constructor that builds it is reachable only through
+/// `detail::OverlayNodeAccess`, which `with_constant` applied by `apply` is
+/// the caller of; the public one refuses, in this library's words. A node an author
+/// could build would make a trace say "fixed by jurisdiction overlay" of a
+/// value no overlay fixed. A copy of a node an overlay made keeps saying so
+/// wherever it is put, which is true of it -- the same line `RoundingRule`
+/// draws between creating a claim and carrying one.
 template <Described Q>
-struct OverriddenConstantNode: VarNode<Q>
+class OverriddenConstantNode: public VarNode<Q>
 {
+  public:
     /// The value the overlay fixed, in `Q`'s declared unit.
-    Rational value {};
+    [[nodiscard]] constexpr Rational value() const noexcept
+    {
+        return _value;
+    }
+
     /// Where the overlay's value comes from, as the overlay's author cited it;
     /// empty when they cited nothing.
-    Citation source {};
+    [[nodiscard]] constexpr Citation const& source() const noexcept
+    {
+        return _source;
+    }
+
+    /// Refused: see `detail::RequireOverlayMadeNode`. Declared only so that
+    /// building one by hand is refused in this library's words.
+    explicit constexpr OverriddenConstantNode(Rational fixed, Citation cited = {}) noexcept:
+        VarNode<Q> {},
+        _value { fixed },
+        _source { cited }
+    {
+        static_assert(detail::RequireOverlayMadeNode<OverriddenConstantNode>::value);
+    }
+
+  private:
+    friend struct detail::OverlayNodeAccess;
+
+    constexpr OverriddenConstantNode(detail::OverlayMade, Rational fixed, Citation cited) noexcept:
+        VarNode<Q> {},
+        _value { fixed },
+        _source { cited }
+    {
+    }
+
+    Rational _value;
+    Citation _source;
 };
+
+/// A quantity a jurisdiction defines by an expression over other inputs: what
+/// `add_derived<Q>(expression)` leaves where the method had `var<Q>`.
+///
+/// It keeps `Q`'s identity for the reason `OverriddenConstantNode` does, and
+/// reads as `Q` in `render()` through the same `VarNode` overload. Where it
+/// differs is what it evaluates to: not a fixed number but `expression`,
+/// evaluated against the same environment -- so the inputs `expression`
+/// reads are the specimen's, and `Q` itself is never asked for. A trace
+/// records a `StepKind::DerivedQuantity` step whose operand is the
+/// expression's own derivation, rendered as `k_s = #3 = ... [derived by
+/// jurisdiction overlay: ...]`, and `document()` marks `Q`'s row as derived,
+/// with the expression and the citation (`SymbolEntry::derivedAs`).
+///
+/// Its expression's dimension is `Q`'s, and it never reads `Q` itself: both
+/// are refused where the overlay operation is declared -- see
+/// `QuantityDerivation`.
+///
+/// **Only an overlay makes one**, for the reason `OverriddenConstantNode`
+/// gives. No `{}` default member initialiser on the expression: see
+/// `Corrections` (`lookup.hpp`).
+template <Described Q, Node Expr>
+class DerivedQuantityNode: public VarNode<Q>
+{
+  public:
+    /// The expression the jurisdiction defines `Q` by.
+    [[nodiscard]] constexpr Expr const& expression() const noexcept
+    {
+        return _expression;
+    }
+
+    /// Where the definition comes from, as the overlay's author cited it;
+    /// empty when they cited nothing.
+    [[nodiscard]] constexpr Citation const& source() const noexcept
+    {
+        return _source;
+    }
+
+    /// Refused: see `detail::RequireOverlayMadeNode`.
+    explicit constexpr DerivedQuantityNode(Expr definition, Citation cited = {}) noexcept:
+        VarNode<Q> {},
+        _expression { definition },
+        _source { cited }
+    {
+        static_assert(detail::RequireOverlayMadeNode<DerivedQuantityNode>::value);
+    }
+
+  private:
+    friend struct detail::OverlayNodeAccess;
+
+    constexpr DerivedQuantityNode(detail::OverlayMade, Expr definition, Citation cited) noexcept:
+        VarNode<Q> {},
+        _expression { definition },
+        _source { cited }
+    {
+    }
+
+    Expr _expression;
+    Citation _source;
+};
+
+/// A variant's formula as a jurisdiction replaced it wholesale: what
+/// `replace_variant<Tag>(expression)` leaves as the variant's expression.
+///
+/// It evaluates and renders as the replacement, and adds what the replacement
+/// alone cannot say: that the formula is not the method's but a
+/// jurisdiction's. A trace records a `StepKind::ReplacedVariant` step over the
+/// replacement's derivation, rendered as `#5 = ... [replaced by jurisdiction
+/// overlay: ...]` -- a step of its own, under the variant selection, because
+/// what it marks is the formula that ran rather than the choice of which
+/// variant ran: the selection step is the same whether or not the formula was
+/// replaced, and a selection step that also carried a replacement would need
+/// a second job the variant's own position does not need.
+///
+/// **Only an overlay makes one**, for the reason `OverriddenConstantNode`
+/// gives. No `{}` default member initialiser on the replacement: see
+/// `Corrections` (`lookup.hpp`).
+template <Node Expr>
+class ReplacedVariantNode: public NodeBase
+{
+  public:
+    /// What the variant reports, which is the replacement's -- and, as the
+    /// replacement is refused otherwise, the method's.
+    static constexpr Dimension dimension = Expr::dimension;
+
+    /// The formula that replaced the variant's.
+    [[nodiscard]] constexpr Expr const& replacement() const noexcept
+    {
+        return _replacement;
+    }
+
+    /// Where the replacement comes from, as the overlay's author cited it;
+    /// empty when they cited nothing.
+    [[nodiscard]] constexpr Citation const& source() const noexcept
+    {
+        return _source;
+    }
+
+    /// Refused: see `detail::RequireOverlayMadeNode`.
+    explicit constexpr ReplacedVariantNode(Expr formula, Citation cited = {}) noexcept:
+        NodeBase {},
+        _replacement { formula },
+        _source { cited }
+    {
+        static_assert(detail::RequireOverlayMadeNode<ReplacedVariantNode>::value);
+    }
+
+  private:
+    friend struct detail::OverlayNodeAccess;
+
+    constexpr ReplacedVariantNode(detail::OverlayMade, Expr formula, Citation cited) noexcept:
+        NodeBase {},
+        _replacement { formula },
+        _source { cited }
+    {
+    }
+
+    Expr _replacement;
+    Citation _source;
+};
+
+namespace detail
+{
+    /// The one way to build the three nodes an overlay leaves behind -- the
+    /// only friend of each. Called from this header's own rewrite and
+    /// replacement machinery and nowhere else; an author reaching it has
+    /// written `detail::`, which is outside this library's interface.
+    struct OverlayNodeAccess
+    {
+        /// `Q` fixed at @p value, citing @p source.
+        template <Described Q>
+        [[nodiscard]] static constexpr OverriddenConstantNode<Q> fixed(Rational value, Citation source) noexcept
+        {
+            return OverriddenConstantNode<Q> { OverlayMade {}, value, source };
+        }
+
+        /// `Q` defined by @p definition, citing @p source.
+        template <Described Q, Node Expr>
+        [[nodiscard]] static constexpr DerivedQuantityNode<Q, Expr> derived(Expr definition, Citation source) noexcept
+        {
+            return DerivedQuantityNode<Q, Expr> { OverlayMade {}, definition, source };
+        }
+
+        /// A variant's formula replaced by @p replacement, citing @p source.
+        template <Node Expr>
+        [[nodiscard]] static constexpr ReplacedVariantNode<Expr> replaced(Expr replacement, Citation source) noexcept
+        {
+            return ReplacedVariantNode<Expr> { OverlayMade {}, replacement, source };
+        }
+    };
+} // namespace detail
 
 /// An overridden constant evaluates to the overlay's value, converted from
 /// `Q`'s declared unit to the coherent SI unit like any other leaf, and never
@@ -150,7 +409,38 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::in_si<Rep>(node.value, Describe<Q>::unit);
+    Evaluated<Rep> const result = detail::in_si<Rep>(node.value(), Describe<Q>::unit);
+    sink.produced(node, result);
+    return result;
+}
+
+/// A derived quantity evaluates to its expression, against the same
+/// environment, and never asks the environment for `Q` -- see
+/// `DerivedQuantityNode`. The sink is told about the node as its own type, and
+/// the expression's own steps become its operands.
+///
+/// Chosen over the `VarNode<Q>` overload for the reason the
+/// `OverriddenConstantNode` overload above is.
+template <typename Rep = Rational, Described Q, Node Expr, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(DerivedQuantityNode<Q, Expr> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    sink.entered(node);
+    Evaluated<Rep> const result = detail::dispatch<Rep>(node.expression(), environment, sink);
+    sink.produced(node, result);
+    return result;
+}
+
+/// A replaced variant evaluates to its replacement; the sink is told about
+/// the node as its own type, with the replacement's steps as its operand.
+template <typename Rep = Rational, Node Expr, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ReplacedVariantNode<Expr> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    sink.entered(node);
+    Evaluated<Rep> const result = detail::dispatch<Rep>(node.replacement(), environment, sink);
     sink.produced(node, result);
     return result;
 }
@@ -271,6 +561,48 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
     return RoundingOverride<U, Places, Mode> { source };
 }
 
+/// The operation `replace_variant<Tag>(expression)` builds: replace the
+/// formula of the variant tagged `Tag` wholesale.
+///
+/// `Tag` obeys the tag rule, as `VariantPin` says. No `{}` default member
+/// initialiser on the expression: see `Corrections` (`lookup.hpp`).
+template <typename Tag, Node Expr>
+struct VariantReplacement
+{
+    static_assert(detail::RequirePlainClassTag<Tag>::value);
+
+    /// The variant whose formula is replaced.
+    using tag = Tag;
+
+    /// The formula that replaces it.
+    Expr expression;
+    /// Where the replacement comes from; carried into the method, and from
+    /// there into the trace.
+    Citation source {};
+};
+
+/// Replaces the formula of the variant tagged `Tag` with @p expression -- the
+/// jurisdiction whose method for that specimen is not the base standard's at
+/// all. The variant keeps its tag and its published position, and a trace of
+/// it says the formula was replaced, and by whose authority: see
+/// `ReplacedVariantNode`.
+///
+/// Refused when no variant of the method declares `Tag`, when the method the
+/// overlay produces no longer holds that variant (pinned or pruned away, in
+/// either order), when @p expression measures a different dimension from the
+/// method's, and when one overlay replaces the same variant twice: see the
+/// file comment.
+template <typename Tag, Node Expr>
+[[nodiscard]] constexpr VariantReplacement<Tag, Expr> replace_variant(Expr expression, Citation source = {}) noexcept
+{
+    return VariantReplacement<Tag, Expr> { expression, source };
+}
+
+/// The operation `add_derived<Q>(expression)` builds; defined below the
+/// rewrite machinery its class body asks.
+template <Described Q, Node Expr>
+struct QuantityDerivation;
+
 namespace detail
 {
     /// Whether a type is one of the operations an overlay can list.
@@ -299,6 +631,16 @@ namespace detail
     {
     };
 
+    template <typename Tag, Node Expr>
+    struct IsOverlayOperation<VariantReplacement<Tag, Expr>>: std::true_type
+    {
+    };
+
+    template <Described Q, Node Expr>
+    struct IsOverlayOperation<QuantityDerivation<Q, Expr>>: std::true_type
+    {
+    };
+
     /// Fails to compile when something that is not an overlay operation was
     /// handed to `overlay(...)`. Templated on the position for the reason
     /// `RequireVariant` is.
@@ -307,8 +649,9 @@ namespace detail
     {
         static_assert(IsOverlayOperation<Operation>::value,
                       "formula: this argument of overlay(...) is not an overlay operation; every argument "
-                      "must be what with_constant<Q>(value), pin_variant<Tag>(), prune_variant<Tag>() or "
-                      "with_rounding<U, Places, Mode>() returns -- the offending argument appears in this "
+                      "must be what with_constant<Q>(value), add_derived<Q>(expression), pin_variant<Tag>(), "
+                      "prune_variant<Tag>(), replace_variant<Tag>(expression) or with_rounding<U, Places, "
+                      "Mode>() returns -- the offending argument appears in this "
                       "diagnostic as the template argument Operation of RequireOverlayOperation, and Index is "
                       "its ZERO-BASED position, so 0 is the first argument");
 
@@ -335,10 +678,13 @@ namespace detail
     /// What an operation is, for the repeat rule: two operations with the same
     /// identity cannot both do something.
     ///
-    /// Every operation is its own type, except `with_rounding`: a method has
-    /// one rounding rule, so `with_rounding<Megapascal, 1>` and
-    /// `with_rounding<Megapascal, 2>` in one overlay are two different types
-    /// of which the second silently replaces the first.
+    /// An operation's identity is what it acts on, not its type:
+    /// `with_rounding<Megapascal, 1>` and `with_rounding<Megapascal, 2>` are
+    /// two different types acting on the method's one rule, and of two in one
+    /// overlay the second silently replaces the first. The same holds of two
+    /// substitutions for one quantity and two replacements of one variant --
+    /// see `SubstitutionFor` and `ReplacementOf`. Pins and prunes are their
+    /// own identity, since a pin's or a prune's type is already its tag.
     template <typename Operation>
     struct OperationIdentity
     {
@@ -351,6 +697,45 @@ namespace detail
     {
         /// Every rounding override alike.
         using type = AnyRoundingOverride;
+    };
+
+    /// What every operation that substitutes for `Q` is, for the repeat rule:
+    /// `with_constant<Q>` and `add_derived<Q>` both replace every use of `Q`,
+    /// so of two in one overlay -- two constants, two definitions, or one of
+    /// each -- the second silently undoes the first, whatever their values or
+    /// expressions.
+    template <typename Q>
+    struct SubstitutionFor
+    {
+    };
+
+    /// What every replacement of the variant tagged `Tag` is, for the repeat
+    /// rule: of two, the second silently discards the first's formula.
+    template <typename Tag>
+    struct ReplacementOf
+    {
+    };
+
+    template <Described Q>
+    struct OperationIdentity<ConstantOverride<Q>>
+    {
+        /// Every substitution for `Q` alike.
+        using type = SubstitutionFor<Q>;
+    };
+
+    template <Described Q, Node Expr>
+    struct OperationIdentity<QuantityDerivation<Q, Expr>>
+    {
+        /// Every substitution for `Q` alike.
+        using type = SubstitutionFor<Q>;
+    };
+
+    template <typename Tag, Node Expr>
+    struct OperationIdentity<VariantReplacement<Tag, Expr>>
+    {
+        /// Every replacement of the variant tagged `Tag` alike, whatever its
+        /// formula.
+        using type = ReplacementOf<Tag>;
     };
 
     /// Fails to compile when one overlay lists the same operation twice.
@@ -368,9 +753,10 @@ namespace detail
     struct RequireOperationListedOnce
     {
         static_assert(First == Second,
-                      "formula: this overlay lists the same operation twice; two overrides of one quantity, "
-                      "two pins or prunes of one variant, or two rounding overrides, leave the first silently "
-                      "doing nothing -- the first of the two appears in this diagnostic as the template "
+                      "formula: this overlay lists the same operation twice; two constants or definitions of "
+                      "one quantity, two pins, prunes or replacements of one variant, or two rounding "
+                      "overrides, leave the first silently doing nothing -- the first of the two appears in "
+                      "this diagnostic as the template "
                       "argument Operation of RequireOperationListedOnce, and First and Second are the "
                       "ZERO-BASED positions of the two arguments that list it, so 0 is the first argument");
 
@@ -502,11 +888,6 @@ template <typename... Ops>
 
 namespace detail
 {
-    /// A dependent `false`, so that a refusal inside a template fires only
-    /// when that template is instantiated.
-    template <typename>
-    inline constexpr bool alwaysFalse = false;
-
     /// Fails to compile when `with_constant` meets a node kind it does not
     /// know. Such a node may hold a `var<Q>` the rewrite cannot reach, which
     /// would then go on reading the environment while every reachable use of
@@ -524,22 +905,134 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// How `with_constant<Q>` rewrites a node of type @p N, one specialisation
-    /// per node kind this library ships.
+    /// The same refusal for `add_derived`, in its own words: a use of the
+    /// quantity inside a node kind the rewrite cannot see would keep reading
+    /// the environment while every other use evaluates the definition.
+    template <typename N>
+    struct RequireDerivationSeesNode
+    {
+        static_assert(alwaysFalse<N>,
+                      "formula: this overlay derives a quantity in an expression holding a node kind it cannot "
+                      "see inside; a use of the quantity there would silently keep its environment value, so the "
+                      "overlay refuses rather than rewrite part of the formula -- the node kind appears in this "
+                      "diagnostic as the template argument N of RequireDerivationSeesNode");
+
+        static constexpr bool value = true;
+    };
+
+    /// Whether a substitution is `add_derived`'s rather than `with_constant`'s.
+    template <typename Sub>
+    struct IsDerivation: std::false_type
+    {
+    };
+
+    template <Described Q, Node Expr>
+    struct IsDerivation<QuantityDerivation<Q, Expr>>: std::true_type
+    {
+    };
+
+    /// The node a substitution leaves where the method had `var<Q>`: an
+    /// overridden constant for `with_constant`, a derived quantity for
+    /// `add_derived` -- built through `OverlayNodeAccess`, the one way to build
+    /// either.
+    template <Described Q>
+    [[nodiscard]] constexpr OverriddenConstantNode<Q> substitute(ConstantOverride<Q> const& overriding) noexcept
+    {
+        return OverlayNodeAccess::fixed<Q>(overriding.value, overriding.source);
+    }
+
+    /// Defined below `QuantityDerivation`, which it reads.
+    template <Described Q, Node Expr>
+    [[nodiscard]] constexpr DerivedQuantityNode<Q, Expr> substitute(QuantityDerivation<Q, Expr> const& deriving) noexcept;
+
+    /// A stand-in substitution for `Q`, for asking whether an expression is
+    /// known and uses `Q` before any real substitution exists --
+    /// `QuantityDerivation` asks it of its own expression in its class body,
+    /// where the class is still incomplete. Its `substitute` is declared for
+    /// the rewrite's `type` to name, and never called.
+    template <Described Q>
+    struct QuantityProbe
+    {
+        /// The quantity asked about.
+        using quantity = Q;
+    };
+
+    template <Described Q>
+    [[nodiscard]] constexpr VarNode<Q> substitute(QuantityProbe<Q> const&) noexcept
+    {
+        return {};
+    }
+
+    /// A stand-in that counts only the PLAIN uses of `Q` -- `var<Q>` itself,
+    /// not the nodes a substitution left -- and one that counts only those
+    /// nodes. The result check asks both of the produced method: a
+    /// substitution is in effect only if its node is still there, and it is
+    /// in effect everywhere only if no plain use is.
+    template <Described Q>
+    struct PlainUseProbe
+    {
+        /// The quantity asked about.
+        using quantity = Q;
+    };
+
+    template <Described Q>
+    struct SubstitutedUseProbe
+    {
+        /// The quantity asked about.
+        using quantity = Q;
+    };
+
+    template <Described Q>
+    [[nodiscard]] constexpr VarNode<Q> substitute(PlainUseProbe<Q> const&) noexcept
+    {
+        return {};
+    }
+
+    template <Described Q>
+    [[nodiscard]] constexpr VarNode<Q> substitute(SubstitutedUseProbe<Q> const&) noexcept
+    {
+        return {};
+    }
+
+    /// Whether @p Sub's `mentions` counts a plain `var<Q>`: every
+    /// substitution and probe does, except `SubstitutedUseProbe`.
+    template <typename Sub>
+    inline constexpr bool countsPlainUse = true;
+
+    template <Described Q>
+    inline constexpr bool countsPlainUse<SubstitutedUseProbe<Q>> = false;
+
+    /// Whether @p Sub's `mentions` counts a node a substitution for `Q` left:
+    /// every substitution and probe does, except `PlainUseProbe`.
+    template <typename Sub>
+    inline constexpr bool countsSubstitutedUse = true;
+
+    template <Described Q>
+    inline constexpr bool countsSubstitutedUse<PlainUseProbe<Q>> = false;
+
+    /// The type `substitute` returns for @p Sub.
+    template <typename Sub>
+    using Substituted = decltype(substitute(std::declval<Sub const&>()));
+
+    /// How a substitution @p Sub for a quantity `Q` -- `with_constant<Q>` or
+    /// `add_derived<Q>`, whose `quantity` is `Q` -- rewrites a node of type
+    /// @p N, one specialisation per node kind this library ships.
     ///
     /// Each answers three things together, so that no two of them can drift:
     ///
     ///  - `known`: whether every node in the subtree is a kind this header
     ///    can see inside;
     ///  - `mentions`: whether the subtree uses `Q` -- as `var<Q>`, or as an
-    ///    `OverriddenConstantNode<Q>` an earlier overlay left;
+    ///    `OverriddenConstantNode<Q>` or a `DerivedQuantityNode<Q, ...>` an
+    ///    earlier overlay left;
     ///  - `type` and `apply`: the rewritten subtree, with every such use now
-    ///    an `OverriddenConstantNode<Q>` holding the new value, and every
-    ///    other node, runtime contents included, carried over unchanged.
+    ///    what `substitute` builds for @p Sub, and every other node, runtime
+    ///    contents included, carried over unchanged.
     ///
     /// The primary template is every other node kind. It answers `known =
-    /// false`, and its `apply` is refused -- see `RequireOverlaySeesNode`.
-    template <typename Q, typename N>
+    /// false`, and its `apply` is refused -- see `RequireOverlaySeesNode` and
+    /// `RequireDerivationSeesNode`.
+    template <typename Sub, typename N>
     struct ConstantRewrite
     {
         /// A node kind this header does not know.
@@ -549,10 +1042,14 @@ namespace detail
         /// Unchanged, because it cannot be looked into.
         using type = N;
 
-        /// Refused; see `RequireOverlaySeesNode`.
-        [[nodiscard]] static constexpr type apply(N const& node, ConstantOverride<Q> const&) noexcept
+        /// Refused, in the words of the operation that met it; see
+        /// `RequireOverlaySeesNode`.
+        [[nodiscard]] static constexpr type apply(N const& node, Sub const&) noexcept
         {
-            static_assert(RequireOverlaySeesNode<N>::value);
+            if constexpr (IsDerivation<Sub>::value)
+                static_assert(RequireDerivationSeesNode<N>::value);
+            else
+                static_assert(RequireOverlaySeesNode<N>::value);
             return node;
         }
     };
@@ -571,27 +1068,30 @@ namespace detail
     /// inside. `Method` strips the same qualifier from its parts, for the same
     /// reason. The rewritten child is unqualified: a new node holds it by
     /// value.
-    template <typename Q, typename N>
-    using ConstantRewriteOf = ConstantRewrite<Q, std::remove_cv_t<N>>;
+    template <typename Sub, typename N>
+    using ConstantRewriteOf = ConstantRewrite<Sub, std::remove_cv_t<N>>;
 
     /// A variable: replaced when it names `Q`, and left alone otherwise.
-    template <typename Q, Described P>
-    struct ConstantRewrite<Q, VarNode<P>>
+    template <typename Sub, Described P>
+    struct ConstantRewrite<Sub, VarNode<P>>
     {
         /// A kind this header knows.
         static constexpr bool known = true;
         /// Whether this is `var<Q>`.
-        static constexpr bool mentions = std::is_same_v<Q, P>;
-        /// The overridden constant when this is `var<Q>`, and this variable
+        static constexpr bool isQ = std::is_same_v<typename Sub::quantity, P>;
+        /// Whether this is a use of `Q` that @p Sub counts -- see
+        /// `countsPlainUse`.
+        static constexpr bool mentions = isQ && countsPlainUse<Sub>;
+        /// The substitution when this is `var<Q>`, and this variable
         /// otherwise.
-        using type = std::conditional_t<mentions, OverriddenConstantNode<Q>, VarNode<P>>;
+        using type = std::conditional_t<isQ, Substituted<Sub>, VarNode<P>>;
 
         /// The rewritten node.
         [[nodiscard]] static constexpr type apply([[maybe_unused]] VarNode<P> const& node,
-                                                  [[maybe_unused]] ConstantOverride<Q> const& overriding) noexcept
+                                                  [[maybe_unused]] Sub const& overriding) noexcept
         {
-            if constexpr (mentions)
-                return type { {}, overriding.value, overriding.source };
+            if constexpr (isQ)
+                return substitute(overriding);
             else
                 return node;
         }
@@ -606,29 +1106,87 @@ namespace detail
     /// for the re-override: a class template's partial specialisations never
     /// match a derived class, so without this one an overridden constant would
     /// fall to the primary template and be refused as a kind nobody knows.
-    template <typename Q, Described P>
-    struct ConstantRewrite<Q, OverriddenConstantNode<P>>
+    template <typename Sub, Described P>
+    struct ConstantRewrite<Sub, OverriddenConstantNode<P>>
     {
         /// A kind this header knows.
         static constexpr bool known = true;
         /// Whether this is `Q`'s.
-        static constexpr bool mentions = std::is_same_v<Q, P>;
-        /// Unchanged: an overridden constant stays one.
-        using type = OverriddenConstantNode<P>;
+        static constexpr bool isQ = std::is_same_v<typename Sub::quantity, P>;
+        /// Whether this is a use of `Q` that @p Sub counts -- see
+        /// `countsSubstitutedUse`.
+        static constexpr bool mentions = isQ && countsSubstitutedUse<Sub>;
+        /// The new substitution when this is `Q`'s -- a constant fixed again,
+        /// or now defined -- and this node otherwise.
+        using type = std::conditional_t<isQ, Substituted<Sub>, OverriddenConstantNode<P>>;
 
-        /// The node, with the new value and source when it is `Q`'s.
-        [[nodiscard]] static constexpr type apply(OverriddenConstantNode<P> const& node,
-                                                  [[maybe_unused]] ConstantOverride<Q> const& overriding) noexcept
+        /// The substitution when it is `Q`'s, and the node otherwise.
+        [[nodiscard]] static constexpr type apply([[maybe_unused]] OverriddenConstantNode<P> const& node,
+                                                  [[maybe_unused]] Sub const& overriding) noexcept
         {
-            if constexpr (mentions)
-                return type { {}, overriding.value, overriding.source };
+            if constexpr (isQ)
+                return substitute(overriding);
             else
                 return node;
         }
     };
 
+    /// A quantity an earlier overlay defined: replaced wholesale when it is
+    /// `Q`'s -- the later overlay's definition or constant is the one that
+    /// holds -- and otherwise rewritten inside, since its definition may read
+    /// `Q` and is evaluated where it stands. Needed for the derived-class
+    /// reason the `OverriddenConstantNode` specialisation gives.
+    template <typename Sub, Described P, Node Expr>
+    struct ConstantRewrite<Sub, DerivedQuantityNode<P, Expr>>
+    {
+        /// How the definition is rewritten, when the node is kept.
+        using Definition = ConstantRewriteOf<Sub, Expr>;
+        /// Whether this node is `Q`'s own, and so replaced whole.
+        static constexpr bool isQ = std::is_same_v<typename Sub::quantity, P>;
+
+        /// Known when replaced whole -- nothing of it survives to hide a use
+        /// -- and otherwise when its definition is.
+        static constexpr bool known = isQ || Definition::known;
+        /// Whether this is `Q`'s -- a use @p Sub counts, see
+        /// `countsSubstitutedUse` -- or its definition uses `Q`.
+        static constexpr bool mentions = isQ ? countsSubstitutedUse<Sub> : Definition::mentions;
+        /// The substitution when it is `Q`'s, and the same quantity over the
+        /// rewritten definition otherwise.
+        using type = std::conditional_t<isQ, Substituted<Sub>, DerivedQuantityNode<P, typename Definition::type>>;
+
+        /// The rewritten node, keeping its citation when it is kept.
+        [[nodiscard]] static constexpr type apply(DerivedQuantityNode<P, Expr> const& node, Sub const& overriding) noexcept
+        {
+            if constexpr (isQ)
+                return substitute(overriding);
+            else
+                return OverlayNodeAccess::derived<P>(Definition::apply(node.expression(), overriding), node.source());
+        }
+    };
+
+    /// A replaced variant: its replacement rewritten, its citation kept.
+    template <typename Sub, Node Expr>
+    struct ConstantRewrite<Sub, ReplacedVariantNode<Expr>>
+    {
+        /// How the replacement is rewritten.
+        using Replacement = ConstantRewriteOf<Sub, Expr>;
+
+        /// Whether the replacement is known all the way down.
+        static constexpr bool known = Replacement::known;
+        /// Whether the replacement uses `Q`.
+        static constexpr bool mentions = Replacement::mentions;
+        /// The marker, around the rewritten replacement.
+        using type = ReplacedVariantNode<typename Replacement::type>;
+
+        /// The marker, around the rewritten replacement, with its citation.
+        [[nodiscard]] static constexpr type apply(ReplacedVariantNode<Expr> const& node, Sub const& overriding) noexcept
+        {
+            return OverlayNodeAccess::replaced(Replacement::apply(node.replacement(), overriding), node.source());
+        }
+    };
+
     /// A leaf that names no quantity: carried over unchanged.
-    template <typename Q, typename N>
+    template <typename Sub, typename N>
     struct ConstantRewriteLeaf
     {
         /// A kind this header knows.
@@ -639,35 +1197,36 @@ namespace detail
         using type = N;
 
         /// The node itself.
-        [[nodiscard]] static constexpr type apply(N const& node, ConstantOverride<Q> const&) noexcept
+        [[nodiscard]] static constexpr type apply(N const& node, Sub const&) noexcept
         {
             return node;
         }
     };
 
-    template <typename Q, Unit U>
-    struct ConstantRewrite<Q, ConstantNode<U>>: ConstantRewriteLeaf<Q, ConstantNode<U>>
+    template <typename Sub, Unit U>
+    struct ConstantRewrite<Sub, ConstantNode<U>>: ConstantRewriteLeaf<Sub, ConstantNode<U>>
     {
     };
 
-    template <typename Q>
-    struct ConstantRewrite<Q, PiNode>: ConstantRewriteLeaf<Q, PiNode>
+    template <typename Sub>
+    struct ConstantRewrite<Sub, PiNode>: ConstantRewriteLeaf<Sub, PiNode>
     {
     };
 
     /// An exact lookup has no operand: its key is data, not an expression.
-    template <typename Q, KeyTable Keys, Unit ResultUnit>
-    struct ConstantRewrite<Q, ExactLookupNode<Keys, ResultUnit>>: ConstantRewriteLeaf<Q, ExactLookupNode<Keys, ResultUnit>>
+    template <typename Sub, KeyTable Keys, Unit ResultUnit>
+    struct ConstantRewrite<Sub, ExactLookupNode<Keys, ResultUnit>>:
+        ConstantRewriteLeaf<Sub, ExactLookupNode<Keys, ResultUnit>>
     {
     };
 
     /// A node whose only child is its `operand`, and whose only runtime state
     /// that child is, rebuilt as @p Rebuilt around the rewritten operand.
-    template <typename Q, typename Operand, typename Rebuilt>
+    template <typename Sub, typename Operand, typename Rebuilt>
     struct ConstantRewriteOperand
     {
         /// How the operand is rewritten.
-        using Inner = ConstantRewriteOf<Q, Operand>;
+        using Inner = ConstantRewriteOf<Sub, Operand>;
 
         /// Whether the operand is a kind this header knows, all the way down.
         static constexpr bool known = Inner::known;
@@ -678,88 +1237,90 @@ namespace detail
 
         /// The node, around the rewritten operand.
         template <typename N>
-        [[nodiscard]] static constexpr type apply(N const& node, ConstantOverride<Q> const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(N const& node, Sub const& overriding) noexcept
         {
             return type { {}, Inner::apply(node.operand, overriding) };
         }
     };
 
-    template <typename Q, UnaryOperator Op, Node Operand>
-    struct ConstantRewrite<Q, UnaryNode<Op, Operand>>:
-        ConstantRewriteOperand<Q, Operand, UnaryNode<Op, typename ConstantRewriteOf<Q, Operand>::type>>
+    template <typename Sub, UnaryOperator Op, Node Operand>
+    struct ConstantRewrite<Sub, UnaryNode<Op, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, UnaryNode<Op, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
-    template <typename Q, int Exponent, Node Operand>
-    struct ConstantRewrite<Q, PowerNode<Exponent, Operand>>:
-        ConstantRewriteOperand<Q, Operand, PowerNode<Exponent, typename ConstantRewriteOf<Q, Operand>::type>>
+    template <typename Sub, int Exponent, Node Operand>
+    struct ConstantRewrite<Sub, PowerNode<Exponent, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, PowerNode<Exponent, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
-    template <typename Q, int Degree, Node Operand>
-    struct ConstantRewrite<Q, RootNode<Degree, Operand>>:
-        ConstantRewriteOperand<Q, Operand, RootNode<Degree, typename ConstantRewriteOf<Q, Operand>::type>>
+    template <typename Sub, int Degree, Node Operand>
+    struct ConstantRewrite<Sub, RootNode<Degree, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, RootNode<Degree, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
-    template <typename Q, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
-    struct ConstantRewrite<Q, RoundNode<U, Places, Mode, Operand>>:
-        ConstantRewriteOperand<Q, Operand, RoundNode<U, Places, Mode, typename ConstantRewriteOf<Q, Operand>::type>>
+    template <typename Sub, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct ConstantRewrite<Sub, RoundNode<U, Places, Mode, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, RoundNode<U, Places, Mode, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
-    template <typename Q, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
-    struct ConstantRewrite<Q, RoundSignificantNode<U, Digits, Mode, Operand>>:
-        ConstantRewriteOperand<Q,
+    template <typename Sub, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+    struct ConstantRewrite<Sub, RoundSignificantNode<U, Digits, Mode, Operand>>:
+        ConstantRewriteOperand<Sub,
                                Operand,
-                               RoundSignificantNode<U, Digits, Mode, typename ConstantRewriteOf<Q, Operand>::type>>
+                               RoundSignificantNode<U, Digits, Mode, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
-    template <typename Q, Unit U, FixedString Justification, Node Operand>
-    struct ConstantRewrite<Q, NumericValueNode<U, Justification, Operand>>:
-        ConstantRewriteOperand<Q, Operand, NumericValueNode<U, Justification, typename ConstantRewriteOf<Q, Operand>::type>>
+    template <typename Sub, Unit U, FixedString Justification, Node Operand>
+    struct ConstantRewrite<Sub, NumericValueNode<U, Justification, Operand>>:
+        ConstantRewriteOperand<Sub,
+                               Operand,
+                               NumericValueNode<U, Justification, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
     /// A lookup whose key is an expression: its operand is rewritten, and its
     /// table's contents -- runtime state, like a `ConstantNode`'s number --
     /// are carried over.
-    template <typename Q, typename Operand, typename Rebuilt>
-    struct ConstantRewriteLookup: ConstantRewriteOperand<Q, Operand, Rebuilt>
+    template <typename Sub, typename Operand, typename Rebuilt>
+    struct ConstantRewriteLookup: ConstantRewriteOperand<Sub, Operand, Rebuilt>
     {
         /// The lookup, around the rewritten operand, with its contents.
         template <typename N>
-        [[nodiscard]] static constexpr Rebuilt apply(N const& node, ConstantOverride<Q> const& overriding) noexcept
+        [[nodiscard]] static constexpr Rebuilt apply(N const& node, Sub const& overriding) noexcept
         {
-            return Rebuilt { {}, node.corrections, ConstantRewriteOf<Q, Operand>::apply(node.operand, overriding) };
+            return Rebuilt { {}, node.corrections, ConstantRewriteOf<Sub, Operand>::apply(node.operand, overriding) };
         }
     };
 
-    template <typename Q, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
-    struct ConstantRewrite<Q, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>:
-        ConstantRewriteLookup<Q,
+    template <typename Sub, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    struct ConstantRewrite<Sub, BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>:
+        ConstantRewriteLookup<Sub,
                               Operand,
-                              BandedLookupNode<KeyUnit, Bands, ResultUnit, typename ConstantRewriteOf<Q, Operand>::type>>
+                              BandedLookupNode<KeyUnit, Bands, ResultUnit, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
-    template <typename Q, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
-    struct ConstantRewrite<Q, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand>>:
+    template <typename Sub, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    struct ConstantRewrite<Sub, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand>>:
         ConstantRewriteLookup<
-            Q,
+            Sub,
             Operand,
-            InterpolatingLookupNode<KeyUnit, Points, ResultUnit, typename ConstantRewriteOf<Q, Operand>::type>>
+            InterpolatingLookupNode<KeyUnit, Points, ResultUnit, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
     /// A citation's wrapper: the wrapped formula is rewritten and the citation
     /// carried over.
-    template <typename Q, Node Inner>
-    struct ConstantRewrite<Q, DocumentedNode<Inner>>
+    template <typename Sub, Node Inner>
+    struct ConstantRewrite<Sub, DocumentedNode<Inner>>
     {
         /// How the wrapped formula is rewritten.
-        using Wrapped = ConstantRewriteOf<Q, Inner>;
+        using Wrapped = ConstantRewriteOf<Sub, Inner>;
 
         /// Whether the wrapped formula is known all the way down.
         static constexpr bool known = Wrapped::known;
@@ -769,20 +1330,19 @@ namespace detail
         using type = DocumentedNode<typename Wrapped::type>;
 
         /// The wrapper, around the rewritten formula, with its citation.
-        [[nodiscard]] static constexpr type apply(DocumentedNode<Inner> const& node,
-                                                  ConstantOverride<Q> const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(DocumentedNode<Inner> const& node, Sub const& overriding) noexcept
         {
             return type { {}, Wrapped::apply(node.inner, overriding), node.citation };
         }
     };
 
-    template <typename Q, BinaryOperator Op, Node Left, Node Right>
-    struct ConstantRewrite<Q, BinaryNode<Op, Left, Right>>
+    template <typename Sub, BinaryOperator Op, Node Left, Node Right>
+    struct ConstantRewrite<Sub, BinaryNode<Op, Left, Right>>
     {
         /// How the left side is rewritten.
-        using LeftRewrite = ConstantRewriteOf<Q, Left>;
+        using LeftRewrite = ConstantRewriteOf<Sub, Left>;
         /// How the right side is rewritten.
-        using RightRewrite = ConstantRewriteOf<Q, Right>;
+        using RightRewrite = ConstantRewriteOf<Sub, Right>;
 
         /// Whether both sides are known all the way down.
         static constexpr bool known = LeftRewrite::known && RightRewrite::known;
@@ -792,8 +1352,7 @@ namespace detail
         using type = BinaryNode<Op, typename LeftRewrite::type, typename RightRewrite::type>;
 
         /// The node, over the rewritten sides.
-        [[nodiscard]] static constexpr type apply(BinaryNode<Op, Left, Right> const& node,
-                                                  ConstantOverride<Q> const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(BinaryNode<Op, Left, Right> const& node, Sub const& overriding) noexcept
         {
             return type { {}, LeftRewrite::apply(node.lhs, overriding), RightRewrite::apply(node.rhs, overriding) };
         }
@@ -801,13 +1360,13 @@ namespace detail
 
     /// A comparison is not a `Node`, but a `when()` and a constraint hold one,
     /// and either side of it may use `Q`.
-    template <typename Q, Comparison Op, Node Left, Node Right>
-    struct ConstantRewrite<Q, PredicateNode<Op, Left, Right>>
+    template <typename Sub, Comparison Op, Node Left, Node Right>
+    struct ConstantRewrite<Sub, PredicateNode<Op, Left, Right>>
     {
         /// How the left side is rewritten.
-        using LeftRewrite = ConstantRewriteOf<Q, Left>;
+        using LeftRewrite = ConstantRewriteOf<Sub, Left>;
         /// How the right side is rewritten.
-        using RightRewrite = ConstantRewriteOf<Q, Right>;
+        using RightRewrite = ConstantRewriteOf<Sub, Right>;
 
         /// Whether both sides are known all the way down.
         static constexpr bool known = LeftRewrite::known && RightRewrite::known;
@@ -817,22 +1376,21 @@ namespace detail
         using type = PredicateNode<Op, typename LeftRewrite::type, typename RightRewrite::type>;
 
         /// The comparison, over the rewritten sides.
-        [[nodiscard]] static constexpr type apply(PredicateNode<Op, Left, Right> const& node,
-                                                  ConstantOverride<Q> const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(PredicateNode<Op, Left, Right> const& node, Sub const& overriding) noexcept
         {
             return type { LeftRewrite::apply(node.lhs, overriding), RightRewrite::apply(node.rhs, overriding) };
         }
     };
 
-    template <typename Q, Predicate P, Node Then, Node Else>
-    struct ConstantRewrite<Q, WhenNode<P, Then, Else>>
+    template <typename Sub, Predicate P, Node Then, Node Else>
+    struct ConstantRewrite<Sub, WhenNode<P, Then, Else>>
     {
         /// How the condition is rewritten.
-        using PredicateRewrite = ConstantRewriteOf<Q, P>;
+        using PredicateRewrite = ConstantRewriteOf<Sub, P>;
         /// How the branch taken when it holds is rewritten.
-        using ThenRewrite = ConstantRewriteOf<Q, Then>;
+        using ThenRewrite = ConstantRewriteOf<Sub, Then>;
         /// How the branch taken when it does not is rewritten.
-        using ElseRewrite = ConstantRewriteOf<Q, Else>;
+        using ElseRewrite = ConstantRewriteOf<Sub, Else>;
 
         /// Whether all three are known all the way down.
         static constexpr bool known = PredicateRewrite::known && ThenRewrite::known && ElseRewrite::known;
@@ -842,8 +1400,7 @@ namespace detail
         using type = WhenNode<typename PredicateRewrite::type, typename ThenRewrite::type, typename ElseRewrite::type>;
 
         /// The conditional, over the rewritten parts.
-        [[nodiscard]] static constexpr type apply(WhenNode<P, Then, Else> const& node,
-                                                  ConstantOverride<Q> const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(WhenNode<P, Then, Else> const& node, Sub const& overriding) noexcept
         {
             return type { {},
                           PredicateRewrite::apply(node.predicate, overriding),
@@ -867,49 +1424,200 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// What `with_constant<Q>` asks of the method an overlay produces.
+    /// Fails to compile when `add_derived<Q>` is applied to a method that
+    /// never uses `Q` -- `RequireConstantUsed`'s rule, in words that say what
+    /// the overlay did.
+    template <typename Q, bool Used>
+    struct RequireDerivationUsed
+    {
+        static_assert(Used,
+                      "formula: this overlay derives a quantity that no variant or constraint of the method "
+                      "uses; a definition nobody reads would silently do nothing, most likely because it names "
+                      "the wrong quantity -- the quantity appears in this diagnostic as the template argument "
+                      "Q of RequireDerivationUsed");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a substitution for `Q` is not in effect wherever
+    /// the produced method reads `Q`: a later operation of the same overlay --
+    /// a replacement, or a definition of another quantity -- put back a plain
+    /// `var<Q>`, which reads the environment while every earlier use reads
+    /// the overlay. One formula would then evaluate one quantity at two
+    /// values. Operations apply in the order listed, so listing the
+    /// substitution after the operation that reads `Q` is the fix.
+    template <typename Q, bool Everywhere>
+    struct RequireSubstitutionEverywhere
+    {
+        static_assert(Everywhere,
+                      "formula: this overlay fixes or derives a quantity that an operation listed after it reads "
+                      "again, unsubstituted; that use would keep its environment value while every other use "
+                      "reads the overlay's -- list the constant or the definition after the operation that reads "
+                      "the quantity; the quantity appears in this diagnostic as the template argument Q of "
+                      "RequireSubstitutionEverywhere");
+
+        static constexpr bool value = true;
+    };
+
+    /// What a substitution @p Sub for `Q` asks of the method an overlay
+    /// produces: that it is still in effect somewhere, and that it is in
+    /// effect everywhere `Q` is read.
     ///
     /// Whether `Q` is used is asked only once every node is a kind the
     /// rewrite knows. An unknown node may be exactly where `Q` is used, so the
     /// honest answer there is not "unused" but "cannot tell", and the refusal
     /// that says so is `RequireOverlaySeesNode`'s, raised by the rewrite.
-    template <typename Q, typename Vs, typename Constraints>
+    template <typename Sub, typename Vs, typename Constraints>
     struct RequireConstantApplies;
 
-    template <typename Q, typename... Tags, Node... Exprs, Predicate... Ps>
-    struct RequireConstantApplies<Q, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>
+    template <typename Sub, typename... Tags, Node... Exprs, Predicate... Ps>
+    struct RequireConstantApplies<Sub, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>
     {
+        /// The quantity substituted.
+        using Q = typename Sub::quantity;
+
         /// Whether every variant and constraint is known all the way down.
         static constexpr bool known =
-            (ConstantRewriteOf<Q, Exprs>::known && ...) && (ConstantRewriteOf<Q, Ps>::known && ...);
-        /// Whether any variant or constraint uses `Q`.
-        static constexpr bool used =
-            (ConstantRewriteOf<Q, Exprs>::mentions || ...) || (ConstantRewriteOf<Q, Ps>::mentions || ...);
+            (ConstantRewriteOf<Sub, Exprs>::known && ...) && (ConstantRewriteOf<Sub, Ps>::known && ...);
+        /// Whether a plain `var<Q>` is left anywhere -- which only an operation
+        /// listed after the substitution can have put there, since the
+        /// substitution replaced every one it met.
+        static constexpr bool plainLeft = (ConstantRewriteOf<PlainUseProbe<Q>, Exprs>::mentions || ...)
+                                          || (ConstantRewriteOf<PlainUseProbe<Q>, Ps>::mentions || ...);
+        /// Whether a node a substitution for `Q` left is still anywhere.
+        static constexpr bool used = (ConstantRewriteOf<SubstitutedUseProbe<Q>, Exprs>::mentions || ...)
+                                     || (ConstantRewriteOf<SubstitutedUseProbe<Q>, Ps>::mentions || ...);
 
-        static_assert(std::conditional_t<known, RequireConstantUsed<Q, used>, std::true_type>::value);
+        /// The refusal in the words of the operation that did nothing.
+        using Refusal =
+            std::conditional_t<IsDerivation<Sub>::value, RequireDerivationUsed<Q, used>, RequireConstantUsed<Q, used>>;
+
+        // A plain use left is asked first, and the "nothing reads it"
+        // refusal only when there is none: a later replacement or definition
+        // that reads `Q` does read it, and "no variant uses it" would be
+        // false of it.
+        static_assert(std::conditional_t<known, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
+        static_assert(std::conditional_t<known && !plainLeft, Refusal, std::true_type>::value);
 
         static constexpr bool value = true;
     };
 
-    /// A variant with `Q` fixed in its expression; the tag is unchanged.
-    template <typename Q, typename Tag, Node Expr>
-    [[nodiscard]] constexpr auto rewrite_variant(VariantCase<Tag, Expr> const& original,
-                                                 ConstantOverride<Q> const& overriding) noexcept
+    /// A variant with the substitution made in its expression; the tag is
+    /// unchanged.
+    template <typename Sub, typename Tag, Node Expr>
+    [[nodiscard]] constexpr auto rewrite_variant(VariantCase<Tag, Expr> const& original, Sub const& overriding) noexcept
     {
-        using Rewrite = ConstantRewriteOf<Q, Expr>;
+        using Rewrite = ConstantRewriteOf<Sub, Expr>;
         return VariantCase<Tag, typename Rewrite::type> { Rewrite::apply(original.expression, overriding) };
     }
 
-    /// A constraint with `Q` fixed in its predicate; its verdict and citation
-    /// are unchanged.
-    template <typename Q, Predicate P>
-    [[nodiscard]] constexpr auto rewrite_constraint(Constraint<P> const& original,
-                                                    ConstantOverride<Q> const& overriding) noexcept
+    /// A constraint with the substitution made in its predicate; its verdict
+    /// and citation are unchanged.
+    template <typename Sub, Predicate P>
+    [[nodiscard]] constexpr auto rewrite_constraint(Constraint<P> const& original, Sub const& overriding) noexcept
     {
-        using Rewrite = ConstantRewriteOf<Q, P>;
+        using Rewrite = ConstantRewriteOf<Sub, P>;
         return Constraint<typename Rewrite::type> { Rewrite::apply(original.predicate, overriding),
                                                     original.verdict,
                                                     original.citation };
+    }
+
+    /// Fails to compile when `add_derived<Q>` defines `Q` by an expression of
+    /// a different dimension: every use of `Q` would then evaluate to a
+    /// quantity it is not.
+    template <typename Q, typename Expr>
+    struct RequireDerivationMeasuresQuantity
+    {
+        static_assert(Expr::dimension == Describe<Q>::dimension,
+                      "formula: this overlay derives a quantity from an expression of a different dimension; "
+                      "every use of the quantity would evaluate to something it does not measure -- the "
+                      "quantity and the expression appear in this diagnostic as the template arguments Q and "
+                      "Expr of RequireDerivationMeasuresQuantity");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `add_derived<Q>` defines `Q` by an expression that
+    /// reads `Q` itself. The definition replaces every use of `Q` but its own,
+    /// which would go on reading the environment: one formula evaluating one
+    /// quantity at two values, one of them the specimen's and one the
+    /// jurisdiction's.
+    template <typename Q, bool ReadsItself>
+    struct RequireDerivationNotSelfReferential
+    {
+        static_assert(!ReadsItself,
+                      "formula: this overlay derives a quantity from an expression that reads the quantity "
+                      "itself; that use would keep its environment value while every other use evaluates the "
+                      "definition -- the quantity appears in this diagnostic as the template argument Q of "
+                      "RequireDerivationNotSelfReferential");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// The operation `add_derived<Q>(expression)` builds: define `Q` by
+/// `expression` wherever the method uses it.
+///
+/// Its class body refuses, where the overlay is written: an expression of a
+/// different dimension from `Q`'s; an expression holding a node kind the
+/// overlay cannot see inside, since that is where a use of `Q` could hide; and
+/// -- once every node is known -- an expression that reads `Q` itself. The
+/// first is independent of the other two, so an expression wrong both ways
+/// is told both. No `{}` default member initialiser on the expression: see
+/// `Corrections` (`lookup.hpp`).
+template <Described Q, Node Expr>
+struct QuantityDerivation
+{
+    static_assert(detail::RequireDerivationMeasuresQuantity<Q, Expr>::value);
+
+    /// Whether every node of the expression is a kind the overlay can see
+    /// inside -- see `detail::ConstantRewrite`.
+    static constexpr bool known = detail::ConstantRewriteOf<detail::QuantityProbe<Q>, Expr>::known;
+
+    static_assert(std::conditional_t<known, std::true_type, detail::RequireDerivationSeesNode<Expr>>::value);
+    static_assert(
+        std::conditional_t<
+            known,
+            detail::RequireDerivationNotSelfReferential<Q,
+                                                        detail::ConstantRewriteOf<detail::QuantityProbe<Q>, Expr>::mentions>,
+            std::true_type>::value);
+
+    /// The quantity defined.
+    using quantity = Q;
+
+    /// The expression `Q` is defined by.
+    Expr expression;
+    /// Where the definition comes from; carried onto every node it replaces.
+    Citation source {};
+};
+
+/// Defines the quantity `Q` by @p expression wherever the method the overlay is
+/// applied to uses it -- in every variant and in every constraint: the
+/// jurisdiction that computes what the base standard left to the specimen.
+///
+/// Each `var<Q>` becomes a `DerivedQuantityNode<Q, Expr>`, which keeps `Q`'s
+/// identity and evaluates @p expression against the same environment, so the
+/// environment need not supply `Q`. A trace records the definition as its own
+/// step and `document()` marks `Q`'s row as derived: see `DerivedQuantityNode`.
+///
+/// @p source records where the definition comes from, as `with_constant`'s
+/// does.
+///
+/// Refused when @p expression measures a different dimension from `Q`, when
+/// it reads `Q`, and when no variant or constraint of the method the overlay
+/// produces uses `Q`: see the file comment.
+template <Described Q, Node Expr>
+[[nodiscard]] constexpr QuantityDerivation<Q, Expr> add_derived(Expr expression, Citation source = {}) noexcept
+{
+    return QuantityDerivation<Q, Expr> { expression, source };
+}
+
+namespace detail
+{
+    template <Described Q, Node Expr>
+    [[nodiscard]] constexpr DerivedQuantityNode<Q, Expr> substitute(QuantityDerivation<Q, Expr> const& deriving) noexcept
+    {
+        return OverlayNodeAccess::derived<Q>(deriving.expression, deriving.source);
     }
 
     /// Fails to compile when an overlay pins or prunes a tag no variant of the
@@ -998,13 +1706,27 @@ namespace detail
                            pack.published.template select<positionsWithout<Tag, Cs...>[Kept]...>());
     }
 
-    /// `with_constant<Q>`: every variant and constraint, with `Q` fixed.
+    /// Whether an operation substitutes for a quantity: `with_constant` or
+    /// `add_derived`.
+    template <typename Operation>
+    struct IsSubstitution: IsDerivation<Operation>
+    {
+    };
+
+    template <Described Q>
+    struct IsSubstitution<ConstantOverride<Q>>: std::true_type
+    {
+    };
+
+    /// `with_constant<Q>` or `add_derived<Q>`: every variant and constraint,
+    /// with `Q` substituted.
     ///
     /// Whether anything reads `Q` is not asked here, against the method as it
     /// stands at this step, but once, of the method the whole overlay
     /// produces -- see `RequireOverridesRead`.
-    template <typename Q, typename... Cs, typename Rounding, Predicate... Ps>
-    [[nodiscard]] constexpr auto apply_operation(ConstantOverride<Q> const& overriding,
+    template <typename Sub, typename... Cs, typename Rounding, Predicate... Ps>
+        requires IsSubstitution<Sub>::value
+    [[nodiscard]] constexpr auto apply_operation(Sub const& overriding,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
                                                  ConstraintSet<Ps...> const& constraintSet) noexcept
@@ -1083,9 +1805,77 @@ namespace detail
                                                  Rounding const&,
                                                  ConstraintSet<Ps...> const& constraintSet) noexcept
     {
-        return formula::method(pack,
-                               RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source),
-                               constraintSet);
+        return formula::method(
+            pack, RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source), constraintSet);
+    }
+
+    /// Fails to compile when a replacement measures a different dimension
+    /// from the method it is put in. A method reports one quantity, and a
+    /// replacement changes one variant: it cannot change what the method
+    /// reports, so a replacement that would is the author's mistake. Named
+    /// here, in this library's words, before the variants pack's own
+    /// agreement rule could say only that two variants disagree.
+    template <typename Tag, Dimension Reported, Dimension Replacement>
+    struct RequireReplacementKeepsDimension
+    {
+        static_assert(Reported == Replacement,
+                      "formula: this overlay replaces a variant with a formula of a different dimension from the "
+                      "method's; a replacement changes one variant, never what the method reports -- the tag, the "
+                      "method's dimension and the replacement's appear in this diagnostic as the template "
+                      "arguments Tag, Reported and Replacement of RequireReplacementKeepsDimension");
+
+        static constexpr bool value = true;
+    };
+
+    /// The variants of @p pack with the one at @p Replaced's position replaced
+    /// by @p replacement, each keeping its published position.
+    template <std::size_t Replaced, typename Tag, typename Replacement, typename... Cs, std::size_t... Indices>
+    [[nodiscard]] constexpr auto variants_replacing(Variants<Cs...> const& pack,
+                                                    Replacement const& replacement,
+                                                    std::index_sequence<Indices...>) noexcept
+    {
+        auto replacedPack = formula::variants([&]() {
+            if constexpr (Indices == Replaced)
+                return VariantCase<Tag, Replacement> { replacement };
+            else
+                return std::get<Indices>(pack.cases);
+        }()...);
+        // Replacing a formula moves no variant, so the layout is carried over
+        // as it stands, already checked.
+        replacedPack.published = pack.published;
+        return replacedPack;
+    }
+
+    /// `replace_variant<Tag>`: the variant tagged `Tag`, with its formula
+    /// wrapped as a jurisdiction's replacement.
+    ///
+    /// Whether the tag is declared is judged against the result -- see its
+    /// `RequireOperationRead` -- so a tag absent here leaves the method
+    /// unchanged. A replacement of a different dimension is refused here, and
+    /// also leaves the method unchanged, so that the variants pack's own
+    /// agreement rule never sees the mismatch.
+    template <typename Tag, typename Expr, typename... Cs, typename Rounding, Predicate... Ps>
+    [[nodiscard]] constexpr auto apply_operation(VariantReplacement<Tag, Expr> const& replacing,
+                                                 Variants<Cs...> const& pack,
+                                                 Rounding const& rounding,
+                                                 ConstraintSet<Ps...> const& constraintSet) noexcept
+    {
+        if constexpr (namesDeclaredVariant<Tag, Cs...>)
+        {
+            constexpr Dimension reported = VariantsDimension<Variants<Cs...>>::dimension;
+            static_assert(RequireReplacementKeepsDimension<Tag, reported, Expr::dimension>::value);
+            if constexpr (reported == Expr::dimension)
+                return formula::method(variants_replacing<variant_index<Tag, Cs...>(), Tag>(
+                                           pack,
+                                           OverlayNodeAccess::replaced(replacing.expression, replacing.source),
+                                           std::index_sequence_for<Cs...> {}),
+                                       rounding,
+                                       constraintSet);
+            else
+                return formula::method(pack, rounding, constraintSet);
+        }
+        else
+            return formula::method(pack, rounding, constraintSet);
     }
 
     /// Whether every node of every variant and constraint of a method is a kind
@@ -1127,10 +1917,12 @@ namespace detail
     };
 
     /// Whether one operation of an overlay still does something in the method
-    /// @p M the overlay produced. Only `with_constant` can stop doing
-    /// something after it has been applied -- a later pin or prune can remove
-    /// every variant that reads its quantity -- so every other operation is
-    /// true here; theirs are refused where they are applied.
+    /// @p M the overlay produced. Three can stop doing something after they
+    /// have been applied -- a later pin or prune can remove every variant that
+    /// reads a `with_constant`'s or an `add_derived`'s quantity, or the variant
+    /// a `replace_variant` replaced -- so they are judged here, against the
+    /// result; every other operation is true here, and refused where it is
+    /// applied.
     ///
     /// @p Input is the method the overlay was applied to, and the question is
     /// asked only when every node of it is a kind the rewrite knows -- see
@@ -1142,10 +1934,94 @@ namespace detail
 
     template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q>
     struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, ConstantOverride<Q>>:
-        std::bool_constant<std::conditional_t<IsKnownMethod<Q, Input>::value,
-                                              RequireConstantApplies<Q, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>,
-                                              std::true_type>::value>
+        std::bool_constant<std::conditional_t<
+            IsKnownMethod<ConstantOverride<Q>, Input>::value,
+            RequireConstantApplies<ConstantOverride<Q>, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>,
+            std::true_type>::value>
     {
+    };
+
+    /// `add_derived<Q>` is judged exactly as `with_constant<Q>` is.
+    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q, typename Expr>
+    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, QuantityDerivation<Q, Expr>>:
+        std::bool_constant<std::conditional_t<
+            IsKnownMethod<QuantityDerivation<Q, Expr>, Input>::value,
+            RequireConstantApplies<QuantityDerivation<Q, Expr>, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>,
+            std::true_type>::value>
+    {
+    };
+
+    /// Whether a method's variants pack declares a variant tagged `Tag`,
+    /// asked of its type alone.
+    template <typename Tag, typename M>
+    struct MethodDeclares: std::false_type
+    {
+    };
+
+    template <typename Tag, typename... Tags, Node... Exprs, typename Rounding, typename Constraints>
+    struct MethodDeclares<Tag, Method<Variants<VariantCase<Tags, Exprs>...>, Rounding, Constraints>>:
+        std::bool_constant<(std::is_same_v<Tag, Tags> || ...)>
+    {
+    };
+
+    template <typename Tag, typename Vs, typename Rounding, typename Constraints>
+    struct MethodDeclares<Tag, Method<Vs const, Rounding, Constraints>>:
+        MethodDeclares<Tag, Method<Vs, Rounding, Constraints>>
+    {
+    };
+
+    /// Fails to compile when `replace_variant<Tag>` names a tag the method the
+    /// overlay was applied to does not declare.
+    template <typename Tag, bool Declared>
+    struct RequireReplacementNamesDeclaredVariant
+    {
+        static_assert(Declared,
+                      "formula: this overlay replaces a variant the method does not declare; a replacement that "
+                      "names a variant by mistake would silently do nothing -- the tag appears in this diagnostic "
+                      "as the template argument Tag of RequireReplacementNamesDeclaredVariant");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when the method an overlay produces no longer holds
+    /// the variant it replaced -- pruned, or pinned away, before or after.
+    template <typename Tag, bool Held>
+    struct RequireReplacementHeld
+    {
+        static_assert(Held,
+                      "formula: this overlay replaces a variant that the method it produces does not hold, "
+                      "because another operation of the overlay pins or prunes it away; the replacement would "
+                      "silently do nothing -- the tag appears in this diagnostic as the template argument Tag "
+                      "of RequireReplacementHeld");
+
+        static constexpr bool value = true;
+    };
+
+    /// `replace_variant<Tag>` is judged against the result, as `with_constant`
+    /// is, and in two steps so that one mistake gets one message: a tag the
+    /// method the overlay was applied to never declared is a mistaken name;
+    /// only a tag it did declare can then be one the produced method no longer
+    /// holds. A tag that is not a plain class type is `VariantReplacement`'s
+    /// to refuse, and neither is asked of it.
+    ///
+    /// Judged here rather than where the replacement is applied, because the
+    /// two orders -- replace then prune, prune then replace -- are the same
+    /// mistake and must get the same message.
+    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Tag, typename Expr>
+    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, VariantReplacement<Tag, Expr>>
+    {
+        /// Whether the method the overlay was applied to declares the tag.
+        static constexpr bool declared = isPlainClassTag<Tag> && MethodDeclares<Tag, Input>::value;
+
+        static_assert(std::conditional_t<isPlainClassTag<Tag>,
+                                         RequireReplacementNamesDeclaredVariant<Tag, declared>,
+                                         std::true_type>::value);
+        static_assert(
+            std::conditional_t<declared,
+                               RequireReplacementHeld<Tag, MethodDeclares<Tag, Method<Vs, Rounding, Constraints>>::value>,
+                               std::true_type>::value);
+
+        static constexpr bool value = true;
     };
 
     /// Fails to compile when some `with_constant<Q>` of an overlay fixes a

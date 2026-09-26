@@ -810,7 +810,7 @@ formula_add_negative_test(overlay_apply_arguments_out_of_order
 # and the second silently replaces the first. The repeat rule compares each
 # operation's identity, and every rounding override has the same one.
 formula_add_negative_test(overlay_rounding_twice
-    "formula: this overlay lists the same operation twice; two overrides of one quantity, two pins or prunes of one variant, or two rounding overrides")
+    "formula: this overlay lists the same operation twice; two constants or definitions of one quantity, two pins, prunes or replacements of one variant, or two rounding overrides")
 
 # A rounding override whose unit does not measure what the method reports is
 # refused by the method `apply` produces, in the words the method's own rule
@@ -857,6 +857,72 @@ formula_add_negative_test(method_rounding_rule_provenance_hand_built
 # claim is refused by the rule's guard.
 formula_add_negative_test(method_rounding_rule_node_provenance_hand_built
     "formula: a rounding rule's provenance is the library's to state, not an author's")
+
+# Task 7: wholesale replacement and derived quantities. Each case's own file
+# says what it pins; the REJECTs pin the gates between refusals, so that one
+# mistake gets one message. Both orders of a replacement and a prune are
+# refused in the same words, and so are both orders of a definition and a
+# prune, because each is judged against the method the overlay produces. The
+# three hand-built cases pin that only an overlay builds the nodes a trace
+# reads "fixed", "derived" or "replaced" from.
+formula_add_negative_test(overlay_replacement_changes_quantity
+    "formula: this overlay replaces a variant with a formula of a different dimension from the method's"
+    REJECT "formula: two variants of this method measure different dimensions")
+
+formula_add_negative_test(overlay_replacement_absent_variant
+    "formula: this overlay replaces a variant the method does not declare"
+    REJECT "formula: this overlay replaces a variant that the method it produces does not hold")
+
+formula_add_negative_test(overlay_replacement_then_pruned
+    "formula: this overlay replaces a variant that the method it produces does not hold"
+    REJECT "formula: this overlay replaces a variant the method does not declare")
+
+formula_add_negative_test(overlay_replacement_after_prune
+    "formula: this overlay replaces a variant that the method it produces does not hold"
+    REJECT "formula: this overlay replaces a variant the method does not declare")
+
+formula_add_negative_test(overlay_replacement_tag_cv_qualified
+    "formula: this tag is not a plain class type"
+    REJECT "formula: this overlay replaces a variant the method does not declare")
+
+formula_add_negative_test(overlay_replacement_twice
+    "formula: this overlay lists the same operation twice")
+
+formula_add_negative_test(overlay_derived_unused
+    "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_derived_before_its_variant_is_pruned
+    "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_derived_after_its_variant_is_pruned
+    "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_derived_dimension_mismatch
+    "formula: this overlay derives a quantity from an expression of a different dimension")
+
+formula_add_negative_test(overlay_derived_self_reference
+    "formula: this overlay derives a quantity from an expression that reads the quantity itself")
+
+formula_add_negative_test(overlay_derived_definition_unknown_node
+    "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
+    REJECT "formula: this overlay derives a quantity from an expression that reads the quantity itself")
+
+formula_add_negative_test(overlay_derived_method_unknown_node
+    "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
+    REJECT "formula: this overlay overrides a constant" "formula: this overlay derives a quantity that no variant")
+
+formula_add_negative_test(overlay_constant_reintroduced
+    "formula: this overlay fixes or derives a quantity that an operation listed after it reads again, unsubstituted"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_node_hand_built_fixed
+    "formula: only an overlay builds this node")
+
+formula_add_negative_test(overlay_node_hand_built_derived
+    "formula: only an overlay builds this node")
+
+formula_add_negative_test(overlay_node_hand_built_replaced
+    "formula: only an overlay builds this node")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

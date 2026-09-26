@@ -38,6 +38,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/overlay.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rounding_node.hpp>
@@ -177,6 +178,21 @@ namespace detail
     [[nodiscard]] constexpr Precedence precedence_of(DocumentedNode<Inner> const& node) noexcept
     {
         return precedence_of(node.inner);
+    }
+
+    /// A jurisdiction's replacement formula renders as the formula, so it
+    /// brackets as the formula does -- type and runtime answer both, for the
+    /// reason `DocumentedNode`'s two forward theirs.
+    template <Node Expr>
+    struct PrecedenceOf<ReplacedVariantNode<Expr>>
+    {
+        static constexpr Precedence value = PrecedenceOf<Expr>::value;
+    };
+
+    template <Node Expr>
+    [[nodiscard]] constexpr Precedence precedence_of(ReplacedVariantNode<Expr> const& node) noexcept
+    {
+        return precedence_of(node.replacement());
     }
 
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
@@ -835,6 +851,16 @@ template <Dialect D, Node Inner>
 [[nodiscard]] std::string render_node(DocumentedNode<Inner> const& node)
 {
     return render<D>(node.inner);
+}
+
+/// A variant's formula as a jurisdiction replaced it renders as the
+/// replacement: the formula is what runs. That it is a jurisdiction's is the
+/// trace's to say, and the citation `document()`'s -- as `DocumentedNode`'s
+/// citation is.
+template <Dialect D, Node Expr>
+[[nodiscard]] std::string render_node(ReplacedVariantNode<Expr> const& node)
+{
+    return render<D>(node.replacement());
 }
 
 // ------------------------------------------------------- phase 10: lookups

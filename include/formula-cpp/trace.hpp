@@ -129,6 +129,23 @@ enum class StepKind : std::uint8_t
     /// suffix, so nothing in namespace `formula` is spelt
     /// `OverriddenConstant`.
     OverriddenConstant,
+    /// A quantity a jurisdiction defined by an expression
+    /// (`DerivedQuantityNode`, `overlay.hpp`): the quantity's symbol and unit,
+    /// the value its definition produced, the definition's derivation as its
+    /// operand, and what the overlay cited, in `Step::citation`.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node type carries the `Node`
+    /// suffix and the operation is `QuantityDerivation`, so nothing in
+    /// namespace `formula` is spelt `DerivedQuantity`.
+    DerivedQuantity,
+    /// A variant's formula a jurisdiction replaced wholesale
+    /// (`ReplacedVariantNode`, `overlay.hpp`): the replacement's derivation as
+    /// its operand, and what the overlay cited, in `Step::citation`.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `ReplacedVariantNode` and
+    /// the operation `VariantReplacement`, so nothing in namespace `formula`
+    /// is spelt `ReplacedVariant`.
+    ReplacedVariant,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -269,15 +286,16 @@ struct Step
     /// Which kind of node produced this step.
     StepKind kind {};
 
-    /// For `Variable` and `OverriddenConstant`: how the quantity is written.
+    /// For `Variable`, `OverriddenConstant` and `DerivedQuantity`: how the quantity is written.
     /// Points into the static storage of the quantity's `Describe`
     /// specialisation, so it outlives any trace -- the same guarantee
     /// `document.hpp`'s `SymbolEntry` relies on.
     std::string_view symbol {};
 
     /// For `Documented`: what the wrapped formula cites. For
-    /// `OverriddenConstant` and `RoundingRuleApplied`: what the overlay that
-    /// fixed the value or set the rule cited, empty when it cited nothing --
+    /// `OverriddenConstant`, `DerivedQuantity`, `ReplacedVariant` and `RoundingRuleApplied`:
+    /// what the overlay that fixed the value, defined the quantity, replaced the formula or set
+    /// the rule cited, empty when it cited nothing --
     /// and always empty for a method's own rule.
     Citation citation {};
 
@@ -808,6 +826,20 @@ namespace detail
         static constexpr StepKind value = StepKind::OverriddenConstant;
     };
 
+    /// Required for the same reason: `DerivedQuantityNode` derives from
+    /// `VarNode`.
+    template <Described Q, Node Expr>
+    struct StepKindOf<DerivedQuantityNode<Q, Expr>>
+    {
+        static constexpr StepKind value = StepKind::DerivedQuantity;
+    };
+
+    template <Node Expr>
+    struct StepKindOf<ReplacedVariantNode<Expr>>
+    {
+        static constexpr StepKind value = StepKind::ReplacedVariant;
+    };
+
     /// Whether @p kind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
     /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
@@ -1177,10 +1209,12 @@ class RecordingSink
         // every such step as a dimension mismatch. See `Step::sourceUnit`,
         // which is where that unit goes instead.
         //
-        // An overridden constant is a variable to this branch: it is `Q` at
-        // the overlay's value, in `Q`'s declared unit.
+        // An overridden constant and a derived quantity are variables to this
+        // branch: each is `Q`, at the overlay's value or its definition's, in
+        // `Q`'s declared unit.
         constexpr bool namesQuantity = detail::StepKindOf<N>::value == StepKind::Variable
-                                       || detail::StepKindOf<N>::value == StepKind::OverriddenConstant;
+                                       || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
+                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
         step.unit = coherent(N::dimension);
         if constexpr (namesQuantity)
             step.unit = Describe<typename N::quantity>::unit;
@@ -1191,10 +1225,14 @@ class RecordingSink
             step.symbol = Describe<typename N::quantity>::symbol;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             step.citation = node.citation;
-        // What an overlay cited for the value it fixed, or for the rule it
-        // set -- the provenance each of these two steps exists to carry.
-        if constexpr (detail::StepKindOf<N>::value == StepKind::OverriddenConstant)
-            step.citation = node.source;
+        // What an overlay cited for the value it fixed, the quantity it
+        // defined, the formula it replaced or the rule it set -- the
+        // provenance each of these four steps exists to carry, read through
+        // accessors of nodes only an overlay builds.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OverriddenConstant
+                      || detail::StepKindOf<N>::value == StepKind::DerivedQuantity
+                      || detail::StepKindOf<N>::value == StepKind::ReplacedVariant)
+            step.citation = node.source();
         if constexpr (detail::StepKindOf<N>::value == StepKind::RoundingRuleApplied)
         {
             step.roundingProvenance = node.rule.provenance();
