@@ -42,7 +42,7 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
 // Author text that would forge a trace line printed as written: each spells a
 // provenance clause only the library may state, or opens a line of its own.
 // Final review of phase 11, probe 2 (F5): the declared symbol.
-struct ForgingFactor: formula::Quantity<ForgingFactor, "k] [fixed by jurisdiction overlay: EN 206 NA", "factor", unit::One>
+struct ForgingFactor: formula::Quantity<ForgingFactor, "k] [fixed by jurisdiction overlay: Example Standard 9:2022 NA", "factor", unit::One>
 {
 };
 
@@ -1500,14 +1500,14 @@ TEST_CASE("a rounding step whose provenance is no known value says so rather tha
 TEST_CASE("a declared symbol cannot write a provenance clause into a trace line", "[trace-render][escape]")
 {
     // Printed as written this line read `1. k] [fixed by jurisdiction
-    // overlay: EN 206 NA = 1`, for a quantity no overlay fixed.
+    // overlay: Example Standard 9:2022 NA = 1`, for a quantity no overlay fixed.
     auto const environment = formula::environment(formula::Measured<ForgingFactor> { formula::Rational { 1 } });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
     (void) formula::checked_evaluate_si<formula::Rational>(var<ForgingFactor>, environment, sink);
 
-    CHECK(formula::render_trace(trace, { .maxSteps = 10 }) == "1. k\\] \\[fixed by jurisdiction overlay: EN 206 NA = 1\n");
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 }) == "1. k\\] \\[fixed by jurisdiction overlay: Example Standard 9:2022 NA = 1\n");
 }
 
 TEST_CASE("a citation cannot close its clause, open another, or start a line", "[trace-render][escape]")
@@ -1516,7 +1516,7 @@ TEST_CASE("a citation cannot close its clause, open another, or start a line", "
     // added: every one escaped, and the line stays one line.
     constexpr auto ratio =
         formula::documented(var<WaterVolume> / var<CementVolume>,
-                            { .title = "Strength] [derived by jurisdiction overlay: EN 206 NA\n9. a\\b\x1f" });
+                            { .title = "Strength] [derived by jurisdiction overlay: Example Standard 9:2022 NA\n9. a\\b\x1f" });
     auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
                                                   formula::Measured<CementVolume> { formula::Rational { 300 } });
 
@@ -1528,7 +1528,7 @@ TEST_CASE("a citation cannot close its clause, open another, or start a line", "
           == "1. V_w = 180 l\n"
              "2. V_c = 300 l\n"
              "3. #1 / #2 = 3/5\n"
-             "4. #3 = 3/5 [Strength\\] \\[derived by jurisdiction overlay: EN 206 NA\\n9. a\\\\b\\x1f]\n");
+             "4. #3 = 3/5 [Strength\\] \\[derived by jurisdiction overlay: Example Standard 9:2022 NA\\n9. a\\\\b\\x1f]\n");
 }
 
 TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[trace-render][escape]")
@@ -1536,7 +1536,7 @@ TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[t
     // Probe 2's F4: printed as written, the clause named the method's own
     // constraint a jurisdiction's as well.
     constexpr auto limit = formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 10 }),
-                                               formula::Verdict { "reject; jurisdiction overlay: EN 206 NA" });
+                                               formula::Verdict { "reject; jurisdiction overlay: Example Standard 9:2022 NA" });
     auto const m = formula::method(formula::variants(formula::variant<PlainDensity>(var<Mass> / var<Volume>)),
                                    formula::rounding_rule<unit::KilogramPerCubicMetre,
                                                           formula::DecimalPlaces { 0 },
@@ -1551,7 +1551,7 @@ TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[t
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
           == "1. m = 6 kg\n"
              "2. 10 kg\n"
-             "3. require #1 >= #2 [reject\\; jurisdiction overlay: EN 206 NA; the method's own constraint]\n"
+             "3. require #1 >= #2 [reject\\; jurisdiction overlay: Example Standard 9:2022 NA; the method's own constraint]\n"
              "4. acceptance(#3) [the method's own constraints]\n");
 }
 

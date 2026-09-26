@@ -1,0 +1,8 @@
+# Identifiers that look like a real standard's but are allowed, read by
+# cmake/CheckNoRealStandards.cmake. One per line, exactly as it appears in the
+# text, then `|` and the reason, for example:
+#
+#   <identifier> | a date format, not a citation
+#
+# Keep it short: every entry is a place the rule "no real standard is named
+# anywhere" does not hold, and must say why.
