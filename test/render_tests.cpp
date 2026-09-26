@@ -3,6 +3,7 @@
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/vocabulary.hpp>
@@ -12,6 +13,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -1455,6 +1457,24 @@ constexpr formula::PlacesTable<3> guardPlaces { formula::DecimalPlaces { 0 },
                                                 formula::DecimalPlaces { 2 } };
 } // namespace
 
+namespace
+{
+/// Roles for the Markdown guard below: one plainly named, and one whose
+/// published name holds Markdown's own punctuation.
+struct GuardReference
+{
+};
+struct PunctuatedRole
+{
+};
+} // namespace
+
+template <>
+struct formula::TagName<PunctuatedRole>
+{
+    static constexpr std::string_view of() noexcept { return "*reference*"; }
+};
+
 TEST_CASE("render: Markdown output never contains text a CommonMark parser reinterprets, for any node kind",
           "[render][markdown]")
 {
@@ -1588,6 +1608,16 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(finishLookup(MouldFinish::Polished)));
     isInertInMarkdown(formula::render<Dialect::Markdown>(
         exact_lookup<MarkingKeys, formula::unit::One>(MouldMarking::Stamped, { rat(1127, 1000) })));
+
+    // Phase 14: a read from another record, alone and compound, and one whose
+    // role's published name is written in Markdown's own emphasis syntax
+    // (a `TagName` may hold no bracket, so link syntax cannot reach it): inert
+    // only because the name goes through the author-words escaping, which the
+    // last line guards.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::from_record<GuardReference>(var<Strength>)));
+    isInertInMarkdown(
+        formula::render<Dialect::Markdown>(formula::from_record<GuardReference>(var<Strength> * var<Strength>)));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::from_record<PunctuatedRole>(var<Strength>)));
 
     // And a formula nesting several of the above, since a guard that only
     // ever sees one node kind in isolation could still miss an interaction

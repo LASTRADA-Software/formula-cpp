@@ -167,7 +167,7 @@ TEST_CASE("every value read from another record says which record", "[record-tra
     CHECK(text
           == "1. F = 85902 N\n"
              "2. F = 57268 N, from record Reference (sample 23, test 3), entered by hand\n"
-             "3. #2 from record Reference (sample 23, test 3) = 57268\n"
+             "3. #2 from record Reference (sample 23, test 3) = 57268 N\n"
              "4. #1 / #3 = 3/2\n"
              "5. r = 1/4, from record PriorTest (sample 17, test 3)\n"
              "6. #5 from record PriorTest (sample 17, test 3) = 1/4\n"

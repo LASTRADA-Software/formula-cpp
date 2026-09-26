@@ -47,6 +47,7 @@
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
@@ -149,6 +150,16 @@ namespace detail
     /// `precedence_of` runtime function -- see that overload.
     template <Comparison Op, Node Left, Node Right>
     struct PrecedenceOf<PredicateNode<Op, Left, Right>>
+    {
+        static constexpr Precedence value = Precedence::Conditional;
+    };
+
+    /// A read from another record, the lowest rung, so that as the operand of
+    /// anything it is bracketed: `f_c / (f_c of Reference)`. Without the
+    /// bracket, `a / f_c of Reference` could be read as `(a / f_c) of
+    /// Reference`, and the words would name the wrong computation.
+    template <typename Role, typename Requirement, Node Operand>
+    struct PrecedenceOf<RecordScopeNode<Role, Requirement, Operand>>
     {
         static constexpr Precedence value = Precedence::Conditional;
     };
@@ -1737,6 +1748,34 @@ template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
                + " & \\text{otherwise} \\end{cases}";
     else
         return "if " + predicateText + " then " + thenText + " else " + elseText;
+}
+
+/// A read from another record renders as its operand and the words `of
+/// <role>`: `f_c of Reference`, and `(F / A) of Reference` when the operand is
+/// more than one symbol -- bracketed, `\left(...\right)` in LaTeX, so that
+/// the role is read as qualifying the whole computation.
+///
+/// The role's name is author text (`tag_name<Role>()`), escaped for the
+/// dialect: as-is in Plain; through the author-words escaping lookup keys use
+/// in Markdown; and in LaTeX in math mode, `\ \text{of }\mathrm{...}`, through
+/// `detail::latex_math_words` -- not inside `\text{}`, where the site's
+/// MathJax shows a text-mode escape literally (phase 14's X11 ruling).
+///
+/// A lineage requirement is not rendered: it gates whether the value is read,
+/// and the trace records every attribute it compared.
+template <Dialect D, typename Role, typename Requirement, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(RecordScopeNode<Role, Requirement, Operand> const& node, V const& vocabulary)
+{
+    std::string const operandText = render<D>(node.operand, vocabulary);
+    bool const bracketed = static_cast<int>(detail::precedence_of(node.operand))
+                           < static_cast<int>(detail::Precedence::Atom);
+    constexpr std::string_view roleName = tag_name<Role>();
+    if constexpr (D == Dialect::LaTeX)
+        return (bracketed ? "\\left(" + operandText + "\\right)" : operandText) + "\\ \\text{of }\\mathrm{"
+               + detail::latex_math_words(roleName) + "}";
+    else
+        return (bracketed ? "(" + operandText + ")" : operandText) + " of "
+               + detail::literal_words_in_dialect<D>(roleName);
 }
 
 namespace detail

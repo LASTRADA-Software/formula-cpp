@@ -2445,6 +2445,14 @@ class RecordingSink
                     sampleStep.has_value() && *sampleStep < _trace->steps.size())
                     nodeStep.unit = _trace->steps[*sampleStep].unit;
 
+        // A read from another record of a single quantity is that quantity's
+        // value, and reads in its unit -- `4 MPa`, not the bare coherent
+        // `4000000` a computed step prints. A scope over a computation names
+        // no single quantity, and keeps the coherent unit every computed step
+        // has.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::RecordScope)
+            if constexpr (requires { typename std::remove_cvref_t<decltype(node.operand)>::quantity; })
+                nodeStep.unit = Describe<typename std::remove_cvref_t<decltype(node.operand)>::quantity>::unit;
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
         // Only a variable reads an input. For every other kind the slot is

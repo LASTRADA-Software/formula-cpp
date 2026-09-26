@@ -75,6 +75,14 @@
 /// The guarantee is about the recording path: the evaluator never attributes
 /// a value to a record it did not read it from.
 ///
+/// **Only the documented customization points are supported** -- `TagName`,
+/// `EnumeratorName`, `Describe` through `Quantity`, and the others each
+/// header names as one. Explicitly specialising any other library template
+/// or member is outside the contract: it can make a trace say anything, and
+/// no library can prevent it. `RecordOrigin`'s refusing constructor is not a
+/// template, so that there is nothing there to specialise, but that is a
+/// courtesy for the obvious spelling, not a guarantee against the rest.
+///
 /// **Keys are integers, and two strong types.** `SampleId` and `TestId` each
 /// wrap a `std::uint64_t`, which is how a lab information system keys its
 /// records; turning one into a display name is a report's job. They are two

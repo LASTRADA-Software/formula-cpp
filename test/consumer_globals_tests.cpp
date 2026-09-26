@@ -47,9 +47,9 @@
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
-// unbound record, untraced and traced into `render_trace`, and gated on
-// `same_lineage`, through `checked_explain`. A template it does not reach is not
-// guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
+// unbound record, untraced and traced into `render_trace`, gated on
+// `same_lineage` through `checked_explain`, and rendered and documented. A
+// template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
 // Measured against the headers before their names were changed: cl 19.51
@@ -734,5 +734,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                   != std::string::npos
                            && agreedRead.has_value() && **agreedRead == formula::Rational { 60'000 }
                            && lineageRecords.record<Reference>().lineage_of<MaterialBatch>() == std::uint64_t { 4411 });
+
+    // The page of a formula that reads from another record, in every dialect:
+    // its words, and a row per (record, quantity).
+    auto const acrossPage = formula::document<formula::Dialect::LaTeX>(
+        var<Force> / formula::from_record<Reference>(var<Force>), north);
+    pages += formula::render<formula::Dialect::Markdown>(formula::from_record<Reference>(var<Force> / var<EdgeX>), north)
+             + formula::render(formula::from_record<Reference>(var<Force>));
+    probe.checks.push_back(acrossPage.symbols.size() == 2 && acrossPage.symbols[1].record == "Reference"
+                           && acrossPage.formula.find("\\mathrm{Reference}") != std::string::npos);
     return probe;
 }

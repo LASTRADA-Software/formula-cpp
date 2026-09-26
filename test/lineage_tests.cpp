@@ -214,7 +214,7 @@ TEST_CASE("a requirement against another role compares with that record", "[line
     std::string const text = traced(gated, context, trace);
     INFO(text);
     CHECK(text.find("1. same MaterialBatch as PriorTest: 4411 and 4411, satisfied\n") != std::string::npos);
-    CHECK(text.find("= 60000\n") != std::string::npos);
+    CHECK(text.find("= 60000 N\n") != std::string::npos);
     REQUIRE(trace.steps[0].lineage.has_value());
     CHECK(!trace.steps[0].lineage->is_against_this_record());
     CHECK(trace.steps[0].lineage->comparand() == "PriorTest");
