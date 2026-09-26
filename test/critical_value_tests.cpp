@@ -28,6 +28,10 @@ struct CriticalLimit: formula::Quantity<CriticalLimit, "c", "critical value", un
 struct CriticalPercent: formula::Quantity<CriticalPercent, "c_p", "critical value in percent", unit::Percent>
 {
 };
+/// A mass whose number of grams an invented rule reads as its count.
+struct CountedMass: formula::Quantity<CountedMass, "m_n", "mass read as a count", unit::Kilogram>
+{
+};
 /// A limit that has a dimension, so that the node's dimension can be seen to
 /// come from the table's result unit and not from its count.
 struct StrengthLimit: formula::Quantity<StrengthLimit, "f_lim", "strength limit", unit::Megapascal>
@@ -80,6 +84,24 @@ TEST_CASE("critical_value's dimension is its result unit's, never its count's", 
     constexpr auto inputs = formula::environment(formula::Measured<Specimens> { Rational { 6 } });
     STATIC_REQUIRE(formula::checked_evaluate<StrengthLimit>(inMegapascal, inputs)->measurement().value() == Rational { 50 });
     STATIC_REQUIRE(formula::checked_evaluate_si(inMegapascal, inputs)->value() == Rational { 50'000'000 });
+}
+
+TEST_CASE("critical_value accepts numeric_value_of as its count, whatever unit it reads its operand in", "[critical-value]")
+{
+    // numeric_value_of yields a bare number: the gram it names is the unit
+    // it reads its operand in, not the unit of its result, so the count is
+    // not "stated in grams". 6/1000 kg read in grams is 6, the row giving 50;
+    // read in the coherent unit it would be 6/1000, no row at all.
+    constexpr auto gramsCounted =
+        formula::numeric_value_of<unit::Gram, "an invented rule counts the grams">(var<CountedMass>);
+    constexpr auto limitByGrams = formula::critical_value<DeviationSizes, unit::One>(
+        gramsCounted, { Rational { 10 }, Rational { 30 }, Rational { 20 }, Rational { 50 }, Rational { 40 } });
+    STATIC_REQUIRE(
+        formula::checked_evaluate<CriticalLimit>(
+            limitByGrams, formula::environment(formula::Measured<CountedMass> { Rational::make(6, 1000).value() }))
+            ->measurement()
+            .value()
+        == Rational { 50 });
 }
 
 TEST_CASE("critical_value misses a count the table does not declare, and never guesses", "[critical-value]")

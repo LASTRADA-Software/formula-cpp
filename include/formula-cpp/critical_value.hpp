@@ -32,6 +32,7 @@
 
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
+#include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/lookup.hpp>
@@ -191,13 +192,24 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// The unit a count is stated in, when its node names one: a quantity's
-    /// declared unit, or a constant's. Nothing for any other expression -- a
-    /// sum, a `sample_count` -- whose value is a bare number by construction.
+    /// Whether @p N is a `NumericValueNode`.
+    template <typename N>
+    inline constexpr bool is_numeric_value = false;
+
+    template <Unit U, FixedString Justification, Node Operand>
+    inline constexpr bool is_numeric_value<NumericValueNode<U, Justification, Operand>> = true;
+
+    /// The unit a count's *result* is stated in, when its node names one: a
+    /// quantity's declared unit, or a constant's. Nothing for any other
+    /// expression -- a sum, a `sample_count` -- whose value is a bare number
+    /// by construction; nor for `numeric_value_of`, whose `unit` is the unit
+    /// its operand is read in, while what it yields is a bare number.
     template <typename Count>
     [[nodiscard]] consteval std::optional<Unit> count_unit() noexcept
     {
-        if constexpr (requires { typename Count::quantity; })
+        if constexpr (is_numeric_value<std::remove_cv_t<Count>>)
+            return std::nullopt;
+        else if constexpr (requires { typename Count::quantity; })
             return Describe<typename Count::quantity>::unit;
         else if constexpr (requires { Count::unit; })
             return Count::unit;
