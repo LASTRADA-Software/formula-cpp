@@ -440,9 +440,11 @@ The rules are few, and each is enforced:
   "not customized", any of them would silently drop your wording.
 
 A spelling can hold any characters. The Markdown and LaTeX renderings escape
-the name so it shows as written — `\_` and `\*` in Markdown, `\_`, `\%` and
-`\textless{}` in LaTeX, among others — and the plain rendering and the trace
-show it untouched.
+the name so it shows as written — `\_` and `\*` in Markdown; in LaTeX the
+whole row is set in `\mathrm{...}`, with a space as `\ `, `\_`, `\%` and
+`\backslash{}` among others — and the plain rendering and the trace show it
+untouched. LaTeX uses `\mathrm` rather than `\text` so that the site's MathJax,
+which does not load `textmacros`, reads the escapes as a TeX engine does.
 
 ### Give each translation unit's key enumeration a name of its own
 

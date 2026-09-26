@@ -71,3 +71,11 @@ and `TagName` spells a variant's tag.
 - cl names an enumerator that is not one as a cast, `(enum Flag)true`; it was shown as a name, and
   is refused now.
 - The opt-in header include check was not portable across the compilers it claimed to run on.
+- `render<Dialect::LaTeX>` wrote a unit's symbol unescaped, so `unit::Percent`'s `%`, TeX's comment
+  character, commented out the rest of the formula: a percent-valued lookup row or constant did
+  not typeset. Every unit symbol that enters LaTeX -- a constant, a rounding, a numeric value, a
+  lookup row -- is now escaped and set as `\mathrm{...}`, as is an author's `#`, `&`, `_`, `$`, `{`
+  or `}`. A constant reads `150\,\mathrm{mm}` rather than `150 mm`.
+- A lookup's rows and key names were set in LaTeX as `\text{...}`, whose escapes the site's MathJax
+  shows literally: `\text{key fit\_2}` read `key fit\_2`. They are now set as `\mathrm{...}`, with a
+  space as `\ ` (`detail::latex_math_words`).

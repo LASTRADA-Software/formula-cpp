@@ -51,7 +51,7 @@ require d <= 150 mm
 ```
 
 $$
-\text{require } d \leq 150 mm
+\text{require } d \leq 150\,\mathrm{mm}
 $$
 
 | Symbol | Description | Unit |
@@ -110,7 +110,7 @@ if rho_m < 1800 kg/m3 then rho_m * 11/10 else rho_m
 ```
 
 $$
-\begin{cases} rho_m \cdot 11/10 & \text{if } rho_m < 1800 kg/m3 \\ rho_m & \text{otherwise} \end{cases}
+\begin{cases} rho_m \cdot 11/10 & \text{if } rho_m < 1800\,\mathrm{kg/m3} \\ rho_m & \text{otherwise} \end{cases}
 $$
 
 | Symbol | Description | Unit |
@@ -129,7 +129,7 @@ lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to
 ```
 
 $$
-\operatorname{lookup}(d,\allowbreak \text{0 to under 100 mm gives 2 MPa},\allowbreak \text{100 to under 150 mm gives 1 MPa},\allowbreak \text{150 to under 200 mm gives 0 MPa})
+\operatorname{lookup}(d,\allowbreak \mathrm{0\ to\ under\ 100\ mm\ gives\ 2\ MPa},\allowbreak \mathrm{100\ to\ under\ 150\ mm\ gives\ 1\ MPa},\allowbreak \mathrm{150\ to\ under\ 200\ mm\ gives\ 0\ MPa})
 $$
 
 | Symbol | Description | Unit |
@@ -148,7 +148,7 @@ lookup(key Cylinder, key Cube gives 1, key Cylinder gives 19/20, key Prism gives
 ```
 
 $$
-\operatorname{lookup}(\text{key Cylinder},\allowbreak \text{key Cube gives 1},\allowbreak \text{key Cylinder gives 19/20},\allowbreak \text{key Prism gives 9/10})
+\operatorname{lookup}(\mathrm{key\ Cylinder},\allowbreak \mathrm{key\ Cube\ gives\ 1},\allowbreak \mathrm{key\ Cylinder\ gives\ 19/20},\allowbreak \mathrm{key\ Prism\ gives\ 9/10})
 $$
 
 - Reference: Example Standard 7:2020
@@ -163,7 +163,7 @@ interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
 ```
 
 $$
-\operatorname{interpolate}(t,\allowbreak \text{at 24 h gives 3/5},\allowbreak \text{at 72 h gives 17/20},\allowbreak \text{at 168 h gives 1})
+\operatorname{interpolate}(t,\allowbreak \mathrm{at\ 24\ h\ gives\ 3/5},\allowbreak \mathrm{at\ 72\ h\ gives\ 17/20},\allowbreak \mathrm{at\ 168\ h\ gives\ 1})
 $$
 
 | Symbol | Description | Unit |
@@ -183,7 +183,7 @@ A curve stated at three ages. A specimen tested between two of them gets the val
 ```
 
 $$
-(f - \operatorname{lookup}(d,\allowbreak \text{0 to under 100 mm gives 2 MPa},\allowbreak \text{100 to under 150 mm gives 1 MPa},\allowbreak \text{150 to under 200 mm gives 0 MPa})) \cdot \operatorname{lookup}(\text{key Cylinder},\allowbreak \text{key Cube gives 1},\allowbreak \text{key Cylinder gives 19/20},\allowbreak \text{key Prism gives 9/10}) \cdot \operatorname{interpolate}(t,\allowbreak \text{at 24 h gives 3/5},\allowbreak \text{at 72 h gives 17/20},\allowbreak \text{at 168 h gives 1})
+(f - \operatorname{lookup}(d,\allowbreak \mathrm{0\ to\ under\ 100\ mm\ gives\ 2\ MPa},\allowbreak \mathrm{100\ to\ under\ 150\ mm\ gives\ 1\ MPa},\allowbreak \mathrm{150\ to\ under\ 200\ mm\ gives\ 0\ MPa})) \cdot \operatorname{lookup}(\mathrm{key\ Cylinder},\allowbreak \mathrm{key\ Cube\ gives\ 1},\allowbreak \mathrm{key\ Cylinder\ gives\ 19/20},\allowbreak \mathrm{key\ Prism\ gives\ 9/10}) \cdot \operatorname{interpolate}(t,\allowbreak \mathrm{at\ 24\ h\ gives\ 3/5},\allowbreak \mathrm{at\ 72\ h\ gives\ 17/20},\allowbreak \mathrm{at\ 168\ h\ gives\ 1})
 $$
 
 | Symbol | Description | Unit |

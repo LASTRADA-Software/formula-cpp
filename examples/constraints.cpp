@@ -205,9 +205,9 @@ int main()
     bool const setCheckedBothWithoutShortCircuit = setOutcomes[0].is_violated() && setOutcomes[1].is_not_checked();
 
     // ---- Every claim printed above, verified in code ------------------------
-    bool const renderedCorrectly = formula::render(minimumStrength) == "require f >= 30 MPa"
-                                   && formula::render<formula::Dialect::LaTeX>(minimumStrength)
-                                          == "\\text{require } f \\geq 30 MPa";
+    bool const renderedCorrectly =
+        formula::render(minimumStrength) == "require f >= 30 MPa"
+        && formula::render<formula::Dialect::LaTeX>(minimumStrength) == "\\text{require } f \\geq 30\\,\\mathrm{MPa}";
     bool const documentedCorrectly = documentation.formula == "require f >= 30 MPa" && documentation.symbols.size() == 1
                                      && citation.title == "Minimum compressive strength"
                                      && citation.reference == "Example Standard 7:2020";

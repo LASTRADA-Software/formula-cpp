@@ -156,7 +156,7 @@ std::printf("rendered (LaTeX): %s\n", formula::render<formula::Dialect::LaTeX>(m
 
 ```
 rendered: require f >= 30 MPa
-rendered (LaTeX): \text{require } f \geq 30 MPa
+rendered (LaTeX): \text{require } f \geq 30\,\mathrm{MPa}
 ```
 
 `require` names no public function -- `constraint(predicate, verdict,
