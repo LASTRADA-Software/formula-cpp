@@ -1035,6 +1035,14 @@ add_test(NAME hygiene.testnames
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckTestNames.cmake")
 
+# Every symbol render(), document() and the trace write goes through the
+# vocabulary they were given -- see the script for why the trace is the case
+# that needs a check.
+add_test(NAME hygiene.vocabulary-reach
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckVocabularyReach.cmake")
+
 # A compiler diagnostic quoted in docs/ names a header and a line number, and
 # the number goes stale the moment anyone inserts a line above it -- which
 # happened twice in this repository before anything checked. See the script's
