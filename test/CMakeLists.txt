@@ -917,6 +917,11 @@ formula_add_negative_test(overlay_derived_method_unknown_node
     "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
     REJECT "formula: this overlay overrides a constant" "formula: this overlay derives a quantity that no variant")
 
+# A definition cycle across two quantities in one overlay: the second
+# definition puts a plain use of the first quantity back into its definition.
+formula_add_negative_test(overlay_derived_cycle
+    "formula: this overlay fixes or derives a quantity that an operation listed after it reads again, unsubstituted")
+
 formula_add_negative_test(overlay_constant_reintroduced
     "formula: this overlay fixes or derives a quantity that an operation listed after it reads again, unsubstituted"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")

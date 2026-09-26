@@ -1149,7 +1149,15 @@ namespace detail
         static constexpr bool known = isQ || Definition::known;
         /// Whether this is `Q`'s -- a use @p Sub counts, see
         /// `countsSubstitutedUse` -- or its definition uses `Q`.
-        static constexpr bool mentions = isQ ? countsSubstitutedUse<Sub> : Definition::mentions;
+        ///
+        /// The definition is asked even when the node is `Q`'s own. A real
+        /// substitution replaces such a node whole, so the answer is `true`
+        /// either way; but the result check's `PlainUseProbe` asks whether a
+        /// plain `var<Q>` is left anywhere, and one inside `Q`'s own definition
+        /// -- put there by a later definition of another quantity, a cycle --
+        /// is evaluated, reading the environment. `overlay_derived_cycle`
+        /// pins it.
+        static constexpr bool mentions = (isQ && countsSubstitutedUse<Sub>) || Definition::mentions;
         /// The substitution when it is `Q`'s, and the same quantity over the
         /// rewritten definition otherwise.
         using type = std::conditional_t<isQ, Substituted<Sub>, DerivedQuantityNode<P, typename Definition::type>>;
