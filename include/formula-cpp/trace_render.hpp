@@ -714,6 +714,21 @@ namespace detail
         return listed;
     }
 
+    /// Which record a value was read from, in words: `from record Reference
+    /// (sample 23, test 3)`, or `from record Reference (no record bound)`.
+    /// Both keys, always: two tests of one sample share the sample key, so a
+    /// sample alone could name either. No bracket, so that a trace pasted
+    /// into Markdown stays plain text.
+    [[nodiscard]] inline std::string record_origin_text(RecordOrigin const& readFrom)
+    {
+        std::string originText = "from record " + std::string { readFrom.role() };
+        std::optional<RecordKey> const recordKey = readFrom.key();
+        if (!recordKey.has_value())
+            return originText + " (no record bound)";
+        return originText + " (sample " + std::to_string(recordKey->sample().value()) + ", test "
+               + std::to_string(recordKey->test().value()) + ")";
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -917,6 +932,15 @@ namespace detail
                 return "rejection failed";
             case StepKind::RejectionUndecided:
                 return "rejection undecided";
+            // The derivation over the other record, then whose record it is.
+            // With no record bound there is no operand to name: nothing was
+            // read, and the line says so by origin alone.
+            case StepKind::RecordScope:
+                if (!step.record.has_value())
+                    return step.operands.empty() ? std::string { "from another record" }
+                                                 : sole_operand(step) + " from another record";
+                return step.operands.empty() ? record_origin_text(*step.record)
+                                             : sole_operand(step) + " " + record_origin_text(*step.record);
         }
         return "unknown step kind";
     }
@@ -1960,7 +1984,13 @@ namespace detail
         if (is_rejection_step(recorded.kind))
             return rejection_line(trace, stepIndex, recorded);
 
-        std::string const valueText = step_value_text(recorded);
+        // An input typed in but left empty was never going to be measured, so
+        // "(not measured)" would be false of it, and ", entered by hand"
+        // beside it would claim a number was typed. It reads "(not entered)".
+        bool const enteredButEmpty = recorded.kind == StepKind::Variable
+                                     && recorded.inputSource == ValueSource::ManuallyEntered
+                                     && !recorded.value.has_value() && !recorded.error.has_value();
+        std::string const valueText = enteredButEmpty ? std::string { "(not entered)" } : step_value_text(recorded);
         std::string annotation;
         if (recorded.kind == StepKind::Documented)
             annotation = citation_suffix(recorded.citation);
@@ -1994,7 +2024,8 @@ namespace detail
         // measured is what an input is unless told otherwise. After a comma,
         // not in a bracket: it is a plain statement about where the number
         // came from, not a clause qualifying how it was computed.
-        else if (recorded.kind == StepKind::Variable && recorded.inputSource == ValueSource::ManuallyEntered)
+        else if (recorded.kind == StepKind::Variable && recorded.inputSource == ValueSource::ManuallyEntered
+                 && !enteredButEmpty)
             annotation = ", entered by hand";
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
@@ -2009,6 +2040,15 @@ namespace detail
         else if ((recorded.kind == StepKind::SampleMean || recorded.kind == StepKind::SampleVariance)
                  && recorded.error.has_value() && recorded.failedElement.has_value())
             annotation = sample_failure_suffix(trace, recorded);
+
+        // Whose record a quantity was read from, first among the clauses: it
+        // qualifies the number itself, and whatever follows -- typed in by
+        // hand, fixed by an overlay -- is said of that record's value. The
+        // scope's own step says it in its expression instead.
+        bool const namesQuantity = recorded.kind == StepKind::Variable || recorded.kind == StepKind::OverriddenConstant
+                                   || recorded.kind == StepKind::DerivedQuantity;
+        if (namesQuantity && recorded.record.has_value())
+            annotation = ", " + record_origin_text(*recorded.record) + annotation;
 
         if (recorded.kind == StepKind::Constant)
             return valueText + annotation;

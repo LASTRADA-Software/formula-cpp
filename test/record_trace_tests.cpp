@@ -5,7 +5,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <string>
+#include <type_traits>
 
 namespace
 {
@@ -21,6 +23,25 @@ struct EdgeX: formula::Quantity<EdgeX, "x_m", "measured edge", unit::Millimetre>
 struct EdgeY: formula::Quantity<EdgeY, "y_m", "measured edge", unit::Millimetre>
 {
 };
+struct Ratio: formula::Quantity<Ratio, "r", "a ratio", unit::One>
+{
+};
+
+struct Reference
+{
+};
+struct PriorTest
+{
+};
+
+constexpr auto here = formula::environment(formula::Measured<Force> { formula::Rational { 85'902 } },
+                                           formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                           formula::Measured<EdgeY> { formula::Rational { 103 } });
+constexpr auto there = formula::environment(formula::Measured<Force> { formula::Rational { 57'268 } },
+                                            formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                            formula::Measured<EdgeY> { formula::Rational { 103 } });
+// The cross-test fixture: the same sample as this record, another test.
+constexpr auto prior = formula::environment(formula::Measured<Ratio> { formula::Rational { 1, 4 } });
 
 /// An environment of a consumer's own: it answers `get<Q>()`, which is all
 /// the variable evaluator reads, and declares no `is_entered`. The evaluator
@@ -93,4 +114,150 @@ TEST_CASE("a source stated by hand outside a variable's own recording is not rec
     REQUIRE(evaluated.has_value());
     REQUIRE(trace.steps.size() == 1);
     CHECK(!trace.steps[0].inputSource.has_value());
+}
+
+TEST_CASE("an input typed in but left empty says it was not entered", "[record-trace]")
+{
+    // Absent is "(not measured)" for a measured input. For a typed-in one that
+    // would be false -- it was never going to be measured -- and ", entered by
+    // hand" beside it would claim a number was typed. So an empty typed-in
+    // input reads "(not entered)": a person was to supply it and did not. The
+    // step still records where the entry came from.
+    constexpr auto blank = formula::environment(formula::entered(formula::Measured<EdgeX>::absent()),
+                                                formula::Measured<EdgeY>::absent());
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(var<EdgeX> * var<EdgeY>, blank, sink);
+
+    CHECK(trace.steps[0].inputSource == formula::ValueSource::ManuallyEntered);
+    CHECK(trace.steps[1].inputSource == formula::ValueSource::Measured);
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+    CHECK(text.find("1. x_m = (not entered)\n") != std::string::npos);
+    CHECK(text.find("2. y_m = (not measured)\n") != std::string::npos);
+    CHECK(text.find("entered by hand") == std::string::npos);
+}
+
+TEST_CASE("every value read from another record says which record", "[record-trace]")
+{
+    // The reference's force was copied in by hand from its certificate.
+    constexpr auto thereEntered =
+        formula::environment(formula::entered(formula::Measured<Force> { formula::Rational { 57'268 } }));
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), thereEntered),
+        formula::record<PriorTest>(formula::record_key(formula::sample_id(17), formula::test_id(3)), prior));
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        var<Force> / formula::from_record<Reference>(var<Force>) + formula::from_record<PriorTest>(var<Ratio>),
+        context, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 20 });
+    CHECK(text.find("1. F = 85902 N\n") != std::string::npos); // this record: no origin at all
+    CHECK(text.find("F = 57268 N, from record Reference (sample 23, test 3), entered by hand\n") != std::string::npos);
+    // Same sample, another test: the test key is what tells the two apart.
+    CHECK(text.find("from record PriorTest (sample 17, test 3)") != std::string::npos);
+    CHECK(text.find("from record Reference (sample 23, test 3) = ") != std::string::npos); // the scope's own line
+    CHECK(text.find('[') == std::string::npos); // the gallery puts traces in Markdown
+    INFO(text);
+    CHECK(text
+          == "1. F = 85902 N\n"
+             "2. F = 57268 N, from record Reference (sample 23, test 3), entered by hand\n"
+             "3. #2 from record Reference (sample 23, test 3) = 57268\n"
+             "4. #1 / #3 = 3/2\n"
+             "5. r = 1/4, from record PriorTest (sample 17, test 3)\n"
+             "6. #5 from record PriorTest (sample 17, test 3) = 1/4\n"
+             "7. #4 + #6 = 7/4\n");
+}
+
+TEST_CASE("a scope over a record not yet made says no record is bound", "[record-trace]")
+{
+    // Review Focus 1, the trace half: the scope's own line says so, it has no
+    // operands -- nothing was read -- and no line names a sample.
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
+        formula::Record<Reference, std::remove_cv_t<decltype(there)>>::unbound());
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(var<Force> / formula::from_record<Reference>(var<Force>),
+                                                           context, sink);
+
+    REQUIRE(trace.steps.size() == 3);
+    formula::Step<> const& scope = trace.steps[1];
+    CHECK(scope.kind == formula::StepKind::RecordScope);
+    CHECK(scope.operands.empty());
+    REQUIRE(scope.record.has_value());
+    CHECK(!scope.record->is_bound());
+    CHECK(!scope.record->key().has_value());
+    CHECK(scope.record->role() == "Reference");
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+    INFO(text);
+    CHECK(text.find("2. from record Reference (no record bound) = (not measured)\n") != std::string::npos);
+    CHECK(text.find("sample") == std::string::npos);
+}
+
+TEST_CASE("every step inside a scope carries its origin, and none outside it does", "[record-trace]")
+{
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there));
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    // One local variable before the scope and one after it, so that a stamp
+    // leaking either way is seen.
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        var<EdgeX> * formula::from_record<Reference>(var<Force> / (var<EdgeX> * var<EdgeY>)) * var<EdgeY>, context,
+        sink);
+
+    // 0: x_m (here); 1-5: F, x_m, y_m, x*y, F/(x*y) (Reference); 6: the scope;
+    // 7: x_m * scope; 8: y_m (here); 9: the product.
+    REQUIRE(trace.steps.size() == 10);
+    for (std::size_t inside = 1; inside <= 6; ++inside)
+    {
+        INFO("step " << inside);
+        REQUIRE(trace.steps[inside].record.has_value());
+        CHECK(trace.steps[inside].record->role() == "Reference");
+        CHECK(trace.steps[inside].record->key()
+              == formula::record_key(formula::sample_id(23), formula::test_id(3)));
+    }
+    CHECK(trace.steps[6].kind == formula::StepKind::RecordScope);
+    for (std::size_t outside: { std::size_t { 0 }, std::size_t { 7 }, std::size_t { 8 }, std::size_t { 9 } })
+    {
+        INFO("step " << outside);
+        CHECK(!trace.steps[outside].record.has_value());
+    }
+    CHECK(trace.recordStack.empty());
+}
+
+namespace
+{
+/// A sink of a consumer's own, defining only the two hooks every sink must.
+struct CountingSink
+{
+    int* nodes;
+
+    template <formula::Node N>
+    void entered(N const&) const
+    {
+    }
+    template <formula::Node N>
+    void produced(N const&, formula::Evaluated<formula::Rational> const&) const
+    {
+        ++*nodes;
+    }
+};
+} // namespace
+
+TEST_CASE("a sink of a consumer's own, with only entered and produced, evaluates a scope", "[record-trace]")
+{
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there));
+    int nodes = 0;
+    auto const evaluated = formula::checked_evaluate_si<formula::Rational>(
+        var<Force> / formula::from_record<Reference>(var<Force>), context, CountingSink { &nodes });
+    REQUIRE(evaluated.has_value());
+    CHECK(**evaluated == formula::Rational { 3, 2 });
+    CHECK(nodes == 4); // F here, F there, the scope, the division
 }

@@ -1858,6 +1858,13 @@ formula_add_negative_test(record_scope_this_record_const
     "formula: from_record<ThisRecord> reads this record as though it were another"
     REJECT "RequireBoundRole" "RequireRecordContext" "RequireProvided")
 
+# A RecordOrigin stated by hand. The refusing constructor is a template with
+# a defaulted placeholder parameter, so that its static_assert waits for a
+# call: RecordOrigin is not a template, and a non-dependent assertion would
+# fire at the header's own definition.
+formula_add_negative_test(record_origin_by_hand
+    "formula: a record origin is the library's to state, not an author's")
+
 formula_add_negative_test(record_scope_nested
     "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
     REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")

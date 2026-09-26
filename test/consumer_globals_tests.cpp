@@ -47,7 +47,7 @@
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
-// unbound record. A template it does not reach is not
+// unbound record, untraced and traced into `render_trace`. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -696,5 +696,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
         formula::checked_evaluate_si<formula::Rational>(formula::from_record<Reference>(var<Force>), notYetMade);
     probe.checks.push_back(acrossRecords.has_value() && **acrossRecords == formula::Rational { 3, 2 }
                            && fromNothing.has_value() && !fromNothing->has_value());
+
+    // The same read, traced and rendered: each step inside the scope says
+    // which record it was read from.
+    formula::Trace<> recordTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(var<Force> / formula::from_record<Reference>(var<Force>),
+                                                           boundRecords, formula::RecordingSink { recordTrace, north });
+    probe.checks.push_back(formula::render_trace(recordTrace, { .maxSteps = 20 }).find(
+                               "from record Reference (sample 23, test 3)")
+                           != std::string::npos);
     return probe;
 }

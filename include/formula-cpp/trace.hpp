@@ -25,6 +25,7 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
@@ -400,6 +401,16 @@ enum class StepKind : std::uint8_t
     /// A rejection whose limit was absent in a pass: no decision, and an
     /// absent result. Its operands are every step of the rejection.
     RejectionUndecided,
+    /// A read from another record (`RecordScopeNode`, `record.hpp`): its
+    /// operand is the derivation over that record's values, and
+    /// `Step::record` says which record. With no record bound to the role
+    /// it has no operand, since nothing was read.
+    ///
+    /// Nothing in namespace `formula` is spelt `RecordScope` -- the node is
+    /// `RecordScopeNode` and the factory `from_record` -- so GCC's
+    /// `-Wshadow` has nothing to report; the gcc-release preset builds with
+    /// it.
+    RecordScope,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1095,6 +1106,16 @@ struct Step
     /// recorded as not known rather than guessed.
     std::optional<ValueSource> inputSource {};
 
+    /// Which record this step's value was read from: set on **every** step
+    /// recorded inside a `from_record` scope, and on the scope's own step;
+    /// empty for a step of the record being evaluated. Every step carries it,
+    /// so that a consumer reading one step alone need not walk up the
+    /// operands to learn whose number it is. `render_trace` prints it on the
+    /// scope and on the steps that name a quantity.
+    ///
+    /// Only the library builds a `RecordOrigin` -- see `record.hpp`.
+    std::optional<RecordOrigin> record {};
+
     /// Indices of the steps this one consumed, in evaluation order.
     ///
     /// **Not necessarily as many as the node kind suggests.** When an operand
@@ -1282,6 +1303,14 @@ struct Trace
     ///
     /// Bookkeeping, as `marks` is, and for the same reason.
     std::optional<ValueSource> pendingInputSource {};
+
+    /// The origin of each `from_record` scope still open: `record_entered`
+    /// pushes one, and `produced` pops it with the scope's own step. A stack
+    /// by the shape `branchStack` has, though a scope cannot be nested in a
+    /// scope today (`record.hpp` refuses it).
+    ///
+    /// Bookkeeping, as `marks` is, and for the same reason.
+    std::vector<RecordOrigin> recordStack {};
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
@@ -1657,6 +1686,12 @@ namespace detail
         Unit const operandUnit = steps[operands.front()].unit;
         return operandUnit.dimension == dimension ? operandUnit : fallback;
     }
+
+    template <typename Role, typename Requirement, Node Operand>
+    struct StepKindOf<RecordScopeNode<Role, Requirement, Operand>>
+    {
+        static constexpr StepKind value = StepKind::RecordScope;
+    };
 
     /// Whether @p stepKind is one of the four lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
@@ -2225,6 +2260,7 @@ class RecordingSink
         _trace->branchStack.clear();
         _trace->rejectionsInProgress.clear();
         _trace->pendingInputSource.reset();
+        _trace->recordStack.clear();
     }
 
     /// Remembers how much of the arena predates this node, so `produced` can
@@ -2258,6 +2294,19 @@ class RecordingSink
     void input_source(VarNode<Q> const&, ValueSource source) noexcept
     {
         _trace->pendingInputSource = source;
+    }
+
+    /// Told, by a `from_record` scope's evaluator (`record.hpp`), right after
+    /// the scope was entered and before anything inside it, which record its
+    /// values are read from. Every step `produced` records from here until
+    /// the scope's own step is stamped with it.
+    ///
+    /// Public, for the reason `input_source` is. Handed a copy of an origin
+    /// by hand, it stamps that origin: the boundary `record.hpp`'s file
+    /// comment states.
+    void record_entered(RecordOrigin const& openedFrom)
+    {
+        _trace->recordStack.push_back(openedFrom);
     }
 
     /// Told which branch a `WhenNode` selected, right before it dispatches
@@ -2505,6 +2554,18 @@ class RecordingSink
                                                                              .limitStep = limitIndex });
             }
         }
+
+        // Every step inside a scope, the scope's own included, says which
+        // record it was read from; the scope's own step then closes it. The
+        // pop is guarded: a consumer's own evaluator that reports a scope
+        // without `record_entered` leaves nothing to pop, and popping an
+        // empty vector would be undefined behaviour -- an abort under a
+        // checked standard library.
+        if (!_trace->recordStack.empty())
+            nodeStep.record = _trace->recordStack.back();
+        if constexpr (detail::StepKindOf<N>::value == StepKind::RecordScope)
+            if (!_trace->recordStack.empty())
+                _trace->recordStack.pop_back();
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);

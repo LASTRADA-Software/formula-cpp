@@ -33,7 +33,38 @@
 /// over a formula holding one are refused with the compiler's own errors --
 /// many of them, and none of them this library's -- not with a message of
 /// its own. That is a refusal, not a silent gap: no trace or page omits a
-/// scope it was given.
+/// scope it was given. A trace records one: every step inside it carries a
+/// `RecordOrigin` saying which record it was read from (`trace.hpp`).
+///
+/// **What the library prevents, and what it does not.** Every field a trace
+/// reads for an origin comes from one of these:
+/// - the role's name, from the role's type, through `tag_name<Role>()`;
+/// - the record's key, from the `Record`, which only `record<Role>(...)` and
+///   `unbound()` build -- its members are private and it has no aggregate
+///   spelling. The key is the caller's statement about its own data, and is
+///   recorded as stated;
+/// - the `RecordOrigin` itself, which a trace step holds: built only by
+///   `detail::RecordOriginAccess::of(record)`, from the one `Record` whose
+///   environment the scope's operand is evaluated against. Its public
+///   constructor is refused in this library's words
+///   (`record_origin_by_hand.cpp`), and its other one is private. That the
+///   value and its origin come from the same record is pinned by the trace
+///   tests, and by building the origin from this record instead, which
+///   they catch.
+///
+/// Not prevented, and documented here plainly:
+/// - `Trace::steps` is a public arena any code may append to or edit, as it
+///   has been since the trace was introduced;
+/// - a `RecordOrigin` the library built can be copied, and handed to a
+///   sink's `record_entered` by hand;
+/// - a caller can wrap a typed-in value as `Measured<Q>`, and the trace will
+///   then call it measured;
+/// - a role whose `TagName` spells "this record" still renders as `from
+///   record this record (sample ...)`: the framing and the key show the
+///   value is foreign, but the name misleads.
+///
+/// The guarantee is about the recording path: the evaluator never attributes
+/// a value to a record it did not read it from.
 ///
 /// **Keys are integers, and two strong types.** `SampleId` and `TestId` each
 /// wrap a `std::uint64_t`, which is how a lab information system keys its
@@ -50,10 +81,12 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/tag.hpp>
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 
@@ -303,12 +336,13 @@ namespace detail
 /// when no record plays the role this time, neither.
 ///
 /// **Built only by the library**, by `record<Role>(key, environment)` or
-/// `unbound()`. The members are private, and there is no aggregate spelling,
-/// so an existing record's key and environment cannot be reassigned apart
-/// from each other. Which key goes with which environment is the caller's
-/// statement about its own data, and is recorded as stated:
-/// `record<Reference>(keyOfOne, environmentOfAnother)` pairs the two exactly
-/// as it is told. The library cannot know better, and does not try.
+/// `unbound()`. The members are private, there is no aggregate spelling, and
+/// no member sets the key or the environment alone; a record is replaced
+/// only whole, by assigning another record. Which key goes with which
+/// environment is the caller's statement about its own data, and is
+/// recorded as stated: `record<Reference>(keyOfOne, environmentOfAnother)`
+/// pairs the two exactly as it is told. The library has no way to know
+/// better, and does not try.
 ///
 /// **An unbound record** is ordinary lab data -- the reference test has not
 /// been done yet -- and keeps the record's type, so that one formula needs one
@@ -416,6 +450,90 @@ template <typename Role, typename Env, typename... Lineage>
 
 namespace detail
 {
+    /// Fails to compile when an author builds a `RecordOrigin`. An origin
+    /// makes a trace say a value was read from a particular record; one built
+    /// by hand could say it of a record nothing was read from.
+    template <typename Unused>
+    struct RequireLibraryStatesOrigin
+    {
+        static_assert(!std::is_same_v<Unused, Unused>,
+                      "formula: a record origin is the library's to state, not an author's; the trace takes it "
+                      "from the record a from_record<Role> scope reads, and nothing else -- the constructor's "
+                      "placeholder appears in this diagnostic as the template argument of "
+                      "RequireLibraryStatesOrigin");
+
+        static constexpr bool value = true;
+    };
+
+    /// Marks the one constructor of `RecordOrigin` that states an origin.
+    struct ReadFromRecord
+    {
+    };
+
+    struct RecordOriginAccess;
+} // namespace detail
+
+/// Which record a value was read from, as a trace step records it: the role's
+/// name, whether a record played it, and that record's key.
+///
+/// **Built only by the library**, from the record a scope reads -- see
+/// `detail::RecordOriginAccess`. The public constructor below is refused, so
+/// that an origin stated by hand is refused in this library's words. A copy
+/// of one the library built travels freely; see the forgery paragraph in
+/// this header's file comment for what that does and does not allow.
+class RecordOrigin
+{
+  public:
+    /// Refused: see `detail::RequireLibraryStatesOrigin`. Declared only so
+    /// that `RecordOrigin { "Reference", record_key(...), true }` is refused
+    /// in this library's words rather than the compiler's.
+    template <typename Unused = void>
+    constexpr RecordOrigin(std::string_view, RecordKey, bool) noexcept
+    {
+        static_assert(detail::RequireLibraryStatesOrigin<Unused>::value);
+    }
+
+    /// The role's name, as `tag_name<Role>()` spells it. Points into static
+    /// storage, so it outlives any trace.
+    [[nodiscard]] constexpr std::string_view role() const noexcept { return _role; }
+
+    /// Whether a record played the role.
+    [[nodiscard]] constexpr bool is_bound() const noexcept { return _key.has_value(); }
+
+    /// Which record played it; empty when none did.
+    [[nodiscard]] constexpr std::optional<RecordKey> key() const noexcept { return _key; }
+
+    /// Equal when the role's name and the key are.
+    [[nodiscard]] constexpr bool operator==(RecordOrigin const&) const noexcept = default;
+
+  private:
+    friend struct detail::RecordOriginAccess;
+
+    constexpr RecordOrigin(detail::ReadFromRecord, std::string_view roleName, std::optional<RecordKey> recordKey) noexcept:
+        _role { roleName },
+        _key { recordKey }
+    {
+    }
+
+    std::string_view _role;
+    std::optional<RecordKey> _key;
+};
+
+namespace detail
+{
+    /// The one way to build a `RecordOrigin`: from the record itself, never
+    /// from its parts, so that its only input is the object a scope's values
+    /// are read from. Called only by the scope's evaluator.
+    struct RecordOriginAccess
+    {
+        /// The origin of every value read from @p readFrom.
+        template <typename Role, typename Env, typename... Lineage>
+        [[nodiscard]] static constexpr RecordOrigin of(Record<Role, Env, Lineage...> const& readFrom) noexcept
+        {
+            return RecordOrigin { ReadFromRecord {}, tag_name<Role>(), readFrom.key() };
+        }
+    };
+
     /// Whether @p T is a `Record`.
     template <typename T>
     inline constexpr bool isRecord = false;
@@ -717,6 +835,10 @@ template <typename Rep = Rational, typename Role, typename Requirement, Node Ope
             Context const& recordContext = detail::RecordContextOf<Env>::of(environment);
             sink.entered(node);
             auto const& foreignRecord = recordContext.template record<Role>();
+            // The origin, from the same record the operand is read from below,
+            // before anything inside the scope is recorded.
+            if constexpr (requires { sink.record_entered(detail::RecordOriginAccess::of(foreignRecord)); })
+                sink.record_entered(detail::RecordOriginAccess::of(foreignRecord));
             Evaluated<Rep> const scopeValue = foreignRecord.is_bound()
                                                   ? detail::dispatch<Rep>(node.operand, foreignRecord.environment(), sink)
                                                   : detail::nothing<Rep>();
