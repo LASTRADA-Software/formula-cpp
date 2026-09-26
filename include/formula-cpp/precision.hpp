@@ -36,7 +36,17 @@
 ///  - `precision_level` inside a level expression (`RequireLevelWithoutPlaceholder`)
 ///    -- a level cannot depend on a level, its own or an enclosing limit's;
 ///  - `precision_level<Q>` whose `Q` does not measure the level's dimension
-///    (`RequireLevelDimensionMatches`).
+///    (`RequireLevelDimensionMatches`);
+///  - `precision_level<Q>` whose `Q` has a unit with an offset
+///    (`RequireLevelUnitWithoutOffset`).
+///
+/// The second and third are seen through every node kind this library ships,
+/// an overlay's derived quantity and a method's rounding included, so an
+/// overlay that puts a placeholder into a level is refused where it is
+/// applied. **What they cannot see:** the inside of a consumer's own node
+/// kind. A placeholder there is still refused at evaluation where no limit
+/// binds it, and where it would read a level of another dimension; but one in
+/// a nested limit's *level* reads the enclosing limit's level, silently.
 ///
 /// Nesting one limit inside another's limit expression is allowed; the inner
 /// binding shadows the outer, as an inner scope's name does.
@@ -49,6 +59,7 @@
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/critical_value.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/escape.hpp>
@@ -57,12 +68,14 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
+#include <formula-cpp/method.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/unit.hpp>
 
 #include <cstdint>
@@ -235,12 +248,35 @@ enum class PrecisionKind : std::uint8_t
     Reproducibility,
 };
 
+namespace detail
+{
+    /// Fails to compile when a placeholder names a quantity whose unit has an
+    /// offset. The trace shows the level in that unit, and a level is as
+    /// often a difference -- the spread of two temperatures -- as a point on
+    /// the scale: a spread of 1 K would be shown as -272.15 degC.
+    template <Described Q>
+    struct RequireLevelUnitWithoutOffset
+    {
+        static_assert(Describe<Q>::unit.offsetNumerator == 0,
+                      "formula: this precision_level names a quantity whose unit has an offset, such as degrees "
+                      "Celsius; a level that is a difference, such as the spread of two temperatures, would be "
+                      "shown as a point on that scale -- name a quantity in the offset-free unit of the same "
+                      "dimension, such as kelvin; the quantity appears in this diagnostic as the template "
+                      "argument of RequireLevelUnitWithoutOffset");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
 /// The level a precision limit is evaluated at: pass 1's result, read inside
 /// the limit expression. `Q` names the quantity the level is a value of --
-/// its dimension and the unit the trace shows it in.
+/// its dimension and the unit the trace shows it in, which may have no
+/// offset (`RequireLevelUnitWithoutOffset`).
 template <Described Q>
 struct PrecisionLevelNode: NodeBase
 {
+    static_assert(detail::RequireLevelUnitWithoutOffset<Q>::value);
+
     /// The quantity the level is a value of.
     using quantity = Q;
     /// The level measures what `Q` measures.
@@ -254,106 +290,180 @@ inline constexpr PrecisionLevelNode<Q> precision_level {};
 namespace detail
 {
     /// The child expressions of @p N a placeholder could hide in, as a
-    /// `std::tuple` of types -- one specialisation per node kind this library
-    /// ships that has children. The primary answers none: a leaf, or a
-    /// consumer's node kind, which cannot be seen inside.
+    /// `std::tuple` of types -- **one specialisation per node kind this
+    /// library ships, leaves included**, each saying `seen = true`. The kinds
+    /// declared in headers this one cannot include specialise it there:
+    /// `DerivedQuantityNode`, `OverriddenConstantNode` and
+    /// `ReplacedVariantNode` in `overlay.hpp`.
     ///
-    /// For a `PrecisionLimitNode` only its level is listed: a placeholder in
-    /// its limit expression is bound by that limit, and so not free.
+    /// The primary is a consumer's node kind, which cannot be seen inside: it
+    /// answers no children and `seen = false`. A library kind that fell to it
+    /// would hide a placeholder from every check below without a word, as
+    /// `DerivedQuantityNode` once did; `level_check_sees_every_node` finds
+    /// such a kind, and the vocabulary's every-kind method is put through it
+    /// (`vocabulary_tests.cpp`), so a kind added there without a
+    /// specialisation here fails a test rather than a reader.
+    ///
+    /// For a `PrecisionLimitNode` only its level is listed in `type`: a
+    /// placeholder in its limit expression is bound by that limit, and so not
+    /// free. Its limit expression is listed in `bound`, which only
+    /// `level_check_sees_every_node` walks.
     template <typename N>
     struct LevelChildren
     {
+        /// A consumer's node kind: nothing inside it can be seen.
+        static constexpr bool seen = false;
         using type = std::tuple<>;
     };
 
-    template <UnaryOperator Op, Node Operand>
-    struct LevelChildren<UnaryNode<Op, Operand>>
+    /// A node kind with no children, which the checks below see whole.
+    struct LevelLeaf
     {
-        using type = std::tuple<Operand>;
+        static constexpr bool seen = true;
+        using type = std::tuple<>;
+    };
+
+    /// A node kind whose children @p Children the checks below look into.
+    template <typename... Children>
+    struct LevelParent
+    {
+        static constexpr bool seen = true;
+        using type = std::tuple<Children...>;
+    };
+
+    template <Described Q>
+    struct LevelChildren<VarNode<Q>>: LevelLeaf
+    {
+    };
+
+    template <Unit U>
+    struct LevelChildren<ConstantNode<U>>: LevelLeaf
+    {
+    };
+
+    template <>
+    struct LevelChildren<PiNode>: LevelLeaf
+    {
+    };
+
+    template <KeyTable Keys, Unit ResultUnit>
+    struct LevelChildren<ExactLookupNode<Keys, ResultUnit>>: LevelLeaf
+    {
+    };
+
+    template <UnaryOperator Op, Node Operand>
+    struct LevelChildren<UnaryNode<Op, Operand>>: LevelParent<Operand>
+    {
     };
 
     template <BinaryOperator Op, Node Left, Node Right>
-    struct LevelChildren<BinaryNode<Op, Left, Right>>
+    struct LevelChildren<BinaryNode<Op, Left, Right>>: LevelParent<Left, Right>
     {
-        using type = std::tuple<Left, Right>;
     };
 
     template <int Exponent, Node Operand>
-    struct LevelChildren<PowerNode<Exponent, Operand>>
+    struct LevelChildren<PowerNode<Exponent, Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
     };
 
     template <int Degree, Node Operand>
-    struct LevelChildren<RootNode<Degree, Operand>>
+    struct LevelChildren<RootNode<Degree, Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
     };
 
     template <Node Inner>
-    struct LevelChildren<DocumentedNode<Inner>>
+    struct LevelChildren<DocumentedNode<Inner>>: LevelParent<Inner>
     {
-        using type = std::tuple<Inner>;
     };
 
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
-    struct LevelChildren<RoundNode<U, Places, Mode, Operand>>
+    struct LevelChildren<RoundNode<U, Places, Mode, Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
     };
 
     template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
-    struct LevelChildren<RoundSignificantNode<U, Digits, Mode, Operand>>
+    struct LevelChildren<RoundSignificantNode<U, Digits, Mode, Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
     };
 
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
-    struct LevelChildren<RoundedRootNode<U, Places, Mode, Radicand>>
+    struct LevelChildren<RoundedRootNode<U, Places, Mode, Radicand>>: LevelParent<Radicand>
     {
-        using type = std::tuple<Radicand>;
     };
 
     template <Unit U, FixedString Justification, Node Operand>
-    struct LevelChildren<NumericValueNode<U, Justification, Operand>>
+    struct LevelChildren<NumericValueNode<U, Justification, Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
     };
 
     template <Comparison Op, Node Left, Node Right>
-    struct LevelChildren<PredicateNode<Op, Left, Right>>
+    struct LevelChildren<PredicateNode<Op, Left, Right>>: LevelParent<Left, Right>
     {
-        using type = std::tuple<Left, Right>;
     };
 
     template <Predicate P, Node Then, Node Else>
-    struct LevelChildren<WhenNode<P, Then, Else>>
+    struct LevelChildren<WhenNode<P, Then, Else>>: LevelParent<P, Then, Else>
     {
-        using type = std::tuple<P, Then, Else>;
     };
 
     template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
-    struct LevelChildren<BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>
+    struct LevelChildren<BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
     };
 
     template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
-    struct LevelChildren<InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand>>
+    struct LevelChildren<InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
     };
 
     template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
-    struct LevelChildren<SampleSizeLookupNode<Sizes, ResultUnit, Count>>
+    struct LevelChildren<SampleSizeLookupNode<Sizes, ResultUnit, Count>>: LevelParent<Count>
     {
-        using type = std::tuple<Count>;
     };
 
     template <Node Operand>
-    struct LevelChildren<AbsoluteValueNode<Operand>>
+    struct LevelChildren<AbsoluteValueNode<Operand>>: LevelParent<Operand>
     {
-        using type = std::tuple<Operand>;
+    };
+
+    /// Required, not a refinement: a partial specialisation never matches a
+    /// derived class, so the `RoundNode` entry does not reach this one.
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct LevelChildren<RoundingRuleNode<U, Places, Mode, Operand>>: LevelParent<Operand>
+    {
+    };
+
+    template <Described Q>
+    struct LevelChildren<PrecisionLevelNode<Q>>: LevelLeaf
+    {
+    };
+
+    // Phase 14's snap and curves: a snap reads its operand, a curve its two
+    // series, a splice its two curves, an interpolation its curve and the
+    // point it is read at. A declared domain is a table of points.
+    template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    struct LevelChildren<SnapNode<KeyUnit, Permitted, Tie, Operand>>: LevelParent<Operand>
+    {
+    };
+
+    template <Unit U, BreakpointTable Points>
+    struct LevelChildren<DomainNode<U, Points>>: LevelLeaf
+    {
+    };
+
+    template <SeriesNode D, SeriesNode V>
+    struct LevelChildren<CurveNode<D, V>>: LevelParent<D, V>
+    {
+    };
+
+    template <Monotone M, CurveExpression A, CurveExpression B>
+    struct LevelChildren<SpliceNode<M, A, B>>: LevelParent<A, B>
+    {
+    };
+
+    template <CurveExpression C, Node At>
+    struct LevelChildren<InterpolateAlongNode<C, At>>: LevelParent<C, At>
+    {
     };
 
     /// Whether @p N is a `PrecisionLevelNode`.
@@ -503,6 +613,56 @@ template <PrecisionKind K, Node Level, Node Limit>
 
 namespace detail
 {
+    template <PrecisionKind K, Node Level, Node Limit>
+    struct LevelChildren<PrecisionLimitNode<K, Level, Limit>>: LevelParent<Level>
+    {
+        /// Where a placeholder is bound by this limit, and so never free.
+        using bound = std::tuple<Limit>;
+    };
+
+    template <typename N>
+    [[nodiscard]] consteval bool level_check_sees_every_node() noexcept;
+
+    template <typename... Children>
+    [[nodiscard]] consteval bool level_check_sees_all(std::tuple<Children...> const*) noexcept
+    {
+        return (level_check_sees_every_node<Children>() && ...);
+    }
+
+    /// Whether the checks above see every node in @p N -- whether each node
+    /// kind in it, bound limit expressions included, has its own
+    /// `LevelChildren` specialisation. False at the first node that fell to
+    /// the primary. Asked of a tree of library kinds only, by a test: a
+    /// consumer's node kind is unseen by design.
+    template <typename N>
+    [[nodiscard]] consteval bool level_check_sees_every_node() noexcept
+    {
+        using Children = LevelChildren<std::remove_cv_t<N>>;
+        if constexpr (!Children::seen)
+            return false;
+        else if constexpr (requires { typename Children::bound; })
+            return level_check_sees_all(static_cast<typename Children::type const*>(nullptr))
+                   && level_check_sees_all(static_cast<typename Children::bound const*>(nullptr));
+        else
+            return level_check_sees_all(static_cast<typename Children::type const*>(nullptr));
+    }
+
+    /// The unit the level expression @p Level is itself stated in, when it
+    /// names a quantity -- a plain `var<Q>`, or what an overlay made of one:
+    /// its value is `Q`'s, so `Q`'s unit shows it as the reader wrote it.
+    /// Nothing for any other expression.
+    template <typename Level>
+    [[nodiscard]] consteval std::optional<Unit> level_expression_unit() noexcept
+    {
+        if constexpr (requires { typename Level::quantity; })
+            return Describe<typename Level::quantity>::unit;
+        else
+            return std::nullopt;
+    }
+} // namespace detail
+
+namespace detail
+{
     /// Fails to compile when `precision_level` is evaluated where no
     /// precision limit binds it -- outside any limit expression.
     template <typename Env>
@@ -617,8 +777,11 @@ template <typename Rep = Rational, PrecisionKind K, Node Level, Node Limit, type
         sink.precision_level_produced(K, levelUnit, levelResult);
     };
     // The unit the level is shown in: the quantity the limit's first
-    // placeholder names, or the coherent unit when it names none.
-    [[maybe_unused]] constexpr Unit levelUnit = detail::first_free_level_unit<Limit>().value_or(coherent(Level::dimension));
+    // placeholder names; else, when the limit reads its level only through
+    // a nested limit or a consumer's node, the quantity the level expression
+    // names; else the coherent unit, as every computed step is shown in.
+    [[maybe_unused]] constexpr Unit levelUnit = detail::first_free_level_unit<Limit>().value_or(
+        detail::level_expression_unit<Level>().value_or(coherent(Level::dimension)));
 
     if constexpr (hearsLimit)
         sink.precision_limit_entered(K);

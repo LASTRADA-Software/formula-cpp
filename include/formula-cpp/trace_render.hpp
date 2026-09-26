@@ -894,6 +894,16 @@ namespace detail
     /// would look cited to a reader who does not know it could have said more.
     inline constexpr std::string_view noCitationGiven = "(no citation given)";
 
+    /// `#k` for a step a side-table record names, or `(no such step)` when
+    /// the index is not one of @p trace's steps: a record is a public
+    /// aggregate, and printing a number no line carries -- or one wrapped
+    /// round by the `+ 1` -- would point the reader at a step that is not
+    /// there.
+    [[nodiscard]] inline std::string recorded_step_reference(Trace<Rational> const& trace, std::size_t recordedStep)
+    {
+        return recordedStep < trace.steps.size() ? operand_reference(recordedStep) : std::string { "(no such step)" };
+    }
+
     /// A precision step's expression, read from its side-table record:
     ///
     ///  - pass 1: `level (pass 1 of 2) = #4`, the level expression's step;
@@ -921,8 +931,8 @@ namespace detail
                 return "level";
             case detail::PrecisionStepRole::LimitPass:
             {
-                std::string const heading =
-                    std::string { precision_render_symbol(precisionRecord->kind) } + " at level " + operand_reference(precisionRecord->levelStep);
+                std::string const heading = std::string { precision_render_symbol(precisionRecord->kind) } + " at level "
+                                            + recorded_step_reference(trace, precisionRecord->levelStep);
                 return recorded.operands.size() < 2
                            ? heading
                            : heading + " (pass 2 of 2) = " + operand_reference(recorded.operands.back());
@@ -940,7 +950,7 @@ namespace detail
             return {};
         if (!precisionRecord->limitStep.has_value())
             return " [bound by a limit that was not recorded]";
-        return " [bound by " + operand_reference(*precisionRecord->limitStep) + "]";
+        return " [bound by " + recorded_step_reference(trace, *precisionRecord->limitStep) + "]";
     }
 
     /// What a citation identifies itself by, unbracketed: its title,

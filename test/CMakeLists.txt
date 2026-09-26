@@ -701,6 +701,22 @@ formula_add_negative_test(precision_level_hidden_dimension_mismatch
     "formula: this precision_level reads a level of another dimension"
     REJECT "limit expression reads a precision_level whose quantity")
 
+# The level check sees through the overlay's derived quantity: a placeholder
+# an overlay puts into a level is refused as a level reading a level, where
+# `apply` builds the rewritten limit -- nested or outermost -- and never as a
+# placeholder evaluated where no limit binds it.
+formula_add_negative_test(precision_level_derived_into_nested_level
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "cannot see inside")
+
+formula_add_negative_test(precision_level_derived_into_level
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "cannot see inside")
+
+formula_add_negative_test(precision_level_offset_unit
+    "formula: this precision_level names a quantity whose unit has an offset"
+    REJECT "reads a level of another dimension" "limit expression reads a precision_level whose quantity")
+
 # `RepRounding<double>`'s own refusal, not one of the rounded root's: the node
 # rounds through the representation's rounding, as every rounding node does.
 formula_add_negative_test(rounded_sqrt_rep_double

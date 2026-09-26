@@ -8,7 +8,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -55,6 +57,49 @@ template <formula::PrecisionKind K, typename Level>
                                formula::Verdict { "repeat the determinations" });
 }
 
+/// A bare number, for `abs` at the edge of `Rational`.
+struct BareNumber: formula::Quantity<BareNumber, "q", "bare number", unit::One>
+{
+};
+/// A relative limit: a fraction of the level, dimensionless.
+struct RelativeTolerance: formula::Quantity<RelativeTolerance, "r_rel", "relative precision limit", unit::One>
+{
+};
+
+/// A level pass 1 cannot produce: the mean times x_A / (x_B - x_B), a
+/// division by zero, still a mass.
+inline constexpr auto failingLevel = meanOfPair * (var<ResultA> / (var<ResultB> - var<ResultB>) );
+
+/// A sink that counts what it is told of a level pass. Without
+/// @p BothHalves it defines only `precision_level_entered`, half the pair.
+template <bool BothHalves>
+struct LevelHookCounter
+{
+    int* heard;
+
+    template <formula::Node N>
+    constexpr void entered(N const&) const noexcept
+    {
+    }
+
+    template <formula::Node N, typename V>
+    constexpr void produced(N const&, V const&) const noexcept
+    {
+    }
+
+    constexpr void precision_level_entered(formula::PrecisionKind) const noexcept
+    {
+        ++*heard;
+    }
+
+    template <typename V>
+    constexpr void precision_level_produced(formula::PrecisionKind, formula::Unit, V const&) const noexcept
+        requires BothHalves
+    {
+        ++*heard;
+    }
+};
+
 // Fixture Q, invented: level bands [0, 20), [20, 60), [60, 100) g give
 // r = 0.5, 0.9, 1.4 g.
 inline constexpr formula::BandTable<3> LevelBands { formula::band(0, 1, 20, 1),
@@ -87,6 +132,15 @@ TEST_CASE("a precision limit that depends on the level is evaluated at the level
     constexpr auto r = formula::precision_limit<formula::PrecisionKind::Repeatability>(meanOfPair, limitOfLevel);
     STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(r, pairP)->measurement().value() == rat(90905, 100000));
     STATIC_REQUIRE(decltype(r)::dimension == formula::dim::Mass);
+
+    // A relative limit, level / 1000 g, measures nothing although its level is
+    // a mass: the limit's dimension is its limit expression's, never its
+    // level's. 40.4525 g / 1000 g = 16181/400000.
+    constexpr auto relative = formula::precision_limit<formula::PrecisionKind::Repeatability>(
+        meanOfPair, formula::precision_level<ResultA> / formula::constant<unit::Gram>(rat(1000)));
+    STATIC_REQUIRE(decltype(relative)::dimension == formula::dim::Scalar);
+    STATIC_REQUIRE(formula::checked_evaluate<RelativeTolerance>(relative, pairP)->measurement().value()
+                   == rat(16181, 400000));
 }
 
 TEST_CASE("rounding the level before it enters the limit is the author's, and it can change the verdict", "[precision]")
@@ -150,6 +204,25 @@ TEST_CASE("an absent result makes the level, the limit and the check absent or n
         formula::check(agreementAt<formula::PrecisionKind::Repeatability>(meanOfPair), halfPair).is_not_checked());
 }
 
+TEST_CASE("a level pass 1 cannot produce is the limit's error, unchanged", "[precision]")
+{
+    // Not DomainError, not absent: the level's own error, so a reader of the
+    // limit learns what went wrong in the level.
+    constexpr auto r = formula::precision_limit<formula::PrecisionKind::Repeatability>(failingLevel, limitOfLevel);
+    STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(r, pairP).error() == formula::ArithmeticError::DivisionByZero);
+}
+
+TEST_CASE("a sink defining half of the level hook pair is told nothing of it", "[precision]")
+{
+    constexpr auto r = formula::precision_limit<formula::PrecisionKind::Repeatability>(meanOfPair, limitOfLevel);
+    int bothHeard = 0;
+    (void) formula::checked_evaluate<Tolerance>(r, pairP, LevelHookCounter<true> { &bothHeard });
+    CHECK(bothHeard == 2);
+    int halfHeard = 0;
+    (void) formula::checked_evaluate<Tolerance>(r, pairP, LevelHookCounter<false> { &halfHeard });
+    CHECK(halfHeard == 0);
+}
+
 TEST_CASE("abs is the absolute value, and keeps the dimension", "[precision]")
 {
     // x_A - x_B is negative here, so returning the operand unchanged gives
@@ -163,6 +236,21 @@ TEST_CASE("abs is the absolute value, and keeps the dimension", "[precision]")
     constexpr auto halfPair =
         formula::environment(formula::Measured<ResultA> { rat(40) }, formula::Measured<ResultB>::absent());
     STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(spread, halfPair)->is_empty());
+
+    // The one value Rational cannot negate, through the node: an error, never
+    // itself back. One above it gives the largest value there is.
+    constexpr std::int64_t lowest = std::numeric_limits<std::int64_t>::min();
+    STATIC_REQUIRE(
+        formula::checked_evaluate<BareNumber>(formula::abs(var<BareNumber>),
+                                              formula::environment(formula::Measured<BareNumber> { Rational { lowest } }))
+            .error()
+        == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(
+        formula::checked_evaluate<BareNumber>(
+            formula::abs(var<BareNumber>), formula::environment(formula::Measured<BareNumber> { Rational { lowest + 1 } }))
+            ->measurement()
+            .value()
+        == Rational { std::numeric_limits<std::int64_t>::max() });
 }
 
 TEST_CASE("a precision limit evaluates at runtime too", "[precision]")
@@ -235,6 +323,96 @@ TEST_CASE("a nested precision limit's trace says which level each limit was eval
              "7. level = 40 g [bound by #9]\n"
              "8. #6 + #7 = 16181/200000\n"
              "9. R at level #2 (pass 2 of 2) = #8 = 16181/200000\n");
+}
+
+TEST_CASE("a limit that reads its level only through a nested limit shows it in the level's own unit",
+          "[precision][trace-render]")
+{
+    // The outer limit has no placeholder of its own, so no quantity it names
+    // gives the unit: the level expression, x_A, does -- 40 g, never 1/25.
+    constexpr auto inner =
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(var<ResultB>, formula::precision_level<ResultB>);
+    constexpr auto outer = formula::precision_limit<formula::PrecisionKind::Reproducibility>(var<ResultA>, inner);
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Tolerance>(outer, pairP, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. x_A = 40 g\n"
+             "2. level (pass 1 of 2) = #1 = 40 g\n"
+             "3. x_B = 8181/200 g\n"
+             "4. level (pass 1 of 2) = #3 = 8181/200 g\n"
+             "5. level = 8181/200 g [bound by #6]\n"
+             "6. r at level #4 (pass 2 of 2) = #5 = 8181/200000\n"
+             "7. R at level #2 (pass 2 of 2) = #6 = 8181/200000\n");
+}
+
+TEST_CASE("the author's rounding of the level is its own step, between the two passes", "[precision][trace-render]")
+{
+    // Pass 1 is the rounding's result, 40 g; pass 2 reads that, never the
+    // unrounded mean (16181/400 g) nor a rounding applied after it.
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Tolerance>(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(
+            formula::rounded<unit::Gram, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(meanOfPair),
+            limitOfLevel),
+        pairP,
+        formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. x_A = 40 g\n"
+             "2. x_B = 8181/200 g\n"
+             "3. #1 + #2 = 16181/200000\n"
+             "4. 2\n"
+             "5. #3 / #4 = 16181/400000\n"
+             "6. round(#5, to 0 dp of g) = 40 g [nearest, ties away from zero]\n"
+             "7. level (pass 1 of 2) = #6 = 40 g\n"
+             "8. 1/10 g\n"
+             "9. 1/50\n"
+             "10. level = 40 g [bound by #13]\n"
+             "11. #9 * #10 = 1/1250\n"
+             "12. #8 + #11 = 9/10000\n"
+             "13. r at level #7 (pass 2 of 2) = #12 = 9/10000\n");
+}
+
+TEST_CASE("a level pass 1 cannot produce ends the limit there, and its trace says so", "[precision][trace-render]")
+{
+    // Pass 2 never ran, so its line names the level step and nothing else.
+    formula::Trace<> failed {};
+    (void) formula::checked_evaluate<Tolerance>(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(failingLevel, limitOfLevel),
+        pairP,
+        formula::RecordingSink<> { failed });
+    std::string const failedText = formula::render_trace(failed, { .maxSteps = 40 });
+    CHECK(failedText.ends_with("11. #5 * #10 = division by zero\n"
+                               "12. level (pass 1 of 2) = #11 = division by zero\n"
+                               "13. r at level #12 = division by zero\n"));
+
+    formula::Trace<> absent {};
+    (void) formula::checked_evaluate<Tolerance>(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(var<ResultB>, limitOfLevel),
+        formula::environment(formula::Measured<ResultA> { rat(40) }, formula::Measured<ResultB>::absent()),
+        formula::RecordingSink<> { absent });
+    CHECK(formula::render_trace(absent, { .maxSteps = 40 })
+          == "1. x_B = (not measured)\n"
+             "2. level (pass 1 of 2) = #1 = (not measured)\n"
+             "3. r at level #2 = (not measured)\n");
+}
+
+TEST_CASE("a precision record naming no step of its trace says so rather than print a number", "[precision][trace-render]")
+{
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Tolerance>(
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(meanOfPair, limitOfLevel),
+        pairP,
+        formula::RecordingSink<> { trace });
+    REQUIRE(trace.precisionRecords.size() == 3);
+    trace.precisionRecords[1].limitStep = std::numeric_limits<std::size_t>::max();
+    trace.precisionRecords[2].levelStep = trace.steps.size();
+    std::string const forged = formula::render_trace(trace, { .maxSteps = 40 });
+    CHECK(forged.find("level = 16181/400 g [bound by (no such step)]\n") != std::string::npos);
+    CHECK(forged.find("r at level (no such step) (pass 2 of 2) = ") != std::string::npos);
+
+    trace.precisionRecords[1].limitStep.reset();
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 }).find("[bound by a limit that was not recorded]")
+          != std::string::npos);
 }
 
 TEST_CASE("a precision step with no record says so rather than guess", "[precision][trace-render]")

@@ -427,6 +427,27 @@ namespace detail
             return ReplacedVariantNode<Expr> { OverlayMade {}, replacement, source };
         }
     };
+
+    /// The overlay's node kinds, seen by a precision limit's checks
+    /// (`precision.hpp`): a derived quantity is its definition, so an overlay
+    /// that defines a quantity read in a level by `precision_level` makes the
+    /// rewritten limit refuse, where `apply` builds it. Each is required, not
+    /// a refinement: the two quantity nodes derive from `VarNode`, whose entry
+    /// does not reach them.
+    template <Described Q>
+    struct LevelChildren<OverriddenConstantNode<Q>>: LevelLeaf
+    {
+    };
+
+    template <Described Q, Node Expr>
+    struct LevelChildren<DerivedQuantityNode<Q, Expr>>: LevelParent<Expr>
+    {
+    };
+
+    template <Node Expr>
+    struct LevelChildren<ReplacedVariantNode<Expr>>: LevelParent<Expr>
+    {
+    };
 } // namespace detail
 
 /// An overridden constant evaluates to the overlay's value, converted from
