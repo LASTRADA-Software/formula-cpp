@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <type_traits>
 
@@ -69,13 +70,14 @@ constexpr formula::Verdict reject { "reject the specimen" };
 // Invented numbers, one row per screen, in percent. Row 1 is violated below
 // its lower limit and row 4 above its upper one -- one violation in the
 // middle and one at the end, so neither an upper-only nor a lower-only check
-// passes. Row 2 has no upper limit, so reading `unbounded` as 0 violates it.
-// Element 3 sits exactly on row 3's upper limit, 70.56 %, so a half-open
-// upper violates it.
+// passes. Element 2 sits exactly on row 2's lower limit, 62.96 %, and row 2
+// has no upper limit: a half-open lower, or `unbounded` read as 0, violates
+// it. Row 3 is a point, 70.56 % to 70.56 %, with element 3 on it: a half-open
+// bound on either side violates it.
 constexpr formula::Envelope<5> envelope { LimitRow { limit(rat(30)), limit(rat(40)) },
                                           LimitRow { limit(rat(50)), limit(rat(60)) },
-                                          LimitRow { limit(rat(60)), unbounded },
-                                          LimitRow { limit(rat(65)), limit(rat(1764, 25)) },
+                                          LimitRow { limit(rat(1574, 25)), unbounded },
+                                          LimitRow { limit(rat(1764, 25)), limit(rat(1764, 25)) },
                                           LimitRow { limit(rat(0)), limit(rat(95)) } };
 
 constexpr auto passingCheck = formula::conformity<unit::Percent>(passingOf(formula::series<Retained, 5>), envelope, reject);
@@ -90,8 +92,8 @@ TEST_CASE("each element is judged against its own row of the envelope, bounds cl
     STATIC_REQUIRE(outcomes.size() == 5);
     STATIC_REQUIRE(outcomes[0] == ConstraintOutcome::satisfied());
     STATIC_REQUIRE(outcomes[1] == ConstraintOutcome::violated(reject));  // 46.16 below 50
-    STATIC_REQUIRE(outcomes[2] == ConstraintOutcome::satisfied());       // no upper limit
-    STATIC_REQUIRE(outcomes[3] == ConstraintOutcome::satisfied());       // on the closed upper bound
+    STATIC_REQUIRE(outcomes[2] == ConstraintOutcome::satisfied());       // on the closed lower bound, no upper
+    STATIC_REQUIRE(outcomes[3] == ConstraintOutcome::satisfied());       // on a point row, both bounds
     STATIC_REQUIRE(outcomes[4] == ConstraintOutcome::violated(reject));  // 97.76 above 95
 
     // The limits are stated in percent and the subject arrives in SI, as
@@ -185,9 +187,11 @@ TEST_CASE("a subject that fails makes every element invalid, with its error", "[
 TEST_CASE("a conformity check renders each row as the range it permits, and no verdict", "[conformity][render]")
 {
     CHECK(formula::render(measuredCheck)
-          == "conform(p(i), from 30 to 40 %, from 50 to 60 %, at least 60 %, from 65 to 1764/25 %, from 0 to 95 %)");
+          == "conform(p(i), from 30 to 40 %, from 50 to 60 %, at least 1574/25 %, from 1764/25 to 1764/25 %, "
+             "from 0 to 95 %)");
     CHECK(formula::render<formula::Dialect::Markdown>(measuredCheck)
-          == "conform(`p(i)`, from 30 to 40 %, from 50 to 60 %, at least 60 %, from 65 to 1764/25 %, from 0 to 95 %)");
+          == "conform(`p(i)`, from 30 to 40 %, from 50 to 60 %, at least 1574/25 %, from 1764/25 to 1764/25 %, "
+             "from 0 to 95 %)");
     // The subject in the page's words.
     constexpr auto everyone = formula::vocabulary(formula::renames<Passing>("P"));
     CHECK(formula::render(measuredCheck, everyone).starts_with("conform(P(i), from 30 to 40 %"));
@@ -229,20 +233,26 @@ TEST_CASE("a conformity check is one step with one outcome per element", "[confo
     CHECK(outcomes[1].is_violated());
     CHECK(formula::render_trace(trace, { .maxSteps = 20 })
           == "1. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
-             "2. conform(#1) [1 satisfied; 2 violated: reject the specimen; 3 satisfied; 4 satisfied; "
-             "5 violated: reject the specimen]\n");
+             "2. conform(#1) [1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60 %): reject the specimen; "
+             "3 satisfied (at least 1574/25 %); 4 satisfied (from 1764/25 to 1764/25 %); "
+             "5 violated (from 0 to 95 %): reject the specimen]\n");
     REQUIRE(trace.steps.size() == 2);
     CHECK(trace.steps[1].kind == formula::StepKind::ConformityChecked);
     CHECK(trace.steps[1].operands == std::vector<std::size_t> { 0 });
     REQUIRE(trace.steps[1].elementOutcomes.size() == 5);
     CHECK(trace.steps[1].elementOutcomes[4] == ConstraintOutcome::violated(reject));
 
-    // The outcomes share the element budget: 12 units show every element of
-    // both lines; 9 leave the conformity line two outcomes and say how many
-    // more there are; 7 leave it none.
+    // The outcomes -- each with the row it was judged against, which is
+    // master data read at run time and so part of the derivation -- share the
+    // element budget: 12 units show every element of both lines, 9 leave the
+    // conformity line two outcomes and say how many more there are, and 7
+    // leave it none.
+    CHECK(formula::render_trace(trace, { .maxSteps = 12 })
+          == formula::render_trace(trace, { .maxSteps = 20 }));
     CHECK(formula::render_trace(trace, { .maxSteps = 9 })
           == "1. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
-             "2. conform(#1) [1 satisfied; 2 violated: reject the specimen; ... 3 more]\n");
+             "2. conform(#1) [1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60 %): reject the specimen; "
+             "... 3 more]\n");
     CHECK(formula::render_trace(trace, { .maxSteps = 7 })
           == "1. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
              "2. conform(#1) [... 5 more]\n");
@@ -260,6 +270,37 @@ TEST_CASE("an unmeasured element and an inverted row read as what they are in th
                                      middleUnmeasured,
                                      formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 20 }).ends_with(
-        "2. conform(#1) [1 satisfied; 2 violated: reject the specimen; 3 not checked; "
-        "4 invalid: argument outside the domain of the operation; 5 violated: reject the specimen]\n"));
+        "2. conform(#1) [1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60 %): reject the specimen; "
+        "3 not checked (at least 60 %); 4 invalid (from 80 to 70 %): argument outside the domain of the operation; "
+        "5 violated (from 0 to 95 %): reject the specimen]\n"));
+}
+
+TEST_CASE("the trace keeps the rows as judged, even if the check is changed afterwards", "[conformity][trace]")
+{
+    // The envelope is runtime master data on a public member: a row changed
+    // after the check must not change what the derivation says was judged.
+    auto check = measuredCheck;
+    formula::Trace<> trace {};
+    (void) formula::check_conformity(check, measuredPassing, formula::RecordingSink<> { trace });
+    check.envelope.rows[1] = LimitRow { limit(rat(40)), limit(rat(50)) };
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 }).find("2 violated (from 50 to 60 %)") != std::string::npos);
+    REQUIRE(trace.conformityLimits.size() == 1);
+    CHECK(trace.conformityLimits[0].step == 1);
+    REQUIRE(trace.conformityLimits[0].rows.size() == 5);
+    CHECK(trace.conformityLimits[0].rows[1] == (LimitRow { limit(rat(50)), limit(rat(60)) }));
+}
+
+TEST_CASE("a limit whose conversion fails makes its element invalid, on either side", "[conformity]")
+{
+    // A kilometre limit near Rational's limit overflows reading into metres.
+    constexpr auto huge = limit(rat(std::numeric_limits<std::int64_t>::max()));
+    constexpr auto one = formula::environment(formula::measured_series<Opening>(formula::Measured<Opening> { rat(127) }));
+    constexpr auto lowerSide = formula::check_conformity(
+        formula::conformity<unit::Kilometre>(formula::series<Opening, 1>, formula::Envelope<1> { LimitRow { huge, unbounded } }, reject),
+        one);
+    constexpr auto upperSide = formula::check_conformity(
+        formula::conformity<unit::Kilometre>(formula::series<Opening, 1>, formula::Envelope<1> { LimitRow { unbounded, huge } }, reject),
+        one);
+    STATIC_REQUIRE(lowerSide[0] == ConstraintOutcome::invalid(formula::ArithmeticError::Overflow));
+    STATIC_REQUIRE(upperSide[0] == ConstraintOutcome::invalid(formula::ArithmeticError::Overflow));
 }

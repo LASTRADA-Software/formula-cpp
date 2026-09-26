@@ -455,7 +455,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render<formula::Dialect::LaTeX>(edgeCheck).find("conform") != std::string::npos
                            && formula::document(edgeCheck, north).citations.size() == 1
                            && formula::render_trace(conformityTrace, { .maxSteps = 20 }).find(
-                                  "[1 satisfied; 2 violated: reject the edge]")
+                                  "[1 satisfied (from 100 to 200 mm); 2 violated (at least 120 mm): reject the edge]")
                                   != std::string::npos);
     // A snap: 150 mm among 100, 200 and 300 mm is a tie, decided toward the
     // higher.

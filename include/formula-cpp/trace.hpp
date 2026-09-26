@@ -825,6 +825,20 @@ struct Step
     bool tieBroken {};
 };
 
+/// The rows one conformity step judged its elements against, in the unit
+/// its `Step::unit` names, one per element in the subject's order.
+///
+/// An envelope is master data, read at run time and free to change (see
+/// `conformity.hpp`): what a derivation says was judged must be the rows as
+/// they were, so they are copied here when the step is recorded.
+struct ConformityLimits
+{
+    /// The index, in `Trace::steps`, of the `ConformityChecked` step.
+    std::size_t step;
+    /// The rows it judged against.
+    std::vector<LimitRow> rows;
+};
+
 /// A recorded derivation: a flat arena of steps.
 template <typename Rep = Rational>
 struct Trace
@@ -857,6 +871,11 @@ struct Trace
     ///
     /// Bookkeeping, as `marks` and `unclaimed` are, and for the same reason.
     std::vector<Branch> branchStack {};
+
+    /// The limits each conformity step judged against, keyed by its index in
+    /// `steps`. A side table rather than a member of `Step`, so that every
+    /// other step pays nothing for them.
+    std::vector<ConformityLimits> conformityLimits {};
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
@@ -1969,9 +1988,11 @@ class RecordingSink
     }
 
     /// Records one step for the whole check, with every element's outcome in
-    /// `Step::elementOutcomes`, claiming as its operand the subject's step.
+    /// `Step::elementOutcomes`, claiming as its operand the subject's step,
+    /// and the rows it judged against in `Trace::conformityLimits`.
     template <Unit U, SeriesNode S>
-    void conformity_produced(Conformity<U, S> const&, std::array<ConstraintOutcome, S::length> const& outcomes)
+    void conformity_produced(Conformity<U, S> const& conformityCheck,
+                             std::array<ConstraintOutcome, S::length> const& outcomes)
     {
         std::size_t const conformityMark = _trace->marks.back();
         _trace->marks.pop_back();
@@ -1992,6 +2013,9 @@ class RecordingSink
 
         _trace->steps.push_back(std::move(conformityStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        _trace->conformityLimits.push_back(ConformityLimits {
+            .step = _trace->steps.size() - 1,
+            .rows = std::vector<LimitRow>(conformityCheck.envelope.rows.begin(), conformityCheck.envelope.rows.end()) });
     }
 
   private:

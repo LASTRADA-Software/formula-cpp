@@ -38,6 +38,7 @@
 #include <cstddef>
 #include <expected>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -1166,32 +1167,53 @@ namespace detail
         return {};
     }
 
-    /// One element's outcome in a conformity step, counted from one:
-    /// `2 satisfied`, `2 violated: reject the specimen`, `2 not checked`, or
-    /// `2 invalid: <the arithmetic error>`.
-    [[nodiscard]] inline std::string element_outcome_text(std::size_t at, ConstraintOutcome const& checkedOutcome)
+    /// The rows @p trace kept for the step at @p stepIndex, or none.
+    [[nodiscard]] inline std::span<LimitRow const> conformity_limits_of(Trace<Rational> const& trace,
+                                                                        std::size_t stepIndex)
+    {
+        for (ConformityLimits const& kept: trace.conformityLimits)
+            if (kept.step == stepIndex)
+                return kept.rows;
+        return {};
+    }
+
+    /// One element's outcome in a conformity step, counted from one, with
+    /// the row it was judged against when the trace kept it: `2 satisfied
+    /// (from 30 to 40 %)`, `2 violated (at least 60 %): reject the specimen`,
+    /// `2 not checked (...)`, or `2 invalid (...): <the arithmetic error>`.
+    [[nodiscard]] inline std::string element_outcome_text(std::size_t at,
+                                                          ConstraintOutcome const& checkedOutcome,
+                                                          std::string const& rowClause)
     {
         std::string const ordinal = std::to_string(at + 1);
         switch (checkedOutcome.kind())
         {
             case ConstraintOutcomeKind::Satisfied:
-                return ordinal + " satisfied";
+                return ordinal + " satisfied" + rowClause;
             case ConstraintOutcomeKind::Violated:
-                return ordinal + " violated: " + std::string { checkedOutcome.verdict()->label };
+                return ordinal + " violated" + rowClause + ": " + std::string { checkedOutcome.verdict()->label };
             case ConstraintOutcomeKind::NotChecked:
-                return ordinal + " not checked";
+                return ordinal + " not checked" + rowClause;
             case ConstraintOutcomeKind::Invalid:
-                return ordinal + " invalid: " + std::string { describe(*checkedOutcome.error()) };
+                return ordinal + " invalid" + rowClause + ": " + std::string { describe(*checkedOutcome.error()) };
         }
-        return ordinal + " unknown outcome";
+        return ordinal + " unknown outcome" + rowClause;
     }
 
     /// A conformity step's line, without its number: `conform(#1)` and every
-    /// element's outcome in one bracket, `[1 satisfied; 2 violated: reject
-    /// the specimen; ...]` -- as many as @p budget allows, one unit each, as
-    /// a series step's elements are (`series_step_line`), and `... k more`
-    /// where `k` is exactly the number left out.
-    [[nodiscard]] inline std::string conformity_line(Step<Rational> const& recorded, std::size_t& budget)
+    /// element's outcome in one bracket, each with the row it was judged
+    /// against -- `[1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60
+    /// %): reject the specimen; ...]` -- as many as @p budget allows, one
+    /// unit each, as a series step's elements are (`series_step_line`), and
+    /// `... k more` where `k` is exactly the number left out.
+    ///
+    /// @p limits are the rows `Trace::conformityLimits` kept for this step.
+    /// The rows are master data read at run time, so a derivation that
+    /// omitted them would not say what was judged; a hand-built trace with
+    /// no row for an element prints the outcome alone.
+    [[nodiscard]] inline std::string conformity_line(Step<Rational> const& recorded,
+                                                     std::span<LimitRow const> limits,
+                                                     std::size_t& budget)
     {
         std::size_t const outcomeCount = recorded.elementOutcomes.size();
         std::size_t const listed = budget < outcomeCount ? budget : outcomeCount;
@@ -1201,7 +1223,9 @@ namespace detail
         {
             if (at > 0)
                 lineText += "; ";
-            lineText += element_outcome_text(at, recorded.elementOutcomes[at]);
+            std::string const rowClause =
+                at < limits.size() ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit)) + ")" : std::string {};
+            lineText += element_outcome_text(at, recorded.elementOutcomes[at], rowClause);
         }
         if (listed < outcomeCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outcomeCount - listed) + " more";
@@ -1315,9 +1339,14 @@ namespace detail
     /// escaping author text, above all: the vocabulary symbol and the unit
     /// symbol a series line prints are escaped wherever a scalar line's are.
     ///
+    /// @p limits are the rows a `ConformityChecked` step judged against
+    /// (`Trace::conformityLimits`), and empty for every other kind.
+    ///
     /// Renders an `EscapedStep`'s copy, never the step itself -- see
     /// `step_line`, which makes it.
-    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded, std::size_t& budget)
+    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded,
+                                                       std::size_t& budget,
+                                                       std::span<LimitRow const> limits)
     {
         // A series first, before anything reads `value`: its values are its
         // elements.
@@ -1328,7 +1357,7 @@ namespace detail
         // A conformity check has outcomes, not a value, and spends the
         // element budget on them as a series does on its elements.
         if (recorded.kind == StepKind::ConformityChecked)
-            return conformity_line(recorded, budget);
+            return conformity_line(recorded, limits, budget);
         if (is_series(recorded.kind))
             return series_step_line(recorded, budget);
         if (recorded.kind == StepKind::Constraint)
@@ -1379,10 +1408,15 @@ namespace detail
     /// what it holds. The one place author text is escaped: every piece of it
     /// in @p recorded is escaped into an `EscapedStep` here, before anything
     /// reads it, and the line is rendered from that copy.
-    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded, std::size_t& budget)
+    ///
+    /// @p limits are the rows a `ConformityChecked` step judged against
+    /// (`Trace::conformityLimits`), and empty for every other kind.
+    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded,
+                                               std::size_t& budget,
+                                               std::span<LimitRow const> limits = {})
     {
         EscapedStep const escaped { recorded };
-        return escaped_step_line(escaped.step, budget);
+        return escaped_step_line(escaped.step, budget, limits);
     }
 } // namespace detail
 
@@ -1426,7 +1460,7 @@ template <typename Rep = Rational>
         --budget;
         renderedTrace += std::to_string(shown + 1);
         renderedTrace += ". ";
-        renderedTrace += detail::step_line(recorded, budget);
+        renderedTrace += detail::step_line(recorded, budget, detail::conformity_limits_of(trace, shown));
         renderedTrace += "\n";
         ++shown;
     }
