@@ -8,8 +8,12 @@
 /// template, as `var<Q>` is, and the guarantee that the program holds one
 /// object per specialisation is what `expression_cross_tu` checks for `var`.
 /// The other unit's function declarations below name the formula's own types,
-/// so a declaration whose types differ between the two units declares a
-/// different function in each and the test fails to link.
+/// so a formula whose node structure differs between the two units -- a
+/// different node, length or operand order -- declares a different function
+/// in each and the test fails to link. Only the structure: a quantity whose
+/// *definition* differs between the units while its name stays the same (its
+/// symbol, say, or its unit) is the same type by name in both, and links
+/// silently -- an ODR violation no linker is required to see.
 ///
 /// Everything shared lives in a named namespace, never an anonymous one: an
 /// anonymous namespace in a header is a different namespace in every unit
