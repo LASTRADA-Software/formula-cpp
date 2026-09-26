@@ -102,6 +102,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/lineage.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/overlay.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
 
@@ -1130,6 +1131,34 @@ template <typename Rep = Rational, typename Role, typename Requirement, Node Ope
         }
     }
 }
+
+namespace detail
+{
+    /// An overlay's constant or derived quantity rewrites through a read from
+    /// another record exactly as through any other node with one operand:
+    /// the operand is rewritten, and the scope rebuilt around it with the
+    /// same role and the same lineage requirement.
+    ///
+    /// A jurisdiction's constant is the method's constant, and a scope
+    /// evaluates the method's algebra over another record's measurements, so
+    /// a shape factor in that algebra is the same shape factor (phase 14's
+    /// X10 ruling). Without this, the primary template would refuse every
+    /// overlay over a method holding a scope, with `RequireOverlaySeesNode`.
+    /// A use of the quantity inside the scope counts as a use for the
+    /// overlay's own checks, and an `OverriddenConstant` step recorded there
+    /// is stamped with the scope's origin, so the trace says the overlay
+    /// fixed a value inside the computation over that record.
+    ///
+    /// Declared here, after `overlay.hpp` is included, and found by `apply()`
+    /// all the same -- measured by phase 14's spike on cl, clang-cl,
+    /// clang++ and g++.
+    template <typename Sub, typename Role, typename Requirement, Node Operand>
+    struct ConstantRewrite<Sub, RecordScopeNode<Role, Requirement, Operand>>:
+        ConstantRewriteOperand<Sub, Operand,
+                               RecordScopeNode<Role, Requirement, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+} // namespace detail
 
 /// The context of @p own, reading from @p others by their roles:
 /// `record_context(record<ThisRecord>(...), record<Reference>(...))`.

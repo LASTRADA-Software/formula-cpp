@@ -48,7 +48,8 @@
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
 // unbound record, untraced and traced into `render_trace`, gated on
-// `same_lineage` through `checked_explain`, and rendered and documented. A
+// `same_lineage` through `checked_explain`, rendered and documented, and
+// under an overlay's constant and derived quantity, traced. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -316,6 +317,19 @@ inline constexpr auto seriesOverlaid =
     formula::apply(formula::overlay(formula::with_constant<Factor>(
                        formula::Rational { 3 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
                    seriesMethod);
+
+/// A method reading its factor only from another record, so that an overlay
+/// must reach inside the scope, fixed and derived.
+inline constexpr auto acrossMethod = formula::method(
+    formula::variants(formula::variant<Cube>(var<Force> / formula::from_record<Reference>(var<Factor> * var<Force>))),
+    formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+inline constexpr auto fixedAcross =
+    formula::apply(formula::overlay(formula::with_constant<Factor>(formula::Rational { 1, 2 },
+                                                                   formula::Citation { .reference = "Example Standard 3" })),
+                   acrossMethod);
+inline constexpr auto derivedAcross =
+    formula::apply(formula::overlay(formula::add_derived<Factor>(var<EdgeX> / var<EdgeX>, formula::Citation { .reference = "Example Standard 3" })), acrossMethod);
 
 /// A sink that asks for both pairs of method hooks, and nothing else of its
 /// own, so that `evaluate_method`'s and `check_method`'s hooked branches are
@@ -743,5 +757,18 @@ ConsumerGlobalsProbe probe_consumer_globals()
              + formula::render(formula::from_record<Reference>(var<Force>));
     probe.checks.push_back(acrossPage.symbols.size() == 2 && acrossPage.symbols[1].record == "Reference"
                            && acrossPage.formula.find("\\mathrm{Reference}") != std::string::npos);
+
+    // An overlay reaching inside a scope: 90 000 N over 1/2 of 60 000 N is 3,
+    // traced with the fixed factor's record; and over a derived factor of 1,
+    // 1.5.
+    formula::Trace<> fixedAcrossTrace {};
+    auto const fixedAcrossValue =
+        formula::evaluate_method<Cube>(fixedAcross, boundRecords, formula::RecordingSink { fixedAcrossTrace, north });
+    probe.checks.push_back(fixedAcrossValue.has_value() && **fixedAcrossValue == formula::Rational { 3 }
+                           && formula::render_trace(fixedAcrossTrace, { .maxSteps = 20 })
+                                      .find("k = 1/2, from record Reference (sample 23, test 3) [fixed by")
+                                  != std::string::npos);
+    auto const derivedAcrossValue = formula::evaluate_method<Cube>(derivedAcross, boundRecords);
+    probe.checks.push_back(derivedAcrossValue.has_value() && **derivedAcrossValue == formula::Rational { 3, 2 });
     return probe;
 }

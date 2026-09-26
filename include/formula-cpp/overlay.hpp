@@ -461,6 +461,13 @@ namespace detail
 /// Chosen over the `VarNode<Q>` overload in `evaluate.hpp` for every
 /// `OverriddenConstantNode<Q>`, because binding the node to its own type is an
 /// identity conversion and binding it to its base is not.
+///
+/// When the environment does hold a value for `Q`, a sink that asks is told
+/// where that value came from -- the value the overlay's constant replaced
+/// -- through the same optional hook a variable uses
+/// (`detail::report_input_source`, `evaluate.hpp`). So a trace can say that
+/// the overlay replaced a value a person typed in, rather than stay silent
+/// about it.
 template <typename Rep = Rational, Described Q, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(OverriddenConstantNode<Q> const& node,
                                                            Env const&,
@@ -468,6 +475,9 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
 {
     sink.entered(node);
     Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.value(), Describe<Q>::unit);
+    if constexpr (requires { Env::template provides<Q>; })
+        if constexpr (Env::template provides<Q>)
+            detail::report_input_source<Q, Env>(node, sink);
     sink.produced(node, evaluated);
     return evaluated;
 }

@@ -81,6 +81,8 @@ add_executable(formula-cpp-tests
     record_trace_tests.cpp
     lineage_tests.cpp
     record_render_tests.cpp
+    record_join_tests.cpp
+    record_cross_tu_b.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -1406,6 +1408,13 @@ formula_add_negative_test(overlay_argument_not_an_operation
 # inside. The REJECT pins that the unused-quantity rule waits until every node
 # is known: the only use here is inside the unknown node, where it cannot be
 # seen, and "unused" would be false.
+# The same unseeable node inside three scope types. The overlay sees through
+# every scope, so the mistake is refused once -- counted by hand, one error
+# line on g++ and clang++ -- not once per scope type (the task 3 review's L5).
+formula_add_negative_test(record_scope_overlay_one_refusal
+    "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
 formula_add_negative_test(overlay_constant_unknown_node
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")

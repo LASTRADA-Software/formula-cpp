@@ -1113,10 +1113,12 @@ struct Step
 
     /// For `Variable`: whether the value was measured or typed in by a
     /// person, as the environment's entry says -- `Measured<Q>` or
-    /// `Entered<Q>` (`environment.hpp`). Never `Derived`: an input is not
-    /// computed. Empty for every other kind, and for a variable read from an
-    /// environment that cannot say (one without `is_entered`), which is
-    /// recorded as not known rather than guessed.
+    /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant`: the same,
+    /// of the environment's value the overlay's constant replaced; empty when
+    /// the environment held none. Never `Derived`: an input is not computed.
+    /// Empty for every other kind, and for an environment that cannot say
+    /// (one without `is_entered`), which is recorded as not known rather than
+    /// guessed.
     std::optional<ValueSource> inputSource {};
 
     /// Which record this step's value was read from: set on **every** step
@@ -2460,7 +2462,8 @@ class RecordingSink
         // evaluator writes it -- and it is emptied again regardless, so that
         // nothing a caller wrote by hand outlives the step it was written
         // during.
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable
+                      || detail::StepKindOf<N>::value == StepKind::OverriddenConstant)
             nodeStep.inputSource = _trace->pendingInputSource;
         _trace->pendingInputSource.reset();
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
