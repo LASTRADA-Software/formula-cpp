@@ -613,6 +613,11 @@ These belong to the downstream norm libraries and to LASTRADA, **not** to formul
 them here fixes the boundary: this library expresses methods, constraints and their traces; it does
 not model plant lifecycles, solve assignment problems, or read graphs.
 
+One item is only half outside. A lineage predicate's *comparison* — whether two records carry the
+same declared attribute — is a check the library can declare and trace (§17, phase 14). What stays
+downstream is knowing where those attributes come from: batches, sampling plans and record
+lifecycles are not modelled here.
+
 ## 17. Phasing
 
 Each phase builds, tests and is left green.
