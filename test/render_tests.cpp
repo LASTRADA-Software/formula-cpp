@@ -4,6 +4,8 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -1443,6 +1445,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3>));          // SeriesVarNode
 
     // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
@@ -1600,4 +1603,42 @@ TEST_CASE("render: a lookup key's name is set in math mode, where the site's Mat
         == "\\operatorname{lookup}(\\mathrm{key\\ fit\\_2},\\allowbreak \\mathrm{key\\ fit\\_2\\ gives\\ 1127/1000},"
            "\\allowbreak \\mathrm{key\\ loose\\ gives\\ 863/1000})");
     CHECK(formula::detail::latex_math_words("key fit_2") == "key\\ fit\\_2");
+}
+
+// ---- A series variable, marked as a series in the formula itself (phase 12, S14) ----
+
+namespace
+{
+namespace series_render
+{
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
+    {
+    };
+} // namespace series_render
+} // namespace
+
+TEST_CASE("a series variable is marked as a series in the formula itself, in every dialect", "[series][render]")
+{
+    // S14 as ruled; the marker task 1 chose (task-1-spike.md): LaTeX braces
+    // the whole symbol then subscripts it, plain and Markdown append `(i)`,
+    // Markdown inside the backticks.
+    using series_render::Retained;
+    constexpr auto everyone = formula::vocabulary(formula::renames<Retained>("x_m"));
+    CHECK(formula::render(formula::series<Retained, 5>, everyone) == "x_m(i)");
+    CHECK(formula::render<formula::Dialect::Markdown>(formula::series<Retained, 5>, everyone) == "`x_m(i)`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, everyone) == "{x_m}_{i}");
+    // A scalar of the same quantity is NOT marked, so the two read differently.
+    CHECK(formula::render(formula::var<Retained>, everyone) == "x_m");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::var<Retained>, everyone) == "x_m");
+    // The marker wraps the jurisdiction's symbol, never the declared one.
+    CHECK(formula::render(formula::series<Retained, 5>) == "m_r(i)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>) == "{m_r}_{i}");
+    // A symbol with a braced subscript still groups (typeset clean in task 1).
+    constexpr auto braced = formula::vocabulary(formula::renames<Retained>("f_{c}"));
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, braced) == "{f_{c}}_{i}");
+    // The known limit, pinned so it is a decision and not an accident: a
+    // symbol that already ends in `)` reads with two parenthesised groups.
+    constexpr auto parenthesised = formula::vocabulary(formula::renames<Retained>("w(t)"));
+    CHECK(formula::render(formula::series<Retained, 5>, parenthesised) == "w(t)(i)");
+    CHECK(formula::render<formula::Dialect::Markdown>(formula::series<Retained, 5>, parenthesised) == "`w(t)(i)`");
 }

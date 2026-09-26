@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/trace.hpp>
@@ -13,6 +14,8 @@
 #include <cstdint>
 #include <expected>
 #include <iterator>
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1873,4 +1876,168 @@ TEST_CASE("a rounding or a numeric value in a unit with no symbol adds no unit c
         formula::RecordingSink<> { namedNumericTrace });
     CHECK(formula::render_trace(namedNumericTrace, { .maxSteps = 10 })
               .ends_with("2. numeric(#1, in MPa) = 30 (the fit is stated in MPa)\n"));
+}
+
+// ---- A series on the trace (phase 12) ----
+
+namespace
+{
+namespace series_trace
+{
+    // The shared fixture of the phase 12 plan: an invented screen analysis.
+    // Every element differs, and the middle one was not measured.
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+    {
+    };
+    struct Sieved: formula::Quantity<Sieved, "m_s", "mass passing a screen", unit::Gram>
+    {
+    };
+    struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", unit::Gram>
+    {
+    };
+    struct Stockpile: formula::Quantity<Stockpile, "m_p", "stockpile mass", unit::Tonne>
+    {
+    };
+
+    [[nodiscard]] constexpr formula::Measured<Retained> retained(std::int64_t grams)
+    {
+        return formula::Measured<Retained> { formula::Rational { grams } };
+    }
+
+    inline constexpr auto inputs = formula::environment(
+        formula::measured_series<Retained>(
+            retained(130), retained(210), formula::Measured<Retained>::absent(), retained(340), retained(28)),
+        formula::Measured<TotalMass> { formula::Rational { 1000 } });
+
+    inline constexpr auto allPresent = formula::environment(
+        formula::measured_series<Retained>(retained(130), retained(210), retained(95), retained(340), retained(28)));
+
+    /// The series step, then a second step of its own walk: `m_t`, read as a
+    /// single value into the same trace.
+    [[nodiscard]] inline formula::Trace<> series_then_total()
+    {
+        formula::Trace<> trace {};
+        (void) formula::detail::dispatch_series<formula::Rational>(
+            formula::series<Retained, 5>, inputs, formula::RecordingSink<> { trace });
+        (void) formula::checked_evaluate_si<formula::Rational>(
+            formula::var<TotalMass>, inputs, formula::RecordingSink<> { trace });
+        return trace;
+    }
+} // namespace series_trace
+} // namespace
+
+TEST_CASE("a series step names its quantity in the sink's vocabulary and lists every element", "[series][trace]")
+{
+    using series_trace::Retained;
+    using series_trace::Sieved;
+    formula::Trace<> trace {};
+    formula::RecordingSink sink { trace, formula::vocabulary(formula::renames<Retained>("R")) };
+    (void) formula::detail::dispatch_series<formula::Rational>(formula::series<Retained, 5>, series_trace::inputs, sink);
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 20 });
+    CHECK(text.find("R = ") != std::string::npos);
+    CHECK(text.find("m_r") == std::string::npos);            // the declared symbol, dropped
+    CHECK(text.find("130 g") != std::string::npos);          // shown in the unit entered, not kg
+    CHECK(text.find("(not measured)") != std::string::npos); // the absent element, as absence
+    CHECK(text.find("28 g") != std::string::npos);           // the last element, not cut
+    // In order, one line, every element in its own place.
+    CHECK(text == "1. R = 130 g; 210 g; (not measured); 340 g; 28 g\n");
+
+    // Crossed over: the other jurisdiction writes Retained as S and Sieved
+    // as R, so a sink that looked the symbol up by the wrong quantity, or
+    // ignored the vocabulary, writes the wrong letter.
+    formula::Trace<> crossed {};
+    formula::RecordingSink crossedSink {
+        crossed, formula::vocabulary(formula::renames<Retained>("S"), formula::renames<Sieved>("R"))
+    };
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Retained, 5>, series_trace::inputs, crossedSink);
+    CHECK(formula::render_trace(crossed, { .maxSteps = 20 }) == "1. S = 130 g; 210 g; (not measured); 340 g; 28 g\n");
+}
+
+TEST_CASE("a series step never renders as a single absent value", "[series][trace]")
+{
+    // Step::value is empty for a series step. A renderer that consulted it
+    // would print "(not measured)" for a fully present series.
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<series_trace::Retained, 5>, series_trace::allPresent, formula::RecordingSink<> { trace });
+    REQUIRE(trace.steps.size() == 1);
+    CHECK(!trace.steps[0].value.has_value());
+    std::string const text = formula::render_trace(trace, { .maxSteps = 20 });
+    CHECK(text.find("(not measured)") == std::string::npos);
+    CHECK(text == "1. m_r = 130 g; 210 g; 95 g; 340 g; 28 g\n");
+}
+
+TEST_CASE("a long series shares the one maxSteps budget and says how much it left out", "[series][trace]")
+{
+    // Each line costs one unit of maxSteps and each element shown one more.
+    // The count left out is exact, so it is pinned at several budgets: a
+    // count hard-coded, or computed from the wrong side, fails at least one.
+    formula::Trace<> const trace = series_trace::series_then_total();
+    REQUIRE(trace.steps.size() == 2);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 3 })
+          == "1. m_r = 130 g; 210 g; ... 3 more\n"
+             "... 1 further step not shown\n");
+    CHECK(formula::render_trace(trace, { .maxSteps = 5 })
+          == "1. m_r = 130 g; 210 g; (not measured); 340 g; ... 1 more\n"
+             "... 1 further step not shown\n");
+    // Exactly enough for the series, and none left for the next line.
+    CHECK(formula::render_trace(trace, { .maxSteps = 6 })
+          == "1. m_r = 130 g; 210 g; (not measured); 340 g; 28 g\n"
+             "... 1 further step not shown\n");
+    CHECK(formula::render_trace(trace, { .maxSteps = 7 })
+          == "1. m_r = 130 g; 210 g; (not measured); 340 g; 28 g\n"
+             "2. m_t = 1000 g\n");
+    // The line itself and nothing else: every element is left out, and said so.
+    CHECK(formula::render_trace(trace, { .maxSteps = 1 })
+          == "1. m_r = ... 5 more\n"
+             "... 1 further step not shown\n");
+}
+
+TEST_CASE("every surface that shows element values carries the truncation count", "[series][trace]")
+{
+    // S5's "every dialect". render_trace writes plain text, and it carries the
+    // count (above). The gallery's worked sections (tools/gallery) copy
+    // render_trace's output verbatim into a fenced Markdown block, so they
+    // carry whatever it carries: pinned here on that same shape.
+    formula::Trace<> const trace = series_trace::series_then_total();
+    std::string const gallerySection = "```\n" + formula::render_trace(trace, { .maxSteps = 3 }) + "```\n";
+    CHECK(gallerySection.find("... 3 more") != std::string::npos);
+
+    // render() and document() print a formula, never element values, in all
+    // three dialects -- so they have nothing to truncate. A later change that
+    // starts showing values there, and so needs the count too, fails here.
+    constexpr auto screens = formula::series<series_trace::Retained, 5>;
+    std::vector<std::string> const pages { formula::render(screens),
+                                           formula::render<formula::Dialect::Markdown>(screens),
+                                           formula::render<formula::Dialect::LaTeX>(screens),
+                                           formula::document(screens).formula,
+                                           formula::document<formula::Dialect::LaTeX>(screens).formula };
+    for (std::string const& page: pages)
+    {
+        INFO(page);
+        CHECK(page.find("130") == std::string::npos);
+        CHECK(page.find("more") == std::string::npos);
+    }
+}
+
+TEST_CASE("a series that failed at an element names that element, counted from one", "[series][trace]")
+{
+    // Positions are zero-based in the API and one-based in every text the
+    // library writes. The failure is at zero-based 2, so the line says 3.
+    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
+    constexpr auto overflowing = formula::environment(formula::measured_series<series_trace::Stockpile>(
+        formula::Measured<series_trace::Stockpile> { formula::Rational { 1 } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { 2 } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { tooLarge } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { 3 } }));
+
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<series_trace::Stockpile, 4>, overflowing, formula::RecordingSink<> { trace });
+    REQUIRE(trace.steps.size() == 1);
+    CHECK(trace.steps[0].failedElement == std::optional<std::size_t> { 2 });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 }) == "1. m_p = overflow in exact arithmetic at element 3\n");
 }

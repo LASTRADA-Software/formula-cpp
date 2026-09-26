@@ -43,6 +43,7 @@
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -195,6 +196,41 @@ namespace detail
     [[nodiscard]] constexpr Precedence precedence_of(ReplacedVariantNode<Expr> const& node) noexcept
     {
         return precedence_of(node.replacement());
+    }
+
+    /// A series node brackets by its type alone: nothing a series holds
+    /// changes its rendered shape at run time the way a constant's sign does.
+    template <SeriesNode S>
+    [[nodiscard]] constexpr Precedence precedence_of(S const&) noexcept
+    {
+        return PrecedenceOf<S>::value;
+    }
+
+    /// @p quantitySymbol -- already the jurisdiction's, through `symbol_of` -- marked
+    /// as a series in dialect @p D: `x_m(i)` in plain text, `` `x_m(i)` `` in
+    /// Markdown (the marker inside the backticks, so the code span keeps it
+    /// literal), and `{x_m}_{i}` in LaTeX (the whole symbol braced, then
+    /// subscripted, so the index attaches to the symbol even when it already
+    /// carries a subscript of its own).
+    ///
+    /// **The one place the marker is spelled.** Every series node that names
+    /// a quantity calls this, so the marker cannot drift between node kinds.
+    /// Chosen by the phase 12 spike: under MathJax 3.2.2 with the site's
+    /// configuration and under tectonic 0.17.0 with `[OT1]{fontenc}`,
+    /// `{x_m}_{i}`, `{R}_{i}` and `{f_{c}}_{i}` typeset, while `x_m_i` is a
+    /// "Double subscript" error in both; python-markdown 3.10.3 keeps
+    /// `` `x_m(i)` `` literal. A symbol that already ends in `)` reads
+    /// `w(t)(i)`, and a LaTeX symbol that is not a balanced TeX group breaks
+    /// the braces; neither is checked here.
+    template <Dialect D>
+    [[nodiscard]] std::string series_marker(std::string quantitySymbol)
+    {
+        if constexpr (D == Dialect::LaTeX)
+            return "{" + quantitySymbol + "}_{i}";
+        else if constexpr (D == Dialect::Markdown)
+            return "`" + quantitySymbol + "(i)`";
+        else
+            return quantitySymbol + "(i)";
     }
 
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
@@ -568,6 +604,12 @@ namespace detail
 template <Dialect D, Node N>
 [[nodiscard]] std::string render(N const& node);
 
+/// Renders the series @p node in dialect @p D. A series is not a `Node`
+/// (`expression.hpp`), so it needs overloads of its own; each series variable
+/// in it is marked as a series (`detail::series_marker`).
+template <Dialect D, SeriesNode S>
+[[nodiscard]] std::string render(S const& node);
+
 /// Renders @p node in dialect @p D. A `PredicateNode` is not a `Node` -- see
 /// `predicate.hpp` -- so it needs this second overload rather than the one
 /// above; `WhenNode::render_node` calls this one to render its predicate.
@@ -590,13 +632,18 @@ template <Dialect D, Node N, Vocabulary V>
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(P const& node, V const& vocabulary);
 
+/// The `SeriesNode` counterpart of the overload above.
+template <Dialect D, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(S const& node, V const& vocabulary);
+
 /// The `Constraint` counterpart of the overload above.
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary);
 
 namespace detail
 {
-    template <Dialect D, Node Child, Vocabulary V>
+    template <Dialect D, typename Child, Vocabulary V>
+        requires Node<Child> || SeriesNode<Child>
     [[nodiscard]] std::string render_operand(Child const& child, Precedence context, V const& vocabulary)
     {
         std::string childText = render<D>(child, vocabulary);
@@ -627,6 +674,16 @@ template <Dialect D, Described Q, Vocabulary V>
         return "`" + quantitySymbol + "`";
     else
         return quantitySymbol;
+}
+
+/// A series variable renders as its quantity's symbol under @p vocabulary,
+/// marked as a series in the formula itself (`detail::series_marker`), so a
+/// reader can tell `x_m(i)` from the single value `x_m` without the symbol
+/// table. The marker wraps the jurisdiction's symbol, never the declared one.
+template <Dialect D, Described Q, std::size_t N, Vocabulary V>
+[[nodiscard]] std::string render_node(SeriesVarNode<Q, N> const&, V const& vocabulary)
+{
+    return detail::series_marker<D>(std::string { symbol_of<Q>(vocabulary) });
 }
 
 /// A constant renders as its number, followed by its unit's symbol when it has one.
@@ -1201,6 +1258,36 @@ template <Dialect D, Node N>
 /// Renders @p node as plain text.
 template <Node N>
 [[nodiscard]] std::string render(N const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+/// Renders the series @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(S const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the series @p node as plain text, writing symbols as
+/// @p vocabulary says.
+template <SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(S const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders the series @p node in dialect @p D.
+template <Dialect D, SeriesNode S>
+[[nodiscard]] std::string render(S const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders the series @p node as plain text.
+template <SeriesNode S>
+[[nodiscard]] std::string render(S const& node)
 {
     return render<Dialect::Plain>(node);
 }

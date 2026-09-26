@@ -131,6 +131,40 @@ struct SeriesFailure
 template <typename Rep, std::size_t N>
 using EvaluatedSeries = std::expected<SeriesValue<Rep, N>, SeriesFailure>;
 
+namespace detail
+{
+    /// Whether @p Sink wants to hear about the series node @p S: true when it
+    /// defines **both** `series_entered(node)` and `series_produced(node,
+    /// result)`, and false otherwise -- a sink defining only one is told
+    /// nothing, rather than told half and left with an `entered` it will never
+    /// see matched. The shape `evaluate_method` uses for `variant_entered` and
+    /// `variant_produced` (`sink.hpp`), for the same reason. `NullSink`
+    /// defines neither and pays nothing, and a sink written before series
+    /// existed, whose `entered` and `produced` are constrained on `Node`,
+    /// keeps compiling and is told nothing.
+    template <typename Sink, typename S, typename Rep>
+    concept HearsSeries = requires(Sink sink, S const& node, EvaluatedSeries<Rep, S::length> const& evaluated) {
+        sink.series_entered(node);
+        sink.series_produced(node, evaluated);
+    };
+
+    /// Tells @p sink that @p node is about to be evaluated, if it asks.
+    template <typename Rep, SeriesNode S, typename Sink>
+    constexpr void tell_series_entered(Sink& sink, S const& node)
+    {
+        if constexpr (HearsSeries<Sink, S, Rep>)
+            sink.series_entered(node);
+    }
+
+    /// Tells @p sink what @p node produced, if it asks.
+    template <typename Rep, SeriesNode S, typename Sink>
+    constexpr void tell_series_produced(Sink& sink, S const& node, EvaluatedSeries<Rep, S::length> const& evaluated)
+    {
+        if constexpr (HearsSeries<Sink, S, Rep>)
+            sink.series_produced(node, evaluated);
+    }
+} // namespace detail
+
 /// Looks the series for `Q` up in `environment` and converts each present
 /// element to the coherent SI unit of its dimension.
 ///
@@ -138,27 +172,32 @@ using EvaluatedSeries = std::expected<SeriesValue<Rep, N>, SeriesFailure>;
 /// quantity it holds as a single value and a series of another length than
 /// `N`.
 ///
-/// The sink is accepted, and told nothing yet: telling a sink about a series
-/// takes hooks of its own, since `entered` and `produced` are constrained on
-/// `Node` (see `sink.hpp`).
+/// A sink hears about the series through `series_entered` and
+/// `series_produced` when it defines both (`detail::HearsSeries`), never
+/// through `entered` and `produced`, which are constrained on `Node`.
 template <typename Rep = Rational, Described Q, std::size_t N, typename Env, typename Sink = NullSink>
-[[nodiscard]] constexpr EvaluatedSeries<Rep, N> checked_evaluate_series_si(SeriesVarNode<Q, N> const&,
+[[nodiscard]] constexpr EvaluatedSeries<Rep, N> checked_evaluate_series_si(SeriesVarNode<Q, N> const& node,
                                                                            Env const& environment,
-                                                                           Sink = {}) noexcept
+                                                                           Sink sink = {}) noexcept
 {
-    MeasuredSeries<Q, N> const measured = environment.template get_series<Q, N>();
-    SeriesValue<Rep, N> inCoherentUnit;
-    for (std::size_t at = 0; at < N; ++at)
-    {
-        Measured<Q> const measuredElement = measured.element(at);
-        if (measuredElement.is_absent())
-            continue;
-        Evaluated<Rep> const elementInSi = detail::in_si<Rep>(*measuredElement.stored(), Describe<Q>::unit);
-        if (!elementInSi.has_value())
-            return std::unexpected { SeriesFailure { elementInSi.error(), at } };
-        inCoherentUnit.elements[at] = **elementInSi;
-    }
-    return inCoherentUnit;
+    detail::tell_series_entered<Rep>(sink, node);
+    EvaluatedSeries<Rep, N> const evaluated = [&]() -> EvaluatedSeries<Rep, N> {
+        MeasuredSeries<Q, N> const measured = environment.template get_series<Q, N>();
+        SeriesValue<Rep, N> inCoherentUnit;
+        for (std::size_t at = 0; at < N; ++at)
+        {
+            Measured<Q> const measuredElement = measured.element(at);
+            if (measuredElement.is_absent())
+                continue;
+            Evaluated<Rep> const elementInSi = detail::in_si<Rep>(*measuredElement.stored(), Describe<Q>::unit);
+            if (!elementInSi.has_value())
+                return std::unexpected { SeriesFailure { elementInSi.error(), at } };
+            inCoherentUnit.elements[at] = **elementInSi;
+        }
+        return inCoherentUnit;
+    }();
+    detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
 }
 
 namespace detail

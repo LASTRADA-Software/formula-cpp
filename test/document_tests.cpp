@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -762,4 +764,65 @@ TEST_CASE("document: the rendered formula and the symbol table agree on every lo
     formulaAndSymbolsAgree<PlateThickness, GaugeDiameter, AbsentReading>(var<GaugeDiameter> * bandedLookup());
     formulaAndSymbolsAgree<PlateThickness, GaugeDiameter, AbsentReading>(var<GaugeDiameter> * apparatusLookup());
     formulaAndSymbolsAgree<CoreLength, GaugeDiameter, AbsentReading>(profileLookup() * var<GaugeDiameter>);
+}
+
+// ---- A series in the symbol table (phase 12) ----
+
+namespace
+{
+namespace series_document
+{
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
+    {
+    };
+} // namespace series_document
+} // namespace
+
+TEST_CASE("the symbol table marks a series and its length", "[series][document]")
+{
+    using series_document::Retained;
+    auto const page = formula::document(formula::series<Retained, 5>, formula::vocabulary(formula::renames<Retained>("R")));
+    REQUIRE(page.symbols.size() == 1);
+    CHECK(page.symbols[0].symbol == "R");
+    CHECK(page.symbols[0].description == "mass retained on a screen");
+    CHECK(page.symbols[0].unit == formula::unit::Gram);
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[0].length == 5);
+    // The formula line carries the marker; the table says how long.
+    CHECK(page.formula == "R(i)");
+    CHECK(formula::document<formula::Dialect::LaTeX>(formula::series<Retained, 5>).formula == "{m_r}_{i}");
+
+    // A single value's row says so, and reads one value.
+    auto const single = formula::document(formula::var<Retained>);
+    REQUIRE(single.symbols.size() == 1);
+    CHECK(single.symbols[0].shape == formula::ValueShape::Single);
+    CHECK(single.symbols[0].length == 1);
+}
+
+TEST_CASE("a series row is one row per quantity, shape and length", "[series][document]")
+{
+    // No node combines a series with a single value until elementwise
+    // arithmetic arrives, so the walk is driven directly: a scalar read, the
+    // series read twice, and the same quantity over another length. The
+    // environment refuses to supply both shapes of one quantity, but the page
+    // describes the formula, not an environment, and says what it reads.
+    using series_document::Retained;
+    formula::detail::Walk<formula::DefaultVocabulary> walk {
+        .documentation = {}, .seenQuantities = {}, .dialect = formula::Dialect::Plain, .vocabulary = {}
+    };
+    formula::detail::collect(walk, formula::var<Retained>);
+    formula::detail::collect(walk, formula::series<Retained, 5>);
+    formula::detail::collect(walk, formula::series<Retained, 5>);
+    formula::detail::collect(walk, formula::series<Retained, 3>);
+    auto const& rows = walk.documentation.symbols;
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[0].shape == formula::ValueShape::Single);
+    CHECK(rows[1].shape == formula::ValueShape::Series);
+    CHECK(rows[1].length == 5);
+    CHECK(rows[2].shape == formula::ValueShape::Series);
+    CHECK(rows[2].length == 3);
+    // One symbol for all three rows: the table distinguishes them by shape
+    // and length, not by spelling.
+    CHECK(rows[0].symbol == rows[1].symbol);
+    CHECK(rows[1].symbol == rows[2].symbol);
 }

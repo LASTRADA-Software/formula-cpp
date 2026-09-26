@@ -17,9 +17,11 @@
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +30,15 @@
 
 namespace formula
 {
+
+/// Whether a symbol-table row is read as one value or as a series of them.
+enum class ValueShape : std::uint8_t
+{
+    /// One value: `var<Q>`.
+    Single,
+    /// A series of `SymbolEntry::length` values: `series<Q, N>`.
+    Series,
+};
 
 /// One row of a formula's symbol table: how a variable is written, what it
 /// means, and the unit its values are expressed in.
@@ -86,6 +97,16 @@ struct SymbolEntry
     /// specimen's value is read as well, and one saying only "read" would hide
     /// the fixed value. It says both, in whichever order the two were met.
     bool alsoReadAsInput {};
+
+    /// Whether the formula reads this quantity as one value or as a series.
+    /// The rendered formula already marks a series (`x_m(i)`, see
+    /// `detail::series_marker`); this row says it again, for a reader who
+    /// starts at the table.
+    ValueShape shape = ValueShape::Single;
+
+    /// How many values the formula reads for this row: the series' length
+    /// `N`, or one for a single value.
+    std::size_t length = 1;
 
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
@@ -149,6 +170,14 @@ namespace detail
     /// a difference this library has already been bitten by once elsewhere.
     template <typename Q>
     inline bool quantityIdentity = false;
+
+    /// A distinct address per quantity @p Q read as a series of @p N, for
+    /// `quantityIdentity`'s reason and in the same writable form. Distinct from
+    /// `quantityIdentity<Q>` and from every other length, so that the symbol
+    /// table has one row per quantity, shape and length: `var<Q>` and
+    /// `series<Q, 5>` in one formula are two rows with one symbol.
+    template <typename Q, std::size_t N>
+    inline bool seriesIdentity = false;
 
     /// The walk's own state: the `Documentation` being assembled, plus which
     /// quantities have already contributed a row, tracked in parallel because
@@ -272,6 +301,9 @@ namespace detail
 
     template <Vocabulary V, Predicate P>
     void collect(Walk<V>& walk, Constraint<P> const& node);
+
+    template <Vocabulary V, Described Q, std::size_t N>
+    void collect(Walk<V>& walk, SeriesVarNode<Q, N> const& node);
 
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
@@ -546,6 +578,26 @@ namespace detail
             walk.documentation.citations.push_back(node.citation);
         collect(walk, node.predicate);
     }
+
+    /// A series variable contributes one row, marked as a series of @p N --
+    /// unless the same quantity has already contributed a series row of that
+    /// length. Deduplicated on quantity, shape and length (`seriesIdentity`),
+    /// so a single value of the same quantity, or a series of it over another
+    /// length, is a row of its own.
+    template <Vocabulary V, Described Q, std::size_t N>
+    void collect(Walk<V>& walk, SeriesVarNode<Q, N> const&)
+    {
+        void const* const identity = &seriesIdentity<Q, N>;
+        for (void const* const seen: walk.seenQuantities)
+            if (seen == identity)
+                return;
+        walk.seenQuantities.push_back(identity);
+        walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                                           .description = Describe<Q>::description,
+                                                           .unit = Describe<Q>::unit,
+                                                           .shape = ValueShape::Series,
+                                                           .length = N });
+    }
 } // namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
@@ -569,6 +621,30 @@ template <Dialect D = Dialect::Plain, Node N, Vocabulary V>
 /// Documents @p node in the default vocabulary, which renames nothing.
 template <Dialect D = Dialect::Plain, Node N>
 [[nodiscard]] Documentation document(N const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
+
+/// Documents the series @p node: renders it in dialect @p D, each series
+/// variable marked, and walks it for the symbol table, whose rows say which
+/// quantities are read as a series and how long (`SymbolEntry::shape`,
+/// `SymbolEntry::length`). A series is not a `Node` (`expression.hpp`), so it
+/// needs this overload rather than the one above.
+template <Dialect D = Dialect::Plain, SeriesNode S, Vocabulary V>
+[[nodiscard]] Documentation document(S const& node, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents the series @p node in the default vocabulary, which renames
+/// nothing.
+template <Dialect D = Dialect::Plain, SeriesNode S>
+[[nodiscard]] Documentation document(S const& node)
 {
     return document<D>(node, DefaultVocabulary {});
 }

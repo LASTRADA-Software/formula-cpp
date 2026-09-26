@@ -53,6 +53,19 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 
 /// An observer that observes nothing: the default, and the one the untraced
 /// path uses. Empty and stateless, so a by-value copy is free.
+///
+/// **A series (`series.hpp`) reaches a sink through two optional members of
+/// its own**, never through `entered` and `produced`, which stay constrained
+/// on `Node` because every `Node` still produces one value:
+///
+///     sink.series_entered(node);            // before the series is evaluated
+///     sink.series_produced(node, result);   // after, with its EvaluatedSeries
+///
+/// A sink defines both or neither: the evaluator asks for the pair in one
+/// `requires` (`detail::HearsSeries`), so a sink defining only one is told
+/// nothing. This sink defines neither and pays nothing, and a sink written
+/// before series existed keeps compiling and is told nothing about them.
+/// `RecordingSink` (`trace.hpp`) defines both.
 struct NullSink
 {
     /// Told that a node is about to be evaluated, and does nothing with it.

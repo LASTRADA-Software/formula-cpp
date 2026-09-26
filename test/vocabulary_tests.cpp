@@ -725,3 +725,41 @@ TEST_CASE("a constraint over the overlaid quantities traces and documents in the
              "3. require #1 >= #2 [satisfied]\n");
     CHECK(formula::document<formula::Dialect::LaTeX>(limit, everyVocabulary).formula == "\\text{require } E \\geq R");
 }
+
+// ---- A series in two jurisdictions' words (phase 12) ----
+
+namespace
+{
+namespace series_vocabulary
+{
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+    {
+    };
+    struct Sieved: formula::Quantity<Sieved, "m_s", "mass passing a screen", unit::Gram>
+    {
+    };
+
+    // Crossed over, as `north` and `south` above are.
+    inline constexpr auto east = formula::vocabulary(formula::renames<Retained>("R"), formula::renames<Sieved>("S"));
+    inline constexpr auto west = formula::vocabulary(formula::renames<Retained>("S"), formula::renames<Sieved>("R"));
+} // namespace series_vocabulary
+} // namespace
+
+TEST_CASE("a series is written in the page's vocabulary, marked, in every dialect", "[series][vocabulary]")
+{
+    using series_vocabulary::east;
+    using series_vocabulary::Retained;
+    using series_vocabulary::Sieved;
+    using series_vocabulary::west;
+    CHECK(formula::render(formula::series<Retained, 5>, east) == "R(i)");
+    CHECK(formula::render(formula::series<Retained, 5>, west) == "S(i)");
+    CHECK(formula::render(formula::series<Sieved, 5>, west) == "R(i)");
+    CHECK(formula::render<formula::Dialect::Markdown>(formula::series<Retained, 5>, west) == "`S(i)`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, west) == "{S}_{i}");
+
+    auto const page = formula::document(formula::series<Retained, 5>, west);
+    CHECK(page.formula == "S(i)");
+    REQUIRE(page.symbols.size() == 1);
+    CHECK(page.symbols[0].symbol == "S");
+    CHECK(page.symbols[0].description == "mass retained on a screen"); // what it is does not change
+}

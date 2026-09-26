@@ -28,6 +28,8 @@
 // `transform` and `combine`; `entered`, `Environment::get` and `source_of`;
 // `measured_series`, `entered` of a series, `Environment::get_series` and
 // `checked_evaluate_series` of a series variable, derived and entered;
+// `render` and `document` of a series variable, and `explain_series` with
+// its trace rendered;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -368,6 +370,19 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && readSeries->element(1).is_absent());
     probe.checks.push_back(overriddenSeries.has_value() && overriddenSeries->is_overridden()
                            && seriesInputs.get_series<EdgeX, 2>() == screens);
+
+    // A series on every surface: rendered in the three dialects, documented,
+    // and explained with its trace rendered.
+    std::string const seriesPages = formula::render(formula::series<EdgeX, 2>, north)
+                                    + formula::render<formula::Dialect::Markdown>(formula::series<EdgeX, 2>)
+                                    + formula::render<formula::Dialect::LaTeX>(formula::series<EdgeX, 2>);
+    auto const seriesDocumentation = formula::document(formula::series<EdgeX, 2>, north);
+    auto const explainedSeries = formula::explain_series<EdgeX>(formula::series<EdgeX, 2>, seriesInputs, north);
+    probe.checks.push_back(seriesPages == "x_m(i)`x_m(i)`{x_m}_{i}"
+                           && seriesDocumentation.symbols[0].shape == formula::ValueShape::Series);
+    probe.checks.push_back(explainedSeries.outcome.has_value()
+                           && formula::render_trace(explainedSeries.trace, { .maxSteps = 4 })
+                                  == "1. x_m = 150 mm; (not measured)\n");
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

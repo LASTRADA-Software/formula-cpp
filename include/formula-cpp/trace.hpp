@@ -21,6 +21,7 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -159,6 +160,17 @@ enum class StepKind : std::uint8_t
     /// `-Wshadow`: nothing in namespace `formula` is spelt
     /// `AcceptanceChecked`.
     AcceptanceChecked,
+    /// A series variable (`SeriesVarNode`, `series.hpp`): the quantity's
+    /// symbol and declared unit, and every element, in `Step::elements` --
+    /// never in `Step::value`, which a series step leaves empty. A failure
+    /// records its element in `Step::failedElement`.
+    ///
+    /// Recorded by `RecordingSink::series_produced`, not through
+    /// `detail::StepKindOf`: a series is not a `Node`, and its registry is
+    /// `detail::SeriesStepKindOf`. Checked on GCC under `-Wshadow`: the node
+    /// is `SeriesVarNode` and its spelling in a formula `series`, so nothing
+    /// in namespace `formula` is spelt `SeriesVariable`.
+    SeriesVariable,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -710,6 +722,24 @@ struct Step
     /// is dispatched after the predicate, because a constraint has no
     /// branch.
     std::vector<std::size_t> operands {};
+
+    /// For a series step (`SeriesVariable`): every element it produced, in
+    /// the series' own order and in the coherent SI unit of `dimension`, each
+    /// empty when that element was not measured. `value` stays empty for a
+    /// series step, so that no renderer can mistake a series for one absent
+    /// number; `trace_render.hpp` reads these instead, and spends one unit of
+    /// `maxSteps` on each element it shows.
+    ///
+    /// Empty when the series failed: there is no partial series, and the
+    /// elements computed before the failure are not a result (`series.hpp`).
+    /// Empty for every step that is not a series.
+    std::vector<std::optional<Rep>> elements {};
+
+    /// For a series step that failed: the ZERO-BASED position of the element
+    /// it failed at, or empty when the failure belongs to no single element.
+    /// `trace_render.hpp` prints it one-based, as every text this library
+    /// writes prints a position. Empty for every other step.
+    std::optional<std::size_t> failedElement {};
 };
 
 /// A recorded derivation: a flat arena of steps.
@@ -932,6 +962,20 @@ namespace detail
     template <typename N>
     concept PassesThroughRecordedStep =
         requires { typename PassedThrough<N>::type; } && RecordsStep<typename PassedThrough<N>::type>;
+
+    /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
+    /// `SeriesNode`, and closed the same way. The primary template is left
+    /// undefined, so a series node kind added without an entry here fails to
+    /// compile against `RecordingSink` rather than being recorded as some
+    /// other kind.
+    template <typename S>
+    struct SeriesStepKindOf;
+
+    template <Described Q, std::size_t N>
+    struct SeriesStepKindOf<SeriesVarNode<Q, N>>
+    {
+        static constexpr StepKind value = StepKind::SeriesVariable;
+    };
 
     /// Whether @p stepKind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
@@ -1649,6 +1693,63 @@ class RecordingSink
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
+    /// Told that a series node is about to be evaluated. Remembers where the
+    /// arena stood, exactly as `entered` does for a `Node`, so that
+    /// `series_produced` below can claim the steps beneath it.
+    ///
+    /// A series is not a `Node`, so it comes through this pair rather than
+    /// through `entered` and `produced` -- see `NullSink` (`sink.hpp`).
+    template <SeriesNode S>
+    void series_entered(S const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one step for the whole series @p node -- however long it is --
+    /// carrying every element in `Step::elements`, and claims as its operands
+    /// every step recorded since the matching `series_entered`.
+    ///
+    /// A series variable names its quantity, so its symbol is written here
+    /// through the vocabulary this sink was given, and its unit is the one
+    /// the quantity is declared in, for the renderer to convert each element
+    /// back to. A failure records its error and the element it arose at, and
+    /// no elements.
+    template <SeriesNode S>
+    void series_produced(S const&, EvaluatedSeries<Rep, S::length> const& result)
+    {
+        std::size_t const seriesMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> seriesStep {};
+        seriesStep.kind = detail::SeriesStepKindOf<S>::value;
+        seriesStep.dimension = S::dimension;
+        seriesStep.unit = coherent(S::dimension);
+        if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesVariable)
+        {
+            seriesStep.unit = Describe<typename S::quantity>::unit;
+            seriesStep.symbol = symbol_of<typename S::quantity>(_vocabulary);
+        }
+
+        // Everything unclaimed from `seriesMark` onwards belongs to this
+        // series -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < seriesMark)
+            ++firstClaimed;
+        seriesStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        if (!result.has_value())
+        {
+            seriesStep.error = result.error().error;
+            seriesStep.failedElement = result.error().element;
+        }
+        else
+            seriesStep.elements.assign(result->elements.begin(), result->elements.end());
+
+        _trace->steps.push_back(std::move(seriesStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
   private:
     Trace<Rep>* _trace;
     FORMULA_NO_UNIQUE_ADDRESS V _vocabulary;
@@ -1709,6 +1810,39 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
     RecordingSink<Rep, V> recordingSink { explained.trace, vocabulary };
     explained.outcome = evaluate<Result>(expression, environment, recordingSink);
     return explained;
+}
+
+/// A series outcome together with the derivation that produced it -- the
+/// series counterpart of `Explained`.
+///
+/// `outcome` is what `checked_evaluate_series` returned, **failure included**:
+/// a series has no throwing spelling, since an exception would drop the
+/// position `SeriesFailure` carries (`series.hpp`), so unlike `Explained` this
+/// cannot hold a bare outcome and throw the failure away.
+template <Described Result, std::size_t N>
+struct ExplainedSeries
+{
+    /// Exactly what `checked_evaluate_series<Result>` returned.
+    std::expected<SeriesOutcome<Result, N>, SeriesFailure> outcome;
+    /// How it was reached -- **empty** when the outcome is a typed-in series,
+    /// which was not derived. See `explain`'s comment on the same case.
+    Trace<Rational> trace {};
+};
+
+/// Evaluates the series @p expression for @p Result and records how, writing
+/// every symbol as @p vocabulary says -- the series counterpart of `explain`.
+///
+/// The outcome is identical to `checked_evaluate_series<Result>(expression,
+/// environment)`: tracing observes, it does not participate.
+template <Described Result, SeriesNode S, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedSeries<Result, S::length> explain_series(S const& expression,
+                                                                Env const& environment,
+                                                                V const& vocabulary = V {})
+{
+    Trace<Rational> recorded {};
+    std::expected<SeriesOutcome<Result, S::length>, SeriesFailure> seriesOutcome =
+        checked_evaluate_series<Result>(expression, environment, RecordingSink<Rational, V> { recorded, vocabulary });
+    return ExplainedSeries<Result, S::length> { std::move(seriesOutcome), std::move(recorded) };
 }
 
 } // namespace formula

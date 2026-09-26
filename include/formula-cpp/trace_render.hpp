@@ -37,6 +37,7 @@
 
 #include <cstddef>
 #include <expected>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -711,6 +712,11 @@ namespace detail
                 return "lookup(" + lookup_key_text(step) + ")";
             case StepKind::InterpolatingLookup:
                 return "interpolate(" + sole_operand(step) + ")";
+            // The quantity, unmarked: the marker belongs to the formula
+            // (`render()`), and a derivation line names what it read. That it
+            // is a series shows in the list of elements after the `=`.
+            case StepKind::SeriesVariable:
+                return std::string { step.symbol };
         }
         return "unknown step kind";
     }
@@ -916,22 +922,20 @@ namespace detail
                + variant_narrowing_clause(recorded) + "]";
     }
 
-    /// What a step produced, as a person should read it.
-    ///
-    /// The value is stored in the coherent SI unit of the step's dimension;
-    /// this converts it back into the unit the step was declared in and
-    /// appends that unit's symbol, so an input entered as 180 l reads
-    /// `180 l`. A step that failed shows why, and one with no value at all
-    /// says so -- absence is not an error and must not be rendered as one.
-    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded)
+    /// @p storedValue -- a step's own, or one element of a series step's -- converted
+    /// from the coherent SI unit of @p recorded's dimension into the unit the
+    /// step was declared in, with that unit's symbol, or `(not measured)` when
+    /// it is empty. Shared by `step_value_text` and `series_step_line`, so that
+    /// an element of a series reads exactly as a single value of the same
+    /// quantity does.
+    [[nodiscard]] inline std::string value_in_declared_unit(Step<Rational> const& recorded,
+                                                            std::optional<Rational> const& storedValue)
     {
-        if (recorded.error.has_value())
-            return std::string { describe(*recorded.error) };
-        if (!recorded.value.has_value())
+        if (!storedValue.has_value())
             return "(not measured)";
 
         std::expected<Rational, ArithmeticError> const shown =
-            checked_convert(*recorded.value, coherent(recorded.dimension), recorded.unit);
+            checked_convert(*storedValue, coherent(recorded.dimension), recorded.unit);
         // Unreachable for a `Step` the recorder built -- it records a unit of
         // the step's own dimension -- but a `Step` is a public aggregate and a
         // caller may fill one in by hand. Refusing to print is the only
@@ -945,6 +949,67 @@ namespace detail
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
         return valueText;
+    }
+
+    /// What a step produced, as a person should read it.
+    ///
+    /// The value is stored in the coherent SI unit of the step's dimension;
+    /// this converts it back into the unit the step was declared in and
+    /// appends that unit's symbol, so an input entered as 180 l reads
+    /// `180 l`. A step that failed shows why, and one with no value at all
+    /// says so -- absence is not an error and must not be rendered as one.
+    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded)
+    {
+        if (recorded.error.has_value())
+            return std::string { describe(*recorded.error) };
+        return value_in_declared_unit(recorded, recorded.value);
+    }
+
+    /// Whether @p kind is a series step, whose values are `Step::elements` and
+    /// never `Step::value`. One place, for the reason `is_lookup` gives.
+    [[nodiscard]] constexpr bool is_series(StepKind stepKind) noexcept
+    {
+        return stepKind == StepKind::SeriesVariable;
+    }
+
+    /// A series step's line, without its number: the expression, an `=`, and
+    /// the elements in order, separated by `; ` -- as many as @p budget
+    /// allows. Each element shown spends one unit of @p budget, and a list cut
+    /// short ends `... k more`, where `k` is exactly the number left out, so a
+    /// truncated series never reads as a complete one.
+    ///
+    /// A failed series shows its error and, when the failure belongs to one
+    /// element, that element counted from one: `overflow in exact arithmetic
+    /// at element 3` for the element at zero-based position 2.
+    ///
+    /// Reads `Step::elements` and never `Step::value`, which a series step
+    /// leaves empty: consulting it would print `(not measured)` for a series
+    /// every element of which was measured.
+    [[nodiscard]] inline std::string series_step_line(Step<Rational> const& recorded, std::size_t& budget)
+    {
+        std::string lineText = step_expression(recorded) + " = ";
+        if (recorded.error.has_value())
+        {
+            lineText += describe(*recorded.error);
+            if (recorded.failedElement.has_value())
+                lineText += " at element " + std::to_string(*recorded.failedElement + 1);
+            return lineText;
+        }
+        std::size_t const elementCount = recorded.elements.size();
+        if (elementCount == 0)
+            return lineText + "(no elements)";
+
+        std::size_t const listed = budget < elementCount ? budget : elementCount;
+        budget -= listed;
+        for (std::size_t at = 0; at < listed; ++at)
+        {
+            if (at > 0)
+                lineText += "; ";
+            lineText += value_in_declared_unit(recorded, recorded.elements[at]);
+        }
+        if (listed < elementCount)
+            lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(elementCount - listed) + " more";
+        return lineText;
     }
 
     /// A `NumericValue` step's justification, in one bracketed clause. Empty
@@ -1109,6 +1174,14 @@ namespace detail
     /// `step_line`, which makes it.
     [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded)
     {
+        // A series first, before anything reads `value`: its values are its
+        // elements. Unbounded here; `render_trace` calls `series_step_line`
+        // itself, with what is left of its budget.
+        if (is_series(recorded.kind))
+        {
+            std::size_t unbounded = recorded.elements.size();
+            return series_step_line(recorded, unbounded);
+        }
         if (recorded.kind == StepKind::Constraint)
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
         if (recorded.kind == StepKind::AcceptanceChecked)
@@ -1172,6 +1245,13 @@ namespace detail
 /// followed by exactly one line stating how many were left out: a reader is
 /// told what they are not seeing rather than silently handed a prefix.
 ///
+/// **A series step spends the same budget.** Its line costs one unit, as
+/// every line does, and each element it shows one more; a series cut short
+/// ends `... k more`, with `k` the exact number of elements left out, and the
+/// footer then counts the steps not shown at all. One number, chosen by the
+/// caller, bounds everything printed: a 256-element series printed in full on
+/// one line is the unusable line the limit exists to prevent.
+///
 /// Only an exact (`Rational`) trace can be rendered. Converting a value back
 /// into the unit it was declared in is the unit layer's exact
 /// multiply-then-divide, and there is no such operation for binary floating
@@ -1185,16 +1265,20 @@ template <typename Rep = Rational>
                   "formula: only an exact Rational trace can be rendered -- see render_trace's "
                   "documentation for why a floating-point derivation has no printable form here");
 
-    std::size_t const shown =
-        trace.steps.size() < options.maxSteps.value ? trace.steps.size() : options.maxSteps.value;
+    std::size_t budget = options.maxSteps.value;
+    std::size_t shown = 0;
 
     std::string renderedTrace;
-    for (std::size_t stepIndex = 0; stepIndex < shown; ++stepIndex)
+    while (shown < trace.steps.size() && budget > 0)
     {
-        renderedTrace += std::to_string(stepIndex + 1);
+        Step<Rational> const& recorded = trace.steps[shown];
+        --budget;
+        renderedTrace += std::to_string(shown + 1);
         renderedTrace += ". ";
-        renderedTrace += detail::step_line(trace.steps[stepIndex]);
+        renderedTrace +=
+            detail::is_series(recorded.kind) ? detail::series_step_line(recorded, budget) : detail::step_line(recorded);
         renderedTrace += "\n";
+        ++shown;
     }
 
     if (trace.steps.size() > shown)

@@ -5,8 +5,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 #include <vector>
@@ -1754,4 +1757,171 @@ TEST_CASE("a branch told with no when() entered is dropped, never read off an em
     sink.produced(var<Strength>, value);
     CHECK(trace.steps.size() == 1);
     CHECK(trace.marks.empty());
+}
+
+// ---- A series on the trace (phase 12) ----
+
+namespace
+{
+namespace series_recording
+{
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+    {
+    };
+    struct Stockpile: formula::Quantity<Stockpile, "m_p", "stockpile mass", unit::Tonne>
+    {
+    };
+
+    [[nodiscard]] constexpr formula::Measured<Retained> retained(std::int64_t grams)
+    {
+        return formula::Measured<Retained> { formula::Rational { grams } };
+    }
+
+    inline constexpr auto inputs = formula::environment(formula::measured_series<Retained>(
+        retained(130), retained(210), formula::Measured<Retained>::absent(), retained(340), retained(28)));
+
+    /// A sink defining only one of the two series hooks: told nothing, since
+    /// the evaluator asks for both in one `requires`.
+    struct HalfSeriesSink: formula::NullSink
+    {
+        int* calls;
+
+        template <formula::SeriesNode S>
+        void series_entered(S const&) const
+        {
+            ++*calls;
+        }
+    };
+
+    /// A sink defining both: told both, once each, and nothing else.
+    struct BothSeriesHooks: formula::NullSink
+    {
+        int* entered;
+        int* produced;
+
+        template <formula::SeriesNode S>
+        void series_entered(S const&) const
+        {
+            ++*entered;
+        }
+        template <formula::SeriesNode S, typename R>
+        void series_produced(S const&, R const&) const
+        {
+            ++*produced;
+        }
+    };
+} // namespace series_recording
+} // namespace
+
+TEST_CASE("a series step records every element in coherent SI, and no single value", "[series][trace]")
+{
+    using series_recording::Retained;
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Retained, 5>, series_recording::inputs, formula::RecordingSink<> { trace });
+
+    REQUIRE(trace.steps.size() == 1);
+    formula::Step<> const& step = trace.steps[0];
+    CHECK(step.kind == formula::StepKind::SeriesVariable);
+    CHECK(step.symbol == "m_r");
+    CHECK(step.unit == formula::unit::Gram); // declared unit, for the renderer to convert back to
+    CHECK(step.dimension == formula::unit::Gram.dimension);
+    CHECK(!step.value.has_value()); // a series has no single value
+    CHECK(!step.error.has_value());
+    CHECK(!step.failedElement.has_value());
+    // In order, in kilograms, the absent one absent and not zero.
+    REQUIRE(step.elements.size() == 5);
+    CHECK(step.elements[0] == formula::Rational { 13, 100 });
+    CHECK(step.elements[1] == formula::Rational { 21, 100 });
+    CHECK(!step.elements[2].has_value());
+    CHECK(step.elements[3] == formula::Rational { 17, 50 });
+    CHECK(step.elements[4] == formula::Rational { 7, 250 });
+    // The walk's root, unclaimed and alone.
+    CHECK(trace.unclaimed == std::vector<std::size_t> { 0 });
+    CHECK(trace.marks.empty());
+}
+
+TEST_CASE("a series step that failed records the error and the element, and no elements", "[series][trace]")
+{
+    using series_recording::Stockpile;
+    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
+    constexpr auto overflowing = formula::environment(
+        formula::measured_series<Stockpile>(formula::Measured<Stockpile> { formula::Rational { 1 } },
+                                            formula::Measured<Stockpile> { formula::Rational { 2 } },
+                                            formula::Measured<Stockpile> { formula::Rational { tooLarge } },
+                                            formula::Measured<Stockpile> { formula::Rational { 3 } }));
+
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Stockpile, 4>, overflowing, formula::RecordingSink<> { trace });
+    REQUIRE(trace.steps.size() == 1);
+    CHECK(trace.steps[0].error == formula::ArithmeticError::Overflow);
+    CHECK(trace.steps[0].failedElement == std::optional<std::size_t> { 2 });
+    // No partial series: the elements before the failure are not shown as
+    // though they were a result.
+    CHECK(trace.steps[0].elements.empty());
+}
+
+TEST_CASE("a sink hears about a series through both hooks or neither", "[series][trace]")
+{
+    using series_recording::Retained;
+    int halfCalls = 0;
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Retained, 5>, series_recording::inputs, series_recording::HalfSeriesSink { {}, &halfCalls });
+    CHECK(halfCalls == 0);
+
+    int entered = 0;
+    int produced = 0;
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Retained, 5>,
+        series_recording::inputs,
+        series_recording::BothSeriesHooks { {}, &entered, &produced });
+    CHECK(entered == 1);
+    CHECK(produced == 1);
+
+    // NullSink defines neither, and a consumer's sink written before series
+    // existed -- entered/produced only, constrained on Node -- still
+    // compiles and is told nothing.
+    auto const untraced = formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Retained, 5>, series_recording::inputs, formula::NullSink {});
+    CHECK(untraced.has_value());
+}
+
+TEST_CASE("explain_series returns the outcome and the derivation that produced it", "[series][trace]")
+{
+    using series_recording::Retained;
+    auto const explained = formula::explain_series<Retained>(
+        formula::series<Retained, 5>, series_recording::inputs, formula::vocabulary(formula::renames<Retained>("R")));
+    // Exactly what checked_evaluate_series returns.
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome
+          == formula::checked_evaluate_series<Retained>(formula::series<Retained, 5>, series_recording::inputs));
+    CHECK(explained.outcome->element(3).value() == formula::Rational { 340 });
+    REQUIRE(explained.trace.steps.size() == 1);
+    CHECK(explained.trace.steps[0].symbol == "R"); // in the vocabulary given
+    CHECK(explained.trace.steps[0].kind == formula::StepKind::SeriesVariable);
+
+    // A typed-in series was not derived, so there is nothing to trace.
+    constexpr auto typedIn = formula::environment(
+        formula::entered(formula::measured_series<Retained>(series_recording::retained(1), series_recording::retained(2))));
+    auto const overridden = formula::explain_series<Retained>(formula::series<Retained, 2>, typedIn);
+    REQUIRE(overridden.outcome.has_value());
+    CHECK(overridden.outcome->is_overridden());
+    CHECK(overridden.trace.empty());
+}
+
+TEST_CASE("explain_series keeps a failure and its element, and the step that failed", "[series][trace]")
+{
+    // A series has no throwing spelling (S8), so explain_series carries the
+    // failure in its outcome rather than throwing it away.
+    using series_recording::Stockpile;
+    constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
+    constexpr auto overflowing = formula::environment(
+        formula::measured_series<Stockpile>(formula::Measured<Stockpile> { formula::Rational { 1 } },
+                                            formula::Measured<Stockpile> { formula::Rational { tooLarge } }));
+    auto const explained = formula::explain_series<Stockpile>(formula::series<Stockpile, 2>, overflowing);
+    REQUIRE(!explained.outcome.has_value());
+    CHECK(explained.outcome.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1 });
+    REQUIRE(explained.trace.steps.size() == 1);
+    CHECK(explained.trace.steps[0].failedElement == std::optional<std::size_t> { 1 });
 }
