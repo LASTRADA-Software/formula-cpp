@@ -298,10 +298,13 @@ consumer who only evaluates numbers should not compile those into every translat
 them by name when you want text, or a trace, or both — see
 [the tracing guide](docs/tracing.md) for `trace.hpp` and `trace_render.hpp` specifically.
 
-The headers build cleanly under cl `/W4 /WX` and g++ `-Wshadow -Werror` in a translation unit that
-declares ordinary globals such as `result`, `value` or `index` before including them: no header
-declares a local or parameter that would hide one of the 47 common names
-`test/consumer_globals_tests.cpp` declares, and that test fails the build if one comes back.
+`test/consumer_globals_tests.cpp` declares 47 ordinary globals such as `result`, `value` and
+`index` before including every header, and builds under cl `/W4 /WX` and g++ `-Wshadow -Werror`:
+no header's local or parameter hides one of them in anything that test instantiates -- evaluation
+of every node kind, `render`, `document` and the trace in every dialect, constraints, methods and
+every overlay operation (the test lists them). cl reports a template's local only in a template
+that is instantiated, and never a function template's parameter, so a template the test does not
+reach is not covered by it.
 
 ## Build options
 

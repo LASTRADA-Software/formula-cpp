@@ -8,15 +8,36 @@
 // build -- and g++ at -Wshadow, for some of them, as "shadows a global
 // declaration", so under /WX or -Werror a consumer's own global broke the
 // build of a library it only included. This translation unit compiles with
-// warnings as errors, like every test here, so it fails to build if a header
-// declares one of these names again. `consumer_globals_run_tests.cpp` checks
-// what it computed.
+// warnings as errors, like every test here.
+//
+// **What it guards is what it instantiates, and no more.** cl reports a
+// template's local only once that template is instantiated, and never
+// reports a function template's parameter at all; a non-template function's
+// locals and parameters it reports where the function is defined, so
+// including the header is enough for those. The probe below instantiates:
+// evaluation of every node kind -- arithmetic with a bare number on either
+// side, negation, powers and every root, pi, rounding both ways, a
+// conditional, the escape hatch and the three lookups -- untraced and traced,
+// with `explain`; `render` and `document` in all three dialects, with and
+// without a vocabulary, of that formula, of a constraint and its predicate,
+// and of formulas an overlay fixed, derived and replaced; `render_trace`;
+// `check` and `check_all`; `evaluate_method` of an original and of a
+// replaced variant, and `check_method`, with `RecordingSink` and with a sink
+// of its own; `apply` with every overlay operation; `Outcome`'s factories;
+// `checked_convert_to`, `checked_within_bounds`, `checked_round_to_declared`,
+// `transform` and `combine`; `entered`, `Environment::get` and `source_of`;
+// and the three table validators. A template it does not reach is not
+// guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
+// computed what it should.
 //
 // Measured against the headers before their names were changed: cl 19.51
-// reported 292 declarations across 30 headers; g++ 13.3 at -Wshadow reported
-// four of them -- constructor parameters, with the globals declared before
-// the headers as here; clang++ 20.1.8 at -Wshadow and clang-cl 22.1.3 at /W4
-// reported nothing. So this guards cl builds, and g++ builds for those four.
+// reported 292 declarations across 30 headers with the probe's first
+// version, and 18 more in 9 headers once it reached the templates listed
+// above that it had not; g++ 13.3 at -Wshadow reported four of the first
+// 292 -- constructor parameters, with the globals declared before the headers
+// as here; clang++ 20.1.8 at -Wshadow and clang-cl 22.1.3 at /W4 reported
+// nothing. So this guards cl builds, and g++ builds for those four, for the
+// templates above.
 //
 // The globals come after the standard headers and this test's own, whose
 // names are theirs. `index` is declared for cl-compatible compilers only:
@@ -231,5 +252,70 @@ ConsumerGlobalsProbe probe_consumer_globals()
     (void) formula::evaluate_method<Cylinder>(baseMethod, specimen, MethodHooks { {}, &events });
     (void) formula::check_method(baseMethod, specimen, MethodHooks { {}, &events });
     probe.checks.push_back(events == "vVaA");
+
+    // Arithmetic the formula above does not spell: negation, pi, a cube root
+    // and the other roots, and every operator with a bare number on either
+    // side -- each its own template.
+    auto const negated = formula::evaluate<Strength>(-(var<Force> / formula::pow<2>(var<EdgeX>)), specimen);
+    auto const withPi = formula::evaluate<Strength>(formula::pi * var<Force> / formula::pow<2>(var<EdgeX>), specimen);
+    auto const rooted = formula::evaluate<Factor>(
+        formula::cbrt(formula::pow<3>(var<Factor>)) * formula::root<4>(formula::pow<4>(var<Factor>)), specimen);
+    auto const mixed = formula::evaluate<Factor>(
+        ((var<Factor> + formula::Rational { 1 }) - formula::Rational { 1 }) * formula::Rational { 2 }
+                / formula::Rational { 2 }
+            + (formula::Rational { 1 } + var<Factor>) -(formula::Rational { 1 } - var<Factor>) +formula::Rational { 2 }
+                  * var<Factor> / (formula::Rational { 2 } / var<Factor>),
+        specimen);
+    probe.checks.push_back(negated.is_value());
+    probe.checks.push_back(withPi.is_value());
+    probe.checks.push_back(rooted.is_value());
+    probe.checks.push_back(mixed.is_value());
+    pages += formula::render(-var<Force>) + formula::render(formula::pi * var<Force>)
+             + formula::render<formula::Dialect::LaTeX>(formula::cbrt(var<Force>));
+
+    // The variant an overlay replaced, and the documentation of formulas an
+    // overlay fixed, derived and replaced.
+    auto const replaced = formula::evaluate_method<Cylinder>(overlaid, specimen, formula::RecordingSink { trace, north });
+    probe.checks.push_back(replaced.has_value());
+    auto const fixedDocumentation = formula::document(std::get<0>(overlaid.variantSet.cases).expression, north);
+    auto const replacedDocumentation =
+        formula::document<formula::Dialect::Markdown>(std::get<1>(overlaid.variantSet.cases).expression);
+    auto const derivedDocumentation = formula::document(std::get<0>(derived.variantSet.cases).expression);
+    probe.checks.push_back(!fixedDocumentation.symbols.empty());
+    probe.checks.push_back(!replacedDocumentation.formula.empty());
+    probe.checks.push_back(!derivedDocumentation.symbols.empty());
+    pages += formula::render(std::get<1>(overlaid.variantSet.cases).expression, north);
+
+    // Constraints and predicates on every surface of their own.
+    auto const constraintDocumentation = formula::document(limit, north);
+    auto const latexConstraintDocumentation = formula::document<formula::Dialect::LaTeX>(limit);
+    pages += formula::render(limit, north) + formula::render<formula::Dialect::Markdown>(limit.predicate, north)
+             + formula::render(limit.predicate);
+    probe.checks.push_back(!constraintDocumentation.formula.empty());
+    probe.checks.push_back(!latexConstraintDocumentation.formula.empty());
+    auto const checkedLimit = formula::check(limit, specimen, formula::RecordingSink { trace, north });
+    probe.checks.push_back(checkedLimit.is_satisfied());
+
+    // Outcomes, measured values and environments, through their templates.
+    auto const verdictOutcome = formula::Outcome<Strength>::verdict(formula::Verdict { "rejected" });
+    auto const invalidOutcome = formula::Outcome<Strength>::invalid(formula::InvalidReason { "not usable" });
+    auto const emptyOutcome = formula::Outcome<Strength>::empty();
+    probe.checks.push_back(verdictOutcome.is_verdict() && invalidOutcome.is_invalid() && emptyOutcome.is_empty());
+    formula::Measured<EdgeX> const edge { formula::Rational { 150 } };
+    auto const inMetres = formula::checked_convert_to<EdgeX>(edge);
+    auto const bounds = formula::checked_within_bounds(edge);
+    auto const declared = formula::checked_round_to_declared(edge, formula::RoundingMode::HalfAwayFromZero);
+    auto const doubled = formula::transform(edge, [](formula::Rational x) { return x * formula::Rational { 2 }; });
+    auto const summed = formula::combine<EdgeX>(edge, edge, [](formula::Rational x, formula::Rational y) { return x + y; });
+    probe.checks.push_back(inMetres.has_value() && bounds.has_value() && declared.has_value());
+    probe.checks.push_back(doubled.value() == formula::Rational { 300 } && summed.value() == formula::Rational { 300 });
+    auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
+    auto const enteredEnvironment = formula::environment(enteredForce);
+    probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });
+    probe.checks.push_back(enteredEnvironment.source_of<Force>() == formula::ValueSource::ManuallyEntered);
+
+    // The tables' own validators.
+    probe.checks.push_back(formula::band_table_is_well_formed(Bands) && formula::key_table_is_well_formed(SpecimenFormKeys)
+                           && formula::breakpoint_table_is_well_formed(Points));
     return probe;
 }
