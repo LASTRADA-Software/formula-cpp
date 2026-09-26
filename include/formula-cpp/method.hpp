@@ -81,11 +81,12 @@
 /// node publishes a unit. `ConstantNode` publishes the unit its own
 /// coefficient is stated in, which is not the unit of any expression
 /// containing it, and no other node publishes one at all. The declared unit
-/// is a property of the quantity a method *reports*, and a method reporting
-/// one `Measured<Q>` has exactly one of them by construction -- `measured.hpp`
-/// says a `Measured<Q>` is in `Q`'s declared unit and carries none of its
-/// own. So the unit half is enforced where the reported quantity is named,
-/// and the dimension half is enforced here, where the variants are.
+/// is a property of the quantity a method *reports*, and a method has no
+/// typed result that names one: `evaluate_method` answers in the coherent SI
+/// unit of the variants' dimension (see `overlay.hpp`). **So nothing enforces
+/// the unit half.** The dimension half is enforced here, where the variants
+/// are; the unit a method is read in is its rounding rule's, which the
+/// rounding rule's own check holds to that dimension.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
@@ -882,6 +883,9 @@ template <typename... Cs>
 /// Checked on GCC under `-Wshadow`, the way `StepKind::PiConstant` had to be:
 /// nothing in namespace `formula` is spelt `MethodDefault` or
 /// `JurisdictionOverlay`.
+///
+/// `MethodDefault` where `ConstraintProvenance` says `MethodOwn`, on purpose:
+/// a method's rule is a default a jurisdiction may override in part.
 enum class RoundingProvenance : std::uint8_t
 {
     /// The rule the method was declared with: `method(..., rounding_rule<...>(), ...)`.
@@ -1046,6 +1050,9 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 /// Checked on GCC under `-Wshadow`, as `RoundingProvenance` was: nothing in
 /// namespace `formula` is spelt `MethodOwn`, and `JurisdictionOverlay` is an
 /// enumerator of a scoped enumeration there too, which does not collide.
+///
+/// `MethodOwn` where `RoundingProvenance` says `MethodDefault`, on purpose:
+/// constraints are the method's own until a jurisdiction replaces them whole.
 enum class ConstraintProvenance : std::uint8_t
 {
     /// The constraints the method was declared with: `method(..., constraints(...))`.

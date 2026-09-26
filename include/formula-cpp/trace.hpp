@@ -666,7 +666,7 @@ struct Step
     /// makes part of its contract so that a reader can count back to the
     /// declaration. An overlay that pinned or pruned does not move it: the
     /// published `variants(...)` is the only one in the source to count in
-    /// (`Variants::publishedPositions`).
+    /// (`Variants::published`).
     /// `trace_render.hpp` prints it one-based, as an ordinal. Zero otherwise,
     /// which is a real position, so -- as with `comparison` -- no reader may
     /// use it without checking `kind` first.

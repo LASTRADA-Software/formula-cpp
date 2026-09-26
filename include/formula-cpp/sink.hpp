@@ -118,7 +118,7 @@ struct VariantSelection
 
     /// The selected variant's ZERO-BASED position in the method's `variants(...)`
     /// as published, before any overlay pinned or pruned -- see
-    /// `Variants::publishedPositions`.
+    /// `Variants::published`.
     std::size_t index {};
 
     /// How many variants the method declares as published.
