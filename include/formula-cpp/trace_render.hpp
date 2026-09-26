@@ -905,6 +905,18 @@ namespace detail
     /// would look cited to a reader who does not know it could have said more.
     inline constexpr std::string_view noCitationGiven = "(no citation given)";
 
+    /// ` at element k` for a failed sample statistic, counted from one -- or
+    /// ` at (no such element)` when the position is not one of its sample's
+    /// elements: `Step` is a public aggregate, and a position past the end
+    /// of the sample's own step would name a determination nobody made.
+    [[nodiscard]] inline std::string sample_failure_suffix(Trace<Rational> const& trace, Step<Rational> const& recorded)
+    {
+        std::size_t const at = *recorded.failedElement;
+        bool const inSample = recorded.operands.size() == 1 && recorded.operands.front() < trace.steps.size()
+                              && at < trace.steps[recorded.operands.front()].elements.size();
+        return inSample ? " at element " + std::to_string(at + 1) : std::string { " at (no such element)" };
+    }
+
     /// `#k` for a step a side-table record names, or `(no such step)` when
     /// the index is not one of @p trace's steps: a record is a public
     /// aggregate, and printing a number no line carries -- or one wrapped
@@ -1713,7 +1725,7 @@ namespace detail
         // it overflowed at, counted from one, as a failed series step does.
         else if ((recorded.kind == StepKind::SampleMean || recorded.kind == StepKind::SampleVariance)
                  && recorded.error.has_value() && recorded.failedElement.has_value())
-            annotation = " at element " + std::to_string(*recorded.failedElement + 1);
+            annotation = sample_failure_suffix(trace, recorded);
 
         if (recorded.kind == StepKind::Constant)
             return valueText + annotation;

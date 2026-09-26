@@ -2034,6 +2034,13 @@ namespace detail
 /// vocabulary does not make the trace agree with it, so give the sink the one
 /// `render()` and `document()` are given.
 ///
+/// **Its hooks are public**, as every sink hook is, and a consumer's own node
+/// kind evaluated under it may call them. `Trace` is a public arena besides.
+/// What the evaluator guarantees is what *it* records; a hook called by
+/// consumer code during a recorded evaluation records what that code says --
+/// within each hook's own checks (`sample_failed_at` amends only a failed
+/// sample statistic, and the renderer checks the position it names).
+///
 ///     formula::RecordingSink sink { trace, north };
 template <typename Rep = Rational, Vocabulary V = DefaultVocabulary>
 class RecordingSink
@@ -2449,14 +2456,25 @@ class RecordingSink
     }
 
     /// Told the zero-based position of the determination at which the
-    /// statistic just produced failed -- a mean whose total overflowed there.
-    /// Amends that step, the last recorded, whose error is already set: the
-    /// scalar channel carries only the error, and the position survives here,
-    /// as a series step's does (phase 12's S8).
+    /// statistic just produced failed -- a mean or a variance whose total
+    /// overflowed there. Amends that step, the last recorded: the scalar
+    /// channel carries only the error, and the position survives here, as a
+    /// series step's does (phase 12's S8).
+    ///
+    /// **Amends nothing else.** The last step must be a failed `SampleMean`
+    /// or `SampleVariance`; any other step, a present one included, is left
+    /// alone. The hook is public, as every sink hook is, so code of a
+    /// consumer's -- a node of its own, calling it during a recorded
+    /// evaluation -- can reach it: what it can still do is name another
+    /// position on a failed statistic, which the renderer checks against
+    /// the statistic's sample (`(no such element)` beyond its end).
     void sample_failed_at(std::size_t at)
     {
-        if (!_trace->steps.empty())
-            _trace->steps.back().failedElement = at;
+        if (_trace->steps.empty())
+            return;
+        Step<Rep>& failed = _trace->steps.back();
+        if ((failed.kind == StepKind::SampleMean || failed.kind == StepKind::SampleVariance) && failed.error.has_value())
+            failed.failedElement = at;
     }
 
     /// Told that a precision limit is about to be evaluated. Remembers

@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <tuple>
 
@@ -126,7 +127,8 @@ TEST_CASE("sample_mean averages every element, in coherent SI, and returns to th
 
 TEST_CASE("one absent determination makes the mean and the count absent (T2)", "[statistics]")
 {
-    // A skip-absent mean gives 41.5 g and a count of 5; both are refused here.
+    // A skip-absent mean gives 2073/50 g (41.46 g) and a count of 5; both are
+    // refused here.
     STATIC_REQUIRE(formula::checked_evaluate<Mass>(formula::sample_mean(determinations), fixtureAMissingThird)->is_empty());
     STATIC_REQUIRE(
         formula::checked_evaluate<Determinations>(formula::sample_count(determinations), fixtureAMissingThird)->is_empty());
@@ -248,6 +250,65 @@ TEST_CASE("a page lists the sample's quantity once, as a series, however many st
     CHECK(page.symbols[0].symbol == "m");
     CHECK(page.symbols[0].shape == formula::ValueShape::Series);
     CHECK(page.symbols[0].length == 6);
+}
+
+TEST_CASE("each statistic documents its sample on its own", "[statistics][document]")
+{
+    // Each alone, so that a statistic whose own walk named nothing leaves
+    // the page without its row -- in a product, another statistic's walk
+    // would supply it.
+    for (formula::Documentation const& page: { formula::document(formula::sample_count(determinations)),
+                                               formula::document(formula::sample_mean(determinations)),
+                                               formula::document(formula::sample_variance(determinations)),
+                                               formula::document(formula::sample_range(determinations)) })
+    {
+        REQUIRE(page.symbols.size() == 1);
+        CHECK(page.symbols[0].symbol == "m");
+        CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+        CHECK(page.symbols[0].length == 6);
+    }
+}
+
+TEST_CASE("an empty sample cannot be written, and the statistics refuse one all the same", "[statistics]")
+{
+    // series<Q, 0> is refused where it is written (phase 12), so no sample a
+    // formula can name is empty. The guard stays, for the next sample
+    // source: a mean over none is a division by zero -- never a read of the
+    // first element of an empty array, which this constant evaluation would
+    // refuse to compile. (The variance's own guard, fewer than two, is the
+    // n = 1 case above.)
+    constexpr formula::detail::SampleValue<Rational, 1> none { .values = { rat(40) }, .positions = { 0 }, .count = 0 };
+    constexpr auto meanOfNone = [](formula::detail::SampleValue<Rational, 1> const& sampled) {
+        std::optional<std::size_t> failedAt;
+        return formula::detail::mean_of(sampled, failedAt);
+    }(none);
+    STATIC_REQUIRE(meanOfNone.error() == formula::ArithmeticError::DivisionByZero);
+}
+
+TEST_CASE("a failure position is amended only onto a failed statistic, and only printed within its sample",
+          "[statistics][trace-render]")
+{
+    constexpr auto heavy = formula::environment(
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+                                        formula::Measured<Heavy> { rat(1) },
+                                        formula::Measured<Heavy> { rat(2) }));
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate<Heavy>(formula::sample_mean(formula::series<Heavy, 3>), heavy, sink);
+    // A position past the sample's three elements, told by hand: the step
+    // takes it, being a failed mean, and the renderer declines to print it.
+    sink.sample_failed_at(4);
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. m_h = 9223372036854775807 kg; 1 kg; 2 kg\n"
+             "2. sample_mean(#1) = overflow in exact arithmetic at (no such element)\n");
+
+    // A present mean is never given a failure position.
+    formula::Trace<> present {};
+    formula::RecordingSink<> presentSink { present };
+    (void) formula::checked_evaluate<Mass>(formula::sample_mean(determinations), fixtureA, presentSink);
+    presentSink.sample_failed_at(0);
+    CHECK(!present.steps.back().failedElement.has_value());
+    CHECK(formula::render_trace(present, { .maxSteps = 10 }).ends_with("2. sample_mean(#1) = 413/10 g\n"));
 }
 
 TEST_CASE("a mean joins a method: evaluated, rounded, rendered in a vocabulary, documented and traced",

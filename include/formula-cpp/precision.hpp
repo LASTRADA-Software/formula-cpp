@@ -315,14 +315,21 @@ namespace detail
     /// `ReplacedVariantNode` in `overlay.hpp`.
     ///
     /// The primary is a consumer's node kind, which cannot be seen inside: it
-    /// answers no children and `seen = false`. **A library kind never reaches
-    /// it silently:** one declared in namespace `formula` with no
-    /// specialisation here is refused (`RequireLevelChildrenFor`), where a
-    /// placeholder inside it would otherwise hide from every check below
-    /// without a word -- as `DerivedQuantityNode`, and then phase 12's `sum`
-    /// and elementwise nodes, once did. `level_check_sees_every_node` walks
-    /// the vocabulary's every-kind method (`vocabulary_tests.cpp`) as a
-    /// second net.
+    /// answers no children and `seen = false`. **A library kind does not reach
+    /// it silently** on the toolchains measured -- cl 19.51, clang-cl 22.1,
+    /// g++ 13.3 and 14.2, clang++ 20.1 with libstdc++ and with libc++: one
+    /// declared in namespace `formula` with no specialisation here is refused
+    /// (`RequireLevelChildrenFor`), where a placeholder inside it would
+    /// otherwise hide from every check below without a word -- as
+    /// `DerivedQuantityNode`, and then phase 12's `sum` and elementwise
+    /// nodes, once did. On a front end whose spelling of a type this cannot
+    /// read, every kind reaching the primary is refused rather than passed as
+    /// a consumer's. One divergence between those toolchains: a class
+    /// declared *inside a function* in `formula` spells as `formula::f()::X`
+    /// on cl and g++ but as `X` on clang, so there it would read as a
+    /// consumer's; the library declares no local node kinds.
+    /// `level_check_sees_every_node` walks the vocabulary's every-kind method
+    /// (`vocabulary_tests.cpp`) as a second net.
     ///
     /// For a `PrecisionLimitNode` only its level is listed in `type`: a
     /// placeholder in its limit expression is bound by that limit, and so not
@@ -384,7 +391,14 @@ namespace detail
     template <typename N>
     struct RequireLevelChildrenFor
     {
-        static_assert(!declared_in_library<N>(),
+        /// Fail closed: a spelling this cannot read is no evidence that the
+        /// kind is a consumer's.
+        static_assert(!type_argument_text(kind_probe::type_signature<N>()).empty(),
+                      "formula: cannot read this compiler's spelling of the node kind, so a precision limit's "
+                      "checks cannot tell whether it is this library's -- a library kind without a "
+                      "detail::LevelChildren specialisation could go unseen; the node kind appears in this "
+                      "diagnostic as the template argument of RequireLevelChildrenFor");
+        static_assert(type_argument_text(kind_probe::type_signature<N>()).empty() || !declared_in_library<N>(),
                       "formula: this library node kind has no detail::LevelChildren specialisation, so a "
                       "precision limit's checks cannot see a precision_level inside it -- add one in "
                       "precision.hpp, or beside the node kind where precision.hpp cannot be included; the node "

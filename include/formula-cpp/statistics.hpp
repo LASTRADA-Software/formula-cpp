@@ -136,7 +136,11 @@ struct SampleCountNode: NodeBase
 
     /// A count is a bare number.
     static constexpr Dimension dimension = dim::Scalar;
-    /// Whether the sample was refused -- see `detail::refused_already`.
+    /// Whether the sample was refused -- see `detail::refused_already`. Read
+    /// by nothing yet: no check above a statistic compares what a refused
+    /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
+    /// first one that does -- a rejection over a statistic, say -- is gated
+    /// without another change here.
     static constexpr bool refused = detail::refused_already<S>();
 };
 
@@ -151,7 +155,11 @@ struct SampleMeanNode: NodeBase
 
     /// A mean measures what its determinations measure.
     static constexpr Dimension dimension = S::dimension;
-    /// Whether the sample was refused -- see `detail::refused_already`.
+    /// Whether the sample was refused -- see `detail::refused_already`. Read
+    /// by nothing yet: no check above a statistic compares what a refused
+    /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
+    /// first one that does -- a rejection over a statistic, say -- is gated
+    /// without another change here.
     static constexpr bool refused = detail::refused_already<S>();
 };
 
@@ -203,7 +211,11 @@ struct SampleVarianceNode: NodeBase
 
     /// A variance measures the square of what its determinations measure.
     static constexpr Dimension dimension = S::dimension * S::dimension;
-    /// Whether the sample was refused -- see `detail::refused_already`.
+    /// Whether the sample was refused -- see `detail::refused_already`. Read
+    /// by nothing yet: no check above a statistic compares what a refused
+    /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
+    /// first one that does -- a rejection over a statistic, say -- is gated
+    /// without another change here.
     static constexpr bool refused = detail::refused_already<S>();
 };
 
@@ -219,7 +231,11 @@ struct SampleRangeNode: NodeBase
 
     /// A range measures what its determinations measure.
     static constexpr Dimension dimension = S::dimension;
-    /// Whether the sample was refused -- see `detail::refused_already`.
+    /// Whether the sample was refused -- see `detail::refused_already`. Read
+    /// by nothing yet: no check above a statistic compares what a refused
+    /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
+    /// first one that does -- a rejection over a statistic, say -- is gated
+    /// without another change here.
     static constexpr bool refused = detail::refused_already<S>();
 };
 
