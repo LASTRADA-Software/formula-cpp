@@ -1137,13 +1137,13 @@ template <typename Rep = Rational, typename Role, typename Requirement, Node Ope
     {
         using Context = typename detail::RecordContextOf<Env>::type;
         using ComparandRole = typename detail::ComparandOf<Requirement>::type;
-        constexpr bool gated = detail::isLineageRequirement<Requirement>;
+        constexpr bool requiresLineage = detail::isLineageRequirement<Requirement>;
         if constexpr (!Context::template binds<Role>)
         {
             static_assert(detail::RequireBoundRole<Role, Context>::value);
             return detail::nothing<Rep>();
         }
-        else if constexpr (gated && !Context::template binds<ComparandRole>)
+        else if constexpr (requiresLineage && !Context::template binds<ComparandRole>)
         {
             static_assert(detail::RequireBoundRole<ComparandRole, Context>::value);
             return detail::nothing<Rep>();
@@ -1153,7 +1153,7 @@ template <typename Rep = Rational, typename Role, typename Requirement, Node Ope
             using Subject = std::remove_cvref_t<decltype(std::declval<Context const&>().template record<Role>())>;
             using ComparandRecord =
                 std::remove_cvref_t<decltype(std::declval<Context const&>().template record<
-                                             std::conditional_t<gated, ComparandRole, Role>>())>;
+                                             std::conditional_t<requiresLineage, ComparandRole, Role>>())>;
             if constexpr (!detail::LineageDeclared<Requirement, Subject, ComparandRecord>::all)
             {
                 static_assert(detail::RefuseUndeclaredLineage<Requirement, Subject, ComparandRecord>::value);
@@ -1178,7 +1178,7 @@ template <typename Rep = Rational, typename Role, typename Requirement, Node Ope
                     sink.record_entered(detail::RecordOriginAccess::of(foreignRecord));
 
                 detail::LineageVerdict lineageVerdict = detail::LineageVerdict::Agreed;
-                if constexpr (gated)
+                if constexpr (requiresLineage)
                     if (foreignRecord.is_bound())
                         lineageVerdict = detail::check_lineage<reports>(
                             Requirement {}, foreignRecord, recordContext.template record<ComparandRole>(), sink);
