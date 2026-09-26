@@ -311,10 +311,11 @@ constexpr auto correctedStrength = formula::documented(
 
 // ---- A method, and the method a jurisdiction's overlay yields --------------
 //
-// Two specimen shapes, one rounding rule. The overlay fixes the shape factor
-// the base method reads from the specimen and reports in its own unit, to two
-// decimals of N/mm2 -- each change said in the trace, with what the
-// jurisdiction cited.
+// Two specimen shapes, one rounding rule, one acceptance check. The overlay
+// replaces the acceptance check with two of its own, fixes the shape factor the
+// base method reads from the specimen -- inside the new checks too, because the
+// constant is listed after them -- and reports in its own unit, to two decimals
+// of N/mm2. Each change is said in the trace, with what the jurisdiction cited.
 
 struct Cube
 {
@@ -339,18 +340,30 @@ constexpr auto cubeStrengthMethod = formula::method(
         formula::variant<Cylinder>(formula::constant<unit::One>(formula::Rational { 4 }) * var<FailureLoad>
                                           / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints());
+    formula::constraints(
+        formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 150 }),
+                            formula::Verdict { "the load at failure is below 150 kN" })));
 
+constexpr formula::Citation galleryAcceptanceAnnex { .title = "Acceptance",
+                                                     .reference = "Example Standard 7:2020 NA",
+                                                     .section = "NA.6" };
 constexpr formula::Citation galleryAnnex { .title = "Shape factor",
                                            .reference = "Example Standard 7:2020 NA",
                                            .section = "NA.2" };
 constexpr formula::Citation galleryRoundingAnnex { .reference = "Example Standard 7:2020 NA", .section = "NA.4" };
 
-constexpr auto galleryOverlay =
-    formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 19, 20 }, galleryAnnex),
-                     formula::with_rounding<unit::NewtonPerSquareMillimetre,
-                                            formula::DecimalPlaces { 2 },
-                                            formula::RoundingMode::HalfAwayFromZero>(galleryRoundingAnnex));
+constexpr auto galleryOverlay = formula::overlay(
+    formula::with_constraints(
+        formula::constraints(
+            formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 250 }),
+                                formula::Verdict { "the load at failure is below 250 kN" }),
+            formula::constraint(var<ShapeFactor> <= formula::number(formula::Rational { 1 }),
+                                formula::Verdict { "the shape factor exceeds one" })),
+        galleryAcceptanceAnnex),
+    formula::with_constant<ShapeFactor>(formula::Rational { 19, 20 }, galleryAnnex),
+    formula::with_rounding<unit::NewtonPerSquareMillimetre,
+                           formula::DecimalPlaces { 2 },
+                           formula::RoundingMode::HalfAwayFromZero>(galleryRoundingAnnex));
 
 constexpr auto overlaidStrengthMethod = formula::apply(galleryOverlay, cubeStrengthMethod);
 
@@ -755,6 +768,44 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << formula::render_trace(overlaidTrace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    // ---- Whose acceptance checks ----
+    //
+    // `check_method` checks every constraint the method holds, and the trace
+    // says beside each verdict whether the method or a jurisdiction's overlay
+    // supplied it.
+
+    out << "## Worked acceptance: the method's own checks, and a jurisdiction's\n\n";
+    out << "The same specimen checked by the method's own acceptance check:\n\n";
+
+    formula::Trace<> ownAcceptance {};
+    auto const ownOutcomes =
+        formula::check_method(cubeStrengthMethod, cubeSpecimen, formula::RecordingSink<> { ownAcceptance });
+    if (ownOutcomes.size() != 1 || !ownOutcomes[0].is_satisfied())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the method's own check did not hold\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(ownAcceptance, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    out << "And by the overlay's two checks in its place. The overlay lists the shape factor's constant after "
+           "its checks, so the constant reaches inside them:\n\n";
+
+    formula::Trace<> overlaidAcceptance {};
+    auto const overlaidOutcomes =
+        formula::check_method(overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidAcceptance });
+    if (overlaidOutcomes.size() != 2 || !overlaidOutcomes[0].is_violated() || !overlaidOutcomes[1].is_satisfied())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the overlay's checks did not answer as expected\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(overlaidAcceptance, { .maxSteps = 20 });
     out << "```\n\n";
 
     out.flush();

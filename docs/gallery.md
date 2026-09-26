@@ -332,3 +332,26 @@ k_s * F / a^2
 8. #7 = 477/50 N/mm2 [variant Cube (1st of 2), selected by tag]
 ```
 
+## Worked acceptance: the method's own checks, and a jurisdiction's
+
+The same specimen checked by the method's own acceptance check:
+
+```
+1. F = 226000 N
+2. 150 kN
+3. require #1 >= #2 [satisfied; the method's own constraint]
+4. acceptance(#3) [the method's own constraints]
+```
+
+And by the overlay's two checks in its place. The overlay lists the shape factor's constant after its checks, so the constant reaches inside them:
+
+```
+1. F = 226000 N
+2. 250 kN
+3. require #1 >= #2 [the load at failure is below 250 kN; jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
+4. k_s = 19/20 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
+5. 1
+6. require #4 <= #5 [satisfied; jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
+7. acceptance(#3, #6) [jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
+```
+
