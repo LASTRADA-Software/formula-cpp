@@ -76,6 +76,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/quantity.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/render.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rational.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/record.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rejection.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounded_root.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"

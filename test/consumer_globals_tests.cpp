@@ -43,7 +43,10 @@
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; and the four
-// table validators. A template it does not reach is not
+// table validators; and `record_key`, `sample_id`, `test_id`,
+// `record`, `Record::unbound`, `record_context`, its `this_record`,
+// `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
+// and `explain` through a context. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -87,6 +90,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <type_traits>
 
 // clang-format off
 int result, value, text, step, mark, first, last, count, size, name, key, left, right, lhs, rhs, operand, outcome,
@@ -107,7 +111,7 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     type, types, u, unit, unitName, upper, v, valid, values, vector, view, volume, w, weight, what, when, where, who,
     why, word, words, x, y, z, variance, spread, deviation, deviations, gap, statistic, survivors, rejected, sampled,
     counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
-    statistics;
+    statistics, batch, lineage, role;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -140,6 +144,7 @@ int index;
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/rounded_root.hpp>
@@ -165,6 +170,9 @@ struct Cube
 {
 };
 struct Cylinder
+{
+};
+struct Reference
 {
 };
 
@@ -255,6 +263,14 @@ inline constexpr auto derived =
 inline constexpr auto specimen = formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
                                                       formula::Measured<EdgeX> { formula::Rational { 150 } },
                                                       formula::Measured<Factor> { formula::Rational { 1 } });
+
+inline constexpr auto elsewhere = formula::environment(formula::Measured<Force> { formula::Rational { 60'000 } },
+                                                       formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                                       formula::Measured<Factor> { formula::Rational { 1 } });
+
+inline constexpr auto boundRecords = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), specimen),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), elsewhere));
 
 inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"));
 
@@ -651,5 +667,20 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(formula::band_table_is_well_formed(Bands) && formula::key_table_is_well_formed(SpecimenFormKeys)
                            && formula::breakpoint_table_is_well_formed(Points)
                            && formula::sample_size_table_is_well_formed(Sizes));
+
+    // Records and a context, which is this record's environment.
+    auto const throughContext = formula::checked_evaluate<Strength>(everything, boundRecords);
+    auto const methodThroughContext = formula::evaluate_method<Cube>(baseMethod, boundRecords);
+    auto const explainedThroughContext = formula::explain<Strength>(everything, boundRecords, north);
+    probe.checks.push_back(throughContext == checked
+                           && methodThroughContext == formula::evaluate_method<Cube>(baseMethod, specimen));
+    probe.checks.push_back(explainedThroughContext.outcome == explained.outcome);
+    probe.checks.push_back(
+        boundRecords.this_record().key() == formula::record_key(formula::sample_id(17), formula::test_id(5))
+        && boundRecords.record<Reference>().key().sample().value() == 23);
+    auto const unboundReference = formula::Record<Reference, std::remove_cvref_t<decltype(elsewhere)>>::unbound();
+    probe.checks.push_back(!unboundReference.is_bound() && unboundReference.environment().get<Force>().is_absent()
+                           && boundRecords.record<Reference>().is_bound());
+    probe.checks.push_back(decltype(boundRecords)::binds<Reference> && !decltype(boundRecords)::binds<Cube>);
     return probe;
 }

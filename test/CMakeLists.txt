@@ -76,6 +76,7 @@ add_executable(formula-cpp-tests
     statistics_tests.cpp
     statistics_cross_tu_b.cpp
     rejection_tests.cpp
+    record_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -1768,6 +1769,45 @@ formula_add_negative_test(render_node_without_vocabulary
 # measured on CI's g++-14 or Apple clang. Deleting `consteval` makes the case
 # compile.
 formula_add_negative_test(vocabulary_symbol_not_static "a constant expression")
+
+# Phase 14: records and the context. Each case's own comment says why its
+# mistake is the only thing wrong with it.
+formula_add_negative_test(record_context_duplicate_role
+    "formula: this record_context binds the same role to more than one record"
+    REJECT "RequireThisRecordFirst" "RequirePlainRole")
+
+formula_add_negative_test(record_context_first_not_this_record
+    "formula: the first record of a record_context must be record<ThisRecord>(...)"
+    REJECT "RequireDistinctRoles" "RequirePlainRole")
+
+formula_add_negative_test(record_role_not_plain
+    "formula: this record role is not a plain class type")
+
+# A context is its own record's environment, so a quantity that record lacks
+# is refused as it is for the plain environment, by RequireProvided. Its
+# message is counted once by hand on cl, clang-cl, g++ 13 and clang++ 20.1.8
+# (see the phase 14 task 2 report); REJECT cannot refuse a second copy of it.
+formula_add_negative_test(record_context_missing_quantity
+    "formula: this environment provides no value for this quantity"
+    REJECT "RequireThisRecordFirst" "RequireDistinctRoles" "RequirePlainRole")
+
+# One mistake, a cv-qualified ThisRecord, must draw one message: the
+# first-record rule ignores cv-qualifiers so that only the role rule reports
+# it. Deleting that `remove_cv_t` makes the REJECT fire.
+formula_add_negative_test(record_context_this_record_not_plain
+    "formula: this record role is not a plain class type"
+    REJECT "RequireThisRecordFirst")
+
+# The compiler's own words, since the strong types are the guard and no
+# library static_assert fires (REJECT "formula: " holds every library message
+# to that). Measured: cl says "cannot convert argument 1 from
+# 'formula::TestId' to 'formula::SampleId'", g++ 13 "could not convert ... from
+# 'formula::TestId' to 'formula::SampleId'", clang++ 20.1.8 and clang-cl 22.1.3 "no
+# viable conversion from 'TestId' to 'SampleId'". Not "no matching function":
+# record_key is one non-template function, and none of the four words it that
+# way. g++-14 and Apple clang were not measured.
+# The qualifier differs, so the shared text stops at the second quote.
+formula_add_negative_test(record_key_swapped "TestId' to '" REJECT "formula: ")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
