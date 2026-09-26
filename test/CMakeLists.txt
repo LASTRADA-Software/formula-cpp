@@ -1016,6 +1016,14 @@ formula_add_negative_test(vocabulary_symbol_unterminated
 formula_add_negative_test(vocabulary_symbol_whitespace
     "renames_symbol_must_not_be_all_whitespace")
 
+# A symbol that could forge a trace's provenance: a bracketed clause of its
+# own, or a whole line. One case per shape, because `[` and a newline are two
+# different kinds of character to the check.
+formula_add_negative_test(vocabulary_symbol_bracket
+    "renames_symbol_must_not_hold_a_bracket_or_a_control_character")
+formula_add_negative_test(vocabulary_symbol_newline
+    "renames_symbol_must_not_hold_a_bracket_or_a_control_character")
+
 # A render_node of the library's own that takes no vocabulary. Declared in
 # `formula` before render.hpp, where qualified lookup finds it as it finds
 # every one of the library's (`detail::render_in_vocabulary`).

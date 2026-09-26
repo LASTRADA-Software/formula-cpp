@@ -40,11 +40,10 @@
 /// not make the trace agree with it.
 ///
 /// **A renamed symbol is written verbatim**, exactly as a `Describe` symbol
-/// is: beyond refusing an empty one, one that is all whitespace and one
-/// holding a NUL (see `renames`), nothing checks what it says, so a symbol
-/// containing Markdown or LaTeX
-/// markup, or text that reads like a trace annotation, reaches the page and
-/// the trace as written. The vocabulary is the author's data, like the
+/// is: beyond refusing an empty one, one that is all whitespace, and one
+/// holding a NUL, a square bracket or a control character (see `renames`),
+/// nothing checks what it says, so a symbol containing other Markdown or LaTeX
+/// markup reaches the page and the trace as written. The vocabulary is the author's data, like the
 /// quantity declarations it wraps.
 ///
 /// **What a vocabulary does not rename.** A variant's tag (`TagName`,
@@ -101,9 +100,20 @@ class Renames;
 ///    with no terminating NUL -- see
 ///    `detail::renames_symbol_must_be_a_string_with_no_embedded_nul`;
 ///  - a symbol that is all whitespace -- see
-///    `detail::renames_symbol_must_not_be_all_whitespace`.
+///    `detail::renames_symbol_must_not_be_all_whitespace`;
+///  - a symbol holding a square bracket or a control character (a newline, a
+///    tab, any byte below 0x20, or 0x7f) -- see
+///    `detail::renames_symbol_must_not_hold_a_bracket_or_a_control_character`.
 ///
-/// Nothing else about the text is checked -- see the file comment.
+/// The last is refused because of what a trace line is: a numbered line
+/// whose provenance is a bracketed clause at its end, `1. k_s = 97/100 [fixed
+/// by jurisdiction overlay]`. A symbol holding `[` or `]` could write such a
+/// clause itself, and one holding a newline could write a whole line, so a
+/// vocabulary could make a trace claim an overlay fixed, derived or replaced
+/// something no overlay touched -- provenance only the library may state. A
+/// bracket is also CommonMark link syntax, which no Markdown rendering may
+/// contain (`render.hpp`). Nothing else about the text is checked -- see the
+/// file comment.
 template <Described Q, std::size_t N>
 [[nodiscard]] consteval Renames<Q> renames(char const (&symbol)[N]) noexcept;
 
@@ -161,6 +171,19 @@ namespace detail
     /// would leave. See the function above for why a name.
     inline void renames_symbol_must_not_be_all_whitespace() noexcept {}
 
+    /// Called only from `renames`, when its symbol holds `[`, `]` or a control
+    /// character -- text that could forge a trace line's provenance clause, or
+    /// a trace line. See the first function above for why a name.
+    inline void renames_symbol_must_not_hold_a_bracket_or_a_control_character() noexcept {}
+
+    /// True for `[`, `]`, and the ASCII control characters: below 0x20, and
+    /// 0x7f.
+    [[nodiscard]] constexpr bool is_forbidden_in_symbol(char character) noexcept
+    {
+        auto const byte = static_cast<unsigned char>(character);
+        return character == '[' || character == ']' || byte < 0x20 || byte == 0x7f;
+    }
+
     /// True for the characters `std::isspace` answers true for in the "C"
     /// locale, which is not `constexpr`.
     [[nodiscard]] constexpr bool is_blank(char character) noexcept
@@ -194,6 +217,8 @@ template <Described Q, std::size_t N>
         {
             if (symbol[index] == '\0')
                 detail::renames_symbol_must_be_a_string_with_no_embedded_nul();
+            if (detail::is_forbidden_in_symbol(symbol[index]))
+                detail::renames_symbol_must_not_hold_a_bracket_or_a_control_character();
             blank = blank && detail::is_blank(symbol[index]);
         }
         if (symbol[N - 1] != '\0')

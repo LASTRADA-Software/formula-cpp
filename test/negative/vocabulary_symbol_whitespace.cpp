@@ -10,6 +10,6 @@ struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", form
 
 int main()
 {
-    auto const entry = formula::renames<Strength>(" \t");
+    auto const entry = formula::renames<Strength>("   ");
     return entry.symbol().size() == 1 ? 0 : 1;
 }

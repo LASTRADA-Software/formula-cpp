@@ -373,7 +373,11 @@ vocabulary does not name keeps its declared symbol.
 `document(f, south)` the first row's symbol is `E` and its description is
 still `compressive strength`: the word moved, the quantity it names did not
 (`"the documentation renames the symbol and keeps the meaning"`). The
-description and the unit stay `Describe<Q>`'s.
+description and the unit stay `Describe<Q>`'s. A quantity a jurisdiction derives
+(`add_derived`) has its definition, `derivedAs`, rendered in the same
+vocabulary as the formula beside it, and a variant it replaced renders its
+replacement in it too (`"every node kind documents in the vocabulary, in every
+dialect"`).
 
 Three things a vocabulary does not do:
 
@@ -399,7 +403,10 @@ Three things a vocabulary does not do:
 
 A vocabulary renaming one quantity twice does not compile, and neither does
 `renames<Q>("")`, which would leave a blank where the quantity stands; nor
-does a symbol that is all whitespace or holds a NUL. `renames` is `consteval`
+does a symbol that is all whitespace or holds a NUL, nor one holding a square
+bracket or a control character such as a newline, with which a vocabulary
+could write a trace line's `[fixed by jurisdiction overlay]` clause, or a
+whole trace line, itself. `renames` is `consteval`
 and takes a `const` character array, so it accepts a string literal and
 refuses a buffer on the stack or one that is not `const`: a trace keeps a
 view of the symbol for as long as it lives.
