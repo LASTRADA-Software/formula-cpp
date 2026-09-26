@@ -1203,6 +1203,11 @@ add_test(NAME hygiene.vocabulary-reach
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckVocabularyReach.cmake")
 
+add_test(NAME hygiene.changelog
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckChangelog.cmake")
+
 # A compiler diagnostic quoted in docs/ names a header and a line number, and
 # the number goes stale the moment anyone inserts a line above it -- which
 # happened twice in this repository before anything checked. See the script's
