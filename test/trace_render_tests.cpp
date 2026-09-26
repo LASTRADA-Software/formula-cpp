@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-#include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/trace.hpp>
@@ -1974,6 +1973,15 @@ TEST_CASE("a long series shares the one maxSteps budget and says how much it lef
     // Each line costs one unit of maxSteps and each element shown one more.
     // The count left out is exact, so it is pinned at several budgets: a
     // count hard-coded, or computed from the wrong side, fails at least one.
+    //
+    // render_trace is the only surface that shows element values (S5's
+    // "every dialect"), so this is where the count is pinned. render() and
+    // document() take no environment and print a formula, never values, so
+    // there is nothing for them to truncate and no test of theirs could
+    // fail. The gallery (tools/gallery) copies render_trace's output
+    // verbatim into a fenced block, so it carries this count by
+    // construction; its series section arrives in task 11, and its test
+    // pins the generated page.
     formula::Trace<> const trace = series_trace::series_then_total();
     REQUIRE(trace.steps.size() == 2);
 
@@ -1994,33 +2002,6 @@ TEST_CASE("a long series shares the one maxSteps budget and says how much it lef
     CHECK(formula::render_trace(trace, { .maxSteps = 1 })
           == "1. m_r = ... 5 more\n"
              "... 1 further step not shown\n");
-}
-
-TEST_CASE("every surface that shows element values carries the truncation count", "[series][trace]")
-{
-    // S5's "every dialect". render_trace writes plain text, and it carries the
-    // count (above). The gallery's worked sections (tools/gallery) copy
-    // render_trace's output verbatim into a fenced Markdown block, so they
-    // carry whatever it carries: pinned here on that same shape.
-    formula::Trace<> const trace = series_trace::series_then_total();
-    std::string const gallerySection = "```\n" + formula::render_trace(trace, { .maxSteps = 3 }) + "```\n";
-    CHECK(gallerySection.find("... 3 more") != std::string::npos);
-
-    // render() and document() print a formula, never element values, in all
-    // three dialects -- so they have nothing to truncate. A later change that
-    // starts showing values there, and so needs the count too, fails here.
-    constexpr auto screens = formula::series<series_trace::Retained, 5>;
-    std::vector<std::string> const pages { formula::render(screens),
-                                           formula::render<formula::Dialect::Markdown>(screens),
-                                           formula::render<formula::Dialect::LaTeX>(screens),
-                                           formula::document(screens).formula,
-                                           formula::document<formula::Dialect::LaTeX>(screens).formula };
-    for (std::string const& page: pages)
-    {
-        INFO(page);
-        CHECK(page.find("130") == std::string::npos);
-        CHECK(page.find("more") == std::string::npos);
-    }
 }
 
 TEST_CASE("a series that failed at an element names that element, counted from one", "[series][trace]")

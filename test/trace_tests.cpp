@@ -1793,6 +1793,19 @@ namespace series_recording
         }
     };
 
+    /// The other half: a sink defining only `series_produced`, told nothing
+    /// either -- so both halves of the rule are pinned.
+    struct ProducedOnlySink: formula::NullSink
+    {
+        int* calls;
+
+        template <formula::SeriesNode S, typename R>
+        void series_produced(S const&, R const&) const
+        {
+            ++*calls;
+        }
+    };
+
     /// A sink defining both: told both, once each, and nothing else.
     struct BothSeriesHooks: formula::NullSink
     {
@@ -1869,6 +1882,13 @@ TEST_CASE("a sink hears about a series through both hooks or neither", "[series]
     (void) formula::detail::dispatch_series<formula::Rational>(
         formula::series<Retained, 5>, series_recording::inputs, series_recording::HalfSeriesSink { {}, &halfCalls });
     CHECK(halfCalls == 0);
+
+    int producedOnlyCalls = 0;
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::series<Retained, 5>,
+        series_recording::inputs,
+        series_recording::ProducedOnlySink { {}, &producedOnlyCalls });
+    CHECK(producedOnlyCalls == 0);
 
     int entered = 0;
     int produced = 0;

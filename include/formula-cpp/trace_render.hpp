@@ -1170,18 +1170,23 @@ namespace detail
     /// `AcceptanceChecked`, for the same reason: it gathers verdicts, and has
     /// no value of its own.
     ///
+    /// **The one entry point for every step's line, a series included**, is
+    /// `step_line` below, which escapes the step and renders the copy here.
+    /// @p budget is what is left of `render_trace`'s `maxSteps` after this
+    /// line's own unit: a series spends one more unit on each element it shows
+    /// (`series_step_line`), and every other kind spends nothing here. Keeping
+    /// every kind on this path is what lets one change reach every line --
+    /// escaping author text, above all: the vocabulary symbol and the unit
+    /// symbol a series line prints are escaped wherever a scalar line's are.
+    ///
     /// Renders an `EscapedStep`'s copy, never the step itself -- see
     /// `step_line`, which makes it.
-    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded)
+    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded, std::size_t& budget)
     {
         // A series first, before anything reads `value`: its values are its
-        // elements. Unbounded here; `render_trace` calls `series_step_line`
-        // itself, with what is left of its budget.
+        // elements.
         if (is_series(recorded.kind))
-        {
-            std::size_t unbounded = recorded.elements.size();
-            return series_step_line(recorded, unbounded);
-        }
+            return series_step_line(recorded, budget);
         if (recorded.kind == StepKind::Constraint)
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
         if (recorded.kind == StepKind::AcceptanceChecked)
@@ -1228,10 +1233,10 @@ namespace detail
     /// what it holds. The one place author text is escaped: every piece of it
     /// in @p recorded is escaped into an `EscapedStep` here, before anything
     /// reads it, and the line is rendered from that copy.
-    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded)
+    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded, std::size_t& budget)
     {
         EscapedStep const escaped { recorded };
-        return escaped_step_line(escaped.step);
+        return escaped_step_line(escaped.step, budget);
     }
 } // namespace detail
 
@@ -1275,8 +1280,7 @@ template <typename Rep = Rational>
         --budget;
         renderedTrace += std::to_string(shown + 1);
         renderedTrace += ". ";
-        renderedTrace +=
-            detail::is_series(recorded.kind) ? detail::series_step_line(recorded, budget) : detail::step_line(recorded);
+        renderedTrace += detail::step_line(recorded, budget);
         renderedTrace += "\n";
         ++shown;
     }
