@@ -17,6 +17,10 @@
 //      applies to a sample is an ordinary runtime value.
 //   4. A vocabulary: the two jurisdictions write the specimen's two edges with
 //      each other's letters. The page and the trace both follow it.
+//   5. Constraints: the method's own acceptance check, and a western
+//      jurisdiction's overlay that replaces it with acceptance logic of its
+//      own. `check_method` answers one outcome per constraint, and the trace
+//      says beside each verdict whose check it was.
 //
 // Every citation here is invented -- generic physics with fictional Example
 // Standard references, exactly as every other example in this repository is.
@@ -27,6 +31,8 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -108,7 +114,8 @@ inline constexpr auto compressiveStrength = formula::method(
                       formula::variant<Cylinder>(formula::constant<unit::One>(rat(4)) * var<Force>
                                                  / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints());
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(50)),
+                                             formula::Verdict { "the load at failure is below 50 kN" })));
 // clang-format on
 
 // A 150 x 100 mm cube face loaded to 90.1 kN: 6.00666... MPa, so a rounding
@@ -187,6 +194,83 @@ enum class Jurisdiction : std::uint8_t
 // jurisdiction's words is not unfamiliar, it states the wrong formula.
 inline constexpr auto northernWords = formula::vocabulary(formula::renames<EdgeA>("a"), formula::renames<EdgeB>("b"));
 inline constexpr auto southernWords = formula::vocabulary(formula::renames<EdgeA>("b"), formula::renames<EdgeB>("a"));
+
+// ---- 5. Constraints ---------------------------------------------------------------
+inline constexpr formula::Citation westAcceptance { .title = "Acceptance",
+                                                    .reference = "Example Standard 9:2022 B",
+                                                    .section = "B.2" };
+inline constexpr formula::Citation westRevision { .title = "Acceptance",
+                                                  .reference = "Example Standard 9:2025 B",
+                                                  .section = "B.2" };
+
+/// The west accepts a specimen by checks of its own: two where the base method
+/// has one, and neither of them the base method's. `with_constraints` replaces
+/// the method's constraints wholesale -- it does not add to them.
+inline constexpr auto west = formula::overlay(formula::with_constraints(
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(100)),
+                                             formula::Verdict { "the load at failure is below 100 kN" }),
+                         formula::constraint(var<EdgeA> <= formula::number(rat(2)) * var<EdgeB>,
+                                             formula::Verdict { "the loaded face is more than twice as long as wide" })),
+    westAcceptance));
+
+/// A later revision of the west's annex, applied on top of the west's method:
+/// its one constraint is all the stacked method checks.
+inline constexpr auto westRevised = formula::overlay(formula::with_constraints(
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(80)),
+                                             formula::Verdict { "the load at failure is below 80 kN" })),
+    westRevision));
+
+inline constexpr auto western = formula::apply(west, compressiveStrength);
+inline constexpr auto westernRevised = formula::apply(westRevised, western);
+
+[[nodiscard]] std::string_view describe(formula::ConstraintOutcomeKind kind)
+{
+    switch (kind)
+    {
+        case formula::ConstraintOutcomeKind::Satisfied:
+            return "satisfied";
+        case formula::ConstraintOutcomeKind::Violated:
+            return "violated";
+        case formula::ConstraintOutcomeKind::NotChecked:
+            return "not checked";
+        case formula::ConstraintOutcomeKind::Invalid:
+            return "invalid";
+    }
+    return "unknown";
+}
+
+template <std::size_t N>
+void print_outcomes(char const* method, std::array<formula::ConstraintOutcome, N> const& outcomes)
+{
+    std::printf("%s: %zu constraint(s)\n", method, N);
+    for (std::size_t index = 0; index < N; ++index)
+    {
+        std::string_view const word = describe(outcomes[index].kind());
+        std::printf("  [%zu] %.*s", index, static_cast<int>(word.size()), word.data());
+        if (std::optional<formula::Verdict> const verdict = outcomes[index].verdict())
+            std::printf(": %.*s", static_cast<int>(verdict->label.size()), verdict->label.data());
+        std::printf("\n");
+    }
+}
+
+/// Whose constraints @p m checks, as `constraint_origin` answers it.
+template <typename M>
+[[nodiscard]] std::string whoseConstraints(M const& m)
+{
+    formula::ConstraintOrigin const origin = formula::constraint_origin(m);
+    if (origin.provenance() == formula::ConstraintProvenance::MethodOwn)
+        return "the method's own";
+    return "jurisdiction overlay, " + std::string { origin.source().reference } + ", "
+           + std::string { origin.source().section };
+}
+
+template <typename M>
+[[nodiscard]] std::string acceptanceOf(M const& m)
+{
+    formula::Trace<> trace {};
+    (void) formula::check_method(m, specimen, formula::RecordingSink { trace });
+    return formula::render_trace(trace, { .maxSteps = 30 });
+}
 
 [[nodiscard]] std::string exact(formula::Evaluated<formula::Rational> const& result)
 {
@@ -311,6 +395,37 @@ int main()
     std::string const southernTrace = formula::render_trace(trace, { .maxSteps = 30 });
     std::printf("%s\n", southernTrace.c_str());
     check(southernTrace.find("4. b = 150 mm\n") != std::string::npos, "the trace writes the 150 mm edge as the south does");
+
+    // ---- 5. Constraints ----------------------------------------------------------------
+    std::printf("== 5. Whose acceptance logic ==\n\n");
+
+    auto const baseOutcomes = formula::check_method(compressiveStrength, specimen);
+    auto const westOutcomes = formula::check_method(western, specimen);
+    print_outcomes("base", baseOutcomes);
+    print_outcomes("west", westOutcomes);
+    std::printf("\n");
+    check(baseOutcomes.size() == 1 && baseOutcomes[0].is_satisfied(), "the base method's one check: 90.1 kN >= 50 kN");
+    check(westOutcomes.size() == 2 && westOutcomes[0].is_violated() && westOutcomes[1].is_satisfied(),
+          "the west's two checks, each at its own index: 90.1 kN < 100 kN, and 150 mm <= 2 x 100 mm");
+
+    std::printf("base constraints: %s\n", whoseConstraints(compressiveStrength).c_str());
+    std::printf("west constraints: %s\n\n", whoseConstraints(western).c_str());
+
+    std::string const baseAcceptance = acceptanceOf(compressiveStrength);
+    std::string const westAcceptanceTrace = acceptanceOf(western);
+    std::printf("%s\n%s\n", baseAcceptance.c_str(), westAcceptanceTrace.c_str());
+    check(baseAcceptance.find("[satisfied; the method's own constraint]") != std::string::npos,
+          "the base method's verdict is the method's own");
+    check(westAcceptanceTrace.find("[the load at failure is below 100 kN; jurisdiction overlay: Acceptance, "
+                                   "Example Standard 9:2022 B, B.2]")
+              != std::string::npos,
+          "the west's verdict names the west's annex");
+
+    auto const revisedOutcomes = formula::check_method(westernRevised, specimen);
+    print_outcomes("west, revised on top", revisedOutcomes);
+    std::printf("revised constraints: %s\n\n", whoseConstraints(westernRevised).c_str());
+    check(revisedOutcomes.size() == 1 && revisedOutcomes[0].is_satisfied(),
+          "stacked overlays: the later overlay's one constraint holds, and the earlier two are gone");
 
     std::printf("all checks passed: %s\n", allPassed ? "yes" : "no");
     return allPassed ? 0 : 1;

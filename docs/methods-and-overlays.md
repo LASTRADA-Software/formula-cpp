@@ -42,7 +42,8 @@ inline constexpr auto compressiveStrength = formula::method(
                       formula::variant<Cylinder>(formula::constant<unit::One>(rat(4)) * var<Force>
                                                  / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints());
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(50)),
+                                             formula::Verdict { "the load at failure is below 50 kN" })));
 ```
 
 - **A tag** such as `Cube` is an empty struct, never instantiated, and it need
@@ -53,6 +54,10 @@ inline constexpr auto compressiveStrength = formula::method(
   the dimension they report.
 - **The rounding rule** is part of the method, not something applied
   afterwards. It rounds whichever variant is selected.
+- **The constraints** are the checks a result must pass to be accepted, as
+  [Constraints and verdicts](constraints.md) describes them. `evaluate_method`
+  does not check them; `check_method` does, and says whose they are -- see
+  [Whose acceptance logic](#whose-acceptance-logic).
 
 `evaluate_method<Tag>` selects a variant by tag. The tag is always stated,
 never deduced: which variant applies is a property of the specimen, and the
@@ -188,9 +193,10 @@ static assertion failed: formula: this method declares no variant for that tag; 
 
 ## An overlay yields a method
 
-Six operations. **Four of them are said in the trace**, each by a step of its
+Seven operations. **Five of them are said in the trace**, each by a step of its
 own naming the jurisdiction's overlay and what it cited: a fixed constant, a
-derived quantity, a replaced formula and a jurisdiction's rounding rule.
+derived quantity, a replaced formula, a jurisdiction's rounding rule, and a
+jurisdiction's constraints (see [Whose acceptance logic](#whose-acceptance-logic)).
 `document()` marks the first three on the page. **A pin and a prune are not**:
 they take no citation, record no step and mark nothing on the page, and the
 only sign of either in a trace is the selection's published count -- `(2nd of
@@ -204,6 +210,7 @@ only sign of either in a trace is the selection's published count -- `(2nd of
 | `pin_variant<Tag>()` | keeps only that variant, making it mandatory |
 | `prune_variant<Tag>()` | deletes that variant |
 | `with_rounding<U, Places, Mode>(citation)` | replaces the method's rounding rule |
+| `with_constraints(constraints(...), citation)` | replaces the method's constraints wholesale |
 
 `apply(overlay, method)` returns a new method, a new type built at compile
 time. The base method is unchanged, so one base method can carry every
@@ -388,7 +395,7 @@ static assertion failed: formula: this overlay replaces a variant the method doe
 ```
 
 ```
-static assertion failed: formula: this overlay lists the same operation twice; two constants or definitions of one quantity, two pins, prunes or replacements of one variant, or two rounding overrides, leave the first silently doing nothing -- the first of the two appears in this diagnostic as the template argument Operation of RequireOperationListedOnce, and First and Second are the ZERO-BASED positions of the two arguments that list it, so 0 is the first argument
+static assertion failed: formula: this overlay lists the same operation twice; two constants or definitions of one quantity, two pins, prunes or replacements of one variant, two rounding overrides, or two replacements of the constraints, leave the first silently doing nothing -- the first of the two appears in this diagnostic as the template argument Operation of RequireOperationListedOnce, and First and Second are the ZERO-BASED positions of the two arguments that list it, so 0 is the first argument
 ```
 
 A produced method that reads a quantity both where an overlay fixed or derived
@@ -400,10 +407,197 @@ such a plain read back:
 static assertion failed: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment; one formula would evaluate one quantity at two values -- an operation listed after the substitution, a later overlay, or definitions that read each other put the plain use back; the quantity appears in this diagnostic as the template argument Q of RequireSubstitutionEverywhere
 ```
 
+A constant or definition that a later operation left with nothing to fix is
+refused too, in words that say whether it was bypassed or listed too early --
+see [An overlay's acceptance logic among its other operations](#an-overlays-acceptance-logic-among-its-other-operations).
+
 The full list of refusals, with the reason for each, is `overlay.hpp`'s file
 comment. The messages above are g++ 13.3's, copied from the build of this
 repository's negative tests. cl and clang print the same library text in their
 own frame.
+
+## Whose acceptance logic
+
+A method's third part is its constraints: the checks a result must pass before
+it is accepted. The base method holds one of its own, `F >= 50 kN` (declared
+[above](#a-method-variants-tags-and-one-rounding-rule)), and the west
+replaces it with two checks of its own:
+
+```cpp
+inline constexpr auto west = formula::overlay(formula::with_constraints(
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(100)),
+                                             formula::Verdict { "the load at failure is below 100 kN" }),
+                         formula::constraint(var<EdgeA> <= formula::number(rat(2)) * var<EdgeB>,
+                                             formula::Verdict { "the loaded face is more than twice as long as wide" })),
+    westAcceptance));
+```
+
+`check_method(m, environment)` checks every constraint the method holds and
+answers one `ConstraintOutcome` per constraint, at the index the method holds
+it. It never stops at the first failure, for the reason [Constraints and
+verdicts](constraints.md) gives:
+
+```cpp
+auto const baseOutcomes = formula::check_method(compressiveStrength, specimen);
+auto const westOutcomes = formula::check_method(western, specimen);
+```
+
+```text
+base: 1 constraint(s)
+  [0] satisfied
+west: 2 constraint(s)
+  [0] violated: the load at failure is below 100 kN
+  [1] satisfied
+```
+
+**`with_constraints` replaces the constraints, it does not add to them.** The
+west's method no longer checks the base method's 50 kN. A jurisdiction that
+keeps a base check restates it in its own set, with its own citation. An
+overlay can also leave fewer constraints than the method had, or none:
+`with_constraints(formula::constraints(), citation)` is accepted, because a
+jurisdiction that checks nothing is a position it can state and cite.
+
+### Whose each verdict is
+
+`constraint_origin(m)` answers whose constraints a method holds, and what the
+overlay that supplied them cited:
+
+```cpp
+formula::ConstraintOrigin const origin = formula::constraint_origin(m);
+if (origin.provenance() == formula::ConstraintProvenance::MethodOwn)
+    return "the method's own";
+```
+
+```text
+base constraints: the method's own
+west constraints: jurisdiction overlay, Example Standard 9:2022 B, B.2
+```
+
+The trace says the same beside every verdict. `check_method` records the
+verdicts under an `acceptance` step of their own, in the order it returns
+them:
+
+```text
+1. F = 90100 N
+2. 50 kN
+3. require #1 >= #2 [satisfied; the method's own constraint]
+4. acceptance(#3) [the method's own constraints]
+```
+
+```text
+1. F = 90100 N
+2. 100 kN
+3. require #1 >= #2 [the load at failure is below 100 kN; jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
+4. a = 150 mm
+5. 2
+6. b = 100 mm
+7. #5 * #6 = 1/5
+8. require #4 <= #7 [satisfied; jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
+9. acceptance(#3, #8) [jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
+```
+
+A method with no constraints still gets its `acceptance` line --
+`acceptance(none)`, with whose it is -- so a jurisdiction that removed every
+check is never silent about it. Step 7 is `2 x 100 mm` in coherent SI, 0.2 m,
+written without its unit, as the computed steps of the cube's trace above are
+too.
+
+The constraints carry whose they are with them: `with_constraints` puts an
+`OverlaidConstraints` in the method -- the jurisdiction's set together with
+its citation -- and `check_method` and `constraint_origin` read it from there.
+So a method built from an overlaid method's parts,
+`formula::method(o.variantSet, o.rounding, o.constraintSet)`, still checks the
+jurisdiction's constraints and still says so. `check_all` takes a plain
+`ConstraintSet`, which an overlaid method's `constraintSet` is not; call
+`check_method` to check a method's constraints.
+
+Building an `OverlaidConstraints` by hand is refused:
+
+```
+static assertion failed: formula: whose a method's constraints are is the library's to state, not an author's; method(..., constraints(...)) declares the method's own, and with_constraints(...) applied by an overlay a jurisdiction's
+```
+
+Two things are not refused, and are relabellings an author makes on purpose:
+
+- **building a method from the plain set**:
+  `formula::method(o.variantSet, o.rounding, o.constraintSet.constraintSet())`
+  checks the jurisdiction's constraints as the new method's own;
+- **explicitly specialising `OverlaidConstraints`** for a predicate over a
+  quantity of one's own, which can then claim any citation.
+
+Both compile without a diagnostic on cl 19.51 at `/W4`, and on g++ 13.3 and
+clang++ 20.1.8 at `-Wall -Wextra` (measured with a probe written for this
+page, not a test of this repository).
+
+### An overlay's acceptance logic among its other operations
+
+`with_constraints` is an operation like the others, applied in the order the
+overlay lists it. An operation listed **after** it reaches inside the new
+constraints: a `with_constant<Q>` listed after it fixes `Q` in the
+jurisdiction's constraints as well as in the variants
+(`test/overlay_tests.cpp`, "a constant listed after an overlay's constraints
+reaches inside them"). A constant listed **before** it does nothing for the
+new constraints, and an overlay whose new constraints then read `Q` straight
+from the environment is refused. Which refusal depends on what the constant
+met where it is listed. If it fixed `Q` in the method's own constraints,
+which `with_constraints` then discarded, it was bypassed:
+
+```
+static assertion failed: formula: this overlay fixes a quantity, and an operation listed after the constant removed every use it fixed and put back one that reads the quantity from the environment; the method it produces reads the quantity only unsubstituted, so the constant does nothing -- list the constant after that operation; the quantity appears in this diagnostic as the template argument Q of RequireConstantNotBypassed
+```
+
+If nothing read `Q` where the constant is listed, it came too early:
+
+```
+static assertion failed: formula: this overlay fixes a quantity that nothing read where the constant is listed, and an operation listed after it reads the quantity from the environment; the method it produces reads the quantity only unfixed, so the constant does nothing -- list the constant after that operation; the quantity appears in this diagnostic as the template argument Q of RequireConstantPrecedesItsUse
+```
+
+If the new constraints do not read `Q` either, and nothing else in the method
+does, the constant is refused as an override nobody reads. `add_derived` has
+the same three refusals, in its own words. Either way the fix is to list the
+constant after the constraints it is meant to reach. The messages are g++
+13.3's, from `overlay_constant_before_constraints_read_plainly` and
+`overlay_constant_never_read_then_constraints_read_it` in `test/negative/`.
+
+### What constraints cannot yet say
+
+Two limits, stated here so that nobody mistakes them for supported cases:
+
+- **A constraint cannot yet judge the specimen's own category.** A category
+  code is written into a constraint through `exact_lookup`, which takes its
+  key as a value, not from the environment. So a jurisdiction that accepts,
+  say, square specimens only can write a constraint that judges *one fixed*
+  category, the same for every specimen, but not one that looks up the
+  category of the specimen in front of it. The verdict does name the category
+  by its enumerator (`test/overlay_tests.cpp`, "an overlay's constraint judges
+  a category code, and its verdict names the category").
+- **Stacked overlays: the later overlay's constraints hold.** Applying a
+  second overlay to an overlaid method replaces the constraints again,
+  wholesale. The earlier overlay's constraints are gone, not merged, and
+  `constraint_origin` names only the later citation:
+
+```cpp
+/// A later revision of the west's annex, applied on top of the west's method:
+/// its one constraint is all the stacked method checks.
+inline constexpr auto westRevised = formula::overlay(formula::with_constraints(
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(80)),
+                                             formula::Verdict { "the load at failure is below 80 kN" })),
+    westRevision));
+
+inline constexpr auto western = formula::apply(west, compressiveStrength);
+inline constexpr auto westernRevised = formula::apply(westRevised, western);
+```
+
+```text
+west, revised on top: 1 constraint(s)
+  [0] satisfied
+revised constraints: jurisdiction overlay, Example Standard 9:2025 B, B.2
+```
+
+A later overlay's `with_constraints` may also discard every place an earlier
+overlay's constant or definition had fixed a quantity. That is accepted as
+"the later overlay holds", although the same two operations inside **one**
+overlay are refused, as described above.
 
 ## The jurisdiction set is compiled in; which one applies is data
 
