@@ -214,6 +214,14 @@ namespace detail
         return Environment<Entries...> { Entries {}... };
     }
 
+    /// The environment a `RecordContext` inherits, as `type`; nothing for any
+    /// other type. Specialized below `RecordContext`, and read only by
+    /// `record()` after it has refused a context as a record's values.
+    template <typename T>
+    struct ContextOwnEnvironment
+    {
+    };
+
     /// Marks the constructor of `Record` that builds an unbound one.
     struct UnboundRecord
     {
@@ -325,14 +333,26 @@ class Record
 ///
 /// @return a `Record<Role, Env, Lineage...>`. Values that are not a plain
 /// `Environment` are refused -- see `detail::RequireRecordEnvironment` --
-/// and the refused call then returns a record holding no values at all, so
-/// that the refusal is the only message rather than the first of several.
+/// and the refused call still returns a record, so that the refusal is not
+/// followed by errors about a result that does not exist:
+/// - given a `record_context`, the record holds that context's own
+///   record's environment, the values the context itself evaluates against,
+///   so evaluating through it draws nothing more;
+/// - given anything else, the record holds no values at all. Its key and
+///   `is_bound()` still answer, but each quantity read from it is refused
+///   again, by `RequireProvided`.
 template <typename Role, typename Env, typename... Lineage>
 [[nodiscard]] constexpr auto record(RecordKey recordKey, Env recordEnvironment, Lineage... lineageKeys) noexcept
 {
     static_assert(detail::RequireRecordEnvironment<Env>::value);
     if constexpr (detail::isEnvironment<Env>)
         return detail::RecordAccess::bound<Record<Role, Env, Lineage...>>(recordKey, recordEnvironment, lineageKeys...);
+    else if constexpr (requires { typename detail::ContextOwnEnvironment<Env>::type; })
+    {
+        using OwnEnvironment = typename detail::ContextOwnEnvironment<Env>::type;
+        return detail::RecordAccess::bound<Record<Role, OwnEnvironment, Lineage...>>(
+            recordKey, static_cast<OwnEnvironment const&>(recordEnvironment), lineageKeys...);
+    }
     else
         return detail::RecordAccess::bound<Record<Role, Environment<>, Lineage...>>(recordKey, Environment<> {},
                                                                                    lineageKeys...);
@@ -457,6 +477,15 @@ class RecordContext: public ThisRec::environment_type
     ThisRec _own;
     std::tuple<Others...> _others;
 };
+
+namespace detail
+{
+    template <typename ThisRec, typename... Others>
+    struct ContextOwnEnvironment<RecordContext<ThisRec, Others...>>
+    {
+        using type = typename ThisRec::environment_type;
+    };
+} // namespace detail
 
 /// The context of @p own, reading from @p others by their roles:
 /// `record_context(record<ThisRecord>(...), record<Reference>(...))`.

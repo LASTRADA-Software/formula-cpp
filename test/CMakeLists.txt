@@ -1824,11 +1824,26 @@ formula_add_negative_test(record_unbound_this_record
     "formula: the record being evaluated cannot be unbound"
     REJECT "RequirePlainRole")
 
-# After this refusal `record()` returns a record holding no values, so that
-# using it draws nothing more; the message is counted once by hand.
+# After this refusal `record()` returns a record over the context's own
+# record's environment, so that using it -- its key, or evaluating through
+# it -- draws nothing more. The message is counted once by hand on cl,
+# clang-cl, g++ 13 and clang++ 20.1.8 (see the phase 14 task 2 report); REJECT
+# cannot refuse a second copy of it, and REJECTs RequireProvided, the message
+# an evaluation through a record with no values would add.
 formula_add_negative_test(record_environment_is_context
     "formula: a record holds its values in an environment(...), and this is not one"
-    REJECT "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
+    REJECT "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles" "RequireProvided")
+
+# The same mistake one level up: a context given as this record's values,
+# and a formula then evaluated through the context built over it. One
+# message, and no RequireProvided for each quantity read. With the
+# context branch of `record()` removed, both this case and the one above
+# fail on their RequireProvided REJECT under g++ 13 and clang++ 20.1.8;
+# cl-debug showed one message either way, so only those two legs can see
+# that cascade.
+formula_add_negative_test(record_context_over_context
+    "formula: a record holds its values in an environment(...), and this is not one"
+    REJECT "RequireProvided" "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

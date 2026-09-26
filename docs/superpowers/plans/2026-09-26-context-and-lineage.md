@@ -498,7 +498,8 @@ The cross-test fixture uses a second record that shares the same sample, `PriorT
 
   template <typename Role, typename Env, typename... Lineage> class Record;   // private members
   template <typename Role, typename Env, typename... Lineage>
-  constexpr Record<Role, Env, Lineage...> record(RecordKey, Env, Lineage...) noexcept;
+  constexpr auto record(RecordKey, Env, Lineage...) noexcept;   // a Record<Role, Env, Lineage...>; refuses an Env that is
+                                                                //   not a plain Environment (RequireRecordEnvironment)
   //   Record::unbound() (refused for ThisRecord), Record::is_bound(),
   //   Record::key() -> std::optional<RecordKey> (empty when unbound), Record::environment()
 

@@ -5,10 +5,12 @@
 // A formula reads another record through the context, never through a
 // record nested in one. The context itself is well formed and the role is
 // plain, so no other rule has anything to say. After the refusal the call
-// returns a record holding no values, so its use below draws nothing more.
+// returns a record over the context's own record's environment, so reading
+// its key and evaluating through it, below, draw nothing more: no
+// RequireProvided for the force.
 //
 // This must not compile.
-#include <formula-cpp/record.hpp>
+#include <formula-cpp/formula.hpp>
 
 namespace
 {
@@ -35,5 +37,6 @@ constexpr auto broken = formula::record<Nested>(formula::record_key(formula::sam
 
 int main()
 {
-    return broken.is_bound() ? 0 : 1;
+    auto const force = formula::checked_evaluate_si<formula::Rational>(formula::var<Force>, broken.environment());
+    return broken.key().has_value() && force.has_value() ? 0 : 1;
 }
