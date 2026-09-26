@@ -394,12 +394,19 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 }
 
 /// The sample variance, in **two passes**: the mean, then the squared
-/// deviations from it, totalled and divided by n - 1. The one-pass textbook
-/// form, (sum x^2 - (sum x)^2 / n) / (n - 1), squares the determinations
-/// themselves rather than their deviations, and overflows `Rational` far
-/// sooner on lab-scale data -- at 2^25 times fixture A's masses, where this
-/// form holds until 2^31 (`statistics_tests.cpp`). Fewer than two
+/// deviations from it, totalled and divided by n - 1. Fewer than two
 /// determinations is `DomainError`: n - 1 is then no count of anything.
+///
+/// **Headroom, as measured** (task 6 and its review). The one-pass textbook
+/// form, (sum x^2 - (sum x)^2 / n) / (n - 1), squares the determinations
+/// themselves, and at large *magnitudes* overflows first: at 2^25 times
+/// fixture A's masses, where this form holds until 2^31
+/// (`statistics_tests.cpp`). At fine *resolution* it is the other way round:
+/// dividing by n before squaring puts n^2 into every deviation's
+/// denominator, and at 6 dp in g near 40 g with n = 6 this form overflows on
+/// 460 of 1,000 random samples, where the one-pass form holds more often.
+/// Every such failure is `Overflow`, naming the determination it arose at --
+/// never a wrong value.
 template <typename Rep = Rational, SampleSource S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(SampleVarianceNode<S> const& node,
                                                            Env const& environment,
@@ -443,9 +450,37 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
         });
 }
 
-/// The range: the largest determination less the smallest, found by
-/// comparing every one -- never the last less the first. It takes a value
-/// and makes no decision, so it works for any `Rep` (T3).
+namespace detail
+{
+    /// The largest of @p sampled's determinations less the smallest, found by
+    /// comparing every one -- never the last less the first. **An unordered
+    /// determination -- a NaN, under `Rep = double` -- is the range**, wherever
+    /// it stands: comparisons with it are false, so a running minimum and
+    /// maximum would skip it unless it came first, and the range would depend
+    /// on the order the determinations were typed in. Never true of `Rational`.
+    template <typename Rep, std::size_t C>
+    [[nodiscard]] constexpr std::expected<Rep, ArithmeticError> range_of(SampleValue<Rep, C> const& sampled) noexcept
+    {
+        if (sampled.count == 0)
+            return std::unexpected { ArithmeticError::DomainError };
+        Rep smallest = sampled.values[0];
+        Rep largest = sampled.values[0];
+        for (std::size_t taken = 0; taken < sampled.count; ++taken)
+        {
+            Rep const determination = sampled.values[taken];
+            if (!(determination == determination))
+                return determination;
+            if (determination < smallest)
+                smallest = determination;
+            if (largest < determination)
+                largest = determination;
+        }
+        return RepTraits<Rep>::subtract(largest, smallest);
+    }
+} // namespace detail
+
+/// The range: the largest determination less the smallest (`detail::range_of`).
+/// It takes a value and makes no decision, so it works for any `Rep` (T3).
 template <typename Rep = Rational, SampleSource S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(SampleRangeNode<S> const& node,
                                                            Env const& environment,
@@ -456,20 +491,7 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
                                            environment,
                                            sink,
                                            [](detail::SampleValue<Rep, detail::sample_capacity<S>> const& sampled,
-                                              std::optional<std::size_t>&) -> std::expected<Rep, ArithmeticError> {
-                                               if (sampled.count == 0)
-                                                   return std::unexpected { ArithmeticError::DomainError };
-                                               Rep smallest = sampled.values[0];
-                                               Rep largest = sampled.values[0];
-                                               for (std::size_t taken = 1; taken < sampled.count; ++taken)
-                                               {
-                                                   if (sampled.values[taken] < smallest)
-                                                       smallest = sampled.values[taken];
-                                                   if (largest < sampled.values[taken])
-                                                       largest = sampled.values[taken];
-                                               }
-                                               return RepTraits<Rep>::subtract(largest, smallest);
-                                           });
+                                              std::optional<std::size_t>&) { return detail::range_of(sampled); });
 }
 
 } // namespace formula

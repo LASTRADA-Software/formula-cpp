@@ -109,6 +109,7 @@ The spec settles *what* (§16.4 #6/#7) and says nothing about *how*. Each decisi
 | `rounded_sqrt<U, Places, Mode>(x)` | T5 | √dim(x) | — |
 
 - These are generic textbook definitions. The variance is the **sample** variance (n − 1), not the population variance, and the name says "sample".
+- **The variance's headroom (measured in task 6 and its review):** it is computed in two passes, which holds to 2³¹ times fixture A's masses where the one-pass form fails at 2²⁵. That advantage is at large magnitudes only: at fine resolution (6 dp in g near 40 g, n = 6) the two-pass form overflows on 460 of 1,000 random samples, always as `Overflow`, never a wrong value. Task 9b carries the case; G6 is the remedy if it is judged realistic.
 - There is deliberately **no `sample_stddev` node** (T5 says why). The guide shows `rounded_sqrt<…>(sample_variance(s))` for an exact report, and `sqrt(sample_variance(s))` for a `double` evaluation.
 - Mean, variance and count work for any `Rep`, through `RepTraits`. `sample_range` works for any `Rep` too, because it takes a value and makes no decision: a min/max a few ULPs off moves the result by those ULPs, whereas a comparison that picks a branch moves it by a whole row. Everything that *decides* (rejection, `critical_value`) is `Rational`-only, following S15.
 
@@ -652,6 +653,7 @@ Every number below is invented. The arithmetic was checked with Python's `fracti
 
 **Critical-value tables**. Invented, and **deliberately unrealistic**: no published table holds values like these, none dips and jumps as they do, and nobody could mistake one for a real table or "correct" it toward one. **Do not adjust them.** (The first draft's values tracked a published outlier table's size and growth too closely; the task 3 review caught it, and the lead ruled them replaced, 2026-09-26.) Sizes {3, 4, 5, 6, 8}. No 7, so a 7-element pass misses.
 - **Task 3's own table** (lookup tests only): 10, 30, 20, 50, 40. Every neighbour differs from the next, and the mean of the two rows around the hole (45) is in no row.
+- **Task 6's join table** (`statistics_tests.cpp`, the range against a critical value times a precision limit): 10, 11/50, 20, 50, 40. Its n = 4 factor, 11/50, places the four determinations 40.35, 40.45, 40.50 and 40.55 g (range 0.2 g) in the window between the limit at the first result and the limit at the mean: 9977/50000 g = 0.19954 g < 0.2 g ≤ 40007/200000 g = 0.200035 g. Changing the factor closes the window.
 - **Deviation table** (used with `deviation_in_stddevs`): 90, 10, 20, 15, 60, read by the author's limit expression **scaled by 1/10**, `critical_value<Sizes, unit::One>(pass_count, {…}) * rat(1, 10)`, so the limits in force are 9, 1, 2, 3/2 and 6. The scale is the author's, visible in the formula; the table's own numbers stay out of every published range.
   - Fixture B, reading the **current** pass's n (correct): pass 1 (n = 6, limit² 9/4) has z² 80089/24342 ≈ 3.290 > 2.25, so reject 3. Pass 2 (n = 5, limit² 4) has z² 13689/4445 ≈ 3.0796 < 4, so it **settles at 1977/50 g**, rejecting {3}. The same holds for `AtMost<1>` and `AtMost<2>`.
   - Reading the **original** n = 6 in every pass (the mutation): pass 2 uses limit² 9/4, where 3.0796 > 2.25 rejects 5. Pass 3 (n = 4) has 675/428 ≈ 1.577 < 2.25 and settles at **321/8 g**, rejecting {3, 5}. With `AtMost<1>` it **aborts** in pass 2.
@@ -1045,7 +1047,7 @@ TEST_CASE("a statistic over elementwise arithmetic is the statistic of the per-e
   - Fixture E, all equal (Review Focus 1): variance 0, range 0.
   - n = 1: variance `DomainError`, range 0 (Review Focus 3).
   - An absent element: both absent.
-- [ ] **Step 2: Run and confirm they fail. Implement. Run and confirm they pass.** Compute the variance in two passes (the mean, then squared deviations). The textbook one-pass formula Σx² − (Σx)²/n overflows `Rational` far sooner on lab-scale data; test that case with fixture A scaled by 10⁴ and show that the two-pass form does not overflow where the one-pass form would. The report states the scale at which each overflows.
+- [ ] **Step 2: Run and confirm they fail. Implement. Run and confirm they pass.** Compute the variance in two passes (the mean, then squared deviations). **Measured in task 6 (corrected after it):** the textbook one-pass formula Σx² − (Σx)²/n overflows `Rational` sooner at large *magnitudes* -- fixture A scaled by 2²⁵ where the two-pass form holds to 2³¹; by powers of ten the two part only between 10¹¹ and 10¹², and at 10⁴ neither overflows. At fine *resolution* it is the other way round: dividing by n before squaring puts n² into every deviation's denominator, and at 6 dp in g near 40 g with n = 6 the two-pass variance overflows on 460 of 1,000 random samples (task 6 review), where one-pass holds more often. Test the magnitude case at 2²⁵. The report states the scale at which each overflows.
 - [ ] **Step 3: The join with task 2.** `rounded_sqrt<unit::Gram, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero>(sample_variance(series<Mass, 6>))` gives 1.85 g (fixture A) and 2.60 g (fixture B), traces as two steps (variance, then rounded root), and renders `round(sqrt(sample_variance(m(i))), to 2 dp of g)`.
 - [ ] **Step 4: The join with tasks 3 and 4, for n > 2 results.** Pin this constraint:
 
@@ -1270,6 +1272,7 @@ Added by the lead on 2026-09-26, at the owner's request. It answers one question
   - phase 12's cumulative sums and interpolation fixtures;
   - two norm-*shaped* synthetic cases written for this task, with the numbers invented:
     - a 20-point mean, variance and range with 3-decimal inputs;
+    - **named realistic case, from the task 6 review:** the variance of six masses near 40 g at 6 dp in g (microgram resolution), which overflows on 460 of 1,000 random samples -- for example 40.053270, 39.475922, 39.025798, 40.615904, 39.418416 and 40.131659 g. Report its headroom, and how often it fails, against G6's rule;
     - a 64-element grading curve with cumulative percentages and one interpolation.
   - Phase 15's least-squares fit is added to the census when phase 15 lands (the phase 15 plan carries that note).
 - [ ] **Step 3: The instrument's own control.** A hand-built case whose intermediate is exactly `INT64_MAX`, or a product one bit short of it, must report 0 or 1 bits of headroom. A case one step further must report the library's `Overflow` error, never a figure.

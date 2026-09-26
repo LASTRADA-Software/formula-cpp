@@ -9,7 +9,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <limits>
 #include <optional>
 #include <string>
@@ -271,18 +273,20 @@ TEST_CASE("each statistic documents its sample on its own", "[statistics][docume
 
 TEST_CASE("an empty sample cannot be written, and the statistics refuse one all the same", "[statistics]")
 {
-    // series<Q, 0> is refused where it is written (phase 12), so no sample a
-    // formula can name is empty. The guard stays, for the next sample
-    // source: a mean over none is a division by zero -- never a read of the
-    // first element of an empty array, which this constant evaluation would
-    // refuse to compile. (The variance's own guard, fewer than two, is the
-    // n = 1 case above.)
+    // series<Q, 0> is refused where it is written (phase 12), and a
+    // rejection keeps at least one determination (KeepAtLeast<m>, m >= 1), so
+    // no sample a formula can name is empty. The guards stay, for the next
+    // sample source: a mean over none is a division by zero and a range a
+    // domain error -- never a read of the first element of an empty array,
+    // which these constant evaluations would refuse to compile. (The
+    // variance's own guard, fewer than two, is the n = 1 case above.)
     constexpr formula::detail::SampleValue<Rational, 1> none { .values = { rat(40) }, .positions = { 0 }, .count = 0 };
     constexpr auto meanOfNone = [](formula::detail::SampleValue<Rational, 1> const& sampled) {
         std::optional<std::size_t> failedAt;
         return formula::detail::mean_of(sampled, failedAt);
     }(none);
     STATIC_REQUIRE(meanOfNone.error() == formula::ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(formula::detail::range_of(none).error() == formula::ArithmeticError::DomainError);
 }
 
 TEST_CASE("a failure position is amended only onto a failed statistic, and only printed within its sample",
@@ -410,8 +414,7 @@ TEST_CASE("one absent determination makes the variance and the range absent (T2)
     STATIC_REQUIRE(formula::checked_evaluate<Spread>(range, fixtureAMissingThird)->is_empty());
 }
 
-TEST_CASE("the variance is computed in two passes, which holds far past where the one-pass formula overflows",
-          "[statistics]")
+TEST_CASE("at large magnitudes the two-pass variance holds past where the one-pass formula overflows", "[statistics]")
 {
     // Fixture A scaled by 2^25: 40.2 g becomes 1348888166.4 g. The textbook
     // one-pass form, (sum x^2 - (sum x)^2 / n) / (n - 1), overflows Rational
@@ -419,7 +422,8 @@ TEST_CASE("the variance is computed in two passes, which holds far past where th
     // the squared deviations from it) holds until 2^31 -- and gives exactly
     // 427/125 g^2 times 2^50, in kg^2. Measured with fixtures A and B
     // alike; at 10^4, the brief's first guess, neither overflows (the forms
-    // part only between 10^11 and 10^12 when scaled by powers of ten).
+    // part only between 10^11 and 10^12 when scaled by powers of ten). At
+    // fine resolution it is the other way round -- see the header.
     constexpr std::int64_t scale = std::int64_t { 1 } << 25;
     constexpr auto scaledA = formula::environment(formula::measured_series<Mass>(grams(rat(402 * scale, 10)),
                                                                                  grams(rat(398 * scale, 10)),
@@ -429,6 +433,94 @@ TEST_CASE("the variance is computed in two passes, which holds far past where th
                                                                                  grams(rat(433 * scale, 10))));
     STATIC_REQUIRE(formula::checked_evaluate_si(variance, scaledA)->value()
                    == rat(427 * (std::int64_t { 1 } << 44), 1'953'125));
+}
+
+TEST_CASE("a variance that overflows fails with Overflow, naming the determination, in either pass",
+          "[statistics][trace-render]")
+{
+    // The squares pass: 9e18 g and -9e18 g have a mean of 0, and the first
+    // squared deviation, (9e15 kg)^2, leaves int64.
+    constexpr auto opposite = formula::environment(
+        formula::measured_series<Mass>(grams(rat(9'000'000'000'000'000'000)), grams(rat(-9'000'000'000'000'000'000))));
+    constexpr auto pair = formula::sample_variance(formula::series<Mass, 2>);
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(pair, opposite).error() == formula::ArithmeticError::Overflow);
+    formula::Trace<> squares {};
+    (void) formula::checked_evaluate<MassVariance>(pair, opposite, formula::RecordingSink<> { squares });
+    CHECK(formula::render_trace(squares, { .maxSteps = 10 })
+          == "1. m = 9000000000000000000 g; -9000000000000000000 g\n"
+             "2. sample_variance(#1) = overflow in exact arithmetic at element 1\n");
+
+    // Fixture A scaled by 2^31, where the two-pass form first fails: its mean
+    // still fits, and a squared deviation does not, at the fourth
+    // determination.
+    constexpr std::int64_t scale = std::int64_t { 1 } << 31;
+    constexpr auto scaledA = formula::environment(formula::measured_series<Mass>(grams(rat(402 * scale, 10)),
+                                                                                 grams(rat(398 * scale, 10)),
+                                                                                 grams(rat(405 * scale, 10)),
+                                                                                 grams(rat(440 * scale, 10)),
+                                                                                 grams(rat(400 * scale, 10)),
+                                                                                 grams(rat(433 * scale, 10))));
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, scaledA).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_evaluate_si(formula::sample_mean(determinations), scaledA).has_value());
+    formula::Trace<> squaresLate {};
+    (void) formula::checked_evaluate<MassVariance>(variance, scaledA, formula::RecordingSink<> { squaresLate });
+    CHECK(formula::render_trace(squaresLate, { .maxSteps = 10 })
+          == "1. m = 431644213248/5 g; 427349245952/5 g; 86973087744 g; 94489280512 g; 85899345920 g; 464930209792/5 g\n"
+             "2. sample_variance(#1) = overflow in exact arithmetic at element 4\n");
+
+    // The mean pass: the largest Rational and 1 kg, whose total overflows at
+    // the second determination before any deviation is taken -- the mean
+    // alone fails there too.
+    constexpr auto heavy = formula::environment(
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+                                        formula::Measured<Heavy> { rat(1) }));
+    constexpr auto heavyVariance = formula::sample_variance(formula::series<Heavy, 2>);
+    STATIC_REQUIRE(formula::checked_evaluate_si(heavyVariance, heavy).error() == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(formula::checked_evaluate_si(formula::sample_mean(formula::series<Heavy, 2>), heavy).error()
+                   == formula::ArithmeticError::Overflow);
+    formula::Trace<> meanPass {};
+    (void) formula::checked_evaluate_si(heavyVariance, heavy, formula::RecordingSink<> { meanPass });
+    CHECK(formula::render_trace(meanPass, { .maxSteps = 10 })
+          == "1. m_h = 9223372036854775807 kg; 1 kg\n"
+             "2. sample_variance(#1) = overflow in exact arithmetic at element 2\n");
+}
+
+TEST_CASE("dispersion of negative determinations", "[statistics]")
+{
+    // -3, -8 and -5 g: range 5 g, variance 19/3 g^2. A running maximum
+    // started at zero would give 8 g.
+    constexpr auto below =
+        formula::environment(formula::measured_series<Mass>(grams(rat(-3)), grams(rat(-8)), grams(rat(-5))));
+    constexpr auto three = formula::series<Mass, 3>;
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(formula::sample_range(three), below)->measurement().value() == rat(5));
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(formula::sample_variance(three), below)->measurement().value()
+                   == rat(19, 3));
+    // -3, 6 and -1 g, mixed signs: range 9 g, variance 67/3 g^2. Extremes
+    // compared on magnitudes would give 6 - 1 = 5 g.
+    constexpr auto mixed =
+        formula::environment(formula::measured_series<Mass>(grams(rat(-3)), grams(rat(6)), grams(rat(-1))));
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(formula::sample_range(three), mixed)->measurement().value() == rat(9));
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(formula::sample_variance(three), mixed)->measurement().value()
+                   == rat(67, 3));
+}
+
+TEST_CASE("under double, a NaN determination is the range, wherever it stands", "[statistics]")
+{
+    // Comparisons with a NaN are false: a running minimum and maximum would
+    // skip one unless it came first, and the range would depend on the order
+    // of entry. It is the range, first, middle or last.
+    constexpr double nan = std::numeric_limits<double>::quiet_NaN();
+    for (std::size_t at = 0; at < 3; ++at)
+    {
+        formula::detail::SampleValue<double, 3> sampled;
+        sampled.values = { 1.0, 4.0, 2.0 };
+        sampled.positions = { 0, 1, 2 };
+        sampled.count = 3;
+        sampled.values[at] = nan;
+        std::expected<double, formula::ArithmeticError> const ranged = formula::detail::range_of(sampled);
+        REQUIRE(ranged.has_value());
+        CHECK(*ranged != *ranged);
+    }
 }
 
 TEST_CASE("the spread is reported exactly: the rounded root of the variance", "[statistics][rounded_root]")
