@@ -14,6 +14,8 @@
 /// which consults the author's `EnumeratorName` customization first. Nothing
 /// outside that header should call into here directly.
 
+#include <formula-cpp/detail/name_text.hpp>
+
 #include <cstddef>
 #include <string_view>
 #include <type_traits>
@@ -50,17 +52,6 @@ template <auto E>
 #else
     return std::string_view { __PRETTY_FUNCTION__ };
 #endif
-}
-
-/// True for a byte that can appear in an identifier the compiler printed: an
-/// ASCII letter, a digit, an underscore, or any byte of a multi-byte UTF-8
-/// sequence -- C++23 identifiers may be Unicode, and all four compilers print
-/// `Uni::Größe` as UTF-8 rather than as a universal-character-name.
-[[nodiscard]] constexpr bool is_identifier_byte(char c) noexcept
-{
-    auto const byte = static_cast<unsigned char>(c);
-    return (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || (byte >= '0' && byte <= '9') || byte == '_'
-           || byte >= 0x80;
 }
 
 /// The name of enumerator @p E as written in its declaration -- `Cylinder`,

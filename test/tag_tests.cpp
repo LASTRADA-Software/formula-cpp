@@ -53,6 +53,28 @@ struct TagAnonymousBox;
 struct TagCustomized;
 struct TagLeftAlone;
 
+namespace tag_inner
+{
+struct Qualified;
+} // namespace tag_inner
+
+// Tags whose reflected name cannot be shown plainly, each given a spelling
+// of the author's own below -- which is the remedy the refusal names.
+using TagLambda = decltype([] {});
+
+struct TagUnnamedHolder
+{
+    struct
+    {
+    } member;
+};
+using TagUnnamed = decltype(TagUnnamedHolder::member);
+
+// Named for linkage purposes by the typedef, so it has a name to show.
+typedef struct
+{
+} TagLinkageNamed;
+
 /// A tag whose spelling comes from the codebase's own function, found by
 /// argument-dependent lookup through the generic bridge below.
 struct TagBridged
@@ -69,6 +91,30 @@ template <>
 struct formula::TagName<TagCustomized>
 {
     static constexpr std::string_view of() noexcept { return "cylinder 150 x 300 mm"; }
+};
+
+template <>
+struct formula::TagName<TagLambda>
+{
+    static constexpr std::string_view of() noexcept { return "lambda tag"; }
+};
+
+template <>
+struct formula::TagName<TagUnnamed>
+{
+    static constexpr std::string_view of() noexcept { return "unnamed tag"; }
+};
+
+template <>
+struct formula::TagName<TagBox<tag_inner::Qualified const>>
+{
+    static constexpr std::string_view of() noexcept { return "box of a const qualified"; }
+};
+
+template <>
+struct formula::TagName<TagBox<void(tag_inner::Qualified)>>
+{
+    static constexpr std::string_view of() noexcept { return "box of a function"; }
 };
 
 template <>
@@ -147,9 +193,11 @@ TEST_CASE("a bool template argument is where cl's spelling cannot be evened out"
 
 TEST_CASE("a reflected tag name lives in static storage of its own", "[tag]")
 {
-    // Not a view into some temporary: the characters are those of
-    // `TypeNameStorage<T>::chars`, which a trace may keep for as long as it
-    // lives (`Step::variantTag`).
+    // That the view has static storage duration is already enforced by the
+    // `constexpr` declaration: a constant expression cannot hold a pointer
+    // into anything else. What this adds is WHICH static object: the
+    // characters are those of `TypeNameStorage<T>::chars`, the storage
+    // `Step::variantTag`'s comment names.
     constexpr std::string_view name = tag_name<TagBox<TagAnonymous>>();
     CHECK(name.data() == formula::detail::TypeNameStorage<TagBox<TagAnonymous>>::chars.data());
 }
@@ -171,4 +219,51 @@ TEST_CASE("a generic partial specialization over every class is a customization,
     // refuse this name with a message that is false. Kills that check; this
     // case is a compile error under it.
     STATIC_REQUIRE(tag_name<TagBridged>() == "bridged tag");
+}
+
+TEST_CASE("a tag whose reflected name would be wrong is accepted once the author names it", "[tag]")
+{
+    // Each of these is refused without its `TagName` -- see the four
+    // `tag_name_unreadable_*` negative cases -- and each is accepted with
+    // one, because a non-empty spelling of the author's is never judged.
+    STATIC_REQUIRE(tag_name<TagLambda>() == "lambda tag");
+    STATIC_REQUIRE(tag_name<TagUnnamed>() == "unnamed tag");
+    STATIC_REQUIRE(tag_name<TagBox<tag_inner::Qualified const>>() == "box of a const qualified");
+    STATIC_REQUIRE(tag_name<TagBox<void(tag_inner::Qualified)>>() == "box of a function");
+}
+
+TEST_CASE("a class named for linkage by a typedef has a name, and it is shown", "[tag]")
+{
+    // `typedef struct { } TagLinkageNamed;` is unnamed in its declaration
+    // and named by the typedef; all four compilers print `TagLinkageNamed`.
+    STATIC_REQUIRE(tag_name<TagLinkageNamed>() == "TagLinkageNamed");
+}
+
+TEST_CASE("const and volatile are found as whole words in the raw spelling, and only there", "[tag]")
+{
+    using formula::detail::names_cv_qualifier;
+    STATIC_REQUIRE(names_cv_qualifier("TagBox<const ns::A>"));
+    STATIC_REQUIRE(names_cv_qualifier("struct TagBox<struct ns::A const >"));
+    STATIC_REQUIRE(names_cv_qualifier("TagBox<volatile A>"));
+    // Part of a longer identifier is not the keyword.
+    STATIC_REQUIRE(!names_cv_qualifier("TagBox<constant>"));
+    STATIC_REQUIRE(!names_cv_qualifier("TagBox<const_tag>"));
+    STATIC_REQUIRE(!names_cv_qualifier("TagBox<Myconst>"));
+    STATIC_REQUIRE(!names_cv_qualifier("volatility"));
+}
+
+TEST_CASE("a plain name is a class name and its arguments, and nothing else", "[tag]")
+{
+    using formula::detail::is_plain_type_name;
+    STATIC_REQUIRE(is_plain_type_name("TagBox<TagBox<int>, 150>"));
+    STATIC_REQUIRE(is_plain_type_name("_Leading"));
+    STATIC_REQUIRE(!is_plain_type_name(""));
+    STATIC_REQUIRE(!is_plain_type_name("<lambda()>"));
+    STATIC_REQUIRE(!is_plain_type_name("(lambda at file.cpp:1:2)"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<A)>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<*>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<A&>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<'x'>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<1.5>"));
+    STATIC_REQUIRE(!is_plain_type_name("9Lives"));
 }

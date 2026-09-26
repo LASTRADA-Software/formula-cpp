@@ -439,6 +439,24 @@ formula_add_negative_test(tag_name_cv_qualified
 formula_add_negative_test(tag_name_dangling_view
     "formula: TagName<Tag>::of() is not usable in a constant expression")
 
+# A tag whose reflected name cannot be shown plainly (`RequireReadableTagName`,
+# `tag.hpp`), one case per shape the two rules exist for. The first three are
+# refused by the character rule and compile without it; the const argument is
+# refused only by the whole-word `const` search of the raw spelling, and
+# compiles without that -- each deletion measured on cl, clang-cl, clang and
+# GCC.
+formula_add_negative_test(tag_name_unreadable_lambda
+    "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
+
+formula_add_negative_test(tag_name_unreadable_unnamed
+    "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
+
+formula_add_negative_test(tag_name_unreadable_function_argument
+    "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
+
+formula_add_negative_test(tag_name_unreadable_const_argument
+    "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
+
 formula_add_negative_test(exact_lookup_int_key_table
     "formula: an exact lookup's keys must be enumerators of a scoped enumeration")
 

@@ -13,15 +13,17 @@
 /// verbatim, qualification and all, where this strips it to the name a
 /// method's author wrote -- see `normalized_type_name`.
 ///
-/// Nothing is shared with the enumerator case next door
-/// (`detail/enum_name.hpp`) beyond the signature trick itself. That parse
-/// reads one identifier back from a fixed tail; this one has to walk a whole
-/// type, template arguments included, and rewrite it -- the two have no step
-/// in common that would not be a coincidence of spelling.
+/// Little is shared with the enumerator case next door
+/// (`detail/enum_name.hpp`) beyond the signature trick itself and what an
+/// identifier byte is (`detail/name_text.hpp`). That parse reads one
+/// identifier back from a fixed tail; this one has to walk a whole type,
+/// template arguments included, and rewrite it.
 ///
 /// The public face of this is `formula::tag_name` (`tag.hpp`), which consults
 /// the author's `TagName` customization first. Nothing outside that header
 /// should call into here directly.
+
+#include <formula-cpp/detail/name_text.hpp>
 
 #include <array>
 #include <cstddef>
@@ -124,8 +126,12 @@ struct NormalizedTypeName
 /// `Flag<1>`, `Ch<120>`, `ByEnum<0>` where the others print `Flag<true>`,
 /// `Ch<'x'>`, `ByEnum<E::A>` -- and `long long` as `__int64`, where clang
 /// prints `long long` and GCC `long long int`. No parse of the text can recover what cl did not print.
-/// (Nor is a pointer argument's spacing evened out -- `Global *` from clang
-/// and cl, `Global*` from GCC -- since no tag has a reason to take one.)
+/// Nor can a defaulted template argument: cl prints it and clang and GCC
+/// leave it out, so `Opt<Cube>` for `template <typename T, typename U = void>
+/// struct Opt` reads `Opt<Cube, void>` on cl and `Opt<Cube>` elsewhere --
+/// measured on all four. (Nor is a pointer argument's spacing evened out --
+/// `Global *` from clang and cl, `Global*` from GCC -- though a pointer
+/// argument never reaches a trace: `is_plain_type_name` refuses the `*`.)
 /// A tag whose name must read the same on every compiler, and a template
 /// specialization with such arguments is one, customizes its spelling
 /// through `TagName` (`tag.hpp`).
@@ -195,6 +201,72 @@ template <std::size_t Capacity>
     return result;
 }
 
+/// True when @p text contains @p word as a whole word -- not preceded or
+/// followed by an identifier byte.
+[[nodiscard]] constexpr bool contains_word(std::string_view text, std::string_view word) noexcept
+{
+    for (std::size_t position = text.find(word); position != std::string_view::npos;
+         position = text.find(word, position + 1))
+    {
+        bool const startsWord = position == 0 || !is_identifier_byte(text[position - 1]);
+        std::size_t const end = position + word.size();
+        bool const endsWord = end == text.size() || !is_identifier_byte(text[end]);
+        if (startsWord && endsWord)
+            return true;
+    }
+    return false;
+}
+
+/// True when @p argument -- a type as the compiler printed it, before
+/// `normalized_type_name` -- mentions `const` or `volatile` anywhere.
+///
+/// Asked of the RAW argument because the normalizer cannot be trusted with
+/// it: a `::` cuts a component back to its start, and `const ` is part of
+/// the component, so `TagBox<const ns::A>` normalizes to `TagBox<A>` on
+/// clang and GCC -- a plainly readable name, and the name of a different
+/// type. cl prints `TagBox<struct ns::A const >`, `A const` once normalized,
+/// so the compilers would disagree as well.
+[[nodiscard]] constexpr bool names_cv_qualifier(std::string_view argument) noexcept
+{
+    return contains_word(argument, "const") || contains_word(argument, "volatile");
+}
+
+/// True when a normalized name reads as a class name and its template
+/// arguments, and nothing else: it begins with an ASCII letter or `_`, and
+/// contains none of the bytes `(`, `)`, `{`, `}`, a backtick, a backslash,
+/// `/`, `.`, `*`, `&`, `'` or `"`.
+///
+/// Those are the bytes through which what the compiler printed escapes the
+/// normalizer's grammar, which tracks nesting through `<` and `>` alone.
+/// Measured on cl 19.51, clang-cl 22.1.3, clang++ 20.1.8, g++ 13.3 and
+/// g++-14 14.2, each of these reaches this function as something other than
+/// the type:
+///
+///  - a function-type argument, `TagBox<void(ns::A)>`, is `TagBox<A)>` on
+///    all four -- the `::` cuts back through the `(`;
+///  - a pointer to member, `TagBox<int ns::A::*>`, is `TagBox<*>`;
+///  - a cast non-type argument, `ByEnum<(ns::E)5>`, is `ByEnum<E)5>` from
+///    clang and GCC (cl prints `ByEnum<5>`, which passes);
+///  - a lambda is `(lambda at file.cpp:10:12)` from clang and clang-cl,
+///    `<lambda()>` from GCC, and from cl `<lambda_1>`, or `<lambda>@name`
+///    for the closure type of a named variable;
+///  - an unnamed class is `(unnamed struct at file.cpp:12:17)` from clang,
+///    `<unnamed struct>` from GCC and `<unnamed-type-member>` from cl. A
+///    class named for linkage by a typedef, `typedef struct { } Foo;`, is
+///    `Foo` on all four, and passes.
+///
+/// A name that begins with a non-ASCII letter -- a legal C++23 identifier --
+/// is refused too, which is the price of stating the rule in bytes.
+[[nodiscard]] constexpr bool is_plain_type_name(std::string_view name) noexcept
+{
+    if (name.empty())
+        return false;
+    char const first = name.front();
+    if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_'))
+        return false;
+    return name.find_first_of("(){}`\\/.*&'\"") == std::string_view::npos;
+}
+
 /// The first `Size - 1` bytes of @p name, followed by a nul.
 template <std::size_t Size, std::size_t Capacity>
 [[nodiscard]] consteval std::array<char, Size> trimmed(NormalizedTypeName<Capacity> const& name) noexcept
@@ -221,8 +293,11 @@ struct TypeNameStorage
     /// The argument as the compiler printed it.
     static constexpr std::string_view argument = type_argument_text(type_signature<T>());
 
-    /// Room for the normalized name: the argument's own size, plus one byte
-    /// for every comma, since `,` may become `, `.
+    /// Room for the normalized name: twice the argument's size, plus one. The
+    /// name is never longer than the argument plus one byte per comma, since
+    /// `,` may become `, ` and nothing else grows, so this is generous -- it
+    /// is bounded by the signature, not by the name, and costs nothing at run
+    /// time, since only `chars` below is ever emitted.
     static constexpr std::size_t capacity = argument.size() * 2 + 1;
 
     /// The normalized name, before it is trimmed to its size.
@@ -230,6 +305,15 @@ struct TypeNameStorage
 
     /// The name's bytes, trimmed, and nul-terminated for a debugger's sake.
     static constexpr std::array<char, normalized.size + 1> chars = trimmed<normalized.size + 1>(normalized);
+
+    /// Whether the compiler's signature was in the shape `type_argument_text`
+    /// reads. When it was not, there is no name, and the caller falls back.
+    static constexpr bool recognised = !argument.empty();
+
+    /// Whether the name, once found, can be shown as it stands -- see
+    /// `is_plain_type_name`. Meaningful only when `recognised`.
+    static constexpr bool plain =
+        is_plain_type_name(std::string_view { chars.data(), normalized.size }) && !names_cv_qualifier(argument);
 };
 
 /// The name of class type @p T as written in its declaration, unqualified --
@@ -238,6 +322,10 @@ struct TypeNameStorage
 /// `normalized_type_name` describes. Empty when the compiler's signature is
 /// not in the shape `type_argument_text` expects, so that the caller falls
 /// back rather than shows a fragment.
+///
+/// Whether a name that WAS found can be shown as it stands is a separate
+/// question -- `TypeNameStorage<T>::plain` -- which `tag_name` (`tag.hpp`)
+/// asks, and refuses to compile when it cannot be.
 ///
 /// Every view this returns points into `TypeNameStorage<T>::chars`, which has
 /// static storage duration.

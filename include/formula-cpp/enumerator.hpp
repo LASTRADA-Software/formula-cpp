@@ -22,6 +22,7 @@
 /// anyone who can declare an exact lookup already has it.
 
 #include <formula-cpp/detail/enum_name.hpp>
+#include <formula-cpp/detail/name_text.hpp>
 
 #include <concepts>
 #include <cstddef>
@@ -166,18 +167,6 @@ namespace detail
     [[nodiscard]] constexpr std::string_view customized_enumerator_name()
     {
         return EnumeratorName<decltype(E)>::of(E);
-    }
-
-    /// Reads every character of @p text and answers `true`. Only interesting
-    /// inside a constant expression, where reading a character that is not
-    /// there -- a destroyed local, freed storage, a mutable static -- makes
-    /// the whole expression not a constant expression.
-    [[nodiscard]] constexpr bool every_character_readable(std::string_view text) noexcept
-    {
-        std::size_t read = 0;
-        for (char const c: text)
-            read += c == '\0' ? 0 : 1;
-        return read <= text.size();
     }
 
     /// True when `EnumeratorName`'s spelling of @p E can be computed at

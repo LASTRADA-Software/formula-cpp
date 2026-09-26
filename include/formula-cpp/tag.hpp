@@ -15,13 +15,13 @@
 /// **A header of its own**, for the reason `enumerator.hpp` is one: naming a
 /// tag describes the author's type, a fact that belongs beside the type in a
 /// header that costs nothing to include, and both `method.hpp` and
-/// `trace.hpp` need it without either including the other. It reuses
-/// `enumerator.hpp`'s compile-time readability check rather than restating
-/// it, so that the two customization points cannot come to disagree about
-/// what a safe spelling is.
+/// `trace.hpp` need it without either including the other. Its compile-time
+/// readability check is `enumerator.hpp`'s, shared through
+/// `detail/name_text.hpp`, so that the two customization points cannot come
+/// to disagree about what a safe spelling is.
 
+#include <formula-cpp/detail/name_text.hpp>
 #include <formula-cpp/detail/type_name.hpp>
-#include <formula-cpp/enumerator.hpp>
 
 #include <concepts>
 #include <string_view>
@@ -82,9 +82,16 @@ namespace detail
 ///
 /// **Use it for a template specialization used as a tag.** The reflected
 /// name keeps a specialization's arguments, but cl prints some of them
-/// differently from the other compilers -- `Flag<1>` for `Flag<true>` -- so
-/// such a tag reads the same on every compiler only once it is spelled here.
-/// See `detail::normalized_type_name` for what is and is not evened out.
+/// differently from the other compilers -- `Flag<1>` for `Flag<true>`, and
+/// a defaulted argument that clang and GCC leave out, `Opt<Cube, void>` for
+/// `Opt<Cube>` -- so such a tag reads the same on every compiler only once it
+/// is spelled here. See `detail::normalized_type_name` for what is and is not
+/// evened out.
+///
+/// **And for a tag whose reflected name is refused** -- a lambda, an unnamed
+/// class, a specialization over a `const` type, a function type, a pointer
+/// or a cast. `RequireReadableTagName` says why; a non-empty spelling here
+/// is never refused.
 template <typename Tag>
 struct TagName: detail::TagNameNotCustomized
 {
@@ -178,13 +185,62 @@ struct RequireUnqualifiedTagName
     static constexpr bool value = true;
 };
 
+/// Fails to compile when the reflected name of @p Tag -- the one `tag_name`
+/// falls back to when `TagName` supplies none -- would not name @p Tag
+/// plainly: it is not a class name and its template arguments alone, or the
+/// compiler's spelling of @p Tag mentions `const` or `volatile`, which the
+/// normalizer drops without a trace. See `detail::is_plain_type_name` and
+/// `detail::names_cv_qualifier` for what each refuses and what the compilers
+/// print.
+///
+/// **A wrong name is worse than none, and a name that differs per compiler
+/// is a wrong name on all but one.** `TagBox<const ns::A>` would otherwise be
+/// recorded as `TagBox<A>` -- the name of a different type -- and a lambda
+/// tag as a file path. So these are refused, and the author is told to name
+/// the tag through `TagName`, which is always accepted.
+///
+/// **Distinct from a signature the library cannot read at all.** When the
+/// compiler's spelling is not in the shape `detail::type_argument_text`
+/// expects -- a compiler this library was not measured on, say -- there is
+/// no name to judge, and `tag_name` answers empty rather than refusing: a
+/// refusal there would break every method on that compiler, for a fault
+/// that is the library's and not the author's. The trace then says the name
+/// could not be read, and still gives the position.
+template <typename Tag>
+struct RequireReadableTagName
+{
+    static_assert(!detail::TypeNameStorage<Tag>::recognised || detail::TypeNameStorage<Tag>::plain,
+                  "formula: this tag's name, as the compiler spells it, cannot be shown plainly -- it is a "
+                  "lambda, an unnamed class, or a template specialization whose arguments are const- or "
+                  "volatile-qualified, function types, pointers or casts, so the name would be wrong or would "
+                  "differ between compilers; the tag appears in this diagnostic as template argument Tag of "
+                  "RequireReadableTagName -- specialise formula::TagName for it to say how it is spelled");
+
+    /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
+    static constexpr bool value = true;
+};
+
+namespace detail
+{
+    /// The reflected name of @p Tag, refused when it would not name the tag
+    /// plainly -- see `RequireReadableTagName`.
+    template <typename Tag>
+    [[nodiscard]] consteval std::string_view readable_reflected_tag_name() noexcept
+    {
+        static_assert(RequireReadableTagName<Tag>::value);
+        return reflected_type_name<Tag>();
+    }
+} // namespace detail
+
 /// The spelling of tag @p Tag: `TagName<Tag>`'s, if it customizes it;
 /// otherwise the tag's own name as written in its declaration, unqualified
 /// (`Cylinder`, never `specimen::Cylinder`, and never with an anonymous
 /// namespace in front of it) and with a template specialization's arguments
 /// kept (`Sized<150>`) -- see `detail::normalized_type_name` for how those
-/// are spelt. Empty only if the compiler's signature is not in the shape
-/// the library reads, in which case the caller falls back.
+/// are spelt. A reflected name that would not name the tag plainly is
+/// refused at compile time -- see `RequireReadableTagName`. Empty only if
+/// the compiler's signature is not in the shape the library reads, in which
+/// case the caller falls back.
 ///
 /// Every view this returns has static storage duration: a reflected name
 /// points into `detail::TypeNameStorage`, and a customized one has passed the
@@ -196,18 +252,27 @@ template <typename Tag>
 {
     static_assert(RequireUnqualifiedTagName<Tag>::value);
     if constexpr (detail::customizesTagName<Tag>)
-    {
         static_assert(RequireTagName<Tag>::value);
-        // Guarded again so a refused specialization is reported once, in the
-        // library's words, and not followed by the raw error from calling it.
-        if constexpr (detail::ConstantTagName<Tag>)
-        {
-            std::string_view const customized = detail::customized_tag_name<Tag>();
-            if (!customized.empty())
-                return customized;
-        }
+
+    // Guarded again so a refused specialization is reported once, in the
+    // library's words, and not followed by the raw error from calling it.
+    if constexpr (detail::ConstantTagName<Tag>)
+    {
+        // `constexpr`, so that whether the author's spelling is empty is a
+        // compile-time fact: only an empty one reaches the reflected name,
+        // and so only then is the reflected name held to `RequireReadableTagName`.
+        constexpr std::string_view customized = detail::customized_tag_name<Tag>();
+        if constexpr (!customized.empty())
+            return customized;
+        else
+            return detail::readable_reflected_tag_name<Tag>();
     }
-    return detail::reflected_type_name<Tag>();
+    // A specialization already refused above: its tag is not asked about as
+    // well, for the reason just given.
+    else if constexpr (detail::customizesTagName<Tag>)
+        return detail::reflected_type_name<Tag>();
+    else
+        return detail::readable_reflected_tag_name<Tag>();
 }
 
 } // namespace formula

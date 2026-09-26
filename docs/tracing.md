@@ -347,7 +347,14 @@ which the four compilers this library is measured on would otherwise spell
 in three different ways, and cl alone in two. A class template specialization keeps its arguments,
 `Sized<150>`, with their qualification stripped the same way. One difference
 cannot be evened out: cl prints a `bool`, `char` or enumeration argument as a
-number, `Flag<1>` where the others print `Flag<true>`. An author who wants a
+number, `Flag<1>` where the others print `Flag<true>`, and it prints a
+defaulted argument the others leave out, `Opt<Cube, void>` for `Opt<Cube>`.
+And some tags have no reflected name that could be shown at all: a lambda, an
+unnamed class, or a specialization over a `const` type, a function type, a
+pointer or a cast. The compilers print those as file paths, as fragments, or
+-- for `TagBox<const ns::A>` -- as a name that, once its qualifiers are gone,
+is `TagBox<A>`: the name of a different type. Rather than record a wrong name,
+the library refuses to compile such a tag and says to name it. An author who wants a
 tag to read the same everywhere, or to read the way a published method words
 the variant, specializes `formula::TagName` (`tag.hpp`), which has the shape
 and the refusals of `EnumeratorName`:
