@@ -1865,6 +1865,12 @@ formula_add_negative_test(record_scope_this_record_const
 formula_add_negative_test(record_origin_by_hand
     "formula: a record origin is the library's to state, not an author's")
 
+# The same forgery by explicit specialisation, which compiled while the
+# refusing constructor was a member template. The compiler's own words, since
+# no library static_assert is involved; measured wording in the phase 14
+# task 5 report.
+formula_add_negative_test(record_origin_specialised "RecordOrigin" REJECT "formula: ")
+
 formula_add_negative_test(record_scope_nested
     "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
     REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")

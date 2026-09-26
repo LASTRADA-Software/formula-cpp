@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <type_traits>
 
@@ -262,4 +263,70 @@ TEST_CASE("a sink of a consumer's own, with only entered and produced, evaluates
     REQUIRE(evaluated.has_value());
     CHECK(**evaluated == formula::Rational { 3, 2 });
     CHECK(nodes == 4); // F here, F there, the scope, the division
+}
+
+namespace
+{
+inline constexpr formula::BandTable<2> EdgeBands { formula::band(0, 1, 127, 1), formula::band(127, 1, 197, 1) };
+} // namespace
+
+TEST_CASE("a constant, a lookup and a conditional inside a scope are stamped too", "[record-trace]")
+{
+    // Every kind of step inside the scope says which record it belongs to,
+    // not only the variables: a consumer grouping steps by record must find
+    // the whole computation over the reference there.
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there));
+    constexpr auto inside = formula::from_record<Reference>(
+        formula::when(var<Force> > formula::constant<unit::Newton>(formula::Rational { 1 }),
+                      formula::constant<unit::Newton>(formula::Rational { 2 }),
+                      formula::constant<unit::Newton>(formula::Rational { 3 }))
+        * formula::banded_lookup<unit::Millimetre, EdgeBands, unit::One>(
+            var<EdgeX>, { formula::Rational { 1 }, formula::Rational { 2 } }));
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const evaluated = formula::checked_evaluate_si<formula::Rational>(inside, context, sink);
+    REQUIRE(evaluated.has_value());
+
+    bool sawConstant = false;
+    bool sawLookup = false;
+    bool sawConditional = false;
+    for (formula::Step<> const& recorded: trace.steps)
+    {
+        INFO("step kind " << static_cast<int>(recorded.kind));
+        REQUIRE(recorded.record.has_value());
+        CHECK(recorded.record->role() == "Reference");
+        sawConstant = sawConstant || recorded.kind == formula::StepKind::Constant;
+        sawLookup = sawLookup || recorded.kind == formula::StepKind::BandedLookup;
+        sawConditional = sawConditional || recorded.kind == formula::StepKind::Conditional;
+    }
+    CHECK(sawConstant);
+    CHECK(sawLookup);
+    CHECK(sawConditional);
+}
+
+TEST_CASE("a scope reported without its origin records none, and says so", "[record-trace]")
+{
+    // A consumer's own evaluator may report a scope node through a
+    // RecordingSink without calling record_entered. There is then no origin
+    // to stamp and none to pop: the recording must neither pop an empty stack
+    // -- undefined behaviour, and an abort under a checked standard library
+    // -- nor invent an origin, and the line says only that the value came
+    // from another record.
+    constexpr auto scope = formula::from_record<Reference>(formula::constant<unit::Newton>(formula::Rational { 5 }));
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    sink.entered(scope);
+    (void) formula::checked_evaluate_si<formula::Rational>(scope.operand, here, sink);
+    sink.produced(scope,
+                  formula::Evaluated<formula::Rational> { std::optional<formula::Rational> { formula::Rational { 5 } } });
+
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(trace.steps[1].kind == formula::StepKind::RecordScope);
+    CHECK(!trace.steps[1].record.has_value());
+    CHECK(trace.recordStack.empty());
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+    INFO(text);
+    CHECK(text.find("2. #1 from another record = ") != std::string::npos);
 }

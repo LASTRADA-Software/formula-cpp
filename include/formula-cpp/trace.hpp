@@ -1107,8 +1107,12 @@ struct Step
     std::optional<ValueSource> inputSource {};
 
     /// Which record this step's value was read from: set on **every** step
-    /// recorded inside a `from_record` scope, and on the scope's own step;
-    /// empty for a step of the record being evaluated. Every step carries it,
+    /// recorded inside a `from_record` scope -- a constant, a lookup or a
+    /// conditional there as much as a variable -- and on the scope's own
+    /// step; empty for a step of the record being evaluated. A constant's
+    /// value is the formula's and not the record's, but it is part of the
+    /// computation over that record, and a consumer grouping steps by record
+    /// finds it there. Every step carries it,
     /// so that a consumer reading one step alone need not walk up the
     /// operands to learn whose number it is. `render_trace` prints it on the
     /// scope and on the steps that name a quantity.

@@ -28,13 +28,13 @@
 /// time, each with one message. A scope over a role bound to an unbound
 /// record -- a test not done yet -- is absent, never zero.
 ///
-/// **Not yet traced, rendered or documented.** Until the trace and the page
-/// learn the scope, `explain`, a `RecordingSink`, `render` and `document`
-/// over a formula holding one are refused with the compiler's own errors --
-/// many of them, and none of them this library's -- not with a message of
-/// its own. That is a refusal, not a silent gap: no trace or page omits a
-/// scope it was given. A trace records one: every step inside it carries a
-/// `RecordOrigin` saying which record it was read from (`trace.hpp`).
+/// **Traced, but not yet rendered or documented.** A trace records a scope
+/// -- through `explain` or a `RecordingSink` -- and every step inside it
+/// carries a `RecordOrigin` saying which record it was read from
+/// (`trace.hpp`). Until the page learns the scope, `render` and `document`
+/// over a formula holding one are refused with the compiler's own errors,
+/// not with a message of this library's. That is a refusal, not a silent
+/// gap: no page omits a scope it was given.
 ///
 /// **What the library prevents, and what it does not.** Every field a trace
 /// reads for an origin comes from one of these:
@@ -47,16 +47,25 @@
 ///   `detail::RecordOriginAccess::of(record)`, from the one `Record` whose
 ///   environment the scope's operand is evaluated against. Its public
 ///   constructor is refused in this library's words
-///   (`record_origin_by_hand.cpp`), and its other one is private. That the
-///   value and its origin come from the same record is pinned by the trace
-///   tests, and by building the origin from this record instead, which
-///   they catch.
+///   (`record_origin_by_hand.cpp`), and its other one is private. The public
+///   one is not a template, so it cannot be explicitly specialised to build
+///   an origin by other means (`record_origin_specialised.cpp`): the refusal
+///   lives in the converting constructor of its first parameter's type, a
+///   `detail::` class template, and specialising that means writing
+///   `detail::`. That the value and its origin come from the same record is
+///   pinned by the trace tests, and by building the origin from this record
+///   instead, which they catch.
 ///
 /// Not prevented, and documented here plainly:
 /// - `Trace::steps` is a public arena any code may append to or edit, as it
 ///   has been since the trace was introduced;
 /// - a `RecordOrigin` the library built can be copied, and handed to a
 ///   sink's `record_entered` by hand;
+/// - a `RecordOrigin` is trivially copyable, so `std::bit_cast` from a
+///   struct of the same layout -- a `std::string_view` and a
+///   `std::optional<RecordKey>` -- produces one holding whatever that struct
+///   held. No access check applies to `bit_cast`, and nothing in the
+///   language lets a class refuse it while staying trivially copyable;
 /// - a caller can wrap a typed-in value as `Measured<Q>`, and the trace will
 ///   then call it measured;
 /// - a role whose `TagName` spells "this record" still renders as `from
@@ -453,16 +462,35 @@ namespace detail
     /// Fails to compile when an author builds a `RecordOrigin`. An origin
     /// makes a trace say a value was read from a particular record; one built
     /// by hand could say it of a record nothing was read from.
-    template <typename Unused>
+    template <typename Given>
     struct RequireLibraryStatesOrigin
     {
-        static_assert(!std::is_same_v<Unused, Unused>,
+        static_assert(!std::is_same_v<Given, Given>,
                       "formula: a record origin is the library's to state, not an author's; the trace takes it "
-                      "from the record a from_record<Role> scope reads, and nothing else -- the constructor's "
-                      "placeholder appears in this diagnostic as the template argument of "
+                      "from the record a from_record<Role> scope reads, and nothing else -- what was given for "
+                      "the role appears in this diagnostic as the template argument of "
                       "RequireLibraryStatesOrigin");
 
         static constexpr bool value = true;
+    };
+
+    /// The first parameter of `RecordOrigin`'s refusing constructor: it
+    /// converts from anything, and refuses whatever it is given. The refusal
+    /// lives here rather than in a constructor template of `RecordOrigin`
+    /// because a member template can be explicitly specialised by user code
+    /// without naming anything in `detail::` -- its default template argument
+    /// is deduced -- and a specialisation is a member, free to set the
+    /// private fields. This one can be specialised only by writing
+    /// `detail::`.
+    template <typename Placeholder>
+    struct OriginStatedByHand
+    {
+        /// Refused: see `RequireLibraryStatesOrigin`.
+        template <typename Given>
+        constexpr OriginStatedByHand(Given&&) noexcept
+        {
+            static_assert(RequireLibraryStatesOrigin<Given>::value);
+        }
     };
 
     /// Marks the one constructor of `RecordOrigin` that states an origin.
@@ -484,14 +512,13 @@ namespace detail
 class RecordOrigin
 {
   public:
-    /// Refused: see `detail::RequireLibraryStatesOrigin`. Declared only so
-    /// that `RecordOrigin { "Reference", record_key(...), true }` is refused
-    /// in this library's words rather than the compiler's.
-    template <typename Unused = void>
-    constexpr RecordOrigin(std::string_view, RecordKey, bool) noexcept
-    {
-        static_assert(detail::RequireLibraryStatesOrigin<Unused>::value);
-    }
+    /// Refused, by its first parameter's conversion: see
+    /// `detail::OriginStatedByHand`. Declared only so that
+    /// `RecordOrigin { "Reference", record_key(...), true }` is refused in
+    /// this library's words rather than the compiler's. Not a template, so
+    /// there is nothing here to specialise; its body sets nothing, and runs
+    /// only after the refusal.
+    constexpr RecordOrigin(detail::OriginStatedByHand<void>, RecordKey, bool) noexcept {}
 
     /// The role's name, as `tag_name<Role>()` spells it. Points into static
     /// storage, so it outlives any trace.

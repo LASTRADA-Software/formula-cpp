@@ -714,6 +714,16 @@ namespace detail
         return listed;
     }
 
+    /// A role's name as a trace line writes it. The **one** place a role's
+    /// name -- author text, from `tag_name` -- enters a trace line: both the
+    /// scope's own line and the origin clause on a quantity's line come
+    /// through `record_origin_text`, and it through here. Whatever escaping
+    /// author text in a trace line needs is applied here, once.
+    [[nodiscard]] inline std::string role_words(std::string_view roleName)
+    {
+        return std::string { roleName };
+    }
+
     /// Which record a value was read from, in words: `from record Reference
     /// (sample 23, test 3)`, or `from record Reference (no record bound)`.
     /// Both keys, always: two tests of one sample share the sample key, so a
@@ -721,7 +731,7 @@ namespace detail
     /// into Markdown stays plain text.
     [[nodiscard]] inline std::string record_origin_text(RecordOrigin const& readFrom)
     {
-        std::string originText = "from record " + std::string { readFrom.role() };
+        std::string originText = "from record " + role_words(readFrom.role());
         std::optional<RecordKey> const recordKey = readFrom.key();
         if (!recordKey.has_value())
             return originText + " (no record bound)";
