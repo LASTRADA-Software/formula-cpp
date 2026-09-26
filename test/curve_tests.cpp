@@ -528,8 +528,37 @@ TEST_CASE("a splice step shows the union, and a failure names its element counte
     (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, raised), noInputs,
                                                              formula::RecordingSink<> { failed });
     CHECK(formula::render_trace(failed, { .maxSteps = 40 })
-              .ends_with("7. splice(#3, #6, non-decreasing) = argument outside the domain of the operation at element 4\n"));
+              .ends_with("7. splice(#3, #6, non-decreasing) = argument outside the domain of the operation at element 4 "
+                         "[breaks non-decreasing at 11 m]\n"));
     CHECK(failed.steps.back().failedElement == std::optional<std::size_t> { 3 });
+    CHECK(failed.steps.back().curveBreak == formula::CurveBreak::AgainstDirection);
+}
+
+TEST_CASE("a splice's failure line names the point and the rule, in either order", "[curve][trace]")
+{
+    for (bool const xFirst: { true, false })
+    {
+        formula::Trace<> trace {};
+        if (xFirst)
+            (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveX, curveY),
+                                                                     noInputs, formula::RecordingSink<> { trace });
+        else
+            (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveY, curveX),
+                                                                     noInputs, formula::RecordingSink<> { trace });
+        CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+                  .ends_with("7. splice(#3, #6, non-decreasing) = argument outside the domain of the operation at element 3 "
+                             "[duplicate domain point 2 m]\n"));
+        CHECK(trace.steps.back().curveBreak == formula::CurveBreak::DuplicatePoint);
+    }
+
+    // Falling under NonIncreasing: A and B rise, and the union breaks at
+    // 5/3 m, zero-based 1.
+    formula::Trace<> rising {};
+    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonIncreasing>(curveA, curveB), noInputs,
+                                                             formula::RecordingSink<> { rising });
+    CHECK(formula::render_trace(rising, { .maxSteps = 40 })
+              .ends_with("7. splice(#3, #6, non-increasing) = argument outside the domain of the operation at element 2 "
+                         "[breaks non-increasing at 5/3 m]\n"));
 }
 
 TEST_CASE("a splice's step relays an operand's failure without an element", "[curve][trace]")
@@ -538,9 +567,12 @@ TEST_CASE("a splice's step relays an operand's failure without an element", "[cu
     (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveB, computedCurve),
                                                              fallingDomain, formula::RecordingSink<> { trace });
     std::string const rendered = formula::render_trace(trace, { .maxSteps = 40 });
-    CHECK(rendered.find("6. curve(#4, #5) = argument outside the domain of the operation at element 2\n") != std::string::npos);
+    CHECK(rendered.find("6. curve(#4, #5) = argument outside the domain of the operation at element 2 "
+                        "[domain does not ascend at 11 m]\n")
+          != std::string::npos);
     CHECK(rendered.ends_with("7. splice(#3, #6, non-decreasing) = argument outside the domain of the operation\n"));
     CHECK(!trace.steps.back().failedElement.has_value());
+    CHECK(trace.steps.back().curveBreak == formula::CurveBreak::None);
 }
 
 TEST_CASE("a curve whose domain does not ascend names the element in the trace", "[curve][trace]")
@@ -553,7 +585,30 @@ TEST_CASE("a curve whose domain does not ascend names the element in the trace",
     (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, passing), disordered,
                                                              formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
-              .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 3\n"));
+              .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 3 "
+                         "[domain does not ascend at 17 m]\n"));
+    CHECK(trace.steps.back().curveBreak == formula::CurveBreak::NotAscending);
+
+    constexpr auto repeated = formula::environment(
+        formula::measured_series<Opening>(m<Opening>(11), m<Opening>(29), m<Opening>(29), m<Opening>(59),
+                                          m<Opening>(83)),
+        passingMeasured);
+    formula::Trace<> twice {};
+    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, passing), repeated,
+                                                             formula::RecordingSink<> { twice });
+    CHECK(formula::render_trace(twice, { .maxSteps = 30 })
+              .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 3 "
+                         "[duplicate domain point 29 m]\n"));
+
+    // The values fail at element 3, where the domain also falls: the failure
+    // is the values', and names no rule of the domain's.
+    constexpr auto dividedValues =
+        passing / formula::series_constant<unit::One>(rat(1), rat(1), rat(0), rat(1), rat(1));
+    formula::Trace<> valuesFailed {};
+    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, dividedValues),
+                                                             disordered, formula::RecordingSink<> { valuesFailed });
+    CHECK(formula::render_trace(valuesFailed, { .maxSteps = 30 }).ends_with("5. curve(#1, #4) = division by zero at element 3\n"));
+    CHECK(valuesFailed.steps.back().curveBreak == formula::CurveBreak::None);
 }
 
 // ---- The join with snapping (S17) ----

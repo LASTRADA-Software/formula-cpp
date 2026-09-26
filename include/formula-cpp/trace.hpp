@@ -253,7 +253,8 @@ enum class StepKind : std::uint8_t
     CurveInterpolation,
     /// Two curves spliced into one (`SpliceNode`): recorded as a
     /// `CurvePairing` is, with the direction in `Step::monotone` and on a
-    /// failure the element in `Step::failedElement`. Checked on GCC under
+    /// failure the element in `Step::failedElement` and the rule it broke in
+    /// `Step::curveBreak`. Checked on GCC under
     /// `-Wshadow`: the node is `SpliceNode` and its factory `splice`.
     CurveSplice,
 };
@@ -853,13 +854,22 @@ struct Step
     /// For `CurvePairing` and `CurveSplice`: the curve's points, in the
     /// coherent SI unit of `sourceUnit`'s dimension, each at the position of
     /// its value in `elements`. Empty for every other kind, and for a curve
-    /// that failed.
+    /// that failed -- unless `curveBreak` names a rule, when they are the
+    /// points that broke it.
     std::vector<std::optional<Rep>> domainElements {};
 
     /// For `CurveSplice`: the direction its values had to run in.
     /// Zero-initialises to `NonDecreasing`, a real setting, so -- like
     /// `comparison` -- no reader may use it without checking `kind` first.
     Monotone monotone {};
+
+    /// For a `CurvePairing` or `CurveSplice` that failed at an element: the
+    /// rule it broke there, at the point `domainElements[*failedElement]`.
+    /// A pairing's `domainElements` are then its points as its domain series
+    /// gave them; a splice's `domainElements` and `elements` are the sorted
+    /// union it judged. `None` for every other step, and for a failure that
+    /// broke no rule of a curve's own -- an operand's, or an overflow.
+    CurveBreak curveBreak {};
 };
 
 /// The rows one conformity step judged its elements against, in the unit
@@ -1562,6 +1572,65 @@ namespace detail
                                                   .highDenominator = highPoint->denominator };
         }
     }
+
+    /// Whether @p recorded succeeded with @p pointCount points and values, every one
+    /// present -- a curve's step, or with @p pointsOnly a series step's
+    /// elements alone.
+    [[nodiscard]] inline bool whole(Step<Rational> const& recorded, std::size_t pointCount, bool pointsOnly) noexcept
+    {
+        std::vector<std::optional<Rational>> const& points = pointsOnly ? recorded.elements : recorded.domainElements;
+        if (recorded.error.has_value() || points.size() != pointCount || (!pointsOnly && recorded.elements.size() != pointCount))
+            return false;
+        for (std::size_t at = 0; at < pointCount; ++at)
+            if (!points[at].has_value() || (!pointsOnly && !recorded.elements[at].has_value()))
+                return false;
+        return true;
+    }
+
+    /// Names the rule a failed curve broke at its failed element, from the
+    /// judgement the evaluation made -- `judge_domain` or `judge_splice`,
+    /// re-asked on the operands' steps -- and keeps the points it judged, so
+    /// that the trace can state the point. Nothing when an operand failed or
+    /// is not all there: the failure then was not a curve's own rule. With
+    /// both whole, a rule is the only way the evaluation fails at an element,
+    /// and the judgement lands on that element.
+    template <CurveExpression C>
+    void record_curve_break(Step<Rational>& failedStep, std::vector<Step<Rational>> const& steps)
+    {
+        if (failedStep.operands.size() != 2)
+            return;
+        Step<Rational> const& firstOperand = steps[failedStep.operands.front()];
+        Step<Rational> const& secondOperand = steps[failedStep.operands.back()];
+        std::vector<std::optional<Rational>> points;
+        std::vector<std::optional<Rational>> pointValues;
+        std::optional<CurveBreakAt> broken;
+        if constexpr (CurveStepKindOf<C>::value == StepKind::CurvePairing)
+        {
+            // The values must have succeeded too: the evaluation judges the
+            // domain only when both series did.
+            if (!whole(firstOperand, C::length, true) || secondOperand.error.has_value())
+                return;
+            points = firstOperand.elements;
+            broken = judge_domain(points);
+        }
+        else
+        {
+            std::size_t const firstCount = firstOperand.domainElements.size();
+            if (!whole(firstOperand, firstCount, false) || !whole(secondOperand, C::length - firstCount, false))
+                return;
+            points = firstOperand.domainElements;
+            points.insert(points.end(), secondOperand.domainElements.begin(), secondOperand.domainElements.end());
+            pointValues = firstOperand.elements;
+            pointValues.insert(pointValues.end(), secondOperand.elements.begin(), secondOperand.elements.end());
+            sort_by_domain(points, pointValues);
+            broken = judge_splice(points, pointValues, C::monotone);
+        }
+        if (!broken.has_value())
+            return;
+        failedStep.curveBreak = broken->rule;
+        failedStep.domainElements = std::move(points);
+        failedStep.elements = std::move(pointValues);
+    }
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -2174,6 +2243,9 @@ class RecordingSink
         {
             curveStep.error = result.error().error;
             curveStep.failedElement = result.error().element;
+            if constexpr (std::is_same_v<Rep, Rational>)
+                if (curveStep.failedElement.has_value())
+                    detail::record_curve_break<C>(curveStep, _trace->steps);
         }
         else
         {

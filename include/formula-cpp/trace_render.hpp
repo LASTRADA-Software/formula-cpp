@@ -1112,8 +1112,44 @@ namespace detail
     /// exactly the number left out. The points are shown in `sourceUnit`, the
     /// values in `unit`.
     ///
+    /// A curve's point @p point, in the step's `sourceUnit`.
+    [[nodiscard]] inline std::string curve_point_text(Step<Rational> const& recorded, std::optional<Rational> const& point)
+    {
+        // A point is shown as a value of the point's own dimension and unit.
+        Step<Rational> pointShape {};
+        pointShape.dimension = recorded.sourceUnit.dimension;
+        pointShape.unit = recorded.sourceUnit;
+        return value_in_declared_unit(pointShape, point);
+    }
+
+    /// The rule a failed curve broke and the point it broke it at:
+    /// `[duplicate domain point 2 m]`, `[domain does not ascend at 17 m]` or
+    /// `[breaks non-decreasing at 11 m]`. Nothing when the step names no rule
+    /// or holds no point at its failed element.
+    [[nodiscard]] inline std::string curve_break_suffix(Step<Rational> const& recorded)
+    {
+        if (recorded.curveBreak == CurveBreak::None || !recorded.failedElement.has_value()
+            || *recorded.failedElement >= recorded.domainElements.size()
+            || !recorded.domainElements[*recorded.failedElement].has_value())
+            return {};
+        std::string const pointText = curve_point_text(recorded, recorded.domainElements[*recorded.failedElement]);
+        switch (recorded.curveBreak)
+        {
+            case CurveBreak::DuplicatePoint:
+                return " [duplicate domain point " + pointText + "]";
+            case CurveBreak::NotAscending:
+                return " [domain does not ascend at " + pointText + "]";
+            case CurveBreak::AgainstDirection:
+                return " [breaks " + std::string { describe(recorded.monotone) } + " at " + pointText + "]";
+            case CurveBreak::None:
+                break;
+        }
+        return {};
+    }
+
     /// A failed curve shows its error and, when it belongs to one element,
-    /// that element counted from one.
+    /// that element counted from one, then the rule it broke there and the
+    /// point (`curve_break_suffix`).
     [[nodiscard]] inline std::string curve_step_line(Step<Rational> const& recorded, std::size_t& budget)
     {
         std::string lineText = step_expression(recorded) + " = ";
@@ -1121,17 +1157,12 @@ namespace detail
         {
             lineText += describe(*recorded.error);
             if (recorded.failedElement.has_value())
-                lineText += " at element " + std::to_string(*recorded.failedElement + 1);
+                lineText += " at element " + std::to_string(*recorded.failedElement + 1) + curve_break_suffix(recorded);
             return lineText;
         }
         std::size_t const pairCount = recorded.elements.size();
         if (pairCount == 0 || recorded.domainElements.size() != pairCount)
             return lineText + "(no points)";
-
-        // A point is shown as a value of the point's own dimension and unit.
-        Step<Rational> pointShape {};
-        pointShape.dimension = recorded.sourceUnit.dimension;
-        pointShape.unit = recorded.sourceUnit;
 
         std::size_t const listed = budget < pairCount ? budget : pairCount;
         budget -= listed;
@@ -1139,7 +1170,7 @@ namespace detail
         {
             if (at > 0)
                 lineText += "; ";
-            lineText += value_in_declared_unit(pointShape, recorded.domainElements[at]) + ": "
+            lineText += curve_point_text(recorded, recorded.domainElements[at]) + ": "
                     + value_in_declared_unit(recorded, recorded.elements[at]);
         }
         if (listed < pairCount)

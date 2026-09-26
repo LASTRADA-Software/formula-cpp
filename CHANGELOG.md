@@ -64,8 +64,9 @@ names its element. Conformity judges each element against its own row of a limit
 at both ends and either side explicitly unbounded, and the trace records the rows judged against.
 `snapped` replaces a value with the nearest permitted one under a stated tie rule. Curves pair a
 domain with values, `interpolate_at` reads one between two points, and `splice` joins two curves
-into one whose values run in a required direction. A series renders with an index marker,
-`m_r(i)`, and its trace spends the same step budget, one unit per element.
+into one whose values run in a required direction; a curve that fails names the point and the
+rule it broke there. A series renders with an index marker, `m_r(i)`, and its trace spends the
+same step budget, one unit per element.
 
 ### Changed
 
