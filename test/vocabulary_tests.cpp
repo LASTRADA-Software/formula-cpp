@@ -624,7 +624,9 @@ inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(
            + formula::rounded_sqrt<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
                r * var<EveryFixed>)
                * formula::critical_value<formula::SampleSizeTable<2> { 2, 3 }, unit::One>(
-                   formula::constant<unit::One>(rat(2)), { rat(60), rat(80) });
+                   formula::constant<unit::One>(rat(2)), { rat(60), rat(80) })
+               * formula::abs(r)
+               * formula::precision_limit<formula::PrecisionKind::Repeatability>(r, formula::precision_level<EveryDerived>);
 }
 
 inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
@@ -740,7 +742,7 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
              "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000) "
              "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000) "
              "+ round(sqrt(E / R * x_n), to 1 dp of %) "
-             "* critical(2, at 2, 3)");
+             "* critical(2, at 2, 3) * abs(E / R) * r(level; level = E / R)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
 
     // Every series kind, the jurisdiction's symbol marked in each dialect.

@@ -78,8 +78,7 @@ TEST_CASE("critical_value's dimension is its result unit's, never its count's", 
     constexpr auto inMegapascal = deviationLimit<unit::Megapascal>();
     STATIC_REQUIRE(decltype(inMegapascal)::dimension == formula::dim::Pressure);
     constexpr auto inputs = formula::environment(formula::Measured<Specimens> { Rational { 6 } });
-    STATIC_REQUIRE(formula::checked_evaluate<StrengthLimit>(inMegapascal, inputs)->measurement().value()
-                   == Rational { 50 });
+    STATIC_REQUIRE(formula::checked_evaluate<StrengthLimit>(inMegapascal, inputs)->measurement().value() == Rational { 50 });
     STATIC_REQUIRE(formula::checked_evaluate_si(inMegapascal, inputs)->value() == Rational { 50'000'000 });
 }
 
@@ -106,8 +105,8 @@ TEST_CASE("critical_value refuses a count that is not a whole, non-negative numb
 
 TEST_CASE("critical_value of an absent count is absent", "[critical-value]")
 {
-    constexpr auto outcome =
-        formula::checked_evaluate<CriticalLimit>(deviationLimit(), formula::environment(formula::Measured<Specimens>::absent()));
+    constexpr auto outcome = formula::checked_evaluate<CriticalLimit>(
+        deviationLimit(), formula::environment(formula::Measured<Specimens>::absent()));
     STATIC_REQUIRE(outcome.has_value());
     STATIC_REQUIRE(outcome->is_empty());
 }
@@ -122,8 +121,7 @@ TEST_CASE("critical_value states its values in its own result unit", "[critical-
     STATIC_REQUIRE(formula::checked_evaluate<CriticalLimit>(inPercent, inputs)->measurement().value() == Rational { 1, 2 });
 }
 
-TEST_CASE("sample_size_table_is_well_formed accepts ascending sizes of at least one, and nothing else",
-          "[critical-value]")
+TEST_CASE("sample_size_table_is_well_formed accepts ascending sizes of at least one, and nothing else", "[critical-value]")
 {
     STATIC_REQUIRE(formula::sample_size_table_is_well_formed(DeviationSizes));
     STATIC_REQUIRE(formula::sample_size_table_is_well_formed(formula::SampleSizeTable<0> {}));

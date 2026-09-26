@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
+#include <formula-cpp/render.hpp>
+#include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 
@@ -342,4 +348,108 @@ TEST_CASE("a sink is told whose constraints they are around the checks, or not a
     std::string half;
     (void) formula::check_method(twoOwnConstraints, specimen(90'000, 150, 100), HalfAcceptanceWitness { {}, &half });
     CHECK(half == "cc");
+}
+
+// ------------------------------------------- phase 13: a precision check
+
+namespace
+{
+struct PairTag
+{
+};
+struct FirstMass: formula::Quantity<FirstMass, "x_A", "first determination", unit::Gram>
+{
+};
+struct SecondMass: formula::Quantity<SecondMass, "x_B", "second determination", unit::Gram>
+{
+};
+struct MeanMass: formula::Quantity<MeanMass, "x_m", "mean of the determinations", unit::Gram>
+{
+};
+/// A coefficient of the limit a jurisdiction may fix: invented, as every
+/// coefficient here is.
+struct LevelCoefficient: formula::Quantity<LevelCoefficient, "k_r", "level coefficient", unit::One>
+{
+};
+
+[[nodiscard]] constexpr formula::Rational ratio(std::int64_t numerator, std::int64_t denominator = 1)
+{
+    return formula::Rational::make(numerator, denominator).value();
+}
+
+inline constexpr auto pairMean = (var<FirstMass> + var<SecondMass>) / ratio(2);
+
+/// Fixture P's check, its coefficient an input: r(level) = 0.1 g + k_r * level.
+inline constexpr auto pairAgreement = formula::constraint(
+    formula::abs(var<FirstMass> - var<SecondMass>)
+        <= formula::precision_limit<formula::PrecisionKind::Repeatability>(
+            pairMean, formula::constant<unit::Gram>(ratio(1, 10)) + var<LevelCoefficient> * formula::precision_level<FirstMass>),
+    formula::Verdict { "repeat the determinations" });
+
+inline constexpr auto pairMethod = formula::method(
+    formula::variants(formula::variant<PairTag>(pairMean)),
+    formula::rounding_rule<unit::Gram, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints(pairAgreement));
+
+/// 40 g and 40.905 g. With k_r = 1/50, r = 0.90905 g and d = 0.905 g:
+/// satisfied. With k_r = 1/60, r = 0.77420... g: violated.
+[[nodiscard]] constexpr auto pairInputs(formula::Rational coefficient)
+{
+    return formula::environment(formula::Measured<FirstMass> { ratio(40) },
+                                formula::Measured<SecondMass> { ratio(40905, 1000) },
+                                formula::Measured<LevelCoefficient> { coefficient });
+}
+} // namespace
+
+TEST_CASE("a precision check joins a method's constraints and is checked by check_method", "[method][precision]")
+{
+    STATIC_REQUIRE(formula::check_method(pairMethod, pairInputs(ratio(1, 50)))[0].is_satisfied());
+    STATIC_REQUIRE(formula::check_method(pairMethod, pairInputs(ratio(1, 60)))[0].is_violated());
+
+    // The AcceptanceChecked step's operand is the constraint's verdict.
+    formula::Trace<> trace {};
+    (void) formula::check_method(pairMethod, pairInputs(ratio(1, 50)), formula::RecordingSink<> { trace });
+    formula::Step<> const& acceptance = trace.steps.back();
+    REQUIRE(acceptance.kind == formula::StepKind::AcceptanceChecked);
+    REQUIRE(acceptance.operands.size() == 1);
+    CHECK(trace.steps[acceptance.operands[0]].kind == formula::StepKind::Constraint);
+}
+
+TEST_CASE("with_constant reaches a coefficient inside a precision limit's limit expression", "[method][precision][overlay]")
+{
+    // A jurisdiction fixes k_r at 1/60. The environment holds no k_r at all,
+    // so this compiles only if the rewrite reached inside the limit; and the
+    // verdict flips from satisfied (1/50, an input nobody reads now) to
+    // violated.
+    constexpr auto overlaid =
+        formula::apply(formula::overlay(formula::with_constant<LevelCoefficient>(
+                           ratio(1, 60), formula::Citation { .reference = "Example Standard 1:2020 NA", .section = "NA.3" })), pairMethod);
+    constexpr auto withoutCoefficient = formula::environment(formula::Measured<FirstMass> { ratio(40) },
+                                                             formula::Measured<SecondMass> { ratio(40905, 1000) });
+    STATIC_REQUIRE(formula::check_method(overlaid, withoutCoefficient)[0].is_violated());
+}
+
+TEST_CASE("a vocabulary renames the results in a precision check on every surface, and the level stays level",
+          "[method][precision][vocabulary]")
+{
+    constexpr auto south = formula::vocabulary(formula::renames<FirstMass>("m_1"), formula::renames<SecondMass>("m_2"));
+    CHECK(formula::render(pairAgreement, south)
+          == "require abs(m_1 - m_2) <= r(1/10 g + k_r * level; level = (m_1 + m_2) / 2)");
+    CHECK(formula::render<formula::Dialect::Markdown>(pairAgreement, south)
+          == "require abs(`m_1` - `m_2`) <= r(1/10 g + `k_r` * level; level = (`m_1` + `m_2`) / 2)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(pairAgreement, south).find("\\text{level} = \\frac{m_1 + m_2}{2}")
+          != std::string::npos);
+
+    formula::Documentation const page = formula::document(pairAgreement, south);
+    REQUIRE(page.symbols.size() == 3);
+    CHECK(page.symbols[0].symbol == std::string_view { "m_1" });
+    CHECK(page.symbols[1].symbol == std::string_view { "m_2" });
+    CHECK(page.symbols[2].symbol == std::string_view { "k_r" });
+
+    formula::Trace<> trace {};
+    (void) formula::check(pairAgreement, pairInputs(ratio(1, 50)), formula::RecordingSink { trace, south });
+    std::string const text = formula::render_trace(trace, { .maxSteps = 40 });
+    CHECK(text.starts_with("1. m_1 = 40 g\n2. m_2 = 8181/200 g\n"));
+    CHECK(text.find("level = 16181/400 g [bound by #") != std::string::npos);
+    CHECK(text.find("x_A") == std::string::npos);
 }

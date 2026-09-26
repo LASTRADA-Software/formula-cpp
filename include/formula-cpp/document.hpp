@@ -17,6 +17,7 @@
 #include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/rounded_root.hpp>
@@ -308,6 +309,15 @@ namespace detail
     template <Vocabulary V, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
     void collect(Walk<V>& walk, SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node);
 
+    template <Vocabulary V, Node Operand>
+    void collect(Walk<V>& walk, AbsoluteValueNode<Operand> const& node);
+
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, PrecisionLevelNode<Q> const& node);
+
+    template <Vocabulary V, PrecisionKind K, Node Level, Node Limit>
+    void collect(Walk<V>& walk, PrecisionLimitNode<K, Level, Limit> const& node);
+
     template <Vocabulary V, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
     void collect(Walk<V>& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node);
 
@@ -539,6 +549,31 @@ namespace detail
     void collect(Walk<V>& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node)
     {
         collect(walk, node.operand);
+    }
+
+    /// An absolute value reads what its operand reads.
+    template <Vocabulary V, Node Operand>
+    void collect(Walk<V>& walk, AbsoluteValueNode<Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A precision limit's level placeholder is no input: it is the level the
+    /// limit's own level expression produced, and that expression's
+    /// variables are collected from it. `Q` only names the unit, so it gets
+    /// no row of its own for being named here.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>&, PrecisionLevelNode<Q> const&)
+    {
+    }
+
+    /// A precision limit reads what its level and its limit read, level first,
+    /// as the evaluation does.
+    template <Vocabulary V, PrecisionKind K, Node Level, Node Limit>
+    void collect(Walk<V>& walk, PrecisionLimitNode<K, Level, Limit> const& node)
+    {
+        collect(walk, node.level);
+        collect(walk, node.limit);
     }
 
     /// A critical-value lookup reads what its count reads. Its sizes are

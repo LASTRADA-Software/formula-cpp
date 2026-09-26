@@ -73,6 +73,10 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
     return formula::Rational { numerator, denominator };
 }
 
+/// A precision limit over a diameter, for the Markdown guards.
+inline constexpr auto precisionOfDiameter = formula::precision_limit<formula::PrecisionKind::Repeatability>(
+    (formula::var<Diameter> + formula::var<Diameter>) / rat(2), rat(1, 50) * formula::precision_level<Diameter>);
+
 using formula::Dialect;
 using formula::var;
 
@@ -203,6 +207,9 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     CHECK(formula::render<Dialect::Markdown>(citedDiameter) == "`d`");                                  // DocumentedNode
     CHECK(formula::render<Dialect::Markdown>(roundedSpread) == "round(sqrt(`s2`), to 2 dp of g)");      // RoundedRootNode
     CHECK(formula::render<Dialect::Markdown>(criticalLimit) == "critical(`n_d`, at 3, 4, 5, 6, 8)"); // SampleSizeLookupNode
+    CHECK(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>)) == "abs(`d` - `d`)"); // AbsoluteValueNode
+    CHECK(formula::render<Dialect::Markdown>(precisionOfDiameter)
+          == "r(1/50 * level; level = (`d` + `d`) / 2)"); // PrecisionLimitNode, PrecisionLevelNode
 }
 
 TEST_CASE("render: a critical value prints every declared size and none of the values", "[render]")
@@ -1459,6 +1466,14 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         // author-supplied name carries one (`detail::literal_words_in_dialect`).
         CHECK(unescapedPositions(text, '[').empty());
 
+        // Phase 13: a bare `|`. Inside a Markdown table cell it ends the
+        // cell, silently -- task 1 measured a row whose formula held an
+        // absolute value in bars render as one cell holding only the text
+        // before the first bar (python-markdown 3.10.3, pymdown-extensions
+        // 12.1). No plain or Markdown spelling in this library writes one:
+        // an absolute value is `abs(...)` there, and bars are LaTeX's alone.
+        CHECK(unescapedPositions(text, '|').empty());
+
         // Phase 10 round 2: an asterisk. A bare `*` CANNOT be forbidden the
         // way `[` is, because one node kind emits it legitimately --
         // `render_node(BinaryNode)` spells multiplication ` * ` in Plain and
@@ -1526,6 +1541,8 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(numeric));                               // NumericValueNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSpread));                         // RoundedRootNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(criticalLimit));                         // SampleSizeLookupNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>))); // AbsoluteValueNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(precisionOfDiameter));                   // PrecisionLimitNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint

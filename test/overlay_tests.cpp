@@ -412,6 +412,15 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
                        r, { Rational { 137, 100 }, Rational { 839, 10 } }))
                    == Rational { 41'096, 1'000 });
 
+    // An absolute value's operand, and both passes of a precision limit: the
+    // level expression reads the fixed 4, and the limit, twice the level,
+    // reads it through the placeholder -- which is itself no input and is
+    // left alone.
+    STATIC_REQUIRE(withRatioFixedAtFour(f::abs(r - f::number(Rational { 6 }))) == Rational { 2 });
+    STATIC_REQUIRE(withRatioFixedAtFour(f::precision_limit<f::PrecisionKind::Repeatability>(
+                       r, f::precision_level<Ratio> * f::number(Rational { 2 })))
+                   == Rational { 8 });
+
     // The count of a critical-value lookup: 4 selects the second of the rows
     // 3, 4 and 6, and the values come along unchanged. The values are
     // invented and deliberately unrealistic.

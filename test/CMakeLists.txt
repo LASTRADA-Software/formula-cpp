@@ -50,6 +50,7 @@ add_executable(formula-cpp-tests
     rounding_node_tests.cpp
     rounded_root_tests.cpp
     critical_value_tests.cpp
+    precision_tests.cpp
     predicate_tests.cpp
     constraint_tests.cpp
     conditional_tests.cpp
@@ -676,6 +677,29 @@ formula_add_negative_test(critical_value_count_in_percent
 
 formula_add_negative_test(critical_value_rep_not_rational
     "formula: a critical-value lookup node can only be evaluated with Rep = Rational")
+
+# Precision limits. Each refusal is gated so that one mistake draws one
+# message: the placeholder never asks an environment for a value, and a limit
+# refused where it is declared is never evaluated.
+formula_add_negative_test(precision_level_outside_limit
+    "formula: precision_level is meaningful only inside the limit expression of precision_limit"
+    REJECT "provides no value for this quantity")
+
+formula_add_negative_test(precision_level_in_own_level
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "provides no value for this quantity")
+
+formula_add_negative_test(precision_level_dimension_mismatch
+    "formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression"
+    REJECT "reads a level of another dimension" "these two dimensions are not the same")
+
+formula_add_negative_test(precision_limit_no_factory_level_dimension
+    "formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression"
+    REJECT "reads a level of another dimension")
+
+formula_add_negative_test(precision_level_hidden_dimension_mismatch
+    "formula: this precision_level reads a level of another dimension"
+    REJECT "limit expression reads a precision_level whose quantity")
 
 # `RepRounding<double>`'s own refusal, not one of the rounded root's: the node
 # rounds through the representation's rounding, as every rounding node does.

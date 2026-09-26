@@ -71,6 +71,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/method.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/outcome.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/overlay.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/precision.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/predicate.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/quantity.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/render.hpp"

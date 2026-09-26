@@ -872,6 +872,17 @@ namespace detail
             // lookup's operand is; which row it selected goes in the suffix.
             case StepKind::SampleSizeLookup:
                 return "critical(" + sole_operand(step) + ")";
+            // `render()`'s spelling: `abs(...)`, never bars, which a Markdown
+            // table cell would read as its own delimiter.
+            case StepKind::AbsoluteValue:
+                return "abs(" + sole_operand(step) + ")";
+            // Both read their side-table record, which only `step_line` can
+            // reach; see `precision_expression`. Spelled here without it, for
+            // a caller that has the step alone.
+            case StepKind::PrecisionLevel:
+                return "level";
+            case StepKind::PrecisionLimit:
+                return "precision limit";
         }
         return "unknown step kind";
     }
@@ -882,6 +893,55 @@ namespace detail
     /// directly -- and a clause that then read `fixed by jurisdiction overlay`
     /// would look cited to a reader who does not know it could have said more.
     inline constexpr std::string_view noCitationGiven = "(no citation given)";
+
+    /// A precision step's expression, read from its side-table record:
+    ///
+    ///  - pass 1: `level (pass 1 of 2) = #4`, the level expression's step;
+    ///  - a placeholder: `level`, and its suffix names the limit that bound it;
+    ///  - pass 2: `r at level #5 (pass 2 of 2) = #8`, the level step and the
+    ///    limit expression's step -- or `r at level #5` alone when pass 1
+    ///    produced no level and pass 2 never ran.
+    ///
+    /// A step with no record says so rather than guess which of the three it
+    /// is: `Step` and `Trace` are public aggregates.
+    [[nodiscard]] inline std::string precision_expression(Trace<Rational> const& trace,
+                                                          std::size_t stepIndex,
+                                                          Step<Rational> const& recorded)
+    {
+        detail::PrecisionRecord const* const precisionRecord = record_for_step(trace.precisionRecords, stepIndex);
+        if (precisionRecord == nullptr)
+            return recorded.kind == StepKind::PrecisionLimit ? "precision limit (its record is missing)"
+                                                              : "level (its record is missing)";
+        switch (precisionRecord->role)
+        {
+            case detail::PrecisionStepRole::LevelPass:
+                return recorded.operands.empty() ? std::string { "level (pass 1 of 2)" }
+                                                 : "level (pass 1 of 2) = " + operand_reference(recorded.operands.back());
+            case detail::PrecisionStepRole::Placeholder:
+                return "level";
+            case detail::PrecisionStepRole::LimitPass:
+            {
+                std::string const heading =
+                    std::string { precision_render_symbol(precisionRecord->kind) } + " at level " + operand_reference(precisionRecord->levelStep);
+                return recorded.operands.size() < 2
+                           ? heading
+                           : heading + " (pass 2 of 2) = " + operand_reference(recorded.operands.back());
+            }
+        }
+        return "precision step of unknown role";
+    }
+
+    /// A placeholder's clause: `[bound by #9]`, the limit whose level it read.
+    /// Nothing for the two passes, whose expressions already say it all.
+    [[nodiscard]] inline std::string precision_suffix(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        detail::PrecisionRecord const* const precisionRecord = record_for_step(trace.precisionRecords, stepIndex);
+        if (precisionRecord == nullptr || precisionRecord->role != detail::PrecisionStepRole::Placeholder)
+            return {};
+        if (!precisionRecord->limitStep.has_value())
+            return " [bound by a limit that was not recorded]";
+        return " [bound by " + operand_reference(*precisionRecord->limitStep) + "]";
+    }
 
     /// What a citation identifies itself by, unbracketed: its title,
     /// reference, section and equation, each that is not empty, joined by
@@ -1626,9 +1686,13 @@ namespace detail
         // miss from a relayed error. See `lookup_suffix`.
         else if (is_lookup(recorded.kind))
             annotation = lookup_suffix(trace, stepIndex, recorded);
+        else if (recorded.kind == StepKind::PrecisionLevel)
+            annotation = precision_suffix(trace, stepIndex);
 
         if (recorded.kind == StepKind::Constant)
             return valueText + annotation;
+        if (recorded.kind == StepKind::PrecisionLevel || recorded.kind == StepKind::PrecisionLimit)
+            return precision_expression(trace, stepIndex, recorded) + " = " + valueText + annotation;
         return step_expression(recorded) + " = " + valueText + annotation;
     }
 

@@ -24,6 +24,7 @@
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -300,6 +301,30 @@ enum class StepKind : std::uint8_t
     /// the node is `SampleSizeLookupNode` and the factory `critical_value`, so
     /// nothing in namespace `formula` is spelt `SampleSizeLookup`.
     SampleSizeLookup,
+    /// An `AbsoluteValueNode`: the magnitude of its one operand.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `AbsoluteValueNode` and the
+    /// factory `abs`, so nothing in namespace `formula` is spelt
+    /// `AbsoluteValue`.
+    AbsoluteValue,
+    /// A precision limit's level, in one of two roles its side-table record
+    /// (`Trace::precisionRecords`) names: **pass 1** of a `precision_limit`,
+    /// the level expression's value, whose operand is that expression; or a
+    /// `precision_level` placeholder read inside the limit expression, which
+    /// names the limit that bound it.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `PrecisionLevelNode` and
+    /// the variable template `precision_level`, so nothing in namespace
+    /// `formula` is spelt `PrecisionLevel`.
+    PrecisionLevel,
+    /// A `PrecisionLimitNode`: **pass 2**, the limit evaluated at the level
+    /// pass 1 produced. Its operands are the pass-1 step and then the limit
+    /// expression's steps; its record names its kind and its level step.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `PrecisionLimitNode` and
+    /// the factory `precision_limit`, so nothing in namespace `formula` is
+    /// spelt `PrecisionLimit`.
+    PrecisionLimit,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -453,6 +478,51 @@ namespace detail
         /// names are, with the same limit for a shared library that is
         /// unloaded.
         std::string_view declaredSizes {};
+    };
+
+    /// Which part of a two-pass precision limit a step is.
+    enum class PrecisionStepRole : std::uint8_t
+    {
+        /// Pass 1: the level expression's value.
+        LevelPass,
+        /// A `precision_level` placeholder read inside the limit expression.
+        Placeholder,
+        /// Pass 2: the limit, evaluated at the level.
+        LimitPass,
+    };
+
+    /// What a precision step is and where its level is, in the trace's side
+    /// table, keyed by the step's index.
+    struct PrecisionRecord
+    {
+        /// The index of the step this record belongs to.
+        std::size_t step {};
+        /// Which precision the limit states: `r` or `R`.
+        PrecisionKind kind {};
+        /// Which part of the limit the step is.
+        PrecisionStepRole role {};
+        /// The index of the pass-1 step: the step itself for `LevelPass`, and
+        /// the level the placeholder or the limit read otherwise.
+        std::size_t levelStep {};
+        /// The index of the `PrecisionLimit` step the level belongs to -- the
+        /// step itself for `LimitPass`, the limit that bound a placeholder, the
+        /// limit a pass-1 step fed. Empty until that limit is recorded, and for
+        /// good when it never is.
+        std::optional<std::size_t> limitStep {};
+    };
+
+    /// A precision limit whose level is bound, while its limit expression is
+    /// being evaluated: bookkeeping for `RecordingSink`.
+    struct PrecisionBinding
+    {
+        /// Which precision the limit states.
+        PrecisionKind kind {};
+        /// The index of the pass-1 step.
+        std::size_t levelStep {};
+        /// Where in `Trace::precisionRecords` the pass-1 step's record is, and
+        /// the records of every placeholder read under this binding, so that
+        /// each can be told which limit bound it once that limit is recorded.
+        std::vector<std::size_t> pendingRecords {};
     };
 } // namespace detail
 
@@ -1028,6 +1098,18 @@ struct Trace
     /// rather than guess.
     std::vector<detail::SampleSizeRecord> sampleSizeRecords {};
 
+    /// What each `PrecisionLevel` and `PrecisionLimit` step is and where its
+    /// level is, one record per such step, keyed by the step's index and
+    /// appended in step order -- the same side-table shape as
+    /// `sampleSizeRecords`, for the same reason. Written by `RecordingSink`
+    /// alone; a renderer that finds no record for such a step says so.
+    std::vector<detail::PrecisionRecord> precisionRecords {};
+
+    /// The precision limits whose level is bound, innermost last, while their
+    /// limit expressions are evaluated. Bookkeeping, as `marks` is: a
+    /// placeholder read now belongs to the innermost one.
+    std::vector<detail::PrecisionBinding> precisionBindings {};
+
     /// The index of the outermost step -- the one nothing else consumed.
     ///
     /// A `Trace` may hold more than one walk's steps: constructing a
@@ -1129,6 +1211,24 @@ namespace detail
     struct StepKindOf<SampleSizeLookupNode<Sizes, ResultUnit, Count>>
     {
         static constexpr StepKind value = StepKind::SampleSizeLookup;
+    };
+
+    template <Node Operand>
+    struct StepKindOf<AbsoluteValueNode<Operand>>
+    {
+        static constexpr StepKind value = StepKind::AbsoluteValue;
+    };
+
+    template <Described Q>
+    struct StepKindOf<PrecisionLevelNode<Q>>
+    {
+        static constexpr StepKind value = StepKind::PrecisionLevel;
+    };
+
+    template <PrecisionKind K, Node Level, Node Limit>
+    struct StepKindOf<PrecisionLimitNode<K, Level, Limit>>
+    {
+        static constexpr StepKind value = StepKind::PrecisionLimit;
     };
 
     template <Predicate P, Node Then, Node Else>
@@ -1992,7 +2092,7 @@ class RecordingSink
                                        || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
                                        || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
         nodeStep.unit = coherent(N::dimension);
-        if constexpr (namesQuantity)
+        if constexpr (namesQuantity || detail::StepKindOf<N>::value == StepKind::PrecisionLevel)
             nodeStep.unit = Describe<typename N::quantity>::unit;
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             nodeStep.unit = N::unit;
@@ -2110,6 +2210,37 @@ class RecordingSink
         if constexpr (detail::StepKindOf<N>::value == StepKind::SampleSizeLookup)
             _trace->sampleSizeRecords.push_back(detail::SampleSizeRecord {
                 .step = _trace->steps.size(), .declaredSizes = detail::SampleSizeList<N::sizes>::view() });
+
+        // A placeholder belongs to the innermost bound limit, which learns of
+        // it here and names itself on it once it is recorded. A limit names
+        // itself on its level step and on every placeholder read under it.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::PrecisionLevel)
+        {
+            if (!_trace->precisionBindings.empty())
+            {
+                detail::PrecisionBinding& binding = _trace->precisionBindings.back();
+                binding.pendingRecords.push_back(_trace->precisionRecords.size());
+                _trace->precisionRecords.push_back(detail::PrecisionRecord { .step = _trace->steps.size(),
+                                                                             .kind = binding.kind,
+                                                                             .role = detail::PrecisionStepRole::Placeholder,
+                                                                             .levelStep = binding.levelStep });
+            }
+        }
+        if constexpr (detail::StepKindOf<N>::value == StepKind::PrecisionLimit)
+        {
+            if (!_trace->precisionBindings.empty())
+            {
+                detail::PrecisionBinding const& binding = _trace->precisionBindings.back();
+                std::size_t const limitIndex = _trace->steps.size();
+                for (std::size_t const recordIndex: binding.pendingRecords)
+                    _trace->precisionRecords[recordIndex].limitStep = limitIndex;
+                _trace->precisionRecords.push_back(detail::PrecisionRecord { .step = limitIndex,
+                                                                             .kind = N::kind,
+                                                                             .role = detail::PrecisionStepRole::LimitPass,
+                                                                             .levelStep = binding.levelStep,
+                                                                             .limitStep = limitIndex });
+            }
+        }
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
@@ -2256,6 +2387,73 @@ class RecordingSink
     void acceptance_entered(ConstraintOrigin const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Told that a precision limit is about to be evaluated. Remembers
+    /// nothing: the limit's own `entered` marks the arena, and its level is
+    /// not bound until pass 1 has produced it (`precision_level_produced`).
+    void precision_limit_entered(PrecisionKind) noexcept
+    {
+    }
+
+    /// Told that a precision limit has produced its value: its binding ends,
+    /// and a placeholder read from now on belongs to an enclosing limit, if
+    /// any.
+    void precision_limit_produced(PrecisionKind, Evaluated<Rep> const&) noexcept
+    {
+        if (!_trace->precisionBindings.empty())
+            _trace->precisionBindings.pop_back();
+    }
+
+    /// Told that pass 1 is about to evaluate a precision limit's level.
+    /// Remembers where the arena stood, as `entered` does for a `Node`.
+    void precision_level_entered(PrecisionKind)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records the pass-1 step, claiming the level expression's step as its
+    /// operand, and binds the level for the limit expression that follows.
+    ///
+    /// Its value is in @p levelUnit, the unit of the quantity the limit's
+    /// placeholders name, so that the level reads as the results do; its
+    /// dimension is the level expression's.
+    void precision_level_produced(PrecisionKind precisionKind, Unit levelUnit, Evaluated<Rep> const& produced)
+    {
+        // Told without `precision_level_entered`, or after a second sink
+        // cleared the bookkeeping: as for `produced`, there is no mark to
+        // claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const levelMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> levelStep {};
+        levelStep.kind = StepKind::PrecisionLevel;
+        levelStep.dimension = levelUnit.dimension;
+        levelStep.unit = levelUnit;
+
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < levelMark)
+            ++firstClaimed;
+        levelStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        if (!produced.has_value())
+            levelStep.error = produced.error();
+        else if (produced->has_value())
+            levelStep.value = **produced;
+
+        std::size_t const levelIndex = _trace->steps.size();
+        std::size_t const recordIndex = _trace->precisionRecords.size();
+        _trace->precisionRecords.push_back(detail::PrecisionRecord {
+            .step = levelIndex, .kind = precisionKind, .role = detail::PrecisionStepRole::LevelPass, .levelStep = levelIndex });
+        _trace->precisionBindings.push_back(
+            detail::PrecisionBinding { .kind = precisionKind, .levelStep = levelIndex, .pendingRecords = { recordIndex } });
+
+        _trace->steps.push_back(std::move(levelStep));
+        _trace->unclaimed.push_back(levelIndex);
     }
 
     /// Records a `StepKind::AcceptanceChecked` step for constraints of

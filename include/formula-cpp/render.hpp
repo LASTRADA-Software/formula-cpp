@@ -44,6 +44,7 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rounded_root.hpp>
@@ -656,6 +657,16 @@ namespace detail
             return "\\operatorname{" + std::string { name } + "}(" + subject + body + ")";
         else
             return std::string { name } + "(" + subject + body + ")";
+    }
+} // namespace detail
+
+namespace detail
+{
+    /// A precision limit's symbol: `r` for repeatability, `R` for
+    /// reproducibility.
+    [[nodiscard]] constexpr std::string_view precision_render_symbol(PrecisionKind precisionKind) noexcept
+    {
+        return precisionKind == PrecisionKind::Reproducibility ? "R" : "r";
     }
 } // namespace detail
 
@@ -1404,6 +1415,65 @@ template <Dialect D, SampleSizeTable Sizes, Unit ResultUnit, Node Count, Vocabul
                     + std::to_string(Sizes[rowIndex]);
 
     return detail::lookup_call<D>("critical", render<D>(node.count, vocabulary), rowsText);
+}
+
+/// An absolute value renders as `abs(<operand>)` in plain text and Markdown,
+/// and as `\left|<operand>\right|` in LaTeX.
+///
+/// **Never bars outside LaTeX.** A bare vertical bar inside a Markdown table
+/// cell ends the cell, silently: task 1 measured a row whose formula held an
+/// absolute value in bars render as a one-cell row holding only the text
+/// before the first bar (python-markdown 3.10.3, pymdown-extensions 12.1). A
+/// formula is quoted in exactly such tables -- a symbol table, a gallery row,
+/// a `document()` page -- so the plain and Markdown spellings are a call.
+/// Either way the operand is grouped, so no `PrecedenceOf` override is
+/// needed: the primary template's `Atom` is right.
+template <Dialect D, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(AbsoluteValueNode<Operand> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.operand, vocabulary);
+    if constexpr (D == Dialect::LaTeX)
+        return "\\left|" + inner + "\\right|";
+    else
+        return "abs(" + inner + ")";
+}
+
+/// A precision limit's level renders as the word `level` -- `\text{level}`
+/// in LaTeX -- and never as a symbol. A symbol such as `L` could collide with
+/// an author's own quantity, and symbols are a jurisdiction's to choose; the
+/// word belongs to no quantity, and a vocabulary never renames it.
+template <Dialect D, Described Q, Vocabulary V>
+[[nodiscard]] std::string render_node(PrecisionLevelNode<Q> const&, V const&)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\text{level}";
+    else
+        return "level";
+}
+
+/// A precision limit renders as its symbol applied to its limit expression,
+/// with the level it is evaluated at stated beside it:
+/// `r(0.1 g + 1/50 * level; level = (x_A + x_B) / 2)`, `R(...)` for
+/// reproducibility, and in LaTeX
+/// `r\left(... \right)\Big|_{\text{level} = ...}`, the evaluation bar
+/// typeset clean under MathJax 3.2.2 and tectonic by task 1.
+///
+/// **Both passes are on the page.** A reader must be able to see that the
+/// limit depends on the results it checks -- the level is written out, not
+/// named -- and which expression is the level, so that a rounding the
+/// author put on it is visible. `;` separates the two because a comma
+/// already separates a call's arguments, and a level expression may hold
+/// calls of its own.
+template <Dialect D, PrecisionKind K, Node Level, Node Limit, Vocabulary V>
+[[nodiscard]] std::string render_node(PrecisionLimitNode<K, Level, Limit> const& node, V const& vocabulary)
+{
+    std::string const symbolText { detail::precision_render_symbol(K) };
+    std::string const limitText = render<D>(node.limit, vocabulary);
+    std::string const levelText = render<D>(node.level, vocabulary);
+    if constexpr (D == Dialect::LaTeX)
+        return symbolText + "\\left(" + limitText + "\\right)\\Big|_{\\text{level} = " + levelText + "}";
+    else
+        return symbolText + "(" + limitText + "; level = " + levelText + ")";
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it

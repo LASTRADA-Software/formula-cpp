@@ -145,6 +145,7 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
@@ -1593,6 +1594,45 @@ namespace detail
         }
     };
 
+    template <typename Sub, Node Operand>
+    struct ConstantRewrite<Sub, AbsoluteValueNode<Operand>>:
+        ConstantRewriteOperand<Sub, Operand, AbsoluteValueNode<typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
+    /// A precision limit's level names no input quantity: carried over
+    /// unchanged. The quantity it names is for its unit, and a constant fixed
+    /// for that quantity does not reach the level, which is the level the
+    /// limit's level expression produced.
+    template <typename Sub, Described Q>
+    struct ConstantRewrite<Sub, PrecisionLevelNode<Q>>: ConstantRewriteLeaf<Sub, PrecisionLevelNode<Q>>
+    {
+    };
+
+    /// A precision limit, both its level and its limit rewritten.
+    template <typename Sub, PrecisionKind K, Node Level, Node Limit>
+    struct ConstantRewrite<Sub, PrecisionLimitNode<K, Level, Limit>>
+    {
+        /// How the level expression is rewritten.
+        using LevelRewrite = ConstantRewriteOf<Sub, Level>;
+        /// How the limit expression is rewritten.
+        using LimitRewrite = ConstantRewriteOf<Sub, Limit>;
+
+        /// Whether both are kinds this header knows, all the way down.
+        static constexpr bool known = LevelRewrite::known && LimitRewrite::known;
+        /// Whether either uses `Q`.
+        static constexpr bool mentions = LevelRewrite::mentions || LimitRewrite::mentions;
+        /// The same limit, around the rewritten level and limit.
+        using type = PrecisionLimitNode<K, typename LevelRewrite::type, typename LimitRewrite::type>;
+
+        /// The node, around the rewritten level and limit.
+        [[nodiscard]] static constexpr type apply(PrecisionLimitNode<K, Level, Limit> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, LevelRewrite::apply(node.level, overriding), LimitRewrite::apply(node.limit, overriding) };
+        }
+    };
+
     /// A critical-value lookup, rebuilt around its rewritten count with its
     /// own values: a jurisdiction fixing a quantity changes what the count
     /// reads, never the table.
@@ -2118,6 +2158,18 @@ namespace detail
     template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
     struct SubstitutedIn<SampleSizeLookupNode<Sizes, ResultUnit, Count>>: SubstitutedInOperand<Count>
     {
+    };
+
+    template <Node Operand>
+    struct SubstitutedIn<AbsoluteValueNode<Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <PrecisionKind K, Node Level, Node Limit>
+    struct SubstitutedIn<PrecisionLimitNode<K, Level, Limit>>
+    {
+        /// Whatever the level and the limit substitute.
+        using type = SubstitutedInAll<Level, Limit>;
     };
 
     template <Unit U, FixedString Justification, Node Operand>

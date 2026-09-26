@@ -17,16 +17,17 @@
 // including the header is enough for those. The probe below instantiates:
 // evaluation of every node kind -- arithmetic with a bare number on either
 // side, negation, powers and every root, pi, rounding both ways, a rounded
-// square root, a conditional, the escape hatch, the three lookups and a
-// critical value -- untraced and traced, with `explain`; `render` and
-// `document` in all three dialects, with and without a vocabulary, of that
-// formula, of a constraint and its predicate, and of formulas an overlay
-// fixed, derived and replaced; `render_trace`; `check` and `check_all`;
-// `evaluate_method` of an original and of a replaced variant, and
-// `check_method`, with `RecordingSink` and with a sink of its own; `apply`
-// with every overlay operation; `Outcome`'s factories; `checked_convert_to`,
-// `checked_within_bounds`, `checked_round_to_declared`, `transform` and
-// `combine`; `entered`, `Environment::get` and `source_of`;
+// square root, a conditional, the escape hatch, the three lookups, a
+// critical value, an absolute value and a two-pass precision limit --
+// untraced and traced, with `explain`; `render` and `document` in all three
+// dialects, with and without a vocabulary, of that formula, of a constraint
+// and its predicate, and of formulas an overlay fixed, derived and replaced;
+// `render_trace`; `check` and `check_all`; `evaluate_method` of an original
+// and of a replaced variant, and `check_method`, with `RecordingSink` and
+// with a sink of its own; `apply` with every overlay operation; `Outcome`'s
+// factories; `checked_convert_to`, `checked_within_bounds`,
+// `checked_round_to_declared`, `transform` and `combine`; `entered`,
+// `Environment::get` and `source_of`;
 // `measured_series`, `entered` of a series, `Environment::get_series` and
 // `checked_evaluate_series` of a series variable, derived and entered;
 // `render` and `document` of a series variable, and `explain_series` with
@@ -129,6 +130,7 @@ int index;
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
@@ -188,7 +190,7 @@ inline constexpr formula::SampleSizeTable<2> Sizes { 1, 2 };
 /// A formula touching every node kind the evaluator, renderer and trace know:
 /// arithmetic, a power and a root, a documented citation, rounding both
 /// ways, a rounded square root, a conditional, the escape hatch, all three
-/// lookups and a critical value.
+/// lookups, a critical value, an absolute value and a precision limit.
 inline constexpr auto everything = formula::documented(
     formula::rounded<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
         var<Force> / formula::pow<2>(var<EdgeX>)
@@ -198,6 +200,8 @@ inline constexpr auto everything = formula::documented(
         * formula::rounded_sqrt<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Factor> * formula::Rational { 2 })
         * formula::critical_value<Sizes, unit::One>(var<Factor>, { formula::Rational { 70 }, formula::Rational { 20 } })
+        * formula::abs(var<Factor>)
+        * formula::precision_limit<formula::PrecisionKind::Repeatability>(var<Factor>, formula::precision_level<Factor>)
         * formula::exact_lookup<SpecimenFormKeys, unit::One>(
             SpecimenForm::Round, { formula::Rational { 1'087, 1'000 }, formula::Rational { 1'249, 1'000 } })
         * formula::banded_lookup<unit::One, Bands, unit::One>(
