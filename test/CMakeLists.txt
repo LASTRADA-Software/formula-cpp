@@ -858,6 +858,12 @@ formula_add_negative_test(method_rounding_rule_provenance_hand_built
 formula_add_negative_test(method_rounding_rule_node_provenance_hand_built
     "formula: a rounding rule's provenance is the library's to state, not an author's")
 
+# A rounding node built by hand around the default rule: it would make a trace
+# say "(method default)" where there is no method. Only `evaluate_method`
+# builds one.
+formula_add_negative_test(method_rounding_rule_node_hand_built
+    "formula: only evaluate_method builds a rounding rule node")
+
 # Task 7: wholesale replacement and derived quantities. Each case's own file
 # says what it pins; the REJECTs pin the gates between refusals, so that one
 # mistake gets one message. Both orders of a replacement and a prune are

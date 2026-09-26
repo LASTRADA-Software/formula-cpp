@@ -1235,8 +1235,8 @@ class RecordingSink
             step.citation = node.source();
         if constexpr (detail::StepKindOf<N>::value == StepKind::RoundingRuleApplied)
         {
-            step.roundingProvenance = node.rule.provenance();
-            step.citation = node.rule.source();
+            step.roundingProvenance = node.rule().provenance();
+            step.citation = node.rule().source();
         }
         if constexpr (detail::StepKindOf<N>::value == StepKind::NumericValue)
         {

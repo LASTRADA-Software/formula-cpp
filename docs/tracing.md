@@ -433,10 +433,12 @@ an overlay leaves behind -- a fixed constant, a derived quantity, a replaced
 formula -- can be built only by the overlay, and building one by hand is
 refused in the library's words. A
 `RoundingRule` claims a jurisdiction's overlay only when `with_rounding`
-produced it, and the rounding node a method applies holds the rule itself
-rather than a provenance of its own, so neither can be hand-built to say
-otherwise. What the guard governs is how a rule is created: a copy of an
-overlay's rule stays the overlay's wherever it is used, which is true of it.
+produced it, and the rounding node a method applies is built only by
+`evaluate_method`, from the method's own rule, which it holds rather than a
+provenance of its own. So "(method default)" and "(jurisdiction overlay)"
+are only ever said of a method's rule. What the guard governs is how a rule is
+created, not where a copy travels: a method holding a copy of an overlay's
+rule is traced as that overlay's rule, which is true of it.
 
 ## The bound is a required argument, not a default
 

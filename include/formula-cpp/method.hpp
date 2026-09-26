@@ -804,6 +804,29 @@ namespace detail
 
         static constexpr bool value = true;
     };
+
+    struct RoundingRuleNodeAccess;
+
+    /// Marks the private constructor `RoundingRuleNodeAccess` calls.
+    struct MethodMade
+    {
+    };
+
+    /// Fails to compile when an author builds a `RoundingRuleNode`. The node
+    /// makes a trace say a value was rounded by a method's rule -- the
+    /// method's own or a jurisdiction's -- so one built by hand and put in a
+    /// formula would say so where there is no method.
+    template <typename RuleNode>
+    struct RequireMethodMadeRoundingNode
+    {
+        static_assert(!std::is_same_v<RuleNode, RuleNode>,
+                      "formula: only evaluate_method builds a rounding rule node; it makes a trace say a value was "
+                      "rounded by a method's rule, so one built by hand would say so where there is no method -- "
+                      "round with rounded<...>(...) instead; the node appears in this diagnostic as the template "
+                      "argument of RequireMethodMadeRoundingNode");
+
+        static constexpr bool value = true;
+    };
 } // namespace detail
 
 /// A method's rounding rule, declared rather than applied after the fact, so
@@ -1244,24 +1267,64 @@ namespace detail
 /// jurisdiction's. A trace records this node as a
 /// `StepKind::RoundingRuleApplied` step (`trace.hpp`), which says both.
 ///
-/// **Its provenance is the rule's, and only as trustworthy as the rule's
-/// guard.** The node holds the `RoundingRule` itself rather than a provenance
-/// and a citation of its own, so a trace can say "jurisdiction overlay" only of
-/// a rule `with_rounding` produced -- see `detail::RequireLibraryStatesProvenance`.
-///
-/// `evaluate_method` builds one around the variant it selected, from the
-/// method's rule. It is a public aggregate, so an author can build one too;
-/// what that author cannot do is make it claim a jurisdiction's rule. A node
-/// built by hand around a default `RoundingRule` claims the method default,
-/// and says so of whatever formula it is put in. It rounds and renders as the
-/// `RoundNode` it is.
+/// **Only `evaluate_method` builds one**, around the variant it selected and
+/// from the method's own rule. The node holds that `RoundingRule` itself
+/// rather than a provenance and a citation of its own, and its building
+/// constructor is private, reachable only through
+/// `detail::RoundingRuleNodeAccess`; the public one refuses, in this library's
+/// words. So a trace's "method default" or "jurisdiction overlay" is always
+/// said of a method's rule -- and it is exactly as true as that rule's
+/// provenance, which only the library creates (see
+/// `detail::RequireLibraryStatesProvenance`). A method holding a copy of an
+/// overlay's rule, `method(..., apply(overlay, m).rounding, ...)`, is traced
+/// as that overlay's rule, which is true of it -- see `RoundingRule`.
 template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
-struct RoundingRuleNode: RoundNode<U, Places, Mode, Operand>
+class RoundingRuleNode: public RoundNode<U, Places, Mode, Operand>
 {
+  public:
+    /// Refused: see `detail::RequireMethodMadeRoundingNode`. Declared only so
+    /// that building one by hand is refused in this library's words.
+    explicit constexpr RoundingRuleNode(Operand rounded, RoundingRule<U, Places, Mode> const& applied = {}) noexcept:
+        RoundNode<U, Places, Mode, Operand> { {}, rounded },
+        _rule { applied }
+    {
+        static_assert(detail::RequireMethodMadeRoundingNode<RoundingRuleNode>::value);
+    }
+
     /// The rule applied: its granularity is this node's, and its provenance
     /// and citation are what a trace reports of it.
-    RoundingRule<U, Places, Mode> rule {};
+    [[nodiscard]] constexpr RoundingRule<U, Places, Mode> const& rule() const noexcept
+    {
+        return _rule;
+    }
+
+  private:
+    friend struct detail::RoundingRuleNodeAccess;
+
+    constexpr RoundingRuleNode(detail::MethodMade, Operand rounded, RoundingRule<U, Places, Mode> const& applied) noexcept:
+        RoundNode<U, Places, Mode, Operand> { {}, rounded },
+        _rule { applied }
+    {
+    }
+
+    RoundingRule<U, Places, Mode> _rule;
 };
+
+namespace detail
+{
+    /// The one way to build a `RoundingRuleNode`: `evaluate_method` is its only
+    /// caller.
+    struct RoundingRuleNodeAccess
+    {
+        /// @p operand rounded by @p rule.
+        template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+        [[nodiscard]] static constexpr RoundingRuleNode<U, Places, Mode, Operand> applied(
+            Operand operand, RoundingRule<U, Places, Mode> const& rule) noexcept
+        {
+            return RoundingRuleNode<U, Places, Mode, Operand> { MethodMade {}, operand, rule };
+        }
+    };
+} // namespace detail
 
 /// Rounds as the `RoundNode` it derives from, and tells @p sink about the
 /// node as its own type, so that a trace can say where the rule came from.
@@ -1343,10 +1406,9 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
 
         auto const& selected = std::get<Selection::index>(m.variantSet.cases);
         using Selected = std::remove_cvref_t<decltype(selected.expression)>;
-        RoundingRuleNode<Rule::unit, Rule::places, Rule::mode, Selected> const expression {
-            { {}, selected.expression },
-            m.rounding,
-        };
+        RoundingRuleNode<Rule::unit, Rule::places, Rule::mode, Selected> const expression =
+            detail::RoundingRuleNodeAccess::applied<Rule::unit, Rule::places, Rule::mode, Selected>(selected.expression,
+                                                                                                    m.rounding);
 
         // The selection is named whether or not the sink asks for it, so that
         // a broken `TagName` specialization, or a tag whose name cannot be
