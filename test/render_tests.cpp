@@ -49,6 +49,20 @@ struct OtherVariance: formula::Quantity<OtherVariance, "t2", "variance of a seco
 {
 };
 
+struct Determinations: formula::Quantity<Determinations, "n_d", "number of determinations", formula::unit::One>
+{
+};
+
+/// The shared fixtures' critical-value table. **Invented, and deliberately
+/// unrealistic -- no published table holds values like these.** No row for 7.
+inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
+
+/// The deviation table's critical value, read at the number of determinations.
+inline constexpr auto criticalLimit = formula::critical_value<DeviationSizes, formula::unit::One>(
+    formula::var<Determinations>,
+    { formula::Rational { 10 }, formula::Rational { 30 }, formula::Rational { 20 }, formula::Rational { 50 },
+      formula::Rational { 40 } });
+
 /// The root of the variance, to 0.01 g -- the spelling every dialect below pins.
 inline constexpr auto roundedSpread =
     formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
@@ -188,6 +202,24 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     CHECK(formula::render<Dialect::Markdown>(formula::pi) == "pi");                                     // PiNode
     CHECK(formula::render<Dialect::Markdown>(citedDiameter) == "`d`");                                  // DocumentedNode
     CHECK(formula::render<Dialect::Markdown>(roundedSpread) == "round(sqrt(`s2`), to 2 dp of g)");      // RoundedRootNode
+    CHECK(formula::render<Dialect::Markdown>(criticalLimit) == "critical(`n_d`, at 3, 4, 5, 6, 8)"); // SampleSizeLookupNode
+}
+
+TEST_CASE("render: a critical value prints every declared size and none of the values", "[render]")
+{
+    CHECK(formula::render(criticalLimit) == "critical(n_d, at 3, 4, 5, 6, 8)");
+    CHECK(formula::render<Dialect::LaTeX>(criticalLimit)
+          == "\\operatorname{critical}(n_d,\\allowbreak \\mathrm{at\\ }3,\\allowbreak 4,\\allowbreak 5,\\allowbreak "
+             "6,\\allowbreak 8)");
+    // The values are data: 50 and 40 appear nowhere in the formula's text.
+    CHECK(formula::render(criticalLimit).find("50") == std::string::npos);
+    CHECK(formula::render(criticalLimit).find("40") == std::string::npos);
+    // A call, so an atom to whatever holds it.
+    CHECK(formula::render(criticalLimit * var<Determinations>) == "critical(n_d, at 3, 4, 5, 6, 8) * n_d");
+    // A table of no sizes says so, as an empty lookup does.
+    constexpr auto empty =
+        formula::critical_value<formula::SampleSizeTable<0> {}, formula::unit::One>(var<Determinations>, {});
+    CHECK(formula::render(empty) == "critical(n_d, no rows)");
 }
 
 TEST_CASE("render: a rounded square root reads as a rounding of a root, in every dialect", "[render]")
@@ -1493,6 +1525,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSig));                            // RoundSignificantNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(numeric));                               // NumericValueNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSpread));                         // RoundedRootNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(criticalLimit));                         // SampleSizeLookupNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint

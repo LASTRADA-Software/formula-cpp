@@ -35,6 +35,7 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/unit.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <expected>
 #include <optional>
@@ -548,6 +549,34 @@ namespace detail
         return "between " + number_with_unit(lowText + " and " + highText, keySymbol);
     }
 
+    /// The side-table record of the step at @p stepIndex in @p records, or
+    /// nothing. The records are keyed by step index and appended in step
+    /// order, so a binary search finds one; a hand-built trace that breaks the
+    /// order finds nothing, and the caller says so rather than guess.
+    template <typename Record>
+    [[nodiscard]] Record const* record_for_step(std::vector<Record> const& records, std::size_t stepIndex)
+    {
+        auto const match = std::lower_bound(records.begin(), records.end(), stepIndex,
+                                            [](Record const& each, std::size_t wanted) { return each.step < wanted; });
+        if (match == records.end() || match->step != stepIndex)
+            return nullptr;
+        return &*match;
+    }
+
+    /// The declared sizes of the critical-value lookup step at @p stepIndex,
+    /// as the clause ` (declared: 3, 4, 5, 6, 8)`, read from the trace's side
+    /// table. A step with no record says so rather than print sizes it does
+    /// not have.
+    [[nodiscard]] inline std::string declared_sizes_text(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        detail::SampleSizeRecord const* const sizes = record_for_step(trace.sampleSizeRecords, stepIndex);
+        if (sizes == nullptr)
+            return " (the table's sizes were not recorded)";
+        if (sizes->declaredSizes.empty())
+            return "; the table declares no sizes";
+        return " (declared: " + std::string { sizes->declaredSizes } + ")";
+    }
+
     /// Why a lookup found nothing, in one clause -- the clause that stops
     /// `describe(ArithmeticError::DomainError)` from being read as a claim
     /// about something it does not know.
@@ -555,10 +584,19 @@ namespace detail
     /// Each kind says it in its own terms, because the three misses are
     /// genuinely different questions: a value in none of a table's bands, a
     /// key in none of its rows, a value off the ends of a curve.
-    [[nodiscard]] inline std::string lookup_miss_text(Step<Rational> const& recorded, std::string_view keySymbol)
+    [[nodiscard]] inline std::string lookup_miss_text(Trace<Rational> const& trace,
+                                                      std::size_t stepIndex,
+                                                      Step<Rational> const& recorded,
+                                                      std::string_view keySymbol)
     {
         if (recorded.kind == StepKind::ExactLookup)
             return "no row has this key";
+
+        // The count and every size the table does declare, so that a reader
+        // sees the hole the count fell in: `no row for n = 7 (declared: 3, 4,
+        // 5, 6, 8)`.
+        if (recorded.kind == StepKind::SampleSizeLookup)
+            return "no row for n = " + std::to_string(recorded.lookupKey) + declared_sizes_text(trace, stepIndex);
 
         if (!recorded.coveredRange.has_value())
             return recorded.kind == StepKind::BandedLookup ? "the table declares no bands" : "the curve declares no rows";
@@ -601,7 +639,12 @@ namespace detail
     /// trailing qualifications, and the plain `--` this project's prose uses
     /// for a secondary aside would train them to skim past exactly the fact
     /// that must not be skimmed.
-    [[nodiscard]] inline std::string lookup_suffix(Step<Rational> const& recorded)
+    ///
+    /// @p recorded is the step's escaped copy (`EscapedStep`); @p trace and
+    /// @p stepIndex are read only for the step's side-table record.
+    [[nodiscard]] inline std::string lookup_suffix(Trace<Rational> const& trace,
+                                                   std::size_t stepIndex,
+                                                   Step<Rational> const& recorded)
     {
         std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
         switch (recorded.lookupFailure)
@@ -618,13 +661,17 @@ namespace detail
                 // in the operand's own step, and an operand evaluated through
                 // the two-parameter extension point (`sink.hpp`) contributes
                 // none.
+                // A critical value's row is its size, and the count is that
+                // size -- the one thing the line's `critical(#1)` does not say.
+                if (recorded.kind == StepKind::SampleSizeLookup && recorded.value.has_value() && !recorded.operands.empty())
+                    return " [critical value at n = " + std::to_string(recorded.lookupKey) + "]";
                 if (recorded.selectedBand.has_value())
                     return " [" + band_text(*recorded.selectedBand, keySymbol) + "]";
                 if (recorded.selectedSegment.has_value())
                     return " [" + segment_text(*recorded.selectedSegment, keySymbol) + "]";
                 return {};
             case LookupFailure::Missed:
-                return " [" + lookup_miss_text(recorded, keySymbol) + "]";
+                return " [" + lookup_miss_text(trace, stepIndex, recorded, keySymbol) + "]";
             case LookupFailure::Computation:
                 return " [the interpolation itself overflowed, not anything below it]";
             case LookupFailure::Conversion:
@@ -640,6 +687,11 @@ namespace detail
                                                  : " [carried up from " + sole_operand(recorded) + "]";
             case LookupFailure::Undetermined:
                 return " [this lookup or something below it: the operand recorded no step]";
+            // The count is not a number of determinations, so no row was
+            // asked. Its value is the operand's, which the reference names.
+            case LookupFailure::NotACount:
+                return " [no row for n = " + (recorded.operands.empty() ? std::string { "the count" } : sole_operand(recorded))
+                       + ", which is not a whole, non-negative number" + declared_sizes_text(trace, stepIndex) + "]";
         }
         return " [unknown lookup failure]";
     }
@@ -816,6 +868,10 @@ namespace detail
             case StepKind::RoundedRoot:
                 return "round(sqrt(" + sole_operand(step) + "), to " + std::to_string(step.granularity) + " dp"
                        + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
+            // `render()`'s head name. The count is the subject, as a banded
+            // lookup's operand is; which row it selected goes in the suffix.
+            case StepKind::SampleSizeLookup:
+                return "critical(" + sole_operand(step) + ")";
         }
         return "unknown step kind";
     }
@@ -1507,7 +1563,9 @@ namespace detail
     ///
     /// Renders an `EscapedStep`'s copy, never the step itself -- see
     /// `step_line`, which makes it.
-    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded,
+    [[nodiscard]] inline std::string escaped_step_line(Trace<Rational> const& trace,
+                                                       std::size_t stepIndex,
+                                                       Step<Rational> const& recorded,
                                                        std::size_t& budget,
                                                        std::span<LimitRow const> limits)
     {
@@ -1567,7 +1625,7 @@ namespace detail
         // value fell in, and on a failure it is the only thing separating a
         // miss from a relayed error. See `lookup_suffix`.
         else if (is_lookup(recorded.kind))
-            annotation = lookup_suffix(recorded);
+            annotation = lookup_suffix(trace, stepIndex, recorded);
 
         if (recorded.kind == StepKind::Constant)
             return valueText + annotation;
@@ -1581,12 +1639,13 @@ namespace detail
     ///
     /// @p limits are the rows a `ConformityChecked` step judged against
     /// (`Trace::conformityLimits`), and empty for every other kind.
-    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded,
+    [[nodiscard]] inline std::string step_line(Trace<Rational> const& trace,
+                                               std::size_t stepIndex,
                                                std::size_t& budget,
                                                std::span<LimitRow const> limits = {})
     {
-        EscapedStep const escaped { recorded };
-        return escaped_step_line(escaped.step, budget, limits);
+        EscapedStep const escaped { trace.steps[stepIndex] };
+        return escaped_step_line(trace, stepIndex, escaped.step, budget, limits);
     }
 } // namespace detail
 
@@ -1626,11 +1685,10 @@ template <typename Rep = Rational>
     std::string renderedTrace;
     while (shown < trace.steps.size() && budget > 0)
     {
-        Step<Rational> const& recorded = trace.steps[shown];
         --budget;
         renderedTrace += std::to_string(shown + 1);
         renderedTrace += ". ";
-        renderedTrace += detail::step_line(recorded, budget, detail::conformity_limits_of(trace, shown));
+        renderedTrace += detail::step_line(trace, shown, budget, detail::conformity_limits_of(trace, shown));
         renderedTrace += "\n";
         ++shown;
     }

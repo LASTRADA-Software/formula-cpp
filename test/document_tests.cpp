@@ -280,6 +280,34 @@ TEST_CASE("document: a variable under a rounded square root appears in the symbo
     CHECK(documentation.symbols[0].unit == GramSquared);
 }
 
+namespace
+{
+struct Determinations: formula::Quantity<Determinations, "n", "number of determinations", formula::unit::One>
+{
+};
+
+/// The shared fixtures' critical-value table. **Invented, and deliberately
+/// unrealistic -- no published table holds values like these.** No row for 7.
+inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
+} // namespace
+
+TEST_CASE("document: a critical value shows its declared sizes, its count and the method's citation", "[document]")
+{
+    constexpr auto node = formula::documented(
+        formula::critical_value<DeviationSizes, formula::unit::One>(
+            formula::var<Determinations>,
+            { formula::Rational { 10 }, formula::Rational { 30 }, formula::Rational { 20 }, formula::Rational { 50 },
+              formula::Rational { 40 } }),
+        formula::Citation { .title = "Deviation limits", .reference = "Example Standard 7:2021", .section = "B.2" });
+    formula::Documentation const documentation = formula::document(node);
+
+    CHECK(documentation.formula == "critical(n, at 3, 4, 5, 6, 8)");
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "n" });
+    REQUIRE(documentation.citations.size() == 1);
+    CHECK(documentation.citations[0].reference == std::string_view { "Example Standard 7:2021" });
+}
+
 TEST_CASE("document: a variable read through numeric_value_of still appears in the symbol table", "[document]")
 {
     // Invented, as every justification in this repository is.

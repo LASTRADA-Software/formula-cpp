@@ -55,6 +55,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/conformity.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/constraint.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/curve.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/critical_value.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/dimension.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/document.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/enumerator.hpp"

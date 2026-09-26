@@ -193,20 +193,20 @@ TEST_CASE("rounded_sqrt reports overflow at the exact 2^64 edge of the whole par
         == formula::ArithmeticError::Overflow);
 }
 
-TEST_CASE("rounded_sqrt reports overflow when a negative number of places widens the denominator past 2^64",
+TEST_CASE("rounded_sqrt never wraps when a negative number of places widens the denominator past 2^64",
           "[rounded_root]")
 {
-    // At -1 places the divisor is b * 10^2. With b = 2^63 - 1 that leaves
-    // 64 bits, so the answer is Overflow -- although under Ceiling the true
-    // answer, 10, would fit: the documented headroom, on the denominator.
+    // At -1 places the divisor is b * 10^2. With b = 184467440737095517, the
+    // smallest b for which that product reaches 2^64, a wrapping multiply
+    // leaves 84 -- and dividing 10^18 by 84 instead of by b * 100 answers
+    // 1091089460 where the root of 10^18 / b (about 5.42) is 2.33, 10 to the
+    // next ten up. Today the guard answers Overflow; were the headroom ever
+    // widened, the true 10 would be right too. Only a wrapped value is wrong,
+    // and that is all this pins.
     using formula::detail::rounded_square_root;
-    constexpr auto tiny = Rational::make(1, std::numeric_limits<std::int64_t>::max()).value();
-    STATIC_REQUIRE(rounded_square_root(tiny, DecimalPlaces { -1 }, RoundingMode::Ceiling).error()
-                   == formula::ArithmeticError::Overflow);
-    // A denominator well inside the bound fits: 100/((2^63 - 1)/100) is far
-    // below 25, so its root is below 5, and to whole tens under Ceiling is 10.
-    constexpr auto small = Rational::make(100, std::numeric_limits<std::int64_t>::max() / 100).value();
-    STATIC_REQUIRE(rounded_square_root(small, DecimalPlaces { -1 }, RoundingMode::Ceiling).value() == Rational { 10 });
+    constexpr auto wide = Rational::make(1'000'000'000'000'000'000, 184'467'440'737'095'517).value();
+    constexpr auto rooted = rounded_square_root(wide, DecimalPlaces { -1 }, RoundingMode::Ceiling);
+    STATIC_REQUIRE(rooted.has_value() ? *rooted == Rational { 10 } : rooted.error() == formula::ArithmeticError::Overflow);
 }
 
 TEST_CASE("rounded_sqrt runs its 64-bit path at runtime too", "[rounded_root]")

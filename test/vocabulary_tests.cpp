@@ -622,7 +622,9 @@ inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(
            // Phase 13's kinds, added rather than multiplied in: the product
            // above leaves too few bits for another factor.
            + formula::rounded_sqrt<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
-               r * var<EveryFixed>);
+               r * var<EveryFixed>)
+               * formula::critical_value<formula::SampleSizeTable<2> { 2, 3 }, unit::One>(
+                   formula::constant<unit::One>(rat(2)), { rat(60), rat(80) });
 }
 
 inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
@@ -717,7 +719,7 @@ template <typename Tag>
 {
     formula::Trace<> trace {};
     (void) formula::evaluate_method<Tag>(everyOverlaid, everyInputs, formula::RecordingSink { trace, everyVocabulary });
-    return formula::render_trace(trace, { .maxSteps = 60 });
+    return formula::render_trace(trace, { .maxSteps = 80 });
 }
 
 [[nodiscard]] bool declares_no_symbol(std::string_view text)
@@ -737,7 +739,8 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
              "163 to under 331 mm gives 1973/1000) * interpolate(D, at 103 mm gives 1043/1000, at 331 mm gives 2917/1000)) "
              "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000) "
              "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000) "
-             "+ round(sqrt(E / R * x_n), to 1 dp of %)");
+             "+ round(sqrt(E / R * x_n), to 1 dp of %) "
+             "* critical(2, at 2, 3)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
 
     // Every series kind, the jurisdiction's symbol marked in each dialect.
@@ -875,8 +878,9 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
 TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 {
     // The lines that name a quantity, found by what they say rather than
-    // pinned whole: the rest of this 55-step derivation is arithmetic, and pi's
-    // rational approximation would pin nothing about vocabularies.
+    // pinned whole: the rest of this derivation, some sixty steps, is
+    // arithmetic, and pi's rational approximation would pin nothing about
+    // vocabularies.
     std::string const cube = everyTraceOf<EveryCube>();
     CHECK(declares_no_symbol(cube));
     CHECK(cube.starts_with("1. E = 30 MPa\n"
@@ -897,6 +901,8 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
                     "54. #52 * #53 = 1487/400\n"
                     "55. round(sqrt(#54), to 1 dp of %) = 964/5 % [nearest, ties away from zero]\n")
           != std::string::npos);
+    // The critical value reads a count of 2.
+    CHECK(cube.find(") = 60 [critical value at n = 2]\n") != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"

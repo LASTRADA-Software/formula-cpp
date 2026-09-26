@@ -49,6 +49,7 @@ add_executable(formula-cpp-tests
     trace_render_tests.cpp
     rounding_node_tests.cpp
     rounded_root_tests.cpp
+    critical_value_tests.cpp
     predicate_tests.cpp
     constraint_tests.cpp
     conditional_tests.cpp
@@ -639,6 +640,42 @@ formula_add_negative_test(rounded_sqrt_unit_has_offset
 formula_add_negative_test(rounded_sqrt_offset_unit_dimension_mismatch
     "formula: this rounded_sqrt names a unit whose square does not measure the dimension of its radicand"
     REJECT "formula: this rounded_sqrt names a unit with an offset")
+
+# Critical values keyed by sample size. A malformed table is refused once,
+# for its first defect, and the arity check is gated behind it; a valid
+# table's arity is checked on both routes.
+formula_add_negative_test(critical_value_sizes_descending
+    "formula: this sample-size table's sizes do not strictly ascend"
+    REJECT "this lookup table was given a different number of corrections")
+
+formula_add_negative_test(critical_value_sizes_duplicate
+    "formula: this sample-size table's sizes do not strictly ascend"
+    REJECT "declares a size of zero")
+
+formula_add_negative_test(critical_value_size_zero
+    "formula: this sample-size table declares a size of zero"
+    REJECT "do not strictly ascend")
+
+formula_add_negative_test(critical_value_short
+    "this lookup table was given a different number of corrections than it has rows"
+    REJECT "sample-size table")
+
+formula_add_negative_test(critical_value_short_no_factory
+    "this lookup table was given a different number of corrections than it has rows"
+    REJECT "sample-size table")
+
+formula_add_negative_test(critical_value_count_not_scalar
+    "formula: this critical value's count is not dimensionless"
+    REJECT "sample-size table" "stated in a unit other than a bare number")
+
+# A dimensionless count in a unit other than a bare number. Gated on the
+# count being dimensionless, so `count_not_scalar` above REJECTs this message.
+formula_add_negative_test(critical_value_count_in_percent
+    "formula: this critical value's count is stated in a unit other than a bare number"
+    REJECT "is not dimensionless" "sample-size table")
+
+formula_add_negative_test(critical_value_rep_not_rational
+    "formula: a critical-value lookup node can only be evaluated with Rep = Rational")
 
 # `RepRounding<double>`'s own refusal, not one of the rounded root's: the node
 # rounds through the representation's rounding, as every rounding node does.

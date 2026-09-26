@@ -14,6 +14,7 @@
 #include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rational.hpp>
@@ -304,6 +305,9 @@ namespace detail
     template <Vocabulary V, KeyTable Keys, Unit ResultUnit>
     void collect(Walk<V>& walk, ExactLookupNode<Keys, ResultUnit> const& node);
 
+    template <Vocabulary V, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    void collect(Walk<V>& walk, SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node);
+
     template <Vocabulary V, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
     void collect(Walk<V>& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node);
 
@@ -535,6 +539,15 @@ namespace detail
     void collect(Walk<V>& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node)
     {
         collect(walk, node.operand);
+    }
+
+    /// A critical-value lookup reads what its count reads. Its sizes are
+    /// printed by `render()` in the page's formula, and its values are data,
+    /// as a lookup's corrections are.
+    template <Vocabulary V, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    void collect(Walk<V>& walk, SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node)
+    {
+        collect(walk, node.count);
     }
 
     /// A rounded square root reads what its radicand reads, as a rounding

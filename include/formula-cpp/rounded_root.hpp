@@ -168,9 +168,9 @@ namespace detail
     /// about 10^6 fits at 6 places and overflows at 7. **The bound is on the
     /// denominator b too**, whatever the value: at p places a denominator above
     /// about 1.8 * 10^(19 - 2|p|) overflows, at a negative p because B is
-    /// b * 10^(2|p|). So 1/(2^63 - 1) at -1 places is `Overflow` although its
-    /// answer, 10 under `Ceiling`, would fit. Beyond the headroom the answer is
-    /// `ArithmeticError::Overflow`, never a wrapped or clamped value.
+    /// b * 10^(2|p|), even where the rounded answer itself would fit. Beyond
+    /// the headroom the answer is `ArithmeticError::Overflow`, never a wrapped
+    /// or clamped value.
     ///
     /// @return the rounded root; `DomainError` for a negative radicand, which
     ///         has no real root; `Overflow` beyond the headroom above.

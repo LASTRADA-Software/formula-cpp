@@ -412,6 +412,13 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
                        r, { Rational { 137, 100 }, Rational { 839, 10 } }))
                    == Rational { 41'096, 1'000 });
 
+    // The count of a critical-value lookup: 4 selects the second of the rows
+    // 3, 4 and 6, and the values come along unchanged. The values are
+    // invented and deliberately unrealistic.
+    STATIC_REQUIRE(withRatioFixedAtFour(f::critical_value<f::SampleSizeTable<3> { 3, 4, 6 }, unit::One>(
+                       r, { Rational { 70 }, Rational { 20 }, Rational { 90 } }))
+                   == Rational { 20 });
+
     // The leaves that name no quantity are carried over, contents and all.
     STATIC_REQUIRE(
         withRatioFixedAtFour(

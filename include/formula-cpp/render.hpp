@@ -36,6 +36,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/detail/latex_math.hpp>
 #include <formula-cpp/escape.hpp>
@@ -1377,6 +1378,32 @@ template <Dialect D, CurveExpression C, Node At, Vocabulary V>
                                   render<D>(node.along, vocabulary),
                                   detail::lookup_separator<D>() + detail::lookup_words_in_dialect<D>("at ")
                                       + render<D>(node.at, vocabulary));
+}
+
+/// A critical-value lookup renders as `critical(<count>, at 3, 4, 5, 6, 8)`:
+/// the count, then every size the table declares, in full.
+///
+/// **The sizes and not the values.** The sizes are the table's structure and
+/// part of what the formula says -- which sample sizes it answers for, and so
+/// where it misses. The values are the author's data, supplied at runtime, as
+/// a lookup's corrections are; a critical value printed into a formula's text
+/// would put a table's contents on every page that quotes it.
+///
+/// The shape is `lookup_call`'s, for its reasons: the subject first, then one
+/// field per size, each a legal break point in LaTeX. `at` opens the list
+/// once, in words (`\mathrm{at\ }` in LaTeX, as a lookup's words are); the
+/// sizes stay numbers. A table of
+/// no sizes says so, as an empty lookup does.
+template <Dialect D, SampleSizeTable Sizes, Unit ResultUnit, Node Count, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node, V const& vocabulary)
+{
+    std::string rowsText;
+    for (std::size_t rowIndex = 0; rowIndex < Sizes.size(); ++rowIndex)
+        rowsText += detail::lookup_separator<D>()
+                    + (rowIndex == 0 ? detail::lookup_words_in_dialect<D>("at ") : std::string {})
+                    + std::to_string(Sizes[rowIndex]);
+
+    return detail::lookup_call<D>("critical", render<D>(node.count, vocabulary), rowsText);
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it

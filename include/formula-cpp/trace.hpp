@@ -16,6 +16,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -288,6 +289,17 @@ enum class StepKind : std::uint8_t
     /// the node is `RoundedRootNode` and the factory `rounded_sqrt`, so
     /// nothing in namespace `formula` is spelt `RoundedRoot`.
     RoundedRoot,
+    /// A `SampleSizeLookupNode`: a critical value read from an author's table
+    /// by sample size (`critical_value.hpp`). A lookup like the three above:
+    /// `Step::lookupFailure` says whose failure a failed step carries,
+    /// `Step::lookupKey` holds the count it selected with, and
+    /// `Trace::sampleSizeRecords` the sizes the table declares, keyed by the
+    /// step's index, so that a miss can say which counts would have hit.
+    ///
+    /// Checked on GCC under `-Wshadow`, the way `PiConstant` above had to be:
+    /// the node is `SampleSizeLookupNode` and the factory `critical_value`, so
+    /// nothing in namespace `formula` is spelt `SampleSizeLookup`.
+    SampleSizeLookup,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -384,6 +396,12 @@ enum class LookupFailure : std::uint8_t
     /// plausible answer to a question the recorder cannot actually answer,
     /// which is the whole defect this enum exists to close.
     Undetermined,
+    /// This lookup's key was no count at all -- not a whole, non-negative
+    /// number -- so no row could be asked. Reachable only for
+    /// `StepKind::SampleSizeLookup`: 5.5 determinations names no row, and
+    /// neither truncating nor rounding it is the table's rule. Its own
+    /// failure, and not `Missed`, because the table was never consulted.
+    NotACount,
 };
 
 /// An interval a lookup step reports about, as its table declared it --
@@ -416,6 +434,27 @@ struct LookupRange
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(LookupRange const&) const noexcept = default;
 };
+
+namespace detail
+{
+    /// What a critical-value lookup step's table declared, in the trace's
+    /// side table, keyed by the step's index.
+    struct SampleSizeRecord
+    {
+        /// The index of the `SampleSizeLookup` step this record belongs to.
+        std::size_t step {};
+
+        /// The declared sizes, spelled `3, 4, 5, 6, 8`; empty for a table of
+        /// no rows.
+        ///
+        /// **A view, safe to keep for the life of the trace and beyond**: it
+        /// points into a `static constexpr` array built from the table's type
+        /// (`detail::SampleSizeList`), static storage as `lookupKeyName`'s
+        /// names are, with the same limit for a shared library that is
+        /// unloaded.
+        std::string_view declaredSizes {};
+    };
+} // namespace detail
 
 /// One node's contribution to a derivation.
 ///
@@ -738,6 +777,11 @@ struct Step
     /// than as one signed integer, because an enumeration's underlying type
     /// may be `unsigned long long`, whose top half no signed type can hold --
     /// the same case `key_text` spells its two casts separately for.
+    ///
+    /// For `SampleSizeLookup`: the count this lookup selected with, when it
+    /// was a whole, non-negative number, read unsigned. A count that was not
+    /// one (`LookupFailure::NotACount`) leaves this zero, and its value stays
+    /// in the operand's own step, where the renderer points.
     std::uint64_t lookupKey {};
 
     /// Whether `lookupKey` above is to be read as a signed value. Meaningful
@@ -971,6 +1015,19 @@ struct Trace
     /// other step pays nothing for them.
     std::vector<ConformityLimits> conformityLimits {};
 
+    /// What each `SampleSizeLookup` step's table declared, one record per
+    /// such step, **keyed by the step's index** and appended in step order,
+    /// so that a renderer finds a step's record by searching for its index.
+    ///
+    /// A side table rather than a field on every step (T10), and keyed by the
+    /// step rather than reached through an index on it: an index would cost
+    /// every step what the view it replaces cost, and this costs a step
+    /// nothing (the lead's ruling on the task 3 review). Written by
+    /// `RecordingSink` alone. `Step` and `Trace` are public aggregates, so a
+    /// renderer that finds no record for a step says the record is missing
+    /// rather than guess.
+    std::vector<detail::SampleSizeRecord> sampleSizeRecords {};
+
     /// The index of the outermost step -- the one nothing else consumed.
     ///
     /// A `Trace` may hold more than one walk's steps: constructing a
@@ -1066,6 +1123,12 @@ namespace detail
     struct StepKindOf<RoundedRootNode<U, Places, Mode, Radicand>>
     {
         static constexpr StepKind value = StepKind::RoundedRoot;
+    };
+
+    template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    struct StepKindOf<SampleSizeLookupNode<Sizes, ResultUnit, Count>>
+    {
+        static constexpr StepKind value = StepKind::SampleSizeLookup;
     };
 
     template <Predicate P, Node Then, Node Else>
@@ -1275,7 +1338,7 @@ namespace detail
         return operandUnit.dimension == dimension ? operandUnit : fallback;
     }
 
-    /// Whether @p stepKind is one of the three lookup kinds. Written once because
+    /// Whether @p stepKind is one of the four lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
     /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
     /// appends the clause that keeps a lookup line from lying -- and spelling
@@ -1284,7 +1347,7 @@ namespace detail
     [[nodiscard]] constexpr bool is_lookup(StepKind stepKind) noexcept
     {
         return stepKind == StepKind::BandedLookup || stepKind == StepKind::ExactLookup
-               || stepKind == StepKind::InterpolatingLookup;
+               || stepKind == StepKind::InterpolatingLookup || stepKind == StepKind::SampleSizeLookup;
     }
 
     /// Whether any step @p step claimed as an operand failed.
@@ -1725,6 +1788,50 @@ namespace detail
             return;
         binningStep.domainElements = observedStep.elements;
     }
+
+    /// Fills in a critical-value lookup step's count and `lookupFailure`. The
+    /// table's declared sizes go to the trace's side table, which
+    /// `RecordingSink::produced` owns.
+    ///
+    /// The count is read from the operand's own step and turned into a sample
+    /// size by `as_sample_size`, and the row found by `find_sample_size` --
+    /// `critical_value.hpp`'s own functions, the ones that decided during the
+    /// evaluation -- so the derivation cannot disagree with the number.
+    template <typename Rep, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    void record_lookup(SampleSizeLookupNode<Sizes, ResultUnit, Count> const&,
+                       Step<Rep>& step,
+                       std::vector<Step<Rep>> const& steps)
+    {
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            if (an_operand_failed(steps, step))
+            {
+                step.lookupFailure = LookupFailure::Propagated;
+                return;
+            }
+
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
+            {
+                if (step.error.has_value())
+                    step.lookupFailure = LookupFailure::Undetermined;
+                return;
+            }
+
+            std::optional<std::uint64_t> const sampleSize = as_sample_size(*operandValue);
+            if (!sampleSize.has_value())
+            {
+                step.lookupFailure = LookupFailure::NotACount;
+                return;
+            }
+            step.lookupKey = *sampleSize;
+
+            if (!find_sample_size<Sizes>(*sampleSize).has_value())
+                step.lookupFailure = LookupFailure::Missed;
+            else if (step.error.has_value())
+                step.lookupFailure = LookupFailure::Conversion;
+        }
+    }
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -1999,6 +2106,10 @@ class RecordingSink
             detail::record_snap(node, nodeStep, _trace->steps);
         if constexpr (detail::StepKindOf<N>::value == StepKind::CurveInterpolation)
             detail::record_curve_interpolation(node, nodeStep, _trace->steps);
+
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SampleSizeLookup)
+            _trace->sampleSizeRecords.push_back(detail::SampleSizeRecord {
+                .step = _trace->steps.size(), .declaredSizes = detail::SampleSizeList<N::sizes>::view() });
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);

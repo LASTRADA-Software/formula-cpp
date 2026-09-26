@@ -137,6 +137,7 @@
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -1592,6 +1593,30 @@ namespace detail
         }
     };
 
+    /// A critical-value lookup, rebuilt around its rewritten count with its
+    /// own values: a jurisdiction fixing a quantity changes what the count
+    /// reads, never the table.
+    template <typename Sub, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    struct ConstantRewrite<Sub, SampleSizeLookupNode<Sizes, ResultUnit, Count>>
+    {
+        /// How the count is rewritten.
+        using Inner = ConstantRewriteOf<Sub, Count>;
+
+        /// Whether the count is a kind this header knows, all the way down.
+        static constexpr bool known = Inner::known;
+        /// Whether the count uses `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same lookup, around the rewritten count.
+        using type = SampleSizeLookupNode<Sizes, ResultUnit, typename Inner::type>;
+
+        /// The node, around the rewritten count, with the same values.
+        [[nodiscard]] static constexpr type apply(SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, node.corrections, Inner::apply(node.count, overriding) };
+        }
+    };
+
     template <typename Sub, Unit U, FixedString Justification, Node Operand>
     struct ConstantRewrite<Sub, NumericValueNode<U, Justification, Operand>>:
         ConstantRewriteOperand<Sub,
@@ -2087,6 +2112,11 @@ namespace detail
 
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
     struct SubstitutedIn<RoundedRootNode<U, Places, Mode, Radicand>>: SubstitutedInOperand<Radicand>
+    {
+    };
+
+    template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    struct SubstitutedIn<SampleSizeLookupNode<Sizes, ResultUnit, Count>>: SubstitutedInOperand<Count>
     {
     };
 
