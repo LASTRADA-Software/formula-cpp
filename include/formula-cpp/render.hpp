@@ -164,6 +164,14 @@ namespace detail
         static constexpr Precedence value = Precedence::Conditional;
     };
 
+    /// Whether @p N is a read from another record -- the one else branch a
+    /// conditional brackets; see `render_node(WhenNode)`.
+    template <typename N>
+    inline constexpr bool isRecordScope = false;
+
+    template <typename Role, typename Requirement, Node Operand>
+    inline constexpr bool isRecordScope<RecordScopeNode<Role, Requirement, Operand>> = true;
+
     /// Forwards the *type-level* precedence of what it wraps. That is correct
     /// as far as it goes, but it is not what makes a citation invisible to
     /// bracketing: a wrapped `ConstantNode` needs its *runtime* answer
@@ -1734,6 +1742,13 @@ template <Dialect D, Predicate P, Vocabulary V>
 /// LaTeX needs no bracket in either position: its `\begin{cases}` block is a
 /// visibly distinct construct nested inside a cell, not text a reader could
 /// mistake for a continuation of the outer one.
+///
+/// **One else branch is bracketed: a read from another record.** Its words
+/// `of <role>` trail it, and a reader of `if p then a else b of Reference`
+/// may attach them to the whole conditional -- the reading
+/// `(if p then a else b) of Reference`, which is a different formula, taking
+/// the predicate and the then branch from that record too. So it reads
+/// `if p then a else (b of Reference)`.
 template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
 [[nodiscard]] std::string render_node(WhenNode<P, Then, Else> const& node, V const& vocabulary)
 {
@@ -1741,7 +1756,9 @@ template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
     std::string const thenText = D == Dialect::LaTeX
                                      ? render<D>(node.thenBranch, vocabulary)
                                      : detail::render_operand<D>(node.thenBranch, detail::Precedence::Additive, vocabulary);
-    std::string const elseText = render<D>(node.elseBranch, vocabulary);
+    std::string const elseText = D != Dialect::LaTeX && detail::isRecordScope<Else>
+                                     ? "(" + render<D>(node.elseBranch, vocabulary) + ")"
+                                     : render<D>(node.elseBranch, vocabulary);
 
     if constexpr (D == Dialect::LaTeX)
         return "\\begin{cases} " + thenText + " & \\text{if } " + predicateText + " \\\\ " + elseText
@@ -1755,11 +1772,14 @@ template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
 /// more than one symbol -- bracketed, `\left(...\right)` in LaTeX, so that
 /// the role is read as qualifying the whole computation.
 ///
-/// The role's name is author text (`tag_name<Role>()`), escaped for the
-/// dialect: as-is in Plain; through the author-words escaping lookup keys use
-/// in Markdown; and in LaTeX in math mode, `\ \text{of }\mathrm{...}`, through
-/// `detail::latex_math_words` -- not inside `\text{}`, where the site's
-/// MathJax shows a text-mode escape literally (phase 14's X11 ruling).
+/// The role's name is author text (`tag_name<Role>()`), and identifier-like:
+/// ASCII letters, digits, underscores and single spaces, or the scope is
+/// refused (`RequireIdentifierLikeRoleName`, `record.hpp`). Of those, only
+/// `_` and the space need anything, per dialect: as-is in Plain; through the
+/// author-words escaping lookup keys use in Markdown; and in LaTeX in math
+/// mode, `\ \text{of }\mathrm{...}`, through `detail::latex_math_words` --
+/// not inside `\text{}`, where the site's MathJax shows a text-mode escape
+/// literally (phase 14's X11 ruling).
 ///
 /// A lineage requirement is not rendered: it gates whether the value is read,
 /// and the trace records every attribute it compared.

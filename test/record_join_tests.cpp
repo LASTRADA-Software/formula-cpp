@@ -72,14 +72,21 @@ TEST_CASE("the joined trace names the variant, the lineage, the fixed constant's
     CHECK(renderedPage.find("k_s") == std::string::npos);
 }
 
-TEST_CASE("the joined page documents the fixed constant as the reference's", "[record-join]")
+TEST_CASE("the joined page documents the fixed constant once, as read from no record", "[record-join]")
 {
+    // The fixed value is the overlay's, read from no record, so its row has
+    // no record even though the constant is used only inside the scope (the
+    // task 7 review's L5).
     auto const documented = formula::document(std::get<0>(overlaid.variantSet.cases).expression, north);
-    bool sawFixedReferenceRow = false;
+    std::size_t fixedRows = 0;
     for (formula::SymbolEntry const& row: documented.symbols)
         if (row.symbol == "k")
-            sawFixedReferenceRow = row.record == "Reference" && row.fixedValue == formula::Rational { 97, 100 };
-    CHECK(sawFixedReferenceRow);
+        {
+            ++fixedRows;
+            CHECK(row.record.empty());
+            CHECK(row.fixedValue == formula::Rational { 97, 100 });
+        }
+    CHECK(fixedRows == 1);
 }
 
 TEST_CASE("check_method through a context reads the constraint's value from the other record", "[record-join]")

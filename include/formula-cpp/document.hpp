@@ -124,6 +124,13 @@ struct SymbolEntry
     /// from Reference are two inputs, and one merged row would tell a reader
     /// to supply one value where the formula reads two. Set by the walk from
     /// the scope it is inside, and by nothing else.
+    ///
+    /// Always empty for a row an overlay fixed or derived, wherever it was
+    /// met: the fixed value is the overlay's and the definition is one
+    /// definition, read from no record, so a constant used here and inside a
+    /// scope has one row, not a second labelled with the scope's record. The
+    /// quantities a definition reads are inputs like any other, and keyed by
+    /// the scope they are read in.
     std::string_view record {};
 
     /// Memberwise equality.
@@ -471,21 +478,26 @@ namespace detail
     /// Deduplicated by quantity type, and by the record it is read from --
     /// see `SymbolEntry` and `SymbolEntry::record`. `seenQuantities` and
     /// `symbols` grow together, so one index names both.
+    ///
+    /// @p readFromRecord is false for a row an overlay fixed or derived, which
+    /// is keyed as this record's wherever it is met -- see
+    /// `SymbolEntry::record`.
     template <Described Q, Vocabulary V>
-    bool add_row(Walk<V>& walk, std::size_t& row)
+    bool add_row(Walk<V>& walk, std::size_t& row, bool readFromRecord = true)
     {
         void const* const identity = &quantityIdentity<Q>;
+        void const* const rowRole = readFromRecord ? walk.roleIdentity : nullptr;
         row = 0;
         while (row < walk.seenQuantities.size()
-               && (walk.seenQuantities[row].quantity != identity || walk.seenQuantities[row].role != walk.roleIdentity))
+               && (walk.seenQuantities[row].quantity != identity || walk.seenQuantities[row].role != rowRole))
             ++row;
         if (row < walk.seenQuantities.size())
             return false;
-        walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
+        walk.seenQuantities.push_back(SeenRow { .role = rowRole, .quantity = identity });
         walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
                                                            .description = Describe<Q>::description,
                                                            .unit = Describe<Q>::unit,
-                                                           .record = walk.role });
+                                                           .record = readFromRecord ? walk.role : std::string_view {} });
         return true;
     }
 
@@ -525,7 +537,7 @@ namespace detail
     void collect(Walk<V>& walk, OverriddenConstantNode<Q> const& node)
     {
         std::size_t symbolRow = 0;
-        bool const added = add_row<Q>(walk, symbolRow);
+        bool const added = add_row<Q>(walk, symbolRow, false);
         SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
         if (symbolEntry.fixedValue.has_value())
             return;
@@ -549,7 +561,7 @@ namespace detail
     void collect(Walk<V>& walk, DerivedQuantityNode<Q, Expr> const& node)
     {
         std::size_t symbolRow = 0;
-        bool const added = add_row<Q>(walk, symbolRow);
+        bool const added = add_row<Q>(walk, symbolRow, false);
         {
             SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
             if (!symbolEntry.derivedAs.has_value())

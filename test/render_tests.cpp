@@ -1460,7 +1460,8 @@ constexpr formula::PlacesTable<3> guardPlaces { formula::DecimalPlaces { 0 },
 namespace
 {
 /// Roles for the Markdown guard below: one plainly named, and one whose
-/// published name holds Markdown's own punctuation.
+/// published name holds underscores, the one character of Markdown's
+/// emphasis an identifier-like role name can hold.
 struct GuardReference
 {
 };
@@ -1472,7 +1473,7 @@ struct PunctuatedRole
 template <>
 struct formula::TagName<PunctuatedRole>
 {
-    static constexpr std::string_view of() noexcept { return "*reference*"; }
+    static constexpr std::string_view of() noexcept { return "_reference_"; }
 };
 
 TEST_CASE("render: Markdown output never contains text a CommonMark parser reinterprets, for any node kind",
@@ -1610,10 +1611,10 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         exact_lookup<MarkingKeys, formula::unit::One>(MouldMarking::Stamped, { rat(1127, 1000) })));
 
     // Phase 14: a read from another record, alone and compound, and one whose
-    // role's published name is written in Markdown's own emphasis syntax
-    // (a `TagName` may hold no bracket, so link syntax cannot reach it): inert
-    // only because the name goes through the author-words escaping, which the
-    // last line guards.
+    // role's published name is underscored. A role's name is identifier-like
+    // (`RequireIdentifierLikeRoleName`), so Markdown's link syntax, asterisks
+    // and backticks cannot reach it; this guard does not check underscores,
+    // and the name's escaping (`\_`) is pinned by `record_render_tests.cpp`.
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::from_record<GuardReference>(var<Strength>)));
     isInertInMarkdown(
         formula::render<Dialect::Markdown>(formula::from_record<GuardReference>(var<Strength> * var<Strength>)));

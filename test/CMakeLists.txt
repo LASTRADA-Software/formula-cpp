@@ -1408,6 +1408,18 @@ formula_add_negative_test(overlay_argument_not_an_operation
 # inside. The REJECT pins that the unused-quantity rule waits until every node
 # is known: the only use here is inside the unknown node, where it cannot be
 # seen, and "unused" would be false.
+# A role's displayed name must be identifier-like (the task 7 review's M2,
+# L1 and L2, and the lead's ruling): an operator character through a scope,
+# a template specialisation's own name through a record and a scope (one
+# message for both, counted by hand), and a control character through a
+# record alone.
+formula_add_negative_test(record_role_name_operator
+    "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_role_name_template_argument
+    "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_role_name_control_character
+    "formula: this record role's displayed name is not identifier-like")
+
 # The same unseeable node inside three scope types. The overlay sees through
 # every scope, so the mistake is refused once -- counted by hand, one error
 # line on g++ and clang++ -- not once per scope type (the task 3 review's L5).

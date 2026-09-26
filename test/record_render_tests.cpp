@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 
@@ -18,9 +19,14 @@ using formula::var;
 struct Reference
 {
 };
-/// A role whose published name holds characters every dialect treats
-/// specially: a space, a colon, a percent sign and an underscore.
+/// A role whose published name holds the two characters of an
+/// identifier-like name a dialect treats specially: a space and an
+/// underscore.
 struct OddlyNamed
+{
+};
+/// A second record, for rows read from two different ones.
+struct Prior
 {
 };
 
@@ -31,6 +37,12 @@ struct EdgeX: formula::Quantity<EdgeX, "x_m", "measured edge", unit::Millimetre>
 {
 };
 struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit::Megapascal>
+{
+};
+struct Factor: formula::Quantity<Factor, "k", "a factor", unit::One>
+{
+};
+struct Cube
 {
 };
 
@@ -51,7 +63,7 @@ constexpr auto ctx = formula::record_context(
 template <>
 struct formula::TagName<OddlyNamed>
 {
-    static constexpr std::string_view of() noexcept { return "reference 1:2 %_B"; }
+    static constexpr std::string_view of() noexcept { return "reference specimen_B"; }
 };
 
 TEST_CASE("a read from another record renders as words, in every dialect", "[record-render]")
@@ -76,12 +88,38 @@ TEST_CASE("a compound read from another record keeps its brackets", "[record-ren
 TEST_CASE("a role's name is escaped for the dialect it is written in", "[record-render]")
 {
     // LaTeX: in math mode, inside \mathrm, with the math-mode escaper (X11's
-    // ruling): spaces as "\ ", % and _ backslashed.
-    // Markdown: the author-words escaping lookup keys use.
+    // ruling): spaces as "\ ", _ backslashed. Markdown: the author-words
+    // escaping lookup keys use. Plain: as spelt.
     constexpr auto odd = formula::from_record<OddlyNamed>(var<Strength>);
-    CHECK(formula::render<formula::Dialect::LaTeX>(odd) == "f_c\\ \\text{of }\\mathrm{reference\\ 1:2\\ \\%\\_B}");
-    CHECK(formula::render<formula::Dialect::Markdown>(odd) == "`f_c` of reference 1:2 %\\_B");
-    CHECK(formula::render(odd) == "f_c of reference 1:2 %_B");
+    CHECK(formula::render<formula::Dialect::LaTeX>(odd) == "f_c\\ \\text{of }\\mathrm{reference\\ specimen\\_B}");
+    CHECK(formula::render<formula::Dialect::Markdown>(odd) == "`f_c` of reference specimen\\_B");
+    CHECK(formula::render(odd) == "f_c of reference specimen_B");
+    // The escaper alone: letters and digits as they are.
+    CHECK(formula::detail::latex_math_words("Batch 2_b") == "Batch\\ 2\\_b");
+}
+
+TEST_CASE("a role's name must be identifier-like", "[record-render]")
+{
+    // The lead's ruling on the task 7 review's M2, L1 and L2: ASCII letters,
+    // digits, underscores and single spaces between words. Each refusal below
+    // is a character class the ruling removes; each negative test
+    // (`record_role_name_*`) is the same through a real role.
+    STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("Reference"));
+    STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("reference specimen_B 2"));
+    STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("_private"));
+    STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("")); // unreadable signature: the library's fault
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("Reference-B"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("Batch<2>"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("O'Brien"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("a*b"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("Ref\nB"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("Ref\tB"));
+    // "Réf" in UTF-8, split so that the f is not read as a hex digit of the escape.
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("R\xC3\xA9"
+                                                                       "f"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("two  spaces"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name(" leading"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("trailing "));
 }
 
 TEST_CASE("a quantity read here and from the reference has two rows", "[record-render]")
@@ -145,4 +183,99 @@ TEST_CASE("a scope's trace line shows its value in the quantity's unit", "[recor
     INFO(text);
     CHECK(text == "1. f_c = 4 MPa, from record Reference (sample 23, test 3)\n"
                   "2. #1 from record Reference (sample 23, test 3) = 4 MPa\n");
+}
+
+TEST_CASE("a quantity read from two different records has a row for each, each labelled", "[record-render]")
+{
+    // The task 7 review's M1: one identity shared by every role would merge
+    // the two foreign reads into one row labelled Reference, and tell a
+    // reader to supply one value where the formula reads two.
+    auto const page = formula::document(
+        var<Strength> + formula::from_record<Reference>(var<Strength>) - formula::from_record<Prior>(var<Strength>));
+    REQUIRE(page.symbols.size() == 3);
+    CHECK(page.symbols[0].record.empty());
+    CHECK(page.symbols[1].record == "Reference");
+    CHECK(page.symbols[2].record == "Prior");
+}
+
+TEST_CASE("a read from another record as a conditional's else branch is bracketed", "[record-render]")
+{
+    // "of Reference" trails, so unbracketed it could be read as applying to
+    // the whole conditional -- the second formula below, a different one.
+    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto elseForeign = formula::when(overFifty, var<Strength>, formula::from_record<Reference>(var<Strength>));
+    constexpr auto foreignWhen = formula::from_record<Reference>(formula::when(overFifty, var<Strength>, var<Strength>));
+    CHECK(formula::render(elseForeign) == "if f_c > 50 MPa then f_c else (f_c of Reference)");
+    CHECK(formula::render<formula::Dialect::Markdown>(elseForeign)
+          == "if `f_c` > 50 MPa then `f_c` else (`f_c` of Reference)");
+    CHECK(formula::render(foreignWhen) == "(if f_c > 50 MPa then f_c else f_c) of Reference");
+    CHECK(formula::render<formula::Dialect::Markdown>(foreignWhen)
+          == "(if `f_c` > 50 MPa then `f_c` else `f_c`) of Reference");
+}
+
+TEST_CASE("a scope's trace line shows the unit its operand's line does", "[record-render]")
+{
+    // The task 7 review's L4: a scope is its operand's value unchanged, so it
+    // takes its operand step's unit. A rounded read shows MPa as the rounding
+    // does; a compound one shows what the computation's line shows: 400000,
+    // coherent N/m, which has no symbol.
+    formula::Trace<> rounded {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(
+            formula::rounded<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+                var<Strength>)),
+        ctx, formula::RecordingSink { rounded });
+    std::string const roundedText = formula::render_trace(rounded, { .maxSteps = 10 });
+    INFO(roundedText);
+    CHECK(roundedText.find("3. #2 from record Reference (sample 23, test 3) = 4 MPa\n") != std::string::npos);
+
+    formula::Trace<> computed {};
+    (void) formula::checked_evaluate_si<formula::Rational>(compound, ctx, formula::RecordingSink { computed });
+    std::string const computedText = formula::render_trace(computed, { .maxSteps = 10 });
+    INFO(computedText);
+    CHECK(computedText == "1. F = 55600 N, from record Reference (sample 23, test 3)\n"
+                          "2. x_m = 139 mm, from record Reference (sample 23, test 3)\n"
+                          "3. #1 / #2 = 400000\n"
+                          "4. #3 from record Reference (sample 23, test 3) = 400000\n");
+}
+
+TEST_CASE("an overlay's constant used here and inside a scope has one row, of no record", "[record-render]")
+{
+    // The task 7 review's L5: the fixed value is the overlay's, read from no
+    // record, so it is not repeated under the scope's role. The strength it
+    // multiplies is read from both records, and has a row for each.
+    constexpr auto both = formula::method(
+        formula::variants(formula::variant<Cube>(
+            var<Factor> * var<Strength> / formula::from_record<Reference>(var<Factor> * var<Strength>))),
+        formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    constexpr auto fixedBoth =
+        formula::apply(formula::overlay(formula::with_constant<Factor>(formula::Rational { 97, 100 }, formula::Citation { .reference = "Example Standard 14:2022 NA" })), both);
+    auto const fixedPage = formula::document(std::get<0>(fixedBoth.variantSet.cases).expression);
+    REQUIRE(fixedPage.symbols.size() == 3);
+    CHECK(fixedPage.symbols[0].symbol == "k");
+    CHECK(fixedPage.symbols[0].record.empty());
+    CHECK(fixedPage.symbols[0].fixedValue == formula::Rational { 97, 100 });
+    CHECK(fixedPage.symbols[1].record.empty());
+    CHECK(fixedPage.symbols[2].record == "Reference");
+
+    // The same for a derived quantity: one definition; its inputs, read in
+    // each record, a row each.
+    constexpr auto derivedBoth =
+        formula::apply(formula::overlay(formula::add_derived<Factor>(var<EdgeX> / var<EdgeX>, formula::Citation { .reference = "Example Standard 14:2022 NA" })), both);
+    auto const derivedPage = formula::document(std::get<0>(derivedBoth.variantSet.cases).expression);
+    std::size_t factorRows = 0;
+    std::size_t edgeRows = 0;
+    for (formula::SymbolEntry const& row: derivedPage.symbols)
+    {
+        if (row.symbol == "k")
+        {
+            ++factorRows;
+            CHECK(row.record.empty());
+        }
+        if (row.symbol == "x_m")
+            ++edgeRows;
+    }
+    CHECK(factorRows == 1);
+    CHECK(edgeRows == 2);
 }

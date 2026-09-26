@@ -2447,14 +2447,6 @@ class RecordingSink
                     sampleStep.has_value() && *sampleStep < _trace->steps.size())
                     nodeStep.unit = _trace->steps[*sampleStep].unit;
 
-        // A read from another record of a single quantity is that quantity's
-        // value, and reads in its unit -- `4 MPa`, not the bare coherent
-        // `4000000` a computed step prints. A scope over a computation names
-        // no single quantity, and keeps the coherent unit every computed step
-        // has.
-        if constexpr (detail::StepKindOf<N>::value == StepKind::RecordScope)
-            if constexpr (requires { typename std::remove_cvref_t<decltype(node.operand)>::quantity; })
-                nodeStep.unit = Describe<typename std::remove_cvref_t<decltype(node.operand)>::quantity>::unit;
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
         // Only a variable reads an input. For every other kind the slot is
@@ -2563,6 +2555,18 @@ class RecordingSink
                       || detail::StepKindOf<N>::value == StepKind::SampleMean
                       || detail::StepKindOf<N>::value == StepKind::SampleRange)
             nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
+
+        // A read from another record is its operand's value, unchanged, so it
+        // reads in the unit its operand's line does: `4 MPa` after a variable
+        // or a rounding in MPa, and the coherent unit after a computation --
+        // never the same value in two scales on consecutive lines. The operand
+        // is the last step claimed that is not a lineage attribute; a scope
+        // over an unbound record claims none, reads nothing, and keeps the
+        // coherent unit.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::RecordScope)
+            for (std::size_t const claimed: nodeStep.operands)
+                if (_trace->steps[claimed].kind != StepKind::LineageChecked)
+                    nodeStep.unit = _trace->steps[claimed].unit;
 
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means

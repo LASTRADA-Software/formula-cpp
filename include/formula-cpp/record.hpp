@@ -233,6 +233,70 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Whether @p displayed is identifier-like: ASCII letters, digits and
+    /// underscores, with single spaces between words and none at either end.
+    /// Empty is accepted: `tag_name` answers empty only when the compiler's
+    /// signature is not in the shape the library reads, a fault that is the
+    /// library's and not the author's (see `RequireReadableTagName`).
+    [[nodiscard]] constexpr bool is_identifier_like_role_name(std::string_view displayed) noexcept
+    {
+        if (displayed.empty())
+            return true;
+        if (displayed.front() == ' ' || displayed.back() == ' ')
+            return false;
+        char previous = '\0';
+        for (char const nameCharacter: displayed)
+        {
+            bool const allowed = (nameCharacter >= 'A' && nameCharacter <= 'Z')
+                                 || (nameCharacter >= 'a' && nameCharacter <= 'z')
+                                 || (nameCharacter >= '0' && nameCharacter <= '9') || nameCharacter == '_'
+                                 || nameCharacter == ' ';
+            if (!allowed || (nameCharacter == ' ' && previous == ' '))
+                return false;
+            previous = nameCharacter;
+        }
+        return true;
+    }
+
+    /// Whether @p Role's displayed name is identifier-like; true for a role
+    /// that is not a plain class type, which `RequirePlainRole` refuses on its
+    /// own, so that its name is not read and refused a second time.
+    template <typename Role>
+    [[nodiscard]] consteval bool role_name_is_identifier_like() noexcept
+    {
+        if constexpr (isPlainClassTag<Role>)
+            return is_identifier_like_role_name(tag_name<Role>());
+        else
+            return true;
+    }
+
+    /// Fails to compile when a record role's displayed name -- its `TagName`,
+    /// or its own name when it has none -- is not identifier-like.
+    ///
+    /// The name is written into formulas in every dialect (`f_c of
+    /// Reference`) and into every trace line read from the record. There, an
+    /// operator character would read as arithmetic the method does not do
+    /// (`Reference-B` typesets as a subtraction in LaTeX, and `Batch<2>` as
+    /// two comparisons), a control character breaks a LaTeX document and a
+    /// Markdown page's structure, and a non-ASCII character is silently
+    /// dropped by a LaTeX engine whose math font lacks it. Refusing all three
+    /// at once keeps every dialect true without escaping each one.
+    ///
+    /// One message per role, whichever of a record and a scope names it
+    /// first: both ask this one class template.
+    template <typename Role>
+    struct RequireIdentifierLikeRoleName
+    {
+        static_assert(role_name_is_identifier_like<Role>(),
+                      "formula: this record role's displayed name is not identifier-like; a role's name is written "
+                      "into formulas and traces in every dialect, so it may hold only ASCII letters, digits, "
+                      "underscores and single spaces between words -- an operator character such as - < ' * would "
+                      "read as arithmetic, a control character breaks the page, and a non-ASCII character is dropped "
+                      "by some LaTeX fonts; the role appears in this diagnostic as the template argument of "
+                      "RequireIdentifierLikeRoleName -- specialise formula::TagName for it to spell its name so");
+        static constexpr bool value = true;
+    };
+
     /// Whether @p Env is a plain `Environment` -- the only thing a record
     /// holds its values in. A context is not one: a record has no records of
     /// its own.
@@ -385,6 +449,7 @@ template <typename Role, detail::RecordEnvironment Env, typename... Lineage>
 class Record
 {
     static_assert(detail::RequirePlainRole<Role>::value);
+    static_assert(detail::RequireIdentifierLikeRoleName<Role>::value);
     static_assert(detail::RequireLineageEntries<Lineage...>::value);
     static_assert(std::conditional_t<(detail::isLineageEntry<Lineage> && ...),
                                      detail::RequireAttributesDeclaredOnce<typename detail::AttributeOf<Lineage>::type...>,
@@ -985,6 +1050,7 @@ template <typename Role, typename Requirement, Node Operand>
 struct RecordScopeNode: NodeBase
 {
     static_assert(detail::RequireForeignRole<Role>::value);
+    static_assert(detail::RequireIdentifierLikeRoleName<Role>::value);
     static_assert(detail::RequireLineageRequirement<Requirement>::value);
     static_assert(detail::RequireComparandNotSubject<Role, typename detail::ComparandOf<Requirement>::type>::value);
 
