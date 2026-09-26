@@ -249,7 +249,7 @@ Each decision gives a recommendation, the reason for it, and what is still unmea
 
 **Measured by the spike:** that a partial specialization declared in `record.hpp`, after `overlay.hpp` is included, is found by `apply()` on all four compilers.
 
-### X11. How a scope reads on the page. **SPIKE decides the spelling**
+### X11. How a scope reads on the page. **Decided by the spike; Ruling: option (b)**
 
 **Recommendation:**
 - Plain: `(F / A) of Reference`.
@@ -261,6 +261,19 @@ A single-symbol operand is unbracketed: `f_c of Reference`. The scope takes the 
 **Why words:** this is the library's own convention (`to under`, `rounded to 1 dp of mm`). It passes the Markdown guard, with no `[`, and it combines with phase 12's series marker without collision: `m_r(i) of Reference`.
 
 **The spike must typeset** the candidates under MathJax 3.2.2 (the site's pinned version) and under tectonic with `\usepackage[OT1]{fontenc}`, including a role whose `TagName` spelling holds a LaTeX special character. STATUS records that the site's MathJax does not load `textmacros`, so an escaped name inside `\text{}` may show literal macros. That is the likeliest failure, and the spike may choose `\mathrm{}` or another form instead.
+
+**Spike result (task 1, `task-1-spike.md` step 5), and the lead's ruling (b):**
+- **Plain:** `f_c of Reference`, `(F / A) of Reference`, and as an operand `f_c / (f_c of Reference)`.
+- **Markdown:** `` `f_c` of Reference `` and `` (`F` / `A`) of Reference ``. The role name goes through the existing author-words escaping (`render.hpp`, the one used for lookup keys). Unescaped, a `TagName` spelling holding `*1*` came out as emphasis.
+- **LaTeX:** `f_c\ \text{of }\mathrm{Reference}`, `\left(\frac{F}{A}\right)\ \text{of }\mathrm{Reference}`, and `\frac{f_c}{f_c\ \text{of }\mathrm{Reference}}`. **The role name is in math mode, inside `\mathrm{}`.** It is not inside `\text{}`: the site's MathJax does not load `textmacros`, so a text-mode escape such as `\_` or `\%` inside `\text{}` is shown **literally** there (measured: `of Reference\_B`). In `\mathrm{}` the same escapes set correctly under MathJax 3.2.2 and under tectonic OT1 (measured: `Reference_B`, and `reference 1:2 %`). **Ruling: the LaTeX this library writes must come out right in any renderer**, not only where textmacros happens to be loaded.
+- **The math-mode escaper** is a new `detail::latex_math_words(std::string_view) -> std::string` in `include/formula-cpp/detail/latex_math.hpp`:
+  - a space becomes `\ `, because `\mathrm` drops spaces (measured: `\mathrm{reference specimen}` gave `referencespecimen`);
+  - `#`, `$`, `%`, `&`, `_`, `{` and `}` become their backslash forms;
+  - `\` becomes `\backslash{}`, `^` becomes `\hat{}`, and `~` becomes `\sim{}`;
+  - a colon becomes `{:}`, so that it is not spaced as a relation.
+
+  **It lives in `detail/` so that the existing lookup-key follow-up in STATUS (an escaped key name inside `\text{}` shows literal macros on the site) can reuse it**, instead of growing a second one. Task 7 builds it, and tests every character on the list under both engines with task 1's harness (`spike/x11/`). A controlled failing case (`\frac{1}{`) must come back as an error in both.
+- **Combined with phase 12's series marker:** `{m_r}_{i}\ \text{of }\mathrm{Reference}` is clean in both engines.
 
 **The symbol table:** a quantity read inside a scope gets its **own row**, keyed by (role, quantity), with `SymbolEntry::record` set to the role's name. `f_c` read here and `f_c` read from Reference are two inputs, and a merged row would tell a reader to supply one value where the formula reads two.
 
@@ -937,6 +950,7 @@ git commit -m "feat(lineage): gate a cross-record read on declared lineage, and 
 
 **Files:**
 - Modify: `include/formula-cpp/render.hpp` (`PrecedenceOf<RecordScopeNode>`, `render_node`)
+- Create: `include/formula-cpp/detail/latex_math.hpp` (`detail::latex_math_words`, X11's ruling). Add it to the install `FILE_SET` if `hygiene.installed-headers` covers `detail/`.
 - Modify: `include/formula-cpp/document.hpp` (`SymbolEntry::record`, the walk's current role, per-(role, quantity) identity, the scope's `collect`)
 - Create: `test/record_render_tests.cpp`
 
@@ -946,7 +960,8 @@ git commit -m "feat(lineage): gate a cross-record read on declared lineage, and 
 - [ ] **Step 1: Write the failing test, in all three dialects.** Take `var<Strength> / from_record<Reference>(var<Strength>)`.
   - Plain `f_c / (f_c of Reference)`.
   - Markdown `` `f_c` / (`f_c` of Reference) ``.
-  - LaTeX, exactly as task 1 chose.
+  - LaTeX `\frac{f_c}{f_c\ \text{of }\mathrm{Reference}}`.
+  - A role spelled through `TagName` as `reference 1:2 %_B`. LaTeX: `\mathrm{reference\ 1{:}2\ \%\_B}`. Markdown: escaped by the existing author-words escaping. Typeset under both engines, with task 1's harness.
 
   Add a compound operand, `from_record<Reference>(var<Force> / var<EdgeX>)`, whose brackets must appear.
 - [ ] **Step 2: Write the failing symbol-table test: Review Focus 2.**
