@@ -834,6 +834,19 @@ formula_add_negative_test(overlay_derived_before_constraints_read_plainly
     "formula: this overlay derives a quantity, and an operation listed after the definition removed every use it replaced and put back one that reads the quantity from the environment"
     REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where")
 
+# The same shapes, where the substitution met no use where it applied: the
+# quantity is read by nothing until a later operation of the overlay puts in
+# a plain use, or a definition cycle starts from a quantity nothing reads.
+# Refused as doing nothing, not as bypassed -- no operation removed a use the
+# substitution reached: the REJECTs.
+formula_add_negative_test(overlay_constant_never_read_then_constraints_read_it
+    "formula: this overlay overrides a quantity that no variant or constraint of the method uses"
+    REJECT "formula: this overlay fixes a quantity, and an operation listed after the constant removed")
+
+formula_add_negative_test(overlay_derived_cycle_unread
+    "formula: this overlay derives a quantity that no variant or constraint of the method uses"
+    REJECT "formula: this overlay derives a quantity, and an operation listed after the definition removed")
+
 # A quantity only the replaced constraints read, fixed before and after the
 # replacement: the same method is produced, so the same refusal in either
 # order.

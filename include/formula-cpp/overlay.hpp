@@ -1785,11 +1785,17 @@ namespace detail
     /// rewrite knows. An unknown node may be exactly where `Q` is used, so the
     /// honest answer there is not "unused" but "cannot tell", and the refusal
     /// that says so is `RequireOverlaySeesNode`'s, raised by the rewrite.
-    template <typename Sub, typename Vs, typename Constraints>
+    ///
+    /// @p Reached says whether the substitution met a use of `Q` in the method
+    /// as it stood when it was applied. It does not decide whether to refuse
+    /// -- that is judged of the result alone -- only which refusal is true: a
+    /// substitution that met uses a later operation removed was bypassed, and
+    /// one that met none did nothing from the start.
+    template <typename Sub, typename Vs, typename Constraints, bool Reached = true>
     struct RequireConstantApplies;
 
-    template <typename Sub, typename... Tags, Node... Exprs, Predicate... Ps>
-    struct RequireConstantApplies<Sub, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>
+    template <typename Sub, typename... Tags, Node... Exprs, Predicate... Ps, bool Reached>
+    struct RequireConstantApplies<Sub, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>, Reached>
     {
         /// The quantity substituted.
         using Q = typename Sub::quantity;
@@ -1817,17 +1823,18 @@ namespace detail
                                             RequireDerivationNotBypassed<Q, !plainLeft>,
                                             RequireConstantNotBypassed<Q, !plainLeft>>;
 
-        // A plain use left is asked first, and the "nothing reads it"
-        // refusal only when there is none: a later replacement or definition
-        // that reads `Q` does read it, and "no variant uses it" would be
-        // false of it. Which plain-use message applies depends on whether a
-        // node the substitution left is still there beside the plain use --
-        // the method reads `Q` both ways -- or none is, and the plain use is
-        // the only one: each message says only what is there.
+        // Each message says only what is there. A node the substitution left,
+        // beside a plain use: the method reads `Q` both ways. No such node,
+        // but a plain use, and the substitution did meet uses when it was
+        // applied: a later operation removed them, so it was bypassed. No
+        // such node and either no plain use or no use met: the substitution
+        // does nothing -- "nothing reads it" is then true of the method as it
+        // stood where the substitution applied, and a plain use put in later
+        // was never one it could have reached.
         static_assert(
             std::conditional_t<known && used, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used, Bypassed, std::true_type>::value);
-        static_assert(std::conditional_t<known && !plainLeft, Refusal, std::true_type>::value);
+        static_assert(std::conditional_t<known && !used && Reached, Bypassed, std::true_type>::value);
+        static_assert(std::conditional_t<known && !used && (!plainLeft || !Reached), Refusal, std::true_type>::value);
 
         static constexpr bool value = true;
     };
@@ -2294,28 +2301,33 @@ namespace detail
     /// @p Input is the method the overlay was applied to, and the question is
     /// asked only when every node of it is a kind the rewrite knows -- see
     /// `IsKnownMethod`.
-    template <typename M, typename Input, typename Operation>
+    ///
+    /// @p Reached is whether a substitution met a use where it was applied --
+    /// see `RequireConstantApplies`; the other operations ignore it.
+    template <typename M, typename Input, typename Operation, bool Reached = true>
     struct RequireOperationRead: std::true_type
     {
     };
 
-    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q>
-    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, ConstantOverride<Q>>:
+    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q, bool Reached>
+    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, ConstantOverride<Q>, Reached>:
         std::bool_constant<std::conditional_t<IsKnownMethod<ConstantOverride<Q>, Input>::value,
                                               RequireConstantApplies<ConstantOverride<Q>,
                                                                      std::remove_cv_t<Vs>,
-                                                                     PlainConstraints<std::remove_cv_t<Constraints>>>,
+                                                                     PlainConstraints<std::remove_cv_t<Constraints>>,
+                                                                     Reached>,
                                               std::true_type>::value>
     {
     };
 
     /// `add_derived<Q>` is judged exactly as `with_constant<Q>` is.
-    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q, typename Expr>
-    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, QuantityDerivation<Q, Expr>>:
+    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q, typename Expr, bool Reached>
+    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, QuantityDerivation<Q, Expr>, Reached>:
         std::bool_constant<std::conditional_t<IsKnownMethod<QuantityDerivation<Q, Expr>, Input>::value,
                                               RequireConstantApplies<QuantityDerivation<Q, Expr>,
                                                                      std::remove_cv_t<Vs>,
-                                                                     PlainConstraints<std::remove_cv_t<Constraints>>>,
+                                                                     PlainConstraints<std::remove_cv_t<Constraints>>,
+                                                                     Reached>,
                                               std::true_type>::value>
     {
     };
@@ -2394,8 +2406,14 @@ namespace detail
     /// Judged here rather than where the replacement is applied, because the
     /// two orders -- replace then prune, prune then replace -- are the same
     /// mistake and must get the same message.
-    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Tag, typename Expr>
-    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, VariantReplacement<Tag, Expr>>
+    template <typename Vs,
+              typename Rounding,
+              typename Constraints,
+              typename Input,
+              typename Tag,
+              typename Expr,
+              bool Reached>
+    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, VariantReplacement<Tag, Expr>, Reached>
     {
         /// Whether the method the overlay was applied to declares the tag.
         static constexpr bool declared = isPlainClassTag<Tag> && MethodDeclares<Tag, Input>::value;
@@ -2439,6 +2457,72 @@ namespace detail
     {
     };
 
+    /// The method an overlay's first @p I operations produce from @p M: the
+    /// method as it stands when the operation at position @p I is applied.
+    /// The same `apply_operation` calls `apply_from` makes, named by type.
+    template <std::size_t I, typename M, typename... Ops>
+    struct MethodBefore
+    {
+        /// The method before the operation at position `I - 1`.
+        using Previous = typename MethodBefore<I - 1, M, Ops...>::type;
+        /// That method, with the operation at position `I - 1` applied.
+        using type = std::remove_cvref_t<decltype(apply_operation(
+            std::declval<std::tuple_element_t<I - 1, std::tuple<Ops...>> const&>(),
+            std::declval<Previous const&>().variantSet,
+            std::declval<Previous const&>().rounding,
+            std::declval<Previous const&>().constraintSet))>;
+    };
+
+    template <typename M, typename... Ops>
+    struct MethodBefore<0, M, Ops...>
+    {
+        /// The method the overlay was applied to.
+        using type = M;
+    };
+
+    /// Whether `Q` is used anywhere in a method's parts, plainly or through a
+    /// node a substitution left, definitions included. True for anything
+    /// that is not a variants pack and a constraint set, where it is not
+    /// asked.
+    template <typename Q, typename Vs, typename Constraints>
+    struct MentionedInParts: std::true_type
+    {
+    };
+
+    template <typename Q, typename... Tags, Node... Exprs, Predicate... Ps>
+    struct MentionedInParts<Q, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>:
+        std::bool_constant<(ConstantRewriteOf<QuantityProbe<Q>, Exprs>::mentions || ...)
+                           || (ConstantRewriteOf<QuantityProbe<Q>, Ps>::mentions || ...)>
+    {
+    };
+
+    template <typename Q, typename M>
+    struct MentionedIn: std::true_type
+    {
+    };
+
+    template <typename Q, typename Vs, typename Rounding, typename Constraints>
+    struct MentionedIn<Q, Method<Vs, Rounding, Constraints>>:
+        MentionedInParts<Q, std::remove_cv_t<Vs>, PlainConstraints<std::remove_cv_t<Constraints>>>
+    {
+    };
+
+    /// Whether the operation at position @p I, if it substitutes for a
+    /// quantity, met a use of it in the method as it stood when it was
+    /// applied. True for every other operation, which never asks.
+    template <std::size_t I, typename M, typename... Ops>
+    struct ReachedAt: std::true_type
+    {
+    };
+
+    template <std::size_t I, typename M, typename... Ops>
+        requires IsSubstitution<std::tuple_element_t<I, std::tuple<Ops...>>>::value
+    struct ReachedAt<I, M, Ops...>:
+        MentionedIn<typename std::tuple_element_t<I, std::tuple<Ops...>>::quantity,
+                    typename MethodBefore<I, M, Ops...>::type>
+    {
+    };
+
     /// Fails to compile when some `with_constant<Q>` of an overlay fixes a
     /// quantity nothing in the method it produced reads.
     ///
@@ -2454,14 +2538,25 @@ namespace detail
         /// Whether every replacement was applied -- see `ReplacementApplied`.
         static constexpr bool replacementsApplied = (ReplacementApplied<M, Input, Ops>::value && ...);
 
+        /// The operation at position @p I.
+        template <std::size_t I>
+        using Operation = std::tuple_element_t<I, std::tuple<Ops...>>;
+
         /// A substitution's check waits on every replacement having been
         /// applied; every other operation's check is asked regardless.
-        template <typename Operation>
-        using Check = std::conditional_t<IsSubstitution<Operation>::value && !replacementsApplied,
+        template <std::size_t I>
+        using Check = std::conditional_t<IsSubstitution<Operation<I>>::value && !replacementsApplied,
                                          std::true_type,
-                                         RequireOperationRead<M, Input, Operation>>;
+                                         RequireOperationRead<M, Input, Operation<I>, ReachedAt<I, Input, Ops...>::value>>;
 
-        static constexpr bool value = (Check<Ops>::value && ...);
+        /// Every operation's check, by position.
+        template <std::size_t... Is>
+        [[nodiscard]] static constexpr bool all(std::index_sequence<Is...>) noexcept
+        {
+            return (Check<Is>::value && ...);
+        }
+
+        static constexpr bool value = all(std::index_sequence_for<Ops...> {});
     };
 
     /// Whether a plain `var<Q>` is left anywhere in a method's parts.

@@ -432,9 +432,10 @@ of which variant ran.
 ## Whose constraints
 
 A method's constraints are checked with `check_method`, which answers one
-outcome per constraint the method holds -- `check_all` over its
-`constraintSet`, handed over whole -- and tells a sink whose constraints they
-are. The verdicts are gathered under a step of their own,
+outcome per constraint the method holds -- `check_all` over the set it
+holds, handed over whole: `check_all(m.constraintSet, inputs)` for a method's
+own constraints, `check_all(m.constraintSet.constraintSet(), inputs)` for a
+jurisdiction's -- and tells a sink whose constraints they are. The verdicts are gathered under a step of their own,
 `StepKind::AcceptanceChecked`, whose operands are the verdicts in the order
 `check_method` returns them, and each verdict's bracket says whose check it
 was:
@@ -486,9 +487,14 @@ What the guard governs is how a rule or a set of constraints is created, not
 where a copy travels, and a copy stays true of itself: a method holding a copy
 of an overlay's rule is traced as that overlay's rule, and a method built from
 an overlaid method's `constraintSet` checks the jurisdiction's constraints and
-says so, because they are the jurisdiction's. What no type can prevent is
-copying the constraints out one at a time into a fresh `constraints(...)`,
-which makes them the new method's own, or reinterpreting an object's bytes.
+says so, because they are the jurisdiction's. Three routes remain that no
+type can close. `method(o.variantSet, o.rounding, o.constraintSet.constraintSet())`
+hands the jurisdiction's constraints over as a plain set in one call, which
+makes them the new method's own -- reading them has to be possible.
+Reinterpreting an object's bytes makes it anything. And explicitly
+specialising `OverlaidConstraints` over a program's own types declares
+whatever the specialisation likes: specialising a library template is outside
+this library's contract, and no code can forbid it.
 Nor does the guard reach a sink's own hooks, which are public: code that calls
 them by hand writes whatever trace it likes.
 

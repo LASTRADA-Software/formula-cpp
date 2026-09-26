@@ -972,10 +972,19 @@ namespace detail
 /// **A copy keeps its claim, and the claim stays true.** `method(o.variantSet,
 /// o.rounding, o.constraintSet)`, rebuilt from an overlaid method `o`, still
 /// holds the jurisdiction's constraints, and its verdicts still say so, as a
-/// copied `RoundingRule` still says whose rule it is. What remains is what no
-/// type can prevent: copying the items out one by one into a fresh
-/// `constraints(...)` makes them the new method's own, and reinterpreting an
-/// object's bytes (`std::bit_cast` at run time) makes it anything.
+/// copied `RoundingRule` still says whose rule it is. Three routes remain
+/// that no type can close:
+///
+///  - `method(o.variantSet, o.rounding, o.constraintSet.constraintSet())`
+///    hands the jurisdiction's constraints over as a plain set, one call, and
+///    makes them the new method's own. Reading the constraints has to be
+///    possible, and a plain set says nothing of any jurisdiction;
+///  - reinterpreting an object's bytes (`std::bit_cast` at run time) makes it
+///    anything;
+///  - explicitly specialising `OverlaidConstraints` over a predicate of the
+///    program's own types gives a class of this name with whatever members
+///    the specialisation declares. Specialising a library template is outside
+///    this library's contract, and no code can forbid it.
 template <Predicate... Ps>
 class OverlaidConstraints
 {
@@ -1695,9 +1704,11 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
 }
 
 /// Checks every constraint of @p m against @p environment, and returns one
-/// `ConstraintOutcome` per constraint at the index it holds in
-/// `m.constraintSet` -- exactly `check_all(m.constraintSet, environment)`,
-/// the set handed over whole, never unpacked. So the size of the result is
+/// `ConstraintOutcome` per constraint at the index it holds -- exactly
+/// `check_all` over the set the method holds, handed over whole, never
+/// unpacked: `check_all(m.constraintSet, environment)` for a method's own
+/// constraints, `check_all(m.constraintSet.constraintSet(), environment)`
+/// for a jurisdiction's (`OverlaidConstraints`). So the size of the result is
 /// the number of constraints the method holds: an overlay's
 /// `with_constraints` that replaced one constraint with three makes it three.
 ///
