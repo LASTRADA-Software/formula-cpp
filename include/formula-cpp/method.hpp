@@ -576,16 +576,24 @@ namespace detail
     /// `PublishedLayout`'s. Defaulted, so braces still reach the constructor and
     /// are refused in the library's words.
     ///
-    /// **Why it is there.** A refusing constructor is a member, and an
-    /// explicit specialisation of a member -- `template <>
+    /// **Why it is there.** An explicit specialisation of a refusing
+    /// constructor spelt with the arguments braces give it -- `template <>
     /// formula::ConstraintOrigin::ConstraintOrigin(ConstraintProvenance,
-    /// Citation) noexcept: _provenance { ... } {}` -- is a member definition,
-    /// with a member's access to the private fields. Measured on cl 19.51:
-    /// all three of `ConstraintOrigin`, `RoundingRule` and
-    /// `OverlaidConstraints` could be forged that way, with no `detail::`
-    /// written. An explicit specialisation has to spell the member's whole
-    /// signature, so with this parameter in it, it has to name `detail::` --
-    /// which is outside this library's contract, as the access types are.
+    /// Citation) noexcept: _provenance { ... } {}` -- matches no member while
+    /// this parameter is there, so the obvious spelling of that forgery does
+    /// not compile. That is all it does.
+    ///
+    /// **What no C++ library can stop.** An explicit specialisation of a
+    /// member of a library class template -- a constructor, an accessor such
+    /// as `RoundingRule<...>::provenance()`, a defaulted default constructor
+    /// -- is a member definition, with a member's access to the private
+    /// fields, and it can make any of them say anything. So can friend
+    /// injection, which names a `detail::` type without spelling `detail::`.
+    /// Both were measured forging a rounding rule's provenance on all three
+    /// compilers. The only supported customisation points are `TagName`,
+    /// `EnumeratorName`, `Describe`, `RepTraits` and the vocabulary;
+    /// specialising any other formula-cpp template or member is outside the
+    /// contract, and can make a trace say anything.
     struct ProvenanceStatedByAuthor
     {
     };
@@ -601,6 +609,14 @@ namespace detail
         template <std::size_t Count>
         [[nodiscard]] static consteval PublishedLayout<Count> checked(std::array<std::size_t, Count> const& published,
                                                                       std::size_t publishedCount) noexcept;
+
+        /// The variants of @p layout at @p Kept, each keeping its published
+        /// position -- for `apply_operation` of `pin_variant` and
+        /// `prune_variant` (`overlay.hpp`), its only callers. See
+        /// `PublishedLayout::kept`.
+        template <std::size_t... Kept, std::size_t Count>
+        [[nodiscard]] static constexpr PublishedLayout<sizeof...(Kept)> selected(
+            PublishedLayout<Count> const& layout) noexcept;
 
         /// @p layout, marked as pinned by an overlay citing @p cited -- for
         /// `apply_operation` of `pin_variant` (`overlay.hpp`), its only caller.
@@ -628,23 +644,28 @@ namespace detail
     /// one, and neither can build a layout that breaks that invariant:
     ///
     ///  - the default constructor, declaration order;
-    ///  - `select<Kept...>()`, which is how `apply` (`overlay.hpp`) carries a
-    ///    layout through a pin or a prune.
+    ///  - `kept<Kept...>()`, which is how `apply` (`overlay.hpp`) carries a
+    ///    layout through a pin or a prune, reached only through
+    ///    `PublishedLayoutAccess::selected`.
     ///
-    /// **A layout cannot be stated from outside the library.** The
-    /// constructor that takes positions and a count is public, so that
-    /// braces reach it, and refuses whenever it is used, in the library's
-    /// words. Once it checked the layout and accepted any well-formed one, so
-    /// `{ { 5, 7 }, 9 }` made a two-variant method that no overlay touched
-    /// report its variants as the 6th and 8th of 9. The checked constructor
-    /// is private, reached by `select` and by `PublishedLayoutAccess`, which
-    /// the negative cases pinning the check use.
+    /// **A layout is not stated from outside the library, except by
+    /// copying one** (see below). The constructor that takes positions and a
+    /// count is public, so that braces reach it, and refuses whenever it is
+    /// used, in the library's words. Once it checked the layout and accepted
+    /// any well-formed one, so `{ { 5, 7 }, 9 }` made a two-variant method
+    /// that no overlay touched report its variants as the 6th and 8th of 9.
+    /// `select<Kept...>()` is public for the same reason and refuses the same
+    /// way: while it made the selection itself, `decltype(nine.published)
+    /// {}.select<5, 7>()`, taken from a throwaway pack of nine, did the same
+    /// thing with no prune on record. The checked constructor and `kept` are
+    /// private, reached through `PublishedLayoutAccess`, which the overlay
+    /// operations and the negative cases pinning the check use.
     ///
-    /// **Why `select` and not the checking constructor.** Which variants a pin
+    /// **Why a selection and not the checking constructor.** Which variants a pin
     /// or a prune keeps is known from the tags, at compile time, but where they
     /// were published is not: the pack an overlay is applied to may itself be
     /// the result of an earlier overlay, held in a variable whose layout is
-    /// run time data. `select` takes the positions to keep as template
+    /// run time data. `kept` takes the positions to keep as template
     /// arguments, checked by the same rule at compile time, and copies their
     /// published positions out of a layout that is already valid. An
     /// increasing selection of entries from an increasing layout below its
@@ -662,7 +683,9 @@ namespace detail
     /// an aggregate initialiser -- or reset to declaration order by
     /// `pack.published = {}`, is one the library made, pin or prune included,
     /// and indistinguishable from what a legitimate prune produces: `{ 1, 2 }`
-    /// of 3 is both.
+    /// of 3 is both. So is a layout reached by explicitly specialising one of
+    /// this class's members, which is outside the contract -- see
+    /// `ProvenanceStatedByAuthor`.
     /// `published` is a public member so that a pack stays an aggregate, and
     /// copying a value is always possible; assigning it is the author's
     /// explicit act.
@@ -696,29 +719,19 @@ namespace detail
                           "with variants(...)");
         }
 
-        /// The layout of the variants at @p Kept, in that order: each keeps
-        /// its published position, and the count is unchanged.
-        ///
-        /// @p Kept are positions in THIS pack, not published ones, and are
-        /// held to the rule the layout itself obeys -- each below `Count`,
-        /// each above the one before -- by the constructor that forms them, at
-        /// compile time. So a selection keeps declaration order, as a pin or a
-        /// prune does.
+        /// Refuses whenever it is used: which variants a layout keeps is a
+        /// pin's or a prune's, carried by `apply()`. Public, so that
+        /// `layout.select<5, 7>()` is refused in the library's words rather
+        /// than the compiler's "is private".
         template <std::size_t... Kept>
         [[nodiscard]] constexpr PublishedLayout<sizeof...(Kept)> select() const noexcept
         {
-            constexpr PublishedLayout<sizeof...(Kept)> kept { typename PublishedLayout<sizeof...(Kept)>::Checked {},
-                                                              std::array<std::size_t, sizeof...(Kept)> { Kept... },
-                                                              Count };
-            static_cast<void>(kept);
-            PublishedLayout<sizeof...(Kept)> keptLayout { typename PublishedLayout<sizeof...(Kept)>::Selected {},
-                                                          { _positions[Kept]... },
-                                                          _total };
-            keptLayout._pinned = _pinned;
-            keptLayout._pinnedBy = _pinnedBy;
-            keptLayout._prunedCount = _prunedCount;
-            keptLayout._prunedBy = _prunedBy;
-            return keptLayout;
+            static_assert(sizeof...(Kept) == static_cast<std::size_t>(-1),
+                          "formula: a variant's published position is stated only by the library -- which variants "
+                          "a layout keeps is carried by apply() through a pin or a prune, and a selection made by "
+                          "hand could make a trace report a position and a count with no prune on record; use "
+                          "pin_variant or prune_variant in an overlay");
+            return {};
         }
 
         /// The ZERO-BASED published position of the variant at @p overlaidIndex.
@@ -782,12 +795,37 @@ namespace detail
                 published_positions_must_increase_and_stay_below_the_published_count();
         }
 
-        /// Marks the constructor only `select` uses.
+        /// The layout of the variants at @p Kept, in that order: each keeps
+        /// its published position, and the count is unchanged.
+        ///
+        /// @p Kept are positions in THIS pack, not published ones, and are
+        /// held to the rule the layout itself obeys -- each below `Count`,
+        /// each above the one before -- by the constructor that forms them, at
+        /// compile time. So a selection keeps declaration order, as a pin or a
+        /// prune does.
+        template <std::size_t... Kept>
+        [[nodiscard]] constexpr PublishedLayout<sizeof...(Kept)> kept() const noexcept
+        {
+            constexpr PublishedLayout<sizeof...(Kept)> checkedKept { typename PublishedLayout<sizeof...(Kept)>::Checked {},
+                                                                     std::array<std::size_t, sizeof...(Kept)> { Kept... },
+                                                                     Count };
+            static_cast<void>(checkedKept);
+            PublishedLayout<sizeof...(Kept)> keptLayout { typename PublishedLayout<sizeof...(Kept)>::Selected {},
+                                                          { _positions[Kept]... },
+                                                          _total };
+            keptLayout._pinned = _pinned;
+            keptLayout._pinnedBy = _pinnedBy;
+            keptLayout._prunedCount = _prunedCount;
+            keptLayout._prunedBy = _prunedBy;
+            return keptLayout;
+        }
+
+        /// Marks the constructor only `kept` uses.
         struct Selected
         {
         };
 
-        /// A layout `select` has already shown valid.
+        /// A layout `kept` has already shown valid.
         constexpr PublishedLayout(Selected,
                                   std::array<std::size_t, Count> const& published,
                                   std::size_t publishedCount) noexcept:
@@ -812,6 +850,12 @@ namespace detail
                                                                     std::size_t publishedCount) noexcept
     {
         return PublishedLayout<Count> { typename PublishedLayout<Count>::Checked {}, published, publishedCount };
+    }
+
+    template <std::size_t... Kept, std::size_t Count>
+    constexpr PublishedLayout<sizeof...(Kept)> PublishedLayoutAccess::selected(PublishedLayout<Count> const& layout) noexcept
+    {
+        return layout.template kept<Kept...>();
     }
 
     template <std::size_t Count>
@@ -884,8 +928,9 @@ struct Variants
     /// reach the count, is refused -- see `detail::PublishedLayout`.
     ///
     /// **Maintained by the library; copying one here is the author's act.**
-    /// A layout cannot be stated by hand -- `{ { 5, 7 }, 9 }` is refused --
-    /// but another method's layout of the same size, copied here, is one the
+    /// A layout cannot be stated by hand -- `{ { 5, 7 }, 9 }` and
+    /// `published.select<5, 7>()` are refused -- but another method's layout
+    /// of the same size, copied here, is one the
     /// library made, and cannot be told from what a legitimate prune leaves:
     /// `{ 1, 2 }` of 3 is both. A trace then counts in the layout the author
     /// put here.
@@ -961,7 +1006,7 @@ namespace detail
     {
         static_assert(!std::is_same_v<Rule, Rule>,
                       "formula: a rounding rule's provenance is the library's to state, not an author's; "
-                      "rounding_rule<...>() is the method's own rule, and with_rounding<...>() applied by an "
+                      "rounding_rule<...>() is the method's own rule, and with_rounding<...>(citation) applied by an "
                       "overlay is a jurisdiction's -- the rule appears in this diagnostic as the template "
                       "argument of RequireLibraryStatesProvenance");
 
@@ -1007,8 +1052,12 @@ namespace detail
 /// member, and assigning it a default rule relabels a jurisdiction's rule as
 /// the method's own. Both are explicit acts on public members, as assigning
 /// `Variants::published` is; what no author can do, short of reinterpreting a
-/// rule's bytes -- `std::bit_cast` at run time -- is create a rule that states
-/// a provenance the library did not give it. `with_rounding`
+/// rule's bytes -- `std::bit_cast` at run time -- or explicitly specialising
+/// one of its members, is create a rule that states a provenance the library
+/// did not give it. A specialisation such as `template <> constexpr
+/// RoundingProvenance RoundingRule<...>::provenance() const noexcept` can make
+/// the rule say anything, and no C++ library can stop it; it is outside the
+/// contract, see `detail::ProvenanceStatedByAuthor`. `with_rounding`
 /// (`overlay.hpp`) can replace a rule with one of the same granularity -- a
 /// jurisdiction adopting the base standard's rounding in its own name -- and
 /// the trace must still say whose rule it was.

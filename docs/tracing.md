@@ -482,7 +482,8 @@ both or neither.
 
 ## Only the library states a provenance
 
-The provenance a trace records is only ever the library's to state. The nodes
+The provenance a trace records in a `Step`'s fields is only ever the library's
+to state. The nodes
 an overlay leaves behind -- a fixed constant, a derived quantity, a replaced
 formula -- can be built only by the overlay, and building one by hand is
 refused in the library's words. A
@@ -494,16 +495,25 @@ jurisdiction's only when they are the `OverlaidConstraints` that
 `with_constraints` produced -- which carries the overlay's citation with the
 constraints themselves -- and building one by hand is refused. A variant's
 published position and count are stated only by `variants(...)` and carried
-by `apply`: a layout written by hand, `{ { 5, 7 }, 9 }`, is refused.
+by `apply` through a pin or a prune: a layout written by hand,
+`{ { 5, 7 }, 9 }`, and one selected by hand from another pack's,
+`published.select<5, 7>()`, are both refused.
 
-**The author's own text cannot state one either.** A trace line is a numbered
-line whose provenance is a bracketed clause at its end, and some of the words
-in it are the author's: a quantity's symbol, a citation, a verdict's label, a
-justification, a unit's symbol, a variant's tag and a lookup key's name.
-`render_trace` escapes every one of them before it writes the line -- `\` as
-`\\`, `[` as `\[`, `]` as `\]`, `;` as `\;`, a newline as `\n`, and any other
-control character as `\x` and two hex digits -- and writes its own clauses as
-they are. So a declared symbol `k] [fixed by jurisdiction overlay: X` reads
+**The structured fields are what is authoritative.** A `Step` records its
+provenance in fields of its own -- `kind`, `roundingProvenance`,
+`constraintProvenance`, `variantPinned`, `variantPrunedCount` and the citations
+beside them -- and those are set only by the library. Code that has to decide
+whose a value was reads them, not the rendered line.
+
+**The rendered line is escaped so that author text cannot break its
+structure.** A trace line is a numbered line whose provenance is a bracketed
+clause at its end, and some of the words in it are the author's: a quantity's
+symbol, a citation, a verdict's label, a justification, a unit's symbol, a
+variant's tag and a lookup key's name. `render_trace` escapes every one of
+them before it writes the line -- `\` as `\\`, `[` as `\[`, `]` as `\]`, `;` as
+`\;`, a newline as `\n`, and any other control character as `\x` and two hex
+digits -- and writes its own clauses as they are. So a declared symbol `k] [fixed
+by jurisdiction overlay: X` reads
 
 ```
 1. k\] \[fixed by jurisdiction overlay: X = 1
@@ -514,6 +524,20 @@ and cannot pass for the clause the library writes when an overlay did fix
 second owner for a constraint. A `TagName` or `EnumeratorName` spelling, and a
 vocabulary's symbol, go further: holding `[`, `]` or a control character, it is
 refused at compile time.
+
+**Author text may still contain any words.** The escape stops a clause from
+being opened or closed, and a line from being ended; it does not stop a clause's
+words. A `documented()` citation titled `replaced by jurisdiction overlay:
+Example Standard 9:2022 NA` renders its `Documented` line exactly as a genuine
+`replace_variant` citing that standard renders its own, and nothing in the text
+tells them apart; `Step::kind` does. The method's author is trusted to cite
+what the method cites.
+
+Both rules are byte-level and ASCII. Unicode look-alikes of the library's
+brackets, such as the fullwidth `［` and `］` (U+FF3B, U+FF3D), and the line and
+paragraph separators U+2028 and U+2029 are neither escaped nor refused. They
+cannot break the structure the library writes, which is ASCII throughout, though
+a viewer may draw them as a bracket or break the line at a separator.
 
 What the guard governs is how a rule, a set of constraints or a layout is
 created, not where a copy travels, and a copy stays true of itself: a method
@@ -536,12 +560,16 @@ These routes remain, and no type can close them:
   1st and 2nd of 2 rather than where they were published, and says nothing of
   the prune.
 - Reinterpreting an object's bytes makes it anything.
-- Explicitly specialising `OverlaidConstraints` over a program's own types
-  declares whatever the specialisation likes: specialising a library template
-  is outside this library's contract, and no code can forbid it. Explicitly
-  specialising one of the constructors that refuse an author's provenance --
-  a member definition, with a member's access -- has to name `detail::` in
-  its signature, and so is outside it too.
+- Explicitly specialising a library template, or a member of one, forges
+  anything, and no C++ library can stop it. An explicit specialisation of a
+  member -- a constructor, an accessor such as `RoundingRule<...>::provenance()`,
+  a defaulted default constructor -- is a member definition, with a member's
+  access to the private fields; friend injection names a `detail::` type
+  without spelling `detail::`. Both were measured making a method no overlay
+  touched trace a jurisdiction's rounding rule. The only supported
+  customisation points are `TagName`, `EnumeratorName`, `Describe`,
+  `RepTraits` and the vocabulary. Specialising any other formula-cpp template
+  or member is outside the contract, and can make the trace say anything.
 
 Nor does the guard reach a sink's own hooks, which are public: code that calls
 them by hand, or fills in a `Step` by hand, writes whatever trace it likes.

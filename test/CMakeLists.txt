@@ -957,6 +957,12 @@ formula_add_negative_test(method_published_layout_stated_by_hand
 formula_add_negative_test(method_published_layout_assigned_by_hand
     "formula: a variant's published position is stated only by the library")
 
+# A layout selected by hand from another pack's: `select` is public so that it
+# refuses in the library's words; `apply` reaches the selection through
+# `detail::PublishedLayoutAccess`.
+formula_add_negative_test(method_published_layout_selected_by_hand
+    "formula: a variant's published position is stated only by the library")
+
 # A method's own rule claiming to be a jurisdiction overlay's. Provenance is
 # the library's to state: `rounding_rule<...>()` or `with_rounding` applied by
 # an overlay, nothing else.

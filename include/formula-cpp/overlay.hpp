@@ -2223,7 +2223,7 @@ namespace detail
     /// carries through, so that a trace counts in the method as published
     /// rather than in the one an overlay produced.
     ///
-    /// The layout comes from `PublishedLayout::select`, never from positions
+    /// The layout comes from `PublishedLayoutAccess::selected`, never from positions
     /// stated here: which variants are kept is known from the tags at compile
     /// time, but where they were published is the input pack's, which may be
     /// run time data -- see `PublishedLayout`.
@@ -2241,7 +2241,7 @@ namespace detail
     [[nodiscard]] constexpr auto variants_without(Variants<Cs...> const& pack, std::index_sequence<Kept...>) noexcept
     {
         return republished(formula::variants(std::get<positionsWithout<Tag, Cs...>[Kept]>(pack.cases)...),
-                           pack.published.template select<positionsWithout<Tag, Cs...>[Kept]...>());
+                           PublishedLayoutAccess::selected<positionsWithout<Tag, Cs...>[Kept]...>(pack.published));
     }
 
     /// Whether an operation substitutes for a quantity: `with_constant` or
@@ -2295,9 +2295,10 @@ namespace detail
 
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
             return formula::method(
-                republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
-                            PublishedLayoutAccess::pinned(pack.published.template select<variant_index<Tag, Cs...>()>(),
-                                                          pinning.source)),
+                republished(
+                    formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
+                    PublishedLayoutAccess::pinned(
+                        PublishedLayoutAccess::selected<variant_index<Tag, Cs...>()>(pack.published), pinning.source)),
                 rounding,
                 constraintSet);
         else

@@ -100,7 +100,17 @@ namespace detail
 /// a tab, any byte below 0x20, or 0x7f. The trace line a tag appears in ends
 /// in a bracketed clause saying where things came from, so such a spelling
 /// could write a clause no overlay made, or a line of its own; see
-/// `RequireTagNameSpelling`. Nothing else about the text is checked.
+/// `RequireTagNameSpelling`. Nor may two variants of one method be spelt
+/// the same, which would leave a trace naming a variant no reader can tell
+/// from the other; see `RequireTagNamesDistinct` (`method.hpp`). Nothing else
+/// about the text is checked: the rules are byte-level and ASCII, so a
+/// Unicode look-alike of a bracket, or the line separator U+2028, passes --
+/// it cannot break the ASCII structure a trace line has (`docs/tracing.md`).
+///
+/// **One of the library's few customisation points.** `TagName`,
+/// `EnumeratorName`, `Describe`, `RepTraits` and the vocabulary are the only
+/// ones. Explicitly specialising any other formula-cpp template or member is
+/// outside the contract, and can make a trace say anything.
 template <typename Tag>
 struct TagName: detail::TagNameNotCustomized
 {

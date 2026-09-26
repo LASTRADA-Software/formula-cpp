@@ -103,7 +103,9 @@ namespace detail
 /// a tab, any byte below 0x20, or 0x7f. A key is written into a trace line
 /// that ends in a bracketed clause saying where things came from, so such a
 /// spelling could write a clause no overlay made, or a line of its own; see
-/// `RequireEnumeratorNameSpelling`.
+/// `RequireEnumeratorNameSpelling`. The rule is byte-level and ASCII: a
+/// Unicode look-alike of a bracket, or the line separator U+2028, passes, and
+/// cannot break the ASCII structure a trace line has (`docs/tracing.md`).
 ///
 /// **Return an empty view to leave an enumerator alone.** A specialization
 /// may cover some enumerators and return `{}` for the rest; those fall back
