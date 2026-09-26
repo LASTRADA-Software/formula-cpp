@@ -19,6 +19,7 @@
 /// anonymous namespace in a header is a different namespace in every unit
 /// that includes it.
 
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/series.hpp>
 
 #include <cstddef>
@@ -42,6 +43,27 @@ inline constexpr auto inputs =
 inline constexpr auto totals = formula::cumulative<formula::CumulativeDirection::FromLast>(retained * formula::Rational { 2 });
 
 using Read = std::expected<formula::SeriesOutcome<Retained, 3>, formula::SeriesFailure>;
+
+// Invented: an opening in metres, and a curve of the running total over
+// declared openings, spliced with one more point. The openings have three
+// significant digits and none is a preferred number.
+struct Opening: formula::Quantity<Opening, "d", "screen opening", formula::unit::Metre>
+{
+};
+
+inline constexpr formula::BreakpointTable<3> openings { formula::breakpoint(103),
+                                                        formula::breakpoint(127),
+                                                        formula::breakpoint(163) };
+inline constexpr formula::BreakpointTable<1> beyond { formula::breakpoint(197) };
+
+/// A curve expression whose type nests the curve node templates, taken as a
+/// parameter by the other unit's function below.
+inline constexpr auto spliced = formula::splice<formula::Monotone::NonDecreasing>(
+    formula::curve(formula::domain<formula::unit::Metre, openings>(),
+                   formula::cumulative<formula::CumulativeDirection::FromFirst>(retained)),
+    formula::curve(formula::domain<formula::unit::Metre, beyond>(), formula::series_constant<formula::unit::Gram>(formula::Rational { 100 })));
+
+using CurveRead = std::expected<formula::CurveOutcome<Opening, Retained, 4>, formula::SeriesFailure>;
 } // namespace series_cross_tu
 
 /// Defined in `series_cross_tu_b.cpp`: the address of the `series` object
@@ -59,3 +81,7 @@ using Read = std::expected<formula::SeriesOutcome<Retained, 3>, formula::SeriesF
 /// function and fails the link -- where a return type alone would do so on
 /// cl only.
 [[nodiscard]] series_cross_tu::Read totals_read_in_other_tu(decltype(series_cross_tu::totals) const& totalsExpression) noexcept;
+
+/// Defined in `series_cross_tu_b.cpp`: @p splicedExpression evaluated there,
+/// passed as a parameter for the reason `totals_read_in_other_tu`'s is.
+[[nodiscard]] series_cross_tu::CurveRead spliced_read_in_other_tu(decltype(series_cross_tu::spliced) const& splicedExpression) noexcept;

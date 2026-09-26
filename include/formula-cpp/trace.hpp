@@ -15,6 +15,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>
@@ -230,6 +231,31 @@ enum class StepKind : std::uint8_t
     /// `-Wshadow`: the node is `SnapNode` and its factory `snapped`, so
     /// nothing in namespace `formula` is spelt `SnappedToPermitted`.
     SnappedToPermitted,
+    /// A declared domain (`DomainNode`, `curve.hpp`): its points, in the unit
+    /// they were declared in -- a series step, recorded as a per-element
+    /// constant is. Checked on GCC under `-Wshadow`: the node is `DomainNode`
+    /// and its factory `domain`, so nothing in namespace `formula` is spelt
+    /// `SeriesDomain`.
+    SeriesDomain,
+    /// A domain paired with its values (`CurveNode`): the points in
+    /// `Step::domainElements`, shown in `Step::sourceUnit`, and the values in
+    /// `Step::elements`, shown in `Step::unit`; the two series' steps are its
+    /// operands. Recorded by `RecordingSink::curve_produced`: a curve is
+    /// neither a `Node` nor a series. Checked on GCC under `-Wshadow`: the
+    /// node is `CurveNode` and its factory `curve`.
+    CurvePairing,
+    /// A curve read at a point (`InterpolateAlongNode`): a single-value step
+    /// whose operands are the curve's step and the point's; the two points it
+    /// lay between in `Step::selectedSegment`, or on a miss the curve's extent
+    /// in `Step::coveredRange`, both in `Step::sourceUnit`. Checked on GCC
+    /// under `-Wshadow`: the node is `InterpolateAlongNode` and its factory
+    /// `interpolate_at`.
+    CurveInterpolation,
+    /// Two curves spliced into one (`SpliceNode`): recorded as a
+    /// `CurvePairing` is, with the direction in `Step::monotone` and on a
+    /// failure the element in `Step::failedElement`. Checked on GCC under
+    /// `-Wshadow`: the node is `SpliceNode` and its factory `splice`.
+    CurveSplice,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -823,6 +849,17 @@ struct Step
     /// between two permitted values and `snapTie` chose between them. False
     /// for every other step.
     bool tieBroken {};
+
+    /// For `CurvePairing` and `CurveSplice`: the curve's points, in the
+    /// coherent SI unit of `sourceUnit`'s dimension, each at the position of
+    /// its value in `elements`. Empty for every other kind, and for a curve
+    /// that failed.
+    std::vector<std::optional<Rep>> domainElements {};
+
+    /// For `CurveSplice`: the direction its values had to run in.
+    /// Zero-initialises to `NonDecreasing`, a real setting, so -- like
+    /// `comparison` -- no reader may use it without checking `kind` first.
+    Monotone monotone {};
 };
 
 /// The rows one conformity step judged its elements against, in the unit
@@ -1077,6 +1114,12 @@ namespace detail
         static constexpr StepKind value = StepKind::SnappedToPermitted;
     };
 
+    template <CurveExpression C, Node At>
+    struct StepKindOf<InterpolateAlongNode<C, At>>
+    {
+        static constexpr StepKind value = StepKind::CurveInterpolation;
+    };
+
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
     /// `SeriesNode`, and closed the same way. The primary template is left
     /// undefined, so a series node kind added without an entry here fails to
@@ -1122,6 +1165,28 @@ namespace detail
     struct SeriesStepKindOf<ElementwiseRoundNode<U, Places, Mode, S>>
     {
         static constexpr StepKind value = StepKind::ElementwiseRound;
+    };
+
+    template <Unit U, BreakpointTable Points>
+    struct SeriesStepKindOf<DomainNode<U, Points>>
+    {
+        static constexpr StepKind value = StepKind::SeriesDomain;
+    };
+
+    /// The `StepKind` a curve node maps to, closed as `SeriesStepKindOf` is.
+    template <typename C>
+    struct CurveStepKindOf;
+
+    template <SeriesNode D, SeriesNode V>
+    struct CurveStepKindOf<CurveNode<D, V>>
+    {
+        static constexpr StepKind value = StepKind::CurvePairing;
+    };
+
+    template <Monotone M, CurveExpression A, CurveExpression B>
+    struct CurveStepKindOf<SpliceNode<M, A, B>>
+    {
+        static constexpr StepKind value = StepKind::CurveSplice;
     };
 
     /// The unit a total is shown in: its operand step's, when it claimed one
@@ -1431,6 +1496,72 @@ namespace detail
             step.tieBroken = answered->tieBroken;
         }
     }
+
+    /// @p point, a point of a curve in the coherent SI unit, as a declared
+    /// `Breakpoint` in @p pointUnit, or nothing when it cannot be stated there.
+    [[nodiscard]] inline std::optional<Breakpoint> point_in(Rational point, Unit pointUnit) noexcept
+    {
+        std::expected<Rational, ArithmeticError> const stated = checked_convert(point, coherent(pointUnit.dimension), pointUnit);
+        if (!stated.has_value())
+            return std::nullopt;
+        return Breakpoint { stated->numerator(), stated->denominator() };
+    }
+
+    /// Fills in an interpolation step along a curve: its values' unit and its
+    /// points' unit, taken off the curve's step, and -- from
+    /// `interpolate_along` re-asked on that step's points and values, the one
+    /// scan the evaluation used -- the two points the answer lay between, or
+    /// on a miss the curve's extent. Nothing more when the curve or the point
+    /// failed, was absent, or left no step.
+    template <typename Rep, CurveExpression C, Node At>
+    void record_curve_interpolation(InterpolateAlongNode<C, At> const&, Step<Rep>& step, std::vector<Step<Rep>> const& steps)
+    {
+        std::optional<std::size_t> curveStep;
+        std::optional<std::size_t> pointStep;
+        for (std::size_t const operandIndex: step.operands)
+        {
+            StepKind const operandKind = steps[operandIndex].kind;
+            if (!curveStep.has_value() && (operandKind == StepKind::CurvePairing || operandKind == StepKind::CurveSplice))
+                curveStep = operandIndex;
+            else
+                pointStep = operandIndex;
+        }
+        if (!curveStep.has_value())
+            return;
+        Step<Rep> const& curveRecorded = steps[*curveStep];
+        if (curveRecorded.unit.dimension == step.dimension)
+            step.unit = curveRecorded.unit;
+        step.sourceUnit = curveRecorded.sourceUnit;
+
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            if (curveRecorded.error.has_value() || !pointStep.has_value() || !steps[*pointStep].value.has_value())
+                return;
+            std::expected<std::pair<Rational, KeyPosition>, ArithmeticError> const answered =
+                interpolate_along(curveRecorded.domainElements, curveRecorded.elements, *steps[*pointStep].value);
+            if (answered.has_value())
+            {
+                std::optional<Breakpoint> const lowPoint = point_in(*curveRecorded.domainElements[answered->second.low], step.sourceUnit);
+                std::optional<Breakpoint> const highPoint = point_in(*curveRecorded.domainElements[answered->second.high], step.sourceUnit);
+                if (lowPoint.has_value() && highPoint.has_value())
+                    step.selectedSegment = Segment { *lowPoint, *highPoint };
+                return;
+            }
+            // A miss on a curve with every point present: say what it covers.
+            if (answered.error() != ArithmeticError::DomainError || curveRecorded.domainElements.empty())
+                return;
+            for (std::optional<Rational> const& curvePoint: curveRecorded.domainElements)
+                if (!curvePoint.has_value())
+                    return;
+            std::optional<Breakpoint> const lowPoint = point_in(*curveRecorded.domainElements.front(), step.sourceUnit);
+            std::optional<Breakpoint> const highPoint = point_in(*curveRecorded.domainElements.back(), step.sourceUnit);
+            if (lowPoint.has_value() && highPoint.has_value())
+                step.coveredRange = LookupRange { .lowNumerator = lowPoint->numerator,
+                                                  .lowDenominator = lowPoint->denominator,
+                                                  .highNumerator = highPoint->numerator,
+                                                  .highDenominator = highPoint->denominator };
+        }
+    }
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -1702,6 +1833,8 @@ class RecordingSink
             detail::record_lookup(node, nodeStep, _trace->steps);
         if constexpr (detail::StepKindOf<N>::value == StepKind::SnappedToPermitted)
             detail::record_snap(node, nodeStep, _trace->steps);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::CurveInterpolation)
+            detail::record_curve_interpolation(node, nodeStep, _trace->steps);
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
@@ -1934,7 +2067,8 @@ class RecordingSink
         // A per-element constant is shown in the unit it was written in; a
         // computed series has no declared unit, as a computed scalar has
         // none, and keeps the coherent one.
-        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesConstant)
+        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesConstant
+                           || detail::SeriesStepKindOf<S>::value == StepKind::SeriesDomain)
             seriesStep.unit = S::unit;
         // A per-element rounding, like a scalar one, is shown in the unit it
         // rounded in -- the fact a reader checks each granularity against --
@@ -1975,6 +2109,79 @@ class RecordingSink
             seriesStep.elements.assign(result->elements.begin(), result->elements.end());
 
         _trace->steps.push_back(std::move(seriesStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a curve is about to be evaluated. Remembers where the arena
+    /// stood, as `series_entered` does.
+    template <CurveExpression C>
+    void curve_entered(C const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one step for the whole curve -- a pairing or a splice --
+    /// carrying every point in `Step::domainElements` and every value in
+    /// `Step::elements`, and claims as its operands every step recorded since
+    /// the matching `curve_entered`. The points are shown in the unit of the
+    /// step that supplied them and the values likewise -- a pairing's two
+    /// series, a splice's first curve -- or in the coherent unit when that
+    /// step's is of another dimension. A failure records its error and the
+    /// element it arose at, and neither points nor values.
+    template <CurveExpression C>
+    void curve_produced(C const&, EvaluatedCurve<Rep, C::length> const& result)
+    {
+        std::size_t const curveMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> curveStep {};
+        curveStep.kind = detail::CurveStepKindOf<C>::value;
+        curveStep.dimension = C::dimension;
+        curveStep.unit = coherent(C::dimension);
+        curveStep.sourceUnit = coherent(C::domainDimension);
+        if constexpr (detail::CurveStepKindOf<C>::value == StepKind::CurveSplice)
+            curveStep.monotone = C::monotone;
+
+        // Everything unclaimed from `curveMark` onwards belongs to this curve
+        // -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < curveMark)
+            ++firstClaimed;
+        curveStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        if (!curveStep.operands.empty())
+        {
+            Step<Rep> const& firstOperand = _trace->steps[curveStep.operands.front()];
+            Step<Rep> const& lastOperand = _trace->steps[curveStep.operands.back()];
+            if constexpr (detail::CurveStepKindOf<C>::value == StepKind::CurvePairing)
+            {
+                if (firstOperand.unit.dimension == C::domainDimension)
+                    curveStep.sourceUnit = firstOperand.unit;
+                if (lastOperand.unit.dimension == C::dimension)
+                    curveStep.unit = lastOperand.unit;
+            }
+            else
+            {
+                if (firstOperand.sourceUnit.dimension == C::domainDimension)
+                    curveStep.sourceUnit = firstOperand.sourceUnit;
+                if (firstOperand.unit.dimension == C::dimension)
+                    curveStep.unit = firstOperand.unit;
+            }
+        }
+
+        if (!result.has_value())
+        {
+            curveStep.error = result.error().error;
+            curveStep.failedElement = result.error().element;
+        }
+        else
+        {
+            curveStep.domainElements.assign(result->domain.begin(), result->domain.end());
+            curveStep.elements.assign(result->values.begin(), result->values.end());
+        }
+
+        _trace->steps.push_back(std::move(curveStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 

@@ -136,6 +136,7 @@
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
@@ -1660,6 +1661,120 @@ namespace detail
     {
     };
 
+    /// A declared domain names no quantity: its points are in its type.
+    template <typename Sub, Unit U, BreakpointTable Points>
+    struct ConstantRewrite<Sub, DomainNode<U, Points>>: ConstantRewriteLeaf<Sub, DomainNode<U, Points>>
+    {
+    };
+
+    /// A node of two children, @p First and @p Second, rebuilt as @p Rebuilt
+    /// around both rewritten -- a curve's two series, a splice's two curves,
+    /// an interpolation's curve and point. @p Children reads the two back off
+    /// a node, in the order `Rebuilt` is aggregate-initialised.
+    template <typename Sub, typename First, typename Second, template <typename, typename> typename Rebuilt, typename Children>
+    struct ConstantRewriteTwo
+    {
+        /// How the first child is rewritten.
+        using FirstRewrite = ConstantRewriteOf<Sub, First>;
+        /// How the second child is rewritten.
+        using SecondRewrite = ConstantRewriteOf<Sub, Second>;
+
+        /// Whether both children are known all the way down.
+        static constexpr bool known = FirstRewrite::known && SecondRewrite::known;
+        /// Whether either child uses `Q`.
+        static constexpr bool mentions = FirstRewrite::mentions || SecondRewrite::mentions;
+        /// The same node kind, around the rewritten children.
+        using type = Rebuilt<typename FirstRewrite::type, typename SecondRewrite::type>;
+
+        /// The node, around the rewritten children.
+        template <typename N>
+        [[nodiscard]] static constexpr type apply(N const& original, Sub const& overriding) noexcept
+        {
+            return type { {},
+                          FirstRewrite::apply(Children::first_of(original), overriding),
+                          SecondRewrite::apply(Children::second_of(original), overriding) };
+        }
+    };
+
+    /// A curve's two series.
+    struct CurveChildren
+    {
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& first_of(N const& original) noexcept
+        {
+            return original.domainSeries;
+        }
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& second_of(N const& original) noexcept
+        {
+            return original.valueSeries;
+        }
+    };
+
+    /// A splice's two curves.
+    struct SpliceChildren
+    {
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& first_of(N const& original) noexcept
+        {
+            return original.first;
+        }
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& second_of(N const& original) noexcept
+        {
+            return original.second;
+        }
+    };
+
+    /// An interpolation's curve and point.
+    struct InterpolationChildren
+    {
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& first_of(N const& original) noexcept
+        {
+            return original.along;
+        }
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& second_of(N const& original) noexcept
+        {
+            return original.at;
+        }
+    };
+
+    /// The three kinds as templates of their two children alone, for
+    /// `ConstantRewriteTwo`: aliases, whose template heads carry no
+    /// constraint for a template template parameter to be matched against.
+    template <typename DomainSeries, typename ValueSeries>
+    using CurveOf = CurveNode<DomainSeries, ValueSeries>;
+
+    template <typename C, typename At>
+    using InterpolationOf = InterpolateAlongNode<C, At>;
+
+    template <Monotone M>
+    struct SpliceIn
+    {
+        template <typename A, typename B>
+        using type = SpliceNode<M, A, B>;
+    };
+
+    template <typename Sub, SeriesNode DomainSeries, SeriesNode ValueSeries>
+    struct ConstantRewrite<Sub, CurveNode<DomainSeries, ValueSeries>>:
+        ConstantRewriteTwo<Sub, DomainSeries, ValueSeries, CurveOf, CurveChildren>
+    {
+    };
+
+    template <typename Sub, Monotone M, CurveExpression A, CurveExpression B>
+    struct ConstantRewrite<Sub, SpliceNode<M, A, B>>:
+        ConstantRewriteTwo<Sub, A, B, SpliceIn<M>::template type, SpliceChildren>
+    {
+    };
+
+    template <typename Sub, CurveExpression C, Node At>
+    struct ConstantRewrite<Sub, InterpolateAlongNode<C, At>>:
+        ConstantRewriteTwo<Sub, C, At, InterpolationOf, InterpolationChildren>
+    {
+    };
+
     template <typename Sub, UnaryOperator Op, SeriesNode Operand>
     struct ConstantRewrite<Sub, ElementwiseUnaryNode<Op, Operand>>:
         ConstantRewriteOperand<Sub, Operand, ElementwiseUnaryNode<Op, typename ConstantRewriteOf<Sub, Operand>::type>>
@@ -1944,6 +2059,27 @@ namespace detail
     template <SeriesNode S>
     struct SubstitutedIn<SumNode<S>>: SubstitutedInOperand<S>
     {
+    };
+
+    template <SeriesNode DomainSeries, SeriesNode ValueSeries>
+    struct SubstitutedIn<CurveNode<DomainSeries, ValueSeries>>
+    {
+        /// Whatever either series substitutes.
+        using type = SubstitutedInAll<DomainSeries, ValueSeries>;
+    };
+
+    template <Monotone M, CurveExpression A, CurveExpression B>
+    struct SubstitutedIn<SpliceNode<M, A, B>>
+    {
+        /// Whatever either curve substitutes.
+        using type = SubstitutedInAll<A, B>;
+    };
+
+    template <CurveExpression C, Node At>
+    struct SubstitutedIn<InterpolateAlongNode<C, At>>
+    {
+        /// Whatever the curve or the point substitutes.
+        using type = SubstitutedInAll<C, At>;
     };
 
     template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>

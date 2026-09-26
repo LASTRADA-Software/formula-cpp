@@ -329,6 +329,18 @@ namespace detail
     template <Vocabulary V, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
     void collect(Walk<V>& walk, SnapNode<KeyUnit, Permitted, Tie, Operand> const& node);
 
+    template <Vocabulary V, Unit U, BreakpointTable Points>
+    void collect(Walk<V>& walk, DomainNode<U, Points> const& node);
+
+    template <Vocabulary V, SeriesNode DomainSeries, SeriesNode ValueSeries>
+    void collect(Walk<V>& walk, CurveNode<DomainSeries, ValueSeries> const& node);
+
+    template <Vocabulary V, Monotone M, CurveExpression A, CurveExpression B>
+    void collect(Walk<V>& walk, SpliceNode<M, A, B> const& node);
+
+    template <Vocabulary V, CurveExpression C, Node At>
+    void collect(Walk<V>& walk, InterpolateAlongNode<C, At> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -681,6 +693,37 @@ namespace detail
     {
         collect(walk, node.operand);
     }
+
+    /// A declared domain names nothing: its points are `render()`'s to print.
+    template <Vocabulary V, Unit U, BreakpointTable Points>
+    void collect(Walk<V>&, DomainNode<U, Points> const&)
+    {
+    }
+
+    /// A curve names nothing of its own; its two series do, the domain first.
+    template <Vocabulary V, SeriesNode DomainSeries, SeriesNode ValueSeries>
+    void collect(Walk<V>& walk, CurveNode<DomainSeries, ValueSeries> const& node)
+    {
+        collect(walk, node.domainSeries);
+        collect(walk, node.valueSeries);
+    }
+
+    /// A splice names nothing of its own; its curves do, in the order
+    /// written.
+    template <Vocabulary V, Monotone M, CurveExpression A, CurveExpression B>
+    void collect(Walk<V>& walk, SpliceNode<M, A, B> const& node)
+    {
+        collect(walk, node.first);
+        collect(walk, node.second);
+    }
+
+    /// An interpolation names nothing of its own; its curve and its point do.
+    template <Vocabulary V, CurveExpression C, Node At>
+    void collect(Walk<V>& walk, InterpolateAlongNode<C, At> const& node)
+    {
+        collect(walk, node.along);
+        collect(walk, node.at);
+    }
 } // namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
@@ -728,6 +771,28 @@ template <Dialect D = Dialect::Plain, SeriesNode S, Vocabulary V>
 /// nothing.
 template <Dialect D = Dialect::Plain, SeriesNode S>
 [[nodiscard]] Documentation document(S const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
+
+/// Documents the curve @p node: renders it in dialect @p D, each series marked,
+/// and walks both halves for the symbol table. A curve is neither a `Node`
+/// nor a series (`curve.hpp`), so it needs this overload.
+template <Dialect D = Dialect::Plain, CurveExpression C, Vocabulary V>
+[[nodiscard]] Documentation document(C const& node, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents the curve @p node in the default vocabulary, which renames
+/// nothing.
+template <Dialect D = Dialect::Plain, CurveExpression C>
+[[nodiscard]] Documentation document(C const& node)
 {
     return document<D>(node, DefaultVocabulary {});
 }

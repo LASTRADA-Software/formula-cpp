@@ -35,6 +35,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/detail/latex_math.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/expression.hpp>
@@ -690,6 +691,11 @@ template <Dialect D, Predicate P, Vocabulary V>
 template <Dialect D, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render(S const& node, V const& vocabulary);
 
+/// The `CurveExpression` counterpart of the overload above: a curve is
+/// neither a `Node` nor a series (`curve.hpp`).
+template <Dialect D, CurveExpression C, Vocabulary V>
+[[nodiscard]] std::string render(C const& node, V const& vocabulary);
+
 /// The `Constraint` counterpart of the overload above.
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary);
@@ -1253,6 +1259,65 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
     return detail::lookup_call<D>("snap", render<D>(node.operand, vocabulary), permittedField);
 }
 
+/// A declared domain renders as its points, `domain(7/10, 19/10, 33/10 mm)`,
+/// in their declared order with the unit once, as a snap's set is. A list
+/// already reads as many values, so it carries no index marker, as a
+/// per-element constant carries none.
+template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
+[[nodiscard]] std::string render_node(DomainNode<U, Points> const&, V const&)
+{
+    constexpr Unit declaredIn = U;
+    std::string listed;
+    for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
+    {
+        if (pointIndex > 0)
+            listed += ", ";
+        listed += detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator);
+    }
+    std::string const points = detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{domain}(" + points + ")";
+    else
+        return "domain(" + points + ")";
+}
+
+/// A curve renders as a call on its two series, `curve(d(i), p(i))`, each
+/// carrying its series marker, shaped as a lookup is (`detail::lookup_call`).
+template <Dialect D, SeriesNode DomainSeries, SeriesNode ValueSeries, Vocabulary V>
+[[nodiscard]] std::string render_node(CurveNode<DomainSeries, ValueSeries> const& node, V const& vocabulary)
+{
+    return detail::lookup_call<D>("curve",
+                                  render<D>(node.domainSeries, vocabulary),
+                                  detail::lookup_separator<D>() + render<D>(node.valueSeries, vocabulary));
+}
+
+/// A splice renders both curves in the order written, and **always** its
+/// direction: `splice(curve(...), curve(...), non-decreasing)`. Without the
+/// direction the rendering states half the formula, as a running total
+/// without its end would.
+template <Dialect D, Monotone M, CurveExpression A, CurveExpression B, Vocabulary V>
+[[nodiscard]] std::string render_node(SpliceNode<M, A, B> const& node, V const& vocabulary)
+{
+    return detail::lookup_call<D>("splice",
+                                  render<D>(node.first, vocabulary),
+                                  detail::lookup_separator<D>() + render<D>(node.second, vocabulary)
+                                      + detail::lookup_separator<D>()
+                                      + detail::lookup_words_in_dialect<D>(std::string { describe(M) }));
+}
+
+/// An interpolation along a curve renders as `interpolate(<curve>, at
+/// <point>)` -- `render()`'s head for a value computed between two points, as
+/// an interpolating lookup's is. The point is an expression, rendered in the
+/// dialect; only the word before it is text.
+template <Dialect D, CurveExpression C, Node At, Vocabulary V>
+[[nodiscard]] std::string render_node(InterpolateAlongNode<C, At> const& node, V const& vocabulary)
+{
+    return detail::lookup_call<D>("interpolate",
+                                  render<D>(node.along, vocabulary),
+                                  detail::lookup_separator<D>() + detail::lookup_words_in_dialect<D>("at ")
+                                      + render<D>(node.at, vocabulary));
+}
+
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
 /// cannot go through `render_operand` -- its own operand context is computed
 /// directly from `PrecedenceOf<PredicateNode<...>>` instead, one rung above
@@ -1499,6 +1564,36 @@ template <Dialect D, SeriesNode S>
 /// Renders the series @p node as plain text.
 template <SeriesNode S>
 [[nodiscard]] std::string render(S const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+/// Renders the curve @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, CurveExpression C, Vocabulary V>
+[[nodiscard]] std::string render(C const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the curve @p node as plain text, writing symbols as
+/// @p vocabulary says.
+template <CurveExpression C, Vocabulary V>
+[[nodiscard]] std::string render(C const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders the curve @p node in dialect @p D.
+template <Dialect D, CurveExpression C>
+[[nodiscard]] std::string render(C const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders the curve @p node as plain text.
+template <CurveExpression C>
+[[nodiscard]] std::string render(C const& node)
 {
     return render<Dialect::Plain>(node);
 }

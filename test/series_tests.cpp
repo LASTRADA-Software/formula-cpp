@@ -303,6 +303,18 @@ TEST_CASE("a series expression passed to another translation unit is the same ty
     CHECK(there->element(2).value() == formula::Rational { 68 });
 }
 
+TEST_CASE("a curve expression passed to another translation unit is the same type there", "[series][curve]")
+{
+    // The splice, both curves, the declared domains and the running total
+    // inside: one type in both units, or the call does not link. 13, 34 and
+    // 68 g at 103, 127 and 163 m, then 100 g at 197 m.
+    auto const there = spliced_read_in_other_tu(series_cross_tu::spliced);
+    REQUIRE(there.has_value());
+    CHECK(there->domain()[3].value() == formula::Rational { 197 });
+    CHECK(there->values()[1].value() == formula::Rational { 34 });
+    CHECK(there->values()[3].value() == formula::Rational { 100 });
+}
+
 // ---- Elementwise arithmetic and per-element constants (task 4) ----
 
 namespace

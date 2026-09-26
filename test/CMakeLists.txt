@@ -68,6 +68,7 @@ add_executable(formula-cpp-tests
     series_cross_tu_b.cpp
     conformity_tests.cpp
     snap_tests.cpp
+    curve_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -465,6 +466,28 @@ formula_add_negative_test(snap_key_dimension_mismatch
 formula_add_negative_test(snap_rep_not_rational
     "formula: a snap can only be evaluated with Rep = Rational")
 
+# Task 9: curves. Each mistake refused once; a curve, splice or interpolation
+# over a refused operand asks nothing more.
+formula_add_negative_test(curve_length_mismatch
+    "formula: this curve pairs a domain and values of different lengths"
+    REJECT "this curve is read at a point that does not measure")
+formula_add_negative_test(splice_domain_dimension_mismatch
+    "formula: the two curves spliced here have domains of different dimensions"
+    REJECT "have values of different dimensions")
+formula_add_negative_test(splice_value_dimension_mismatch
+    "formula: the two curves spliced here have values of different dimensions"
+    REJECT "have domains of different dimensions")
+formula_add_negative_test(interpolate_at_dimension_mismatch
+    "formula: this curve is read at a point that does not measure the dimension of its domain")
+formula_add_negative_test(domain_empty
+    "formula: this domain declares no points"
+    REJECT "this curve pairs a domain and values of different lengths")
+formula_add_negative_test(domain_descending
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression" "this curve pairs a domain and values of different lengths")
+formula_add_negative_test(curve_rep_not_rational
+    "formula: a curve can only be evaluated with Rep = Rational")
+
 # Task 5: sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT
 # pins that the refusal is not the compiler's own "no matching function".
@@ -789,7 +812,7 @@ formula_add_negative_test(interpolating_lookup_descending_breakpoint_no_factory
 # to look at, and because "not ascending" would be a true statement about the
 # wrong mistake.
 formula_add_negative_test(interpolating_lookup_malformed_breakpoint
-    "formula: this breakpoint table -- an interpolating lookup's rows, or a snap's permitted set -- has a breakpoint whose key is not a rational number")
+    "formula: this breakpoint table -- an interpolating lookup's rows, a snap's permitted set, or a curve's domain -- has a breakpoint whose key is not a rational number")
 
 # A method reports one quantity, so its variants must agree on the dimension
 # they report -- they are free to disagree on everything else, and by design

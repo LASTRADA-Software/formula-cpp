@@ -33,7 +33,8 @@
 // negation and a per-element constant, on the same surfaces; running totals
 // from either end, a per-element rounding and `sum`, inside a method an
 // overlay's constant rewrote, evaluated, rendered, documented and traced; a
-// conformity check against a limit envelope, and a snap, on the same surfaces;
+// conformity check against a limit envelope, a snap, and curves -- a declared
+// domain, a pairing, a splice and an interpolation -- on the same surfaces;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -106,6 +107,7 @@ int index;
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/enumerator.hpp>
@@ -234,6 +236,9 @@ inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"));
 
 inline constexpr formula::BreakpointTable<3> EdgeSnapSet { formula::breakpoint(100), formula::breakpoint(200),
                                                            formula::breakpoint(300) };
+
+inline constexpr formula::BreakpointTable<2> EdgeCurvePoints { formula::breakpoint(100), formula::breakpoint(200) };
+inline constexpr formula::BreakpointTable<1> EdgeCurveTail { formula::breakpoint(300) };
 
 inline constexpr formula::PlacesTable<2> edgePlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 } };
 
@@ -466,6 +471,27 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render(snappedEdge, north) == "snap(x_m, to 100, 200, 300 mm)"
                            && formula::document<formula::Dialect::LaTeX>(snappedEdge).formula.find("snap") != std::string::npos
                            && formula::render_trace(snapTrace, { .maxSteps = 10 }).find("tie, toward higher")
+                                  != std::string::npos);
+    // Curves: two declared domains spliced, and read at the specimen's 150 mm,
+    // halfway from 100 mm (10 mm) to 200 mm (30 mm).
+    auto const edgeCurve = formula::splice<formula::Monotone::NonDecreasing>(
+        formula::curve(formula::domain<unit::Millimetre, EdgeCurvePoints>(),
+                       formula::series_constant<unit::Millimetre>(formula::Rational { 10 }, formula::Rational { 30 })),
+        formula::curve(formula::domain<unit::Millimetre, EdgeCurveTail>(),
+                       formula::series_constant<unit::Millimetre>(formula::Rational { 40 })));
+    auto const readEdge = formula::interpolate_at(edgeCurve, var<EdgeX>);
+    formula::Trace<> curveTrace {};
+    auto const readValue = formula::checked_evaluate<EdgeX>(readEdge, specimen, formula::RecordingSink { curveTrace, north });
+    auto const splicedEdge = formula::checked_evaluate_curve<EdgeX, EdgeX>(edgeCurve, specimen);
+    probe.checks.push_back(readValue.has_value() && readValue->measurement().value() == formula::Rational { 20 }
+                           && splicedEdge.has_value() && splicedEdge->domain()[2].value() == formula::Rational { 300 }
+                           && formula::render(readEdge, north)
+                                  == "interpolate(splice(curve(domain(100, 200 mm), values(10 mm, 30 mm)), "
+                                     "curve(domain(300 mm), values(40 mm)), non-decreasing), at x_m)"
+                           && formula::render(edgeCurve, north).starts_with("splice(")
+                           && formula::document<formula::Dialect::LaTeX>(readEdge).formula.find("interpolate") != std::string::npos
+                           && formula::document(edgeCurve, north).symbols.empty()
+                           && formula::render_trace(curveTrace, { .maxSteps = 40 }).find("[between 100 and 200 mm]")
                                   != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);

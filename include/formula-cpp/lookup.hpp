@@ -1455,8 +1455,9 @@ template <Breakpoint B>
 struct RequireBreakpointWellFormed
 {
     static_assert(breakpoint_is_well_formed(B),
-                  "formula: this breakpoint table -- an interpolating lookup's rows, or a snap's permitted "
-                  "set -- has a breakpoint whose key is not a rational number; its denominator is zero, or "
+                  "formula: this breakpoint table -- an interpolating lookup's rows, a snap's permitted set, "
+                  "or a curve's domain -- has a breakpoint whose key is not a rational number; its denominator "
+                  "is zero, or "
                   "its numerator and denominator cannot be reduced without overflow; the offending "
                   "Breakpoint value appears in this diagnostic as the template argument B of "
                   "RequireBreakpointWellFormed");
@@ -1480,7 +1481,8 @@ struct RequireBreakpointsAscend
 {
     static_assert(breakpoints_ascend(First, Second),
                   "formula: this breakpoint table's breakpoints do not strictly ascend -- an "
-                  "interpolating lookup's rows, or a snap's permitted set; two adjacent breakpoints either "
+                  "interpolating lookup's rows, a snap's permitted set, or a curve's domain; two adjacent "
+                  "breakpoints either "
                   "state the same key twice or are declared out of order, and the two offending Breakpoint "
                   "values appear in this diagnostic as the template arguments First and Second of "
                   "RequireBreakpointsAscend");
@@ -1526,7 +1528,8 @@ namespace detail
 } // namespace detail
 
 /// The static_assert wiring for a breakpoint table -- an interpolating
-/// lookup's rows, or a snap's permitted set (`snap.hpp`): instantiating this
+/// lookup's rows, a snap's permitted set (`snap.hpp`), or a curve's domain
+/// (`curve.hpp`): instantiating this
 /// with a `BreakpointTable` that is a compile-time constant enforces, right
 /// there, that every row names a number and that the rows strictly ascend --
 /// reusing `breakpoint_is_well_formed` and `breakpoints_ascend`, the same two

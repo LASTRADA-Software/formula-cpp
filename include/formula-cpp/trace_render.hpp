@@ -285,6 +285,20 @@ namespace detail
         return step.operands.empty() ? std::string {} : operand_reference(step.operands[0]);
     }
 
+    /// Every operand, in order, separated by `, `: `#1, #2`.
+    template <typename Rep>
+    [[nodiscard]] std::string operands_text(Step<Rep> const& step)
+    {
+        std::string listed;
+        for (std::size_t const operandIndex: step.operands)
+        {
+            if (!listed.empty())
+                listed += ", ";
+            listed += operand_reference(operandIndex);
+        }
+        return listed;
+    }
+
     /// A method's constraints, as the verdicts they reached:
     /// `acceptance(#3, #6, #9)`, in the order `check_method` returned them,
     /// and `acceptance(none)` for a method with no constraints -- which is
@@ -772,6 +786,23 @@ namespace detail
             case StepKind::ElementwiseRound:
                 return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp of "
                        + std::string { view(step.unit.symbolText) } + ")";
+            // A declared domain's line is its points, as a per-element
+            // constant's is its values -- see `series_step_line`.
+            case StepKind::SeriesDomain:
+                return {};
+            // The two series paired, in order; the pairs follow the `=` --
+            // see `curve_step_line`.
+            case StepKind::CurvePairing:
+                return "curve(" + operands_text(step) + ")";
+            // The curve, and where it was read; the segment goes in the
+            // suffix -- see `curve_interpolation_suffix`.
+            case StepKind::CurveInterpolation:
+                return step.operands.size() >= 2 ? "interpolate(" + operand_reference(step.operands[0]) + ", at "
+                                                       + operand_reference(step.operands[1]) + ")"
+                                                 : "interpolate(" + sole_operand(step) + ")";
+            // The direction is always written, as `render()` writes it.
+            case StepKind::CurveSplice:
+                return "splice(" + operands_text(step) + ", " + std::string { describe(step.monotone) } + ")";
         }
         return "unknown step kind";
     }
@@ -1027,7 +1058,7 @@ namespace detail
         return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant || stepKind == StepKind::ElementwiseNegate
                || stepKind == StepKind::ElementwiseAdd || stepKind == StepKind::ElementwiseSubtract
                || stepKind == StepKind::ElementwiseMultiply || stepKind == StepKind::ElementwiseDivide
-               || stepKind == StepKind::CumulativeSum || stepKind == StepKind::ElementwiseRound;
+               || stepKind == StepKind::CumulativeSum || stepKind == StepKind::ElementwiseRound || stepKind == StepKind::SeriesDomain;
     }
 
     /// A series step's line, without its number: the expression, an `=`, and
@@ -1048,7 +1079,8 @@ namespace detail
         // A per-element constant's line is its values alone, as a scalar
         // constant's is its value alone: `1 kg; 2 kg`, not the tautology
         // `values = 1 kg; 2 kg`.
-        std::string lineText = recorded.kind == StepKind::SeriesConstant ? std::string {} : step_expression(recorded) + " = ";
+        bool const listsItself = recorded.kind == StepKind::SeriesConstant || recorded.kind == StepKind::SeriesDomain;
+        std::string lineText = listsItself ? std::string {} : step_expression(recorded) + " = ";
         if (recorded.error.has_value())
         {
             lineText += describe(*recorded.error);
@@ -1071,6 +1103,63 @@ namespace detail
         if (listed < elementCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(elementCount - listed) + " more";
         return lineText;
+    }
+
+    /// A curve step's line, without its number: the expression, an `=`, and
+    /// each point with its value, `7/10 m: 894/25 %`, separated by `; ` --
+    /// as many pairs as @p budget allows, one unit each, as a series step's
+    /// elements are (`series_step_line`), and `... k more` where `k` is
+    /// exactly the number left out. The points are shown in `sourceUnit`, the
+    /// values in `unit`.
+    ///
+    /// A failed curve shows its error and, when it belongs to one element,
+    /// that element counted from one.
+    [[nodiscard]] inline std::string curve_step_line(Step<Rational> const& recorded, std::size_t& budget)
+    {
+        std::string lineText = step_expression(recorded) + " = ";
+        if (recorded.error.has_value())
+        {
+            lineText += describe(*recorded.error);
+            if (recorded.failedElement.has_value())
+                lineText += " at element " + std::to_string(*recorded.failedElement + 1);
+            return lineText;
+        }
+        std::size_t const pairCount = recorded.elements.size();
+        if (pairCount == 0 || recorded.domainElements.size() != pairCount)
+            return lineText + "(no points)";
+
+        // A point is shown as a value of the point's own dimension and unit.
+        Step<Rational> pointShape {};
+        pointShape.dimension = recorded.sourceUnit.dimension;
+        pointShape.unit = recorded.sourceUnit;
+
+        std::size_t const listed = budget < pairCount ? budget : pairCount;
+        budget -= listed;
+        for (std::size_t at = 0; at < listed; ++at)
+        {
+            if (at > 0)
+                lineText += "; ";
+            lineText += value_in_declared_unit(pointShape, recorded.domainElements[at]) + ": "
+                    + value_in_declared_unit(recorded, recorded.elements[at]);
+        }
+        if (listed < pairCount)
+            lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(pairCount - listed) + " more";
+        return lineText;
+    }
+
+    /// An interpolation along a curve's clause: the two points the answer
+    /// lay between, `[between 33/10 and 71/10 m]`, or `[on the row at 33/10
+    /// m]` -- `segment_text`, an interpolating lookup's words -- and on a miss
+    /// `[outside the curve, which runs 7/10 to 137/10 m]`. Nothing when
+    /// nothing was located: a failed or absent curve or point.
+    [[nodiscard]] inline std::string curve_interpolation_suffix(Step<Rational> const& recorded)
+    {
+        std::string const pointSymbol = unit_symbol_text(recorded.sourceUnit);
+        if (recorded.selectedSegment.has_value())
+            return " [" + segment_text(*recorded.selectedSegment, pointSymbol) + "]";
+        if (recorded.coveredRange.has_value())
+            return " [outside the curve, which runs " + closed_range_text(*recorded.coveredRange, pointSymbol) + "]";
+        return {};
     }
 
     /// A `NumericValue` step's justification, in one bracketed clause. Empty
@@ -1360,6 +1449,10 @@ namespace detail
             return conformity_line(recorded, limits, budget);
         if (is_series(recorded.kind))
             return series_step_line(recorded, budget);
+        // A curve's values are its pairs, which spend the element budget as
+        // a series' elements do.
+        if (recorded.kind == StepKind::CurvePairing || recorded.kind == StepKind::CurveSplice)
+            return curve_step_line(recorded, budget);
         if (recorded.kind == StepKind::Constraint)
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
         if (recorded.kind == StepKind::AcceptanceChecked)
@@ -1388,6 +1481,8 @@ namespace detail
             annotation = overridden_constant_suffix(recorded.citation);
         else if (recorded.kind == StepKind::SnappedToPermitted)
             annotation = snap_suffix(recorded);
+        else if (recorded.kind == StepKind::CurveInterpolation)
+            annotation = curve_interpolation_suffix(recorded);
         else if (recorded.kind == StepKind::DerivedQuantity)
             annotation = derived_quantity_suffix(recorded.citation);
         else if (recorded.kind == StepKind::ReplacedVariant)

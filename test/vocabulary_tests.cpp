@@ -539,6 +539,9 @@ struct EveryCylinder
 struct EverySeries
 {
 };
+struct EveryCurve
+{
+};
 
 struct EveryStrength: formula::Quantity<EveryStrength, "A_decl", "compressive strength", unit::Megapascal>
 {
@@ -627,10 +630,30 @@ inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 
            / var<EveryTotal>;
 }
 
+// Every curve kind, and the join with snapping (S17): two curves over declared
+// domains spliced, read at the overlay's fixed factor, and the answer snapped
+// to a permitted value. The overlay's constant is the point the curve is read
+// at, so it reaches inside the interpolation or the method is refused.
+inline constexpr formula::BreakpointTable<3> everyCurvePoints { formula::breakpoint(1), formula::breakpoint(2),
+                                                                formula::breakpoint(4) };
+inline constexpr formula::BreakpointTable<1> everyCurveTail { formula::breakpoint(5) };
+inline constexpr formula::BreakpointTable<2> everyCurveSnapSet { formula::breakpoint(1, 200), formula::breakpoint(1, 100) };
+
+[[nodiscard]] constexpr auto everyCurveKind()
+{
+    constexpr auto s = formula::series<EveryRetained, 3>;
+    return formula::snapped<unit::One, everyCurveSnapSet, formula::SnapTie::TowardLower>(formula::interpolate_at(
+        formula::splice<formula::Monotone::NonDecreasing>(
+            formula::curve(formula::domain<unit::One, everyCurvePoints>(), s / var<EveryTotal>),
+            formula::curve(formula::domain<unit::One, everyCurveTail>(), formula::series_constant<unit::One>(rat(1, 20)))),
+        var<EveryFixed>));
+}
+
 inline constexpr auto everyMethod = formula::method(
     formula::variants(formula::variant<EveryCube>(everyNodeKind()),
                       formula::variant<EveryCylinder>(var<EveryStrength> / var<EveryModulus>),
-                      formula::variant<EverySeries>(everySeriesKind())),
+                      formula::variant<EverySeries>(everySeriesKind()),
+                      formula::variant<EveryCurve>(everyCurveKind())),
     formula::rounding_rule<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 
@@ -700,7 +723,25 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
              "\\mathrm{g}}(-{m_n}_{i} + {m_n}_{i} \\cdot \\operatorname{values}(1,\\allowbreak 2,\\allowbreak 3) "
              "\\cdot x_n))}{M_n}");
 
-    for (std::string const& text: { formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
+    // Every curve kind, the series marked, the domains listed, the direction
+    // stated.
+    constexpr auto curveVariant = std::get<3>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(curveVariant, everyVocabulary)
+          == "snap(interpolate(splice(curve(domain(1, 2, 4), m_n(i) / M_n), curve(domain(5), values(1/20)), "
+             "non-decreasing), at x_n), to 1/200, 1/100)");
+    CHECK(formula::render<formula::Dialect::Markdown>(curveVariant, everyVocabulary)
+          == "snap(interpolate(splice(curve(domain(1, 2, 4), `m_n(i)` / `M_n`), curve(domain(5), values(1/20)), "
+             "non-decreasing), at `x_n`), to 1/200, 1/100)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(curveVariant, everyVocabulary)
+          == "\\operatorname{snap}(\\operatorname{interpolate}(\\operatorname{splice}(\\operatorname{curve}("
+             "\\operatorname{domain}(\\mathrm{1,\\ 2,\\ 4}),\\allowbreak \\frac{{m_n}_{i}}{M_n}),\\allowbreak "
+             "\\operatorname{curve}(\\operatorname{domain}(\\mathrm{5}),\\allowbreak "
+             "\\operatorname{values}(1/20)),\\allowbreak \\mathrm{non-decreasing}),\\allowbreak \\mathrm{at\\ }x_n),"
+             "\\allowbreak \\mathrm{to\\ 1/200,\\ 1/100})");
+
+    for (std::string const& text: { formula::render<formula::Dialect::Markdown>(curveVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(curveVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(cube, everyVocabulary),
                                     formula::render<formula::Dialect::Markdown>(cylinder, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(cylinder, everyVocabulary),
@@ -752,6 +793,18 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
     CHECK(seriesPage.symbols[2].symbol == "M_n");
     CHECK(seriesPage.symbols[2].shape == formula::ValueShape::Single);
 
+    // The curve variant: the series row, the total, and the fixed factor the
+    // curve is read at.
+    constexpr auto curveVariant = std::get<3>(everyOverlaid.variantSet.cases).expression;
+    formula::Documentation const curvePage = formula::document(curveVariant, everyVocabulary);
+    CHECK(curvePage.formula == formula::render(curveVariant, everyVocabulary));
+    REQUIRE(curvePage.symbols.size() == 3);
+    CHECK(curvePage.symbols[0].symbol == "m_n");
+    CHECK(curvePage.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(curvePage.symbols[1].symbol == "M_n");
+    CHECK(curvePage.symbols[2].symbol == "x_n");
+    CHECK(curvePage.symbols[2].fixedValue.has_value());
+
     for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
                                       formula::document<formula::Dialect::LaTeX>(cube, everyVocabulary),
                                       formula::document<formula::Dialect::Markdown>(cylinder, everyVocabulary),
@@ -795,7 +848,7 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "3. #1 / #2 = 2/5\n"
              "4. #3 = 2/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "5. round(#4, in %) = 40 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "6. #5 = 40 % [variant EveryCylinder (2nd of 3), selected by tag]\n");
+             "6. #5 = 40 % [variant EveryCylinder (2nd of 4), selected by tag]\n");
 
     // Every series kind: each series step in the jurisdiction's symbol, the
     // fixed factor broadcast once, the running total from the last screen,
@@ -816,7 +869,27 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "12. M_n = 2020 g\n"
              "13. #11 / #12 = 503/2020\n"
              "14. round(#13, in %) = 249/10 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "15. #14 = 249/10 % [variant EverySeries (3rd of 3), selected by tag]\n");
+             "15. #14 = 249/10 % [variant EverySeries (3rd of 4), selected by tag]\n");
+
+    // Every curve kind: the retained masses as shares of the total, 1/202,
+    // 1/101 and 2/101 at 1, 2 and 4, spliced with 1/20 at 5; read at the
+    // fixed 1487/1000, 487/1000 of the way from 1 to 2, that is 1487/202000
+    // -- nearer 1/200 than 1/100, whose midpoint 3/400 it falls just short of.
+    CHECK(everyTraceOf<EveryCurve>()
+          == "1. 1; 2; 4\n"
+             "2. m_n = 10 g; 20 g; 40 g\n"
+             "3. M_n = 2020 g\n"
+             "4. #2 / #3 = 1/202; 1/101; 2/101\n"
+             "5. curve(#1, #4) = 1: 1/202; 2: 1/101; 4: 2/101\n"
+             "6. 5\n"
+             "7. 1/20\n"
+             "8. curve(#6, #7) = 5: 1/20\n"
+             "9. splice(#5, #8, non-decreasing) = 1: 1/202; 2: 1/101; 4: 2/101; 5: 1/20\n"
+             "10. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "11. interpolate(#9, at #10) = 1487/202000 [between 1 and 2]\n"
+             "12. snap(#11) = 1/200 [1/200 to 1/100; nearer 1/200]\n"
+             "13. round(#12, in %) = 1/2 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "14. #13 = 1/2 % [variant EveryCurve (4th of 4), selected by tag]\n");
 }
 
 TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",

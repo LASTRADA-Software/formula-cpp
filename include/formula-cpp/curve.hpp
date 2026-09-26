@@ -1,0 +1,739 @@
+// SPDX-License-Identifier: Apache-2.0
+#pragma once
+
+/// @file
+/// Curves: a domain series paired with a value series, read at a point in
+/// between (`interpolate_at`), and two curves spliced into one (`splice`).
+///
+/// **A curve is neither a `Node` nor a `SeriesNode`.** It is the only value
+/// this library holds that is two vectors -- the points of a domain and the
+/// value at each -- and it is its own family, `CurveExpression`, so that
+/// handing one where a number or a series is expected is a compile error.
+/// `interpolate_at` is the bridge back to one value, and is a `Node`.
+///
+/// `domain<KeyUnit, Points>()` is a series whose elements come from a
+/// `BreakpointTable` in the type, validated as every breakpoint table is
+/// (`RequireValidBreakpointTable`): it is how a method declares its points
+/// once and pairs them with what it measured at each.
+///
+/// **A curve's domain strictly ascends, checked when it is evaluated.** A
+/// declared domain is checked at compile time already; a computed one --
+/// `curve(series<Opening, 5>, ...)` -- only arrives at run time, and one that
+/// does not strictly ascend fails the curve with a `DomainError` at its first
+/// element that is not above the one before it.
+///
+/// **Interpolation** locates the point with the one scan of ascending keys an
+/// interpolating lookup uses (`detail::locate_key`, `lookup.hpp`) and computes
+/// the value with the one formula for it (`detail::interpolate_between`):
+/// the rule is written once. Off the ends of the domain is a miss, never an
+/// extrapolation or a clamp. It is carried out in the coherent SI unit, since
+/// a computed domain has no declared unit of its own to carry it out in; a
+/// linear interpolation's answer does not depend on the scale either axis is
+/// stated in.
+///
+/// **A splice** is the sorted union of two curves by domain, of static length
+/// `A::length + B::length`, whichever curve is written first. Two points at
+/// one domain value are a miss at the second of them, where the two curves
+/// meet; and the values must run in the direction the author names -- a
+/// required `Monotone`, with no default -- judged on the spliced curve, not on
+/// each operand, or it fails at the first element that breaks it. **Nothing is
+/// rescaled at the join**: putting one basis onto another is the method's
+/// algebra, written with elementwise arithmetic before splicing, where the
+/// trace shows it.
+///
+/// **Absence is strict** (S7): an absent element anywhere in a curve makes an
+/// interpolation along it absent, and a splice of it wholly absent.
+///
+/// Everything here compares, so a curve is evaluated with `Rep = Rational`
+/// only, refused otherwise in this library's words: a comparison a few ULPs
+/// off picks the wrong segment, silently.
+
+#include <formula-cpp/error.hpp>
+#include <formula-cpp/evaluate.hpp>
+#include <formula-cpp/expression.hpp>
+#include <formula-cpp/lookup.hpp>
+#include <formula-cpp/measured.hpp>
+#include <formula-cpp/quantity.hpp>
+#include <formula-cpp/rational.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/sink.hpp>
+#include <formula-cpp/unit.hpp>
+
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+
+namespace formula
+{
+
+namespace detail
+{
+    /// Fails to compile when a domain declares no points. Named so the table
+    /// prints.
+    template <BreakpointTable Points>
+    struct RequireDomainNotEmpty
+    {
+        static_assert(Points.size() > 0,
+                      "formula: this domain declares no points; a domain is the points a method's series are "
+                      "measured at, and a domain of none has nothing to pair, interpolate or trace -- declare at "
+                      "least one point");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// A series whose elements are the points of @p Points, stated in @p U: the
+/// points a method measures at, declared once.
+///
+/// Empty, like `SeriesVarNode`: its whole shape is in the type. The points
+/// are validated in the class body, for `InterpolatingLookupNode`'s reason: a
+/// public aggregate can be declared without the factory.
+template <Unit U, BreakpointTable Points>
+struct DomainNode: SeriesNodeBase
+{
+    static_assert(detail::RequireDomainNotEmpty<Points>::value);
+    static_assert(RequireValidBreakpointTable<Points>::value);
+
+    /// The unit the points are declared in.
+    static constexpr Unit unit = U;
+    /// The dimension of each point: `U`'s.
+    static constexpr Dimension dimension = U.dimension;
+    /// How many points there are.
+    static constexpr std::size_t length = Points.size();
+    /// The points, already validated above.
+    static constexpr BreakpointTable<Points.size()> points = Points;
+    /// Whether the table was refused -- see `detail::refused_already`. A
+    /// curve over it asks nothing more of it.
+    static constexpr bool refused = Points.size() == 0 || !breakpoint_table_is_well_formed(Points);
+};
+
+/// A method's points, declared once: `domain<unit::Millimetre, Screens>()`.
+/// `U` and `Points` are never deduced: they are the method's declared intent.
+template <Unit U, BreakpointTable Points>
+[[nodiscard]] constexpr DomainNode<U, Points> domain() noexcept
+{
+    return DomainNode<U, Points> {};
+}
+
+/// The empty base every curve node derives from, and what `CurveExpression`
+/// recognises. Not `NodeBase` and not `SeriesNodeBase`: a curve is neither
+/// one value nor one series.
+struct CurveNodeBase
+{
+};
+
+/// A curve: `curve(...)`, or a `splice` of two.
+template <typename T>
+concept CurveExpression = std::derived_from<std::remove_cvref_t<T>, CurveNodeBase>;
+
+namespace detail
+{
+    /// Fails to compile when a curve pairs series of different lengths.
+    /// Named so both series, each with its length, print.
+    template <typename DomainSeries, typename ValueSeries>
+    struct RequireCurveLengthsAgree
+    {
+        static_assert(DomainSeries::length == ValueSeries::length,
+                      "formula: this curve pairs a domain and values of different lengths; the two series appear "
+                      "in this diagnostic as the template arguments of RequireCurveLengthsAgree, each with its "
+                      "length -- a curve pairs point i of its domain with value i, so both need the method's one "
+                      "length");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// The domain series @p D paired with the value series @p V, element by
+/// element: value i is the curve's value at point i.
+///
+/// No `{}` initialiser on either series, deliberately (defect class 4): see
+/// `Corrections` (`lookup.hpp`).
+template <SeriesNode D, SeriesNode V>
+struct CurveNode: CurveNodeBase
+{
+    /// Whether either series was refused already -- then nothing more is
+    /// asked of their stand-in lengths.
+    static constexpr bool operandsRefused = detail::refused_already<D>() || detail::refused_already<V>();
+
+    static_assert(std::conditional_t<!operandsRefused, detail::RequireCurveLengthsAgree<D, V>, std::true_type>::value);
+
+    /// The points, which must strictly ascend.
+    D domainSeries;
+    /// The value at each point.
+    V valueSeries;
+
+    /// How many points the curve has.
+    static constexpr std::size_t length = D::length;
+    /// The dimension of its points.
+    static constexpr Dimension domainDimension = D::dimension;
+    /// The dimension of its values: what an interpolation along it produces.
+    static constexpr Dimension dimension = V::dimension;
+    /// Whether this curve was refused, or holds a refused series.
+    static constexpr bool refused = operandsRefused || D::length != V::length;
+};
+
+/// Pairs @p domainSeries with @p valueSeries: `curve(domain<unit::Millimetre,
+/// Screens>(), passing)`.
+template <SeriesNode D, SeriesNode V>
+[[nodiscard]] constexpr CurveNode<D, V> curve(D domainSeries, V valueSeries) noexcept
+{
+    return CurveNode<D, V> { {}, domainSeries, valueSeries };
+}
+
+/// The direction a spliced curve's values must run in. **Required**, with no
+/// default: which way a curve runs is the method's, and a splice that assumed
+/// one would pass a curve running the other way silently.
+enum class Monotone : std::uint8_t
+{
+    /// Each value at least the one before it.
+    NonDecreasing,
+    /// Each value at most the one before it.
+    NonIncreasing,
+};
+
+/// The direction in words, as a rendering and a trace state it.
+[[nodiscard]] constexpr std::string_view describe(Monotone direction) noexcept
+{
+    switch (direction)
+    {
+        case Monotone::NonDecreasing:
+            return "non-decreasing";
+        case Monotone::NonIncreasing:
+            return "non-increasing";
+    }
+    return "unknown direction";
+}
+
+namespace detail
+{
+    /// Fails to compile when two curves whose points measure different
+    /// dimensions are spliced. Named so both curves print.
+    template <typename A, typename B>
+    struct RequireSpliceDomainsAgree
+    {
+        static_assert(A::domainDimension == B::domainDimension,
+                      "formula: the two curves spliced here have domains of different dimensions; the curves "
+                      "appear in this diagnostic as the template arguments of RequireSpliceDomainsAgree -- a "
+                      "splice sorts the points of both curves into one domain, so they must measure one "
+                      "quantity");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when two curves whose values measure different
+    /// dimensions are spliced. Named so both curves print.
+    template <typename A, typename B>
+    struct RequireSpliceValuesAgree
+    {
+        static_assert(A::dimension == B::dimension,
+                      "formula: the two curves spliced here have values of different dimensions; the curves "
+                      "appear in this diagnostic as the template arguments of RequireSpliceValuesAgree -- a "
+                      "splice rescales nothing, so put one basis onto the other with elementwise arithmetic "
+                      "before splicing");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// Two curves spliced into one: the sorted union of their points, values
+/// running as @p M says.
+///
+/// No `{}` initialiser on either curve, deliberately (defect class 4).
+template <Monotone M, CurveExpression A, CurveExpression B>
+struct SpliceNode: CurveNodeBase
+{
+    /// Whether either curve was refused already.
+    static constexpr bool operandsRefused = detail::refused_already<A>() || detail::refused_already<B>();
+
+    static_assert(std::conditional_t<!operandsRefused, detail::RequireSpliceDomainsAgree<A, B>, std::true_type>::value);
+    static_assert(std::conditional_t<!operandsRefused, detail::RequireSpliceValuesAgree<A, B>, std::true_type>::value);
+
+    /// The curve written first.
+    A first;
+    /// The curve written second. Which is which changes nothing.
+    B second;
+
+    /// The direction the spliced values must run in.
+    static constexpr Monotone monotone = M;
+    /// Every point of both curves.
+    static constexpr std::size_t length = A::length + B::length;
+    /// The dimension of the points.
+    static constexpr Dimension domainDimension = A::domainDimension;
+    /// The dimension of the values.
+    static constexpr Dimension dimension = A::dimension;
+    /// Whether this splice was refused, or holds a refused curve.
+    static constexpr bool refused =
+        operandsRefused || !(A::domainDimension == B::domainDimension) || !(A::dimension == B::dimension);
+};
+
+/// Splices @p firstCurve and @p secondCurve into one curve whose values run as
+/// @p M says: `splice<Monotone::NonDecreasing>(coarse, fine)`. `M` is never
+/// deduced and has no default.
+template <Monotone M, CurveExpression A, CurveExpression B>
+[[nodiscard]] constexpr SpliceNode<M, A, B> splice(A firstCurve, B secondCurve) noexcept
+{
+    return SpliceNode<M, A, B> { {}, firstCurve, secondCurve };
+}
+
+namespace detail
+{
+    /// Fails to compile when a curve is read at a point that does not measure
+    /// its domain's dimension. Named so the curve and the point print.
+    template <typename C, typename At>
+    struct RequireInterpolationPointMatches
+    {
+        static_assert(C::domainDimension == At::dimension,
+                      "formula: this curve is read at a point that does not measure the dimension of its domain; "
+                      "the curve and the point appear in this diagnostic as the template arguments of "
+                      "RequireInterpolationPointMatches");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// The value of the curve @p C at the point @p At evaluates to: one value, and
+/// so a `Node`.
+///
+/// No `{}` initialiser on either member, deliberately (defect class 4).
+template <CurveExpression C, Node At>
+struct InterpolateAlongNode: NodeBase
+{
+    static_assert(std::conditional_t<!detail::refused_already<C>(),
+                                     detail::RequireInterpolationPointMatches<C, At>,
+                                     std::true_type>::value);
+
+    /// The curve read.
+    C along;
+    /// Where it is read.
+    At at;
+
+    /// The dimension of the curve's values.
+    static constexpr Dimension dimension = C::dimension;
+    /// Whether this interpolation was refused, or reads a refused curve.
+    static constexpr bool refused = detail::refused_already<C>() || !(C::domainDimension == At::dimension);
+};
+
+/// The value of @p curveExpression at @p at: `interpolate_at(curve(screens,
+/// passing), constant<unit::Millimetre>(rat(42, 10)))`.
+template <CurveExpression C, Node At>
+[[nodiscard]] constexpr InterpolateAlongNode<C, At> interpolate_at(C curveExpression, At at) noexcept
+{
+    return InterpolateAlongNode<C, At> { {}, curveExpression, at };
+}
+
+/// An evaluated curve in the coherent SI units of its dimensions: each point
+/// and each value, either absent when it was never measured.
+template <typename Rep, std::size_t N>
+struct CurveValue
+{
+    /// The points, in order. No `{}` initialiser, and default-initialised by
+    /// the evaluators, for `SeriesValue`'s reason (cl C4459).
+    std::array<std::optional<Rep>, N> domain;
+    /// The value at each point.
+    std::array<std::optional<Rep>, N> values;
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(CurveValue const&) const noexcept = default;
+};
+
+/// The result of evaluating a curve: its points and values, or the one failure
+/// that stopped it -- a `SeriesFailure`, whose position is in the curve the
+/// failing step produces.
+template <typename Rep, std::size_t N>
+using EvaluatedCurve = std::expected<CurveValue<Rep, N>, SeriesFailure>;
+
+namespace detail
+{
+    /// Whether @p Sink wants to hear about the curve node @p C: true when it
+    /// defines **both** `curve_entered(node)` and `curve_produced(node,
+    /// result)` -- `HearsSeries`' rule, for its reason.
+    template <typename Sink, typename C, typename Rep>
+    concept HearsCurve = requires(Sink sink, C const& node, EvaluatedCurve<Rep, C::length> const& evaluated) {
+        sink.curve_entered(node);
+        sink.curve_produced(node, evaluated);
+    };
+
+    /// Evaluates the curve node @p node with @p sink: `dispatch_series`'
+    /// counterpart for a `CurveExpression`, finding each kind's
+    /// `checked_evaluate_curve_si` by ADL.
+    template <typename Rep, typename C, typename Env, typename Sink>
+    [[nodiscard]] constexpr EvaluatedCurve<Rep, std::remove_cvref_t<C>::length> dispatch_curve(C const& node,
+                                                                                               Env const& environment,
+                                                                                               Sink sink) noexcept
+    {
+        return checked_evaluate_curve_si<Rep>(node, environment, sink);
+    }
+
+    /// The refusal for any `Rep` but `Rational`, in one place.
+    template <typename Rep>
+    constexpr void require_exact_curve() noexcept
+    {
+        static_assert(std::is_same_v<Rep, Rational>,
+                      "formula: a curve can only be evaluated with Rep = Rational -- ordering its points, "
+                      "locating a point between two and judging a splice's direction all compare, and a "
+                      "comparison a few units in the last place off picks the wrong answer silently; evaluate "
+                      "this formula with Rep = Rational instead (checked_evaluate<Result> always does)");
+    }
+
+    /// Whether every element of @p elements is present.
+    template <std::size_t N>
+    [[nodiscard]] constexpr bool all_present(std::array<std::optional<Rational>, N> const& elements) noexcept
+    {
+        for (std::optional<Rational> const& candidate: elements)
+            if (!candidate.has_value())
+                return false;
+        return true;
+    }
+
+    /// The first position whose point is not above the one before it, or
+    /// nothing when every point strictly ascends. Asked only of points that
+    /// are all present.
+    template <std::size_t N>
+    [[nodiscard]] constexpr std::optional<std::size_t> first_not_ascending(
+        std::array<std::optional<Rational>, N> const& points) noexcept
+    {
+        for (std::size_t at = 1; at < N; ++at)
+            if (!(*points[at - 1] < *points[at]))
+                return at;
+        return std::nullopt;
+    }
+
+    /// The value along a curve at @p atKey, and where it sat: the curve's points
+    /// @p points and values @p values, every one present and the points
+    /// strictly ascending, in the coherent SI unit. The one scan is
+    /// `locate_key`, and the one formula `interpolate_between`, both an
+    /// interpolating lookup's (`lookup.hpp`); a miss is `DomainError`.
+    ///
+    /// Spans, so that the evaluator's arrays and a trace step's vectors are
+    /// read by this one function.
+    [[nodiscard]] constexpr std::expected<std::pair<Rational, KeyPosition>, ArithmeticError> interpolate_along(
+        std::span<std::optional<Rational> const> points, std::span<std::optional<Rational> const> curveValues, Rational atKey) noexcept
+    {
+        auto const pointAt = [&](std::size_t at) -> std::expected<Rational, ArithmeticError> {
+            if (!points[at].has_value())
+                return std::unexpected { ArithmeticError::DomainError };
+            return *points[at];
+        };
+        std::expected<KeyPosition, ArithmeticError> const located = locate_key(points.size(), pointAt, atKey);
+        if (!located.has_value())
+            return std::unexpected { located.error() };
+        if (!curveValues[located->low].has_value() || !curveValues[located->high].has_value())
+            return std::unexpected { ArithmeticError::DomainError };
+        if (located->low == located->high)
+            return std::pair<Rational, KeyPosition> { *curveValues[located->low], *located };
+        std::expected<Rational, ArithmeticError> const answered = interpolate_between(
+            *points[located->low], *curveValues[located->low], *points[located->high], *curveValues[located->high], atKey);
+        if (!answered.has_value())
+            return std::unexpected { answered.error() };
+        return std::pair<Rational, KeyPosition> { *answered, *located };
+    }
+} // namespace detail
+
+/// Reads each point of a declared domain into the coherent SI unit of its
+/// dimension. Every point is present; a conversion that overflows fails the
+/// series at that point. Any `Rep`: a domain alone compares nothing.
+template <typename Rep = Rational, Unit U, BreakpointTable Points, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedSeries<Rep, Points.size()> checked_evaluate_series_si(DomainNode<U, Points> const& node,
+                                                                                       Env const&,
+                                                                                       Sink sink = {}) noexcept
+{
+    constexpr std::size_t domainLength = Points.size();
+    detail::tell_series_entered<Rep>(sink, node);
+    EvaluatedSeries<Rep, domainLength> const evaluated = [&]() -> EvaluatedSeries<Rep, domainLength> {
+        SeriesValue<Rep, domainLength> inCoherentUnit;
+        for (std::size_t at = 0; at < domainLength; ++at)
+        {
+            // Unreachable for a table that passed its validation.
+            std::expected<Rational, ArithmeticError> const declared =
+                Rational::make(Points[at].numerator, Points[at].denominator);
+            if (!declared.has_value())
+                return std::unexpected { SeriesFailure { ArithmeticError::DomainError, at } };
+            Evaluated<Rep> const pointInSi = detail::in_si<Rep>(*declared, U);
+            if (!pointInSi.has_value())
+                return std::unexpected { SeriesFailure { pointInSi.error(), at } };
+            inCoherentUnit.elements[at] = **pointInSi;
+        }
+        return inCoherentUnit;
+    }();
+    detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
+}
+
+/// Pairs the evaluated domain and values: the domain first, then the values,
+/// each once; a failure of either is relayed as it is. When every point is
+/// present they must strictly ascend, or the curve fails at the first point
+/// that is not above the one before it. An absent element stays absent here,
+/// and makes whatever reads the curve absent.
+template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedCurve<Rep, CurveNode<D, V>::length> checked_evaluate_curve_si(CurveNode<D, V> const& node,
+                                                                                              Env const& environment,
+                                                                                              Sink sink = {}) noexcept
+{
+    constexpr std::size_t curveLength = CurveNode<D, V>::length;
+    if constexpr (!std::is_same_v<Rep, Rational>)
+    {
+        detail::require_exact_curve<Rep>();
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
+    }
+    // Refused already: the two lengths are not one curve to pair.
+    else if constexpr (CurveNode<D, V>::refused)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
+    else
+    {
+        if constexpr (detail::HearsCurve<Sink, CurveNode<D, V>, Rep>)
+            sink.curve_entered(node);
+        EvaluatedCurve<Rep, curveLength> const evaluated = [&]() -> EvaluatedCurve<Rep, curveLength> {
+            EvaluatedSeries<Rep, curveLength> const points = detail::dispatch_series<Rep>(node.domainSeries, environment, sink);
+            if (!points.has_value())
+                return std::unexpected { points.error() };
+            EvaluatedSeries<Rep, curveLength> const pairedValues = detail::dispatch_series<Rep>(node.valueSeries, environment, sink);
+            if (!pairedValues.has_value())
+                return std::unexpected { pairedValues.error() };
+
+            CurveValue<Rep, curveLength> paired;
+            paired.domain = points->elements;
+            paired.values = pairedValues->elements;
+            if (detail::all_present(paired.domain))
+                if (std::optional<std::size_t> const disorder = detail::first_not_ascending(paired.domain))
+                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, *disorder } };
+            return paired;
+        }();
+        if constexpr (detail::HearsCurve<Sink, CurveNode<D, V>, Rep>)
+            sink.curve_produced(node, evaluated);
+        return evaluated;
+    }
+}
+
+/// Splices the two curves: the first, then the second, each once; a failure of
+/// either is relayed as it is. An absent element in either makes the whole
+/// splice absent. Otherwise every point of both is sorted by domain -- the
+/// order the two were written in plays no part -- and then, from the second
+/// point on, a point equal to the one before it fails the splice there, where
+/// the curves meet, and so does a value running against `M`.
+template <typename Rep = Rational, Monotone M, CurveExpression A, CurveExpression B, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedCurve<Rep, SpliceNode<M, A, B>::length> checked_evaluate_curve_si(
+    SpliceNode<M, A, B> const& node, Env const& environment, Sink sink = {}) noexcept
+{
+    constexpr std::size_t splicedLength = SpliceNode<M, A, B>::length;
+    if constexpr (!std::is_same_v<Rep, Rational>)
+    {
+        detail::require_exact_curve<Rep>();
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
+    }
+    else if constexpr (SpliceNode<M, A, B>::refused)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
+    else
+    {
+        if constexpr (detail::HearsCurve<Sink, SpliceNode<M, A, B>, Rep>)
+            sink.curve_entered(node);
+        EvaluatedCurve<Rep, splicedLength> const evaluated = [&]() -> EvaluatedCurve<Rep, splicedLength> {
+            EvaluatedCurve<Rep, A::length> const firstCurve = detail::dispatch_curve<Rep>(node.first, environment, sink);
+            if (!firstCurve.has_value())
+                return std::unexpected { firstCurve.error() };
+            EvaluatedCurve<Rep, B::length> const secondCurve = detail::dispatch_curve<Rep>(node.second, environment, sink);
+            if (!secondCurve.has_value())
+                return std::unexpected { secondCurve.error() };
+
+            // Default-initialised: every element absent.
+            CurveValue<Rep, splicedLength> spliced;
+            if (!detail::all_present(firstCurve->domain) || !detail::all_present(firstCurve->values)
+                || !detail::all_present(secondCurve->domain) || !detail::all_present(secondCurve->values))
+                return spliced;
+
+            for (std::size_t at = 0; at < A::length; ++at)
+            {
+                spliced.domain[at] = firstCurve->domain[at];
+                spliced.values[at] = firstCurve->values[at];
+            }
+            for (std::size_t at = 0; at < B::length; ++at)
+            {
+                spliced.domain[A::length + at] = secondCurve->domain[at];
+                spliced.values[A::length + at] = secondCurve->values[at];
+            }
+            // An insertion sort by domain: a method's curves are a few points
+            // each, and nothing here may allocate.
+            for (std::size_t placed = 1; placed < splicedLength; ++placed)
+                for (std::size_t at = placed; at > 0 && *spliced.domain[at] < *spliced.domain[at - 1]; --at)
+                {
+                    std::swap(spliced.domain[at], spliced.domain[at - 1]);
+                    std::swap(spliced.values[at], spliced.values[at - 1]);
+                }
+
+            for (std::size_t at = 1; at < splicedLength; ++at)
+            {
+                bool const meets = *spliced.domain[at] == *spliced.domain[at - 1];
+                bool const against = M == Monotone::NonDecreasing ? *spliced.values[at] < *spliced.values[at - 1]
+                                                                  : *spliced.values[at - 1] < *spliced.values[at];
+                if (meets || against)
+                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, at } };
+            }
+            return spliced;
+        }();
+        if constexpr (detail::HearsCurve<Sink, SpliceNode<M, A, B>, Rep>)
+            sink.curve_produced(node, evaluated);
+        return evaluated;
+    }
+}
+
+/// The curve's value at the point: the curve first, then the point, each
+/// once. A failed curve relays its error -- its position cannot be carried by
+/// one value, and the trace names it -- and a failed point relays its own.
+/// An absent point, or an absent element anywhere in the curve, makes the
+/// answer absent (S7). Off the ends of the domain is a `DomainError` miss;
+/// an interpolation whose exact answer is not representable is `Overflow`.
+template <typename Rep = Rational, CurveExpression C, Node At, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(InterpolateAlongNode<C, At> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    if constexpr (!std::is_same_v<Rep, Rational>)
+    {
+        detail::require_exact_curve<Rep>();
+        return std::unexpected { ArithmeticError::DomainError };
+    }
+    else if constexpr (InterpolateAlongNode<C, At>::refused)
+        return std::unexpected { ArithmeticError::DomainError };
+    else
+    {
+        sink.entered(node);
+        Evaluated<Rep> const evaluated = [&]() -> Evaluated<Rep> {
+            EvaluatedCurve<Rep, C::length> const alongCurve = detail::dispatch_curve<Rep>(node.along, environment, sink);
+            Evaluated<Rep> const point = detail::dispatch<Rep>(node.at, environment, sink);
+            if (!alongCurve.has_value())
+                return std::unexpected { alongCurve.error().error };
+            if (!point.has_value())
+                return std::unexpected { point.error() };
+            if (!point->has_value() || !detail::all_present(alongCurve->domain) || !detail::all_present(alongCurve->values))
+                return detail::nothing<Rep>();
+            std::expected<std::pair<Rational, detail::KeyPosition>, ArithmeticError> const answered =
+                detail::interpolate_along(alongCurve->domain, alongCurve->values, **point);
+            if (!answered.has_value())
+                return std::unexpected { answered.error() };
+            return Evaluated<Rep> { answered->first };
+        }();
+        sink.produced(node, evaluated);
+        return evaluated;
+    }
+}
+
+/// The result of evaluating a curve for the quantities @p DomainResult and
+/// @p ValueResult: `N` points in `DomainResult`'s declared unit and `N` values
+/// in `ValueResult`'s.
+template <Described DomainResult, Described ValueResult, std::size_t N>
+class CurveOutcome
+{
+  public:
+    /// A curve's points and values.
+    [[nodiscard]] static constexpr CurveOutcome value(std::array<Measured<DomainResult>, N> points,
+                                                      std::array<Measured<ValueResult>, N> pointValues) noexcept
+    {
+        return CurveOutcome { points, pointValues };
+    }
+
+    /// Every point, in order.
+    [[nodiscard]] constexpr std::array<Measured<DomainResult>, N> domain() const noexcept
+    {
+        return _domain;
+    }
+
+    /// The value at each point.
+    [[nodiscard]] constexpr std::array<Measured<ValueResult>, N> values() const noexcept
+    {
+        return _values;
+    }
+
+    /// How many points there are -- `N`, present or not.
+    [[nodiscard]] static constexpr std::size_t size() noexcept
+    {
+        return N;
+    }
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(CurveOutcome const&) const noexcept = default;
+
+  private:
+    constexpr CurveOutcome(std::array<Measured<DomainResult>, N> points,
+                           std::array<Measured<ValueResult>, N> pointValues) noexcept:
+        _domain { points },
+        _values { pointValues }
+    {
+    }
+
+    std::array<Measured<DomainResult>, N> _domain;
+    std::array<Measured<ValueResult>, N> _values;
+};
+
+namespace detail
+{
+    /// Each present element of @p elements, from the coherent SI unit of
+    /// @p dimension into @p Q's declared unit; nothing when a conversion
+    /// fails, with the element it failed at.
+    template <Described Q, std::size_t N>
+    [[nodiscard]] constexpr std::expected<std::array<Measured<Q>, N>, SeriesFailure> in_declared_unit(
+        std::array<std::optional<Rational>, N> const& elements, Dimension dimension) noexcept
+    {
+        std::array<Measured<Q>, N> inQuantityUnit;
+        for (std::size_t at = 0; at < N; ++at)
+        {
+            if (!elements[at].has_value())
+                continue;
+            std::expected<Rational, ArithmeticError> const inUnit = checked_convert(*elements[at], coherent(dimension), Describe<Q>::unit);
+            if (!inUnit.has_value())
+                return std::unexpected { SeriesFailure { inUnit.error(), at } };
+            inQuantityUnit[at] = Measured<Q> { *inUnit };
+        }
+        return inQuantityUnit;
+    }
+} // namespace detail
+
+/// Evaluates the curve @p expression, and returns its points in
+/// @p DomainResult's declared unit and its values in @p ValueResult's.
+///
+/// Neither quantity is deduced, for `checked_evaluate`'s reason, and each must
+/// measure its half's dimension. A curve cannot be entered by hand -- it is
+/// always computed -- so there is no override to consult. There is no throwing
+/// twin, for `checked_evaluate_series`' reason.
+///
+/// A conversion into either declared unit that overflows fails with the
+/// position it failed at. The points are converted before the values, but
+/// the `SeriesFailure` does not say which of the two failed: a point and its
+/// value share one position.
+template <Described DomainResult, Described ValueResult, CurveExpression C, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<CurveOutcome<DomainResult, ValueResult, C::length>, SeriesFailure> checked_evaluate_curve(
+    C const& expression, Env const& environment, Sink sink = {}) noexcept
+{
+    constexpr std::size_t curveLength = C::length;
+    constexpr bool domainMatches = Describe<DomainResult>::dimension == C::domainDimension;
+    constexpr bool valuesMatch = Describe<ValueResult>::dimension == C::dimension;
+    static_assert(domainMatches,
+                  "formula: this domain quantity does not measure the dimension of the curve's points; the quantity "
+                  "and the curve appear in this diagnostic as the template arguments of checked_evaluate_curve");
+    static_assert(valuesMatch,
+                  "formula: this value quantity does not measure the dimension of the curve's values; the quantity "
+                  "and the curve appear in this diagnostic as the template arguments of checked_evaluate_curve");
+
+    if constexpr (!domainMatches || !valuesMatch)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
+    else
+    {
+        EvaluatedCurve<Rational, curveLength> const computed = detail::dispatch_curve<Rational>(expression, environment, sink);
+        if (!computed.has_value())
+            return std::unexpected { computed.error() };
+        auto const points = detail::in_declared_unit<DomainResult>(computed->domain, C::domainDimension);
+        if (!points.has_value())
+            return std::unexpected { points.error() };
+        auto const valuesInUnit = detail::in_declared_unit<ValueResult>(computed->values, C::dimension);
+        if (!valuesInUnit.has_value())
+            return std::unexpected { valuesInUnit.error() };
+        return CurveOutcome<DomainResult, ValueResult, curveLength>::value(*points, *valuesInUnit);
+    }
+}
+
+} // namespace formula
