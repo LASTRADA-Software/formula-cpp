@@ -266,6 +266,22 @@ formula_add_negative_test(environment_missing_quantity
 formula_add_negative_test(evaluate_result_dimension_mismatch
     "does not measure the dimension this expression computes")
 
+# Series (`series.hpp`, `environment.hpp`). Each refusal is gated so that one
+# mistake draws one message, and each REJECT names the message that would be
+# the second, or the false, one.
+#
+# A series read as a single value: the environment does hold the quantity, so
+# "provides no value" would be false.
+formula_add_negative_test(environment_series_read_as_single
+    "this environment holds a series for this quantity, not a single value"
+    REJECT "provides no value for this quantity")
+
+# A braced list of three for a series of five, which std::array would pad
+# with absent elements.
+formula_add_negative_test(measured_series_short
+    "this series was given a different number of elements than its length")
+
+
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
 
