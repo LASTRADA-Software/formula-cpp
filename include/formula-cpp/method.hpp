@@ -1535,10 +1535,14 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         using Selection = detail::SelectVariant<Tag, std::remove_cvref_t<decltype(m.variantSet)>>;
         using Rule = std::remove_cvref_t<decltype(m.rounding)>;
 
-        auto const& selected = std::get<Selection::index>(m.variantSet.cases);
-        using Selected = std::remove_cvref_t<decltype(selected.expression)>;
-        RoundingRuleNode<Rule::unit, Rule::places, Rule::mode, Selected> const expression =
-            detail::RoundingRuleNodeAccess::applied<Rule::unit, Rule::places, Rule::mode, Selected>(selected.expression,
+        // The locals here and in `check_method` have names no consumer's
+        // global is likely to share: a local hiding a global is C4459 on cl
+        // at /W4, raised in this header but in the consumer's build -- see
+        // `method_consumer_globals_tests.cpp`.
+        auto const& selectedCase = std::get<Selection::index>(m.variantSet.cases);
+        using Selected = std::remove_cvref_t<decltype(selectedCase.expression)>;
+        RoundingRuleNode<Rule::unit, Rule::places, Rule::mode, Selected> const roundedVariant =
+            detail::RoundingRuleNodeAccess::applied<Rule::unit, Rule::places, Rule::mode, Selected>(selectedCase.expression,
                                                                                                     m.rounding);
 
         // The selection is named whether or not the sink asks for it, so that
@@ -1547,24 +1551,24 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         // tag, traced or not. The position and count are the method's as
         // published, which an overlay may differ from -- see
         // `Variants::published`.
-        constexpr std::string_view selectedTag = tag_name<Tag>();
-        VariantSelection const selection {
-            selectedTag,
+        constexpr std::string_view selectedTagName = tag_name<Tag>();
+        VariantSelection const variantSelection {
+            selectedTagName,
             m.variantSet.published.position(Selection::index),
             m.variantSet.published.count(),
         };
-        if constexpr (requires(Evaluated<Rep> const& result) {
-                          sink.variant_entered(selection);
-                          sink.variant_produced(selection, result);
+        if constexpr (requires(Evaluated<Rep> const& variantResult) {
+                          sink.variant_entered(variantSelection);
+                          sink.variant_produced(variantSelection, variantResult);
                       })
         {
-            sink.variant_entered(selection);
-            Evaluated<Rep> const result = detail::dispatch<Rep>(expression, environment, sink);
-            sink.variant_produced(selection, result);
-            return result;
+            sink.variant_entered(variantSelection);
+            Evaluated<Rep> const variantResult = detail::dispatch<Rep>(roundedVariant, environment, sink);
+            sink.variant_produced(variantSelection, variantResult);
+            return variantResult;
         }
         else
-            return detail::dispatch<Rep>(expression, environment, sink);
+            return detail::dispatch<Rep>(roundedVariant, environment, sink);
     }
 }
 
@@ -1604,9 +1608,9 @@ template <typename Rep = Rational, typename M, typename Env, typename Sink = Nul
                        })
     {
         sink.acceptance_entered(m.constraintOrigin);
-        auto const outcomes = check_all<Rep>(m.constraintSet, environment, sink);
+        auto const acceptanceOutcomes = check_all<Rep>(m.constraintSet, environment, sink);
         sink.acceptance_produced(m.constraintOrigin);
-        return outcomes;
+        return acceptanceOutcomes;
     }
     else
         return check_all<Rep>(m.constraintSet, environment, sink);

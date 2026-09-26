@@ -134,14 +134,14 @@ namespace detail
     {
         if (step.operands.empty())
             return "acceptance(none)";
-        std::string text = "acceptance(";
-        for (std::size_t index = 0; index < step.operands.size(); ++index)
+        std::string acceptanceText = "acceptance(";
+        for (std::size_t operandPosition = 0; operandPosition < step.operands.size(); ++operandPosition)
         {
-            if (index != 0)
-                text += ", ";
-            text += operand_reference(step.operands[index]);
+            if (operandPosition != 0)
+                acceptanceText += ", ";
+            acceptanceText += operand_reference(step.operands[operandPosition]);
         }
-        return text + ")";
+        return acceptanceText + ")";
     }
 
     /// The token a comparison is written with in a derivation: `>`, `<=`.

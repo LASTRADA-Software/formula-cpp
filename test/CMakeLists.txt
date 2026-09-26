@@ -57,6 +57,7 @@ add_executable(formula-cpp-tests
     enumerator_tests.cpp
     tag_tests.cpp
     method_tests.cpp
+    method_consumer_globals_tests.cpp
     method_lookup_tests.cpp
     overlay_tests.cpp
     vocabulary_tests.cpp

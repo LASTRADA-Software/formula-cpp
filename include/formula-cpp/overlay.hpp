@@ -2531,14 +2531,14 @@ template <typename... Ops, typename Vs, typename Rounding, typename Constraints>
     }
     else
     {
-        auto const result = detail::apply_from<0>(o.operations, m);
-        static_assert(detail::RequireOverridesRead<std::remove_cv_t<decltype(result)>,
+        auto const overlaidMethod = detail::apply_from<0>(o.operations, m);
+        static_assert(detail::RequireOverridesRead<std::remove_cv_t<decltype(overlaidMethod)>,
                                                    Method<Vs, Rounding, Constraints>,
                                                    Ops...>::value);
-        static_assert(detail::RequireSubstitutionsHold<std::remove_cv_t<decltype(result)>,
+        static_assert(detail::RequireSubstitutionsHold<std::remove_cv_t<decltype(overlaidMethod)>,
                                                        Method<Vs, Rounding, Constraints>,
                                                        Ops...>::value);
-        return result;
+        return overlaidMethod;
     }
 }
 

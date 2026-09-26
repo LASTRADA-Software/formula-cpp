@@ -1498,29 +1498,29 @@ class RecordingSink
     /// any method is claimed by nothing here, and keeps no provenance.
     void acceptance_produced(ConstraintOrigin const& origin)
     {
-        std::size_t const mark = _trace->marks.back();
+        std::size_t const acceptanceMark = _trace->marks.back();
         _trace->marks.pop_back();
 
-        Step<Rep> step {};
-        step.kind = StepKind::AcceptanceChecked;
-        step.constraintProvenance = origin.provenance();
-        step.citation = origin.source();
+        Step<Rep> acceptanceStep {};
+        acceptanceStep.kind = StepKind::AcceptanceChecked;
+        acceptanceStep.constraintProvenance = origin.provenance();
+        acceptanceStep.citation = origin.source();
 
-        // Everything unclaimed from `mark` onwards belongs to this method's
+        // Everything unclaimed from `acceptanceMark` onwards belongs to this method's
         // constraints -- see `produced` above for why this is a `while`.
-        auto first = _trace->unclaimed.begin();
-        while (first != _trace->unclaimed.end() && *first < mark)
-            ++first;
-        step.operands.assign(first, _trace->unclaimed.end());
-        _trace->unclaimed.erase(first, _trace->unclaimed.end());
+        auto firstVerdict = _trace->unclaimed.begin();
+        while (firstVerdict != _trace->unclaimed.end() && *firstVerdict < acceptanceMark)
+            ++firstVerdict;
+        acceptanceStep.operands.assign(firstVerdict, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstVerdict, _trace->unclaimed.end());
 
-        for (std::size_t const verdict: step.operands)
+        for (std::size_t const verdictStep: acceptanceStep.operands)
         {
-            _trace->steps[verdict].constraintProvenance = origin.provenance();
-            _trace->steps[verdict].citation = origin.source();
+            _trace->steps[verdictStep].constraintProvenance = origin.provenance();
+            _trace->steps[verdictStep].citation = origin.source();
         }
 
-        _trace->steps.push_back(std::move(step));
+        _trace->steps.push_back(std::move(acceptanceStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
