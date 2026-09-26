@@ -328,17 +328,17 @@ namespace detail
     template <Vocabulary V, Described Q>
     void collect(Walk<V>& walk, OverriddenConstantNode<Q> const& node)
     {
-        std::size_t row = 0;
-        bool const added = add_row<Q>(walk, row);
-        SymbolEntry& entry = walk.documentation.symbols[row];
-        if (entry.fixedValue.has_value())
+        std::size_t symbolRow = 0;
+        bool const added = add_row<Q>(walk, symbolRow);
+        SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
+        if (symbolEntry.fixedValue.has_value())
             return;
         // An existing row that no overlay marked was contributed by a plain
         // read.
-        if (!added && !is_substituted(entry))
-            entry.alsoReadAsInput = true;
-        entry.fixedValue = node.value();
-        entry.fixedBy = node.source();
+        if (!added && !is_substituted(symbolEntry))
+            symbolEntry.alsoReadAsInput = true;
+        symbolEntry.fixedValue = node.value();
+        symbolEntry.fixedBy = node.source();
     }
 
     /// A derived quantity contributes its quantity's row, marked as derived:
@@ -352,16 +352,16 @@ namespace detail
     template <Vocabulary V, Described Q, Node Expr>
     void collect(Walk<V>& walk, DerivedQuantityNode<Q, Expr> const& node)
     {
-        std::size_t row = 0;
-        bool const added = add_row<Q>(walk, row);
+        std::size_t symbolRow = 0;
+        bool const added = add_row<Q>(walk, symbolRow);
         {
-            SymbolEntry& entry = walk.documentation.symbols[row];
-            if (!entry.derivedAs.has_value())
+            SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
+            if (!symbolEntry.derivedAs.has_value())
             {
-                if (!added && !is_substituted(entry))
-                    entry.alsoReadAsInput = true;
-                entry.derivedAs = render_in(walk.dialect, node.expression(), walk.vocabulary);
-                entry.derivedBy = node.source();
+                if (!added && !is_substituted(symbolEntry))
+                    symbolEntry.alsoReadAsInput = true;
+                symbolEntry.derivedAs = render_in(walk.dialect, node.expression(), walk.vocabulary);
+                symbolEntry.derivedBy = node.source();
             }
         }
         // After the entry reference is done with: walking may add rows, and

@@ -144,8 +144,8 @@ class Renames
     }
 
   private:
-    constexpr explicit Renames(std::string_view symbol) noexcept:
-        _symbol { symbol }
+    constexpr explicit Renames(std::string_view spelling) noexcept:
+        _symbol { spelling }
     {
     }
 

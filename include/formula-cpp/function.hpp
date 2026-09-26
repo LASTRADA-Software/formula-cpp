@@ -140,7 +140,7 @@ struct RepFunctions<Rational>
         return checked_pow(base, exponent);
     }
 
-    /// The `degree`-th root of `value`, exactly. Fails with `Inexact` if that
+    /// The `degree`-th root of `radicand`, exactly. Fails with `Inexact` if that
     /// root is not itself a rational number, with `DomainError` for a degree
     /// below 1 or an even root of a negative value, and with `Overflow` for the
     /// one numerator whose magnitude `Rational::Int` cannot hold.
@@ -169,7 +169,7 @@ struct RepFunctions<double>
         return std::pow(base, static_cast<double>(exponent));
     }
 
-    /// The `degree`-th root of `value`. An even-degree root of a negative value
+    /// The `degree`-th root of `radicand`. An even-degree root of a negative value
     /// has no real result and is reported as `ArithmeticError::DomainError`; an
     /// odd-degree root of a negative value returns the negative real root.
     [[nodiscard]] static std::expected<double, ArithmeticError> root(double radicand, int degree) noexcept
@@ -249,11 +249,11 @@ template <typename Rep = Rational, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(PiNode const& node, Env const&, Sink sink = {}) noexcept
 {
     sink.entered(node);
-    std::expected<Rep, ArithmeticError> const value = RepFunctions<Rep>::pi_value();
-    Evaluated<Rep> const result =
-        value.has_value() ? detail::present<Rep>(*value) : Evaluated<Rep> { std::unexpected { value.error() } };
-    sink.produced(node, result);
-    return result;
+    std::expected<Rep, ArithmeticError> const piValue = RepFunctions<Rep>::pi_value();
+    Evaluated<Rep> const evaluated =
+        piValue.has_value() ? detail::present<Rep>(*piValue) : Evaluated<Rep> { std::unexpected { piValue.error() } };
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 } // namespace formula

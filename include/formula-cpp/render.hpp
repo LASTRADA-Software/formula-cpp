@@ -212,9 +212,9 @@ namespace detail
     /// a table states a number in a unit on every one of its rows, and a row
     /// that spelled a number differently from a constant holding that same
     /// number would be two surfaces disagreeing inside one rendered formula.
-    [[nodiscard]] inline std::string number_with_unit(std::string const& numberText, std::string_view symbol)
+    [[nodiscard]] inline std::string number_with_unit(std::string const& numberText, std::string_view unitSymbol)
     {
-        return symbol.empty() ? numberText : numberText + " " + std::string { symbol };
+        return unitSymbol.empty() ? numberText : numberText + " " + std::string { unitSymbol };
     }
 
     /// A bound a table declared as a numerator/denominator pair -- a band's
@@ -660,11 +660,11 @@ namespace detail
 template <Dialect D, Described Q, Vocabulary V>
 [[nodiscard]] std::string render_node(VarNode<Q> const&, V const& vocabulary)
 {
-    std::string symbol { symbol_of<Q>(vocabulary) };
+    std::string quantitySymbol { symbol_of<Q>(vocabulary) };
     if constexpr (D == Dialect::Markdown)
-        return "`" + symbol + "`";
+        return "`" + quantitySymbol + "`";
     else
-        return symbol;
+        return quantitySymbol;
 }
 
 /// A constant renders as its number, followed by its unit's symbol when it has one.
@@ -1028,7 +1028,7 @@ template <Dialect D, Comparison Op, Node Left, Node Right, Vocabulary V>
     std::string const leftText = detail::render_operand<D>(node.lhs, operandContext, vocabulary);
     std::string const rightText = detail::render_operand<D>(node.rhs, operandContext, vocabulary);
 
-    char const* const symbol = [] {
+    char const* const comparisonToken = [] {
         if constexpr (Op == Comparison::Less)
             return "<";
         else if constexpr (Op == Comparison::LessOrEqual)
@@ -1043,7 +1043,7 @@ template <Dialect D, Comparison Op, Node Left, Node Right, Vocabulary V>
             return D == Dialect::LaTeX ? "\\neq" : "!=";
     }();
 
-    return leftText + " " + symbol + " " + rightText;
+    return leftText + " " + comparisonToken + " " + rightText;
 }
 
 /// A constraint renders as its rule alone -- `require <lhs> <comparison>

@@ -74,9 +74,9 @@ namespace detail
         static constexpr ValueSource source = ValueSource::ManuallyEntered;
         static constexpr bool isEntered = true;
 
-        [[nodiscard]] static constexpr Measured<Q> measurement(Entered<Q> entry) noexcept
+        [[nodiscard]] static constexpr Measured<Q> measurement(Entered<Q> enteredEntry) noexcept
         {
-            return entry.measurement;
+            return enteredEntry.measurement;
         }
     };
 
@@ -204,8 +204,8 @@ class Environment
         static_assert(detail::RequireProvided<Q, Environment>::value);
         if constexpr (provides<Q>)
         {
-            constexpr std::size_t index = index_of<Q>();
-            return detail::EntryTraits<std::tuple_element_t<index, std::tuple<Entries...>>>::source;
+            constexpr std::size_t entryIndex = index_of<Q>();
+            return detail::EntryTraits<std::tuple_element_t<entryIndex, std::tuple<Entries...>>>::source;
         }
         else
             return ValueSource::Derived;

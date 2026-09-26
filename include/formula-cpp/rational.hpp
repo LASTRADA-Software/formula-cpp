@@ -86,27 +86,27 @@ class Rational
     }
 
     /// @throws ArithmeticException on a zero denominator or on overflow.
-    constexpr Rational(Int numerator, Int denominator):
-        Rational { detail::or_throw(make(numerator, denominator)) }
+    constexpr Rational(Int dividend, Int divisor):
+        Rational { detail::or_throw(make(dividend, divisor)) }
     {
     }
 
     /// Canonicalising factory. The only place the class invariants are established.
-    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> make(Int numerator, Int denominator) noexcept
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> make(Int dividend, Int divisor) noexcept
     {
-        if (denominator == 0)
+        if (divisor == 0)
             return std::unexpected { ArithmeticError::DivisionByZero };
-        if (numerator == 0)
+        if (dividend == 0)
             return Rational {};
 
         // Reduce in the unsigned domain so that IntMin is an ordinary operand.
-        std::uint64_t const numeratorMagnitude = detail::magnitude(numerator);
-        std::uint64_t const denominatorMagnitude = detail::magnitude(denominator);
+        std::uint64_t const numeratorMagnitude = detail::magnitude(dividend);
+        std::uint64_t const denominatorMagnitude = detail::magnitude(divisor);
         std::uint64_t const common = detail::gcd(numeratorMagnitude, denominatorMagnitude);
         std::uint64_t const reducedNumerator = numeratorMagnitude / common;
         std::uint64_t const reducedDenominator = denominatorMagnitude / common;
 
-        bool const negative = (numerator < 0) != (denominator < 0);
+        bool const negative = (dividend < 0) != (divisor < 0);
 
         constexpr std::uint64_t PositiveLimit = static_cast<std::uint64_t>(detail::IntMax);
         std::uint64_t const numeratorLimit = negative ? PositiveLimit + 1U : PositiveLimit;
@@ -133,10 +133,10 @@ class Rational
                 return std::unexpected { ArithmeticError::Overflow };
             return Rational { *scaledMantissa };
         }
-        std::optional<Int> const denominator = detail::pow10(-exponent);
-        if (!denominator)
+        std::optional<Int> const powerOfTen = detail::pow10(-exponent);
+        if (!powerOfTen)
             return std::unexpected { ArithmeticError::Overflow };
-        return make(mantissa, *denominator);
+        return make(mantissa, *powerOfTen);
     }
 
     /// The exact value of the double, which is a dyadic rational. Usually not
@@ -171,15 +171,15 @@ class Rational
 
         if (reduced > static_cast<std::uint64_t>(detail::IntMax))
             return std::unexpected { ArithmeticError::Overflow };
-        auto numerator = static_cast<Int>(reduced);
+        auto scaledReduced = static_cast<Int>(reduced);
         if (negative)
-            numerator = -numerator;
+            scaledReduced = -scaledReduced;
 
         if (shifted >= 0)
         {
             if (shifted >= 63)
                 return std::unexpected { ArithmeticError::Overflow };
-            std::optional<Int> const scaledNumerator = detail::mul_checked_or_none(numerator, Int { 1 } << shifted);
+            std::optional<Int> const scaledNumerator = detail::mul_checked_or_none(scaledReduced, Int { 1 } << shifted);
             if (!scaledNumerator)
                 return std::unexpected { ArithmeticError::Overflow };
             return Rational { *scaledNumerator };
@@ -187,7 +187,7 @@ class Rational
 
         if (-shifted >= 63)
             return std::unexpected { ArithmeticError::Overflow };
-        return make(numerator, Int { 1 } << -shifted);
+        return make(scaledReduced, Int { 1 } << -shifted);
     }
 
     /// The numerator, in lowest terms.
@@ -532,7 +532,7 @@ namespace detail
         {
             Rational::Int const middle = low + (high - low) / 2;
 
-            // middle^degree, abandoning the moment it exceeds `value` so the
+            // middle^degree, abandoning the moment it exceeds `radicand` so the
             // multiplication can never overflow.
             Rational::Int power = 1;
             bool tooBig = false;

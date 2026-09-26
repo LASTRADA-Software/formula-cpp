@@ -111,19 +111,19 @@ class Outcome
     /// A decision in place of a number: "reject the specimen".
     [[nodiscard]] static constexpr Outcome verdict(Verdict decision) noexcept
     {
-        Outcome result {};
-        result._kind = OutcomeKind::Verdict;
-        result._verdict = decision;
-        return result;
+        Outcome made {};
+        made._kind = OutcomeKind::Verdict;
+        made._verdict = decision;
+        return made;
     }
 
     /// The result is discarded entirely, for `reason`.
     [[nodiscard]] static constexpr Outcome invalid(InvalidReason reason) noexcept
     {
-        Outcome result {};
-        result._kind = OutcomeKind::Invalid;
-        result._reason = reason;
-        return result;
+        Outcome made {};
+        made._kind = OutcomeKind::Invalid;
+        made._reason = reason;
+        return made;
     }
 
     /// Which alternative this outcome holds.

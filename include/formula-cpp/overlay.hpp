@@ -414,7 +414,7 @@ namespace detail
 
 /// An overridden constant evaluates to the overlay's value, converted from
 /// `Q`'s declared unit to the coherent SI unit like any other leaf, and never
-/// consults @p environment -- see `OverriddenConstantNode` for why. The sink
+/// consults the environment -- see `OverriddenConstantNode` for why. The sink
 /// is told about the node as its own type, so that a trace can say the value
 /// was fixed by an overlay rather than read from the specimen.
 ///
@@ -458,9 +458,9 @@ template <typename Rep = Rational, Node Expr, typename Env, typename Sink = Null
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const result = detail::dispatch<Rep>(node.replacement(), environment, sink);
-    sink.produced(node, result);
-    return result;
+    Evaluated<Rep> const evaluated = detail::dispatch<Rep>(node.replacement(), environment, sink);
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// The operation `with_constant<Q>(value)` builds: fix `Q` to `value`.

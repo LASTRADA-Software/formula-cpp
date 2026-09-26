@@ -18,21 +18,21 @@ using Int = std::int64_t;
 inline constexpr Int IntMax = 9223372036854775807LL;
 inline constexpr Int IntMin = -IntMax - 1;
 
-/// True when `lhs + rhs` is not representable.
+/// True when `leftOperand + rightOperand` is not representable.
 [[nodiscard]] constexpr bool add_overflows(Int leftOperand, Int rightOperand) noexcept
 {
     return (rightOperand > 0 && leftOperand > IntMax - rightOperand)
            || (rightOperand < 0 && leftOperand < IntMin - rightOperand);
 }
 
-/// True when `lhs - rhs` is not representable.
+/// True when `leftOperand - rightOperand` is not representable.
 [[nodiscard]] constexpr bool sub_overflows(Int leftOperand, Int rightOperand) noexcept
 {
     return (rightOperand < 0 && leftOperand > IntMax + rightOperand)
            || (rightOperand > 0 && leftOperand < IntMin + rightOperand);
 }
 
-/// True when `lhs * rhs` is not representable.
+/// True when `leftOperand * rightOperand` is not representable.
 [[nodiscard]] constexpr bool mul_overflows(Int leftOperand, Int rightOperand) noexcept
 {
     if (leftOperand == 0 || rightOperand == 0)
@@ -99,7 +99,7 @@ struct DivMod
 /// expressed as "which side of `remainder / denominator` the value sits on",
 /// which only reads cleanly with a non-negative remainder.
 ///
-/// @pre `denominator > 0`.
+/// @pre `divisor > 0`.
 [[nodiscard]] constexpr DivMod floor_divmod(Int dividend, Int divisor) noexcept
 {
     Int truncated = dividend / divisor;
@@ -140,7 +140,7 @@ struct DivMod
     return digitCount;
 }
 
-/// `value * 10^exponent`, or `nullopt` on overflow or an out-of-range exponent.
+/// `operandValue * 10^exponent`, or `nullopt` on overflow or an out-of-range exponent.
 [[nodiscard]] constexpr std::optional<Int> mul_pow10(Int operandValue, int exponent) noexcept
 {
     std::optional<Int> const factor = pow10(exponent);

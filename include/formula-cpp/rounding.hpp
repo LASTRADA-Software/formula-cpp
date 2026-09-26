@@ -169,13 +169,13 @@ struct SignificantDigits
     return detail::or_throw(checked_round_to_integer(unrounded, mode));
 }
 
-/// Rounds to the nearest multiple of `step` under `mode`.
+/// Rounds `unrounded` to the nearest multiple of `increment` under `mode`.
 ///
 /// This is the primitive the decimal-place and significant-digit forms are built
 /// on, and it is also what snapping a computed sieve size onto a standard sieve
 /// series needs (spec phase 12).
 ///
-/// @pre `step` is strictly positive; otherwise DomainError.
+/// @pre `increment` is strictly positive; otherwise DomainError.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round_to_multiple(Rational unrounded,
                                                                                            Rational increment,
                                                                                            RoundingMode mode) noexcept
@@ -250,7 +250,7 @@ namespace detail
     return exponent;
 }
 
-/// Rounds `value` to `places` decimal places under `mode`.
+/// Rounds `unrounded` to `places` decimal places under `mode`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round(Rational unrounded,
                                                                                DecimalPlaces places,
                                                                                RoundingMode mode) noexcept
@@ -271,7 +271,7 @@ namespace detail
     return detail::or_throw(checked_round(unrounded, places, mode));
 }
 
-/// Rounds `value` to `digits` significant digits under `mode`.
+/// Rounds `unrounded` to `significant` significant digits under `mode`.
 [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> checked_round(Rational unrounded,
                                                                                SignificantDigits significant,
                                                                                RoundingMode mode) noexcept
@@ -285,8 +285,8 @@ namespace detail
     if (!exponent)
         return std::unexpected { exponent.error() };
 
-    // Keeping `digits` digits of a value whose leading digit sits at 10^e means
-    // rounding at the 10^(e - digits + 1) place.
+    // Keeping `significant` digits of a value whose leading digit sits at 10^e
+    // means rounding at the 10^(e - significant + 1) place.
     long long const places = static_cast<long long>(significant.value) - 1 - static_cast<long long>(*exponent);
     if (places > 18 || places < -18)
         return std::unexpected { ArithmeticError::Overflow };

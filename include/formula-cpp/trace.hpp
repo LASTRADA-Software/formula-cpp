@@ -1344,7 +1344,7 @@ class RecordingSink
         else if (result->has_value())
             nodeStep.value = **result;
 
-        // Everything unclaimed from `mark` onwards belongs to this node.
+        // Everything unclaimed from `nodeMark` onwards belongs to this node.
         auto firstClaimed = _trace->unclaimed.begin();
         while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < nodeMark)
             ++firstClaimed;
@@ -1401,9 +1401,9 @@ class RecordingSink
         constraintStep.comparison = std::remove_cvref_t<decltype(constraint.predicate)>::comparison;
         constraintStep.outcome = outcome;
 
-        // Everything unclaimed from `mark` onwards belongs to this
+        // Everything unclaimed from `constraintMark` onwards belongs to this
         // constraint -- see `produced` above for why this is a `while`
-        // rather than an index computed from `mark` directly.
+        // rather than an index computed from `constraintMark` directly.
         auto firstClaimed = _trace->unclaimed.begin();
         while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < constraintMark)
             ++firstClaimed;
@@ -1451,7 +1451,7 @@ class RecordingSink
         selectionStep.variantIndex = variantSelection.index;
         selectionStep.variantCount = variantSelection.count;
 
-        // Everything unclaimed from `mark` onwards belongs to this selection
+        // Everything unclaimed from `selectionMark` onwards belongs to this selection
         // -- see `produced` above for why this is a `while`.
         auto firstClaimed = _trace->unclaimed.begin();
         while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < selectionMark)

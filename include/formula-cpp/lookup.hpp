@@ -1014,9 +1014,9 @@ template <typename Key>
 template <typename Key, std::size_t N>
 [[nodiscard]] constexpr bool key_table_is_well_formed(KeyTable<Key, N> const& table) noexcept
 {
-    for (std::size_t first = 0; first + 1 < N; ++first)
-        for (std::size_t second = first + 1; second < N; ++second)
-            if (keys_match(table[first], table[second]))
+    for (std::size_t earlier = 0; earlier + 1 < N; ++earlier)
+        for (std::size_t later = earlier + 1; later < N; ++later)
+            if (keys_match(table[earlier], table[later]))
                 return false;
     return true;
 }
@@ -1441,11 +1441,11 @@ struct Segment
 template <std::size_t N>
 [[nodiscard]] constexpr bool breakpoint_table_is_well_formed(BreakpointTable<N> const& table) noexcept
 {
-    for (std::size_t index = 0; index < N; ++index)
-        if (!breakpoint_is_well_formed(table[index]))
+    for (std::size_t pointIndex = 0; pointIndex < N; ++pointIndex)
+        if (!breakpoint_is_well_formed(table[pointIndex]))
             return false;
-    for (std::size_t index = 0; index + 1 < N; ++index)
-        if (!breakpoints_ascend(table[index], table[index + 1]))
+    for (std::size_t pointIndex = 0; pointIndex + 1 < N; ++pointIndex)
+        if (!breakpoints_ascend(table[pointIndex], table[pointIndex + 1]))
             return false;
     return true;
 }

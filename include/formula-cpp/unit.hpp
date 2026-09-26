@@ -647,7 +647,7 @@ enum class BoundsCheck : std::uint8_t
     NotMeasured,
 };
 
-/// `outcome` in prose, for a trace or an error message.
+/// `boundsCheck` in prose, for a trace or an error message.
 [[nodiscard]] constexpr std::string_view describe(BoundsCheck boundsCheck) noexcept
 {
     switch (boundsCheck)

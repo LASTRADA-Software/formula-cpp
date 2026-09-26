@@ -243,14 +243,14 @@ template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env,
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Evaluated<Rep> const operand = detail::dispatch<Rep>(node.operand, environment, sink);
-    if (!operand.has_value())
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { operand.error() };
+        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
         sink.produced(node, failed);
         return failed;
     }
-    if (!operand->has_value())
+    if (!evaluatedOperand->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
@@ -258,11 +258,11 @@ template <typename Rep = Rational, UnaryOperator Op, Node Operand, typename Env,
     }
 
     static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
-    std::expected<Rep, ArithmeticError> const negated = RepTraits<Rep>::negate(**operand);
-    Evaluated<Rep> const result =
+    std::expected<Rep, ArithmeticError> const negated = RepTraits<Rep>::negate(**evaluatedOperand);
+    Evaluated<Rep> const evaluated =
         negated.has_value() ? detail::present<Rep>(*negated) : Evaluated<Rep> { std::unexpected { negated.error() } };
-    sink.produced(node, result);
-    return result;
+    sink.produced(node, evaluated);
+    return evaluated;
 }
 
 /// Evaluates the left operand, then the right, and only then considers
