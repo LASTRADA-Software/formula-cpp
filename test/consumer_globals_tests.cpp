@@ -46,7 +46,8 @@
 // table validators; and `record_key`, `sample_id`, `test_id`,
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
-// and `explain` through a context. A template it does not reach is not
+// and `explain` through a context, and `from_record`, over a bound and an
+// unbound record. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -683,5 +684,17 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && unboundReference.environment().get<Force>().is_absent()
                            && boundRecords.record<Reference>().is_bound());
     probe.checks.push_back(decltype(boundRecords)::binds<Reference> && !decltype(boundRecords)::binds<Cube>);
+
+    // Reading from another record: 90 000 N here over 60 000 N there, and
+    // absent over a record not yet made.
+    auto const acrossRecords = formula::checked_evaluate_si<formula::Rational>(
+        var<Force> / formula::from_record<Reference>(var<Force>), boundRecords);
+    auto const notYetMade = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), specimen),
+        unboundReference);
+    auto const fromNothing =
+        formula::checked_evaluate_si<formula::Rational>(formula::from_record<Reference>(var<Force>), notYetMade);
+    probe.checks.push_back(acrossRecords.has_value() && **acrossRecords == formula::Rational { 3, 2 }
+                           && fromNothing.has_value() && !fromNothing->has_value());
     return probe;
 }

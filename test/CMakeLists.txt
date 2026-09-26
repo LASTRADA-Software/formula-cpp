@@ -77,6 +77,7 @@ add_executable(formula-cpp-tests
     statistics_cross_tu_b.cpp
     rejection_tests.cpp
     record_tests.cpp
+    record_scope_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -1819,6 +1820,41 @@ formula_add_negative_test(record_key_swapped "TestId' to '" REJECT "formula: ")
 # conversion from 'int' to 'SampleId'" (TestId likewise).
 formula_add_negative_test(record_key_sample_from_integer "'int' to '" REJECT "formula: ")
 formula_add_negative_test(record_key_test_from_integer "'int' to '" REJECT "formula: ")
+
+# Phase 14, task 3: reading from another record through from_record<Role>.
+# Each refusal is gated so that it is the only message: the evaluator does
+# not dispatch the operand after refusing, which each case's REJECT of
+# RequireProvided holds it to (each case's operand names a quantity the
+# environment it would fall back to does not hold). Messages counted by hand
+# are recorded in the phase 14 task 3 report. Removing any of the three gates
+# makes its cases fail on their REJECT under g++ 13 and clang++ 20.1.8;
+# cl-debug showed one message either way, so only those legs see a cascade.
+formula_add_negative_test(record_scope_plain_environment
+    "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
+    REJECT "RequireProvided" "RequireBoundRole" "RequireForeignRole")
+
+formula_add_negative_test(record_scope_role_not_bound
+    "formula: this record_context binds no record to this role"
+    REJECT "RequireProvided" "RequireRecordContext" "RequireForeignRole")
+
+formula_add_negative_test(record_context_role_not_bound
+    "formula: this record_context binds no record to this role"
+    REJECT "RequireThisRecordFirst" "RequireDistinctRoles")
+
+formula_add_negative_test(record_scope_this_record
+    "formula: from_record<ThisRecord> reads this record as though it were another"
+    REJECT "RequireBoundRole" "RequireRecordContext" "RequireProvided")
+
+# One mistake, a cv-qualified ThisRecord in a scope, draws one message: the
+# evaluator returns at once for a role naming this record, so the bound-role
+# rule -- no context binds `ThisRecord const` -- is never asked.
+formula_add_negative_test(record_scope_this_record_const
+    "formula: from_record<ThisRecord> reads this record as though it were another"
+    REJECT "RequireBoundRole" "RequireRecordContext" "RequireProvided")
+
+formula_add_negative_test(record_scope_nested
+    "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
+    REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")
 
 formula_add_negative_test(record_unbound_this_record
     "formula: the record being evaluated cannot be unbound"

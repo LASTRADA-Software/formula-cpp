@@ -20,6 +20,14 @@
 /// this record's values from it exactly as it would from the plain
 /// environment.
 ///
+/// **A formula reads from another record through a scope**,
+/// `from_record<Reference>(expression)`: the expression is evaluated against
+/// that record's environment, and the rest of the formula against this
+/// record's. A scope evaluated against anything but a context, over a role
+/// the context does not bind, or naming `ThisRecord` is refused at compile
+/// time, each with one message. A scope over a record that is bound but
+/// unbound -- a test not done yet -- is absent, never zero.
+///
 /// **Keys are integers, and two strong types.** `SampleId` and `TestId` each
 /// wrap a `std::uint64_t`, which is how a lab information system keys its
 /// records; turning one into a display name is a report's job. They are two
@@ -31,7 +39,10 @@
 /// value-initialize the missing test key to 0, and 0 is a real key.
 
 #include <formula-cpp/environment.hpp>
+#include <formula-cpp/evaluate.hpp>
+#include <formula-cpp/expression.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/sink.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -411,6 +422,24 @@ namespace detail
 
         static constexpr bool value = true;
     };
+
+    /// Fails to compile when a context is asked for a role it binds no record
+    /// to -- by `record<Role>()`, or by a `from_record<Role>` scope evaluated
+    /// against it.
+    ///
+    /// With the role in the type, a formula reading from a role its context
+    /// does not bind is refused where it is evaluated, never a run-time miss.
+    template <typename Role, typename Context>
+    struct RequireBoundRole
+    {
+        static_assert(Context::template binds<Role>,
+                      "formula: this record_context binds no record to this role; a formula that reads from a "
+                      "role needs a context that binds one, record<Role>(...) or Record<Role, ...>::unbound() "
+                      "when that test has not been done -- the role and the context appear in this diagnostic as "
+                      "the template arguments of RequireBoundRole");
+
+        static constexpr bool value = true;
+    };
 } // namespace detail
 
 /// The records a formula may read from: its own, which it *is*, and the
@@ -454,11 +483,18 @@ class RecordContext: public ThisRec::environment_type
     [[nodiscard]] constexpr ThisRec const& this_record() const noexcept { return _own; }
 
     /// The record bound to @p Role. `record<ThisRecord>()` is `this_record()`.
+    ///
+    /// A role this context does not bind is refused in this library's words,
+    /// by `detail::RequireBoundRole`, and not by overload resolution. So
+    /// `requires { context.template record<Cube>(); }` is true for every
+    /// role, and the call itself then fails to compile: ask `binds<Role>` to
+    /// learn whether a role is bound. After the refusal the call returns
+    /// `this_record()`, so that code using the result draws nothing more.
     template <typename Role>
-        requires binds<Role>
     [[nodiscard]] constexpr auto const& record() const noexcept
     {
-        if constexpr (std::is_same_v<Role, typename ThisRec::role>)
+        static_assert(detail::RequireBoundRole<Role, RecordContext>::value);
+        if constexpr (!binds<Role> || std::is_same_v<Role, typename ThisRec::role>)
             return _own;
         else
             return std::get<index_of<Role>()>(_others);
@@ -485,7 +521,165 @@ namespace detail
     {
         using type = typename ThisRec::environment_type;
     };
+
+    /// The `RecordContext` an environment is, as `type`, and the way to reach
+    /// it, `of(environment)`; nothing for any other type.
+    ///
+    /// A scope's evaluator recognises a context only through this trait, and
+    /// never by looking for a `record<Role>()` member: a type of the
+    /// consumer's own that merely has one must not be able to supply the
+    /// record a foreign value is read from. A type that wraps a context --
+    /// the environment a retry evaluates against, say -- specializes this to
+    /// reach the context it wraps; until one does, a scope evaluated against
+    /// it is refused, which is safe.
+    template <typename Env>
+    struct RecordContextOf
+    {
+    };
+
+    template <typename ThisRec, typename... Others>
+    struct RecordContextOf<RecordContext<ThisRec, Others...>>
+    {
+        /// The context itself.
+        using type = RecordContext<ThisRec, Others...>;
+
+        /// @p recordContext, unchanged.
+        [[nodiscard]] static constexpr type const& of(type const& recordContext) noexcept { return recordContext; }
+    };
+
+    /// Whether @p Env is, or reaches, a `RecordContext`.
+    template <typename Env>
+    inline constexpr bool reachesRecordContext = requires { typename RecordContextOf<Env>::type; };
+
+    /// Fails to compile when a formula that reads from another record is
+    /// evaluated against an environment that holds only one.
+    template <typename Env>
+    struct RequireRecordContext
+    {
+        static_assert(!std::is_same_v<Env, Env>,
+                      "formula: this formula reads from another record, but was evaluated against an environment "
+                      "that holds only one; evaluate it against a record_context(...) that binds the role -- the "
+                      "environment appears in this diagnostic as the template argument of RequireRecordContext");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a scope names `ThisRecord`.
+    ///
+    /// Reading this record "from another record" is a mislabel waiting to
+    /// appear in a trace: the value is this record's, and a plain `var<Q>`
+    /// reads it. A cv-qualified `ThisRecord` is refused here too, since no
+    /// context binds one and it can only mean this record.
+    template <typename Role>
+    struct RequireForeignRole
+    {
+        static_assert(!std::is_same_v<std::remove_cv_t<Role>, ThisRecord>,
+                      "formula: from_record<ThisRecord> reads this record as though it were another; read this "
+                      "record's values with var<Q> directly, and name another role in from_record -- the role "
+                      "appears in this diagnostic as the template argument of RequireForeignRole");
+
+        static constexpr bool value = true;
+    };
+
+    /// Whether @p Role names this record, cv-qualified or not.
+    template <typename Role>
+    inline constexpr bool namesThisRecord = std::is_same_v<std::remove_cv_t<Role>, ThisRecord>;
+
+    /// The requirement of a scope that checks no lineage.
+    struct NoLineageRequirement
+    {
+    };
 } // namespace detail
+
+/// A read from another record: @p Operand, evaluated against the environment
+/// of the record the context binds to @p Role.
+///
+/// Its dimension is its operand's: reading a value from another record does
+/// not change what it measures.
+///
+/// `from_record<ThisRecord>` is refused in the class body, so that an
+/// aggregate spelling is refused as well as the factory -- see
+/// `detail::RequireForeignRole`.
+template <typename Role, typename Requirement, Node Operand>
+struct RecordScopeNode: NodeBase
+{
+    static_assert(detail::RequireForeignRole<Role>::value);
+
+    /// The role of the record the operand is read from.
+    using role = Role;
+    /// What the scope requires of the two records' lineage before it reads.
+    using requirement = Requirement;
+
+    /// Forwarded from `Operand` unchanged.
+    static constexpr Dimension dimension = Operand::dimension;
+
+    /// The expression evaluated against the other record's environment.
+    /// Deliberately no `{}` default member initialiser: see `Corrections`
+    /// (`lookup.hpp`).
+    Operand operand;
+};
+
+/// Reads @p operand from the record the context binds to @p Role:
+/// `from_record<Reference>(var<Strength>)`, or a whole computation,
+/// `from_record<Reference>(var<Force> / (var<EdgeX> * var<EdgeY>))`.
+template <typename Role, Node Operand>
+[[nodiscard]] constexpr RecordScopeNode<Role, detail::NoLineageRequirement, Operand> from_record(Operand operand) noexcept
+{
+    return RecordScopeNode<Role, detail::NoLineageRequirement, Operand> { {}, operand };
+}
+
+/// Evaluates a scope: its operand against the environment of the record
+/// @p environment binds to the scope's role.
+///
+/// - The role's record unbound -- a test not done yet: absent, never zero.
+/// - Otherwise the operand's value, computed wholly from that record.
+///
+/// The value and the record it is read from are the one `foreignRecord`
+/// below, so a value can never be attributed to a record it was not read
+/// from.
+///
+/// Refused, each with one message and without evaluating the operand, so
+/// that no second message follows from it:
+/// - @p environment is not a `record_context` (`detail::RequireRecordContext`).
+///   A scope nested in a scope meets this too, since the inner one is
+///   evaluated against a record's plain environment;
+/// - the context binds no record to the role (`detail::RequireBoundRole`);
+/// - the role is `ThisRecord`, refused by the node itself
+///   (`detail::RequireForeignRole`).
+template <typename Rep = Rational, typename Role, typename Requirement, Node Operand, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(RecordScopeNode<Role, Requirement, Operand> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    if constexpr (!detail::reachesRecordContext<Env>)
+    {
+        static_assert(detail::RequireRecordContext<Env>::value);
+        return detail::nothing<Rep>();
+    }
+    else if constexpr (detail::namesThisRecord<Role>)
+        // Already refused by the node's own class body.
+        return detail::nothing<Rep>();
+    else
+    {
+        using Context = typename detail::RecordContextOf<Env>::type;
+        if constexpr (!Context::template binds<Role>)
+        {
+            static_assert(detail::RequireBoundRole<Role, Context>::value);
+            return detail::nothing<Rep>();
+        }
+        else
+        {
+            Context const& recordContext = detail::RecordContextOf<Env>::of(environment);
+            sink.entered(node);
+            auto const& foreignRecord = recordContext.template record<Role>();
+            Evaluated<Rep> const scopeValue = foreignRecord.is_bound()
+                                                  ? detail::dispatch<Rep>(node.operand, foreignRecord.environment(), sink)
+                                                  : detail::nothing<Rep>();
+            sink.produced(node, scopeValue);
+            return scopeValue;
+        }
+    }
+}
 
 /// The context of @p own, reading from @p others by their roles:
 /// `record_context(record<ThisRecord>(...), record<Reference>(...))`.
