@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment
+// EXPECT: formula: this overlay fixes a quantity, and an operation listed after the constant removed every use it fixed and put back one that reads the quantity from the environment
 // REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
+// REJECT: formula: this method reads a quantity both where
 //
 // The shape factor fixed, then the Cube -- its only reader -- replaced by a
 // formula that reads it again. Operations apply in order, so the constant
 // never reaches the replacement, which would read the specimen's factor
-// under an overlay that claims to fix it. The REJECT pins that this is not
-// reported as "nothing uses it": the replacement does use it.
+// under an overlay that claims to fix it, and nothing the constant fixed is
+// left. The REJECTs pin that this is reported as neither "nothing uses it" --
+// the replacement does -- nor as read "both where an overlay fixed it and
+// elsewhere", since nothing fixed remains.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>

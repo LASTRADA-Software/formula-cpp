@@ -931,9 +931,9 @@ TEST_CASE("an overlay supplies fewer constraints, and a later overlay's hold", "
     constexpr auto outcomes = formula::check_method(one, inputs);
     STATIC_REQUIRE(outcomes.size() == 1);
     STATIC_REQUIRE(outcomes[0].verdict() == formula::Verdict { "the load is below the annex's minimum" });
-    STATIC_REQUIRE(three.constraintOrigin.source() == acceptanceAnnex);
-    STATIC_REQUIRE(one.constraintOrigin.provenance() == formula::ConstraintProvenance::JurisdictionOverlay);
-    STATIC_REQUIRE(one.constraintOrigin.source() == laterAcceptanceAnnex);
+    STATIC_REQUIRE(formula::constraint_origin(three).source() == acceptanceAnnex);
+    STATIC_REQUIRE(formula::constraint_origin(one).provenance() == formula::ConstraintProvenance::JurisdictionOverlay);
+    STATIC_REQUIRE(formula::constraint_origin(one).source() == laterAcceptanceAnnex);
 }
 
 TEST_CASE("an overlay removes every constraint, and the trace says by whose authority", "[overlay][constraint][trace]")
@@ -948,6 +948,33 @@ TEST_CASE("an overlay removes every constraint, and the trace says by whose auth
 
     CHECK(acceptanceTraceOf(none, inputs)
           == "1. acceptance(none) [jurisdiction overlay: Acceptance, Example Standard 12:2021 NA, NA.6]\n");
+
+    // A method declared with no constraints of its own reads differently:
+    // nothing was removed, and nobody's authority is claimed but its own.
+    CHECK(acceptanceTraceOf(threeVariants, inputs) == "1. acceptance(none) [the method's own constraints]\n");
+}
+
+TEST_CASE("a method rebuilt from an overlaid method's parts keeps the jurisdiction's constraints as the jurisdiction's",
+          "[overlay][constraint][trace]")
+{
+    // Whose the constraints are travels with them, as a rounding rule's
+    // provenance travels with the rule: taken out of an overlaid method and
+    // put into a new one, they are still the jurisdiction's, and say so.
+    constexpr auto overlaid = formula::apply(threeConstraints, baseMethod);
+    constexpr auto rebuilt = formula::method(overlaid.variantSet, overlaid.rounding, overlaid.constraintSet);
+    STATIC_REQUIRE(formula::constraint_origin(rebuilt).provenance() == formula::ConstraintProvenance::JurisdictionOverlay);
+    STATIC_REQUIRE(formula::constraint_origin(rebuilt).source() == acceptanceAnnex);
+
+    auto const traced = acceptanceTraceOf(rebuilt, inputs);
+    CHECK(traced.find("[the load is below the annex's minimum; jurisdiction overlay: Acceptance, "
+                      "Example Standard 12:2021 NA, NA.6]")
+          != std::string::npos);
+    CHECK(traced.find("the method's own") == std::string::npos);
+
+    // And the other way round: the base method's own constraints, put beside
+    // an overlaid method's variants and rounding, stay the method's own.
+    constexpr auto own = formula::method(overlaid.variantSet, overlaid.rounding, baseMethod.constraintSet);
+    STATIC_REQUIRE(formula::constraint_origin(own).provenance() == formula::ConstraintProvenance::MethodOwn);
 }
 
 TEST_CASE("each verdict says whether the method or a jurisdiction's overlay supplied it", "[overlay][constraint][trace]")
@@ -1002,8 +1029,8 @@ TEST_CASE("an overlay's constraints stay the jurisdiction's through every other 
 {
     constexpr auto constrain = formula::with_constraints(oneConstraintSet, acceptanceAnnex);
     constexpr auto isTheOverlays = [](auto const& m) {
-        return m.constraintOrigin.provenance() == formula::ConstraintProvenance::JurisdictionOverlay
-               && m.constraintOrigin.source() == acceptanceAnnex && formula::check_method(m, inputs).size() == 1;
+        return formula::constraint_origin(m).provenance() == formula::ConstraintProvenance::JurisdictionOverlay
+               && formula::constraint_origin(m).source() == acceptanceAnnex && formula::check_method(m, inputs).size() == 1;
     };
 
     constexpr auto pin = formula::pin_variant<Cube>();
@@ -1051,9 +1078,14 @@ TEST_CASE("a constant listed after an overlay's constraints reaches inside them"
 TEST_CASE("an overlay's constraint judges a category code, and its verdict names the category",
           "[overlay][constraint][trace]")
 {
-    // Spec section 16.7's third jurisdiction: a category code in place of a
-    // numeric limit. The annex accepts square specimens only -- 1 for a
-    // square, 0 for a round one -- and this specimen is round.
+    // Spec section 16.7's third jurisdiction, as far as it can be written
+    // today: a category code in place of a numeric limit. The annex accepts
+    // square specimens only -- 1 for a square, 0 for a round one. The key is
+    // fixed where the constraint is written, because `exact_lookup` takes it
+    // as a value and not from the environment, so this constraint judges the
+    // round category for every specimen, not the specimen's own category --
+    // which no constraint can judge yet. What it does pin is ruling 4: the
+    // verdict's derivation names the category by its enumerator.
     constexpr auto acceptedShape = formula::constraint(
         formula::exact_lookup<ShapeKeys, unit::One>(Shape::Round, { formula::Rational { 1 }, formula::Rational { 0 } })
             >= formula::number(formula::Rational { 1 }),
@@ -1067,7 +1099,7 @@ TEST_CASE("an overlay's constraint judges a category code, and its verdict names
 
     // The category by name, on the page and in the verdict's derivation --
     // never as its underlying value.
-    CHECK(formula::render(std::get<0>(overlaid.constraintSet.items)).find("Round") != std::string::npos);
+    CHECK(formula::render(std::get<0>(overlaid.constraintSet.constraintSet().items)).find("Round") != std::string::npos);
     CHECK(acceptanceTraceOf(overlaid, inputs)
           == "1. lookup(key Round) = 0\n"
              "2. 1\n"

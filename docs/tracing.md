@@ -464,7 +464,8 @@ it holds, with the overlay's citation in `Step::citation`. A constraint
 checked on its own, with `check` or `check_all`, belongs to no method, and
 its line reads as it always did. A method tells a sink about its constraints
 through two optional members, `acceptance_entered` and `acceptance_produced`,
-given the method's `ConstraintOrigin`; a sink defines both or neither.
+given a `ConstraintOrigin` read off the method's constraints; a sink defines
+both or neither.
 
 ## Only the library states a provenance
 
@@ -476,13 +477,20 @@ refused in the library's words. A
 produced it, and the rounding node a method applies is built only by
 `evaluate_method`, from the method's own rule, which it holds rather than a
 provenance of its own. So "(method default)" and "(jurisdiction overlay)"
-are only ever said of a method's rule. A method's `ConstraintOrigin` likewise
-claims a jurisdiction's overlay only when `with_constraints` produced it.
-What the guard governs is how a rule or an origin is created, not where a
-copy travels: a method holding a copy of an overlay's rule is traced as that
-overlay's rule, which is true of it. Nor does it reach a sink's own hooks,
-which are public: code that calls them by hand writes whatever trace it
-likes.
+are only ever said of a method's rule. A method's constraints are a
+jurisdiction's only when they are the `OverlaidConstraints` that
+`with_constraints` produced -- which carries the overlay's citation with the
+constraints themselves -- and building one by hand is refused.
+
+What the guard governs is how a rule or a set of constraints is created, not
+where a copy travels, and a copy stays true of itself: a method holding a copy
+of an overlay's rule is traced as that overlay's rule, and a method built from
+an overlaid method's `constraintSet` checks the jurisdiction's constraints and
+says so, because they are the jurisdiction's. What no type can prevent is
+copying the constraints out one at a time into a fresh `constraints(...)`,
+which makes them the new method's own, or reinterpreting an object's bytes.
+Nor does the guard reach a sink's own hooks, which are public: code that calls
+them by hand writes whatever trace it likes.
 
 ## Whose symbols
 

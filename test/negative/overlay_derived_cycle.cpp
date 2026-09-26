@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from
 // the environment
+// REJECT: formula: this overlay derives a quantity, and an operation listed after the definition removed
 //
 // A definition cycle across two quantities: the shape factor defined by the
 // ratio, then the ratio defined by the shape factor. The second definition

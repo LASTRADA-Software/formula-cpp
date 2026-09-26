@@ -843,8 +843,9 @@ namespace detail
 /// jurisdiction's wherever it is used. Likewise `Method::rounding` is a public
 /// member, and assigning it a default rule relabels a jurisdiction's rule as
 /// the method's own. Both are explicit acts on public members, as assigning
-/// `Variants::published` is; what no author can do is create a rule that
-/// states a provenance the library did not give it. `with_rounding`
+/// `Variants::published` is; what no author can do, short of reinterpreting a
+/// rule's bytes -- `std::bit_cast` at run time -- is create a rule that states
+/// a provenance the library did not give it. `with_rounding`
 /// (`overlay.hpp`) can replace a rule with one of the same granularity -- a
 /// jurisdiction adopting the base standard's rounding in its own name -- and
 /// the trace must still say whose rule it was.
@@ -928,15 +929,16 @@ enum class ConstraintProvenance : std::uint8_t
 
 namespace detail
 {
-    /// Marks the one constructor of `ConstraintOrigin` that states an
-    /// overlay's provenance.
-    struct OverlaidConstraints
+    /// Marks the constructors of `ConstraintOrigin` and `OverlaidConstraints`
+    /// that state an overlay's provenance.
+    struct ConstraintsOverlaid
     {
     };
 
-    /// The one way to build the origin of constraints an overlay set:
-    /// `apply_operation` for `with_constraints` (`overlay.hpp`) is its only
-    /// caller -- see `RequireLibraryStatesConstraintProvenance`.
+    /// The one way to build constraints an overlay set, and the one way to
+    /// read whose a method's constraints are: `apply_operation` for
+    /// `with_constraints` (`overlay.hpp`) is the only caller of `overlaid`
+    /// -- see `RequireLibraryStatesConstraintProvenance`.
     struct ConstraintOriginAccess;
 
     /// Fails to compile when an author states whose a method's constraints
@@ -956,29 +958,86 @@ namespace detail
     };
 } // namespace detail
 
-/// Whose constraints a `Method` holds, and what the overlay that supplied
-/// them cited: `Method::constraintOrigin`. `check_method` tells a sink about
-/// it, so a trace can say beside each verdict whose acceptance logic reached
-/// it (spec sections 9.1 and 16.7).
+/// A jurisdiction's constraints: the `ConstraintSet` an overlay's
+/// `with_constraints` put in place of a method's own, together with what the
+/// overlay cited. It is what `Method::constraintSet` holds after that
+/// overlay, so that whose the constraints are travels **with** them, as a
+/// `RoundingRule`'s provenance travels with the rule.
 ///
-/// Private, and set only by the library: default-constructed it is the
-/// method's own, and only `with_constraints` applied through an overlay makes
-/// one a jurisdiction's -- see `detail::ConstraintOriginAccess`.
+/// Built only by the library -- see `detail::ConstraintOriginAccess` -- and
+/// the constructor that would let an author build one is refused in the
+/// library's words. A method's own constraints are a plain `ConstraintSet`,
+/// which says nothing of any jurisdiction.
 ///
-/// **The guard governs how an origin is created, not where a copy travels**,
-/// exactly as `RoundingRule`'s does. `Method::constraintOrigin` is a public
-/// member: copying a jurisdiction's origin into another method, or assigning
-/// a default one over it, relabels whose constraints they are. Both are
-/// explicit acts on a public member, as assigning `Method::rounding` is; what
-/// no author can do is create an origin that states a provenance the library
-/// did not give it. Nor does the guard reach a sink's own hooks: they are
-/// public members, and code that calls them by hand writes whatever trace it
-/// likes, as it could by calling `variant_entered` -- what `check_method`
-/// tells a sink is the method's own origin.
+/// **A copy keeps its claim, and the claim stays true.** `method(o.variantSet,
+/// o.rounding, o.constraintSet)`, rebuilt from an overlaid method `o`, still
+/// holds the jurisdiction's constraints, and its verdicts still say so, as a
+/// copied `RoundingRule` still says whose rule it is. What remains is what no
+/// type can prevent: copying the items out one by one into a fresh
+/// `constraints(...)` makes them the new method's own, and reinterpreting an
+/// object's bytes (`std::bit_cast` at run time) makes it anything.
+template <Predicate... Ps>
+class OverlaidConstraints
+{
+  public:
+    /// Refused: see `detail::RequireLibraryStatesConstraintProvenance`.
+    /// Declared only so that `OverlaidConstraints<...> { constraints(...), c }`
+    /// is refused in this library's words rather than the compiler's. The
+    /// members are initialised so that the refusal is the only message: a set
+    /// holding a lookup has no default to fall back on.
+    constexpr OverlaidConstraints(ConstraintSet<Ps...> replacement, Citation source = {}) noexcept:
+        _constraintSet { replacement },
+        _source { source }
+    {
+        static_assert(detail::RequireLibraryStatesConstraintProvenance<OverlaidConstraints>::value);
+    }
+
+    /// The constraints, as the overlay stated them.
+    [[nodiscard]] constexpr ConstraintSet<Ps...> const& constraintSet() const noexcept
+    {
+        return _constraintSet;
+    }
+
+    /// What the overlay cited for them; empty when it cited nothing.
+    [[nodiscard]] constexpr Citation const& source() const noexcept
+    {
+        return _source;
+    }
+
+  private:
+    friend struct detail::ConstraintOriginAccess;
+
+    /// The overlay's constraints, citing @p source -- reachable only through
+    /// `detail::ConstraintOriginAccess`.
+    constexpr OverlaidConstraints(detail::ConstraintsOverlaid, ConstraintSet<Ps...> replacement, Citation source) noexcept:
+        _constraintSet { replacement },
+        _source { source }
+    {
+    }
+
+    // Deliberately no `{}` default member initialiser: the set holds
+    // predicates, which hold expressions -- see `Corrections` (`lookup.hpp`).
+    ConstraintSet<Ps...> _constraintSet;
+    Citation _source {};
+};
+
+/// Whose constraints a method checks, and what the overlay that supplied them
+/// cited, as `check_method` tells a sink and `constraint_origin` answers:
+/// read from the method's constraint part, a plain `ConstraintSet` being the
+/// method's own and an `OverlaidConstraints` a jurisdiction's. It is a value
+/// read off constraints, not stored beside them, so it cannot be put next to
+/// constraints it does not describe.
+///
+/// Default-constructed it is the method's own, and only the library makes one
+/// a jurisdiction's, short of reinterpreting its bytes (`std::bit_cast` at run
+/// time); the constructor that would let an author state one is
+/// refused in the library's words. The guard does not reach a sink's own
+/// hooks: they are public members, and code that calls them by hand writes
+/// whatever trace it likes, as it could by calling `variant_entered`.
 class ConstraintOrigin
 {
   public:
-    /// The method's own constraints: what every `method(...)` holds.
+    /// The method's own constraints.
     constexpr ConstraintOrigin() noexcept = default;
 
     /// Refused: see `detail::RequireLibraryStatesConstraintProvenance`.
@@ -1011,7 +1070,7 @@ class ConstraintOrigin
 
     /// An overlay's constraints, citing @p source -- reachable only through
     /// `detail::ConstraintOriginAccess`.
-    constexpr ConstraintOrigin(detail::OverlaidConstraints, Citation source) noexcept:
+    constexpr ConstraintOrigin(detail::ConstraintsOverlaid, Citation source) noexcept:
         _provenance { ConstraintProvenance::JurisdictionOverlay },
         _source { source }
     {
@@ -1025,13 +1084,64 @@ namespace detail
 {
     struct ConstraintOriginAccess
     {
-        /// The origin of constraints a jurisdiction's overlay supplied,
-        /// citing @p source.
-        [[nodiscard]] static constexpr ConstraintOrigin overlaid(Citation source) noexcept
+        /// @p replacement as a jurisdiction overlay's constraints, citing
+        /// @p source.
+        template <Predicate... Ps>
+        [[nodiscard]] static constexpr OverlaidConstraints<Ps...> overlaid(ConstraintSet<Ps...> const& replacement,
+                                                                           Citation source) noexcept
         {
-            return ConstraintOrigin { OverlaidConstraints {}, source };
+            return OverlaidConstraints<Ps...> { ConstraintsOverlaid {}, replacement, source };
+        }
+
+        /// A method's own constraints.
+        template <Predicate... Ps>
+        [[nodiscard]] static constexpr ConstraintOrigin of(ConstraintSet<Ps...> const&) noexcept
+        {
+            return ConstraintOrigin {};
+        }
+
+        /// A jurisdiction's constraints, citing what its overlay cited.
+        template <Predicate... Ps>
+        [[nodiscard]] static constexpr ConstraintOrigin of(OverlaidConstraints<Ps...> const& overlaidSet) noexcept
+        {
+            return ConstraintOrigin { ConstraintsOverlaid {}, overlaidSet.source() };
         }
     };
+
+    /// The `ConstraintSet` a method's constraint part holds, whichever kind of
+    /// part it is -- what `check_all` and the overlay's rewrite work on.
+    template <Predicate... Ps>
+    [[nodiscard]] constexpr ConstraintSet<Ps...> const& constraint_set_of(ConstraintSet<Ps...> const& ownSet) noexcept
+    {
+        return ownSet;
+    }
+
+    template <Predicate... Ps>
+    [[nodiscard]] constexpr ConstraintSet<Ps...> const& constraint_set_of(
+        OverlaidConstraints<Ps...> const& overlaidSet) noexcept
+    {
+        return overlaidSet.constraintSet();
+    }
+
+    /// The `ConstraintSet` type a method's constraint part holds; the part
+    /// itself for anything else, so that a malformed method's part reaches
+    /// the shape rules unchanged.
+    template <typename Constraints>
+    struct PlainConstraintsOf
+    {
+        /// The part itself.
+        using type = Constraints;
+    };
+
+    template <Predicate... Ps>
+    struct PlainConstraintsOf<OverlaidConstraints<Ps...>>
+    {
+        /// The jurisdiction's set.
+        using type = ConstraintSet<Ps...>;
+    };
+
+    template <typename Constraints>
+    using PlainConstraints = typename PlainConstraintsOf<Constraints>::type;
 } // namespace detail
 
 namespace detail
@@ -1055,6 +1165,19 @@ namespace detail
 
     template <Predicate... Ps>
     struct IsConstraintSet<ConstraintSet<Ps...>>: std::true_type
+    {
+    };
+
+    /// Whether a type can be a method's constraint part: the method's own
+    /// `ConstraintSet`, or the `OverlaidConstraints` a jurisdiction's overlay
+    /// put in its place.
+    template <typename T>
+    struct IsMethodConstraints: IsConstraintSet<T>
+    {
+    };
+
+    template <Predicate... Ps>
+    struct IsMethodConstraints<OverlaidConstraints<Ps...>>: std::true_type
     {
     };
 
@@ -1161,7 +1284,7 @@ namespace detail
                       "method(variants(...), rounding_rule<...>(), constraints(...)), in that order -- "
                       "the offending type appears in this diagnostic as the template argument Rounding "
                       "of RequireWellFormedMethod");
-        static_assert(IsConstraintSet<Constraints>::value,
+        static_assert(IsMethodConstraints<Constraints>::value,
                       "formula: this method's constraints are not a constraint set; a method is "
                       "method(variants(...), rounding_rule<...>(), constraints(...)), in that order -- "
                       "the offending type appears in this diagnostic as the template argument "
@@ -1181,9 +1304,10 @@ namespace detail
 /// `constraintSet` is the `ConstraintSet` exactly as `constraints(...)` built
 /// it, held as an ordinary member and never unpacked, so that it can be
 /// handed straight to `check_all()`; `ConstraintSet` in `constraint.hpp` says
-/// why that is the shape. `constraintOrigin` says whose those constraints
-/// are -- the method's own, unless an overlay's `with_constraints` replaced
-/// them -- and `check_method` tells a sink so; see `ConstraintOrigin`.
+/// why that is the shape. After an overlay's `with_constraints` it is an
+/// `OverlaidConstraints` instead, which carries whose constraints they are
+/// with them -- see `OverlaidConstraints` -- and `check_method` tells a sink
+/// so.
 ///
 /// Each part must be the kind of thing its factory builds, and the rounding
 /// rule's unit must measure the variants' dimension -- see
@@ -1212,11 +1336,9 @@ struct Method
     Vs variantSet;
     /// The rule applied to the selected variant's result.
     Rounding rounding {};
-    /// The constraints, as `constraints(...)` built them.
+    /// The constraints, as `constraints(...)` built them, or as an overlay's
+    /// `with_constraints` replaced them (`OverlaidConstraints`).
     Constraints constraintSet;
-    /// Whose constraints `constraintSet` holds: the method's own, unless an
-    /// overlay's `with_constraints` replaced them. See `ConstraintOrigin`.
-    ConstraintOrigin constraintOrigin {};
 };
 
 namespace detail
@@ -1301,7 +1423,7 @@ namespace detail
     struct IsWellFormedMethod<Method<Vs, Rounding, Constraints>>:
         std::conjunction<IsVariants<std::remove_cv_t<Vs>>,
                          IsRoundingRule<std::remove_cv_t<Rounding>>,
-                         IsConstraintSet<std::remove_cv_t<Constraints>>,
+                         IsMethodConstraints<std::remove_cv_t<Constraints>>,
                          std::bool_constant<VariantsDimension<std::remove_cv_t<Vs>>::known>,
                          VariantTagsArePlain<std::remove_cv_t<Vs>>,
                          VariantTagsAreDistinct<std::remove_cv_t<Vs>>,
@@ -1602,18 +1724,32 @@ template <typename Rep = Rational, typename M, typename Env, typename Sink = Nul
         static_cast<void>(sink);
         return std::array<ConstraintOutcome, 0> {};
     }
-    else if constexpr (requires {
-                           sink.acceptance_entered(m.constraintOrigin);
-                           sink.acceptance_produced(m.constraintOrigin);
-                       })
-    {
-        sink.acceptance_entered(m.constraintOrigin);
-        auto const acceptanceOutcomes = check_all<Rep>(m.constraintSet, environment, sink);
-        sink.acceptance_produced(m.constraintOrigin);
-        return acceptanceOutcomes;
-    }
     else
-        return check_all<Rep>(m.constraintSet, environment, sink);
+    {
+        ConstraintOrigin const acceptanceOrigin = detail::ConstraintOriginAccess::of(m.constraintSet);
+        if constexpr (requires {
+                          sink.acceptance_entered(acceptanceOrigin);
+                          sink.acceptance_produced(acceptanceOrigin);
+                      })
+        {
+            sink.acceptance_entered(acceptanceOrigin);
+            auto const acceptanceOutcomes = check_all<Rep>(detail::constraint_set_of(m.constraintSet), environment, sink);
+            sink.acceptance_produced(acceptanceOrigin);
+            return acceptanceOutcomes;
+        }
+        else
+            return check_all<Rep>(detail::constraint_set_of(m.constraintSet), environment, sink);
+    }
+}
+
+/// Whose constraints @p m checks, and what the overlay that supplied them
+/// cited: what `check_method` tells a sink. Read from the constraint part
+/// itself, so it is true of whatever method holds that part -- see
+/// `OverlaidConstraints`.
+template <typename Vs, typename Rounding, typename Constraints>
+[[nodiscard]] constexpr ConstraintOrigin constraint_origin(Method<Vs, Rounding, Constraints> const& m) noexcept
+{
+    return detail::ConstraintOriginAccess::of(m.constraintSet);
 }
 
 } // namespace formula

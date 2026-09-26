@@ -65,5 +65,5 @@ int main()
 {
     constexpr auto overlaid = formula::apply(
         formula::overlay(formula::with_constraints(readsLoad), formula::with_constraints(formula::constraints())), m);
-    return overlaid.constraintOrigin.provenance() == formula::ConstraintProvenance::JurisdictionOverlay ? 0 : 1;
+    return formula::constraint_origin(overlaid).provenance() == formula::ConstraintProvenance::JurisdictionOverlay ? 0 : 1;
 }

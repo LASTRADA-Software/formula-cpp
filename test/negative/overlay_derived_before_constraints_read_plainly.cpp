@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment
+// EXPECT: formula: this overlay derives a quantity, and an operation listed after the definition removed every use it replaced and put back one that reads the quantity from the environment
 // REJECT: formula: this overlay derives a quantity that no variant or constraint of the method uses
+// REJECT: formula: this method reads a quantity both where
 //
 // `overlay_constant_before_constraints_read_plainly`, with the ratio defined
 // rather than fixed: the definition never reaches the new constraint, which
-// would check the specimen's ratio. The REJECT pins that this is not
-// reported as "nothing uses it".
+// would check the specimen's ratio. The REJECTs pin the same two messages
+// away.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -65,5 +66,5 @@ int main()
 {
     constexpr auto overlaid = formula::apply(
         formula::overlay(formula::add_derived<Ratio>(var<EdgeY> / var<EdgeX>), formula::with_constraints(readsRatio)), m);
-    return overlaid.constraintOrigin.provenance() == formula::ConstraintProvenance::JurisdictionOverlay ? 0 : 1;
+    return formula::constraint_origin(overlaid).provenance() == formula::ConstraintProvenance::JurisdictionOverlay ? 0 : 1;
 }

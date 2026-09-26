@@ -43,8 +43,8 @@
 /// rule each record a step naming the jurisdiction's overlay and what it
 /// cited, and each verdict of an overlay's constraints is marked as the
 /// jurisdiction's. The nodes, rules and origins those steps are read from can
-/// be built only by this header -- see `detail::OverlayNodeAccess`,
-/// `RoundingRule` and `ConstraintOrigin`.
+/// be built only by the library -- see `detail::OverlayNodeAccess`,
+/// `RoundingRule` and `OverlaidConstraints`.
 ///
 /// **A declared unit is not an overlay's to change, and none of these
 /// operations touches one.** Spec section 16.7 asks that an overlay can
@@ -76,6 +76,9 @@
 ///    definitions that read each other -- which would read the environment
 ///    while every other use reads the overlay. Judged against the whole
 ///    produced method, whichever overlay left each substitution;
+///  - a `with_constant<Q>` or `add_derived<Q>` whose every use an operation
+///    listed after it in the same overlay removed, putting back a plain
+///    `var<Q>` -- the substitution then does nothing at all;
 ///  - `pin_variant`, `prune_variant` or `replace_variant` of a tag no variant
 ///    declares, and a `replace_variant` whose variant the produced method no
 ///    longer holds, in either order;
@@ -623,22 +626,27 @@ struct ConstraintsOverride
 {
     /// The constraints that replace the method's own.
     ConstraintSet<Ps...> constraintSet;
-    /// Where they come from; carried onto the method's `constraintOrigin`,
-    /// and from there beside every verdict in the trace.
+    /// Where they come from; carried with the constraints into the
+    /// `OverlaidConstraints` the method then holds, and from there beside
+    /// every verdict in the trace.
     Citation source {};
 };
 
 /// Replaces the constraints of the method the overlay is applied to with
 /// @p replacement -- the jurisdiction whose acceptance logic is not the base
 /// standard's: one comparing a pair of determinations where the base checks
-/// one, one requiring a mean of three, one judging a category code rather than
-/// a numeric limit. The number of constraints is the jurisdiction's, so
+/// one, one requiring a mean of three. (A category code in place of a numeric
+/// limit is expressible only for a category fixed where the constraint is
+/// written: `exact_lookup` takes its key as a value, not from the
+/// environment, so no constraint can yet judge the specimen's own category.)
+/// The number of constraints is the jurisdiction's, so
 /// `check_method` on the overlaid method answers with as many outcomes as
 /// @p replacement holds: more than the base method's, fewer, or none.
 ///
-/// **The trace says whose constraints they were.** The method's
-/// `constraintOrigin` then records `ConstraintProvenance::JurisdictionOverlay`
-/// and @p source, and every verdict `check_method` records says so --
+/// **The trace says whose constraints they were.** The method then holds an
+/// `OverlaidConstraints` (`method.hpp`) carrying @p source with the
+/// constraints, so the claim travels with them into any method built from
+/// that part, and every verdict `check_method` records says so --
 /// `[satisfied; jurisdiction overlay: ...]` where the base method's reads
 /// `[satisfied; the method's own constraint]`.
 ///
@@ -649,7 +657,11 @@ struct ConstraintsOverride
 /// the rule a later replacement's plain use is refused by, and a quantity only
 /// the replaced constraints read is refused as read by nothing -- in either
 /// order. Refused when one overlay lists it twice: the second would silently
-/// discard the first. Across overlays, the later one's constraints hold.
+/// discard the first. Across overlays, the later one's constraints hold --
+/// and that includes a later overlay's replacing the only constraints an
+/// earlier overlay's constant or definition reached, which is accepted, as a
+/// later `replace_variant` of the only variant reading one is: the earlier
+/// substitution then no longer applies.
 template <Predicate... Ps>
 [[nodiscard]] constexpr ConstraintsOverride<Ps...> with_constraints(ConstraintSet<Ps...> replacement,
                                                                     Citation source = {}) noexcept
@@ -1727,6 +1739,44 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when `with_constant<Q>` fixed `Q` where the method
+    /// read it, and an operation listed after it in the same overlay removed
+    /// every one of those uses and put back one that reads `Q` from the
+    /// environment. The method the overlay produces then reads `Q` only
+    /// unsubstituted: the constant does nothing, and the overlay claims to fix
+    /// a quantity the method takes from the specimen.
+    ///
+    /// Not `RequireSubstitutionEverywhere`'s message, which says the method
+    /// reads `Q` both where it was fixed and elsewhere: here nothing fixed is
+    /// left. Nor `RequireConstantUsed`'s: the method does read `Q`.
+    template <typename Q, bool Reached>
+    struct RequireConstantNotBypassed
+    {
+        static_assert(Reached,
+                      "formula: this overlay fixes a quantity, and an operation listed after the constant removed "
+                      "every use it fixed and put back one that reads the quantity from the environment; the "
+                      "method it produces reads the quantity only unsubstituted, so the constant does nothing -- "
+                      "list the constant after that operation; the quantity appears in this diagnostic as the "
+                      "template argument Q of RequireConstantNotBypassed");
+
+        static constexpr bool value = true;
+    };
+
+    /// `RequireConstantNotBypassed`'s rule for `add_derived<Q>`, in words
+    /// that say what the overlay did.
+    template <typename Q, bool Reached>
+    struct RequireDerivationNotBypassed
+    {
+        static_assert(Reached,
+                      "formula: this overlay derives a quantity, and an operation listed after the definition "
+                      "removed every use it replaced and put back one that reads the quantity from the environment; "
+                      "the method it produces reads the quantity only unsubstituted, so the definition does "
+                      "nothing -- list the definition after that operation; the quantity appears in this "
+                      "diagnostic as the template argument Q of RequireDerivationNotBypassed");
+
+        static constexpr bool value = true;
+    };
+
     /// What a substitution @p Sub for `Q` asks of the method an overlay
     /// produces: that it is still in effect somewhere, and that it is in
     /// effect everywhere `Q` is read.
@@ -1761,11 +1811,22 @@ namespace detail
         using Refusal =
             std::conditional_t<IsDerivation<Sub>::value, RequireDerivationUsed<Q, used>, RequireConstantUsed<Q, used>>;
 
+        /// The refusal for a plain use left where nothing substituted is: in
+        /// the words of the operation it bypassed.
+        using Bypassed = std::conditional_t<IsDerivation<Sub>::value,
+                                            RequireDerivationNotBypassed<Q, !plainLeft>,
+                                            RequireConstantNotBypassed<Q, !plainLeft>>;
+
         // A plain use left is asked first, and the "nothing reads it"
         // refusal only when there is none: a later replacement or definition
         // that reads `Q` does read it, and "no variant uses it" would be
-        // false of it.
-        static_assert(std::conditional_t<known, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
+        // false of it. Which plain-use message applies depends on whether a
+        // node the substitution left is still there beside the plain use --
+        // the method reads `Q` both ways -- or none is, and the plain use is
+        // the only one: each message says only what is there.
+        static_assert(
+            std::conditional_t<known && used, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
+        static_assert(std::conditional_t<known && !used, Bypassed, std::true_type>::value);
         static_assert(std::conditional_t<known && !plainLeft, Refusal, std::true_type>::value);
 
         static constexpr bool value = true;
@@ -1789,6 +1850,26 @@ namespace detail
         return Constraint<typename Rewrite::type> { Rewrite::apply(original.predicate, overriding),
                                                     original.verdict,
                                                     original.citation };
+    }
+
+    /// A method's own constraints with the substitution made in every one.
+    template <typename Sub, Predicate... Ps>
+    [[nodiscard]] constexpr auto rewrite_constraints(ConstraintSet<Ps...> const& ownSet, Sub const& overriding) noexcept
+    {
+        return std::apply(
+            [&](auto const&... items) { return formula::constraints(rewrite_constraint(items, overriding)...); },
+            ownSet.items);
+    }
+
+    /// A jurisdiction's constraints with the substitution made in every one,
+    /// still the jurisdiction's and still citing what its overlay cited: a
+    /// later substitution changes what a constraint reads, not whose it is.
+    template <typename Sub, Predicate... Ps>
+    [[nodiscard]] constexpr auto rewrite_constraints(OverlaidConstraints<Ps...> const& overlaidSet,
+                                                     Sub const& overriding) noexcept
+    {
+        return ConstraintOriginAccess::overlaid(rewrite_constraints(overlaidSet.constraintSet(), overriding),
+                                                overlaidSet.source());
     }
 
     /// Fails to compile when `add_derived<Q>` defines `Q` by an expression of
@@ -1982,19 +2063,6 @@ namespace detail
                            pack.published.template select<positionsWithout<Tag, Cs...>[Kept]...>());
     }
 
-    /// A method of these parts whose constraints are @p origin's: what every
-    /// `apply_operation` below returns, so that an operation which leaves the
-    /// constraints alone -- or only rewrites inside them -- carries whose they
-    /// are on unchanged. `method(...)` would make them the method's own.
-    template <typename Vs, typename Rounding, typename Constraints>
-    [[nodiscard]] constexpr Method<Vs, Rounding, Constraints> method_of(Vs variantSet,
-                                                                        Rounding rounding,
-                                                                        Constraints constraintSet,
-                                                                        ConstraintOrigin origin) noexcept
-    {
-        return Method<Vs, Rounding, Constraints> { variantSet, rounding, constraintSet, origin };
-    }
-
     /// Whether an operation substitutes for a quantity: `with_constant` or
     /// `add_derived`.
     template <typename Operation>
@@ -2013,25 +2081,19 @@ namespace detail
     /// Whether anything reads `Q` is not asked here, against the method as it
     /// stands at this step, but once, of the method the whole overlay
     /// produces -- see `RequireOverridesRead`.
-    template <typename Sub, typename... Cs, typename Rounding, Predicate... Ps>
+    template <typename Sub, typename... Cs, typename Rounding, typename Constraints>
         requires IsSubstitution<Sub>::value
     [[nodiscard]] constexpr auto apply_operation(Sub const& overriding,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet,
-                                                 ConstraintOrigin const& origin) noexcept
+                                                 Constraints const& constraintSet) noexcept
     {
         auto rewritten = std::apply(
             [&](auto const&... cases) { return formula::variants(rewrite_variant(cases, overriding)...); }, pack.cases);
         // Rewriting a variant's expression moves nothing, so the layout is
         // carried over as it stands, already checked.
         rewritten.published = pack.published;
-        return method_of(
-            rewritten,
-            rounding,
-            std::apply([&](auto const&... items) { return formula::constraints(rewrite_constraint(items, overriding)...); },
-                       constraintSet.items),
-            origin);
+        return formula::method(rewritten, rounding, rewrite_constraints(constraintSet, overriding));
     }
 
     /// `pin_variant<Tag>`: the variant tagged `Tag`, alone.
@@ -2041,24 +2103,22 @@ namespace detail
     /// variant declares, and a method built from that fallback is one the
     /// author never wrote: the operations after the pin would be judged
     /// against it, and could be refused for what it lacks.
-    template <typename Tag, typename... Cs, typename Rounding, Predicate... Ps>
+    template <typename Tag, typename... Cs, typename Rounding, typename Constraints>
     [[nodiscard]] constexpr auto apply_operation(VariantPin<Tag> const&,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet,
-                                                 ConstraintOrigin const& origin) noexcept
+                                                 Constraints const& constraintSet) noexcept
     {
         static_assert(
             std::conditional_t<isPlainClassTag<Tag>, RequireOverlayNamesDeclaredVariant<Tag, Cs...>, std::true_type>::value);
 
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
-            return method_of(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
-                                         pack.published.template select<variant_index<Tag, Cs...>()>()),
-                             rounding,
-                             constraintSet,
-                             origin);
+            return formula::method(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
+                                               pack.published.template select<variant_index<Tag, Cs...>()>()),
+                                   rounding,
+                                   constraintSet);
         else
-            return method_of(pack, rounding, constraintSet, origin);
+            return formula::method(pack, rounding, constraintSet);
     }
 
     /// `prune_variant<Tag>`: every variant but the one tagged `Tag`.
@@ -2066,12 +2126,11 @@ namespace detail
     /// Answers with the method unchanged whenever the build has already been
     /// refused, so that a refused prune adds nothing of the compiler's own to
     /// the refusal -- in particular, never the empty pack's message.
-    template <typename Tag, typename... Cs, typename Rounding, Predicate... Ps>
+    template <typename Tag, typename... Cs, typename Rounding, typename Constraints>
     [[nodiscard]] constexpr auto apply_operation(VariantPrune<Tag> const&,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet,
-                                                 ConstraintOrigin const& origin) noexcept
+                                                 Constraints const& constraintSet) noexcept
     {
         static_assert(
             std::conditional_t<isPlainClassTag<Tag>, RequireOverlayNamesDeclaredVariant<Tag, Cs...>, std::true_type>::value);
@@ -2080,12 +2139,10 @@ namespace detail
                                          std::true_type>::value);
 
         if constexpr (namesDeclaredVariant<Tag, Cs...> && sizeof...(Cs) > 1)
-            return method_of(variants_without<Tag>(pack, std::make_index_sequence<sizeof...(Cs) - 1> {}),
-                             rounding,
-                             constraintSet,
-                             origin);
+            return formula::method(
+                variants_without<Tag>(pack, std::make_index_sequence<sizeof...(Cs) - 1> {}), rounding, constraintSet);
         else
-            return method_of(pack, rounding, constraintSet, origin);
+            return formula::method(pack, rounding, constraintSet);
     }
 
     /// `with_rounding<U, Places, Mode>`: the same variants and constraints,
@@ -2095,29 +2152,28 @@ namespace detail
     /// A rule whose unit does not measure the variants' dimension is refused
     /// by the `Method` this builds, in the words its own rule would be
     /// refused in -- see `RequireRoundingRuleMeasuresVariants`.
-    template <Unit U, DecimalPlaces Places, RoundingMode Mode, typename... Cs, typename Rounding, Predicate... Ps>
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, typename... Cs, typename Rounding, typename Constraints>
     [[nodiscard]] constexpr auto apply_operation(RoundingOverride<U, Places, Mode> const& overriding,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const&,
-                                                 ConstraintSet<Ps...> const& constraintSet,
-                                                 ConstraintOrigin const& origin) noexcept
+                                                 Constraints const& constraintSet) noexcept
     {
-        return method_of(
-            pack, RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source), constraintSet, origin);
+        return formula::method(
+            pack, RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source), constraintSet);
     }
 
     /// `with_constraints(...)`: the same variants and rounding rule, checked
     /// against the overlay's constraints, which the method records as the
     /// overlay's, with what the overlay cited. The constraints replaced are
     /// dropped whole, of whatever number, and so is whose they were.
-    template <Predicate... Rs, typename... Cs, typename Rounding, Predicate... Ps>
+    template <Predicate... Rs, typename... Cs, typename Rounding, typename Constraints>
     [[nodiscard]] constexpr auto apply_operation(ConstraintsOverride<Rs...> const& overriding,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const&,
-                                                 ConstraintOrigin const&) noexcept
+                                                 Constraints const&) noexcept
     {
-        return method_of(pack, rounding, overriding.constraintSet, ConstraintOriginAccess::overlaid(overriding.source));
+        return formula::method(
+            pack, rounding, ConstraintOriginAccess::overlaid(overriding.constraintSet, overriding.source));
     }
 
     /// Fails to compile when a replacement measures a different dimension
@@ -2166,29 +2222,27 @@ namespace detail
     /// the order of the operations. A replacement of an absent tag or of a
     /// different dimension leaves the method unchanged, so that the variants
     /// pack's own agreement rule never sees the mismatch.
-    template <typename Tag, typename Expr, typename... Cs, typename Rounding, Predicate... Ps>
+    template <typename Tag, typename Expr, typename... Cs, typename Rounding, typename Constraints>
     [[nodiscard]] constexpr auto apply_operation(VariantReplacement<Tag, Expr> const& replacing,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
-                                                 ConstraintSet<Ps...> const& constraintSet,
-                                                 ConstraintOrigin const& origin) noexcept
+                                                 Constraints const& constraintSet) noexcept
     {
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
         {
             constexpr Dimension reported = VariantsDimension<Variants<Cs...>>::dimension;
             if constexpr (reported == Expr::dimension)
-                return method_of(variants_replacing<variant_index<Tag, Cs...>(), Tag>(
-                                     pack,
-                                     OverlayNodeAccess::replaced(replacing.expression, replacing.source),
-                                     std::index_sequence_for<Cs...> {}),
-                                 rounding,
-                                 constraintSet,
-                                 origin);
+                return formula::method(variants_replacing<variant_index<Tag, Cs...>(), Tag>(
+                                           pack,
+                                           OverlayNodeAccess::replaced(replacing.expression, replacing.source),
+                                           std::index_sequence_for<Cs...> {}),
+                                       rounding,
+                                       constraintSet);
             else
-                return method_of(pack, rounding, constraintSet, origin);
+                return formula::method(pack, rounding, constraintSet);
         }
         else
-            return method_of(pack, rounding, constraintSet, origin);
+            return formula::method(pack, rounding, constraintSet);
     }
 
     /// Whether every node of every variant and constraint of a method is a kind
@@ -2225,7 +2279,7 @@ namespace detail
 
     template <typename Q, typename Vs, typename Rounding, typename Constraints>
     struct IsKnownMethod<Q, Method<Vs, Rounding, Constraints>>:
-        IsKnownParts<Q, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>
+        IsKnownParts<Q, std::remove_cv_t<Vs>, PlainConstraints<std::remove_cv_t<Constraints>>>
     {
     };
 
@@ -2247,20 +2301,22 @@ namespace detail
 
     template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q>
     struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, ConstantOverride<Q>>:
-        std::bool_constant<std::conditional_t<
-            IsKnownMethod<ConstantOverride<Q>, Input>::value,
-            RequireConstantApplies<ConstantOverride<Q>, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>,
-            std::true_type>::value>
+        std::bool_constant<std::conditional_t<IsKnownMethod<ConstantOverride<Q>, Input>::value,
+                                              RequireConstantApplies<ConstantOverride<Q>,
+                                                                     std::remove_cv_t<Vs>,
+                                                                     PlainConstraints<std::remove_cv_t<Constraints>>>,
+                                              std::true_type>::value>
     {
     };
 
     /// `add_derived<Q>` is judged exactly as `with_constant<Q>` is.
     template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q, typename Expr>
     struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, QuantityDerivation<Q, Expr>>:
-        std::bool_constant<std::conditional_t<
-            IsKnownMethod<QuantityDerivation<Q, Expr>, Input>::value,
-            RequireConstantApplies<QuantityDerivation<Q, Expr>, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>,
-            std::true_type>::value>
+        std::bool_constant<std::conditional_t<IsKnownMethod<QuantityDerivation<Q, Expr>, Input>::value,
+                                              RequireConstantApplies<QuantityDerivation<Q, Expr>,
+                                                                     std::remove_cv_t<Vs>,
+                                                                     PlainConstraints<std::remove_cv_t<Constraints>>>,
+                                              std::true_type>::value>
     {
     };
 
@@ -2424,19 +2480,28 @@ namespace detail
     /// The rule `RequireSubstitutionEverywhere` states, judged against the
     /// WHOLE produced method: for every quantity with a substitution's node
     /// anywhere in it, whichever overlay left that node, no plain use may be
-    /// left. So two overlays applied in turn are held to it exactly as one
-    /// overlay is -- a later overlay that reads a quantity an earlier one
-    /// fixed, or completes a definition cycle, is refused.
+    /// left. So a later overlay that reads a quantity an earlier one fixed,
+    /// where a node of that substitution survives, or that completes a
+    /// definition cycle, is refused, as one overlay would be.
+    ///
+    /// **Not every case one overlay refuses.** A later overlay whose
+    /// `replace_variant` or `with_constraints` removes every node an earlier
+    /// overlay's substitution left, and puts back a plain use, leaves this
+    /// rule nothing to find: the later overlay's formula or constraints hold,
+    /// and the earlier constant or definition no longer applies. That is
+    /// "across overlays, the later one holds", accepted rather than refused;
+    /// within one overlay the same order is refused as bypassed
+    /// (`RequireConstantNotBypassed`).
     ///
     /// A quantity this overlay itself substitutes is asked here as well as by
     /// its own substitution's check (`RequireConstantApplies`). Both name the
     /// same specialisation of `RequireSubstitutionEverywhere`, and a class
     /// template specialisation is instantiated once, so the refusal is
-    /// reported once -- counted on cl for `overlay_derived_cycle` and
-    /// `overlay_constant_reintroduced`. The substitution's own check is still
-    /// needed: when a later operation removed every node the substitution
-    /// left and put a plain use back, the quantity has no substitution's node
-    /// for this rule to find.
+    /// reported once -- counted on cl, g++ and clang++ for
+    /// `overlay_derived_cycle`. The substitution's own check is still needed:
+    /// when a later operation removed every node the substitution left and put
+    /// a plain use back, the quantity has no substitution's node for this rule
+    /// to find, and that check refuses it as bypassed.
     template <typename Substituted, typename Vs, typename Constraints>
     struct RequireEverySubstitutionEverywhere;
 
@@ -2485,13 +2550,13 @@ namespace detail
         /// Whether the rule has anything true to say.
         static constexpr bool askable = known && replacementsApplied;
 
-        static constexpr bool value =
-            std::conditional_t<askable,
-                               RequireEverySubstitutionEverywhere<
-                                   typename SubstitutedInParts<std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>::type,
-                                   std::remove_cv_t<Vs>,
-                                   std::remove_cv_t<Constraints>>,
-                               std::true_type>::value;
+        static constexpr bool value = std::conditional_t<
+            askable,
+            RequireEverySubstitutionEverywhere<
+                typename SubstitutedInParts<std::remove_cv_t<Vs>, PlainConstraints<std::remove_cv_t<Constraints>>>::type,
+                std::remove_cv_t<Vs>,
+                PlainConstraints<std::remove_cv_t<Constraints>>>,
+            std::true_type>::value;
     };
 
     /// Applies the operations of an overlay from position @p Index onwards,
@@ -2503,8 +2568,7 @@ namespace detail
             return m;
         else
             return apply_from<Index + 1>(
-                operations,
-                apply_operation(std::get<Index>(operations), m.variantSet, m.rounding, m.constraintSet, m.constraintOrigin));
+                operations, apply_operation(std::get<Index>(operations), m.variantSet, m.rounding, m.constraintSet));
     }
 } // namespace detail
 
