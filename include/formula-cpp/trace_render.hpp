@@ -122,8 +122,9 @@ namespace detail
     /// break the ASCII structure the library writes.
     ///
     /// Applied by `step_line`, once, to every piece of author text a step
-    /// holds -- see `EscapedStep` and `unit_symbol_text` -- and nowhere else:
-    /// the words this file writes itself go into the line as they are.
+    /// holds -- see `EscapedStep`, `unit_symbol_text` and, for a record's role
+    /// and a lineage attribute's name, `tag_words` -- and nowhere else: the
+    /// words this file writes itself go into the line as they are.
     [[nodiscard]] inline std::string escaped_author_text(std::string_view authored)
     {
         constexpr std::string_view hexDigits = "0123456789abcdef";
@@ -200,7 +201,9 @@ namespace detail
     /// citations (the step's own, and a selection's prune's), the
     /// justification, the variant tag, the lookup key's name and a violated
     /// constraint's verdict label -- is escaped by `escaped_author_text`,
-    /// held here, and pointed at by the copy's views.
+    /// held here, and pointed at by the copy's views. A record's role and a
+    /// lineage attribute's name, held in library-built values the copy cannot
+    /// rebuild, are escaped where they are written, by `tag_words`.
     ///
     /// `step_line` renders from this copy and never from the step it was
     /// given, so no helper below can print author text unescaped by reading
@@ -715,15 +718,22 @@ namespace detail
         return listed;
     }
 
-    /// A role's or a lineage attribute's name as a trace line writes it. The
-    /// **one** place such a name -- author text, from `tag_name` -- enters a
-    /// trace line: the scope's own line and the origin clause on a quantity's
-    /// line come through `record_origin_text`, a lineage step through
-    /// `lineage_expression`, and both through here. Whatever escaping author
-    /// text in a trace line needs is applied here, once.
+    /// A role's or a lineage attribute's name as a trace line writes it,
+    /// escaped by `escaped_author_text` as every other piece of author text
+    /// in a line is. The **one** place such a name -- author text, from
+    /// `tag_name` -- enters a trace line: the scope's own line and the origin
+    /// clause on a quantity's line come through `record_origin_text`, a
+    /// lineage step through `lineage_expression`, and both through here, and
+    /// all three are reached only from `step_line`.
+    ///
+    /// Escaped here rather than in `EscapedStep`, because a `RecordOrigin` and
+    /// a `LineageCheck` are built only by the library (`record.hpp`), so the
+    /// copy cannot hold escaped ones. A role's name is identifier-like
+    /// (`RequireIdentifierLikeRoleName`), so only an attribute's name -- a
+    /// tag with a `TagName` of the author's -- can hold what this escapes.
     [[nodiscard]] inline std::string tag_words(std::string_view tagName)
     {
-        return std::string { tagName };
+        return escaped_author_text(tagName);
     }
 
     /// Which record a value was read from, in words: `from record Reference

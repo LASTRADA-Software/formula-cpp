@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -285,4 +286,41 @@ TEST_CASE("a failed checked_explain always says which error it failed with", "[l
     // A default-constructed failure would have to claim the enumeration's
     // first error, DivisionByZero, which nothing raised.
     STATIC_REQUIRE(!std::is_default_constructible_v<formula::CheckedExplainFailure<>>);
+}
+
+namespace
+{
+/// A lineage attribute whose published name holds the two characters of a
+/// trace line's own punctuation a `TagName` may hold: `;`, which separates
+/// clauses, and `\`, the escape itself. A bracket or a control character is
+/// refused in any `TagName` spelling (`RequireTagNameSpelling`, `tag.hpp`),
+/// so it cannot reach a trace through a tag at all.
+struct PunctuatedLot
+{
+};
+} // namespace
+
+template <>
+struct formula::TagName<PunctuatedLot>
+{
+    static constexpr std::string_view of() noexcept { return "lot; sealed\\B"; }
+};
+
+TEST_CASE("a lineage attribute's name is escaped in the trace, as other author text is", "[lineage-trace]")
+{
+    // Phase 11's trace escape (`escaped_author_text`), applied to role and
+    // attribute names through `tag_words`. A role's name is identifier-like,
+    // so only an attribute's can hold these; unescaped, ";" would read as the
+    // start of a new clause, and a "\" before it as escaping it.
+    constexpr auto punctuated = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
+                                             formula::lineage<PunctuatedLot>(5)),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there,
+                                   formula::lineage<PunctuatedLot>(5)));
+    formula::Trace<> trace {};
+    std::string const text =
+        traced(formula::from_record<Reference>(var<Force>, formula::same_lineage<PunctuatedLot>()), punctuated, trace);
+    INFO(text);
+    CHECK(text.find("1. same lot\\; sealed\\\\B as this record: 5 and 5, satisfied\n") != std::string::npos);
+    CHECK(text.find("lot; sealed") == std::string::npos);
 }
