@@ -318,7 +318,9 @@ struct Step
     /// `OverriddenConstant`, `DerivedQuantity`, `ReplacedVariant` and `RoundingRuleApplied`:
     /// what the overlay that fixed the value, defined the quantity, replaced the formula or set
     /// the rule cited, empty when it cited nothing --
-    /// and always empty for a method's own rule. For `AcceptanceChecked`, and
+    /// and always empty for a method's own rule. For `VariantSelected`: what
+    /// the overlay that pinned the method to that variant cited, when one did
+    /// (`variantPinned`); a prune's citation is `variantPrunedBy`. For `AcceptanceChecked`, and
     /// for a `Constraint` it holds: what the overlay that replaced the
     /// method's constraints cited, empty for the method's own. A
     /// `Constraint`'s own citation is `render()`'s and `document()`'s to show,
@@ -1178,8 +1180,10 @@ namespace detail
 /// an evaluation already under way can. The outer walk's next `produced` then
 /// finds no mark to claim from, and drops its step rather than read an empty
 /// stack -- as every `..._produced` does when told of a result without the
-/// matching `..._entered`, which a consumer's own evaluator may forget. The
-/// trace is then incomplete, and says less rather than something false.
+/// matching `..._entered`, which a consumer's own evaluator may forget, and as
+/// `produced` of a `when()` and `branch_taken` do when no `when()` was
+/// entered. The trace is then incomplete, and says less rather than something
+/// false.
 ///
 /// **A vocabulary, when one is given, is held by value**, and every step
 /// naming a quantity writes its symbol through it (`Step::symbol`). By value
@@ -1244,9 +1248,15 @@ class RecordingSink
     /// push-in-`entered`, pop-in-`produced` discipline as `marks`, and for
     /// the same reason: a `when()` nested inside another's branch must not
     /// clobber its still-open parent's pending entry.
+    ///
+    /// Told of a branch with no `when()` entered -- a consumer's own
+    /// evaluator out of step, as `produced` below describes -- there is no
+    /// entry to update, and nothing is recorded.
     template <Node N>
     void branch_taken(N const&, bool thenTaken) noexcept
     {
+        if (_trace->branchStack.empty())
+            return;
         _trace->branchStack.back() = thenTaken ? Branch::Then : Branch::Else;
     }
 
@@ -1262,6 +1272,12 @@ class RecordingSink
         // behaviour (cl's debug library aborts), so the step is dropped.
         if (_trace->marks.empty())
             return;
+        // The same, for a `when()` whose `entered` was never told: no pending
+        // branch to pop. Dropped before the mark is taken, so that the mark,
+        // which some other node's `entered` pushed, stays for that node.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
+            if (_trace->branchStack.empty())
+                return;
         std::size_t const nodeMark = _trace->marks.back();
         _trace->marks.pop_back();
 

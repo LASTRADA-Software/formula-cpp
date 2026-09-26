@@ -1724,3 +1724,26 @@ TEST_CASE("a result told without its entry is dropped, never read off an empty s
         var<Mass>, formula::environment(formula::Measured<Mass> { formula::Rational { 6 } }), sink);
     CHECK(trace.steps.size() == 1);
 }
+
+TEST_CASE("a branch told with no when() entered is dropped, never read off an empty stack", "[trace]")
+{
+    // The same consumer mistake as above, for the pending branch a `when()`
+    // pushes in `entered`: `branch_taken` with nothing entered, and a
+    // `when()`'s `produced` after only some other node's `entered`. Both read
+    // `back()` of an empty stack, which is undefined behaviour.
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const value = formula::Evaluated<formula::Rational> { std::optional { formula::Rational { 1 } } };
+
+    sink.branch_taken(chosen, true);
+    CHECK(trace.branchStack.empty());
+
+    sink.entered(var<Strength>);
+    sink.produced(chosen, value);
+    CHECK(trace.steps.empty());
+    CHECK(trace.branchStack.empty());
+    // The mark `var<Strength>` pushed is left for it, and it claims it.
+    sink.produced(var<Strength>, value);
+    CHECK(trace.steps.size() == 1);
+    CHECK(trace.marks.empty());
+}
