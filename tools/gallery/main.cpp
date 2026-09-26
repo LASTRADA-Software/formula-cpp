@@ -466,6 +466,29 @@ constexpr auto repeatabilityCheck = formula::constraint(
       .text = "The two determinations agree when they differ by no more than r = 0.1 g + level / 50, the "
               "level being their mean." });
 
+// ---- Another record: a reference specimen, and a gated read -----------------
+//
+// A role names which record a formula reads from; which sample plays it is
+// bound at run time. The curing batch is an attribute the author declares --
+// the library compares the keys each record states, and nothing else.
+
+struct ReferenceSpecimen
+{
+};
+struct CuringBatch
+{
+};
+
+/// This specimen's crushing strength over the reference specimen's, computed
+/// from the reference's own load and edge.
+constexpr auto relativeStrength =
+    var<CrushingStrength> / formula::from_record<ReferenceSpecimen>(var<FailureLoad> / (var<LoadedEdge> * var<LoadedEdge>));
+
+/// The same, read only when both specimens were cured in one batch.
+constexpr auto gatedRelativeStrength =
+    var<CrushingStrength> / formula::from_record<ReferenceSpecimen>(var<FailureLoad> / (var<LoadedEdge> * var<LoadedEdge>),
+                                                                    formula::same_lineage<CuringBatch>());
+
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
 /// Not reused from render.hpp's own `detail::number_text`, which does exactly
@@ -1098,6 +1121,68 @@ int main(int argc, char** argv)
         return 1;
     }
     out << "```\n" << formula::render_trace(precisionTrace, { .maxSteps = 30 }) << "```\n\n";
+
+    // ---- Another record ----
+    //
+    // A context holds this specimen's record and the reference's, by role, and
+    // is this specimen's environment. Every step read from the reference says
+    // so, with both of its keys.
+
+    out << "## Worked derivation: a strength relative to a reference specimen\n\n";
+    out << "This specimen's `f` = 36 MPa over the reference specimen's strength, computed from the "
+           "reference's own `F` = 579 630 N and `a` = 139 mm. Every step read from the reference says so, "
+           "with its sample and test:\n\n";
+
+    write_worked_formula(out, relativeStrength);
+
+    auto const thisSpecimen = formula::environment(formula::Measured<CrushingStrength> { formula::Rational { 36 } });
+    auto const referenceSpecimen =
+        formula::environment(formula::Measured<FailureLoad> { formula::Rational { 579'630 } },
+                             formula::Measured<LoadedEdge> { formula::Rational { 139 } });
+    auto const sameBatch = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)),
+                                             thisSpecimen, formula::lineage<CuringBatch>(4411)),
+        formula::record<ReferenceSpecimen>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
+                                           referenceSpecimen, formula::lineage<CuringBatch>(4411)));
+
+    formula::Trace<> relativeTrace {};
+    auto const relative = formula::checked_evaluate_si<formula::Rational>(relativeStrength, sameBatch,
+                                                                          formula::RecordingSink<> { relativeTrace });
+    if (!relative.has_value() || !relative->has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the relative strength did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(relativeTrace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    out << "The same read, gated on the two specimens sharing a curing batch. The reference was cured in "
+           "another batch, so the read is refused before the reference's values are used, and the trace "
+           "says which attribute refused it, with both keys. The requirement does not change the formula "
+           "on the page; the trace records every attribute it compared:\n\n";
+
+    write_worked_formula(out, gatedRelativeStrength);
+
+    auto const otherBatch = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)),
+                                             thisSpecimen, formula::lineage<CuringBatch>(4411)),
+        formula::record<ReferenceSpecimen>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
+                                           referenceSpecimen, formula::lineage<CuringBatch>(4412)));
+
+    formula::Trace<> gatedTrace {};
+    auto const gated = formula::checked_evaluate_si<formula::Rational>(gatedRelativeStrength, otherBatch,
+                                                                       formula::RecordingSink<> { gatedTrace });
+    if (gated.has_value() || gated.error() != formula::ArithmeticError::DomainError)
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the gated read was not refused\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(gatedTrace, { .maxSteps = 20 });
+    out << "```\n\n";
 
     out.flush();
     return out ? 0 : 1;

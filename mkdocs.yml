@@ -43,6 +43,7 @@ nav:
   - Methods and overlays: methods-and-overlays.md
   - Series and grading curves: series.md
   - Statistics, outliers and precision: statistics.md
+  - Other samples and other tests: records.md
   - Gallery: gallery.md
   # Doxygen output, dropped into the built site's api/ directory by
   # .github/workflows/pages.yml after `mkdocs build` runs -- not a page

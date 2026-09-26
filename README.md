@@ -238,6 +238,7 @@ because all of it came from the same line of code.
 | [Methods and overlays](docs/methods-and-overlays.md) | Variants selected by tag, a method's own rounding rule and constraints, jurisdiction overlays and their provenance in the trace, a jurisdiction's own acceptance logic, and jurisdiction-scoped vocabularies |
 | [Series and grading curves](docs/series.md) | One quantity at each point of a method's domain, the index marker, elementwise arithmetic, absence and failure per element, conformity against a limit envelope, snapping, grading curves and splicing, and binning raw observations |
 | [Statistics, outliers and precision](docs/statistics.md) | Counts, means, variances and ranges of a sample -- a series or raw observations -- the spread rounded exactly, outliers rejected pass by pass with the author's verdict on an abort, critical values from the author's table, and precision limits at the level they check |
+| [Other samples and other tests](docs/records.md) | Reading from a reference sample or a prior test by role, computing over another specimen, the record each value came from in the trace, lineage as a gate, and a record not yet made |
 | [Gallery](docs/gallery.md) | A documentation page the library generated about itself |
 
 Every example in the documentation uses generic physics with invented `Example Standard`
