@@ -113,10 +113,17 @@ struct formula::TagName<Cylinder>
 10. #9 = 51/10 MPa [variant cylinder 150 x 300 mm (3rd of 3), selected by tag]
 ```
 
+A spelling holding a square bracket or a control character is refused, since
+a trace line ends in a bracketed clause saying where a value came from, and
+such a spelling could imitate one -- see [the provenance
+section](#the-provenance-is-the-librarys-to-state). So are two variants of one
+method spelt the same, since the line naming the variant that ran could not
+say which it was.
+
 `(3rd of 3)` is the variant's position in the method **as published**. It stays
 that way after an overlay prunes or pins, so the number refers to the list a
-reader can find in the standard -- unless an author reassigns the method's
-published layout by hand, which the section on provenance below describes.
+reader can find in the standard -- unless an author copies another pack's
+layout into the method's, which the section on provenance below describes.
 
 ## Why `variant<Tag>`, not `when<Tag>`
 
@@ -152,6 +159,8 @@ says so rather than implying otherwise.
 - there is at least one;
 - all variants report the same dimension;
 - no two declare the same tag;
+- no two are spelt the same in a trace (a `TagName` can make two tags read
+  alike);
 - every tag is a plain class type.
 
 Two of those refusals, as g++ 13.3 prints them:
@@ -162,6 +171,12 @@ static assertion failed: formula: two variants of this method measure different 
 
 ```
 static assertion failed: formula: this method declares two variants for the same tag; a method with two variants for one tag has no answer to which of them applies -- the tag appears in this diagnostic as the template argument Tag of RequireTagDeclaredOnce, and First and Second are the ZERO-BASED positions of the two variants that declare it, so 0 is the first variant
+```
+
+Two tags spelt alike:
+
+```
+static assertion failed: formula: two variants of this method are spelt the same in a trace, so a line naming the variant that ran could not say which of them it was -- the tags appear in this diagnostic as the template arguments FirstTag and SecondTag of RequireTagNamesDistinct, and First and Second are the ZERO-BASED positions of their variants; spell them apart with formula::TagName
 ```
 
 A rounding rule whose unit does not measure the variants' dimension is refused
@@ -193,22 +208,26 @@ static assertion failed: formula: this method declares no variant for that tag; 
 
 ## An overlay yields a method
 
-Seven operations. **Five of them are said in the trace**, each by a step of its
-own naming the jurisdiction's overlay and what it cited: a fixed constant, a
-derived quantity, a replaced formula, a jurisdiction's rounding rule, and a
-jurisdiction's constraints (see [Whose acceptance logic](#whose-acceptance-logic)).
-`document()` marks the first three on the page. **A pin and a prune are not**:
-they take no citation, record no step and mark nothing on the page, and the
-only sign of either in a trace is the selection's published count -- `(2nd of
-3)` for a method now holding fewer variants than three.
+Seven operations, and **every one of them requires a citation and is said in
+the trace** with what the jurisdiction cited: a fixed constant, a derived
+quantity and a replaced formula each on a step of its own, a jurisdiction's
+rounding rule on the rounding step, a pin or a prune on the step that names the
+selected variant, and a jurisdiction's constraints beside each verdict (see
+[Whose acceptance logic](#whose-acceptance-logic)).
+
+**`document()` marks less than the trace says.** It documents a formula, and
+marks on the page only what an overlay put inside one: a fixed, a derived and
+a replaced part. A pin, a prune, a rounding rule and a set of constraints are
+parts of a method, not of a formula, and no page shows them: there is no
+`document()` for a whole method yet. A `document(method)` is future work.
 
 | Operation | What it does |
 |---|---|
 | `with_constant<Q>(value, citation)` | fixes `Q` at `value` (in `Q`'s declared unit) wherever the method uses it |
 | `add_derived<Q>(expression, citation)` | defines `Q` by an expression over other inputs wherever the method uses it |
 | `replace_variant<Tag>(expression, citation)` | replaces one variant's formula wholesale |
-| `pin_variant<Tag>()` | keeps only that variant, making it mandatory |
-| `prune_variant<Tag>()` | deletes that variant |
+| `pin_variant<Tag>(citation)` | keeps only that variant, making it mandatory |
+| `prune_variant<Tag>(citation)` | deletes that variant |
 | `with_rounding<U, Places, Mode>(citation)` | replaces the method's rounding rule |
 | `with_constraints(constraints(...), citation)` | replaces the method's constraints wholesale |
 
@@ -216,6 +235,12 @@ only sign of either in a trace is the selection's published count -- `(2nd of
 time. The base method is unchanged, so one base method can carry every
 jurisdiction's overlay side by side. Operations apply **in the order the
 overlay lists them**, each to the method the previous one produced.
+
+An operation given no citation is refused, in words naming the operation:
+
+```
+static assertion failed: formula: pin_variant<Tag>() was given no citation; which variant is mandatory is a jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that makes it, pin_variant<Tag>(citation)
+```
 
 ### Fixing a constant, and the unit a jurisdiction reports in
 
@@ -267,7 +292,7 @@ inline constexpr auto south = formula::overlay(
     formula::replace_variant<Cylinder>(
         var<Force> / (formula::constant<unit::One>(rat(3, 4)) * formula::pow<2>(var<Diameter>)), southReplacement),
     formula::add_derived<ShapeFactor>(var<EdgeB> / var<EdgeA>, southDefinition),
-    formula::prune_variant<Prism>());
+    formula::prune_variant<Prism>(southScope));
 ```
 
 A derived quantity is traced as the quantity equal to its definition's step:
@@ -286,8 +311,11 @@ south cube: 4000000 Pa
 9. #7 * #8 = 3/200
 10. #6 / #9 = 36040000/9
 11. round(#10, in MPa) = 4 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
-12. #11 = 4 MPa [variant Cube (2nd of 3), selected by tag]
+12. #11 = 4 MPa [variant Cube (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
 ```
+
+The last line says the prune: one of the method's three published variants is
+gone, and by whose clause.
 
 A replaced formula is marked as the jurisdiction's. The selection still counts
 the Cylinder as the 3rd of 3, although the Prism published before it is gone --
@@ -302,7 +330,7 @@ the position is the published one, not the Cylinder's place in what is left:
 6. #1 / #5 = 144160000/27
 7. #6 = 144160000/27 [replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]
 8. round(#7, in MPa) = 53/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
-9. #8 = 53/10 MPa [variant cylinder 150 x 300 mm (3rd of 3), selected by tag]
+9. #8 = 53/10 MPa [variant cylinder 150 x 300 mm (3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
 ```
 
 `document()` marks the same things on the page. A fixed quantity's row carries
@@ -320,11 +348,23 @@ documentation of the south's cube:
   F: maximum load at failure
 ```
 
-A pin keeps one variant, and the east's cube is still `(2nd of 3)`:
+A pin keeps one variant and makes it mandatory:
+
+```cpp
+/// The east tests cubes only, so the cube variant is mandatory there.
+inline constexpr auto east = formula::overlay(formula::pin_variant<Cube>(eastScope));
+```
+
+The east's cube is still `(2nd of 3)`, and the selection says the pin:
 
 ```text
+9. #8 = 6 MPa [variant Cube (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard 3:2023 E, E.1]
+
 east: 1 variant(s) left after the pin
 ```
+
+One overlay cannot both pin and prune, but one jurisdiction may prune what a
+later one pins; the trace then says both, the prune first.
 
 ### The provenance is the library's to state
 
@@ -335,7 +375,10 @@ hand:
 - only an overlay builds the nodes a trace reads "fixed", "derived" or
   "replaced" from;
 - only `with_rounding` creates a rule claiming a jurisdiction;
-- only `evaluate_method` builds the rounding node a method applies.
+- only `evaluate_method` builds the rounding node a method applies;
+- only `variants(...)` states a variant's published position and count, and
+  only `apply`, through a pin or a prune, carries them on with what the
+  overlay cited.
 
 Building one of those nodes directly is refused:
 
@@ -343,19 +386,51 @@ Building one of those nodes directly is refused:
 static assertion failed: formula: only an overlay builds this node; it makes a trace say a jurisdiction fixed a value, defined a quantity or replaced a formula, so one built by hand would say so of something no overlay did -- use with_constant, add_derived or replace_variant in an overlay(...) given to apply; the node appears in this diagnostic as the template argument OverlayNode of RequireOverlayMadeNode
 ```
 
-What the guard governs is how a rule or node is *created*, not where a copy
-travels. A method holding a copy of an overlay's rule is traced as that
-overlay's rule, which is true of it. Two public members are documented as
-relabellings an author can make on purpose, and nothing refuses them:
+A published layout written by hand -- `{ { 5, 7 }, 9 }`, which would make a
+trace call a variant the 5th of 9 -- is refused, whether as an initialiser or
+assigned later:
+
+```
+static assertion failed: formula: a variant's published position is stated only by the library -- by variants(...), and carried by apply() through a pin or a prune -- since a layout written by hand could make a trace report a position and a count no method has; build the pack with variants(...)
+```
+
+**What is authoritative is the `Step`, not the rendered line.** A trace step
+records its provenance in fields only the library sets -- `kind`,
+`roundingProvenance`, `constraintProvenance`, `variantPinned`,
+`variantPrunedCount` and the citations beside them -- and code that must decide
+whose a value was reads those.
+
+**The rendered line is escaped so that author text cannot break its
+structure.** Some of the words in a trace line are the author's: a symbol, a
+citation, a verdict, a unit's symbol, a variant's tag, a lookup key's name.
+`render_trace` escapes every one of them -- `\` as `\\`, `[` as `\[`, `]` as
+`\]`, `;` as `\;`, a newline as `\n` and any other control character as `\x`
+and two hex digits -- and writes its own clauses as they are, so author text
+cannot open or close a clause or end a line. It may still contain any
+*words*: a citation titled like a library clause renders like one, and only
+`Step::kind` tells them apart (`docs/tracing.md` gives the example). A `TagName`
+or `EnumeratorName` spelling goes further: holding a square bracket or a
+control character, it is refused at compile time:
+
+```
+static assertion failed: formula: this TagName spelling holds a square bracket or a control character (a newline, a tab, any byte below 0x20, or 0x7f); a trace line ends in a bracketed clause saying where a value came from, and a line ends at a newline, so such a spelling could make a trace claim an overlay replaced or fixed something no overlay touched, or add a line that is no step -- the tag appears in this diagnostic as template argument Tag of RequireTagNameSpelling -- spell the tag without them
+```
+
+What the guard governs is how a rule, a node or a layout is *created*, not
+where a copy travels. A method holding a copy of an overlay's rule is traced as
+that overlay's rule, which is true of it. Two relabellings on public members
+are documented, and nothing refuses them:
 
 - **assigning `Method::rounding`** a method's own rule, which makes a trace say
   `(method default)` of what was a jurisdiction's rule;
-- **assigning `Variants::published`** another well-formed layout, which makes a
-  trace count variants in that layout -- `(2nd of 3)` means the 2nd of the
-  layout the method holds.
+- **copying another pack's layout** into `Variants::published`, or resetting
+  it to declaration order with `{}`, which gives the pack a layout the library
+  made for another -- positions, count and any pin or prune with its citation.
+  A pruned pack reset this way reports its variants as the 1st and 2nd of 2,
+  and says nothing of the prune.
 
-Both are explicit acts on public members (`method.hpp` says so where each is
-declared). What no author can do is create a rule or node that states a
+Both are explicit acts on public members (`docs/tracing.md` lists every such
+route). What no author can do is create a rule, node or layout that states a
 provenance the library did not give it.
 
 ### An override that would do nothing is refused

@@ -133,6 +133,8 @@ inline constexpr formula::Citation northConstant { .title = "Shape factor",
 inline constexpr formula::Citation northRounding { .reference = "Example Standard 12:2021 NA", .section = "NA.4" };
 inline constexpr formula::Citation southDefinition { .reference = "Example Standard 7:2019 A", .section = "A.3" };
 inline constexpr formula::Citation southReplacement { .reference = "Example Standard 7:2019 A", .section = "A.5" };
+inline constexpr formula::Citation southScope { .reference = "Example Standard 7:2019 A", .section = "A.1" };
+inline constexpr formula::Citation eastScope { .reference = "Example Standard 3:2023 E", .section = "E.1" };
 
 /// The north fixes the shape factor at 0.97 where the base method reads it
 /// from the specimen, and reports in newtons per square millimetre to two
@@ -153,10 +155,10 @@ inline constexpr auto south = formula::overlay(
     formula::replace_variant<Cylinder>(
         var<Force> / (formula::constant<unit::One>(rat(3, 4)) * formula::pow<2>(var<Diameter>)), southReplacement),
     formula::add_derived<ShapeFactor>(var<EdgeB> / var<EdgeA>, southDefinition),
-    formula::prune_variant<Prism>());
+    formula::prune_variant<Prism>(southScope));
 
 /// The east tests cubes only, so the cube variant is mandatory there.
-inline constexpr auto east = formula::overlay(formula::pin_variant<Cube>());
+inline constexpr auto east = formula::overlay(formula::pin_variant<Cube>(eastScope));
 
 inline constexpr auto northern = formula::apply(north, compressiveStrength);
 inline constexpr auto southern = formula::apply(south, compressiveStrength);
@@ -353,12 +355,18 @@ int main()
     check(exact(formula::evaluate_method<Cylinder>(southern, specimen)) == "5300000 Pa"
               && exact(formula::evaluate_method<Cylinder>(compressiveStrength, specimen)) == "5100000 Pa",
           "the south's replacement formula is the one that ran: 5.3 MPa, not the base method's 5.1");
-    check(southCylinder.find("(3rd of 3)") != std::string::npos,
-          "a variant keeps its published position after one before it is pruned");
+    check(southCylinder.find("(3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard "
+                             "7:2019 A, A.1]")
+              != std::string::npos,
+          "a variant keeps its published position after one before it is pruned, and the prune is said with its "
+          "citation");
 
     std::string const eastCube = derivationOf<Cube>(eastern);
-    check(eastCube.find("[variant Cube (2nd of 3), selected by tag]") != std::string::npos,
-          "a pinned variant is still counted in the method as published");
+    std::printf("%s\n", eastCube.c_str());
+    check(eastCube.find("[variant Cube (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard "
+                        "3:2023 E, E.1]")
+              != std::string::npos,
+          "a pinned variant is still counted in the method as published, and the pin is said with its citation");
     std::printf("east: %zu variant(s) left after the pin\n\n", std::tuple_size_v<decltype(eastern.variantSet.cases)>);
 
     std::printf("documentation of the south's cube:\n");
