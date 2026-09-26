@@ -33,7 +33,7 @@
 // negation and a per-element constant, on the same surfaces; running totals
 // from either end, a per-element rounding and `sum`, inside a method an
 // overlay's constant rewrote, evaluated, rendered, documented and traced; a
-// conformity check against a limit envelope, on the same surfaces;
+// conformity check against a limit envelope, and a snap, on the same surfaces;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -128,6 +128,7 @@ int index;
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/trace.hpp>
@@ -230,6 +231,9 @@ inline constexpr auto specimen = formula::environment(formula::Measured<Force> {
                                                       formula::Measured<Factor> { formula::Rational { 1 } });
 
 inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"));
+
+inline constexpr formula::BreakpointTable<3> EdgeSnapSet { formula::breakpoint(100), formula::breakpoint(200),
+                                                           formula::breakpoint(300) };
 
 inline constexpr formula::PlacesTable<2> edgePlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 } };
 
@@ -452,6 +456,16 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::document(edgeCheck, north).citations.size() == 1
                            && formula::render_trace(conformityTrace, { .maxSteps = 20 }).find(
                                   "[1 satisfied; 2 violated: reject the edge]")
+                                  != std::string::npos);
+    // A snap: 150 mm among 100, 200 and 300 mm is a tie, decided toward the
+    // higher.
+    auto const snappedEdge = formula::snapped<unit::Millimetre, EdgeSnapSet, formula::SnapTie::TowardHigher>(var<EdgeX>);
+    formula::Trace<> snapTrace {};
+    auto const snappedValue = formula::checked_evaluate<EdgeX>(snappedEdge, specimen, formula::RecordingSink { snapTrace, north });
+    probe.checks.push_back(snappedValue.has_value() && snappedValue->measurement().value() == formula::Rational { 200 }
+                           && formula::render(snappedEdge, north) == "snap(x_m, to 100, 200, 300 mm)"
+                           && formula::document<formula::Dialect::LaTeX>(snappedEdge).formula.find("snap") != std::string::npos
+                           && formula::render_trace(snapTrace, { .maxSteps = 10 }).find("tie, toward higher")
                                   != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);

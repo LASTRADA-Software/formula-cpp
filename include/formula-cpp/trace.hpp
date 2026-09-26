@@ -23,6 +23,7 @@
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -222,6 +223,13 @@ enum class StepKind : std::uint8_t
     /// the type is `Conformity` and its factory `conformity`, so nothing in
     /// namespace `formula` is spelt `ConformityChecked`.
     ConformityChecked,
+    /// A value snapped to the nearest permitted one (`SnapNode`, `snap.hpp`):
+    /// the two permitted neighbours in `Step::selectedSegment`, the tie rule
+    /// in `Step::snapTie`, whether it decided in `Step::tieBroken`, and on a
+    /// miss the set's extent in `Step::coveredRange`. Checked on GCC under
+    /// `-Wshadow`: the node is `SnapNode` and its factory `snapped`, so
+    /// nothing in namespace `formula` is spelt `SnappedToPermitted`.
+    SnappedToPermitted,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -805,6 +813,16 @@ struct Step
     /// For `ConformityChecked`: the outcome for each element of the subject,
     /// in the series' own order. Empty for every other step.
     std::vector<ConstraintOutcome> elementOutcomes {};
+
+    /// For `SnappedToPermitted`: the rule for a value exactly midway.
+    /// Zero-initialises to `TowardLower`, a real rule, so -- as with
+    /// `comparison` -- no reader may use it without checking `kind` first.
+    SnapTie snapTie {};
+
+    /// For `SnappedToPermitted`: true when the value sat exactly midway
+    /// between two permitted values and `snapTie` chose between them. False
+    /// for every other step.
+    bool tieBroken {};
 };
 
 /// A recorded derivation: a flat arena of steps.
@@ -1032,6 +1050,12 @@ namespace detail
     struct StepKindOf<SumNode<S>>
     {
         static constexpr StepKind value = StepKind::SeriesSum;
+    };
+
+    template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    struct StepKindOf<SnapNode<KeyUnit, Permitted, Tie, Operand>>
+    {
+        static constexpr StepKind value = StepKind::SnappedToPermitted;
     };
 
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
@@ -1357,6 +1381,37 @@ namespace detail
                 step.selectedSegment = answered->second;
         }
     }
+    /// Fills in a snap step's tie rule and, from `locate_and_snap` re-asked --
+    /// the one scan the evaluation used -- the two neighbours and whether the
+    /// tie rule decided, or on a miss the set's extent. Nothing more when the
+    /// operand failed, was absent or left no step: then nothing was snapped.
+    template <typename Rep, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    void record_snap(SnapNode<KeyUnit, Permitted, Tie, Operand> const&, Step<Rep>& step, std::vector<Step<Rep>> const& steps)
+    {
+        step.snapTie = Tie;
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            constexpr Unit keyUnit = KeyUnit;
+            if (an_operand_failed(steps, step))
+                return;
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
+                return;
+            std::expected<Rational, ArithmeticError> const valueInKey =
+                checked_convert(*operandValue, coherent(keyUnit.dimension), keyUnit);
+            if (!valueInKey.has_value())
+                return;
+            std::expected<SnapAnswer, ArithmeticError> const answered = locate_and_snap<Permitted, Tie>(*valueInKey);
+            if (!answered.has_value())
+            {
+                if (answered.error() == ArithmeticError::DomainError)
+                    step.coveredRange = points_cover<Permitted>();
+                return;
+            }
+            step.selectedSegment = answered->neighbours;
+            step.tieBroken = answered->tieBroken;
+        }
+    }
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -1626,6 +1681,8 @@ class RecordingSink
         // `detail::record_lookup` for how each kind closes it.
         if constexpr (detail::is_lookup(detail::StepKindOf<N>::value))
             detail::record_lookup(node, nodeStep, _trace->steps);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SnappedToPermitted)
+            detail::record_snap(node, nodeStep, _trace->steps);
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);

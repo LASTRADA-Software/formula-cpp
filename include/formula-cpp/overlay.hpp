@@ -147,6 +147,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
 
 #include <array>
@@ -1556,6 +1557,12 @@ namespace detail
     {
     };
 
+    template <typename Sub, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    struct ConstantRewrite<Sub, SnapNode<KeyUnit, Permitted, Tie, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, SnapNode<KeyUnit, Permitted, Tie, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
     template <typename Sub, Unit U, FixedString Justification, Node Operand>
     struct ConstantRewrite<Sub, NumericValueNode<U, Justification, Operand>>:
         ConstantRewriteOperand<Sub,
@@ -1880,6 +1887,11 @@ namespace detail
 
     template <Unit U, FixedString Justification, Node Operand>
     struct SubstitutedIn<NumericValueNode<U, Justification, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    struct SubstitutedIn<SnapNode<KeyUnit, Permitted, Tie, Operand>>: SubstitutedInOperand<Operand>
     {
     };
 

@@ -764,6 +764,10 @@ namespace detail
             // see `conformity_line`.
             case StepKind::ConformityChecked:
                 return "conform(" + sole_operand(step) + ")";
+            // The set is `render()`'s to print; the step names where the
+            // value landed in its suffix -- see `snap_suffix`.
+            case StepKind::SnappedToPermitted:
+                return "snap(" + sole_operand(step) + ")";
             case StepKind::ElementwiseRound:
                 return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp of "
                        + std::string { view(step.unit.symbolText) } + ")";
@@ -1128,6 +1132,40 @@ namespace detail
         return "unknown outcome";
     }
 
+    /// A snap step's clause: the two neighbours, `[33/10 mm to 71/10 mm;
+    /// nearer 33/10 mm]`, or with the tie rule when it decided, `[33/10 mm to
+    /// 71/10 mm; tie, toward higher]`; `[on 19/10 mm]` for an exact hit; and on
+    /// a miss `[outside the permitted set, 7/10 mm to 137/10 mm]`. Nothing
+    /// when nothing was snapped -- a failed or absent operand.
+    [[nodiscard]] inline std::string snap_suffix(Step<Rational> const& recorded)
+    {
+        std::string const keySymbol = unit_symbol_text(recorded.unit);
+        if (recorded.selectedSegment.has_value())
+        {
+            Segment const& neighbours = *recorded.selectedSegment;
+            std::string const lowText =
+                number_with_unit(declared_number_text(neighbours.low.numerator, neighbours.low.denominator), keySymbol);
+            std::string const highText =
+                number_with_unit(declared_number_text(neighbours.high.numerator, neighbours.high.denominator), keySymbol);
+            if (neighbours.low == neighbours.high)
+                return " [on " + lowText + "]";
+            if (recorded.tieBroken)
+                return " [" + lowText + " to " + highText + "; tie, " + std::string { describe(recorded.snapTie) } + "]";
+            std::string const nearer = recorded.value.has_value()
+                                           ? value_in_declared_unit(recorded, recorded.value)
+                                           : std::string { "neither" };
+            return " [" + lowText + " to " + highText + "; nearer " + nearer + "]";
+        }
+        if (recorded.coveredRange.has_value())
+        {
+            LookupRange const& covered = *recorded.coveredRange;
+            return " [outside the permitted set, "
+                   + number_with_unit(declared_number_text(covered.lowNumerator, covered.lowDenominator), keySymbol) + " to "
+                   + number_with_unit(declared_number_text(covered.highNumerator, covered.highDenominator), keySymbol) + "]";
+        }
+        return {};
+    }
+
     /// One element's outcome in a conformity step, counted from one:
     /// `2 satisfied`, `2 violated: reject the specimen`, `2 not checked`, or
     /// `2 invalid: <the arithmetic error>`.
@@ -1319,6 +1357,8 @@ namespace detail
             annotation = rounding_rule_suffix(recorded);
         else if (recorded.kind == StepKind::OverriddenConstant)
             annotation = overridden_constant_suffix(recorded.citation);
+        else if (recorded.kind == StepKind::SnappedToPermitted)
+            annotation = snap_suffix(recorded);
         else if (recorded.kind == StepKind::DerivedQuantity)
             annotation = derived_quantity_suffix(recorded.citation);
         else if (recorded.kind == StepKind::ReplacedVariant)

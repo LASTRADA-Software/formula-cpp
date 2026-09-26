@@ -34,6 +34,7 @@
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>

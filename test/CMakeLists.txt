@@ -67,6 +67,7 @@ add_executable(formula-cpp-tests
     series_tests.cpp
     series_cross_tu_b.cpp
     conformity_tests.cpp
+    snap_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -437,6 +438,20 @@ formula_add_negative_test(conformity_envelope_short_no_factory
 formula_add_negative_test(conformity_unit_dimension_mismatch
     "this conformity check states its limits in a unit that does not measure the dimension of its subject"
     REJECT "this envelope was given a different number of rows")
+
+# Task 8: an empty permitted set refuses once, with the breakpoint validation
+# and the key check gated off; a descending set is the shipped breakpoint
+# validation's refusal, with the key check gated off; a key of the wrong
+# dimension.
+formula_add_negative_test(snap_empty_permitted_set
+    "this snap's permitted set is empty"
+    REJECT "RequireBreakpoint" "RequireValidBreakpointTable" "key unit does not measure" "no matching")
+formula_add_negative_test(snap_descending_permitted_set
+    "breakpoints do not strictly ascend"
+    REJECT "key unit does not measure" "permitted set is empty")
+formula_add_negative_test(snap_key_dimension_mismatch
+    "this snap's key unit does not measure the dimension of the expression it snaps"
+    REJECT "breakpoints do not strictly ascend" "permitted set is empty")
 
 # Task 5: sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT

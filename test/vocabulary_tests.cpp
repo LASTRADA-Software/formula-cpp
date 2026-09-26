@@ -580,6 +580,13 @@ inline constexpr auto everyVocabulary = formula::vocabulary(formula::renames<Eve
 
 inline constexpr formula::Citation everyCited { .reference = "Example Standard 1:2020", .section = "3.1" };
 
+// Invented permitted factors for the snap below; x_n (1487/1000) is exactly
+// midway between 1437/1000 and 1537/1000, so the tie rule decides, inside the
+// overlay's rewrite.
+inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(1437, 1000),
+                                                            formula::breakpoint(1537, 1000),
+                                                            formula::breakpoint(1637, 1000) };
+
 [[nodiscard]] constexpr auto everyNodeKind()
 {
     constexpr auto a = var<EveryStrength>;
@@ -600,7 +607,8 @@ inline constexpr formula::Citation everyCited { .reference = "Example Standard 1
                    * formula::interpolating_lookup<unit::Millimetre, VocabularyDiameterPoints, unit::One>(
                        d, { rat(1043, 1000), rat(2917, 1000) }))
            * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
-           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) });
+           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) })
+           * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>);
 }
 
 inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
@@ -676,7 +684,8 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
           == "(if E >= R then (-(E / R)^2 + root3(E / R * E / R * E / R)^3) * round(E / R, to 1 dp of %) "
              "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 103 to under 163 mm gives 1127/1000, "
              "163 to under 331 mm gives 1973/1000) * interpolate(D, at 103 mm gives 1043/1000, at 331 mm gives 2917/1000)) "
-             "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000)");
+             "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000) "
+             "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
 
     // Every series kind, the jurisdiction's symbol marked in each dialect.
@@ -774,6 +783,11 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
           != std::string::npos);
     CHECK(cube.find("39. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n")
           != std::string::npos);
+    // The snap over the fixed factor: the overlay's constant reached inside
+    // it, and the tie rule decided.
+    CHECK(cube.find("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n")
+          != cube.rfind("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"));
+    CHECK(cube.find("= 1537/1000 [1437/1000 to 1537/1000; tie, toward higher]\n") != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"

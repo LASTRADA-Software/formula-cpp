@@ -326,6 +326,9 @@ namespace detail
     template <Vocabulary V, Dimension Dim>
     void collect(Walk<V>& walk, RefusedSeries<Dim> const& node);
 
+    template <Vocabulary V, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    void collect(Walk<V>& walk, SnapNode<KeyUnit, Permitted, Tie, Operand> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -662,6 +665,14 @@ namespace detail
     template <Vocabulary V, Dimension Dim>
     void collect(Walk<V>&, RefusedSeries<Dim> const&)
     {
+    }
+
+    /// A snap names nothing of its own; its operand does. Its set is
+    /// `render()`'s to print, as a lookup's rows are.
+    template <Vocabulary V, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    void collect(Walk<V>& walk, SnapNode<KeyUnit, Permitted, Tie, Operand> const& node)
+    {
+        collect(walk, node.operand);
     }
 
     /// A per-element rounding names nothing of its own; its series does.

@@ -45,6 +45,7 @@
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -1229,6 +1230,27 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
                 detail::number_with_unit(detail::number_text(node.corrections[pointIndex]), view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rowText);
+}
+
+/// A snap renders as `snap(<operand>, to <permitted values> <unit>)`: the set
+/// in its declared order, the unit once, shaped as a lookup is
+/// (`detail::lookup_call`). **No tie rule**, for `RoundNode`'s reason: a
+/// standard states a set of permitted values, not a rule for a value exactly
+/// midway; the trace carries the rule where it decided.
+template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(SnapNode<KeyUnit, Permitted, Tie, Operand> const& node, V const& vocabulary)
+{
+    constexpr Unit keyUnit = KeyUnit;
+    std::string listed;
+    for (std::size_t pointIndex = 0; pointIndex < Permitted.size(); ++pointIndex)
+    {
+        if (pointIndex > 0)
+            listed += ", ";
+        listed += detail::declared_number_text(Permitted[pointIndex].numerator, Permitted[pointIndex].denominator);
+    }
+    std::string const permittedField =
+        detail::lookup_separator<D>() + detail::lookup_words_in_dialect<D>(detail::number_with_unit("to " + listed, view(keyUnit.symbolText)));
+    return detail::lookup_call<D>("snap", render<D>(node.operand, vocabulary), permittedField);
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
