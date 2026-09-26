@@ -379,6 +379,16 @@ formula_add_negative_test(series_constant_short
 formula_add_negative_test(series_constant_short_no_factory
     "this series constant was given a different number of elements than its length")
 
+# Task 5: sum and cumulative given a single value, refused in this library's
+# words by an overload that takes a Node for no other purpose. The REJECT
+# pins that the refusal is not the compiler's own "no matching function".
+formula_add_negative_test(series_sum_of_single_value
+    "sum adds up the elements of a series, and this is a single value, not a series"
+    REJECT "no matching")
+formula_add_negative_test(series_cumulative_of_single_value
+    "cumulative runs a total along a series, and this is a single value, not a series"
+    REJECT "no matching")
+
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
 

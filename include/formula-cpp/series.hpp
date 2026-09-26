@@ -26,7 +26,9 @@
 /// series -- a series with one wrong element is not a series of right ones --
 /// and there is no throwing spelling, which would have to drop the position.
 ///
-/// This header opens the family with its one leaf, `series<Q, N>`, and the two
+/// This header holds the family's leaves, `series<Q, N>` and
+/// `series_constant`; elementwise arithmetic; running totals, `cumulative`;
+/// and `sum`, the bridge back to one value, which is a `Node`. And the two
 /// entry points: `checked_evaluate_series_si<Rep>`, the representation-agnostic
 /// core, and `checked_evaluate_series<Result>`, the auditable one, which
 /// returns a `SeriesOutcome` in `Result`'s own unit.
@@ -44,8 +46,10 @@
 #include <array>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <optional>
+#include <string_view>
 #include <type_traits>
 
 namespace formula
@@ -391,6 +395,139 @@ template <SeriesNode Right>
     return number(lhs) / rhs;
 }
 
+/// Which end of a series a running total starts from.
+///
+/// An `enum class` rather than a `bool`, and never defaulted: "a total running
+/// from one end" is only half a formula, and the two ends give different
+/// numbers at every element but one.
+enum class CumulativeDirection : std::uint8_t
+{
+    /// From element 0 towards the last: element i is the total of elements 0
+    /// to i.
+    FromFirst,
+    /// From the last element towards element 0: element i is the total of
+    /// elements i to the last -- the mass retained on a screen and on every
+    /// coarser one, when the screens are listed from fine to coarse.
+    FromLast,
+};
+
+/// `direction` in the words a rendering and a trace use: `from first`,
+/// `from last`.
+[[nodiscard]] constexpr std::string_view describe(CumulativeDirection direction) noexcept
+{
+    switch (direction)
+    {
+        case CumulativeDirection::FromFirst:
+            return "from first";
+        case CumulativeDirection::FromLast:
+            return "from last";
+    }
+    return "from an unknown end";
+}
+
+namespace detail
+{
+    /// Fails to compile when `sum` is given a single value. Named so the
+    /// operand prints.
+    template <typename Operand>
+    struct RequireSumOfSeries
+    {
+        static_assert(SeriesNode<Operand>,
+                      "formula: sum adds up the elements of a series, and this is a single value, not a series; "
+                      "the operand appears in this diagnostic as the template argument of RequireSumOfSeries -- "
+                      "read a quantity measured at every point with series<Q, N>");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `cumulative` is given a single value. Named so
+    /// the operand prints.
+    template <typename Operand>
+    struct RequireCumulativeOfSeries
+    {
+        static_assert(SeriesNode<Operand>,
+                      "formula: cumulative runs a total along a series, and this is a single value, not a series; "
+                      "the operand appears in this diagnostic as the template argument of "
+                      "RequireCumulativeOfSeries -- read a quantity measured at every point with series<Q, N>");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// A running total along a series, from the end `D` names: element i of the
+/// result is the total of the operand's elements from that end up to and
+/// including element i.
+///
+/// **Absence stops the total.** Once an element is absent, the total there
+/// and at every element after it, in the running direction, is absent: it
+/// would include a value nobody measured. The totals before it stand.
+template <CumulativeDirection D, SeriesNode S>
+struct CumulativeNode: SeriesNodeBase
+{
+    /// The series the total runs along. No `{}` initialiser, deliberately:
+    /// see `Corrections` (`lookup.hpp`).
+    S operand;
+
+    /// The end the total starts from.
+    static constexpr CumulativeDirection direction = D;
+    /// A total keeps each element's dimension.
+    static constexpr Dimension dimension = S::dimension;
+    /// As long as its operand.
+    static constexpr std::size_t length = S::length;
+};
+
+/// A running total along @p seriesOperand, from the end `D` names:
+/// `cumulative<CumulativeDirection::FromLast>(series<Retained, 5>)`. The
+/// direction has no default.
+template <CumulativeDirection D, SeriesNode S>
+[[nodiscard]] constexpr auto cumulative(S seriesOperand) noexcept
+{
+    return CumulativeNode<D, S> { {}, seriesOperand };
+}
+
+/// A single value handed to `cumulative`: refused in this library's words. The
+/// body is the refusal; what it returns is never seen.
+template <CumulativeDirection D, Node N>
+[[nodiscard]] constexpr N cumulative(N singleValue) noexcept
+{
+    static_assert(detail::RequireCumulativeOfSeries<N>::value);
+    return singleValue;
+}
+
+/// The total of every element of a series: **one value**, and so a `Node`,
+/// which stands wherever a number stands -- inside a method's variant, beside
+/// a `var`, or broadcast back over the series it came from (`m_r(i) /
+/// sum(m_r)`).
+///
+/// Absent when any element is absent, never the total of the ones that were
+/// measured: a sum missing a screen is not the sum.
+template <SeriesNode S>
+struct SumNode: NodeBase
+{
+    /// The series summed. No `{}` initialiser, deliberately: see
+    /// `Corrections` (`lookup.hpp`).
+    S operand;
+
+    /// A total has its elements' dimension.
+    static constexpr Dimension dimension = S::dimension;
+};
+
+/// The total of every element of @p seriesOperand: `sum(series<Retained, 5>)`.
+template <SeriesNode S>
+[[nodiscard]] constexpr auto sum(S seriesOperand) noexcept
+{
+    return SumNode<S> { {}, seriesOperand };
+}
+
+/// A single value handed to `sum`: refused in this library's words. The body
+/// is the refusal; what it returns is never seen.
+template <Node N>
+[[nodiscard]] constexpr N sum(N singleValue) noexcept
+{
+    static_assert(detail::RequireSumOfSeries<N>::value);
+    return singleValue;
+}
+
 /// An evaluated series in the coherent SI unit of its dimension: one value per
 /// element, each absent when the element was never measured.
 template <typename Rep, std::size_t N>
@@ -428,8 +565,8 @@ struct SeriesFailure
     /// text the library writes -- a trace, a rendering, a message -- shows a
     /// position one-based.
     ///
-    /// A series variable can only fail at an element, so nothing in this
-    /// header produces the empty shape yet.
+    /// A failed scalar operand of an elementwise operation belongs to no
+    /// element (`detail::operand_failure`), and produces the empty shape.
     std::optional<std::size_t> element;
 
     /// Memberwise equality.
@@ -684,6 +821,96 @@ template <typename Rep = Rational, BinaryOperator Op, typename Left, typename Ri
         return combined;
     }();
     detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
+}
+
+/// The running total along the operand, from the end `D` names.
+///
+/// A failed operand is relayed unchanged. Once an element is absent, the total
+/// there and at every later element in the running direction stays absent
+/// (`CumulativeNode`). A total that overflows fails the whole series at the
+/// element whose addition overflowed.
+template <typename Rep = Rational, CumulativeDirection D, SeriesNode S, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedSeries<Rep, S::length> checked_evaluate_series_si(CumulativeNode<D, S> const& node,
+                                                                                   Env const& environment,
+                                                                                   Sink sink = {}) noexcept
+{
+    constexpr std::size_t seriesLength = S::length;
+    detail::tell_series_entered<Rep>(sink, node);
+    EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
+        EvaluatedSeries<Rep, seriesLength> const operandResult =
+            detail::dispatch_series<Rep>(node.operand, environment, sink);
+        if (!operandResult.has_value())
+            return std::unexpected { operandResult.error() };
+
+        SeriesValue<Rep, seriesLength> totals;
+        std::optional<Rep> runningTotal;
+        for (std::size_t taken = 0; taken < seriesLength; ++taken)
+        {
+            std::size_t const at = D == CumulativeDirection::FromFirst ? taken : seriesLength - 1 - taken;
+            std::optional<Rep> const addend = operandResult->elements[at];
+            // This total and every later one would include a value nobody
+            // measured; they stay absent.
+            if (!addend.has_value())
+                break;
+            if (!runningTotal.has_value())
+                runningTotal = *addend;
+            else
+            {
+                std::expected<Rep, ArithmeticError> const added = RepTraits<Rep>::add(*runningTotal, *addend);
+                if (!added.has_value())
+                    return std::unexpected { SeriesFailure { added.error(), at } };
+                runningTotal = *added;
+            }
+            totals.elements[at] = runningTotal;
+        }
+        return totals;
+    }();
+    detail::tell_series_produced<Rep>(sink, node, evaluated);
+    return evaluated;
+}
+
+/// The total of every element: one value. A failed operand's error is relayed
+/// -- its position cannot be, since the result is one value, not a series. Any
+/// absent element makes the total absent, judged over the whole series before
+/// anything is added, as `interpolate_at` judges a curve: where the gap is
+/// plays no part, and a gap after an addition that would overflow still makes
+/// the total absent. An overflow of a total with every element present fails
+/// it, with no element to name.
+template <typename Rep = Rational, SeriesNode S, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(SumNode<S> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    constexpr std::size_t seriesLength = S::length;
+    sink.entered(node);
+    Evaluated<Rep> const evaluated = [&]() -> Evaluated<Rep> {
+        EvaluatedSeries<Rep, seriesLength> const operandResult =
+            detail::dispatch_series<Rep>(node.operand, environment, sink);
+        if (!operandResult.has_value())
+            return std::unexpected { operandResult.error().error };
+
+        for (std::optional<Rep> const& candidate: operandResult->elements)
+            if (!candidate.has_value())
+                return detail::nothing<Rep>();
+
+        std::optional<Rep> runningTotal;
+        for (std::size_t at = 0; at < seriesLength; ++at)
+        {
+            std::optional<Rep> const addend = operandResult->elements[at];
+            if (!runningTotal.has_value())
+                runningTotal = *addend;
+            else
+            {
+                std::expected<Rep, ArithmeticError> const added = RepTraits<Rep>::add(*runningTotal, *addend);
+                if (!added.has_value())
+                    return std::unexpected { added.error() };
+                runningTotal = *added;
+            }
+        }
+        return Evaluated<Rep> { runningTotal };
+    }();
+    sink.produced(node, evaluated);
     return evaluated;
 }
 
