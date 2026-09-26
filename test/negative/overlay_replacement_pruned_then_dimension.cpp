@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from
-// the environment
+// EXPECT: formula: this overlay replaces a variant with a formula of a different dimension from the method's
+// REJECT: formula: this overlay replaces a variant that the method it produces does not hold
 //
-// A definition cycle across two quantities: the shape factor defined by the
-// ratio, then the ratio defined by the shape factor. The second definition
-// rewrites the ratio inside the first, and so puts a plain shape factor back
-// into the first definition -- a use of it that no substitution reaches, which
-// would read the specimen's value under an overlay that claims to define it.
-// Refused by the rule that a substitution be in effect wherever the produced
-// method reads its quantity. Neither definition is unused -- each quantity's
-// node is still in the produced method -- so no second refusal applies.
-//
-// Judged within the one overlay, against the method it produces, as every
-// result check of an overlay is.
+// The other order of `overlay_replacement_dimension_then_pruned`: the
+// prune first, so the replacement meets no Cylinder where it is applied.
+// Judged against the method the overlay was applied to, it is still the
+// dimension that is wrong, and that is the one message.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -64,7 +57,10 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>), formula::add_derived<Ratio>(var<ShapeFactor>)), m);
-    return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
+    static_cast<void>(m);
+    constexpr auto overlaid =
+        formula::apply(formula::overlay(formula::prune_variant<Cylinder>(),
+                                        formula::replace_variant<Cylinder>(var<EdgeX> * var<EdgeY> / var<EdgeX>)),
+                       m);
+    return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 1 ? 0 : 1;
 }

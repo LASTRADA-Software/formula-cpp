@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from
-// the environment
+// the environment REJECT: formula: this overlay derives a quantity that no variant or constraint of the method uses
 //
-// A definition cycle across two quantities: the shape factor defined by the
-// ratio, then the ratio defined by the shape factor. The second definition
-// rewrites the ratio inside the first, and so puts a plain shape factor back
-// into the first definition -- a use of it that no substitution reaches, which
-// would read the specimen's value under an overlay that claims to define it.
-// Refused by the rule that a substitution be in effect wherever the produced
-// method reads its quantity. Neither definition is unused -- each quantity's
-// node is still in the produced method -- so no second refusal applies.
-//
-// Judged within the one overlay, against the method it produces, as every
-// result check of an overlay is.
+// A definition cycle built by two overlays applied in turn: the first
+// defines the shape factor by the ratio, the second the ratio by the shape
+// factor. The rule that a substitution be in effect wherever the method reads
+// its quantity is judged against the whole produced method, whichever overlay
+// left each substitution, so the second overlay is refused for the plain
+// shape factor it puts back inside the first overlay's definition.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -64,7 +59,7 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>), formula::add_derived<Ratio>(var<ShapeFactor>)), m);
-    return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
+    constexpr auto first = formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>)), m);
+    constexpr auto second = formula::apply(formula::overlay(formula::add_derived<Ratio>(var<ShapeFactor>)), first);
+    return std::tuple_size_v<decltype(second.variantSet.cases)> == 2 ? 0 : 1;
 }

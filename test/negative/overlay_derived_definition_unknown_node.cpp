@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside
 // REJECT: formula: this overlay derives a quantity from an expression that reads the quantity itself
+// REJECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from
+// the environment REJECT: formula: this overlay derives a quantity that no variant or constraint of the method uses
 //
 // A definition holding a consumer's own node kind, which the overlay cannot
 // see inside -- so it cannot tell whether the definition reads the quantity
 // it defines. The REJECT pins that the self-reference rule waits for every
 // node to be known rather than answering a question it cannot.
+//
+// Applied as well as written, and the REJECTs pin that applying it adds
+// nothing: an operation its own class body refuses is part of what `apply`
+// asks before instantiating its body, so the definition is never also judged
+// against the method it would have produced.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -74,7 +81,7 @@ inline constexpr auto m =
 
 int main()
 {
-    static_cast<void>(m);
     constexpr auto deriving = formula::add_derived<ShapeFactor>(OpaqueNode<formula::VarNode<ShapeFactor>> {});
-    return deriving.source.title.empty() ? 0 : 1;
+    constexpr auto overlaid = formula::apply(formula::overlay(deriving), m);
+    return deriving.source.title.empty() && std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

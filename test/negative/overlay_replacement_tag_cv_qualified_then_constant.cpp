@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from
-// the environment
+// EXPECT: formula: this tag is not a plain class type
+// REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
+// REJECT: formula: this overlay replaces a variant the method does not declare
 //
-// A definition cycle across two quantities: the shape factor defined by the
-// ratio, then the ratio defined by the shape factor. The second definition
-// rewrites the ratio inside the first, and so puts a plain shape factor back
-// into the first definition -- a use of it that no substitution reaches, which
-// would read the specimen's value under an overlay that claims to define it.
-// Refused by the rule that a substitution be in effect wherever the produced
-// method reads its quantity. Neither definition is unused -- each quantity's
-// node is still in the produced method -- so no second refusal applies.
-//
-// Judged within the one overlay, against the method it produces, as every
-// result check of an overlay is.
+// The same with a replacement tagged `const Cylinder`: refused by the tag
+// rule, where the operation is written. The replacement is never applied,
+// so the constant's check waits on it, and the declared-variant rule is not
+// asked of a tag the tag rule refused -- neither adds a message.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -64,7 +58,10 @@ inline constexpr auto m =
 
 int main()
 {
+    static_cast<void>(m);
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>), formula::add_derived<Ratio>(var<ShapeFactor>)), m);
+        formula::overlay(formula::replace_variant<Cylinder const>(var<Ratio> * var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                         formula::with_constant<Ratio>(formula::Rational { 4, 5 })),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

@@ -684,6 +684,27 @@ TEST_CASE("a replacement names whose formula it is, and keeps the variant's plac
     auto const documentation = formula::document(replaced);
     REQUIRE(documentation.citations.size() == 1);
     CHECK(documentation.citations[0] == replacementAnnex);
+    REQUIRE(documentation.replacedBy.size() == 1);
+    CHECK(documentation.replacedBy[0] == replacementAnnex);
+}
+
+TEST_CASE("the documentation marks a replaced formula as replaced even when nothing was cited", "[overlay][document]")
+{
+    // Uncited, a replacement adds no citation -- and a page that said nothing
+    // else would read exactly as the base standard's page for a formula that
+    // is not the base standard's. The trace says "replaced by jurisdiction
+    // overlay"; the page must say so too.
+    constexpr auto replaced =
+        std::get<1>(formula::apply(formula::overlay(formula::replace_variant<Cylinder>(areaFromDiameter)), baseMethod)
+                        .variantSet.cases)
+            .expression;
+    auto const documentation = formula::document(replaced);
+    CHECK(documentation.citations.empty());
+    REQUIRE(documentation.replacedBy.size() == 1);
+    CHECK(documentation.replacedBy[0] == formula::Citation {});
+
+    // And a formula nothing replaced is not marked.
+    CHECK(formula::document(areaFromDiameter).replacedBy.empty());
 }
 
 TEST_CASE("an overlay derives a quantity, and the method reads the definition", "[overlay]")

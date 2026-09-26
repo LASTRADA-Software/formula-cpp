@@ -65,10 +65,12 @@
 ///    constraint of the method the overlay **produces** uses -- judged of the
 ///    result, so that the answer never depends on the order the operations
 ///    are listed in;
-///  - `with_constant<Q>` or `add_derived<Q>` followed by an operation that
-///    reads `Q` again unsubstituted -- a replacement, or another definition --
-///    which would read the environment while every other use reads the
-///    overlay;
+///  - a produced method that reads `Q` both where an overlay fixed or
+///    derived it and, elsewhere, as a plain `var<Q>` -- put back by an
+///    operation listed after the substitution, by a later overlay, or by
+///    definitions that read each other -- which would read the environment
+///    while every other use reads the overlay. Judged against the whole
+///    produced method, whichever overlay left each substitution;
 ///  - `pin_variant`, `prune_variant` or `replace_variant` of a tag no variant
 ///    declares, and a `replace_variant` whose variant the produced method no
 ///    longer holds, in either order;
@@ -852,12 +854,30 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Whether an operation passes the rules its own class body asks: true for
+    /// every operation but a derivation its class body refuses. (A replacement
+    /// whose tag is refused needs no entry: it is never applied, and every
+    /// check that could follow waits on `ReplacementApplied`.) Asked by `isWellFormedOverlay`,
+    /// so that `apply` is not instantiated over an operation already refused
+    /// where it was written -- which would otherwise go on to be judged, and
+    /// refused a second time, in the words of a rule about the result.
+    template <typename Operation>
+    struct IsValidOperation: std::true_type
+    {
+    };
+
+    template <Described Q, Node Expr>
+    struct IsValidOperation<QuantityDerivation<Q, Expr>>: std::bool_constant<QuantityDerivation<Q, Expr>::valid>
+    {
+    };
+
     /// Whether an overlay's list passes every rule `RequireWellFormedOverlay`
-    /// asks, asked without firing any of them.
+    /// asks, and every rule its operations' own class bodies ask, asked
+    /// without firing any of them.
     template <typename... Ops>
     inline constexpr bool isWellFormedOverlay =
         (IsOverlayOperation<Ops>::value && ...) && all_distinct<typename OperationIdentity<Ops>::type...>()
-        && !pinsAndPrunes<Ops...>;
+        && !pinsAndPrunes<Ops...> && (IsValidOperation<Ops>::value && ...);
 } // namespace detail
 
 /// One jurisdiction's changes to a method, in the order they apply.
@@ -992,6 +1012,21 @@ namespace detail
     [[nodiscard]] constexpr VarNode<Q> substitute(SubstitutedUseProbe<Q> const&) noexcept
     {
         return {};
+    }
+
+    /// A stand-in substitution for no quantity at all, for asking only
+    /// whether every node of an expression is a kind the rewrite knows. Its
+    /// `substitute` is declared for the rewrite's `type` to name, and never
+    /// called.
+    struct KnownProbe
+    {
+        /// No quantity: nothing is ever this one.
+        using quantity = void;
+    };
+
+    [[nodiscard]] constexpr KnownProbe substitute(KnownProbe const& probe) noexcept
+    {
+        return probe;
     }
 
     /// Whether @p Sub's `mentions` counts a plain `var<Q>`: every
@@ -1417,6 +1452,149 @@ namespace detail
         }
     };
 
+    /// A list of quantity types -- what `SubstitutedIn` answers.
+    template <typename... Qs>
+    struct QuantityList
+    {
+    };
+
+    /// The concatenation of quantity lists.
+    template <typename... Lists>
+    struct JoinQuantities
+    {
+        /// The empty join.
+        using type = QuantityList<>;
+    };
+
+    template <typename... Qs>
+    struct JoinQuantities<QuantityList<Qs...>>
+    {
+        /// One list, unchanged.
+        using type = QuantityList<Qs...>;
+    };
+
+    template <typename... As, typename... Bs, typename... Rest>
+    struct JoinQuantities<QuantityList<As...>, QuantityList<Bs...>, Rest...>:
+        JoinQuantities<QuantityList<As..., Bs...>, Rest...>
+    {
+    };
+
+    /// The quantities that have a node a substitution left -- an overridden
+    /// constant or a derived quantity -- anywhere in a subtree of type @p N,
+    /// repeats and all. One specialisation per node kind this library ships,
+    /// as `ConstantRewrite` has; the primary template, every other node kind,
+    /// answers none, since nothing inside it can be seen -- and a method
+    /// holding one is refused by the rewrite before this is asked.
+    template <typename N>
+    struct SubstitutedIn
+    {
+        /// Nothing that can be seen.
+        using type = QuantityList<>;
+    };
+
+    /// @p N, whatever its cv qualification -- see `ConstantRewriteOf`.
+    template <typename N>
+    using SubstitutedInOf = typename SubstitutedIn<std::remove_cv_t<N>>::type;
+
+    /// The quantities substituted in any of @p Children.
+    template <typename... Children>
+    using SubstitutedInAll = typename JoinQuantities<SubstitutedInOf<Children>...>::type;
+
+    template <Described P>
+    struct SubstitutedIn<OverriddenConstantNode<P>>
+    {
+        /// The quantity fixed.
+        using type = QuantityList<P>;
+    };
+
+    template <Described P, Node Expr>
+    struct SubstitutedIn<DerivedQuantityNode<P, Expr>>
+    {
+        /// The quantity defined, and whatever its definition substitutes.
+        using type = typename JoinQuantities<QuantityList<P>, SubstitutedInOf<Expr>>::type;
+    };
+
+    template <Node Expr>
+    struct SubstitutedIn<ReplacedVariantNode<Expr>>
+    {
+        /// Whatever the replacement substitutes.
+        using type = SubstitutedInOf<Expr>;
+    };
+
+    /// A node whose only child is its `operand`.
+    template <typename Operand>
+    struct SubstitutedInOperand
+    {
+        /// Whatever the operand substitutes.
+        using type = SubstitutedInOf<Operand>;
+    };
+
+    template <UnaryOperator Op, Node Operand>
+    struct SubstitutedIn<UnaryNode<Op, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <int Exponent, Node Operand>
+    struct SubstitutedIn<PowerNode<Exponent, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <int Degree, Node Operand>
+    struct SubstitutedIn<RootNode<Degree, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct SubstitutedIn<RoundNode<U, Places, Mode, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
+    struct SubstitutedIn<RoundSignificantNode<U, Digits, Mode, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Unit U, FixedString Justification, Node Operand>
+    struct SubstitutedIn<NumericValueNode<U, Justification, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
+    struct SubstitutedIn<BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
+    struct SubstitutedIn<InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Node Inner>
+    struct SubstitutedIn<DocumentedNode<Inner>>: SubstitutedInOperand<Inner>
+    {
+    };
+
+    template <BinaryOperator Op, Node Left, Node Right>
+    struct SubstitutedIn<BinaryNode<Op, Left, Right>>
+    {
+        /// Whatever either side substitutes.
+        using type = SubstitutedInAll<Left, Right>;
+    };
+
+    template <Comparison Op, Node Left, Node Right>
+    struct SubstitutedIn<PredicateNode<Op, Left, Right>>
+    {
+        /// Whatever either side substitutes.
+        using type = SubstitutedInAll<Left, Right>;
+    };
+
+    template <Predicate P, Node Then, Node Else>
+    struct SubstitutedIn<WhenNode<P, Then, Else>>
+    {
+        /// Whatever the condition or either branch substitutes.
+        using type = SubstitutedInAll<P, Then, Else>;
+    };
+
     /// Fails to compile when `with_constant<Q>` is applied to a method that
     /// never uses `Q`. Such an override changes nothing, and the likeliest
     /// reason is that it names the wrong quantity.
@@ -1447,22 +1625,27 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// Fails to compile when a substitution for `Q` is not in effect wherever
-    /// the produced method reads `Q`: a later operation of the same overlay --
-    /// a replacement, or a definition of another quantity -- put back a plain
-    /// `var<Q>`, which reads the environment while every earlier use reads
-    /// the overlay. One formula would then evaluate one quantity at two
-    /// values. Operations apply in the order listed, so listing the
-    /// substitution after the operation that reads `Q` is the fix.
+    /// Fails to compile when the produced method reads `Q` both through a
+    /// node an overlay's substitution left -- a fixed constant or a
+    /// definition -- and, somewhere else, as a plain `var<Q>`, which reads the
+    /// environment. One formula would then evaluate one quantity at two
+    /// values, and the trace would say the jurisdiction fixed or defined a
+    /// quantity the method also takes from the specimen.
+    ///
+    /// Three routes lead here, and the message names all three because the
+    /// fix differs: an operation listed after the substitution that reads `Q`
+    /// again (list the substitution after it); a later overlay that does so
+    /// (substitute `Q` again in that overlay); and definitions that read each
+    /// other (a cycle, which no ordering fixes).
     template <typename Q, bool Everywhere>
     struct RequireSubstitutionEverywhere
     {
         static_assert(Everywhere,
-                      "formula: this overlay fixes or derives a quantity that an operation listed after it reads "
-                      "again, unsubstituted; that use would keep its environment value while every other use "
-                      "reads the overlay's -- list the constant or the definition after the operation that reads "
-                      "the quantity; the quantity appears in this diagnostic as the template argument Q of "
-                      "RequireSubstitutionEverywhere");
+                      "formula: this method reads a quantity both where an overlay fixed or derived it and, "
+                      "elsewhere, unsubstituted from the environment; one formula would evaluate one quantity at "
+                      "two values -- an operation listed after the substitution, a later overlay, or definitions "
+                      "that read each other put the plain use back; the quantity appears in this diagnostic as "
+                      "the template argument Q of RequireSubstitutionEverywhere");
 
         static constexpr bool value = true;
     };
@@ -1487,9 +1670,10 @@ namespace detail
         /// Whether every variant and constraint is known all the way down.
         static constexpr bool known =
             (ConstantRewriteOf<Sub, Exprs>::known && ...) && (ConstantRewriteOf<Sub, Ps>::known && ...);
-        /// Whether a plain `var<Q>` is left anywhere -- which only an operation
-        /// listed after the substitution can have put there, since the
-        /// substitution replaced every one it met.
+        /// Whether a plain `var<Q>` is left anywhere. The substitution replaced
+        /// every one it met, so a plain use left was put back after it -- by a
+        /// later operation, or by a definition cycle that reaches inside `Q`'s
+        /// own definition.
         static constexpr bool plainLeft = (ConstantRewriteOf<PlainUseProbe<Q>, Exprs>::mentions || ...)
                                           || (ConstantRewriteOf<PlainUseProbe<Q>, Ps>::mentions || ...);
         /// Whether a node a substitution for `Q` left is still anywhere.
@@ -1570,9 +1754,11 @@ namespace detail
 /// different dimension from `Q`'s; an expression holding a node kind the
 /// overlay cannot see inside, since that is where a use of `Q` could hide; and
 /// -- once every node is known -- an expression that reads `Q` itself. The
-/// first is independent of the other two, so an expression wrong both ways
-/// is told both. No `{}` default member initialiser on the expression: see
-/// `Corrections` (`lookup.hpp`).
+/// dimension rule is not gated on the other two. An operation it refuses is
+/// not applied at all: `valid` is part of what `apply` asks before
+/// instantiating its body, so a refused definition is never also judged
+/// against the method it would have produced. No `{}` default member
+/// initialiser on the expression: see `Corrections` (`lookup.hpp`).
 template <Described Q, Node Expr>
 struct QuantityDerivation
 {
@@ -1589,6 +1775,11 @@ struct QuantityDerivation
             detail::RequireDerivationNotSelfReferential<Q,
                                                         detail::ConstantRewriteOf<detail::QuantityProbe<Q>, Expr>::mentions>,
             std::true_type>::value);
+
+    /// Whether every rule above holds, asked without firing any: what
+    /// `detail::IsValidOperation` reports to `apply`.
+    static constexpr bool valid = Expr::dimension == Describe<Q>::dimension && known
+                                  && !detail::ConstantRewriteOf<detail::QuantityProbe<Q>, Expr>::mentions;
 
     /// The quantity defined.
     using quantity = Q;
@@ -1857,11 +2048,12 @@ namespace detail
     /// `replace_variant<Tag>`: the variant tagged `Tag`, with its formula
     /// wrapped as a jurisdiction's replacement.
     ///
-    /// Whether the tag is declared is judged against the result -- see its
-    /// `RequireOperationRead` -- so a tag absent here leaves the method
-    /// unchanged. A replacement of a different dimension is refused here, and
-    /// also leaves the method unchanged, so that the variants pack's own
-    /// agreement rule never sees the mismatch.
+    /// Nothing is refused here. Whether the tag is declared, and whether the
+    /// replacement keeps the method's dimension, are judged against the result
+    /// -- see its `RequireOperationRead` -- so that the message never depends on
+    /// the order of the operations. A replacement of an absent tag or of a
+    /// different dimension leaves the method unchanged, so that the variants
+    /// pack's own agreement rule never sees the mismatch.
     template <typename Tag, typename Expr, typename... Cs, typename Rounding, Predicate... Ps>
     [[nodiscard]] constexpr auto apply_operation(VariantReplacement<Tag, Expr> const& replacing,
                                                  Variants<Cs...> const& pack,
@@ -1871,7 +2063,6 @@ namespace detail
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
         {
             constexpr Dimension reported = VariantsDimension<Variants<Cs...>>::dimension;
-            static_assert(RequireReplacementKeepsDimension<Tag, reported, Expr::dimension>::value);
             if constexpr (reported == Expr::dimension)
                 return formula::method(variants_replacing<variant_index<Tag, Cs...>(), Tag>(
                                            pack,
@@ -1959,6 +2150,24 @@ namespace detail
     {
     };
 
+    /// Whether a method's variants report @p D, and the dimension they
+    /// report -- asked of a well-formed method, which is the only kind `apply`
+    /// judges.
+    template <typename M, Dimension D>
+    struct MethodDimensionIs: std::false_type
+    {
+        /// Nothing to report.
+        static constexpr Dimension reported = D;
+    };
+
+    template <typename Vs, typename Rounding, typename Constraints, Dimension D>
+    struct MethodDimensionIs<Method<Vs, Rounding, Constraints>, D>:
+        std::bool_constant<VariantsDimension<std::remove_cv_t<Vs>>::dimension == D>
+    {
+        /// What the method's variants report.
+        static constexpr Dimension reported = VariantsDimension<std::remove_cv_t<Vs>>::dimension;
+    };
+
     /// Whether a method's variants pack declares a variant tagged `Tag`,
     /// asked of its type alone.
     template <typename Tag, typename M>
@@ -2020,16 +2229,44 @@ namespace detail
     {
         /// Whether the method the overlay was applied to declares the tag.
         static constexpr bool declared = isPlainClassTag<Tag> && MethodDeclares<Tag, Input>::value;
+        /// Whether the replacement measures what that method reports.
+        static constexpr bool keepsDimension = MethodDimensionIs<Input, Expr::dimension>::value;
 
         static_assert(std::conditional_t<isPlainClassTag<Tag>,
                                          RequireReplacementNamesDeclaredVariant<Tag, declared>,
                                          std::true_type>::value);
         static_assert(
-            std::conditional_t<declared,
+            std::conditional_t<
+                declared,
+                RequireReplacementKeepsDimension<Tag, MethodDimensionIs<Input, Expr::dimension>::reported, Expr::dimension>,
+                std::true_type>::value);
+        static_assert(
+            std::conditional_t<declared && keepsDimension,
                                RequireReplacementHeld<Tag, MethodDeclares<Tag, Method<Vs, Rounding, Constraints>>::value>,
                                std::true_type>::value);
 
         static constexpr bool value = true;
+    };
+
+    /// Whether every `replace_variant` of an overlay was applied -- its tag
+    /// declared, its dimension the method's, and its variant still held by
+    /// the method produced -- asked without firing anything.
+    ///
+    /// A replacement refused for any of those leaves the method without it,
+    /// so a substitution whose quantity only the replacement reads would find
+    /// nothing reading it, and add "no variant uses it" to the refusal that
+    /// says what is wrong with the replacement. The substitution checks wait
+    /// on this, as the operations after a refused pin wait on the pin.
+    template <typename M, typename Input, typename Operation>
+    struct ReplacementApplied: std::true_type
+    {
+    };
+
+    template <typename M, typename Input, typename Tag, typename Expr>
+    struct ReplacementApplied<M, Input, VariantReplacement<Tag, Expr>>:
+        std::bool_constant<isPlainClassTag<Tag> && MethodDeclares<Tag, Input>::value
+                           && MethodDimensionIs<Input, Expr::dimension>::value && MethodDeclares<Tag, M>::value>
+    {
     };
 
     /// Fails to compile when some `with_constant<Q>` of an overlay fixes a
@@ -2044,7 +2281,103 @@ namespace detail
     template <typename M, typename Input, typename... Ops>
     struct RequireOverridesRead
     {
-        static constexpr bool value = (RequireOperationRead<M, Input, Ops>::value && ...);
+        /// Whether every replacement was applied -- see `ReplacementApplied`.
+        static constexpr bool replacementsApplied = (ReplacementApplied<M, Input, Ops>::value && ...);
+
+        /// A substitution's check waits on every replacement having been
+        /// applied; every other operation's check is asked regardless.
+        template <typename Operation>
+        using Check = std::conditional_t<IsSubstitution<Operation>::value && !replacementsApplied,
+                                         std::true_type,
+                                         RequireOperationRead<M, Input, Operation>>;
+
+        static constexpr bool value = (Check<Ops>::value && ...);
+    };
+
+    /// Whether a plain `var<Q>` is left anywhere in a method's parts.
+    template <typename Q, typename Vs, typename Constraints>
+    struct PlainUseLeft: std::false_type
+    {
+    };
+
+    template <typename Q, typename... Tags, Node... Exprs, Predicate... Ps>
+    struct PlainUseLeft<Q, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>:
+        std::bool_constant<(ConstantRewriteOf<PlainUseProbe<Q>, Exprs>::mentions || ...)
+                           || (ConstantRewriteOf<PlainUseProbe<Q>, Ps>::mentions || ...)>
+    {
+    };
+
+    /// The rule `RequireSubstitutionEverywhere` states, judged against the
+    /// WHOLE produced method: for every quantity with a substitution's node
+    /// anywhere in it, whichever overlay left that node, no plain use may be
+    /// left. So two overlays applied in turn are held to it exactly as one
+    /// overlay is -- a later overlay that reads a quantity an earlier one
+    /// fixed, or completes a definition cycle, is refused.
+    ///
+    /// A quantity this overlay itself substitutes is asked here as well as by
+    /// its own substitution's check (`RequireConstantApplies`). Both name the
+    /// same specialisation of `RequireSubstitutionEverywhere`, and a class
+    /// template specialisation is instantiated once, so the refusal is
+    /// reported once -- counted on cl for `overlay_derived_cycle` and
+    /// `overlay_constant_reintroduced`. The substitution's own check is still
+    /// needed: when a later operation removed every node the substitution
+    /// left and put a plain use back, the quantity has no substitution's node
+    /// for this rule to find.
+    template <typename Substituted, typename Vs, typename Constraints>
+    struct RequireEverySubstitutionEverywhere;
+
+    template <typename... Qs, typename Vs, typename Constraints>
+    struct RequireEverySubstitutionEverywhere<QuantityList<Qs...>, Vs, Constraints>
+    {
+        static constexpr bool value =
+            (RequireSubstitutionEverywhere<Qs, !PlainUseLeft<Qs, Vs, Constraints>::value>::value && ...);
+    };
+
+    /// The quantities substituted anywhere in a method's parts.
+    template <typename Vs, typename Constraints>
+    struct SubstitutedInParts
+    {
+        /// Nothing, for anything but a variants pack and a constraint set.
+        using type = QuantityList<>;
+    };
+
+    template <typename... Tags, Node... Exprs, Predicate... Ps>
+    struct SubstitutedInParts<Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>
+    {
+        /// Every quantity with a substitution's node in a variant or a
+        /// constraint.
+        using type = SubstitutedInAll<Exprs..., Ps...>;
+    };
+
+    /// The whole-method rule, asked of the produced method @p M, once the
+    /// checks it depends on have something true to say: every replacement
+    /// applied, and every node of the method it was applied to, and of the
+    /// method produced, a kind the rewrite knows.
+    template <typename M, typename Input, typename... Ops>
+    struct RequireSubstitutionsHold: std::true_type
+    {
+    };
+
+    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename... Ops>
+    struct RequireSubstitutionsHold<Method<Vs, Rounding, Constraints>, Input, Ops...>
+    {
+        /// The produced method, as `IsKnownMethod` names it.
+        using Produced = Method<Vs, Rounding, Constraints>;
+        /// Whether both methods can be seen inside, all the way down.
+        static constexpr bool known = IsKnownMethod<KnownProbe, Input>::value && IsKnownMethod<KnownProbe, Produced>::value;
+        /// Whether every replacement was applied.
+        static constexpr bool replacementsApplied = RequireOverridesRead<Produced, Input, Ops...>::replacementsApplied;
+
+        /// Whether the rule has anything true to say.
+        static constexpr bool askable = known && replacementsApplied;
+
+        static constexpr bool value =
+            std::conditional_t<askable,
+                               RequireEverySubstitutionEverywhere<
+                                   typename SubstitutedInParts<std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>::type,
+                                   std::remove_cv_t<Vs>,
+                                   std::remove_cv_t<Constraints>>,
+                               std::true_type>::value;
     };
 
     /// Applies the operations of an overlay from position @p Index onwards,
@@ -2087,6 +2420,9 @@ template <typename... Ops, typename Vs, typename Rounding, typename Constraints>
         static_assert(detail::RequireOverridesRead<std::remove_cv_t<decltype(result)>,
                                                    Method<Vs, Rounding, Constraints>,
                                                    Ops...>::value);
+        static_assert(detail::RequireSubstitutionsHold<std::remove_cv_t<decltype(result)>,
+                                                       Method<Vs, Rounding, Constraints>,
+                                                       Ops...>::value);
         return result;
     }
 }

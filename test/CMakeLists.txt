@@ -904,14 +904,16 @@ formula_add_negative_test(overlay_derived_after_its_variant_is_pruned
     "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_dimension_mismatch
-    "formula: this overlay derives a quantity from an expression of a different dimension")
+    "formula: this overlay derives a quantity from an expression of a different dimension"
+    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_self_reference
-    "formula: this overlay derives a quantity from an expression that reads the quantity itself")
+    "formula: this overlay derives a quantity from an expression that reads the quantity itself"
+    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_definition_unknown_node
     "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
-    REJECT "formula: this overlay derives a quantity from an expression that reads the quantity itself")
+    REJECT "formula: this overlay derives a quantity from an expression that reads the quantity itself" "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_method_unknown_node
     "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
@@ -920,10 +922,44 @@ formula_add_negative_test(overlay_derived_method_unknown_node
 # A definition cycle across two quantities in one overlay: the second
 # definition puts a plain use of the first quantity back into its definition.
 formula_add_negative_test(overlay_derived_cycle
-    "formula: this overlay fixes or derives a quantity that an operation listed after it reads again, unsubstituted")
+    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment")
+
+# A refused replacement leaves the method without it, so the substitution
+# checks wait on every replacement having been applied; the replacement's
+# own dimension and held rules are judged against the result, so one mistake
+# gets one message in either order. The stacked cases pin that the rule a
+# substitution be in effect wherever the method reads its quantity is judged
+# against the whole produced method, across overlays applied in turn.
+formula_add_negative_test(overlay_replacement_absent_then_constant
+    "formula: this overlay replaces a variant the method does not declare"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_replacement_tag_cv_qualified_then_constant
+    "formula: this tag is not a plain class type"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this overlay replaces a variant the method does not declare")
+
+formula_add_negative_test(overlay_replacement_dimension_then_derived
+    "formula: this overlay replaces a variant with a formula of a different dimension from the method's"
+    REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses" "formula: two variants of this method measure different dimensions")
+
+formula_add_negative_test(overlay_replacement_dimension_then_pruned
+    "formula: this overlay replaces a variant with a formula of a different dimension from the method's"
+    REJECT "formula: this overlay replaces a variant that the method it produces does not hold")
+
+formula_add_negative_test(overlay_replacement_pruned_then_dimension
+    "formula: this overlay replaces a variant with a formula of a different dimension from the method's"
+    REJECT "formula: this overlay replaces a variant that the method it produces does not hold")
+
+formula_add_negative_test(overlay_stacked_cycle
+    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+
+formula_add_negative_test(overlay_stacked_constant_read_again
+    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_constant_reintroduced
-    "formula: this overlay fixes or derives a quantity that an operation listed after it reads again, unsubstituted"
+    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_node_hand_built_fixed

@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from
-// the environment
+// EXPECT: formula: this overlay replaces a variant the method does not declare
+// REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 //
-// A definition cycle across two quantities: the shape factor defined by the
-// ratio, then the ratio defined by the shape factor. The second definition
-// rewrites the ratio inside the first, and so puts a plain shape factor back
-// into the first definition -- a use of it that no substitution reaches, which
-// would read the specimen's value under an overlay that claims to define it.
-// Refused by the rule that a substitution be in effect wherever the produced
-// method reads its quantity. Neither definition is unused -- each quantity's
-// node is still in the produced method -- so no second refusal applies.
-//
-// Judged within the one overlay, against the method it produces, as every
-// result check of an overlay is.
+// A replacement of a Prism the method never declared, whose formula is the
+// only reader of the ratio a constant then fixes. The refused replacement
+// leaves the method without it, so the constant finds nothing reading the
+// ratio; the REJECT pins that the constant's check waits on every
+// replacement having been applied, rather than adding "no variant uses it"
+// to the message that names the mistaken tag.
 //
 // This must not compile.
 #include <formula-cpp/constraint.hpp>
@@ -64,7 +59,10 @@ inline constexpr auto m =
 
 int main()
 {
+    static_cast<void>(m);
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::add_derived<ShapeFactor>(var<Ratio>), formula::add_derived<Ratio>(var<ShapeFactor>)), m);
+        formula::overlay(formula::replace_variant<Prism>(var<Ratio> * var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                         formula::with_constant<Ratio>(formula::Rational { 4, 5 })),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;
 }

@@ -103,6 +103,16 @@ struct Documentation
     /// The variables the formula reads, each once, in the order they first
     /// appear when the formula is read left to right.
     std::vector<SymbolEntry> symbols {};
+    /// One entry per formula a jurisdiction replaced wholesale
+    /// (`ReplacedVariantNode`, `overlay.hpp`), in the order met: what the
+    /// overlay cited, or an empty `Citation` when it cited nothing.
+    ///
+    /// An entry even for a replacement that cited nothing, for the reason
+    /// `SymbolEntry::fixedValue` marks a constant whatever its citation: a
+    /// page that said nothing of an uncited replacement would read exactly as
+    /// the base standard's page for a formula that is not the base
+    /// standard's. A cited replacement's citation also joins `citations`.
+    std::vector<Citation> replacedBy {};
 };
 
 namespace detail
@@ -337,12 +347,14 @@ namespace detail
         collect(walk, node.expression());
     }
 
-    /// A replaced formula is walked as the formula, and what the overlay cited
-    /// for it joins the citations when it cited anything -- the guard
-    /// `collect(Walk&, Constraint<P> const&)` has, for its reason.
+    /// A replaced formula is marked as replaced, cited or not -- see
+    /// `Documentation::replacedBy` -- and walked as the formula; what the
+    /// overlay cited for it also joins the citations when it cited anything,
+    /// the guard `collect(Walk&, Constraint<P> const&)` has, for its reason.
     template <Node Expr>
     void collect(Walk& walk, ReplacedVariantNode<Expr> const& node)
     {
+        walk.documentation.replacedBy.push_back(node.source());
         if (!(node.source() == Citation {}))
             walk.documentation.citations.push_back(node.source());
         collect(walk, node.replacement());

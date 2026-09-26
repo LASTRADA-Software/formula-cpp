@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay fixes or derives a quantity that an operation listed after it reads again, unsubstituted
+// EXPECT: formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment
 // REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 //
 // The shape factor fixed, then the Cube -- its only reader -- replaced by a
