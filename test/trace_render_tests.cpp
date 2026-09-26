@@ -1668,3 +1668,58 @@ TEST_CASE("a variant's tag and a lookup key's name are escaped", "[trace-render]
         formula::RecordingSink<> { keyTrace });
     CHECK(formula::render_trace(keyTrace, { .maxSteps = 10 }) == "1. lookup(key steel\\; y \\\\) = 2\n");
 }
+
+TEST_CASE("a rounding or a numeric value in a unit with no symbol adds no unit clause to its line", "[trace-render]")
+{
+    // `unit::One`'s symbol is empty, and a method's rounding step once read
+    // `round(#4, in )`, a numeric value `numeric(#3, in )`. The clause is
+    // dropped, as the value's own unit is after a dimensionless number; a
+    // named unit keeps it.
+    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
+                                                  formula::Measured<CementVolume> { formula::Rational { 300 } });
+
+    auto const dimensionless = formula::method(
+        formula::variants(formula::variant<PlainDensity>(ratio)),
+        formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    formula::Trace<> ruleTrace {};
+    (void) formula::evaluate_method<PlainDensity>(dimensionless, environment, formula::RecordingSink<> { ruleTrace });
+    CHECK(formula::render_trace(ruleTrace, { .maxSteps = 10 })
+              .find("4. round(#3) = 3/5 [rounded to 2 dp (method default); nearest, ties away from zero]\n")
+          != std::string::npos);
+
+    formula::Trace<> placesTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::rounded<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(ratio),
+        environment,
+        formula::RecordingSink<> { placesTrace });
+    CHECK(formula::render_trace(placesTrace, { .maxSteps = 10 }).find("4. round(#3, to 2 dp) = 3/5 ") != std::string::npos);
+
+    formula::Trace<> numericTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::numeric_value_of<unit::One, "the fit is stated over the bare ratio">(ratio),
+        environment,
+        formula::RecordingSink<> { numericTrace });
+    CHECK(formula::render_trace(numericTrace, { .maxSteps = 10 })
+              .ends_with("4. numeric(#3) = 3/5 (the fit is stated over the bare ratio)\n"));
+
+    // A named unit keeps its clause, on the same two lines.
+    auto const inMegapascals = formula::method(
+        formula::variants(formula::variant<PlainDensity>(var<Strength>)),
+        formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    auto const strength = formula::environment(formula::Measured<Strength> { formula::Rational { 30 } });
+    formula::Trace<> namedRuleTrace {};
+    (void) formula::evaluate_method<PlainDensity>(inMegapascals, strength, formula::RecordingSink<> { namedRuleTrace });
+    CHECK(formula::render_trace(namedRuleTrace, { .maxSteps = 10 }).find("2. round(#1, in MPa) = 30 MPa [")
+          != std::string::npos);
+
+    formula::Trace<> namedNumericTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::numeric_value_of<unit::Megapascal, "the fit is stated in MPa">(var<Strength>),
+        strength,
+        formula::RecordingSink<> { namedNumericTrace });
+    CHECK(formula::render_trace(namedNumericTrace, { .maxSteps = 10 })
+              .ends_with("2. numeric(#1, in MPa) = 30 (the fit is stated in MPa)\n"));
+}

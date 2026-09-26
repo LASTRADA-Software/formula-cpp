@@ -1438,3 +1438,33 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
             formula::when(overFifty, var<Diameter>, var<Diameter> * rat(2)),
             { rat(19, 20), rat(7, 5), rat(21, 20) }))));
 }
+
+TEST_CASE("render: a rounding or a numeric value in a unit with no symbol adds no unit clause", "[render][rounding]")
+{
+    // `unit::One`'s symbol is empty, and the clause once read `to 2 dp of )`
+    // and `numeric(..., in )`. A value with no unit is shown with none, as a
+    // dimensionless constant is; a named unit keeps its clause.
+    constexpr auto ratio = var<WaterVolume> / var<CementVolume>;
+    constexpr auto toPlaces =
+        formula::rounded<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(ratio);
+    constexpr auto toDigits = formula::rounded_to_digits<formula::unit::One,
+                                                         formula::SignificantDigits { 2 },
+                                                         formula::RoundingMode::HalfAwayFromZero>(ratio);
+    constexpr auto bare = formula::numeric_value_of<formula::unit::One, "the fit is stated over the bare ratio">(ratio);
+
+    CHECK(formula::render(toPlaces) == "round(V_w / V_c, to 2 dp)");
+    CHECK(formula::render(toDigits) == "round(V_w / V_c, to 2 sf)");
+    CHECK(formula::render(bare) == "numeric(V_w / V_c)");
+    CHECK(formula::render<Dialect::LaTeX>(toPlaces) == "\\operatorname{round}_{2}(\\frac{V_w}{V_c})");
+    CHECK(formula::render<Dialect::LaTeX>(toDigits) == "\\operatorname{round}_{2\\mathrm{sf}}(\\frac{V_w}{V_c})");
+    CHECK(formula::render<Dialect::LaTeX>(bare) == "\\{\\frac{V_w}{V_c}\\}");
+
+    constexpr auto inMegapascals =
+        formula::numeric_value_of<formula::unit::Megapascal, "the fit is stated in MPa">(var<Strength>);
+    CHECK(formula::render(inMegapascals) == "numeric(f, in MPa)");
+    CHECK(formula::render<Dialect::LaTeX>(inMegapascals) == "\\{f/\\mathrm{MPa}\\}");
+    CHECK(formula::render(formula::rounded<formula::unit::Millimetre,
+                                           formula::DecimalPlaces { 1 },
+                                           formula::RoundingMode::HalfAwayFromZero>(var<Diameter>))
+          == "round(d, to 1 dp of mm)");
+}

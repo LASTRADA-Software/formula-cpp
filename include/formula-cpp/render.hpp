@@ -217,6 +217,25 @@ namespace detail
         return unitSymbol.empty() ? numberText : numberText + " " + std::string { unitSymbol };
     }
 
+    /// @p lead followed by a unit's symbol -- `, in MPa`, ` dp of mm` -- or
+    /// nothing when the unit has none (`unit::One`), so that a rounding or a
+    /// numeric value in a dimensionless unit reads `round(x, to 2 dp)` and
+    /// `numeric(x)` rather than `round(x, to 2 dp of )` and `numeric(x, in )`.
+    /// The clause is dropped rather than a name written in its place, as
+    /// `number_with_unit` drops the symbol after a dimensionless number: a
+    /// value with no unit is shown with none, everywhere.
+    [[nodiscard]] inline std::string unit_clause(std::string_view lead, std::string_view unitSymbol)
+    {
+        return unitSymbol.empty() ? std::string {} : std::string { lead } + std::string { unitSymbol };
+    }
+
+    /// A unit's symbol set upright in LaTeX, `\mathrm{mm}`, or nothing for a
+    /// unit with none, for `unit_clause` to drop.
+    [[nodiscard]] inline std::string latex_unit(std::string_view unitSymbol)
+    {
+        return unitSymbol.empty() ? std::string {} : "\\mathrm{" + std::string { unitSymbol } + "}";
+    }
+
     /// A bound a table declared as a numerator/denominator pair -- a band's
     /// low or high bound, or a breakpoint's key -- as text.
     ///
@@ -807,9 +826,10 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Opera
     std::string const placesText = std::to_string(Places.value);
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + "\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}("
+               + inner + ")";
     else
-        return "round(" + inner + ", to " + placesText + " dp of " + unitSymbol + ")";
+        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
 }
 
 /// A significant-digits rounding node, spelled the same way as `RoundNode`
@@ -826,9 +846,10 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
     std::string const digitsText = std::to_string(Digits.value);
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf},\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+        return "\\operatorname{round}_{" + digitsText + "\\mathrm{sf}"
+               + detail::unit_clause(",\\,", detail::latex_unit(unitSymbol)) + "}(" + inner + ")";
     else
-        return "round(" + inner + ", to " + digitsText + " sf of " + unitSymbol + ")";
+        return "round(" + inner + ", to " + digitsText + " sf" + detail::unit_clause(" of ", unitSymbol) + ")";
 }
 
 /// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,
@@ -854,9 +875,9 @@ template <Dialect D, Unit U, detail::FixedString Justification, Node Operand, Vo
     std::string const unitSymbol { view(declaredUnit.symbolText) };
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\{" + inner + "/\\mathrm{" + unitSymbol + "}\\}";
+        return "\\{" + inner + detail::unit_clause("/", detail::latex_unit(unitSymbol)) + "\\}";
     else
-        return "numeric(" + inner + ", in " + unitSymbol + ")";
+        return "numeric(" + inner + detail::unit_clause(", in ", unitSymbol) + ")";
 }
 
 /// Pi renders as `\pi` in LaTeX, and as `pi` in every other dialect.

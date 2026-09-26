@@ -677,17 +677,17 @@ namespace detail
             case StepKind::VariantSelected:
                 return sole_operand(step);
             case StepKind::Round:
-                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp of "
-                       + unit_symbol_text(step.unit) + ")";
+                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
             case StepKind::RoundSignificant:
-                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf of "
-                       + unit_symbol_text(step.unit) + ")";
+                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf"
+                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
             // The unit only: the granularity belongs with whose rule it is,
             // in the suffix -- see `rounding_rule_suffix`.
             case StepKind::RoundingRuleApplied:
-                return "round(" + sole_operand(step) + ", in " + unit_symbol_text(step.unit) + ")";
+                return "round(" + sole_operand(step) + unit_clause(", in ", unit_symbol_text(step.unit)) + ")";
             case StepKind::NumericValue:
-                return "numeric(" + sole_operand(step) + ", in " + unit_symbol_text(step.sourceUnit) + ")";
+                return "numeric(" + sole_operand(step) + unit_clause(", in ", unit_symbol_text(step.sourceUnit)) + ")";
             case StepKind::Conditional:
                 return conditional_expression(step);
             case StepKind::Constraint:
