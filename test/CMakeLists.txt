@@ -1259,3 +1259,10 @@ add_test(NAME hygiene.documented-diagnostics
     COMMAND "${CMAKE_COMMAND}"
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckDocumentedDiagnostics.cmake")
+
+# The words of a library refusal quoted in docs/, which the check above never
+# reads: each must still be a message some header states, verbatim.
+add_test(NAME hygiene.documented-diagnostic-text
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckDocumentedDiagnosticText.cmake")

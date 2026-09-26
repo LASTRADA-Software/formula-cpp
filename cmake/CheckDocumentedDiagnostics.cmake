@@ -37,6 +37,10 @@
 #     check that catches the observed failure mode beats no check; it is called
 #     out as weak here so nobody mistakes it for a proof.
 #
+# The words of a quoted message are not checked here, and a quote naming no
+# location is not examined at all; `CheckDocumentedDiagnosticText.cmake` checks
+# every quoted `formula: ` message against the headers' text.
+#
 # Only fenced blocks are scanned. Prose mentioning a header and a number in
 # passing is not a quoted diagnostic, and judging it as one would make this
 # script fire on text it has no business judging.
