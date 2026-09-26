@@ -1094,6 +1094,19 @@ formula_add_negative_test(overlay_constant_reintroduced
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses" "formula: this method reads a quantity both where"
         "formula: this overlay fixes a quantity that nothing read where the constant is listed")
 
+# A refusing constructor explicitly specialised by user code, to forge a
+# provenance with no `detail::` written. The specialisation cannot match the
+# constructor -- whose last parameter is `detail::ProvenanceStatedByAuthor` --
+# so it is the compiler, not the library, that refuses it, in its own words;
+# each case expects the type's name, which every compiler's refusal names.
+formula_add_negative_test(method_constraint_origin_specialised "ConstraintOrigin")
+formula_add_negative_test(method_rounding_rule_specialised "RoundingRule")
+formula_add_negative_test(method_overlaid_constraints_specialised "OverlaidConstraints")
+formula_add_negative_test(method_rounding_rule_node_specialised "RoundingRuleNode")
+formula_add_negative_test(overlay_node_fixed_specialised "OverriddenConstantNode")
+formula_add_negative_test(overlay_node_derived_specialised "DerivedQuantityNode")
+formula_add_negative_test(overlay_node_replaced_specialised "ReplacedVariantNode")
+
 formula_add_negative_test(overlay_node_hand_built_fixed
     "formula: only an overlay builds this node")
 

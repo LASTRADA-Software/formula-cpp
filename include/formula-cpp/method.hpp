@@ -570,6 +570,26 @@ namespace detail
     template <std::size_t Count>
     class PublishedLayout;
 
+    /// The last parameter of every constructor that refuses an author's
+    /// statement of provenance -- `RoundingRule`'s, `OverlaidConstraints`',
+    /// `ConstraintOrigin`'s, the three overlay nodes', `RoundingRuleNode`'s and
+    /// `PublishedLayout`'s. Defaulted, so braces still reach the constructor and
+    /// are refused in the library's words.
+    ///
+    /// **Why it is there.** A refusing constructor is a member, and an
+    /// explicit specialisation of a member -- `template <>
+    /// formula::ConstraintOrigin::ConstraintOrigin(ConstraintProvenance,
+    /// Citation) noexcept: _provenance { ... } {}` -- is a member definition,
+    /// with a member's access to the private fields. Measured on cl 19.51:
+    /// all three of `ConstraintOrigin`, `RoundingRule` and
+    /// `OverlaidConstraints` could be forged that way, with no `detail::`
+    /// written. An explicit specialisation has to spell the member's whole
+    /// signature, so with this parameter in it, it has to name `detail::` --
+    /// which is outside this library's contract, as the access types are.
+    struct ProvenanceStatedByAuthor
+    {
+    };
+
     /// The one door to a layout stated by hand, and checked: for this
     /// library's own negative cases, which pin the check, and for nothing
     /// else. Code that spells `detail::` has stepped outside the contract.
@@ -663,7 +683,9 @@ namespace detail
         /// private". A template only so that the refusal waits for a use:
         /// @p Stated is never given.
         template <bool Stated = false>
-        constexpr PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t publishedCount) noexcept:
+        constexpr PublishedLayout(std::array<std::size_t, Count> const& published,
+                                  std::size_t publishedCount,
+                                  ProvenanceStatedByAuthor = {}) noexcept:
             _positions { published },
             _total { publishedCount }
         {
@@ -1008,7 +1030,7 @@ class RoundingRule
     /// Refused: see `detail::RequireLibraryStatesProvenance`. Declared only so
     /// that `RoundingRule<...> { RoundingProvenance::JurisdictionOverlay, c }`
     /// is refused in this library's words rather than the compiler's.
-    constexpr RoundingRule(RoundingProvenance, Citation = {}) noexcept
+    constexpr RoundingRule(RoundingProvenance, Citation = {}, detail::ProvenanceStatedByAuthor = {}) noexcept
     {
         static_assert(detail::RequireLibraryStatesProvenance<RoundingRule>::value);
     }
@@ -1138,7 +1160,9 @@ class OverlaidConstraints
     /// is refused in this library's words rather than the compiler's. The
     /// members are initialised so that the refusal is the only message: a set
     /// holding a lookup has no default to fall back on.
-    constexpr OverlaidConstraints(ConstraintSet<Ps...> replacement, Citation cited = {}) noexcept:
+    constexpr OverlaidConstraints(ConstraintSet<Ps...> replacement,
+                                  Citation cited = {},
+                                  detail::ProvenanceStatedByAuthor = {}) noexcept:
         _constraintSet { replacement },
         _source { cited }
     {
@@ -1199,7 +1223,7 @@ class ConstraintOrigin
     /// template, so that the refusal waits until it is called.
     template <typename Provenance>
         requires std::is_same_v<Provenance, ConstraintProvenance>
-    constexpr ConstraintOrigin(Provenance, Citation = {}) noexcept
+    constexpr ConstraintOrigin(Provenance, Citation = {}, detail::ProvenanceStatedByAuthor = {}) noexcept
     {
         static_assert(detail::RequireLibraryStatesConstraintProvenance<Provenance>::value);
     }
@@ -1747,7 +1771,9 @@ class RoundingRuleNode: public RoundNode<U, Places, Mode, Operand>
   public:
     /// Refused: see `detail::RequireMethodMadeRoundingNode`. Declared only so
     /// that building one by hand is refused in this library's words.
-    explicit constexpr RoundingRuleNode(Operand rounded, RoundingRule<U, Places, Mode> const& applied = {}) noexcept:
+    explicit constexpr RoundingRuleNode(Operand rounded,
+                                        RoundingRule<U, Places, Mode> const& applied = {},
+                                        detail::ProvenanceStatedByAuthor = {}) noexcept:
         RoundNode<U, Places, Mode, Operand> { {}, rounded },
         _rule { applied }
     {

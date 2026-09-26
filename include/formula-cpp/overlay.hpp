@@ -244,7 +244,9 @@ class OverriddenConstantNode: public VarNode<Q>
 
     /// Refused: see `detail::RequireOverlayMadeNode`. Declared only so that
     /// building one by hand is refused in this library's words.
-    explicit constexpr OverriddenConstantNode(Rational fixed, Citation cited = {}) noexcept:
+    explicit constexpr OverriddenConstantNode(Rational fixed,
+                                              Citation cited = {},
+                                              detail::ProvenanceStatedByAuthor = {}) noexcept:
         VarNode<Q> {},
         _value { fixed },
         _source { cited }
@@ -304,7 +306,9 @@ class DerivedQuantityNode: public VarNode<Q>
     }
 
     /// Refused: see `detail::RequireOverlayMadeNode`.
-    explicit constexpr DerivedQuantityNode(Expr definition, Citation cited = {}) noexcept:
+    explicit constexpr DerivedQuantityNode(Expr definition,
+                                           Citation cited = {},
+                                           detail::ProvenanceStatedByAuthor = {}) noexcept:
         VarNode<Q> {},
         _expression { definition },
         _source { cited }
@@ -364,7 +368,8 @@ class ReplacedVariantNode: public NodeBase
     }
 
     /// Refused: see `detail::RequireOverlayMadeNode`.
-    explicit constexpr ReplacedVariantNode(Expr formula, Citation cited = {}) noexcept:
+    explicit constexpr ReplacedVariantNode(Expr formula, Citation cited = {}, detail::ProvenanceStatedByAuthor = {}) noexcept
+        :
         NodeBase {},
         _replacement { formula },
         _source { cited }

@@ -538,7 +538,10 @@ These routes remain, and no type can close them:
 - Reinterpreting an object's bytes makes it anything.
 - Explicitly specialising `OverlaidConstraints` over a program's own types
   declares whatever the specialisation likes: specialising a library template
-  is outside this library's contract, and no code can forbid it.
+  is outside this library's contract, and no code can forbid it. Explicitly
+  specialising one of the constructors that refuse an author's provenance --
+  a member definition, with a member's access -- has to name `detail::` in
+  its signature, and so is outside it too.
 
 Nor does the guard reach a sink's own hooks, which are public: code that calls
 them by hand, or fills in a `Step` by hand, writes whatever trace it likes.
