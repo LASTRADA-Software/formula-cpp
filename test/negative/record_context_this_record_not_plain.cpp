@@ -30,5 +30,5 @@ constexpr auto broken = formula::record_context(
 
 int main()
 {
-    return static_cast<int>(broken.this_record().key().test().value());
+    return broken.this_record().is_bound() ? 0 : 1;
 }

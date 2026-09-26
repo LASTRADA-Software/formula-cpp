@@ -22,9 +22,11 @@
 ///
 /// **Keys are integers, and two strong types.** `SampleId` and `TestId` each
 /// wrap a `std::uint64_t`, which is how a lab information system keys its
-/// records; turning one into a display name is a report's job. Both
-/// constructors are `explicit`, so `record_key(test_id(3), sample_id(23))`,
-/// with the pair swapped, does not compile. There is no aggregate
+/// records; turning one into a display name is a report's job. They are two
+/// types, neither convertible to the other, so `record_key(test_id(3),
+/// sample_id(23))`, with the pair swapped, does not compile. Both
+/// constructors are `explicit`, so a bare integer is taken for neither, and
+/// `record_key(17, 5)` does not compile either. There is no aggregate
 /// `RecordKey { .sample = 17 }` either, because such an aggregate would
 /// value-initialize the missing test key to 0, and 0 is a real key.
 
@@ -36,7 +38,6 @@
 #include <optional>
 #include <tuple>
 #include <type_traits>
-#include <utility>
 
 namespace formula
 {
@@ -52,7 +53,7 @@ class SampleId
 {
   public:
     /// The sample keyed @p sampleKey. Explicit, so that a bare integer is
-    /// never taken for a sample key -- nor a `TestId` for one.
+    /// never taken for a sample key.
     constexpr explicit SampleId(std::uint64_t sampleKey) noexcept:
         _value { sampleKey }
     {
@@ -73,7 +74,7 @@ class TestId
 {
   public:
     /// The test keyed @p testKey. Explicit, so that a bare integer is never
-    /// taken for a test key -- nor a `SampleId` for one.
+    /// taken for a test key.
     constexpr explicit TestId(std::uint64_t testKey) noexcept:
         _value { testKey }
     {
@@ -171,6 +172,40 @@ namespace detail
     template <typename Env>
     concept RecordEnvironment = isEnvironment<Env>;
 
+    /// Fails to compile when `record<Role>(key, values)` is given values that
+    /// are not a plain `Environment` -- a `record_context`, above all. A
+    /// record has no records of its own: a formula reads another record
+    /// through the context, never through a record nested in one.
+    template <typename Env>
+    struct RequireRecordEnvironment
+    {
+        static_assert(isEnvironment<Env>,
+                      "formula: a record holds its values in an environment(...), and this is not one; a "
+                      "record_context cannot be a record's values, since a record has no records of its own -- "
+                      "the type appears in this diagnostic as the template argument of RequireRecordEnvironment");
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when the record being evaluated is made unbound.
+    ///
+    /// An unbound record is a test not done yet, which is ordinary for a
+    /// reference and meaningless for the specimen being evaluated: a context
+    /// is its own record's environment, and with no record every input would
+    /// be absent, while a result held as typed in would still report itself
+    /// as a person's entry.
+    ///
+    /// A cv-qualified `ThisRecord` passes here on purpose: `RequirePlainRole`
+    /// already refuses it, and one mistake draws one message.
+    template <typename Role>
+    struct RequireThisRecordBound
+    {
+        static_assert(!std::is_same_v<Role, ThisRecord>,
+                      "formula: the record being evaluated cannot be unbound; only a record another role plays "
+                      "may be, when that test has not been done -- the role appears in this diagnostic as the "
+                      "template argument of RequireThisRecordBound");
+        static constexpr bool value = true;
+    };
+
     /// @p Env with every entry absent: what an unbound record holds, so that
     /// it has an environment of its type without inventing a single value.
     template <typename... Entries>
@@ -204,14 +239,17 @@ namespace detail
 /// when no record plays the role this time, neither.
 ///
 /// **Built only by the library**, by `record<Role>(key, environment)` or
-/// `unbound()`. The members are private, and there is no aggregate spelling:
-/// the key is the caller's statement about its own data, recorded as stated,
-/// but no code outside `detail::` can build a record whose key and
-/// environment came from two different places.
+/// `unbound()`. The members are private, and there is no aggregate spelling,
+/// so an existing record's key and environment cannot be reassigned apart
+/// from each other. Which key goes with which environment is the caller's
+/// statement about its own data, and is recorded as stated:
+/// `record<Reference>(keyOfOne, environmentOfAnother)` pairs the two exactly
+/// as it is told. The library cannot know better, and does not try.
 ///
 /// **An unbound record** is ordinary lab data -- the reference test has not
 /// been done yet -- and keeps the record's type, so that one formula needs one
-/// context type whether or not the record exists. It has no key. Its
+/// context type whether or not the record exists. Only another role's record
+/// may be unbound, never `ThisRecord`'s. It has no key. Its
 /// environment holds every quantity of @p Env, each absent, so that nothing
 /// read from it is ever a number; every library caller asks `is_bound()`
 /// before reading either.
@@ -230,26 +268,24 @@ class Record
     using environment_type = Env;
 
     /// A record of this type that no actual record plays: no key, and every
-    /// value absent.
-    [[nodiscard]] static constexpr Record unbound() noexcept { return Record { detail::UnboundRecord {} }; }
+    /// value absent. Refused for `ThisRecord` -- see
+    /// `detail::RequireThisRecordBound`.
+    [[nodiscard]] static constexpr Record unbound() noexcept
+    {
+        static_assert(detail::RequireThisRecordBound<Role>::value);
+        return Record { detail::UnboundRecord {} };
+    }
 
     /// Whether an actual record plays the role.
     [[nodiscard]] constexpr bool is_bound() const noexcept { return _key.has_value(); }
 
-    /// Which record plays the role.
+    /// Which record plays the role; empty when none does.
     ///
     /// An unbound record has no key, and none is invented for it -- not a
-    /// zero key, which would be a real one. Calling this on an unbound record
-    /// is undefined behaviour at run time, and does not compile in a constant
-    /// expression.
-    ///
-    /// @pre `is_bound()`.
-    [[nodiscard]] constexpr RecordKey key() const noexcept
-    {
-        if (_key.has_value())
-            return *_key;
-        std::unreachable();
-    }
+    /// zero key, which would be a real one. So the answer is an optional,
+    /// and asking an unbound record is an ordinary question with an empty
+    /// answer, never a precondition to violate.
+    [[nodiscard]] constexpr std::optional<RecordKey> key() const noexcept { return _key; }
 
     /// The record's values, keyed by quantity type. Every one is absent for
     /// an unbound record.
@@ -286,11 +322,20 @@ class Record
 /// A record playing @p Role, bound to @p recordKey and holding
 /// @p recordEnvironment:
 /// `record<Reference>(record_key(sample_id(23), test_id(3)), environment(...))`.
+///
+/// @return a `Record<Role, Env, Lineage...>`. Values that are not a plain
+/// `Environment` are refused -- see `detail::RequireRecordEnvironment` --
+/// and the refused call then returns a record holding no values at all, so
+/// that the refusal is the only message rather than the first of several.
 template <typename Role, typename Env, typename... Lineage>
-[[nodiscard]] constexpr Record<Role, Env, Lineage...> record(RecordKey recordKey, Env recordEnvironment,
-                                                             Lineage... lineageKeys) noexcept
+[[nodiscard]] constexpr auto record(RecordKey recordKey, Env recordEnvironment, Lineage... lineageKeys) noexcept
 {
-    return detail::RecordAccess::bound<Record<Role, Env, Lineage...>>(recordKey, recordEnvironment, lineageKeys...);
+    static_assert(detail::RequireRecordEnvironment<Env>::value);
+    if constexpr (detail::isEnvironment<Env>)
+        return detail::RecordAccess::bound<Record<Role, Env, Lineage...>>(recordKey, recordEnvironment, lineageKeys...);
+    else
+        return detail::RecordAccess::bound<Record<Role, Environment<>, Lineage...>>(recordKey, Environment<> {},
+                                                                                   lineageKeys...);
 }
 
 namespace detail

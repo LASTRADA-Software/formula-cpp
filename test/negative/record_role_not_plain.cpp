@@ -28,5 +28,5 @@ constexpr auto broken =
 
 int main()
 {
-    return static_cast<int>(broken.key().test().value());
+    return broken.is_bound() ? 0 : 1;
 }

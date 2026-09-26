@@ -1809,6 +1809,27 @@ formula_add_negative_test(record_context_this_record_not_plain
 # The qualifier differs, so the shared text stops at the second quote.
 formula_add_negative_test(record_key_swapped "TestId' to '" REJECT "formula: ")
 
+# What `explicit` on SampleId and TestId refuses, which the distinct types
+# alone do not: a bare integer for a key. One case per key, each with the
+# other key well formed, so that each `explicit` is the only thing refusing
+# its case: removing it makes that case compile. Again the compiler's own
+# words: cl says "cannot convert argument N from 'int' to
+# 'formula::SampleId'", g++ 13 "could not convert '17' from 'int' to
+# 'formula::SampleId'", clang++ 20.1.8 and clang-cl 22.1.3 "no viable
+# conversion from 'int' to 'SampleId'" (TestId likewise).
+formula_add_negative_test(record_key_sample_from_integer "'int' to '" REJECT "formula: ")
+formula_add_negative_test(record_key_test_from_integer "'int' to '" REJECT "formula: ")
+
+formula_add_negative_test(record_unbound_this_record
+    "formula: the record being evaluated cannot be unbound"
+    REJECT "RequirePlainRole")
+
+# After this refusal `record()` returns a record holding no values, so that
+# using it draws nothing more; the message is counted once by hand.
+formula_add_negative_test(record_environment_is_context
+    "formula: a record holds its values in an environment(...), and this is not one"
+    REJECT "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

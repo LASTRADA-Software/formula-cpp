@@ -499,7 +499,8 @@ The cross-test fixture uses a second record that shares the same sample, `PriorT
   template <typename Role, typename Env, typename... Lineage> class Record;   // private members
   template <typename Role, typename Env, typename... Lineage>
   constexpr Record<Role, Env, Lineage...> record(RecordKey, Env, Lineage...) noexcept;
-  //   Record::unbound(), Record::is_bound(), Record::key() (pre: bound), Record::environment()
+  //   Record::unbound() (refused for ThisRecord), Record::is_bound(),
+  //   Record::key() -> std::optional<RecordKey> (empty when unbound), Record::environment()
 
   template <typename ThisRec, typename... Others> class RecordContext;         // : public ThisRec's Env
   template <typename ThisRec, typename... Others>
@@ -556,7 +557,7 @@ TEST_CASE("a context evaluates exactly as its own record's environment", "[recor
 TEST_CASE("a context binds each role to the record it was given", "[record]")
 {
     STATIC_REQUIRE(ctx.template record<Reference>().key() == formula::record_key(formula::sample_id(23), formula::test_id(3)));
-    STATIC_REQUIRE(ctx.this_record().key().test().value() == 5);
+    STATIC_REQUIRE(ctx.this_record().key()->test().value() == 5);
 }
 ```
 
@@ -579,7 +580,7 @@ struct RequirePlainRole
 };
 ```
 
-`Record::key()` on an unbound record is a precondition violation. So it returns the key only when bound. There is no key to return otherwise, and **no zero key** is ever invented for one: `key()` is `constexpr` and `noexcept` and documented `@pre is_bound()`. Every library caller branches on `is_bound()` first. Task 3 pins the unbound path.
+`Record::key()` returns `std::optional<RecordKey>`, **empty when unbound**, exactly as task 5's `RecordOrigin::key()` does. There is no key to return for an unbound record, and **no zero key** is ever invented for one. It is not a precondition: `unbound()` and `key()` are both public, so one line of user code reaches it, and the first version of this step (`@pre is_bound()`, with `std::unreachable()` behind it) was measured by task 2's review to kill cl-debug, loop and segfault under g++ -O2, and abort under UBSan. `Record<ThisRecord, …>::unbound()` is refused at compile time: only another role's record may be a test not yet done. Task 3 pins the unbound path of a scope.
 
 - [ ] **Step 4: Write `RecordContext` (X2).**
 

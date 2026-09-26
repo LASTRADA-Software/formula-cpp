@@ -5,6 +5,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <type_traits>
+
 namespace
 {
 namespace unit = formula::unit;
@@ -60,7 +62,67 @@ TEST_CASE("a context binds each role to the record it was given", "[record]")
 {
     STATIC_REQUIRE(ctx.template record<Reference>().key()
                    == formula::record_key(formula::sample_id(23), formula::test_id(3)));
-    STATIC_REQUIRE(ctx.this_record().key().test().value() == 5);
+    STATIC_REQUIRE(ctx.this_record().key()->test().value() == 5);
+}
+
+namespace
+{
+struct PriorTest
+{
+};
+struct SecondReference
+{
+};
+
+// Three other records, so that the role lookup is asked for something other
+// than the first of them. Each holds a different force as well as a
+// different key.
+constexpr auto before = formula::environment(formula::Measured<Force> { formula::Rational { 30'000 } },
+                                             formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                             formula::Measured<EdgeY> { formula::Rational { 103 } });
+constexpr auto beside = formula::environment(formula::Measured<Force> { formula::Rational { 45'000 } },
+                                             formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                             formula::Measured<EdgeY> { formula::Rational { 103 } });
+constexpr auto threeOthers = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there),
+    formula::record<PriorTest>(formula::record_key(formula::sample_id(17), formula::test_id(3)), before),
+    formula::record<SecondReference>(formula::record_key(formula::sample_id(41), formula::test_id(5)), beside));
+} // namespace
+
+TEST_CASE("a context finds every other record by its role, not by its position", "[record-context]")
+{
+    // A lookup that always answered the first other record would give
+    // Reference's key and 57 268 N for all three; one that answered the last
+    // would give SecondReference's for all three.
+    STATIC_REQUIRE(threeOthers.record<Reference>().key()
+                   == formula::record_key(formula::sample_id(23), formula::test_id(3)));
+    STATIC_REQUIRE(threeOthers.record<PriorTest>().key()
+                   == formula::record_key(formula::sample_id(17), formula::test_id(3)));
+    STATIC_REQUIRE(threeOthers.record<SecondReference>().key()
+                   == formula::record_key(formula::sample_id(41), formula::test_id(5)));
+    STATIC_REQUIRE(threeOthers.record<PriorTest>().environment().get<Force>()
+                   == formula::Measured<Force> { formula::Rational { 30'000 } });
+    STATIC_REQUIRE(threeOthers.record<SecondReference>().environment().get<Force>()
+                   == formula::Measured<Force> { formula::Rational { 45'000 } });
+}
+
+TEST_CASE("a context's record for ThisRecord is its own record", "[record-context]")
+{
+    STATIC_REQUIRE(&ctx.record<formula::ThisRecord>() == &ctx.this_record());
+    STATIC_REQUIRE(decltype(ctx)::binds<formula::ThisRecord>);
+}
+
+TEST_CASE("an unbound record has no key and no values", "[record-context]")
+{
+    // No key at all -- not a zero key, which would be a real one -- and
+    // every value absent, never zero. Asking is an ordinary question with an
+    // empty answer.
+    constexpr auto notYetTested = formula::Record<Reference, std::remove_cv_t<decltype(there)>>::unbound();
+    STATIC_REQUIRE(!notYetTested.is_bound());
+    STATIC_REQUIRE(!notYetTested.key().has_value());
+    STATIC_REQUIRE(notYetTested.environment().get<Force>().is_absent());
+    STATIC_REQUIRE(notYetTested.environment().get<EdgeX>().is_absent());
 }
 
 // Every entry point that takes an environment takes a context unchanged,

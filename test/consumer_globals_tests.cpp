@@ -677,9 +677,10 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(explainedThroughContext.outcome == explained.outcome);
     probe.checks.push_back(
         boundRecords.this_record().key() == formula::record_key(formula::sample_id(17), formula::test_id(5))
-        && boundRecords.record<Reference>().key().sample().value() == 23);
+        && boundRecords.record<Reference>().key() == formula::record_key(formula::sample_id(23), formula::test_id(3)));
     auto const unboundReference = formula::Record<Reference, std::remove_cvref_t<decltype(elsewhere)>>::unbound();
-    probe.checks.push_back(!unboundReference.is_bound() && unboundReference.environment().get<Force>().is_absent()
+    probe.checks.push_back(!unboundReference.is_bound() && !unboundReference.key().has_value()
+                           && unboundReference.environment().get<Force>().is_absent()
                            && boundRecords.record<Reference>().is_bound());
     probe.checks.push_back(decltype(boundRecords)::binds<Reference> && !decltype(boundRecords)::binds<Cube>);
     return probe;
