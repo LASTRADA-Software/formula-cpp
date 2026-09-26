@@ -760,4 +760,35 @@ template <Dialect D = Dialect::Plain, Predicate P>
     return document<D>(node, DefaultVocabulary {});
 }
 
+
+/// Documents a conformity check: its rendering in dialect @p D, its citation
+/// when it has one -- the author's own, as a constraint's is -- and the
+/// symbol table of its subject.
+///
+/// The page states the check, never the numbers' origin: an envelope's
+/// limits are master data (`conformity.hpp`), and the page shows them as
+/// the check was built with them.
+template <Dialect D = Dialect::Plain, Unit U, SeriesNode S, Vocabulary V>
+[[nodiscard]] Documentation document(Conformity<U, S> const& conformityCheck, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(conformityCheck, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    // An uncited check pushes nothing, for the reason the constraint overload
+    // of `collect` gives.
+    if (!(conformityCheck.citation == Citation {}))
+        walk.documentation.citations.push_back(conformityCheck.citation);
+    detail::collect(walk, conformityCheck.subject);
+    return std::move(walk.documentation);
+}
+
+/// Documents a conformity check in the default vocabulary, which renames
+/// nothing.
+template <Dialect D = Dialect::Plain, Unit U, SeriesNode S>
+[[nodiscard]] Documentation document(Conformity<U, S> const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
+
 } // namespace formula

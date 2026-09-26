@@ -33,6 +33,7 @@
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/detail/latex_math.hpp>
 #include <formula-cpp/escape.hpp>
@@ -1539,6 +1540,68 @@ template <Dialect D, Predicate P>
 /// Renders @p node as plain text.
 template <Predicate P>
 [[nodiscard]] std::string render(Constraint<P> const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+
+namespace detail
+{
+    /// One row of an envelope as the range it permits, the unit after the
+    /// last number: `from 30 to 40 %`, `at least 60 %`, `at most 5 mm`, or
+    /// `any value` for a row unbounded on both sides.
+    [[nodiscard]] inline std::string limit_row_text(LimitRow limitRow, std::string_view unitSymbol)
+    {
+        std::optional<Rational> const lowerValue = limitRow.lower.value();
+        std::optional<Rational> const upperValue = limitRow.upper.value();
+        if (lowerValue.has_value() && upperValue.has_value())
+            return "from " + number_text(*lowerValue) + " to " + number_with_unit(number_text(*upperValue), unitSymbol);
+        if (lowerValue.has_value())
+            return "at least " + number_with_unit(number_text(*lowerValue), unitSymbol);
+        if (upperValue.has_value())
+            return "at most " + number_with_unit(number_text(*upperValue), unitSymbol);
+        return "any value";
+    }
+} // namespace detail
+
+/// Renders a conformity check in dialect @p D: `conform(<subject>, <row>,
+/// ...)`, one field per element in the series' order, each the range it
+/// permits (`detail::limit_row_text`), shaped as a lookup is
+/// (`detail::lookup_call`). The subject carries its series marker.
+///
+/// **The verdict stays out**, for `Constraint`'s reason: it is what a checker
+/// does once each element is decided, not part of what is checked. It
+/// appears in the trace.
+template <Dialect D, Unit U, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(Conformity<U, S> const& conformityCheck, V const& vocabulary)
+{
+    constexpr Unit limitsIn = U;
+    std::string rowFields;
+    for (std::size_t at = 0; at < S::length; ++at)
+        rowFields += detail::lookup_separator<D>()
+                + detail::lookup_words_in_dialect<D>(
+                    detail::limit_row_text(conformityCheck.envelope[at], view(limitsIn.symbolText)));
+    return detail::lookup_call<D>("conform", render<D>(conformityCheck.subject, vocabulary), rowFields);
+}
+
+/// Renders a conformity check as plain text, writing symbols as @p vocabulary
+/// says.
+template <Unit U, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(Conformity<U, S> const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders a conformity check in dialect @p D.
+template <Dialect D, Unit U, SeriesNode S>
+[[nodiscard]] std::string render(Conformity<U, S> const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders a conformity check as plain text.
+template <Unit U, SeriesNode S>
+[[nodiscard]] std::string render(Conformity<U, S> const& node)
 {
     return render<Dialect::Plain>(node);
 }

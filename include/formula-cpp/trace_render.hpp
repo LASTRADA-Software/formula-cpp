@@ -760,6 +760,10 @@ namespace detail
             // Every granularity, in the series' order, in the unit rounded
             // in, as `render()` writes it; the mode goes in the suffix, as
             // for `Round`.
+            // The subject; each element's outcome follows, in the bracket --
+            // see `conformity_line`.
+            case StepKind::ConformityChecked:
+                return "conform(" + sole_operand(step) + ")";
             case StepKind::ElementwiseRound:
                 return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp of "
                        + std::string { view(step.unit.symbolText) } + ")";
@@ -1124,6 +1128,48 @@ namespace detail
         return "unknown outcome";
     }
 
+    /// One element's outcome in a conformity step, counted from one:
+    /// `2 satisfied`, `2 violated: reject the specimen`, `2 not checked`, or
+    /// `2 invalid: <the arithmetic error>`.
+    [[nodiscard]] inline std::string element_outcome_text(std::size_t at, ConstraintOutcome const& checkedOutcome)
+    {
+        std::string const ordinal = std::to_string(at + 1);
+        switch (checkedOutcome.kind())
+        {
+            case ConstraintOutcomeKind::Satisfied:
+                return ordinal + " satisfied";
+            case ConstraintOutcomeKind::Violated:
+                return ordinal + " violated: " + std::string { checkedOutcome.verdict()->label };
+            case ConstraintOutcomeKind::NotChecked:
+                return ordinal + " not checked";
+            case ConstraintOutcomeKind::Invalid:
+                return ordinal + " invalid: " + std::string { describe(*checkedOutcome.error()) };
+        }
+        return ordinal + " unknown outcome";
+    }
+
+    /// A conformity step's line, without its number: `conform(#1)` and every
+    /// element's outcome in one bracket, `[1 satisfied; 2 violated: reject
+    /// the specimen; ...]` -- as many as @p budget allows, one unit each, as
+    /// a series step's elements are (`series_step_line`), and `... k more`
+    /// where `k` is exactly the number left out.
+    [[nodiscard]] inline std::string conformity_line(Step<Rational> const& recorded, std::size_t& budget)
+    {
+        std::size_t const outcomeCount = recorded.elementOutcomes.size();
+        std::size_t const listed = budget < outcomeCount ? budget : outcomeCount;
+        budget -= listed;
+        std::string lineText = step_expression(recorded) + " [";
+        for (std::size_t at = 0; at < listed; ++at)
+        {
+            if (at > 0)
+                lineText += "; ";
+            lineText += element_outcome_text(at, recorded.elementOutcomes[at]);
+        }
+        if (listed < outcomeCount)
+            lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outcomeCount - listed) + " more";
+        return lineText + "]";
+    }
+
     /// Whose a method's constraints were: `the method's own`, or the overlay
     /// and what it cited, as every overlay clause in this file spells it.
     [[nodiscard]] inline std::string constraint_provenance_text(ConstraintProvenance provenance, Citation const& cited)
@@ -1241,6 +1287,10 @@ namespace detail
         // does -- after the elements, however many were shown.
         if (recorded.kind == StepKind::ElementwiseRound)
             return series_step_line(recorded, budget) + rounding_mode_suffix(recorded.mode);
+        // A conformity check has outcomes, not a value, and spends the
+        // element budget on them as a series does on its elements.
+        if (recorded.kind == StepKind::ConformityChecked)
+            return conformity_line(recorded, budget);
         if (is_series(recorded.kind))
             return series_step_line(recorded, budget);
         if (recorded.kind == StepKind::Constraint)

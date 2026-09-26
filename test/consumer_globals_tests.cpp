@@ -32,7 +32,8 @@
 // its trace rendered; elementwise arithmetic with a broadcast scalar,
 // negation and a per-element constant, on the same surfaces; running totals
 // from either end, a per-element rounding and `sum`, inside a method an
-// overlay's constant rewrote, evaluated, rendered, documented and traced;
+// overlay's constant rewrote, evaluated, rendered, documented and traced; a
+// conformity check against a limit envelope, on the same surfaces;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -103,6 +104,7 @@ int index;
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/document.hpp>
@@ -433,6 +435,23 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render<formula::Dialect::LaTeX>(seriesVariant).find("\\sum") != std::string::npos
                            && formula::document(seriesVariant, north).symbols.size() == 2
                            && formula::render_trace(seriesMethodTrace, { .maxSteps = 40 }).find("sum(#")
+                                  != std::string::npos);
+    // A conformity check: 150 mm within 100 to 200 mm, 100 mm below its
+    // least of 120 mm.
+    auto const edgeCheck = formula::conformity<unit::Millimetre>(
+        formula::series<EdgeX, 2>,
+        { formula::LimitRow { formula::limit(formula::Rational { 100 }), formula::limit(formula::Rational { 200 }) },
+          formula::LimitRow { formula::limit(formula::Rational { 120 }), formula::unbounded } },
+        formula::Verdict { "reject the edge" },
+        formula::Citation { .reference = "Example Standard 3" });
+    formula::Trace<> conformityTrace {};
+    auto const edgeOutcomes = formula::check_conformity(edgeCheck, bothScreens, formula::RecordingSink { conformityTrace, north });
+    probe.checks.push_back(edgeOutcomes[0].is_satisfied() && edgeOutcomes[1].is_violated()
+                           && formula::render(edgeCheck, north) == "conform(x_m(i), from 100 to 200 mm, at least 120 mm)"
+                           && formula::render<formula::Dialect::LaTeX>(edgeCheck).find("conform") != std::string::npos
+                           && formula::document(edgeCheck, north).citations.size() == 1
+                           && formula::render_trace(conformityTrace, { .maxSteps = 20 }).find(
+                                  "[1 satisfied; 2 violated: reject the edge]")
                                   != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);

@@ -21,6 +21,7 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/vocabulary.hpp>
@@ -213,6 +214,14 @@ enum class StepKind : std::uint8_t
     /// factory `rounded_elementwise`, so nothing in namespace `formula` is
     /// spelt `ElementwiseRound`.
     ElementwiseRound,
+    /// A conformity check (`Conformity`, `conformity.hpp`): one step for the
+    /// whole check, one outcome per element in `Step::elementOutcomes`, and
+    /// the subject's step as its operand. Recorded by
+    /// `RecordingSink::conformity_produced`, not through `detail::StepKindOf`:
+    /// a conformity check is not a `Node`. Checked on GCC under `-Wshadow`:
+    /// the type is `Conformity` and its factory `conformity`, so nothing in
+    /// namespace `formula` is spelt `ConformityChecked`.
+    ConformityChecked,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -792,6 +801,10 @@ struct Step
     /// to, in the series' own order. Empty for every other step, which keeps
     /// its one granularity in `granularity`.
     std::vector<int> elementGranularities {};
+
+    /// For `ConformityChecked`: the outcome for each element of the subject,
+    /// in the series' own order. Empty for every other step.
+    std::vector<ConstraintOutcome> elementOutcomes {};
 };
 
 /// A recorded derivation: a flat arena of steps.
@@ -1886,6 +1899,41 @@ class RecordingSink
             seriesStep.elements.assign(result->elements.begin(), result->elements.end());
 
         _trace->steps.push_back(std::move(seriesStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a conformity check is about to judge its subject. Remembers
+    /// where the arena stood, as `series_entered` does, so that
+    /// `conformity_produced` can claim the subject's step.
+    template <Unit U, SeriesNode S>
+    void conformity_entered(Conformity<U, S> const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one step for the whole check, with every element's outcome in
+    /// `Step::elementOutcomes`, claiming as its operand the subject's step.
+    template <Unit U, SeriesNode S>
+    void conformity_produced(Conformity<U, S> const&, std::array<ConstraintOutcome, S::length> const& outcomes)
+    {
+        std::size_t const conformityMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> conformityStep {};
+        conformityStep.kind = StepKind::ConformityChecked;
+        conformityStep.dimension = S::dimension;
+        conformityStep.unit = U;
+        conformityStep.elementOutcomes.assign(outcomes.begin(), outcomes.end());
+
+        // Everything unclaimed from `conformityMark` onwards belongs to this
+        // check -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < conformityMark)
+            ++firstClaimed;
+        conformityStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        _trace->steps.push_back(std::move(conformityStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 

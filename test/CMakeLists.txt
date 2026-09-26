@@ -66,6 +66,7 @@ add_executable(formula-cpp-tests
     method_cross_tu_b.cpp
     series_tests.cpp
     series_cross_tu_b.cpp
+    conformity_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -423,6 +424,19 @@ formula_add_negative_test(series_constant_zero_length
 formula_add_negative_test(series_zero_length
     "this series has no elements"
     REJECT "no matching")
+
+# Task 7: an envelope of the wrong length, through the factory and through
+# aggregate initialisation of the check, and limits in a unit of the wrong
+# dimension.
+formula_add_negative_test(conformity_envelope_short
+    "this envelope was given a different number of rows than its series has elements"
+    REJECT "no matching")
+formula_add_negative_test(conformity_envelope_short_no_factory
+    "this envelope was given a different number of rows than its series has elements"
+    REJECT "no matching")
+formula_add_negative_test(conformity_unit_dimension_mismatch
+    "this conformity check states its limits in a unit that does not measure the dimension of its subject"
+    REJECT "this envelope was given a different number of rows")
 
 # Task 5: sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT
