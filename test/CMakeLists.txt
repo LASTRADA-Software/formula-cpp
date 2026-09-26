@@ -1251,6 +1251,15 @@ add_test(NAME hygiene.no-real-standards
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckNoRealStandards.cmake")
 
+# The same check on a tree whose .git names a git directory git cannot read,
+# as a worktree made by git for Windows does when read from WSL: scanned, not
+# refused. See the script for the fixture.
+add_test(NAME hygiene.no-real-standards-fallback
+    COMMAND "${CMAKE_COMMAND}"
+            -D "CHECK_SCRIPT=${PROJECT_SOURCE_DIR}/cmake/CheckNoRealStandards.cmake"
+            -D "WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/no-real-standards-fallback"
+            -P "${PROJECT_SOURCE_DIR}/cmake/TestNoRealStandardsFallback.cmake")
+
 # A compiler diagnostic quoted in docs/ names a header and a line number, and
 # the number goes stale the moment anyone inserts a line above it -- which
 # happened twice in this repository before anything checked. See the script's
