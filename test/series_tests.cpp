@@ -807,22 +807,24 @@ namespace
 {
 namespace perElement
 {
-    // Invented: a passing percentage at each of five screens.
-    struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", formula::unit::Percent>
+    // Invented, and signed so that the directed modes can be told apart: a
+    // deviation from a target grading at each of five screens, in percent.
+    struct Deviation: formula::Quantity<Deviation, "e", "deviation from the target grading", formula::unit::Percent>
     {
     };
 
-    // 62.5, 63.5, 97.2, 41.25 and 8.05 %, with 0, 0, 0, 1 and 1 places: every
-    // mode below differs from every other at some element, and a table used
-    // the wrong way round (1, 1, 0, 0, 0) or flattened (all 0) differs too.
-    // The elements arrive in SI, as fractions (62.5 % is 5/8), and are rounded
-    // in percent: rounded in SI, 5/8 at 0 places would be 1, which is 100 %.
-    constexpr auto screens =
-        formula::environment(formula::measured_series<Passing>(formula::Measured<Passing> { rat(125, 2) },
-                                                               formula::Measured<Passing> { rat(127, 2) },
-                                                               formula::Measured<Passing> { rat(486, 5) },
-                                                               formula::Measured<Passing> { rat(165, 4) },
-                                                               formula::Measured<Passing> { rat(161, 20) }));
+    // 62.5, 63.5, 97.7, -41.25 and -8.03 %, at 0, 0, 0, 1 and 1 places: every
+    // pair of the seven modes differs at some element (checked with exact
+    // fractions), and a table used the wrong way round (1, 1, 0, 0, 0) or
+    // flattened (all 0) differs too. The elements arrive in SI, as fractions
+    // (62.5 % is 5/8), and are rounded in percent: rounded in SI, 5/8 at 0
+    // places would be 1, which is 100 %.
+    constexpr auto deviations =
+        formula::environment(formula::measured_series<Deviation>(formula::Measured<Deviation> { rat(125, 2) },
+                                                                 formula::Measured<Deviation> { rat(127, 2) },
+                                                                 formula::Measured<Deviation> { rat(977, 10) },
+                                                                 formula::Measured<Deviation> { rat(-165, 4) },
+                                                                 formula::Measured<Deviation> { rat(-803, 100) }));
 
     constexpr formula::PlacesTable<5> places { formula::DecimalPlaces { 0 },
                                                formula::DecimalPlaces { 0 },
@@ -833,67 +835,58 @@ namespace perElement
     template <formula::RoundingMode Mode>
     constexpr auto roundedWith(auto const& inputs)
     {
-        return formula::checked_evaluate_series<Passing>(
-            formula::rounded_elementwise<formula::unit::Percent, places, Mode>(formula::series<Passing, 5>), inputs);
+        return formula::checked_evaluate_series<Deviation>(
+            formula::rounded_elementwise<formula::unit::Percent, places, Mode>(formula::series<Deviation, 5>), inputs);
+    }
+
+    /// Whether @p out holds exactly the five values given, each in percent.
+    template <typename Out>
+    constexpr bool holds(Out const& out,
+                         formula::Rational a,
+                         formula::Rational b,
+                         formula::Rational c,
+                         formula::Rational d,
+                         formula::Rational f)
+    {
+        return out.has_value() && out->element(0).value() == a && out->element(1).value() == b
+               && out->element(2).value() == c && out->element(3).value() == d && out->element(4).value() == f;
     }
 } // namespace perElement
 } // namespace
 
-TEST_CASE("each element is rounded to its own granularity, in the stated unit, under the stated mode", "[series]")
+TEST_CASE("each element is rounded to its own granularity, in the stated unit, under each of the seven modes", "[series]")
 {
     using formula::RoundingMode;
-    constexpr auto awayFromZero = perElement::roundedWith<RoundingMode::HalfAwayFromZero>(perElement::screens);
-    STATIC_REQUIRE(awayFromZero.has_value());
-    STATIC_REQUIRE(awayFromZero->element(0).value() == rat(63));
-    STATIC_REQUIRE(awayFromZero->element(1).value() == rat(64));
-    STATIC_REQUIRE(awayFromZero->element(2).value() == rat(97));
-    STATIC_REQUIRE(awayFromZero->element(3).value() == rat(413, 10));
-    STATIC_REQUIRE(awayFromZero->element(4).value() == rat(81, 10));
-
-    // Ties to even: 62.5 down, 41.25 down, 8.05 down -- where a hard-coded
-    // ties-away-from-zero goes up.
-    constexpr auto toEven = perElement::roundedWith<RoundingMode::HalfEven>(perElement::screens);
-    STATIC_REQUIRE(toEven->element(0).value() == rat(62));
-    STATIC_REQUIRE(toEven->element(1).value() == rat(64));
-    STATIC_REQUIRE(toEven->element(2).value() == rat(97));
-    STATIC_REQUIRE(toEven->element(3).value() == rat(206, 5));
-    STATIC_REQUIRE(toEven->element(4).value() == rat(8));
-
-    // Ceiling: 97.2 up to 98, where every nearest mode gives 97.
-    constexpr auto ceiling = perElement::roundedWith<RoundingMode::Ceiling>(perElement::screens);
-    STATIC_REQUIRE(ceiling->element(0).value() == rat(63));
-    STATIC_REQUIRE(ceiling->element(1).value() == rat(64));
-    STATIC_REQUIRE(ceiling->element(2).value() == rat(98));
-    STATIC_REQUIRE(ceiling->element(3).value() == rat(413, 10));
-    STATIC_REQUIRE(ceiling->element(4).value() == rat(81, 10));
-
-    // Floor: 63.5 down to 63, where every other mode here gives 64.
-    constexpr auto floor = perElement::roundedWith<RoundingMode::Floor>(perElement::screens);
-    STATIC_REQUIRE(floor->element(0).value() == rat(62));
-    STATIC_REQUIRE(floor->element(1).value() == rat(63));
-    STATIC_REQUIRE(floor->element(2).value() == rat(97));
-    STATIC_REQUIRE(floor->element(3).value() == rat(206, 5));
-    STATIC_REQUIRE(floor->element(4).value() == rat(8));
-
-    // Ties toward zero coincides with Floor on these positive values, so the
-    // fixture cannot tell the two apart; the mode is handed to checked_round
-    // unchanged, and checked_round's own tests tell them apart.
-    constexpr auto towardZero = perElement::roundedWith<RoundingMode::HalfTowardZero>(perElement::screens);
-    STATIC_REQUIRE(towardZero == floor);
+    using perElement::deviations;
+    using perElement::holds;
+    using perElement::roundedWith;
+    // Element 0 (62.5) splits ties up from ties down; element 1 (63.5) splits
+    // ties to even from ties toward zero and floor; element 2 (97.7) splits
+    // ties toward zero from the directed-down modes; element 3 (-41.25, a
+    // tie below zero) splits away-from-zero from toward-zero, and floor from
+    // ceiling; element 4 (-8.03) splits floor and away-from-zero from toward
+    // zero and ceiling.
+    STATIC_REQUIRE(holds(roundedWith<RoundingMode::HalfAwayFromZero>(deviations), rat(63), rat(64), rat(98), rat(-413, 10), rat(-8)));
+    STATIC_REQUIRE(holds(roundedWith<RoundingMode::HalfTowardZero>(deviations), rat(62), rat(63), rat(98), rat(-206, 5), rat(-8)));
+    STATIC_REQUIRE(holds(roundedWith<RoundingMode::HalfEven>(deviations), rat(62), rat(64), rat(98), rat(-206, 5), rat(-8)));
+    STATIC_REQUIRE(holds(roundedWith<RoundingMode::Ceiling>(deviations), rat(63), rat(64), rat(98), rat(-206, 5), rat(-8)));
+    STATIC_REQUIRE(holds(roundedWith<RoundingMode::Floor>(deviations), rat(62), rat(63), rat(97), rat(-413, 10), rat(-81, 10)));
+    STATIC_REQUIRE(holds(roundedWith<RoundingMode::TowardZero>(deviations), rat(62), rat(63), rat(97), rat(-206, 5), rat(-8)));
+    STATIC_REQUIRE(holds(roundedWith<RoundingMode::AwayFromZero>(deviations), rat(63), rat(64), rat(98), rat(-413, 10), rat(-81, 10)));
 }
 
 TEST_CASE("a per-element rounding keeps absence, and names the element a failure arose at", "[series]")
 {
-    using perElement::Passing;
-    constexpr auto oneAbsent = formula::environment(formula::measured_series<Passing>(
-        formula::Measured<Passing> { rat(125, 2) }, formula::Measured<Passing> { rat(127, 2) },
-        formula::Measured<Passing>::absent(), formula::Measured<Passing> { rat(165, 4) },
-        formula::Measured<Passing> { rat(161, 20) }));
+    using perElement::Deviation;
+    constexpr auto oneAbsent = formula::environment(formula::measured_series<Deviation>(
+        formula::Measured<Deviation> { rat(125, 2) }, formula::Measured<Deviation> { rat(127, 2) },
+        formula::Measured<Deviation>::absent(), formula::Measured<Deviation> { rat(-165, 4) },
+        formula::Measured<Deviation> { rat(-803, 100) }));
     constexpr auto out = perElement::roundedWith<formula::RoundingMode::HalfAwayFromZero>(oneAbsent);
     STATIC_REQUIRE(out.has_value());
     STATIC_REQUIRE(out->element(1).value() == rat(64));
     STATIC_REQUIRE(out->element(2).is_absent());
-    STATIC_REQUIRE(out->element(3).value() == rat(413, 10));
+    STATIC_REQUIRE(out->element(3).value() == rat(-413, 10));
 
     // Rounding a load stated in kilograms in grams multiplies by 1000, which
     // overflows for an element near Rational's limit -- the middle one of
@@ -914,7 +907,7 @@ TEST_CASE("a per-element rounding keeps absence, and names the element a failure
 TEST_CASE("a per-element rounding is a series node carrying its unit, table and mode", "[series]")
 {
     using Rounding = decltype(formula::rounded_elementwise<formula::unit::Percent, perElement::places, formula::RoundingMode::Floor>(
-        formula::series<perElement::Passing, 5>));
+        formula::series<perElement::Deviation, 5>));
     STATIC_REQUIRE(formula::SeriesNode<Rounding>);
     STATIC_REQUIRE_FALSE(formula::Node<Rounding>);
     STATIC_REQUIRE(Rounding::length == 5);

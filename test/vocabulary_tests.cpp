@@ -641,7 +641,9 @@ inline constexpr auto everyOverlaid = formula::apply(everyOverlay, everyMethod);
 // 0 and -1 places they are 5, 39 and 140 g; the totals from the last are 184,
 // 179 and 140 g, their sum 503 g, and the share 503/2020, 24.9 % -- unrounded
 // it would be 24.7 %, and a direction swapped gives 5, 44 and 184 g, summing
-// to 233 g.
+// to 233 g. No element sits on a tie, so this fixture does not tell
+// HalfAwayFromZero from the other nearest modes: the signed `Deviation`
+// fixture in `series_tests.cpp` separates all seven modes and pins that one.
 inline constexpr auto everyInputs = formula::environment(
     formula::Measured<EveryStrength> { rat(30) },
     formula::Measured<EveryModulus> { rat(12) },

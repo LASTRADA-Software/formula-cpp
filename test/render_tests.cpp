@@ -1786,9 +1786,8 @@ TEST_CASE("a per-element rounding renders every granularity, in order, and no mo
     CHECK(formula::render(passing) == "round(p(i), to 0/0/0/1/1 dp of %)");
     CHECK(formula::render<formula::Dialect::Markdown>(passing) == "round(`p(i)`, to 0/0/0/1/1 dp of %)");
     // A formula states a granularity, not a tie rule: the mode appears in the
-    // trace only, as for RoundNode.
-    CHECK(formula::render(passing).find("nearest") == std::string::npos);
-    CHECK(formula::render(passing).find('[') == std::string::npos);
+    // trace only, as for RoundNode. The exact strings above already hold no
+    // mode and no bracket.
 
     // LaTeX, in millimetres -- percent's `%` is a LaTeX comment character, a
     // limit every rounding node shares (`unit.hpp`) -- with a negative place.
