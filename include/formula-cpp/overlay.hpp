@@ -147,10 +147,11 @@
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
-#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/snap.hpp>
 
 #include <array>
 #include <cstddef>
@@ -1567,6 +1568,30 @@ namespace detail
     {
     };
 
+    /// A rounded square root, rebuilt around its rewritten radicand. Not
+    /// `ConstantRewriteOperand`, whose `apply` reads a member named `operand`:
+    /// this node's one child is its `radicand`.
+    template <typename Sub, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    struct ConstantRewrite<Sub, RoundedRootNode<U, Places, Mode, Radicand>>
+    {
+        /// How the radicand is rewritten.
+        using Inner = ConstantRewriteOf<Sub, Radicand>;
+
+        /// Whether the radicand is a kind this header knows, all the way down.
+        static constexpr bool known = Inner::known;
+        /// Whether the radicand uses `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same rounded root, around the rewritten radicand.
+        using type = RoundedRootNode<U, Places, Mode, typename Inner::type>;
+
+        /// The node, around the rewritten radicand.
+        [[nodiscard]] static constexpr type apply(RoundedRootNode<U, Places, Mode, Radicand> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, Inner::apply(node.radicand, overriding) };
+        }
+    };
+
     template <typename Sub, Unit U, FixedString Justification, Node Operand>
     struct ConstantRewrite<Sub, NumericValueNode<U, Justification, Operand>>:
         ConstantRewriteOperand<Sub,
@@ -2057,6 +2082,11 @@ namespace detail
 
     template <Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
     struct SubstitutedIn<RoundSignificantNode<U, Digits, Mode, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    struct SubstitutedIn<RoundedRootNode<U, Places, Mode, Radicand>>: SubstitutedInOperand<Radicand>
     {
     };
 

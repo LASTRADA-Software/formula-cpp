@@ -18,6 +18,7 @@
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -291,6 +292,9 @@ namespace detail
     template <Vocabulary V, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
     void collect(Walk<V>& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node);
 
+    template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node);
+
     template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
     void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node);
 
@@ -531,6 +535,14 @@ namespace detail
     void collect(Walk<V>& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node)
     {
         collect(walk, node.operand);
+    }
+
+    /// A rounded square root reads what its radicand reads, as a rounding
+    /// node reads what its operand does.
+    template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node)
+    {
+        collect(walk, node.radicand);
     }
 
     /// The escape hatch still reads a variable, even though what it produces

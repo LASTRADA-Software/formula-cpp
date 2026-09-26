@@ -319,6 +319,43 @@ TEST_CASE("a derivation renders a RoundSignificant step as round(..., to N sf of
              "2. round(#1, to 2 sf of mm) = 12 mm [nearest, ties away from zero]\n");
 }
 
+namespace
+{
+/// A gram squared, for a variance of masses in grams.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
+} // namespace
+
+TEST_CASE("a derivation renders a RoundedRoot step as one rounding of a root, in its unit and mode", "[trace-render]")
+{
+    // Fixture A's variance, 427/125 g^2. Its root, 1.84824... g, appears on no
+    // line: the radicand's step is exact, and so is the rounded result. The
+    // two modes give 1.85 g and 1.84 g, and the suffix is the only text on the
+    // line that says why.
+    auto const traceOf = [](auto const& node) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(
+            node, formula::environment(formula::Measured<MassVariance> { formula::Rational { 427, 125 } }), sink);
+        return formula::render_trace(trace, { .maxSteps = 10 });
+    };
+
+    CHECK(traceOf(formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+              var<MassVariance>))
+          == "1. s2 = 427/125 g2\n"
+             "2. round(sqrt(#1), to 2 dp of g) = 37/20 g [nearest, ties away from zero]\n");
+    CHECK(traceOf(formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
+              var<MassVariance>))
+          == "1. s2 = 427/125 g2\n"
+             "2. round(sqrt(#1), to 2 dp of g) = 46/25 g [toward negative infinity]\n");
+}
+
 TEST_CASE("a derivation names the rounding mode, which is the whole reason two runs differ",
           "[trace-render]")
 {

@@ -811,6 +811,11 @@ namespace detail
             // the counts follow the `=`.
             case StepKind::Binning:
                 return "bin(" + sole_operand(step) + ")";
+            // `render()`'s spelling, `round(sqrt(...), to ...)`: one step, and
+            // the root inside it, because the root itself was never a value.
+            case StepKind::RoundedRoot:
+                return "round(sqrt(" + sole_operand(step) + "), to " + std::to_string(step.granularity) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
         }
         return "unknown step kind";
     }
@@ -1475,7 +1480,7 @@ namespace detail
     /// and a trailing clause for the kinds that need one -- a citation for
     /// `Documented`, the variant and its discriminator for `VariantSelected`,
     /// a justification for `NumericValue`, the tie-breaking rule
-    /// for the two rounding kinds, the granularity, provenance and tie rule
+    /// for the three rounding kinds, the granularity, provenance and tie rule
     /// for a method's rounding rule, the overlay that fixed an overridden
     /// constant, for a `Conditional` whose predicate never
     /// resolved `[no branch]`, and for the three lookup kinds the row selected
@@ -1542,7 +1547,8 @@ namespace detail
         // one that resolved false.
         else if (recorded.kind == StepKind::Conditional && recorded.branch == Branch::Neither)
             annotation = " [" + std::string { describe(recorded.branch) } + "]";
-        else if (recorded.kind == StepKind::Round || recorded.kind == StepKind::RoundSignificant)
+        else if (recorded.kind == StepKind::Round || recorded.kind == StepKind::RoundSignificant
+                 || recorded.kind == StepKind::RoundedRoot)
             annotation = rounding_mode_suffix(recorded.mode);
         else if (recorded.kind == StepKind::RoundingRuleApplied)
             annotation = rounding_rule_suffix(recorded);

@@ -45,6 +45,7 @@
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/snap.hpp>
@@ -1058,6 +1059,30 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
                + detail::unit_clause(",\\,", detail::latex_unit(unitSymbol)) + "}(" + inner + ")";
     else
         return "round(" + inner + ", to " + digitsText + " sf" + detail::unit_clause(" of ", unitSymbol) + ")";
+}
+
+/// A rounded square root renders as what it computes, a rounding of a root:
+/// `round(sqrt(<radicand>), to <places> dp of <unit>)`, and in LaTeX
+/// `RoundNode`'s subscripted `\operatorname{round}` around `\sqrt{}`. That it
+/// is one exact operation rather than two is how it is evaluated, not what it
+/// states; a reader checking it against a standard reads "the root, rounded to
+/// 0.01 g" either way. See `RoundNode`'s overload above for why the mode is
+/// left out, why the granularity is a comma-separated second argument, and why
+/// no `PrecedenceOf` override is needed: the call's own parentheses group it,
+/// so the primary template's `Atom` is right.
+template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand, Vocabulary V>
+[[nodiscard]] std::string render_node(RoundedRootNode<U, Places, Mode, Radicand> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.radicand, vocabulary);
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
+    std::string const placesText = std::to_string(Places.value);
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol))
+               + "}(\\sqrt{" + inner + "})";
+    else
+        return "round(sqrt(" + inner + "), to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
 }
 
 /// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,

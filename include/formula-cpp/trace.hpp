@@ -23,6 +23,7 @@
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
@@ -275,6 +276,18 @@ enum class StepKind : std::uint8_t
     /// count. Checked on GCC under `-Wshadow`: the node is `BinnedNode` and
     /// its factory `binned`.
     Binning,
+
+    /// A `RoundedRootNode`: the square root of its one operand, rounded to a
+    /// number of decimal places of the node's unit -- `Step::granularity`,
+    /// `Step::unit` and `Step::mode`, as for `Round`. One step and not a
+    /// `Root` beneath a `Round`: the root is irrational for almost every
+    /// radicand, so a `Root` step would have to show a number the evaluator
+    /// never had. The operand's value is exact, and so is this step's.
+    ///
+    /// Checked on GCC under `-Wshadow`, the way `PiConstant` above had to be:
+    /// the node is `RoundedRootNode` and the factory `rounded_sqrt`, so
+    /// nothing in namespace `formula` is spelt `RoundedRoot`.
+    RoundedRoot,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -453,8 +466,9 @@ struct Step
     /// For `Power`: the exponent. For `Root`: the degree. Zero otherwise.
     int exponent {};
 
-    /// For `Round` and `RoundingRuleApplied`: the decimal places kept. For
-    /// `RoundSignificant`: the significant digits kept. Zero otherwise.
+    /// For `Round`, `RoundedRoot` and `RoundingRuleApplied`: the decimal
+    /// places kept. For `RoundSignificant`: the significant digits kept. Zero
+    /// otherwise.
     ///
     /// A field of its own rather than a third and fourth meaning piled onto
     /// `exponent` above, which already carries two (`Power`'s exponent,
@@ -497,8 +511,8 @@ struct Step
     /// exact same exception for the same reason.
     Comparison comparison {};
 
-    /// For `Round`, `RoundSignificant` and `RoundingRuleApplied`: the
-    /// tie-breaking rule the node rounded under.
+    /// For `Round`, `RoundSignificant`, `RoundedRoot` and
+    /// `RoundingRuleApplied`: the tie-breaking rule the node rounded under.
     ///
     /// Two rounding nodes differing only in their mode produce different
     /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
@@ -510,7 +524,7 @@ struct Step
     ///
     /// As with `comparison` above, the zero value is a real mode
     /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
-    /// sentinel: meaningful only for the three rounding kinds.
+    /// sentinel: meaningful only for the four rounding kinds.
     RoundingMode mode {};
 
     /// For `RoundingRuleApplied`: where the rule came from -- the method's
@@ -541,12 +555,12 @@ struct Step
 
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
     /// for a variable or an overridden constant, the constant's own unit for
-    /// a constant, the node's own unit for a `Round`, `RoundSignificant` or
-    /// `RoundingRuleApplied` step, the unit of the step it wraps for a
-    /// `Documented`, `ReplacedVariant` or `VariantSelected` step -- each
-    /// passes its operand's value through unchanged, so it states it as that
-    /// operand's line does, whenever that line is the wrapped node's own and
-    /// not the operands of a consumer's node -- and the coherent SI unit of
+    /// a constant, the node's own unit for a `Round`, `RoundSignificant`,
+    /// `RoundedRoot` or `RoundingRuleApplied` step, the unit of the step it
+    /// wraps for a `Documented`, `ReplacedVariant` or `VariantSelected` step --
+    /// each passes its operand's value through unchanged, so it states it as
+    /// that operand's line does, whenever that line is the wrapped node's own
+    /// and not the operands of a consumer's node -- and the coherent SI unit of
     /// `dimension` for anything else computed, which has no declared unit of
     /// its own.
     ///
@@ -1046,6 +1060,12 @@ namespace detail
     struct StepKindOf<RoundSignificantNode<U, Digits, Mode, Operand>>
     {
         static constexpr StepKind value = StepKind::RoundSignificant;
+    };
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    struct StepKindOf<RoundedRootNode<U, Places, Mode, Radicand>>
+    {
+        static constexpr StepKind value = StepKind::RoundedRoot;
     };
 
     template <Predicate P, Node Then, Node Else>
@@ -1840,16 +1860,17 @@ class RecordingSink
         // Anything computed has no declared unit, so the coherent SI one is
         // the truthful answer; a variable overrides it with the unit its
         // quantity is declared in. `requires { N::unit; }` now also selects
-        // `ConstantNode<U>`, `RoundNode`, and `RoundSignificantNode` -- every
-        // one of them declares a unit that is the single most load-bearing
-        // fact about the step: `rounded<Megapascal, 1>(...)` rounds *in
-        // megapascals*, and a step recording "rounded to 1 dp" without saying
-        // 1 dp of what is not a record of anything. `VarNode` still carries
+        // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode` and
+        // `RoundedRootNode` -- every one of them declares a unit that is the
+        // single most load-bearing fact about the step:
+        // `rounded<Megapascal, 1>(...)` rounds *in megapascals*, and a step
+        // recording "rounded to 1 dp" without saying 1 dp of what is not a
+        // record of anything. `VarNode` still carries
         // its unit on `Describe<quantity>` instead of a member of its own,
         // which is why it needs the branch above rather than this one.
         //
         // `NumericValueNode` is excluded even though it also declares
-        // `unit`: unlike the three kinds above, its declared unit measures
+        // `unit`: unlike the four kinds above, its declared unit measures
         // its *operand's* dimension, not its own -- a `NumericValueNode` is
         // always `Scalar` -- so assigning it here would make this step's
         // `unit` disagree with its `dimension`, and the renderer's
@@ -1910,9 +1931,9 @@ class RecordingSink
         else if constexpr (requires { N::digits; })
             nodeStep.granularity = N::digits.value;
 
-        // `RoundNode` and `RoundSignificantNode` are the only kinds that
-        // declare one, so the `requires` alone selects them -- the same shape
-        // `exponent` and `granularity` above use.
+        // `RoundNode`, `RoundSignificantNode` and `RoundedRootNode` are the
+        // only kinds that declare one, so the `requires` alone selects them --
+        // the same shape `exponent` and `granularity` above use.
         if constexpr (requires { N::mode; })
             nodeStep.mode = N::mode;
 

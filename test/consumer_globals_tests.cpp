@@ -16,8 +16,8 @@
 // locals and parameters it reports where the function is defined, so
 // including the header is enough for those. The probe below instantiates:
 // evaluation of every node kind -- arithmetic with a bare number on either
-// side, negation, powers and every root, pi, rounding both ways, a
-// conditional, the escape hatch and the three lookups -- untraced and traced,
+// side, negation, powers and every root, pi, rounding both ways, a rounded
+// square root, a conditional, the escape hatch and the three lookups -- untraced and traced,
 // with `explain`; `render` and `document` in all three dialects, with and
 // without a vocabulary, of that formula, of a constraint and its predicate,
 // and of formulas an overlay fixed, derived and replaced; `render_trace`;
@@ -184,13 +184,16 @@ inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), fo
 
 /// A formula touching every node kind the evaluator, renderer and trace know:
 /// arithmetic, a power and a root, a documented citation, rounding both
-/// ways, a conditional, the escape hatch, and all three lookups.
+/// ways, a rounded square root, a conditional, the escape hatch, and all
+/// three lookups.
 inline constexpr auto everything = formula::documented(
     formula::rounded<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
         var<Force> / formula::pow<2>(var<EdgeX>)
         * formula::when(
             var<Factor> > formula::number(formula::Rational { 0 }), var<Factor>, formula::number(formula::Rational { 1 }))
         * formula::sqrt(formula::pow<2>(var<Factor>))
+        * formula::rounded_sqrt<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Factor> * formula::Rational { 2 })
         * formula::exact_lookup<SpecimenFormKeys, unit::One>(
             SpecimenForm::Round, { formula::Rational { 1'087, 1'000 }, formula::Rational { 1'249, 1'000 } })
         * formula::banded_lookup<unit::One, Bands, unit::One>(

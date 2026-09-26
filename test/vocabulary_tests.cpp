@@ -618,7 +618,11 @@ inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(
                        d, { rat(1043, 1000), rat(2917, 1000) }))
            * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
            * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) })
-           * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>);
+           * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>)
+           // Phase 13's kinds, added rather than multiplied in: the product
+           // above leaves too few bits for another factor.
+           + formula::rounded_sqrt<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+               r * var<EveryFixed>);
 }
 
 inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
@@ -732,7 +736,8 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
              "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 103 to under 163 mm gives 1127/1000, "
              "163 to under 331 mm gives 1973/1000) * interpolate(D, at 103 mm gives 1043/1000, at 331 mm gives 2917/1000)) "
              "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000) "
-             "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000)");
+             "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000) "
+             "+ round(sqrt(E / R * x_n), to 1 dp of %)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
 
     // Every series kind, the jurisdiction's symbol marked in each dialect.
@@ -870,7 +875,7 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
 TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 {
     // The lines that name a quantity, found by what they say rather than
-    // pinned whole: the rest of this 48-step derivation is arithmetic, and pi's
+    // pinned whole: the rest of this 55-step derivation is arithmetic, and pi's
     // rational approximation would pin nothing about vocabularies.
     std::string const cube = everyTraceOf<EveryCube>();
     CHECK(declares_no_symbol(cube));
@@ -886,6 +891,12 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
     CHECK(cube.find("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n")
           != cube.rfind("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"));
     CHECK(cube.find("= 1537/1000 [1437/1000 to 1537/1000; tie, toward higher]\n") != std::string::npos);
+    // The rounded root reads the fixed factor through its radicand, and its
+    // step shows only exact numbers.
+    CHECK(cube.find("53. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+                    "54. #52 * #53 = 1487/400\n"
+                    "55. round(sqrt(#54), to 1 dp of %) = 964/5 % [nearest, ties away from zero]\n")
+          != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"

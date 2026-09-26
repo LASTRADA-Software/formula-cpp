@@ -253,6 +253,33 @@ TEST_CASE("document: a variable inside a RoundSignificantNode still appears in t
     CHECK(documentation.symbols[0].symbol == std::string_view { "d" });
 }
 
+namespace
+{
+/// A gram squared, for a variance of masses in grams.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
+} // namespace
+
+TEST_CASE("document: a variable under a rounded square root appears in the symbol table, in its own unit", "[document]")
+{
+    constexpr auto node =
+        formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            formula::var<MassVariance>);
+    formula::Documentation const documentation = formula::document(node);
+
+    CHECK(documentation.formula == "round(sqrt(s2), to 2 dp of g)");
+    REQUIRE(documentation.symbols.size() == 1);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "s2" });
+    CHECK(documentation.symbols[0].description == std::string_view { "variance of the determinations" });
+    CHECK(documentation.symbols[0].unit == GramSquared);
+}
+
 TEST_CASE("document: a variable read through numeric_value_of still appears in the symbol table", "[document]")
 {
     // Invented, as every justification in this repository is.

@@ -36,6 +36,24 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::
 {
 };
 
+/// A gram squared, for a variance of masses in grams.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
+struct OtherVariance: formula::Quantity<OtherVariance, "t2", "variance of a second series", GramSquared>
+{
+};
+
+/// The root of the variance, to 0.01 g -- the spelling every dialect below pins.
+inline constexpr auto roundedSpread =
+    formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::var<MassVariance>);
+
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
     return formula::Rational { numerator, denominator };
@@ -169,6 +187,29 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     CHECK(formula::render<Dialect::Markdown>(formula::sqrt(var<Area>)) == "sqrt(`A`)");                 // RootNode
     CHECK(formula::render<Dialect::Markdown>(formula::pi) == "pi");                                     // PiNode
     CHECK(formula::render<Dialect::Markdown>(citedDiameter) == "`d`");                                  // DocumentedNode
+    CHECK(formula::render<Dialect::Markdown>(roundedSpread) == "round(sqrt(`s2`), to 2 dp of g)");      // RoundedRootNode
+}
+
+TEST_CASE("render: a rounded square root reads as a rounding of a root, in every dialect", "[render]")
+{
+    CHECK(formula::render(roundedSpread) == "round(sqrt(s2), to 2 dp of g)");
+    CHECK(formula::render<Dialect::LaTeX>(roundedSpread) == "\\operatorname{round}_{2\\,\\mathrm{g}}(\\sqrt{s2})");
+
+    // The mode is the trace's, as it is for `rounded`: these two differ only
+    // in it, and render alike.
+    CHECK(formula::render(
+              formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
+                  var<MassVariance>))
+          == formula::render(roundedSpread));
+
+    // The call's own parentheses group a compound radicand, and the call is
+    // an atom to whatever holds it: no bracket either side.
+    constexpr auto pooled =
+        formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 3 }, formula::RoundingMode::Ceiling>(
+            (var<MassVariance> + var<OtherVariance>) / rat(2));
+    CHECK(formula::render(pooled) == "round(sqrt((s2 + t2) / 2), to 3 dp of g)");
+    CHECK(formula::render(pooled * rat(2)) == "round(sqrt((s2 + t2) / 2), to 3 dp of g) * 2");
+    CHECK(formula::render<Dialect::LaTeX>(pooled) == "\\operatorname{round}_{3\\,\\mathrm{g}}(\\sqrt{\\frac{s2 + t2}{2}})");
 }
 
 TEST_CASE("render: a citation does not appear in the rendered formula", "[render]")
@@ -1451,6 +1492,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(rounded));                               // RoundNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSig));                            // RoundSignificantNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(numeric));                               // NumericValueNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSpread));                         // RoundedRootNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint
