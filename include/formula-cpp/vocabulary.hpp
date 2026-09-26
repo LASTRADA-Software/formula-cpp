@@ -40,7 +40,8 @@
 /// not make the trace agree with it.
 ///
 /// **A renamed symbol is written verbatim**, exactly as a `Describe` symbol
-/// is: nothing checks what it says, so a symbol containing Markdown or LaTeX
+/// is: beyond refusing an empty one, nothing checks what it says, so a symbol
+/// containing Markdown or LaTeX
 /// markup, or text that reads like a trace annotation, reaches the page and
 /// the trace as written. The vocabulary is the author's data, like the
 /// quantity declarations it wraps.
@@ -75,6 +76,10 @@ class Renames;
 /// `std::string` that dies at the end of the statement. Taken as an array
 /// reference by an immediate function, the argument has to be usable in a
 /// constant expression, which a string literal is and a local buffer is not.
+///
+/// **An empty symbol is refused**: a formula rendered with a blank where a
+/// quantity stands cannot be read. Nothing else about the text is checked --
+/// see the file comment.
 template <Described Q, std::size_t N>
 [[nodiscard]] consteval Renames<Q> renames(char const (&symbol)[N]) noexcept;
 
@@ -113,6 +118,11 @@ class Renames
 template <Described Q, std::size_t N>
 [[nodiscard]] consteval Renames<Q> renames(char const (&symbol)[N]) noexcept
 {
+    // The length is in the argument's type, so this is a type-level fact and
+    // an ordinary assertion can state it.
+    static_assert(N > 1,
+                  "formula: renames<Q>(\"\") gives the quantity an empty symbol, which would leave a blank "
+                  "where it stands in every rendered formula and trace line");
     return Renames<Q> { std::string_view { symbol, N - 1 } };
 }
 

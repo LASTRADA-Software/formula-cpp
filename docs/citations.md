@@ -393,7 +393,8 @@ Three things a vocabulary does not do:
   opt in (`"a consumer's two-argument render_node receives the
   vocabulary"`).
 
-A vocabulary renaming one quantity twice does not compile. `renames` is
+A vocabulary renaming one quantity twice does not compile, and neither does
+`renames<Q>("")`, which would leave a blank where the quantity stands. `renames` is
 `consteval` and takes a character array, so it accepts a string literal and
 refuses a buffer on the stack: a trace keeps a view of the symbol for as long
 as it lives.

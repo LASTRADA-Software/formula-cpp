@@ -989,6 +989,10 @@ formula_add_negative_test(vocabulary_not_an_entry
     "formula: a vocabulary holds only entries made by renames<Q>(symbol)"
     REJECT "formula: this vocabulary renames the same quantity twice" "quantity'")
 
+# An empty symbol, which would leave a blank where the quantity stands.
+formula_add_negative_test(vocabulary_empty_symbol
+    "formula: renames<Q>(\"\") gives the quantity an empty symbol")
+
 # A sink built over a temporary vocabulary would keep a dangling pointer.
 formula_add_negative_test(vocabulary_sink_temporary
     "formula: a RecordingSink keeps a pointer to its vocabulary")
