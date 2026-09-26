@@ -701,7 +701,14 @@ formula_add_negative_test(precision_limit_no_factory_level_dimension
 
 formula_add_negative_test(precision_level_hidden_dimension_mismatch
     "formula: this precision_level reads a level of another dimension"
-    REJECT "limit expression reads a precision_level whose quantity")
+    REJECT "limit expression reads a precision_level whose quantity" "has no detail::LevelChildren specialisation")
+
+# A node kind declared in namespace formula with no LevelChildren
+# specialisation is refused, never walked as a leaf; the consumer's node just
+# above, templated over a library type, is not.
+formula_add_negative_test(precision_level_check_unlisted_library_kind
+    "formula: this library node kind has no detail::LevelChildren specialisation"
+    REJECT "reads precision_level" "reads a level of another dimension")
 
 # The level check sees through the overlay's derived quantity: a placeholder
 # an overlay puts into a level is refused as a level reading a level, where

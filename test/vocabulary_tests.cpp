@@ -1038,6 +1038,16 @@ TEST_CASE("a precision limit's checks see inside every node kind", "[vocabulary]
     // A consumer's node kind is unseen by design, which is what makes the
     // six above able to fail.
     STATIC_REQUIRE_FALSE(formula::detail::level_check_sees_every_node<decltype(Gauge {} * var<Strength>)>());
+    // Told apart by the namespace a kind is declared in, never by its
+    // template arguments' -- which is what keeps a consumer's node over a
+    // library node walking as unseen, where a library kind without its
+    // specialisation is refused.
+    STATIC_REQUIRE(formula::detail::declared_in_library<formula::VarNode<Strength>>());
+    STATIC_REQUIRE(formula::detail::declared_in_library<Cube>());            // the every-kind expression
+    STATIC_REQUIRE_FALSE(formula::detail::declared_in_library<EveryCube>()); // a tag of this file's
+    STATIC_REQUIRE(formula::detail::declared_in_library<formula::detail::RefusedSeries<formula::dim::Mass>>());
+    STATIC_REQUIRE_FALSE(formula::detail::declared_in_library<Gauge>());
+    STATIC_REQUIRE_FALSE(formula::detail::declared_in_library<std::tuple<formula::VarNode<Strength>>>());
     // Nor is one in a limit expression hidden from it, where a placeholder is
     // bound rather than free.
     STATIC_REQUIRE_FALSE(formula::detail::level_check_sees_every_node<

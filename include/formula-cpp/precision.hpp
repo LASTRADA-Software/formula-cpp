@@ -61,6 +61,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/detail/type_name.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/escape.hpp>
@@ -85,6 +86,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 
@@ -313,20 +315,89 @@ namespace detail
     /// `ReplacedVariantNode` in `overlay.hpp`.
     ///
     /// The primary is a consumer's node kind, which cannot be seen inside: it
-    /// answers no children and `seen = false`. A library kind that fell to it
-    /// would hide a placeholder from every check below without a word, as
-    /// `DerivedQuantityNode` once did; `level_check_sees_every_node` finds
-    /// such a kind, and the vocabulary's every-kind method is put through it
-    /// (`vocabulary_tests.cpp`), so a kind added there without a
-    /// specialisation here fails a test rather than a reader.
+    /// answers no children and `seen = false`. **A library kind never reaches
+    /// it silently:** one declared in namespace `formula` with no
+    /// specialisation here is refused (`RequireLevelChildrenFor`), where a
+    /// placeholder inside it would otherwise hide from every check below
+    /// without a word -- as `DerivedQuantityNode`, and then phase 12's `sum`
+    /// and elementwise nodes, once did. `level_check_sees_every_node` walks
+    /// the vocabulary's every-kind method (`vocabulary_tests.cpp`) as a
+    /// second net.
     ///
     /// For a `PrecisionLimitNode` only its level is listed in `type`: a
     /// placeholder in its limit expression is bound by that limit, and so not
     /// free. Its limit expression is listed in `bound`, which only
     /// `level_check_sees_every_node` walks.
     template <typename N>
+    struct LevelChildren;
+
+    /// Where `declared_in_library` reads a type's spelling from: a namespace
+    /// no type is declared in. GCC spells a type declared in the namespace
+    /// of the function whose signature names it without that namespace --
+    /// `RefusedSeries<...>` for `formula::detail::RefusedSeries<...>` inside
+    /// `formula::detail::type_signature` -- so the signature is taken here,
+    /// where every library type keeps its `formula::`.
+    namespace kind_probe
+    {
+        /// The compiler's spelling of a signature naming @p T; see
+        /// `detail::type_signature`, whose shape this keeps so that
+        /// `type_argument_text` reads it.
+        template <typename T>
+        [[nodiscard]] consteval auto type_signature()
+        {
+#if defined(_MSC_VER) && !defined(__clang__)
+            return std::string_view { __FUNCSIG__ };
+#else
+            return std::string_view { __PRETTY_FUNCTION__ };
+#endif
+        }
+    } // namespace kind_probe
+
+    /// Whether @p N is declared in namespace `formula` -- this library's --
+    /// read from the compiler's own spelling of the type
+    /// (`detail/type_name.hpp`): its name, past any `struct ` or `class `
+    /// keyword cl prints, begins `formula::`. The namespace a type is
+    /// *declared* in, and never one its template arguments come from: a
+    /// consumer's `Passthrough<formula::PrecisionLevelNode<W>>` is the
+    /// consumer's, as argument-dependent lookup could not tell.
+    template <typename N>
+    [[nodiscard]] consteval bool declared_in_library() noexcept
+    {
+        std::string_view spelled = type_argument_text(kind_probe::type_signature<N>());
+        for (std::string_view const keyword:
+             { std::string_view { "struct " }, std::string_view { "class " }, std::string_view { "union " } })
+        {
+            if (spelled.starts_with(keyword))
+            {
+                spelled.remove_prefix(keyword.size());
+                break;
+            }
+        }
+        return spelled.starts_with("formula::");
+    }
+
+    /// Fails to compile when a node kind of this library's reaches the level
+    /// checks without its own `LevelChildren` specialisation: a
+    /// `precision_level` inside it would go unseen, and a level could read a
+    /// level without a word. Never a consumer's node kind, which is unseen by
+    /// design.
+    template <typename N>
+    struct RequireLevelChildrenFor
+    {
+        static_assert(!declared_in_library<N>(),
+                      "formula: this library node kind has no detail::LevelChildren specialisation, so a "
+                      "precision limit's checks cannot see a precision_level inside it -- add one in "
+                      "precision.hpp, or beside the node kind where precision.hpp cannot be included; the node "
+                      "kind appears in this diagnostic as the template argument of RequireLevelChildrenFor");
+
+        static constexpr bool value = true;
+    };
+
+    template <typename N>
     struct LevelChildren
     {
+        static_assert(RequireLevelChildrenFor<N>::value);
+
         /// A consumer's node kind: nothing inside it can be seen.
         static constexpr bool seen = false;
         using type = std::tuple<>;
@@ -489,6 +560,19 @@ namespace detail
 
     template <SeriesNode S>
     struct LevelChildren<SumNode<S>>: LevelParent<S>
+    {
+    };
+
+    /// Only in a program already refused; seen, so that the level checks
+    /// add nothing to that refusal.
+    template <Dimension Dim>
+    struct LevelChildren<RefusedSeries<Dim>>: LevelLeaf
+    {
+    };
+
+    /// Likewise raw observations refused already, under a `binned`.
+    template <>
+    struct LevelChildren<RefusedObservations>: LevelLeaf
     {
     };
 
