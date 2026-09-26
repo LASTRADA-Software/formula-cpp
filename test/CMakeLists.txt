@@ -901,7 +901,8 @@ formula_add_negative_test(overlay_rounding_dimension_mismatch_then_constant
 # case; the swapped cases below pin the ordering half past mere distinctness.
 # The positions are values, not
 # types, so the refusal is a call no constant expression can make, and its
-# name is the message -- see `detail::PublishedLayout` (`method.hpp`).
+# name is the message -- see `detail::PublishedLayout` (`method.hpp`). Stated
+# through `detail::PublishedLayoutAccess`, the one door to the check.
 formula_add_negative_test(method_published_position_repeated
     "published_positions_must_increase_and_stay_below_the_published_count")
 
@@ -922,6 +923,15 @@ formula_add_negative_test(method_published_position_swapped
 
 formula_add_negative_test(method_published_selection_swapped
     "published_positions_must_increase_and_stay_below_the_published_count")
+
+# A layout stated from outside the library at all, well formed or not: in an
+# aggregate initialiser, and assigned at run time. Only the library states
+# one; the cases above reach the check through `detail::PublishedLayoutAccess`.
+formula_add_negative_test(method_published_layout_stated_by_hand
+    "formula: a variant's published position is stated only by the library")
+
+formula_add_negative_test(method_published_layout_assigned_by_hand
+    "formula: a variant's published position is stated only by the library")
 
 # A method's own rule claiming to be a jurisdiction overlay's. Provenance is
 # the library's to state: `rounding_rule<...>()` or `with_rounding` applied by

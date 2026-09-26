@@ -678,6 +678,16 @@ struct Step
     /// refused where it is declared.
     std::size_t variantCount {};
 
+    /// For `VariantSelected`: whether an overlay pinned the method to the
+    /// selected variant, or pruned others from it -- see `VariantNarrowing`
+    /// (`sink.hpp`). What the overlay cited is in `citation`. `None`
+    /// otherwise.
+    VariantNarrowing variantNarrowing {};
+
+    /// For `VariantSelected` with `variantNarrowing` `Pruned`: how many
+    /// variants overlays pruned. Zero otherwise.
+    std::size_t variantPrunedCount {};
+
     /// Indices of the steps this one consumed, in evaluation order.
     ///
     /// **Not necessarily as many as the node kind suggests.** When an operand
@@ -1450,6 +1460,10 @@ class RecordingSink
         selectionStep.variantTag = variantSelection.tag;
         selectionStep.variantIndex = variantSelection.index;
         selectionStep.variantCount = variantSelection.count;
+        selectionStep.variantNarrowing = variantSelection.narrowing;
+        selectionStep.variantPrunedCount = variantSelection.prunedCount;
+        if (variantSelection.narrowedBy != nullptr)
+            selectionStep.citation = *variantSelection.narrowedBy;
 
         // Everything unclaimed from `selectionMark` onwards belongs to this selection
         // -- see `produced` above for why this is a `while`.

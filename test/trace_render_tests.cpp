@@ -1369,7 +1369,10 @@ template <typename Tag, typename M>
 
 /// The line of a hand-built `VariantSelected` step over a constant 1, the
 /// line numbered 2.
-[[nodiscard]] std::string variantLine(std::string_view tag, std::size_t index, std::size_t count)
+[[nodiscard]] std::string variantLine(std::string_view tag,
+                                      std::size_t index,
+                                      std::size_t count,
+                                      formula::VariantNarrowing narrowing = formula::VariantNarrowing::None)
 {
     formula::Trace<> trace {};
     formula::Step<> operand {};
@@ -1382,6 +1385,7 @@ template <typename Tag, typename M>
     step.variantTag = tag;
     step.variantIndex = index;
     step.variantCount = count;
+    step.variantNarrowing = narrowing;
     step.value = formula::Rational { 1 };
     step.operands = { 0 };
     trace.steps.push_back(std::move(step));
@@ -1449,6 +1453,14 @@ TEST_CASE("a variant whose tag could not be named is still identified by its pos
     // one thing still known, and it is said; no name is invented.
     CHECK(variantLine("", 1, 3)
           == "2. #1 = 1 [the 2nd of 3 variants, selected by a tag whose name could not be read]\n");
+}
+
+TEST_CASE("a variant narrowed in no known way says so rather than guess", "[trace-render][method]")
+{
+    // A hand-built step may hold any value of the underlying type; naming a
+    // pin or a prune for it would state a jurisdiction's decision nobody made.
+    CHECK(variantLine("Cube", 0, 2, static_cast<formula::VariantNarrowing>(7))
+          == "2. #1 = 1 [variant Cube (1st of 2), selected by tag; narrowed in an unknown way]\n");
 }
 
 TEST_CASE("a rounding step whose provenance is no known value says so rather than guess", "[trace-render][method]")

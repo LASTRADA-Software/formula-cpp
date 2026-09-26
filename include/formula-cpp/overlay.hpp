@@ -41,10 +41,10 @@
 /// Every one of them is **said** in the trace, not merely done: a fixed
 /// constant, a derived quantity, a replaced formula and an overlay's rounding
 /// rule each record a step naming the jurisdiction's overlay and what it
-/// cited, and each verdict of an overlay's constraints is marked as the
-/// jurisdiction's. The nodes, rules and origins those steps are read from can
-/// be built only by the library -- see `detail::OverlayNodeAccess`,
-/// `RoundingRule` and `OverlaidConstraints`.
+/// cited, each verdict of an overlay's constraints is marked as the
+/// jurisdiction's, and the step recording which variant was selected says
+/// when an overlay pinned the method to it or pruned others from it. The nodes, rules and origins those steps are read from
+/// can be built only by the library -- see `detail::OverlayNodeAccess`, `RoundingRule` and `OverlaidConstraints`.
 ///
 /// **A declared unit is not an overlay's to change, and none of these
 /// operations touches one.** Spec section 16.7 asks that an overlay can
@@ -513,6 +513,10 @@ struct VariantPin
 
     /// The variant that is kept.
     using tag = Tag;
+
+    /// Where the requirement comes from; carried onto the method's variants,
+    /// and from there into the trace of the variant selected.
+    Citation source {};
 };
 
 /// Keeps only the variant tagged `Tag`, making it the one a jurisdiction
@@ -520,10 +524,15 @@ struct VariantPin
 /// error, exactly as selecting a tag the method never declared is.
 ///
 /// Refused when no variant declares `Tag`: see the file comment.
+///
+/// @p source cites where the requirement comes from, as `with_constant`'s
+/// does; the trace of the selected variant says the jurisdiction pinned it,
+/// `[variant Cylinder (3rd of 3), selected by tag; pinned by jurisdiction
+/// overlay: ...]`, whether or not anything is cited.
 template <typename Tag>
-[[nodiscard]] constexpr VariantPin<Tag> pin_variant() noexcept
+[[nodiscard]] constexpr VariantPin<Tag> pin_variant(Citation source = {}) noexcept
 {
-    return {};
+    return VariantPin<Tag> { source };
 }
 
 /// The operation `prune_variant<Tag>()` builds: delete the variant tagged
@@ -535,16 +544,24 @@ struct VariantPrune
 
     /// The variant that is deleted.
     using tag = Tag;
+
+    /// Where the deletion comes from; carried as `VariantPin::source` is.
+    Citation source {};
 };
 
 /// Deletes the variant tagged `Tag`; the others keep their declaration order.
 ///
 /// Refused when no variant declares `Tag`, and when it is the last variant
 /// left: see the file comment.
+///
+/// @p source cites where the deletion comes from; the trace of the variant
+/// selected from what is left says how many were pruned and by whom,
+/// `[variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by
+/// jurisdiction overlay: ...]`.
 template <typename Tag>
-[[nodiscard]] constexpr VariantPrune<Tag> prune_variant() noexcept
+[[nodiscard]] constexpr VariantPrune<Tag> prune_variant(Citation source = {}) noexcept
 {
-    return {};
+    return VariantPrune<Tag> { source };
 }
 
 /// The operation `with_rounding<U, Places, Mode>()` builds: replace the
@@ -2167,7 +2184,7 @@ namespace detail
     /// author never wrote: the operations after the pin would be judged
     /// against it, and could be refused for what it lacks.
     template <typename Tag, typename... Cs, typename Rounding, typename Constraints>
-    [[nodiscard]] constexpr auto apply_operation(VariantPin<Tag> const&,
+    [[nodiscard]] constexpr auto apply_operation(VariantPin<Tag> const& pinning,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
                                                  Constraints const& constraintSet) noexcept
@@ -2176,10 +2193,12 @@ namespace detail
             std::conditional_t<isPlainClassTag<Tag>, RequireOverlayNamesDeclaredVariant<Tag, Cs...>, std::true_type>::value);
 
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
-            return formula::method(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
-                                               pack.published.template select<variant_index<Tag, Cs...>()>()),
-                                   rounding,
-                                   constraintSet);
+            return formula::method(
+                republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
+                            PublishedLayoutAccess::pinned(pack.published.template select<variant_index<Tag, Cs...>()>(),
+                                                          pinning.source)),
+                rounding,
+                constraintSet);
         else
             return formula::method(pack, rounding, constraintSet);
     }
@@ -2190,7 +2209,7 @@ namespace detail
     /// refused, so that a refused prune adds nothing of the compiler's own to
     /// the refusal -- in particular, never the empty pack's message.
     template <typename Tag, typename... Cs, typename Rounding, typename Constraints>
-    [[nodiscard]] constexpr auto apply_operation(VariantPrune<Tag> const&,
+    [[nodiscard]] constexpr auto apply_operation(VariantPrune<Tag> const& pruning,
                                                  Variants<Cs...> const& pack,
                                                  Rounding const& rounding,
                                                  Constraints const& constraintSet) noexcept
@@ -2202,8 +2221,11 @@ namespace detail
                                          std::true_type>::value);
 
         if constexpr (namesDeclaredVariant<Tag, Cs...> && sizeof...(Cs) > 1)
-            return formula::method(
-                variants_without<Tag>(pack, std::make_index_sequence<sizeof...(Cs) - 1> {}), rounding, constraintSet);
+        {
+            auto kept = variants_without<Tag>(pack, std::make_index_sequence<sizeof...(Cs) - 1> {});
+            kept.published = PublishedLayoutAccess::pruned(kept.published, pruning.source);
+            return formula::method(kept, rounding, constraintSet);
+        }
         else
             return formula::method(pack, rounding, constraintSet);
     }

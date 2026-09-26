@@ -35,6 +35,6 @@ using Pack = formula::Variants<formula::VariantCase<Cube, formula::VarNode<EdgeX
 int main()
 {
     constexpr Pack pack { std::tuple { formula::variant<Cube>(var<EdgeX>), formula::variant<Cylinder>(var<EdgeX>) },
-                          formula::detail::PublishedLayout<2> { { 1, 0 }, 2 } };
+                          formula::detail::PublishedLayoutAccess::checked<2>({ 1, 0 }, 2) };
     return pack.published.count() == 2 ? 0 : 1;
 }

@@ -684,6 +684,53 @@ template <typename Tag, typename M, typename Env>
     return formula::render_trace(trace, { .maxSteps = 40 });
 }
 
+inline constexpr formula::Citation pinAnnex { .reference = "Example Standard 12:2021 NA", .section = "NA.1.1" };
+inline constexpr formula::Citation pruneAnnex { .reference = "Example Standard 12:2021 NA", .section = "NA.1.2" };
+inline constexpr formula::Citation laterPruneAnnex { .reference = "Example Standard 12:2024 NA", .section = "NA.1.3" };
+
+TEST_CASE("a pin says which jurisdiction made the variant mandatory", "[overlay][trace]")
+{
+    // Final review of phase 11, M3: a pinned method traced its selection
+    // exactly as the base method did, so nothing said a jurisdiction had made
+    // the variant mandatory.
+    constexpr auto pinned = formula::apply(formula::overlay(formula::pin_variant<Cylinder>(pinAnnex)), threeVariants);
+
+    CHECK(traceOfVariant<Cylinder>(pinned, inputs)
+              .ends_with(" [variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard "
+                         "12:2021 NA, "
+                         "NA.1.1]\n"));
+    // The method not overlaid says nothing of a pin.
+    CHECK(traceOfVariant<Cylinder>(threeVariants, inputs).ends_with(" [variant Cylinder (2nd of 3), selected by tag]\n"));
+}
+
+TEST_CASE("a prune says how many variants a jurisdiction deleted, and whose was the last", "[overlay][trace]")
+{
+    constexpr auto once = formula::apply(formula::overlay(formula::prune_variant<Cube>(pruneAnnex)), threeVariants);
+    constexpr auto twice = formula::apply(formula::overlay(formula::prune_variant<Prism>(laterPruneAnnex)), once);
+
+    CHECK(traceOfVariant<Cylinder>(once, inputs)
+              .ends_with(
+                  " [variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard "
+                  "12:2021 NA, NA.1.2]\n"));
+    // Two overlays each pruned one: both counted, the later one named.
+    CHECK(traceOfVariant<Cylinder>(twice, inputs)
+              .ends_with(
+                  " [variant Cylinder (2nd of 3), selected by tag; 2 of 3 pruned, the last by jurisdiction overlay: Example "
+                  "Standard 12:2024 NA, NA.1.3]\n"));
+}
+
+TEST_CASE("a pin after a prune says the pin, which states the whole selection", "[overlay][trace]")
+{
+    constexpr auto prunedThenPinned =
+        formula::apply(formula::overlay(formula::pin_variant<Cylinder>(pinAnnex)),
+                       formula::apply(formula::overlay(formula::prune_variant<Cube>(pruneAnnex)), threeVariants));
+
+    CHECK(traceOfVariant<Cylinder>(prunedThenPinned, inputs)
+              .ends_with(" [variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard "
+                         "12:2021 NA, "
+                         "NA.1.1]\n"));
+}
+
 // The shape factor defined as the ratio of the two edges: 100 mm over 150 mm
 // is 2/3, so the Cube reads 90000 N * 2/3 over 150 mm by 100 mm = 4.0 MPa
 // where the base method's factor of 1 gives 6.0.
@@ -721,9 +768,11 @@ TEST_CASE("a replacement names whose formula it is, and keeps the variant's plac
                        threeVariants);
     auto const rendered = traceOfVariant<Cylinder>(cited, roundSpecimen);
 
-    // Which jurisdiction, and the variant still the 2nd of 3 as published.
+    // Which jurisdiction, and the variant still the 2nd of 3 as published,
+    // with the prune said: it cited nothing.
     CHECK(rendered.find(" [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n") != std::string::npos);
-    CHECK(rendered.find("[variant Cylinder (2nd of 3), selected by tag]") != std::string::npos);
+    CHECK(rendered.find("[variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay]")
+          != std::string::npos);
 
     // It renders as the formula that runs, and documents its citation.
     constexpr auto replaced = std::get<0>(cited.variantSet.cases).expression;

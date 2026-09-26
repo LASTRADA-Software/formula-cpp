@@ -566,6 +566,35 @@ namespace detail
     /// that ends the program.
     inline void published_positions_must_increase_and_stay_below_the_published_count() noexcept {}
 
+    template <std::size_t Count>
+    class PublishedLayout;
+
+    /// The one door to a layout stated by hand, and checked: for this
+    /// library's own negative cases, which pin the check, and for nothing
+    /// else. Code that spells `detail::` has stepped outside the contract.
+    struct PublishedLayoutAccess
+    {
+        /// @p published of @p publishedCount, refused at compile time unless
+        /// every position is below @p publishedCount and above the one
+        /// before it.
+        template <std::size_t Count>
+        [[nodiscard]] static consteval PublishedLayout<Count> checked(std::array<std::size_t, Count> const& published,
+                                                                      std::size_t publishedCount) noexcept;
+
+        /// @p layout, marked as pinned by an overlay citing @p cited -- for
+        /// `apply_operation` of `pin_variant` (`overlay.hpp`), its only caller.
+        template <std::size_t Count>
+        [[nodiscard]] static constexpr PublishedLayout<Count> pinned(PublishedLayout<Count> layout,
+                                                                     Citation const& cited) noexcept;
+
+        /// @p layout, marked as having had one more variant pruned, by an
+        /// overlay citing @p cited -- for `apply_operation` of
+        /// `prune_variant`, its only caller.
+        template <std::size_t Count>
+        [[nodiscard]] static constexpr PublishedLayout<Count> pruned(PublishedLayout<Count> layout,
+                                                                     Citation const& cited) noexcept;
+    };
+
     /// Where each variant of a pack sits in the method **as published**, and
     /// how many variants that method declares -- see `Variants::published`.
     ///
@@ -574,15 +603,21 @@ namespace detail
     /// each above the one before it (see `is_published_layout`). As a pair of
     /// public members it let anyone state a layout that is not one -- the same
     /// position for two variants, two variants swapped, or a 4th of 3 -- and a
-    /// trace then counted in it without a word. There are three ways to build
-    /// one, and none of them can build a layout that breaks that invariant:
+    /// trace then counted in it without a word. There are two ways to build
+    /// one, and neither can build a layout that breaks that invariant:
     ///
     ///  - the default constructor, declaration order;
-    ///  - the `consteval` constructor, which checks a layout stated by hand and
-    ///    refuses one that is not -- see
-    ///    `published_positions_must_increase_and_stay_below_the_published_count`;
     ///  - `select<Kept...>()`, which is how `apply` (`overlay.hpp`) carries a
     ///    layout through a pin or a prune.
+    ///
+    /// **A layout cannot be stated from outside the library.** The
+    /// constructor that takes positions and a count is public, so that
+    /// braces reach it, and refuses whenever it is used, in the library's
+    /// words. Once it checked the layout and accepted any well-formed one, so
+    /// `{ { 5, 7 }, 9 }` made a two-variant method that no overlay touched
+    /// report its variants as the 6th and 8th of 9. The checked constructor
+    /// is private, reached by `select` and by `PublishedLayoutAccess`, which
+    /// the negative cases pinning the check use.
     ///
     /// **Why `select` and not the checking constructor.** Which variants a pin
     /// or a prune keeps is known from the tags, at compile time, but where they
@@ -594,14 +629,19 @@ namespace detail
     /// increasing selection of entries from an increasing layout below its
     /// count is one too, so nothing is left to check at run time.
     ///
-    /// **What the check does not guarantee.** It guarantees a well-formed
-    /// layout, not that a layout is the right one for the pack that holds it.
-    /// A layout copied from another method's pack of the same size --
-    /// `pack.published = other.published`, or the same in an aggregate
-    /// initialiser -- is well formed, and indistinguishable from what a
-    /// legitimate prune produces: `{ 1, 2 }` of 3 is both. `published` is
-    /// maintained by the library, and assigning it is the author's explicit
-    /// act; the check refuses a layout no method could have, and nothing more.
+    /// **It also records a pin or a prune** -- `narrowing()`, with what the
+    /// overlay cited -- stated only through `PublishedLayoutAccess` by the
+    /// two operations that make one, and carried wherever the positions are.
+    ///
+    /// **What remains: a copy.** A layout copied from another method's pack
+    /// of the same size -- `pack.published = other.published`, or the same in
+    /// an aggregate initialiser -- or reset to declaration order by
+    /// `pack.published = {}`, is one the library made, pin or prune included,
+    /// and indistinguishable from what a legitimate prune produces: `{ 1, 2 }`
+    /// of 3 is both.
+    /// `published` is a public member so that a pack stays an aggregate, and
+    /// copying a value is always possible; assigning it is the author's
+    /// explicit act.
     template <std::size_t Count>
     class PublishedLayout
     {
@@ -613,15 +653,21 @@ namespace detail
         {
         }
 
-        /// @p published of @p publishedCount, refused at compile time unless every
-        /// position is below @p publishedCount and above the one before it. `consteval`, so
-        /// that no layout reaches a trace unchecked.
-        consteval PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t publishedCount) noexcept:
+        /// Refuses whenever it is used: a layout is not stated from outside
+        /// the library. Public, so that `{ { 5, 7 }, 9 }` reaches this and is
+        /// refused in the library's words rather than the compiler's "is
+        /// private". A template only so that the refusal waits for a use:
+        /// @p Stated is never given.
+        template <bool Stated = false>
+        constexpr PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t publishedCount) noexcept:
             _positions { published },
             _total { publishedCount }
         {
-            if (!is_published_layout(published, publishedCount))
-                published_positions_must_increase_and_stay_below_the_published_count();
+            static_assert(Stated,
+                          "formula: a variant's published position is stated only by the library -- by "
+                          "variants(...), and carried by apply() through a pin or a prune -- since a layout written "
+                          "by hand could make a trace report a position and a count no method has; build the pack "
+                          "with variants(...)");
         }
 
         /// The layout of the variants at @p Kept, in that order: each keeps
@@ -635,11 +681,17 @@ namespace detail
         template <std::size_t... Kept>
         [[nodiscard]] constexpr PublishedLayout<sizeof...(Kept)> select() const noexcept
         {
-            constexpr PublishedLayout<sizeof...(Kept)> kept { std::array<std::size_t, sizeof...(Kept)> { Kept... }, Count };
+            constexpr PublishedLayout<sizeof...(Kept)> kept { typename PublishedLayout<sizeof...(Kept)>::Checked {},
+                                                              std::array<std::size_t, sizeof...(Kept)> { Kept... },
+                                                              Count };
             static_cast<void>(kept);
-            return PublishedLayout<sizeof...(Kept)> { typename PublishedLayout<sizeof...(Kept)>::Selected {},
-                                                      { _positions[Kept]... },
-                                                      _total };
+            PublishedLayout<sizeof...(Kept)> keptLayout { typename PublishedLayout<sizeof...(Kept)>::Selected {},
+                                                          { _positions[Kept]... },
+                                                          _total };
+            keptLayout._narrowing = _narrowing;
+            keptLayout._prunedCount = _prunedCount;
+            keptLayout._narrowedBy = _narrowedBy;
+            return keptLayout;
         }
 
         /// The ZERO-BASED published position of the variant at @p overlaidIndex.
@@ -654,9 +706,49 @@ namespace detail
             return _total;
         }
 
+        /// Whether an overlay pinned or pruned the pack this layout belongs
+        /// to -- see `VariantNarrowing` (`sink.hpp`).
+        [[nodiscard]] constexpr VariantNarrowing narrowing() const noexcept
+        {
+            return _narrowing;
+        }
+
+        /// How many variants overlays pruned; zero unless `narrowing()` is
+        /// `Pruned`.
+        [[nodiscard]] constexpr std::size_t pruned_count() const noexcept
+        {
+            return _prunedCount;
+        }
+
+        /// What the overlay that pinned, or the last one that pruned, cited.
+        [[nodiscard]] constexpr Citation const& narrowed_by() const noexcept
+        {
+            return _narrowedBy;
+        }
+
       private:
         template <std::size_t>
         friend class PublishedLayout;
+
+        friend struct PublishedLayoutAccess;
+
+        /// Marks the checking constructor.
+        struct Checked
+        {
+        };
+
+        /// @p published of @p publishedCount, refused at compile time unless
+        /// every position is below @p publishedCount and above the one before
+        /// it. `consteval`, so that no layout reaches a trace unchecked.
+        consteval PublishedLayout(Checked,
+                                  std::array<std::size_t, Count> const& published,
+                                  std::size_t publishedCount) noexcept:
+            _positions { published },
+            _total { publishedCount }
+        {
+            if (!is_published_layout(published, publishedCount))
+                published_positions_must_increase_and_stay_below_the_published_count();
+        }
 
         /// Marks the constructor only `select` uses.
         struct Selected
@@ -674,7 +766,39 @@ namespace detail
 
         std::array<std::size_t, Count> _positions;
         std::size_t _total;
+        /// Stated only through `PublishedLayoutAccess`, as the positions are:
+        /// a pin or a prune is a jurisdiction's decision, the library's to
+        /// record.
+        VariantNarrowing _narrowing = VariantNarrowing::None;
+        std::size_t _prunedCount = 0;
+        Citation _narrowedBy {};
     };
+
+    template <std::size_t Count>
+    consteval PublishedLayout<Count> PublishedLayoutAccess::checked(std::array<std::size_t, Count> const& published,
+                                                                    std::size_t publishedCount) noexcept
+    {
+        return PublishedLayout<Count> { typename PublishedLayout<Count>::Checked {}, published, publishedCount };
+    }
+
+    template <std::size_t Count>
+    constexpr PublishedLayout<Count> PublishedLayoutAccess::pinned(PublishedLayout<Count> layout,
+                                                                   Citation const& cited) noexcept
+    {
+        layout._narrowing = VariantNarrowing::Pinned;
+        layout._narrowedBy = cited;
+        return layout;
+    }
+
+    template <std::size_t Count>
+    constexpr PublishedLayout<Count> PublishedLayoutAccess::pruned(PublishedLayout<Count> layout,
+                                                                   Citation const& cited) noexcept
+    {
+        layout._narrowing = VariantNarrowing::Pruned;
+        ++layout._prunedCount;
+        layout._narrowedBy = cited;
+        return layout;
+    }
 } // namespace detail
 
 /// The variants of one method, in declaration order:
@@ -723,14 +847,16 @@ struct Variants
     /// `variants(...)` numbers them in order; `apply` (`overlay.hpp`) carries
     /// them through a pin or a prune, so that a published `(Cube, Cylinder,
     /// Prism)` with `Cube` pruned still reports `Cylinder` as the 2nd of 3,
-    /// not the 1st of 2. A layout whose positions do not increase, or reach
-    /// the count, is refused -- see `detail::PublishedLayout`.
+    /// not the 1st of 2 -- and records that an overlay pruned or pinned, so
+    /// that the trace says it. A layout whose positions do not increase, or
+    /// reach the count, is refused -- see `detail::PublishedLayout`.
     ///
-    /// **Maintained by the library; assigning it is the author's act.** The
-    /// check guarantees a well-formed layout, not the right one: another
-    /// method's layout of the same size, assigned here, is well formed and
-    /// cannot be told from what a legitimate prune leaves -- `{ 1, 2 }` of 3
-    /// is both. A trace then counts in the layout the author put here.
+    /// **Maintained by the library; copying one here is the author's act.**
+    /// A layout cannot be stated by hand -- `{ { 5, 7 }, 9 }` is refused --
+    /// but another method's layout of the same size, copied here, is one the
+    /// library made, and cannot be told from what a legitimate prune leaves:
+    /// `{ 1, 2 }` of 3 is both. A trace then counts in the layout the author
+    /// put here.
     ///
     /// A default member initialiser is safe here, unlike on `cases`: it names
     /// no variant's type, so asking whether this pack is default-constructible
@@ -1689,6 +1815,9 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
             selectedTagName,
             m.variantSet.published.position(Selection::index),
             m.variantSet.published.count(),
+            m.variantSet.published.narrowing(),
+            m.variantSet.published.pruned_count(),
+            m.variantSet.published.narrowing() == VariantNarrowing::None ? nullptr : &m.variantSet.published.narrowed_by(),
         };
         if constexpr (requires(Evaluated<Rep> const& variantResult) {
                           sink.variant_entered(variantSelection);

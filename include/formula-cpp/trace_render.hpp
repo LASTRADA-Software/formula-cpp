@@ -699,6 +699,29 @@ namespace detail
         return std::to_string(ordinal) + std::string { ordinalSuffix };
     }
 
+    /// What a jurisdiction's overlay did to the variants before one was
+    /// selected, as a second clause of the variant's bracket: `; pinned by
+    /// jurisdiction overlay: ...`, `; 1 of 3 pruned by jurisdiction overlay:
+    /// ...`, or -- when overlays pruned more than one -- `; 2 of 3 pruned, the
+    /// last by jurisdiction overlay: ...`, naming what the last one cited.
+    /// Empty when no overlay pinned or pruned.
+    [[nodiscard]] inline std::string variant_narrowing_clause(Step<Rational> const& recorded)
+    {
+        switch (recorded.variantNarrowing)
+        {
+            case VariantNarrowing::None:
+                return {};
+            case VariantNarrowing::Pinned:
+                return "; pinned by " + overlay_source_text(recorded.citation);
+            case VariantNarrowing::Pruned:
+                return "; " + std::to_string(recorded.variantPrunedCount) + " of " + std::to_string(recorded.variantCount)
+                       + (recorded.variantPrunedCount == 1 ? " pruned by " : " pruned, the last by ")
+                       + overlay_source_text(recorded.citation);
+        }
+        // A hand-built `Step` may hold any value of the underlying type.
+        return "; narrowed in an unknown way";
+    }
+
     /// Which variant a method selected, and on what, in one bracketed clause:
     /// `[variant Cylinder (2nd of 3), selected by tag]`.
     ///
@@ -726,8 +749,10 @@ namespace detail
         std::string const ordinalPosition =
             ordinal_text(recorded.variantIndex + 1) + " of " + std::to_string(recorded.variantCount);
         if (recorded.variantTag.empty())
-            return " [the " + ordinalPosition + " variants, selected by a tag whose name could not be read]";
-        return " [variant " + std::string { recorded.variantTag } + " (" + ordinalPosition + "), selected by tag]";
+            return " [the " + ordinalPosition + " variants, selected by a tag whose name could not be read"
+                   + variant_narrowing_clause(recorded) + "]";
+        return " [variant " + std::string { recorded.variantTag } + " (" + ordinalPosition + "), selected by tag"
+               + variant_narrowing_clause(recorded) + "]";
     }
 
     /// What a step produced, as a person should read it.

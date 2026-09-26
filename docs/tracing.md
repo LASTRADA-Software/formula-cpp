@@ -338,6 +338,16 @@ choice was made rather than only that it was. Nothing in the line names a
 variant that was not taken: the neighbouring test selects the cylinder and
 checks that the word `Cube` appears nowhere in its derivation.
 
+When a jurisdiction's overlay narrowed the variants first, the bracket says so
+in a second clause, with what the overlay cited: `pin_variant<Cylinder>(annex)`
+gives `[variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction
+overlay: ...]`, and a prune gives `; 1 of 3 pruned by jurisdiction overlay:
+...` -- or, after prunes by more than one overlay, `; 2 of 3 pruned, the last
+by jurisdiction overlay: ...`, naming what the last one cited. A pin after a
+prune says the pin, which states the whole selection. (`test/overlay_tests.cpp`,
+`"a pin says which jurisdiction made the variant mandatory"` and the two cases
+after it.)
+
 A method tells a sink about its choice through two optional members,
 `variant_entered` and `variant_produced`, with a `VariantSelection`
 (`sink.hpp`) -- a method is not a node, so it cannot come through `entered`
