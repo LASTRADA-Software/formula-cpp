@@ -39,13 +39,17 @@ struct Ratio: formula::Quantity<Ratio, "r", "slenderness ratio", unit::One>
 {
 };
 
-enum class Shape : std::uint8_t
+// A name of its own, not the `Shape` `overlay_tests.cpp` uses with a table of
+// the same values: two translation units' anonymous-namespace key
+// enumerations of one name, with tables of the same values, fail to link on
+// clang -- see `lookup.hpp`.
+enum class LookupShape : std::uint8_t
 {
     Square,
     Round,
 };
 
-inline constexpr formula::KeyTable<Shape, 2> Keys { Shape::Square, Shape::Round };
+inline constexpr formula::KeyTable<LookupShape, 2> Keys { LookupShape::Square, LookupShape::Round };
 inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 2, 1), formula::band(2, 1, 6, 1) };
 inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), formula::breakpoint(8) };
 // Tables of no rows, whose `Corrections<0>` IS default-constructible: the one
@@ -73,7 +77,7 @@ inline constexpr formula::BreakpointTable<0> NoPoints {};
 [[nodiscard]] constexpr auto exact()
 {
     // The second key's row: 5.
-    return formula::exact_lookup<Keys, unit::One>(Shape::Round, { formula::Rational { 2 }, formula::Rational { 5 } });
+    return formula::exact_lookup<Keys, unit::One>(LookupShape::Round, { formula::Rational { 2 }, formula::Rational { 5 } });
 }
 
 [[nodiscard]] constexpr auto unrounded()
@@ -92,7 +96,7 @@ template <typename Tag, typename M>
 [[nodiscard]] constexpr auto exactSixteen()
 {
     // A perfect square, for the root row below: the second key's row, 16.
-    return formula::exact_lookup<Keys, unit::One>(Shape::Round, { formula::Rational { 2 }, formula::Rational { 16 } });
+    return formula::exact_lookup<Keys, unit::One>(LookupShape::Round, { formula::Rational { 2 }, formula::Rational { 16 } });
 }
 
 // Whether @p expression survives being a method's variant: it compiles in
