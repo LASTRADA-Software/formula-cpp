@@ -77,7 +77,8 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace_render.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/unit.hpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/version.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/vocabulary.hpp")
 
 # These three are workarounds for cl's non-conformance and are REQUIRED to
 # compile this library's headers at all, so they are INTERFACE, not PRIVATE:

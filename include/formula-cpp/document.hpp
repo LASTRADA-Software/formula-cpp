@@ -17,11 +17,13 @@
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -144,6 +146,12 @@ namespace detail
     /// a `std::vector<SymbolEntry>` holds no type to check against. Not part
     /// of the published surface -- `document()` unwraps `documentation` before
     /// returning it.
+    ///
+    /// `renamed` is the vocabulary `document()` was given, as the one thing a
+    /// walk needs from it: which quantities it writes differently, and how.
+    /// Held as data rather than as a template parameter so that no `collect`
+    /// overload below has to know a vocabulary exists -- only `add_row`, which
+    /// writes every row's symbol, reads it, through `symbol_in`.
     struct Walk
     {
         Documentation documentation {};
@@ -151,6 +159,7 @@ namespace detail
         /// The dialect `document()` was asked for, which a derived quantity's
         /// definition is rendered in.
         Dialect dialect = Dialect::Plain;
+        std::vector<std::pair<void const*, std::string_view>> renamed {};
     };
 
     /// @p node rendered in @p dialect, chosen at run time -- for the one
@@ -175,6 +184,32 @@ namespace detail
     [[nodiscard]] inline bool is_substituted(SymbolEntry const& entry) noexcept
     {
         return entry.fixedValue.has_value() || entry.derivedAs.has_value();
+    }
+
+    /// How @p Q is written in @p walk: as the walk's vocabulary renamed it,
+    /// or as `Describe<Q>::symbol` says. Keyed on the cv-unqualified type,
+    /// matching `ScopedVocabulary`'s own resolution.
+    template <Described Q>
+    [[nodiscard]] std::string_view symbol_in(Walk const& walk)
+    {
+        void const* const key = &quantityIdentity<std::remove_cv_t<Q>>;
+        for (auto const& [quantity, symbol]: walk.renamed)
+            if (quantity == key)
+                return symbol;
+        return symbol_of<Q>(DefaultVocabulary {});
+    }
+
+    /// Records what @p vocabulary renames, for `symbol_in`. The symbol itself
+    /// comes from `symbol_of`, so a walk resolves a quantity exactly as
+    /// `render()` and the trace do; only the list of quantities is read here.
+    inline void note_renamings(Walk&, DefaultVocabulary const&) {}
+
+    template <typename... Es>
+    void note_renamings(Walk& walk, ScopedVocabulary<Es...> const& vocabulary)
+    {
+        (walk.renamed.emplace_back(&quantityIdentity<std::remove_cv_t<typename Es::quantity>>,
+                                   symbol_of<typename Es::quantity>(vocabulary)),
+         ...);
     }
 
     // Not load-bearing, just this file's convention: every collect() call's
@@ -267,7 +302,7 @@ namespace detail
             return false;
         walk.seenQuantities.push_back(key);
         walk.documentation.symbols.push_back(SymbolEntry {
-            .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+            .symbol = symbol_in<Q>(walk), .description = Describe<Q>::description, .unit = Describe<Q>::unit });
         return true;
     }
 
@@ -525,12 +560,25 @@ namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
 /// citations and symbol table a documentation page needs.
+///
+/// Every symbol -- in the rendered formula and in the symbol table alike -- is
+/// written as @p vocabulary says (`vocabulary.hpp`); each row's description
+/// and unit stay the quantity's own, because a vocabulary renames how a
+/// quantity is written, never what it is.
+template <Dialect D = Dialect::Plain, Node N, Vocabulary V>
+[[nodiscard]] Documentation document(N const& node, V const& vocabulary)
+{
+    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) }, .dialect = D };
+    detail::note_renamings(walk, vocabulary);
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents @p node in the default vocabulary, which renames nothing.
 template <Dialect D = Dialect::Plain, Node N>
 [[nodiscard]] Documentation document(N const& node)
 {
-    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) }, .dialect = D };
-    detail::collect(walk, node);
-    return std::move(walk.documentation);
+    return document<D>(node, DefaultVocabulary {});
 }
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
@@ -552,12 +600,22 @@ template <Dialect D = Dialect::Plain, Node N>
 /// pushes the constraint's citation and walks its predicate for the symbol
 /// table. Nothing here is new machinery; this overload is what makes that
 /// existing machinery reachable from the public API at all.
+///
+/// Every symbol is written as @p vocabulary says, as in the `Node` overload.
+template <Dialect D = Dialect::Plain, Predicate P, Vocabulary V>
+[[nodiscard]] Documentation document(Constraint<P> const& node, V const& vocabulary)
+{
+    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) }, .dialect = D };
+    detail::note_renamings(walk, vocabulary);
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents @p node in the default vocabulary, which renames nothing.
 template <Dialect D = Dialect::Plain, Predicate P>
 [[nodiscard]] Documentation document(Constraint<P> const& node)
 {
-    detail::Walk walk { .documentation = Documentation { .formula = render<D>(node) }, .dialect = D };
-    detail::collect(walk, node);
-    return std::move(walk.documentation);
+    return document<D>(node, DefaultVocabulary {});
 }
 
 } // namespace formula

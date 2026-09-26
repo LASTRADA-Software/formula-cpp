@@ -59,6 +59,7 @@ add_executable(formula-cpp-tests
     method_tests.cpp
     method_lookup_tests.cpp
     overlay_tests.cpp
+    vocabulary_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -970,6 +971,38 @@ formula_add_negative_test(overlay_node_hand_built_derived
 
 formula_add_negative_test(overlay_node_hand_built_replaced
     "formula: only an overlay builds this node")
+
+# A vocabulary that renames one quantity twice, and one holding something that
+# is not an entry. Each REJECTs the other's message: the duplicate check is
+# gated on the entry check, so a pack refused as not entries is not also
+# refused as a duplicate (`RequireVocabularyEntries`, `vocabulary.hpp`). The
+# second also REJECTs `quantity'`, which is how the compilers' own errors name
+# the `Es::quantity` a pack of non-entries does not have. Measured: removing
+# the gate in `renames_distinct_quantities` makes this case fail on cl 19.51
+# and g++ 13.3 (not clang++ 20.1.8); removing the one in
+# `ScopedVocabulary::symbol` makes it fail on clang++ 20.1.8 (not the other
+# two). Each gate is pinned on at least one leg.
+formula_add_negative_test(vocabulary_duplicate_quantity
+    "formula: this vocabulary renames the same quantity twice"
+    REJECT "formula: a vocabulary holds only")
+formula_add_negative_test(vocabulary_not_an_entry
+    "formula: a vocabulary holds only entries made by renames<Q>(symbol)"
+    REJECT "formula: this vocabulary renames the same quantity twice" "quantity'")
+
+# A sink built over a temporary vocabulary would keep a dangling pointer.
+formula_add_negative_test(vocabulary_sink_temporary
+    "formula: a RecordingSink keeps a pointer to its vocabulary")
+
+
+# A symbol in a local buffer, which a trace step would keep a dangling view
+# of. `renames` is `consteval` and takes a character array, so the argument
+# must be usable in a constant expression, and nothing in this library can
+# phrase that refusal: the text is the compilers' own. Measured in these words
+# on cl 19.51 (C7595), clang-cl 22.1.3, clang++ 20.1.8 and g++ 13.3 -- not on
+# CI's g++-14 or Apple clang -- and no form of `renames` appears in all four
+# (g++ names only `Renames<Strength>`). Deleting `consteval` makes the case
+# compile.
+formula_add_negative_test(vocabulary_symbol_not_static "is not a constant expression")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

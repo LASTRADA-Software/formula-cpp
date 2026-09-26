@@ -22,6 +22,7 @@
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -286,10 +287,19 @@ struct Step
     /// Which kind of node produced this step.
     StepKind kind {};
 
-    /// For `Variable`, `OverriddenConstant` and `DerivedQuantity`: how the quantity is written.
-    /// Points into the static storage of the quantity's `Describe`
-    /// specialisation, so it outlives any trace -- the same guarantee
-    /// `document.hpp`'s `SymbolEntry` relies on.
+    /// For `Variable`, `OverriddenConstant` and `DerivedQuantity`: how the
+    /// quantity is written, under the vocabulary the `RecordingSink` was given
+    /// (`vocabulary.hpp`).
+    /// Points into static storage -- the quantity's `Describe` specialisation,
+    /// or the string literal `renames` was given -- so it outlives any trace,
+    /// the same guarantee `document.hpp`'s `SymbolEntry` relies on.
+    ///
+    /// Written here, while the formula is **evaluated**, and only read by
+    /// `render_trace`: a trace recorded in one vocabulary cannot be rendered
+    /// in another afterwards. These three kinds are the only steps that name
+    /// a quantity; every other step refers to its operands by position, so a
+    /// rounding, lookup, constraint, variant or replacement step reaches the
+    /// vocabulary through the steps beneath it.
     std::string_view symbol {};
 
     /// For `Documented`: what the wrapped formula cites. For
@@ -1126,20 +1136,48 @@ namespace detail
 /// vector -- undefined behaviour. Nothing in this library does that; only a
 /// consumer sharing one `Trace` with an evaluation already under way can, and
 /// no runtime guard is levied on every walk to prevent it.
-template <typename Rep = Rational>
+///
+/// **A vocabulary, when one is given, is held the same way** -- by pointer, so
+/// it must outlive the evaluation as the `Trace` must -- and every step naming
+/// a quantity writes its symbol through it (`Step::symbol`). A temporary
+/// vocabulary is refused at compile time rather than left to dangle. The
+/// symbol is written *here*, during evaluation: rendering the page in a
+/// vocabulary does not make the trace agree with it, so give the sink the one
+/// `render()` and `document()` are given.
+///
+///     formula::RecordingSink sink { trace, north };
+template <typename Rep = Rational, Vocabulary V = DefaultVocabulary>
 class RecordingSink
 {
   public:
     /// @p trace must outlive the evaluation. Begins a new walk: see the class
     /// comment for why this clears `trace.marks`, `trace.unclaimed`, and
-    /// `trace.branchStack`.
+    /// `trace.branchStack`. Writes every symbol as @p vocabulary says, which
+    /// must outlive the evaluation too; left out, it is the default
+    /// vocabulary, which renames nothing and is static.
     ///
     /// @pre no other `RecordingSink` is part-way through a walk of @p trace.
-    explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace }
+    explicit constexpr RecordingSink(Trace<Rep>& trace, V const& vocabulary = detail::defaultVocabulary) noexcept:
+        _trace { &trace },
+        _vocabulary { &vocabulary }
     {
         _trace->marks.clear();
         _trace->unclaimed.clear();
         _trace->branchStack.clear();
+    }
+
+    /// Refused: the sink would keep a pointer to a vocabulary that dies at the
+    /// end of the statement constructing it. A member rather than `= delete`,
+    /// so that the refusal is in this library's words; it is instantiated,
+    /// and so refuses, only when overload resolution chooses it.
+    RecordingSink(Trace<Rep>&, V const&&) noexcept:
+        _trace {},
+        _vocabulary {}
+    {
+        static_assert(!std::is_same_v<V, V>,
+                      "formula: a RecordingSink keeps a pointer to its vocabulary, and this one is a "
+                      "temporary that dies at the end of the statement. Declare the vocabulary as a "
+                      "variable that outlives the evaluation, as the Trace must");
     }
 
     /// Remembers how much of the arena predates this node, so `produced` can
@@ -1222,7 +1260,7 @@ class RecordingSink
             step.unit = N::unit;
 
         if constexpr (namesQuantity)
-            step.symbol = Describe<typename N::quantity>::symbol;
+            step.symbol = symbol_of<typename N::quantity>(*_vocabulary);
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             step.citation = node.citation;
         // What an overlay cited for the value it fixed, the quantity it
@@ -1418,7 +1456,12 @@ class RecordingSink
 
   private:
     Trace<Rep>* _trace;
+    V const* _vocabulary;
 };
+
+/// `RecordingSink { trace, vocabulary }` records in @p vocabulary's terms.
+template <typename Rep, Vocabulary V>
+RecordingSink(Trace<Rep>&, V const&) -> RecordingSink<Rep, V>;
 
 /// An outcome together with the derivation that produced it.
 template <Described Result, typename Rep = Rational>
@@ -1451,8 +1494,14 @@ struct Explained
 /// below turns that mismatch into one sentence instead of a template-frame
 /// dump. Call `checked_evaluate_si<Rep>` directly with your own
 /// `RecordingSink<Rep>` to trace a `double` computation.
-template <Described Result, typename Rep = Rational, Node Expression, typename Env>
-[[nodiscard]] Explained<Result, Rep> explain(Expression const& expression, Env const& environment)
+///
+/// Every step naming a quantity writes its symbol as @p vocabulary says
+/// (`vocabulary.hpp`) -- pass the one the page is rendered in, so that the
+/// trace and the page agree.
+template <Described Result, typename Rep = Rational, Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Explained<Result, Rep> explain(Expression const& expression,
+                                             Env const& environment,
+                                             V const& vocabulary = V {})
 {
     static_assert(std::is_same_v<Rep, Rational>,
                   "formula: explain only supports Rep = Rational -- evaluate<Result> always computes "
@@ -1462,7 +1511,7 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
                   "double computation.");
 
     Explained<Result, Rep> explained {};
-    RecordingSink<Rep> sink { explained.trace };
+    RecordingSink<Rep, V> sink { explained.trace, vocabulary };
     explained.outcome = evaluate<Result>(expression, environment, sink);
     return explained;
 }

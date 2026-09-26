@@ -440,6 +440,37 @@ are only ever said of a method's rule. What the guard governs is how a rule is
 created, not where a copy travels: a method holding a copy of an overlay's
 rule is traced as that overlay's rule, which is true of it.
 
+## Whose symbols
+
+A `Variable`, `OverriddenConstant` or `DerivedQuantity` step records its
+quantity's symbol **when the formula is evaluated**, and `render_trace` only
+reads it back. So a jurisdiction's vocabulary (see [Citations and rendering](citations.md)) has to
+be given to the sink, not only to `render()` -- a page rendered in one
+vocabulary and a trace recorded in another would name one quantity with two
+different letters:
+
+```cpp
+formula::Trace<> southern {};
+(void) formula::check(limit, crossedInputs, formula::RecordingSink { southern, south });
+```
+
+```
+1. E = 30 MPa
+2. R = 12 MPa
+3. require #1 >= #2 [satisfied]
+```
+
+(`test/vocabulary_tests.cpp`, `"a constraint's trace names quantities in the
+sink's vocabulary"`.) `explain` takes the vocabulary as an optional third
+argument. Those three step kinds are the only ones that name a quantity.
+Every other step names none -- arithmetic, a lookup, a rounding rule, a
+constraint, a variant selection and a replaced variant refer to their
+operands by number -- and so reaches the vocabulary through the steps beneath
+it.
+
+The sink holds the vocabulary by pointer, as it holds the `Trace`, so the
+vocabulary must outlive the evaluation; a temporary one does not compile.
+
 ## The bound is a required argument, not a default
 
 ```cpp
