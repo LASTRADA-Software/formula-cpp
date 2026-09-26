@@ -651,8 +651,22 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
     CHECK(plain.symbols[4].symbol == "x_n");
     CHECK(plain.symbols[4].fixedValue.has_value());
 
+    // The replaced variant: marked replaced though uncited
+    // (`Documentation::replacedBy`), its replacement in the page's words, and
+    // its rows the vocabulary's -- modulus first, as the replacement reads it.
+    constexpr auto cylinder = std::get<1>(everyOverlaid.variantSet.cases).expression;
+    formula::Documentation const replaced = formula::document(cylinder, everyVocabulary);
+    CHECK(replaced.formula == "R / E");
+    CHECK(replaced.replacedBy.size() == 1);
+    REQUIRE(replaced.symbols.size() == 2);
+    CHECK(replaced.symbols[0].symbol == "R");
+    CHECK(replaced.symbols[0].description == "elastic modulus");
+    CHECK(replaced.symbols[1].symbol == "E");
+
     for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
-                                      formula::document<formula::Dialect::LaTeX>(cube, everyVocabulary) })
+                                      formula::document<formula::Dialect::LaTeX>(cube, everyVocabulary),
+                                      formula::document<formula::Dialect::Markdown>(cylinder, everyVocabulary),
+                                      formula::document<formula::Dialect::LaTeX>(cylinder, everyVocabulary) })
     {
         CHECK(declares_no_symbol(documentation.formula));
         for (formula::SymbolEntry const& row: documentation.symbols)
