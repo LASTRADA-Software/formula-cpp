@@ -33,6 +33,7 @@
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -157,8 +158,8 @@ constexpr auto waterCementRatio =
 struct MeasuredDensity: formula::Quantity<MeasuredDensity, "rho_m", "measured bulk density", KilogramPerCubicMetre>
 {
 };
-struct AdjustedBulkDensity
-    : formula::Quantity<AdjustedBulkDensity, "rho_adj", "compaction-adjusted bulk density", KilogramPerCubicMetre>
+struct AdjustedBulkDensity:
+    formula::Quantity<AdjustedBulkDensity, "rho_adj", "compaction-adjusted bulk density", KilogramPerCubicMetre>
 {
 };
 
@@ -168,7 +169,8 @@ struct AdjustedBulkDensity
 // exactly as measured.
 constexpr auto compactionAdjustedDensity = formula::documented(
     formula::when(var<MeasuredDensity> < formula::constant<KilogramPerCubicMetre>(formula::Rational { 1800 }),
-                 var<MeasuredDensity> * formula::Rational { 11, 10 }, var<MeasuredDensity>),
+                  var<MeasuredDensity>* formula::Rational { 11, 10 },
+                  var<MeasuredDensity>),
     { .title = "Compaction-adjusted bulk density",
       .reference = "Example Standard 5:2020",
       .section = "4.5",
@@ -257,17 +259,14 @@ inline constexpr formula::BreakpointTable<3> GalleryAgeCurve {
 // The structure (the bands, the keys, the breakpoints, and the two units) is
 // the method and lives in each node's type; the contents -- the number each row
 // gives -- are a registered table's data and arrive at runtime.
-constexpr auto sizeAllowanceTable =
-    formula::banded_lookup<unit::Millimetre, GallerySizeBands, unit::Megapascal>(
-        var<Diameter>, { formula::Rational { 2 }, formula::Rational { 1 }, formula::Rational { 0 } });
+constexpr auto sizeAllowanceTable = formula::banded_lookup<unit::Millimetre, GallerySizeBands, unit::Megapascal>(
+    var<Diameter>, { formula::Rational { 2 }, formula::Rational { 1 }, formula::Rational { 0 } });
 
 constexpr auto mouldFactorTable = formula::exact_lookup<GalleryMouldKeys, unit::One>(
     GalleryMould::Cylinder, { formula::Rational { 1 }, formula::Rational { 19, 20 }, formula::Rational { 9, 10 } });
 
-constexpr auto maturityFactorTable =
-    formula::interpolating_lookup<unit::Hour, GalleryAgeCurve, unit::One>(
-        var<CuringAge>,
-        { formula::Rational { 3, 5 }, formula::Rational { 17, 20 }, formula::Rational { 1 } });
+constexpr auto maturityFactorTable = formula::interpolating_lookup<unit::Hour, GalleryAgeCurve, unit::One>(
+    var<CuringAge>, { formula::Rational { 3, 5 }, formula::Rational { 17, 20 }, formula::Rational { 1 } });
 
 constexpr auto sizeAllowance =
     formula::documented(sizeAllowanceTable,
@@ -309,6 +308,51 @@ constexpr auto correctedStrength = formula::documented(
       .equation = "(8)",
       .text = "The measured strength less its size allowance, scaled by the mould factor and by the maturity "
               "factor -- one banded, one exact and one interpolating table inside a single expression." });
+
+// ---- A method, and the method a jurisdiction's overlay yields --------------
+//
+// Two specimen shapes, one rounding rule. The overlay fixes the shape factor
+// the base method reads from the specimen, replaces the cylinder formula, and
+// reports in its own unit -- each change said in the trace, with what the
+// jurisdiction cited.
+
+struct Cube
+{
+};
+struct Cylinder
+{
+};
+
+struct FailureLoad: formula::Quantity<FailureLoad, "F", "maximum load at failure", unit::Newton>
+{
+};
+struct LoadedEdge: formula::Quantity<LoadedEdge, "a", "loaded edge", unit::Millimetre>
+{
+};
+struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", unit::One>
+{
+};
+
+constexpr auto cubeStrengthMethod = formula::method(
+    formula::variants(
+        formula::variant<Cube>(var<ShapeFactor> * var<FailureLoad> / formula::pow<2>(var<LoadedEdge>)),
+        formula::variant<Cylinder>(formula::constant<unit::One>(formula::Rational { 4 }) * var<FailureLoad>
+                                          / (formula::pi * formula::pow<2>(var<Diameter>)))),
+    formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+
+constexpr formula::Citation galleryAnnex { .title = "Shape factor",
+                                           .reference = "Example Standard 7:2020 NA",
+                                           .section = "NA.2" };
+constexpr formula::Citation galleryRoundingAnnex { .reference = "Example Standard 7:2020 NA", .section = "NA.4" };
+
+constexpr auto galleryOverlay =
+    formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 19, 20 }, galleryAnnex),
+                     formula::with_rounding<unit::NewtonPerSquareMillimetre,
+                                            formula::DecimalPlaces { 2 },
+                                            formula::RoundingMode::HalfAwayFromZero>(galleryRoundingAnnex));
+
+constexpr auto overlaidStrengthMethod = formula::apply(galleryOverlay, cubeStrengthMethod);
 
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
@@ -550,7 +594,7 @@ int main(int argc, char** argv)
     write_worked_formula(out, density);
 
     auto const densityInputs = formula::environment(formula::Measured<SpecimenMass> { formula::Rational { 1200 } },
-                                                     formula::Measured<SpecimenVolume> { formula::Rational { 1, 2 } });
+                                                    formula::Measured<SpecimenVolume> { formula::Rational { 1, 2 } });
     formula::Explained<BulkDensity> const explained = formula::explain<BulkDensity>(density, densityInputs);
     if (!explained.outcome.is_value())
     {
@@ -597,8 +641,7 @@ int main(int argc, char** argv)
     auto const oversizedSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 200 } });
     formula::Trace<> constraintTrace {};
     formula::RecordingSink<> constraintSink { constraintTrace };
-    formula::ConstraintOutcome const diameterOutcome =
-        formula::check(maximumDiameter, oversizedSpecimen, constraintSink);
+    formula::ConstraintOutcome const diameterOutcome = formula::check(maximumDiameter, oversizedSpecimen, constraintSink);
     if (!diameterOutcome.is_violated())
     {
         std::fprintf(stderr, "formula-cpp-gallery: the worked constraint did not violate as expected\n");
@@ -665,6 +708,53 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << formula::render_trace(missTrace, { .maxSteps = 5 });
+    out << "```\n\n";
+
+    // ---- A method's selected variant, and the same method overlaid ----
+    //
+    // Traced through a RecordingSink: a method is evaluated by
+    // `evaluate_method`, which answers in coherent SI and names, in the trace,
+    // the variant it selected and whose rounding rule it applied.
+
+    out << "## Worked derivation: a method's selected variant, and the same method overlaid\n\n";
+    out << "`F` = 226 kN, `a` = 150 mm, `k_s` = 1, the cube variant selected by tag. The method rounds by "
+           "its own rule, and the trace says which variant ran and whose rule rounded it:\n\n";
+
+    write_worked_formula(out, std::get<0>(cubeStrengthMethod.variantSet.cases).expression);
+
+    auto const cubeSpecimen = formula::environment(formula::Measured<FailureLoad> { formula::Rational { 226'000 } },
+                                                   formula::Measured<LoadedEdge> { formula::Rational { 150 } },
+                                                   formula::Measured<Diameter> { formula::Rational { 150 } },
+                                                   formula::Measured<ShapeFactor> { formula::Rational { 1 } });
+    formula::Trace<> methodTrace {};
+    auto const baseStrength =
+        formula::evaluate_method<Cube>(cubeStrengthMethod, cubeSpecimen, formula::RecordingSink<> { methodTrace });
+    if (!baseStrength.has_value() || !baseStrength->has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked method did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(methodTrace, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    out << "The same specimen under a jurisdiction's overlay, which fixes the shape factor and reports in "
+           "N/mm2 to two decimals:\n\n";
+
+    write_worked_formula(out, std::get<0>(overlaidStrengthMethod.variantSet.cases).expression);
+
+    formula::Trace<> overlaidTrace {};
+    auto const overlaidStrength = formula::evaluate_method<Cube>(
+        overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidTrace });
+    if (!overlaidStrength.has_value() || !overlaidStrength->has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked overlaid method did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(overlaidTrace, { .maxSteps = 20 });
     out << "```\n\n";
 
     out.flush();

@@ -63,6 +63,7 @@ for it, in the mode the method specifies.
 | [Rounding and conditionals](rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Lookup tables](lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
+| [Methods and overlays](methods-and-overlays.md) | Variants selected by tag, a method's own rounding rule, jurisdiction overlays and their provenance in the trace, and jurisdiction-scoped vocabularies |
 | [Gallery](gallery.md) | A documentation page the library generated about itself |
 
 New here? Read **[Expressions and evaluation](expressions.md)** first — it is the layer the library
@@ -96,6 +97,7 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Rounding nodes (decimal places, significant digits), conditionals (`when()`) | shipped |
 | Constraints, verdicts, checking a set without short-circuit | shipped |
 | Lookup tables: banded, exact and interpolating | shipped |
-| Methods, series, statistics | planned |
+| Methods: variants, rounding rules, jurisdiction overlays, vocabularies | shipped |
+| Series, statistics | planned |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).

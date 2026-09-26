@@ -296,3 +296,39 @@ lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to
 3. #2 = argument outside the domain of the operation [Size allowance by specimen diameter, Example Standard 7:2020, 8.2]
 ```
 
+## Worked derivation: a method's selected variant, and the same method overlaid
+
+`F` = 226 kN, `a` = 150 mm, `k_s` = 1, the cube variant selected by tag. The method rounds by its own rule, and the trace says which variant ran and whose rule rounded it:
+
+```
+k_s * F / a^2
+```
+
+```
+1. k_s = 1
+2. F = 226000 N
+3. #1 * #2 = 226000
+4. a = 150 mm
+5. #4^2 = 9/400
+6. #3 / #5 = 90400000/9
+7. round(#6, in MPa) = 10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+8. #7 = 10 MPa [variant Cube (1st of 2), selected by tag]
+```
+
+The same specimen under a jurisdiction's overlay, which fixes the shape factor and reports in N/mm2 to two decimals:
+
+```
+k_s * F / a^2
+```
+
+```
+1. k_s = 19/20 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
+2. F = 226000 N
+3. #1 * #2 = 214700
+4. a = 150 mm
+5. #4^2 = 9/400
+6. #3 / #5 = 85880000/9
+7. round(#6, in N/mm2) = 477/50 N/mm2 [rounded to 2 dp (jurisdiction overlay: Example Standard 7:2020 NA, NA.4); nearest, ties away from zero]
+8. #7 = 477/50 N/mm2 [variant Cube (1st of 2), selected by tag]
+```
+

@@ -96,3 +96,11 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 # A `[==[ ... ]==]` bracket argument for the reason the constraints entry
 # gives: the regex needs literal backslash escapes around `[` and `]`.
 formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key Cylinder gives 97 %.*lookup\(key 13\).*key sealed in foil gives 96 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])
+
+# docs/methods-and-overlays.md quotes this program's output verbatim. Pinned
+# here, in the order the program prints them: the selection step naming a tag
+# through its TagName spelling at its published position, a method's own
+# rounding rule, a jurisdiction's rounding rule with its citation, the fixed
+# and derived provenance clauses, the replacement marker, and the southern
+# vocabulary's crossed-over edge in a trace line.
+formula_add_example(methods_and_overlays methods_and_overlays.cpp [==[\[variant Cube \(1st of 3\), selected by tag\].*\(method default\).*\[variant cylinder 150 x 300 mm \(2nd of 3\), selected by tag\].*fixed by jurisdiction overlay: Shape factor.*jurisdiction overlay: Example Standard 12:2021 NA, NA\.4.*derived by jurisdiction overlay.*replaced by jurisdiction overlay: Example Standard 7:2019 A, A\.5.*4\. b = 150 mm.*all checks passed: yes]==])
