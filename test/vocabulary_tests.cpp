@@ -507,3 +507,195 @@ std::string render_node(Gauge const&)
     return "gauge";
 }
 } // namespace
+
+// ------------------------------------------------- every node kind, crossed
+//
+// One method holding every node kind this library renders, documents and
+// traces -- task 7's derived quantity and replaced variant included -- put
+// through `render`, `document` and the trace under one vocabulary. Every
+// quantity here declares a symbol ending `_decl`, and the vocabulary names
+// every one of them, so a surface that drops the vocabulary anywhere writes
+// `_decl` where it drops it: the absence checks below cover every dialect and
+// every document field, and the pinned strings cover where each renamed symbol
+// stands. The vocabulary crosses the two pressures over -- strength is `E`,
+// modulus is `R` -- so a symbol resolved for the wrong quantity sits beside
+// the wrong number in the trace.
+
+namespace
+{
+struct EveryCube
+{
+};
+struct EveryCylinder
+{
+};
+
+struct EveryStrength: formula::Quantity<EveryStrength, "A_decl", "compressive strength", unit::Megapascal>
+{
+};
+struct EveryModulus: formula::Quantity<EveryModulus, "B_decl", "elastic modulus", unit::Megapascal>
+{
+};
+struct EveryDiameter: formula::Quantity<EveryDiameter, "D_decl", "specimen diameter", unit::Millimetre>
+{
+};
+struct EveryDerived: formula::Quantity<EveryDerived, "K_decl", "size factor", unit::One>
+{
+};
+struct EveryFixed: formula::Quantity<EveryFixed, "X_decl", "national factor", unit::One>
+{
+};
+
+enum class EveryFinish : std::uint8_t
+{
+    Smooth,
+    Rough,
+};
+
+inline constexpr formula::KeyTable<EveryFinish, 2> EveryFinishKeys { EveryFinish::Smooth, EveryFinish::Rough };
+
+inline constexpr auto everyVocabulary = formula::vocabulary(formula::renames<EveryStrength>("E"),
+                                                            formula::renames<EveryModulus>("R"),
+                                                            formula::renames<EveryDiameter>("D"),
+                                                            formula::renames<EveryDerived>("k_n"),
+                                                            formula::renames<EveryFixed>("x_n"));
+
+inline constexpr formula::Citation everyCited { .reference = "Example Standard 1:2020", .section = "3.1" };
+
+[[nodiscard]] constexpr auto everyNodeKind()
+{
+    constexpr auto a = var<EveryStrength>;
+    constexpr auto b = var<EveryModulus>;
+    constexpr auto d = var<EveryDiameter>;
+    constexpr auto r = a / b;
+    return formula::when(
+               a >= b,
+               formula::documented(-formula::pow<2>(r) + formula::pow<3>(formula::root<3>(r * r * r)), everyCited)
+                   * formula::rounded<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+                       r)
+                   * formula::rounded_to_digits<unit::Percent,
+                                                formula::SignificantDigits { 2 },
+                                                formula::RoundingMode::HalfAwayFromZero>(r),
+               formula::numeric_value_of<unit::Megapascal, "a table stated in megapascals">(a)
+                   * formula::banded_lookup<unit::Millimetre, VocabularyDiameterBands, unit::One>(d, { rat(1), rat(2) })
+                   * formula::interpolating_lookup<unit::Millimetre, VocabularyDiameterPoints, unit::One>(
+                       d, { rat(1), rat(3) }))
+           * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
+           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1), rat(5, 4) });
+}
+
+inline constexpr auto everyMethod = formula::method(
+    formula::variants(formula::variant<EveryCube>(everyNodeKind()),
+                      formula::variant<EveryCylinder>(var<EveryStrength> / var<EveryModulus>)),
+    formula::rounding_rule<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+
+inline constexpr auto everyOverlay =
+    formula::overlay(formula::with_constant<EveryFixed>(rat(3, 2)),
+                     formula::add_derived<EveryDerived>(var<EveryDiameter> / formula::constant<unit::Millimetre>(rat(100))),
+                     formula::replace_variant<EveryCylinder>(var<EveryModulus> / var<EveryStrength>));
+
+inline constexpr auto everyOverlaid = formula::apply(everyOverlay, everyMethod);
+
+// 30 MPa, 12 MPa and 200 mm, distinct from each other and from every table row.
+inline constexpr auto everyInputs = formula::environment(formula::Measured<EveryStrength> { rat(30) },
+                                                         formula::Measured<EveryModulus> { rat(12) },
+                                                         formula::Measured<EveryDiameter> { rat(200) });
+
+template <typename Tag>
+[[nodiscard]] std::string everyTraceOf()
+{
+    formula::Trace<> trace {};
+    (void) formula::evaluate_method<Tag>(everyOverlaid, everyInputs, formula::RecordingSink { trace, everyVocabulary });
+    return formula::render_trace(trace, { .maxSteps = 60 });
+}
+
+[[nodiscard]] bool declares_no_symbol(std::string_view text)
+{
+    return text.find("_decl") == std::string_view::npos;
+}
+} // namespace
+
+TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocabulary][render]")
+{
+    constexpr auto cube = std::get<0>(everyOverlaid.variantSet.cases).expression;
+    constexpr auto cylinder = std::get<1>(everyOverlaid.variantSet.cases).expression;
+
+    CHECK(formula::render(cube, everyVocabulary)
+          == "(if E >= R then (-(E / R)^2 + root3(E / R * E / R * E / R)^3) * round(E / R, to 1 dp of %) "
+             "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 100 to under 150 mm gives 1, "
+             "150 to under 300 mm gives 2) * interpolate(D, at 100 mm gives 1, at 300 mm gives 3)) * k_n * x_n "
+             "* pi * 2 * lookup(key Rough, key Smooth gives 1, key Rough gives 5/4)");
+    CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
+    for (std::string const& text: { formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(cube, everyVocabulary),
+                                    formula::render<formula::Dialect::Markdown>(cylinder, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(cylinder, everyVocabulary) })
+        CHECK(declares_no_symbol(text));
+}
+
+TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[vocabulary][document]")
+{
+    constexpr auto cube = std::get<0>(everyOverlaid.variantSet.cases).expression;
+
+    formula::Documentation const plain = formula::document(cube, everyVocabulary);
+    CHECK(plain.formula == formula::render(cube, everyVocabulary));
+    REQUIRE(plain.symbols.size() == 5);
+    CHECK(plain.symbols[0].symbol == "E");
+    CHECK(plain.symbols[0].description == "compressive strength");
+    CHECK(plain.symbols[1].symbol == "R");
+    CHECK(plain.symbols[2].symbol == "D");
+    CHECK(plain.symbols[3].symbol == "k_n");
+    REQUIRE(plain.symbols[3].derivedAs.has_value());
+    CHECK(*plain.symbols[3].derivedAs == "D / 100 mm");
+    CHECK(plain.symbols[4].symbol == "x_n");
+    CHECK(plain.symbols[4].fixedValue.has_value());
+
+    for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
+                                      formula::document<formula::Dialect::LaTeX>(cube, everyVocabulary) })
+    {
+        CHECK(declares_no_symbol(documentation.formula));
+        for (formula::SymbolEntry const& row: documentation.symbols)
+        {
+            CHECK(declares_no_symbol(row.symbol));
+            if (row.derivedAs.has_value())
+                CHECK(declares_no_symbol(*row.derivedAs));
+        }
+    }
+}
+
+TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
+{
+    // The lines that name a quantity, found by what they say rather than
+    // pinned whole: the rest of this 48-step derivation is arithmetic, and pi's
+    // rational approximation would pin nothing about vocabularies.
+    std::string const cube = everyTraceOf<EveryCube>();
+    CHECK(declares_no_symbol(cube));
+    CHECK(cube.starts_with("1. E = 30 MPa\n"
+                           "2. R = 12 MPa\n"));
+    CHECK(cube.find("34. D = 200 mm\n") != std::string::npos);
+    CHECK(cube.find("37. k_n = #36 = 2 [derived by jurisdiction overlay]\n") != std::string::npos);
+    CHECK(cube.find("39. x_n = 3/2 [fixed by jurisdiction overlay]\n") != std::string::npos);
+
+    CHECK(everyTraceOf<EveryCylinder>()
+          == "1. R = 12 MPa\n"
+             "2. E = 30 MPa\n"
+             "3. #1 / #2 = 2/5\n"
+             "4. #3 = 2/5 [replaced by jurisdiction overlay]\n"
+             "5. round(#4, in %) = 40 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "6. #5 = 40 % [variant EveryCylinder (2nd of 2), selected by tag]\n");
+}
+
+TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",
+          "[vocabulary][trace][document]")
+{
+    constexpr auto limit =
+        formula::constraint(var<EveryStrength> >= var<EveryModulus>, formula::Verdict { "reject the specimen" });
+    formula::Trace<> trace {};
+    (void) formula::check(limit, everyInputs, formula::RecordingSink { trace, everyVocabulary });
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. E = 30 MPa\n"
+             "2. R = 12 MPa\n"
+             "3. require #1 >= #2 [satisfied]\n");
+    CHECK(formula::document<formula::Dialect::LaTeX>(limit, everyVocabulary).formula == "\\text{require } E \\geq R");
+}
