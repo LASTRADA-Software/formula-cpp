@@ -88,6 +88,7 @@
 #include <formula-cpp/environment.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/lineage.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
@@ -361,11 +362,25 @@ namespace detail
 /// read from it is ever a number; every library caller asks `is_bound()`
 /// before reading either.
 ///
-/// @p Lineage is the record's lineage keys. A record declares none yet.
+/// @p Lineage is the record's lineage keys, `lineage<Attr>(key)` or
+/// `unknown_lineage<Attr>()` each (`lineage.hpp`); an unbound record holds
+/// every one as unknown. A record that declares an attribute twice is
+/// refused, as is anything in the pack that is not a lineage entry -- the
+/// latter alone when it applies, since every attribute of such a pack would
+/// look like a duplicate.
 template <typename Role, detail::RecordEnvironment Env, typename... Lineage>
 class Record
 {
     static_assert(detail::RequirePlainRole<Role>::value);
+    static_assert(detail::RequireLineageEntries<Lineage...>::value);
+    static_assert(std::conditional_t<(detail::isLineageEntry<Lineage> && ...),
+                                     detail::RequireAttributesDeclaredOnce<typename detail::AttributeOf<Lineage>::type...>,
+                                     std::true_type>::value);
+
+    /// How many of this record's entries are for @p Attr.
+    template <typename Attr>
+    static constexpr std::size_t entriesFor =
+        (std::size_t { 0 } + ... + std::size_t { std::is_same_v<Attr, typename detail::AttributeOf<Lineage>::type> });
 
   public:
     /// Which record this is, as a formula names it.
@@ -398,6 +413,23 @@ class Record
     /// an unbound record.
     [[nodiscard]] constexpr Env const& environment() const noexcept { return _environment; }
 
+    /// Whether this record declares a key for lineage attribute @p Attr.
+    template <typename Attr>
+    static constexpr bool declares = entriesFor<Attr> != 0;
+
+    /// This record's key for lineage attribute @p Attr; empty when it is not
+    /// known, and for an unbound record. Asking for an attribute the record
+    /// does not declare is refused, naming the attribute and the role.
+    template <typename Attr>
+    [[nodiscard]] constexpr std::optional<std::uint64_t> lineage_of() const noexcept
+    {
+        static_assert(detail::RequireDeclaredAttribute<Attr, Role, declares<Attr>>::value);
+        if constexpr (entriesFor<Attr> == 1)
+            return std::get<LineageEntry<Attr>>(_lineage).key();
+        else
+            return std::nullopt;
+    }
+
   private:
     friend struct detail::RecordAccess;
 
@@ -411,7 +443,7 @@ class Record
     constexpr explicit Record(detail::UnboundRecord) noexcept:
         _key { std::nullopt },
         _environment { detail::absent_environment(std::type_identity<Env> {}) },
-        _lineage {}
+        _lineage { detail::unknown_entry(std::type_identity<Lineage> {})... }
     {
     }
 
@@ -779,6 +811,135 @@ namespace detail
     struct NoLineageRequirement
     {
     };
+
+    /// The role a scope's lineage requirement compares with; `void` when it
+    /// has none.
+    template <typename Requirement>
+    struct ComparandOf
+    {
+        using type = void;
+    };
+
+    template <typename Comparand, typename... Attrs>
+    struct ComparandOf<LineageRequirement<Comparand, Attrs...>>
+    {
+        using type = Comparand;
+    };
+
+    /// Fails to compile when a scope's requirement is neither a lineage
+    /// requirement nor none -- a type spelt into `RecordScopeNode` by hand.
+    template <typename Requirement>
+    struct RequireLineageRequirement
+    {
+        static_assert(isLineageRequirement<Requirement> || std::is_same_v<Requirement, NoLineageRequirement>,
+                      "formula: a record scope's requirement is not a lineage requirement; write same_lineage<...>() "
+                      "or leave it out -- the type appears in this diagnostic as the template argument of "
+                      "RequireLineageRequirement");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a lineage requirement compares the record a
+    /// scope reads with itself: `against<Role>` naming the scope's own role
+    /// is always satisfied, so it checks nothing while reading as a check.
+    template <typename Role, typename Comparand>
+    struct RequireComparandNotSubject
+    {
+        static_assert(!std::is_same_v<Role, Comparand>,
+                      "formula: this lineage requirement compares the record it reads with itself, which always "
+                      "agrees; name another role in against<Role>, or leave it out to compare with this record -- "
+                      "the role appears in this diagnostic as the template argument of RequireComparandNotSubject");
+
+        static constexpr bool value = true;
+    };
+
+    /// Refuses one attribute a requirement compares if either record does not
+    /// declare it -- the read record first, and the compared one only when
+    /// the read record does declare it, so that an attribute neither declares
+    /// draws one message, not one per record.
+    template <typename Attr, typename Subject, typename Comparand>
+    struct RequireDeclaredOnBoth
+    {
+        using Checked = std::conditional_t<Subject::template declares<Attr>,
+                                           RequireDeclaredAttribute<Attr, typename Comparand::role,
+                                                                    Comparand::template declares<Attr>>,
+                                           RequireDeclaredAttribute<Attr, typename Subject::role, false>>;
+
+        static constexpr bool value = Checked::value;
+    };
+
+    /// Whether both records declare every attribute a requirement compares.
+    /// Asking refuses nothing: the refusal is `RefuseUndeclaredLineage`, a
+    /// template of its own, since a static member beside `all` would be
+    /// instantiated -- and refuse -- whenever `all` is merely read.
+    template <typename Requirement, typename Subject, typename Comparand>
+    struct LineageDeclared
+    {
+        static constexpr bool all = true;
+    };
+
+    template <typename Comparand, typename... Attrs, typename Subject, typename ComparandRecord>
+    struct LineageDeclared<LineageRequirement<Comparand, Attrs...>, Subject, ComparandRecord>
+    {
+        static constexpr bool all =
+            (... && (Subject::template declares<Attrs> && ComparandRecord::template declares<Attrs>));
+    };
+
+    /// Refuses every attribute a requirement compares that either record
+    /// does not declare -- see `RequireDeclaredOnBoth`.
+    template <typename Requirement, typename Subject, typename Comparand>
+    struct RefuseUndeclaredLineage
+    {
+        static constexpr bool value = true;
+    };
+
+    template <typename Comparand, typename... Attrs, typename Subject, typename ComparandRecord>
+    struct RefuseUndeclaredLineage<LineageRequirement<Comparand, Attrs...>, Subject, ComparandRecord>
+    {
+        static constexpr bool value = (... && RequireDeclaredOnBoth<Attrs, Subject, ComparandRecord>::value);
+    };
+
+    /// What comparing a requirement's attributes decided.
+    enum class LineageVerdict : std::uint8_t
+    {
+        /// Every attribute known on both sides, and equal.
+        Agreed,
+        /// None violated, but at least one unknown on a side.
+        NotChecked,
+        /// At least one known on both sides and different.
+        Violated,
+    };
+
+    /// Compares every attribute @p Attrs of @p subject with @p comparandRecord,
+    /// in declared order, and tells @p sink of each when @p Reports. Every
+    /// attribute is compared and reported, not only those up to the first
+    /// mismatch, so that a trace shows every attribute that disagrees.
+    template <bool Reports, typename Comparand, typename... Attrs, typename Subject, typename ComparandRecord,
+              typename Sink>
+    [[nodiscard]] constexpr LineageVerdict check_lineage(LineageRequirement<Comparand, Attrs...>, Subject const& subject,
+                                                         ComparandRecord const& comparandRecord, Sink& sink) noexcept
+    {
+        bool anyViolated = false;
+        bool anyUnknown = false;
+        (
+            [&] {
+                LineageCheck const attributeCheck = LineageCheckAccess::of<Attrs>(subject, comparandRecord);
+                std::optional<std::uint64_t> const subjectKey = attributeCheck.subject_key();
+                std::optional<std::uint64_t> const comparandKey = attributeCheck.comparand_key();
+                ConstraintOutcome attributeOutcome = ConstraintOutcome::not_checked();
+                if (subjectKey.has_value() && comparandKey.has_value())
+                    attributeOutcome = *subjectKey == *comparandKey ? ConstraintOutcome::satisfied()
+                                                                    : ConstraintOutcome::violated(Verdict { "violated" });
+                anyViolated = anyViolated || attributeOutcome.is_violated();
+                anyUnknown = anyUnknown || attributeOutcome.is_not_checked();
+                if constexpr (Reports)
+                    sink.lineage_checked(attributeCheck, attributeOutcome);
+            }(),
+            ...);
+        if (anyViolated)
+            return LineageVerdict::Violated;
+        return anyUnknown ? LineageVerdict::NotChecked : LineageVerdict::Agreed;
+    }
 } // namespace detail
 
 /// A read from another record: @p Operand, evaluated against the environment
@@ -794,6 +955,8 @@ template <typename Role, typename Requirement, Node Operand>
 struct RecordScopeNode: NodeBase
 {
     static_assert(detail::RequireForeignRole<Role>::value);
+    static_assert(detail::RequireLineageRequirement<Requirement>::value);
+    static_assert(detail::RequireComparandNotSubject<Role, typename detail::ComparandOf<Requirement>::type>::value);
 
     /// The role of the record the operand is read from.
     using role = Role;
@@ -818,6 +981,19 @@ template <typename Role, Node Operand>
     return RecordScopeNode<Role, detail::NoLineageRequirement, Operand> { {}, operand };
 }
 
+/// Reads @p operand from the record the context binds to @p Role, only if
+/// that record agrees with the compared one on every attribute the
+/// requirement names:
+/// `from_record<Reference>(var<Strength>, same_lineage<MaterialBatch, TestMethod>())`.
+/// See `lineage.hpp` for what agreement, disagreement and an unknown key
+/// each give.
+template <typename Role, Node Operand, typename Comparand, typename... Attrs>
+[[nodiscard]] constexpr RecordScopeNode<Role, LineageRequirement<Comparand, Attrs...>, Operand>
+from_record(Operand operand, LineageRequirement<Comparand, Attrs...>) noexcept
+{
+    return RecordScopeNode<Role, LineageRequirement<Comparand, Attrs...>, Operand> { {}, operand };
+}
+
 /// Evaluates a scope: its operand against the environment of the record
 /// @p environment binds to the scope's role.
 ///
@@ -828,14 +1004,26 @@ template <typename Role, Node Operand>
 /// below, so a value can never be attributed to a record it was not read
 /// from.
 ///
+/// With a lineage requirement, every attribute is compared first, before the
+/// operand is read, and reported to a sink that asks: any violated gives
+/// `DomainError`, otherwise any unknown gives absent, and only agreement
+/// reads the operand. An unbound record compares nothing.
+///
+/// A sink is told of the origin and of each attribute through
+/// `record_entered` and `lineage_checked` together: a sink defines both or
+/// neither, and one defining only one of them is told of neither.
+///
 /// Refused, each with one message and without evaluating the operand, so
 /// that no second message follows from it:
 /// - @p environment is not a `record_context` (`detail::RequireRecordContext`).
 ///   A scope nested in a scope meets this too, since the inner one is
 ///   evaluated against a record's plain environment;
-/// - the context binds no record to the role (`detail::RequireBoundRole`);
+/// - the context binds no record to the role, or none to the role a
+///   lineage requirement compares with (`detail::RequireBoundRole`);
 /// - the role is `ThisRecord`, refused by the node itself
-///   (`detail::RequireForeignRole`).
+///   (`detail::RequireForeignRole`);
+/// - a compared attribute either record does not declare
+///   (`detail::RequireDeclaredAttribute`).
 template <typename Rep = Rational, typename Role, typename Requirement, Node Operand, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(RecordScopeNode<Role, Requirement, Operand> const& node,
                                                            Env const& environment,
@@ -852,25 +1040,61 @@ template <typename Rep = Rational, typename Role, typename Requirement, Node Ope
     else
     {
         using Context = typename detail::RecordContextOf<Env>::type;
+        using ComparandRole = typename detail::ComparandOf<Requirement>::type;
+        constexpr bool gated = detail::isLineageRequirement<Requirement>;
         if constexpr (!Context::template binds<Role>)
         {
             static_assert(detail::RequireBoundRole<Role, Context>::value);
             return detail::nothing<Rep>();
         }
+        else if constexpr (gated && !Context::template binds<ComparandRole>)
+        {
+            static_assert(detail::RequireBoundRole<ComparandRole, Context>::value);
+            return detail::nothing<Rep>();
+        }
         else
         {
-            Context const& recordContext = detail::RecordContextOf<Env>::of(environment);
-            sink.entered(node);
-            auto const& foreignRecord = recordContext.template record<Role>();
-            // The origin, from the same record the operand is read from below,
-            // before anything inside the scope is recorded.
-            if constexpr (requires { sink.record_entered(detail::RecordOriginAccess::of(foreignRecord)); })
-                sink.record_entered(detail::RecordOriginAccess::of(foreignRecord));
-            Evaluated<Rep> const scopeValue = foreignRecord.is_bound()
-                                                  ? detail::dispatch<Rep>(node.operand, foreignRecord.environment(), sink)
-                                                  : detail::nothing<Rep>();
-            sink.produced(node, scopeValue);
-            return scopeValue;
+            using Subject = std::remove_cvref_t<decltype(std::declval<Context const&>().template record<Role>())>;
+            using ComparandRecord =
+                std::remove_cvref_t<decltype(std::declval<Context const&>().template record<
+                                             std::conditional_t<gated, ComparandRole, Role>>())>;
+            if constexpr (!detail::LineageDeclared<Requirement, Subject, ComparandRecord>::all)
+            {
+                static_assert(detail::RefuseUndeclaredLineage<Requirement, Subject, ComparandRecord>::value);
+                return detail::nothing<Rep>();
+            }
+            else
+            {
+                Context const& recordContext = detail::RecordContextOf<Env>::of(environment);
+                sink.entered(node);
+                auto const& foreignRecord = recordContext.template record<Role>();
+                // The origin, from the same record the operand is read from
+                // below, before anything inside the scope is recorded.
+                constexpr bool reports = requires(RecordOrigin const& openedFrom, LineageCheck const& attributeCheck,
+                                                  ConstraintOutcome const& attributeOutcome) {
+                    sink.record_entered(openedFrom);
+                    sink.lineage_checked(attributeCheck, attributeOutcome);
+                };
+                if constexpr (reports)
+                    sink.record_entered(detail::RecordOriginAccess::of(foreignRecord));
+
+                detail::LineageVerdict lineageVerdict = detail::LineageVerdict::Agreed;
+                if constexpr (gated)
+                    if (foreignRecord.is_bound())
+                        lineageVerdict = detail::check_lineage<reports>(
+                            Requirement {}, foreignRecord, recordContext.template record<ComparandRole>(), sink);
+
+                Evaluated<Rep> scopeValue = detail::nothing<Rep>();
+                if (foreignRecord.is_bound())
+                {
+                    if (lineageVerdict == detail::LineageVerdict::Violated)
+                        scopeValue = std::unexpected { ArithmeticError::DomainError };
+                    else if (lineageVerdict == detail::LineageVerdict::Agreed)
+                        scopeValue = detail::dispatch<Rep>(node.operand, foreignRecord.environment(), sink);
+                }
+                sink.produced(node, scopeValue);
+                return scopeValue;
+            }
         }
     }
 }

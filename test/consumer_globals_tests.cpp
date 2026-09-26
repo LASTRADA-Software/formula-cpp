@@ -47,7 +47,8 @@
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
-// unbound record, untraced and traced into `render_trace`. A template it does not reach is not
+// unbound record, untraced and traced into `render_trace`, and gated on
+// `same_lineage`, through `checked_explain`. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -136,6 +137,7 @@ int index;
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/lineage.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
@@ -174,6 +176,12 @@ struct Cylinder
 {
 };
 struct Reference
+{
+};
+struct MaterialBatch
+{
+};
+struct TestMethod
 {
 };
 
@@ -268,6 +276,13 @@ inline constexpr auto specimen = formula::environment(formula::Measured<Force> {
 inline constexpr auto elsewhere = formula::environment(formula::Measured<Force> { formula::Rational { 60'000 } },
                                                        formula::Measured<EdgeX> { formula::Rational { 139 } },
                                                        formula::Measured<Factor> { formula::Rational { 1 } });
+
+/// Records declaring lineage: the same batch, and a different method.
+inline constexpr auto lineageRecords = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), specimen,
+                                         formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(12)),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), elsewhere,
+                               formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(13)));
 
 inline constexpr auto boundRecords = formula::record_context(
     formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), specimen),
@@ -705,5 +720,19 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(formula::render_trace(recordTrace, { .maxSteps = 20 }).find(
                                "from record Reference (sample 23, test 3)")
                            != std::string::npos);
+
+    // A read gated on lineage: the batch agrees and the method does not, so
+    // the read is refused, and checked_explain keeps the trace that says why.
+    auto const gatedRead = formula::from_record<Reference>(var<Force>, formula::same_lineage<MaterialBatch, TestMethod>());
+    auto const refusedRead = formula::checked_explain<Force>(gatedRead, lineageRecords, north);
+    probe.checks.push_back(!refusedRead.has_value() && refusedRead.error().error == formula::ArithmeticError::DomainError);
+    auto const agreedRead = formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(var<Force>, formula::same_lineage<MaterialBatch>()), lineageRecords);
+    probe.checks.push_back(!refusedRead.has_value()
+                           && formula::render_trace(refusedRead.error().trace, { .maxSteps = 20 }).find(
+                                  "same TestMethod as this record: 12 and 13, violated")
+                                  != std::string::npos
+                           && agreedRead.has_value() && **agreedRead == formula::Rational { 60'000 }
+                           && lineageRecords.record<Reference>().lineage_of<MaterialBatch>() == std::uint64_t { 4411 });
     return probe;
 }

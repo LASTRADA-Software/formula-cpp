@@ -411,6 +411,19 @@ enum class StepKind : std::uint8_t
     /// `-Wshadow` has nothing to report; the gcc-release preset builds with
     /// it.
     RecordScope,
+    /// One attribute a lineage requirement compared before a scope read
+    /// (`lineage.hpp`): which attribute, against which record, and both keys,
+    /// in `Step::lineage`; the verdict in `Step::outcome` -- satisfied,
+    /// violated, or not checked when a key is unknown. Recorded as the
+    /// scope's first operands, in the order the requirement names them, and
+    /// without operands of its own.
+    ///
+    /// Recorded by `RecordingSink::lineage_checked`, not through
+    /// `detail::StepKindOf`: an attribute is not a `Node`. Nothing in
+    /// namespace `formula` is spelt `LineageChecked` -- the value is a
+    /// `LineageCheck` -- so GCC's `-Wshadow`, with which gcc-release builds,
+    /// has nothing to report.
+    LineageChecked,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1119,6 +1132,12 @@ struct Step
     ///
     /// Only the library builds a `RecordOrigin` -- see `record.hpp`.
     std::optional<RecordOrigin> record {};
+
+    /// For `LineageChecked`: the attribute compared, the record compared
+    /// with, and both keys. Its verdict is `outcome`. Empty otherwise.
+    ///
+    /// Only the library builds a `LineageCheck` -- see `lineage.hpp`.
+    std::optional<LineageCheck> lineage {};
 
     /// Indices of the steps this one consumed, in evaluation order.
     ///
@@ -2313,6 +2332,28 @@ class RecordingSink
         _trace->recordStack.push_back(openedFrom);
     }
 
+    /// Told, by a scope's evaluator, of one attribute its lineage requirement
+    /// compared, and the verdict, in the order the requirement names them --
+    /// after `record_entered` and before the operand is read. Records a step
+    /// with no operands of its own, which the scope's step then claims as an
+    /// operand, and stamps it with the scope's origin, as every step inside
+    /// the scope is.
+    ///
+    /// Public, for the reason `input_source` is: a caller handing it a copy
+    /// of a check by hand records that check, the boundary `record.hpp`'s file
+    /// comment states.
+    void lineage_checked(LineageCheck const& attributeCheck, ConstraintOutcome const& attributeOutcome)
+    {
+        Step<Rep> checkStep {};
+        checkStep.kind = StepKind::LineageChecked;
+        checkStep.lineage = attributeCheck;
+        checkStep.outcome = attributeOutcome;
+        if (!_trace->recordStack.empty())
+            checkStep.record = _trace->recordStack.back();
+        _trace->steps.push_back(std::move(checkStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
     /// Told which branch a `WhenNode` selected, right before it dispatches
     /// that branch. Not part of `SinkFor` (`sink.hpp`): `conditional.hpp`'s
     /// `checked_evaluate_si(WhenNode ...)` calls it through `if constexpr
@@ -3331,6 +3372,46 @@ template <Described Result, SeriesNode S, typename Env, Vocabulary V = DefaultVo
     std::expected<SeriesOutcome<Result, S::length>, SeriesFailure> seriesOutcome =
         checked_evaluate_series<Result>(expression, environment, RecordingSink<Rational, V> { recorded, vocabulary });
     return ExplainedSeries<Result, S::length> { std::move(seriesOutcome), std::move(recorded) };
+}
+
+/// Why `checked_explain` has no outcome: the arithmetic error, and the
+/// derivation recorded up to it. A refusal without the steps that led to it
+/// -- which attribute of a lineage requirement disagreed, say -- would say
+/// that the number was refused and not why.
+template <typename Rep = Rational>
+struct CheckedExplainFailure
+{
+    /// What `checked_evaluate` returned instead of an outcome.
+    ArithmeticError error {};
+    /// Every step recorded before the error, the failing step included.
+    Trace<Rep> trace {};
+};
+
+/// Evaluates @p expression for @p Result and records how, without throwing:
+/// `explain`'s counterpart through `checked_evaluate` rather than the
+/// throwing `evaluate`.
+///
+/// On success, exactly what `explain` returns. On an arithmetic error --
+/// including a read another record's lineage refused -- the error together
+/// with the trace recorded up to it, where `explain` would throw and keep
+/// nothing. The same `Rep = Rational` restriction and vocabulary as
+/// `explain`, for the same reasons.
+template <Described Result, typename Rep = Rational, Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::expected<Explained<Result, Rep>, CheckedExplainFailure<Rep>>
+checked_explain(Expression const& expression, Env const& environment, V const& vocabulary = V {})
+{
+    static_assert(std::is_same_v<Rep, Rational>,
+                  "formula: checked_explain only supports Rep = Rational, for the reason explain gives -- call "
+                  "checked_evaluate_si<Rep> directly with your own RecordingSink<Rep> to trace a double "
+                  "computation.");
+
+    Trace<Rep> recorded {};
+    RecordingSink<Rep, V> recordingSink { recorded, vocabulary };
+    std::expected<Outcome<Result>, ArithmeticError> const checked =
+        checked_evaluate<Result>(expression, environment, recordingSink);
+    if (!checked.has_value())
+        return std::unexpected { CheckedExplainFailure<Rep> { checked.error(), std::move(recorded) } };
+    return Explained<Result, Rep> { *checked, std::move(recorded) };
 }
 
 } // namespace formula

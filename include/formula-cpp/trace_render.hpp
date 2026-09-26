@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <optional>
 #include <span>
@@ -714,14 +715,15 @@ namespace detail
         return listed;
     }
 
-    /// A role's name as a trace line writes it. The **one** place a role's
-    /// name -- author text, from `tag_name` -- enters a trace line: both the
-    /// scope's own line and the origin clause on a quantity's line come
-    /// through `record_origin_text`, and it through here. Whatever escaping
-    /// author text in a trace line needs is applied here, once.
-    [[nodiscard]] inline std::string role_words(std::string_view roleName)
+    /// A role's or a lineage attribute's name as a trace line writes it. The
+    /// **one** place such a name -- author text, from `tag_name` -- enters a
+    /// trace line: the scope's own line and the origin clause on a quantity's
+    /// line come through `record_origin_text`, a lineage step through
+    /// `lineage_expression`, and both through here. Whatever escaping author
+    /// text in a trace line needs is applied here, once.
+    [[nodiscard]] inline std::string tag_words(std::string_view tagName)
     {
-        return std::string { roleName };
+        return std::string { tagName };
     }
 
     /// Which record a value was read from, in words: `from record Reference
@@ -731,12 +733,29 @@ namespace detail
     /// into Markdown stays plain text.
     [[nodiscard]] inline std::string record_origin_text(RecordOrigin const& readFrom)
     {
-        std::string originText = "from record " + role_words(readFrom.role());
+        std::string originText = "from record " + tag_words(readFrom.role());
         std::optional<RecordKey> const recordKey = readFrom.key();
         if (!recordKey.has_value())
             return originText + " (no record bound)";
         return originText + " (sample " + std::to_string(recordKey->sample().value()) + ", test "
                + std::to_string(recordKey->test().value()) + ")";
+    }
+
+    /// One lineage attribute's comparison: `same TestMethod as this record:
+    /// 12 and 13` -- the compared record's key first, then the read
+    /// record's, each `unknown` when it is. The verdict follows in the line.
+    [[nodiscard]] inline std::string lineage_expression(Step<Rational> const& recorded)
+    {
+        if (!recorded.lineage.has_value())
+            return "same lineage";
+        LineageCheck const& compared = *recorded.lineage;
+        auto const keyText = [](std::optional<std::uint64_t> lineageKey) {
+            return lineageKey.has_value() ? std::to_string(*lineageKey) : std::string { "unknown" };
+        };
+        std::string const comparandText =
+            compared.is_against_this_record() ? std::string { "this record" } : tag_words(compared.comparand());
+        return "same " + tag_words(compared.attribute()) + " as " + comparandText + ": "
+               + keyText(compared.comparand_key()) + " and " + keyText(compared.subject_key());
     }
 
     /// What a step computed, written in terms of the steps it consumed.
@@ -945,6 +964,8 @@ namespace detail
             // The derivation over the other record, then whose record it is.
             // With no record bound there is no operand to name: nothing was
             // read, and the line says so by origin alone.
+            case StepKind::LineageChecked:
+                return lineage_expression(step);
             case StepKind::RecordScope:
                 if (!step.record.has_value())
                     return step.operands.empty() ? std::string { "from another record" }
@@ -1993,6 +2014,10 @@ namespace detail
             return acceptance_expression(recorded) + acceptance_suffix(recorded);
         if (is_rejection_step(recorded.kind))
             return rejection_line(trace, stepIndex, recorded);
+        // A comparison, not a quantity: the attribute and both keys, then the
+        // verdict after a comma, as a typed-in input's source is given.
+        if (recorded.kind == StepKind::LineageChecked)
+            return lineage_expression(recorded) + ", " + constraint_outcome_text(recorded.outcome);
 
         // An input typed in but left empty was never going to be measured, so
         // "(not measured)" would be false of it, and ", entered by hand"
@@ -2069,6 +2094,24 @@ namespace detail
         return step_expression(recorded) + " = " + valueText + annotation;
     }
 
+    /// @p recorded as its line shows it. A scope's step claims its lineage
+    /// attribute steps as its first operands -- that is the record of what
+    /// was compared before the read -- but its line names the value it read,
+    /// so the attribute steps, each on a line of its own already, are left
+    /// out of the operands the line names. Every other step is its own line
+    /// as recorded.
+    [[nodiscard]] inline Step<Rational> as_rendered(Step<Rational> const& recorded,
+                                                    std::vector<Step<Rational>> const& allSteps)
+    {
+        if (recorded.kind != StepKind::RecordScope)
+            return recorded;
+        Step<Rational> shown = recorded;
+        std::erase_if(shown.operands, [&allSteps](std::size_t operandIndex) {
+            return operandIndex < allSteps.size() && allSteps[operandIndex].kind == StepKind::LineageChecked;
+        });
+        return shown;
+    }
+
     /// One step's line, without its number -- see `escaped_step_line` for
     /// what it holds. The one place author text is escaped: every piece of it
     /// in @p recorded is escaped into an `EscapedStep` here, before anything
@@ -2081,7 +2124,7 @@ namespace detail
                                                std::size_t& budget,
                                                std::span<LimitRow const> limits = {})
     {
-        EscapedStep const escaped { trace.steps[stepIndex] };
+        EscapedStep const escaped { as_rendered(trace.steps[stepIndex], trace.steps) };
         return escaped_step_line(trace, stepIndex, escaped.step, budget, limits);
     }
 } // namespace detail

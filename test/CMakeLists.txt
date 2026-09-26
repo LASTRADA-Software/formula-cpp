@@ -79,6 +79,7 @@ add_executable(formula-cpp-tests
     record_tests.cpp
     record_scope_tests.cpp
     record_trace_tests.cpp
+    lineage_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -1870,6 +1871,42 @@ formula_add_negative_test(record_origin_by_hand
 # no library static_assert is involved; measured wording in the phase 14
 # task 5 report.
 formula_add_negative_test(record_origin_specialised "RecordOrigin" REJECT "formula: ")
+
+# Phase 14, task 6: lineage requirements. Each case's own comment says why
+# its mistake is the only thing wrong with it; messages counted by hand are
+# in the phase 14 task 6 report.
+formula_add_negative_test(lineage_requirement_empty
+    "formula: this lineage requirement names no attribute"
+    REJECT "RequireAttributesNamedOnce")
+
+formula_add_negative_test(lineage_attribute_twice
+    "formula: this lineage requirement names the same attribute more than once"
+    REJECT "RequireSomeAttribute")
+
+formula_add_negative_test(lineage_record_declares_twice
+    "formula: this record declares the same lineage attribute more than once"
+    REJECT "RequireLineageEntries" "RequirePlainRole")
+
+# The duplicate rule is gated on every entry being a lineage entry; without
+# the gate the non-entry would also draw it.
+formula_add_negative_test(lineage_record_entry_not_lineage
+    "formula: a record takes only lineage entries after its environment"
+    REJECT "RequireAttributesDeclaredOnce")
+
+formula_add_negative_test(lineage_against_own_role
+    "formula: this lineage requirement compares the record it reads with itself"
+    REJECT "RequireBoundRole" "RequireDeclaredAttribute")
+
+# An attribute neither record declares: one message, not one per record. The
+# compared record is asked only once the read record is known to declare the
+# attribute; without that gate g++ and clang++ report both.
+formula_add_negative_test(lineage_attribute_undeclared
+    "formula: this lineage requirement compares an attribute the record does not declare"
+    REJECT "RequireProvided" "RequireBoundRole")
+
+formula_add_negative_test(record_scope_requirement_not_lineage
+    "formula: a record scope's requirement is not a lineage requirement"
+    REJECT "RequireForeignRole" "RequireComparandNotSubject")
 
 formula_add_negative_test(record_scope_nested
     "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
