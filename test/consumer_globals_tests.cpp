@@ -39,9 +39,24 @@
 // nothing. So this guards cl builds, and g++ builds for those four, for the
 // templates above.
 //
+// The list began with 47 names and was widened to 258 after a consumer's
+// `here` and `origin` were found hidden. Against the headers before that
+// round's renames, the widened guard made cl 19.51 report 97 declarations;
+// the other 19 renamed then are in templates the probe does not reach, or
+// hid a namespace (`formula::unit`) rather than a global. g++ 13.3 at
+// -Wshadow reported one more, which cl does not: a generic lambda's
+// parameter pack named `items`; g++ 14.2 and clang++ 20.1.8 at -Wshadow
+// reported nothing.
+//
 // The globals come after the standard headers and this test's own, whose
 // names are theirs. `index` is declared for cl-compatible compilers only:
-// glibc's <cstring> declares a function of that name at global scope.
+// glibc's <cstring> declares a function of that name at global scope. Left
+// out: `time`, which the C library declares as a function at global scope
+// (refused as a redeclaration by cl 19.51, clang-cl 22.1.3, g++ 13.3 and
+// 14.2, and clang++ 20.1.8 with libstdc++ and with libc++); and `min` and
+// `max`, the standard library's own algorithm names and a common pair of
+// macros -- both built as globals on those toolchains, and are left out
+// anyway.
 //
 // Every public header is included by name, and `hygiene.consumer-globals`
 // fails when one is missing from the list below.
@@ -54,7 +69,20 @@
 int result, value, text, step, mark, first, last, count, size, name, key, left, right, lhs, rhs, operand, outcome,
     error, symbol, position, converted, selected, selectedTag, expression, selection, outcomes, entry, rendered, row,
     band, keys, found, digits, scaled, numerator, denominator, quotient, sign, width, total, table, i, n, m,
-    environment, sink;
+    environment, sink, a, acc, accumulator, amount, area, arg, args, array, average, b, begin, block, bound, bounds,
+    buffer, c, capacity, cell, cells, character, chars, child, children, chunk, column, columns, comment, config,
+    context, copy, counter, ctx, cur, current, d, data, date, deadline, delay, delimiter, depth, description, digit,
+    done, duration, e, elapsed, element, elements, empty, end, env, epsilon, extent, f, factor, failure, field,
+    fields, file, flag, flags, fmt, force, format, g, h, head, height, here, hi, high, how, id, in, info, input,
+    interval, invalid, is, item, items, j, k, kind, l, label, length, level, limit, line, lines, list, lo, lookup,
+    low, lower, map, mass, maximum, mean, measurement, median, member, members, message, minimum, mode, next, node,
+    note, notes, number, numbers, offset, ok, option, options, origin, os, other, out, output, p, pair, param, params,
+    parent, part, parts, path, pattern, percent, period, piece, precision, prefix, pressure, prev, q, quantity, r,
+    range, rate, ratio, reading, readings, ready, record, records, rest, root, rows, s, sample, scale, section,
+    segment, separator, set, source, span, start, state, status, stop, str, stream, string, success, suffix, sum, t,
+    tail, target, temp, temperature, temporary, threshold, timeout, title, tmp, token, tokens, tolerance, tree, tuple,
+    type, types, u, unit, unitName, upper, v, valid, values, vector, view, volume, w, weight, what, when, where, who,
+    why, word, words, x, y, z;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -150,19 +178,19 @@ inline constexpr auto everything = formula::documented(
             formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))),
     formula::Citation { .title = "Everything", .reference = "Example Standard 1:2020", .section = "1" });
 
-inline constexpr auto limit = formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 1 }),
-                                                  formula::Verdict { "no load" });
+inline constexpr auto forceLimit = formula::constraint(
+    var<Force> >= formula::constant<unit::Newton>(formula::Rational { 1 }), formula::Verdict { "no load" });
 
 inline constexpr auto baseMethod = formula::method(
     formula::variants(formula::variant<Cube>(var<Factor> * var<Force> / (var<EdgeX> * var<EdgeX>) ),
                       formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints(limit));
+    formula::constraints(forceLimit));
 
 /// Every overlay operation, so that `apply` instantiates each one's
 /// `apply_operation` and every result check.
 inline constexpr auto everyOperation = formula::overlay(
-    formula::with_constraints(formula::constraints(limit), formula::Citation { .reference = "Example Standard 2" }),
+    formula::with_constraints(formula::constraints(forceLimit), formula::Citation { .reference = "Example Standard 2" }),
     formula::replace_variant<Cylinder>(formula::number(formula::Rational { 2 }) * var<Force> / (var<EdgeX> * var<EdgeX>) ),
     formula::with_constant<Factor>(formula::Rational { 1 }),
     formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>());
@@ -219,7 +247,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
     // Every surface that writes text, in every dialect.
     std::string pages = formula::render(everything) + formula::render(everything, north)
                         + formula::render<formula::Dialect::Markdown>(everything)
-                        + formula::render<formula::Dialect::LaTeX>(everything) + formula::render(limit);
+                        + formula::render<formula::Dialect::LaTeX>(everything) + formula::render(forceLimit);
     auto const documentation = formula::document(everything, north);
     auto const markdownDocumentation = formula::document<formula::Dialect::Markdown>(everything);
     auto const latexDocumentation = formula::document<formula::Dialect::LaTeX>(everything);
@@ -230,7 +258,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
     // Constraints, on their own and in methods, and every overlay operation.
     formula::Trace<> trace {};
     auto const setOutcomes =
-        formula::check_all(formula::constraints(limit), specimen, formula::RecordingSink { trace, north });
+        formula::check_all(formula::constraints(forceLimit), specimen, formula::RecordingSink { trace, north });
     auto const strength = formula::evaluate_method<Cube>(overlaid, specimen, formula::RecordingSink { trace, north });
     auto const verdicts = formula::check_method(overlaid, specimen, formula::RecordingSink { trace, north });
     auto const pinnedStrength = formula::evaluate_method<Cube>(pinned, specimen);
@@ -287,13 +315,13 @@ ConsumerGlobalsProbe probe_consumer_globals()
     pages += formula::render(std::get<1>(overlaid.variantSet.cases).expression, north);
 
     // Constraints and predicates on every surface of their own.
-    auto const constraintDocumentation = formula::document(limit, north);
-    auto const latexConstraintDocumentation = formula::document<formula::Dialect::LaTeX>(limit);
-    pages += formula::render(limit, north) + formula::render<formula::Dialect::Markdown>(limit.predicate, north)
-             + formula::render(limit.predicate);
+    auto const constraintDocumentation = formula::document(forceLimit, north);
+    auto const latexConstraintDocumentation = formula::document<formula::Dialect::LaTeX>(forceLimit);
+    pages += formula::render(forceLimit, north) + formula::render<formula::Dialect::Markdown>(forceLimit.predicate, north)
+             + formula::render(forceLimit.predicate);
     probe.checks.push_back(!constraintDocumentation.formula.empty());
     probe.checks.push_back(!latexConstraintDocumentation.formula.empty());
-    auto const checkedLimit = formula::check(limit, specimen, formula::RecordingSink { trace, north });
+    auto const checkedLimit = formula::check(forceLimit, specimen, formula::RecordingSink { trace, north });
     probe.checks.push_back(checkedLimit.is_satisfied());
 
     // Outcomes, measured values and environments, through their templates.
@@ -303,11 +331,13 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(verdictOutcome.is_verdict() && invalidOutcome.is_invalid() && emptyOutcome.is_empty());
     formula::Measured<EdgeX> const edge { formula::Rational { 150 } };
     auto const inMetres = formula::checked_convert_to<EdgeX>(edge);
-    auto const bounds = formula::checked_within_bounds(edge);
+    auto const withinBounds = formula::checked_within_bounds(edge);
     auto const declared = formula::checked_round_to_declared(edge, formula::RoundingMode::HalfAwayFromZero);
-    auto const doubled = formula::transform(edge, [](formula::Rational x) { return x * formula::Rational { 2 }; });
-    auto const summed = formula::combine<EdgeX>(edge, edge, [](formula::Rational x, formula::Rational y) { return x + y; });
-    probe.checks.push_back(inMetres.has_value() && bounds.has_value() && declared.has_value());
+    auto const doubled =
+        formula::transform(edge, [](formula::Rational measured) { return measured * formula::Rational { 2 }; });
+    auto const summed = formula::combine<EdgeX>(
+        edge, edge, [](formula::Rational augend, formula::Rational addend) { return augend + addend; });
+    probe.checks.push_back(inMetres.has_value() && withinBounds.has_value() && declared.has_value());
     probe.checks.push_back(doubled.value() == formula::Rational { 300 } && summed.value() == formula::Rational { 300 });
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
