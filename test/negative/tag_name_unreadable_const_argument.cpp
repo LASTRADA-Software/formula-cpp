@@ -7,8 +7,8 @@
 // leaving `Box<Cube>` -- a plainly readable name, and the name of a DIFFERENT
 // type. cl prints `Box<struct specimen::Cube const >`, so the compilers would
 // disagree as well. The one defect here that no character rule sees, which is
-// why the raw spelling is searched for `const` and `volatile`. This must not
-// compile.
+// why the normalizer reports whether a `const` or `volatile` qualified a part
+// of the type the name shows. This must not compile.
 //
 // Reached through evaluate_method, the way an author meets it.
 #include <formula-cpp/formula.hpp>

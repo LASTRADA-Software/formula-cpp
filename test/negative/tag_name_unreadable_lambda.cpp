@@ -16,7 +16,7 @@ namespace
 {
 // Straight from the lambda expression, not through a variable: `decltype`
 // of an `auto const` variable is the closure type made const, which the
-// whole-word `const` rule refuses as well, and this case must pin the
+// cv rule refuses as well, and this case must pin the
 // character rule alone.
 using LambdaTag = decltype([] {});
 } // namespace

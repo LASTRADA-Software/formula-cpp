@@ -87,7 +87,21 @@ struct NormalizedTypeName
     std::array<char, Capacity> chars {};
     /// How many of `chars` are the name.
     std::size_t size = 0;
+    /// Whether `const` or `volatile` qualifies a part of the type the name
+    /// shows -- see `normalized_type_name`.
+    bool qualified = false;
 };
+
+/// True when @p text at @p position begins with @p word as a whole word --
+/// neither preceded nor followed by an identifier byte.
+[[nodiscard]] constexpr bool word_at(std::string_view text, std::size_t position, std::string_view word) noexcept
+{
+    if (!text.substr(position).starts_with(word))
+        return false;
+    std::size_t const end = position + word.size();
+    return (position == 0 || !is_identifier_byte(text[position - 1]))
+           && (end == text.size() || !is_identifier_byte(text[end]));
+}
 
 /// True when @p text at @p position begins with @p word followed by a space.
 [[nodiscard]] constexpr bool starts_with_word(std::string_view text, std::size_t position, std::string_view word) noexcept
@@ -124,7 +138,9 @@ struct NormalizedTypeName
 /// **What is not undone, because it is not spelling but meaning.** cl prints
 /// a `bool`, `char` or enumeration template argument as its number --
 /// `Flag<1>`, `Ch<120>`, `ByEnum<0>` where the others print `Flag<true>`,
-/// `Ch<'x'>`, `ByEnum<E::A>` -- and `long long` as `__int64`, where clang
+/// `Ch<'x'>`, `ByEnum<E::A>` (a `char` argument never reaches a trace on
+/// clang or GCC, since `is_plain_type_name` refuses the `'`, but cl's
+/// `Ch<120>` does) -- and `long long` as `__int64`, where clang
 /// prints `long long` and GCC `long long int`. No parse of the text can recover what cl did not print.
 /// Nor can a defaulted template argument: cl prints it and clang and GCC
 /// leave it out, so `Opt<Cube>` for `template <typename T, typename U = void>
@@ -135,6 +151,23 @@ struct NormalizedTypeName
 /// A tag whose name must read the same on every compiler, and a template
 /// specialization with such arguments is one, customizes its spelling
 /// through `TagName` (`tag.hpp`).
+///
+/// **`qualified` says whether a `const` or `volatile` belongs to what the
+/// name shows**, which the name itself cannot be trusted to say: the `::`
+/// cut takes a leading `const ` with the scope it cuts, so `TagBox<const
+/// ns::A>` reads `TagBox<A>` on clang and GCC -- the name of a different
+/// type. A cv word counts when it qualifies a component the name keeps, and
+/// not when it sits in the argument list of a scope the name discards:
+/// `Outer<const int>::Inner` reads `Inner`, and the `const` qualified
+/// `Outer`'s argument, not `Inner`. Hence three flags per level -- a word
+/// read in the component itself survives that component's `::` cut, since it
+/// qualifies the name that follows; a word from a closed inner list does
+/// not, since that list belonged to the scope cut away; and a word from an
+/// earlier component of the same list is already settled. cl prints a cv
+/// qualifier after the type, `TagBox<struct ns::A const >`, where it is kept
+/// text, and also prints defaulted arguments, so `Opt<Cube>` for `template
+/// <typename T, typename U = const int> struct Opt` is `Opt<Cube, int
+/// const>` there -- qualified on cl alone, measured on all four.
 template <std::size_t Capacity>
 [[nodiscard]] consteval NormalizedTypeName<Capacity> normalized_type_name(std::string_view argument) noexcept
 {
@@ -142,6 +175,14 @@ template <std::size_t Capacity>
     // Where the component being written began, per level of `<` nesting.
     std::array<std::size_t, Capacity + 1> componentStart {};
     std::size_t depth = 0;
+
+    // Where a `const` or `volatile` was read, per level: in the component
+    // being written itself (`own`), inside an argument list that component
+    // has closed (`nested`), or in an earlier, finished component of the
+    // same list (`listed`). See the function comment for why the three.
+    std::array<bool, Capacity + 1> own {};
+    std::array<bool, Capacity + 1> nested {};
+    std::array<bool, Capacity + 1> listed {};
 
     auto const push = [&](char c) {
         if (result.size < Capacity)
@@ -154,6 +195,9 @@ template <std::size_t Capacity>
         char const c = argument[position];
         bool const atComponentStart = result.size == componentStart[depth];
 
+        if (word_at(argument, position, "const") || word_at(argument, position, "volatile"))
+            own[depth] = true;
+
         if (atComponentStart
             && (starts_with_word(argument, position, "struct") || starts_with_word(argument, position, "class")
                 || starts_with_word(argument, position, "union") || starts_with_word(argument, position, "enum")))
@@ -165,6 +209,10 @@ template <std::size_t Capacity>
         else if (argument.substr(position).starts_with("::"))
         {
             result.size = componentStart[depth];
+            // The scope being cut away is discarded, and so is anything its
+            // own argument list said; a cv word of this level still
+            // qualifies the name that follows.
+            nested[depth] = false;
             position += 2;
         }
         else if (c == '<')
@@ -172,6 +220,7 @@ template <std::size_t Capacity>
             push(c);
             ++depth;
             componentStart[depth] = result.size;
+            own[depth] = nested[depth] = listed[depth] = false;
             ++position;
         }
         else if (c == '>')
@@ -180,7 +229,11 @@ template <std::size_t Capacity>
                 --result.size;
             push(c);
             if (depth > 0)
+            {
+                bool const closedQualified = own[depth] || nested[depth] || listed[depth];
                 --depth;
+                nested[depth] = nested[depth] || closedQualified;
+            }
             ++position;
         }
         else if (c == ',')
@@ -191,6 +244,8 @@ template <std::size_t Capacity>
             while (position < argument.size() && argument[position] == ' ')
                 ++position;
             componentStart[depth] = result.size;
+            listed[depth] = listed[depth] || own[depth] || nested[depth];
+            own[depth] = nested[depth] = false;
         }
         else
         {
@@ -198,37 +253,8 @@ template <std::size_t Capacity>
             ++position;
         }
     }
+    result.qualified = own[0] || nested[0] || listed[0];
     return result;
-}
-
-/// True when @p text contains @p word as a whole word -- not preceded or
-/// followed by an identifier byte.
-[[nodiscard]] constexpr bool contains_word(std::string_view text, std::string_view word) noexcept
-{
-    for (std::size_t position = text.find(word); position != std::string_view::npos;
-         position = text.find(word, position + 1))
-    {
-        bool const startsWord = position == 0 || !is_identifier_byte(text[position - 1]);
-        std::size_t const end = position + word.size();
-        bool const endsWord = end == text.size() || !is_identifier_byte(text[end]);
-        if (startsWord && endsWord)
-            return true;
-    }
-    return false;
-}
-
-/// True when @p argument -- a type as the compiler printed it, before
-/// `normalized_type_name` -- mentions `const` or `volatile` anywhere.
-///
-/// Asked of the RAW argument because the normalizer cannot be trusted with
-/// it: a `::` cuts a component back to its start, and `const ` is part of
-/// the component, so `TagBox<const ns::A>` normalizes to `TagBox<A>` on
-/// clang and GCC -- a plainly readable name, and the name of a different
-/// type. cl prints `TagBox<struct ns::A const >`, `A const` once normalized,
-/// so the compilers would disagree as well.
-[[nodiscard]] constexpr bool names_cv_qualifier(std::string_view argument) noexcept
-{
-    return contains_word(argument, "const") || contains_word(argument, "volatile");
 }
 
 /// True when a normalized name reads as a class name and its template
@@ -253,10 +279,22 @@ template <std::size_t Capacity>
 ///  - an unnamed class is `(unnamed struct at file.cpp:12:17)` from clang,
 ///    `<unnamed struct>` from GCC and `<unnamed-type-member>` from cl. A
 ///    class named for linkage by a typedef, `typedef struct { } Foo;`, is
-///    `Foo` on all four, and passes.
+///    `Foo` on all four, and passes;
+///  - either of the last two as a template ARGUMENT keeps its placeholder
+///    once the `::` cut has taken its scope: `TagBox<<lambda_1_>>` and
+///    `TagBox<<unnamed-type-member>>` from cl, `TagBox<<unnamed struct>>`
+///    from GCC. Hence the second rule: every argument starts with a letter,
+///    a digit, `_` or `-`, never a `<`;
+///  - and three kinds of readable non-type argument are refused as well,
+///    because the compilers disagree about them: a `char`, `Ch<'x'>` from
+///    clang and GCC and `Ch<120>` from cl (which passes there); a
+///    floating-point value, `Real<1.5e+0>` from GCC, `Real<1.500000e+00>`
+///    from clang and `Real<1.500000>` from cl; and a class-type value,
+///    `Sized<Dim{3}>`, `Sized<Dim{int:3}>` on cl.
 ///
-/// A name that begins with a non-ASCII letter -- a legal C++23 identifier --
-/// is refused too, which is the price of stating the rule in bytes.
+/// A name, or an argument, that begins with a non-ASCII letter -- a legal
+/// C++23 identifier -- is refused too, which is the price of stating the
+/// rule in bytes.
 [[nodiscard]] constexpr bool is_plain_type_name(std::string_view name) noexcept
 {
     if (name.empty())
@@ -264,6 +302,26 @@ template <std::size_t Capacity>
     char const first = name.front();
     if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_'))
         return false;
+    // Every argument starts with a letter, a digit, `_` or `-` (a negative
+    // number) -- never a `<`, which is how a compiler's placeholder survives
+    // inside an argument list once the `::` cut has taken its scope.
+    for (std::size_t index = 0; index < name.size(); ++index)
+    {
+        bool const startsArgument =
+            name[index] == '<' || (name[index] == ' ' && index > 0 && name[index - 1] == ',');
+        if (!startsArgument)
+            continue;
+        if (index + 1 == name.size())
+            return false;
+        char const next = name[index + 1];
+        // An empty list, `Box<>`, is a specialization whose every argument
+        // was defaulted, as clang and GCC print it.
+        if (name[index] == '<' && next == '>')
+            continue;
+        if (!((next >= 'a' && next <= 'z') || (next >= 'A' && next <= 'Z') || (next >= '0' && next <= '9')
+              || next == '_' || next == '-'))
+            return false;
+    }
     return name.find_first_of("(){}`\\/.*&'\"") == std::string_view::npos;
 }
 
@@ -313,7 +371,7 @@ struct TypeNameStorage
     /// Whether the name, once found, can be shown as it stands -- see
     /// `is_plain_type_name`. Meaningful only when `recognised`.
     static constexpr bool plain =
-        is_plain_type_name(std::string_view { chars.data(), normalized.size }) && !names_cv_qualifier(argument);
+        is_plain_type_name(std::string_view { chars.data(), normalized.size }) && !normalized.qualified;
 };
 
 /// The name of class type @p T as written in its declaration, unqualified --

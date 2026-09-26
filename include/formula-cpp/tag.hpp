@@ -88,9 +88,13 @@ namespace detail
 /// is spelled here. See `detail::normalized_type_name` for what is and is not
 /// evened out.
 ///
-/// **And for a tag whose reflected name is refused** -- a lambda, an unnamed
-/// class, a specialization over a `const` type, a function type, a pointer
-/// or a cast. `RequireReadableTagName` says why; a non-empty spelling here
+/// **And for a tag whose reflected name is refused** -- a lambda or an
+/// unnamed class, or a specialization with one as an argument, or over a
+/// `const` type, a function type, a pointer or a cast, or with a `char`,
+/// floating-point or class-type value as an argument (`Ch<'x'>`,
+/// `Real<1.5>`, `Sized<Dim{3}>`), which the compilers print differently --
+/// cl prints `Ch<120>` and accepts it, so such a tag compiles there and not
+/// elsewhere until it is named here. `RequireReadableTagName` says why; a non-empty spelling here
 /// is never refused.
 template <typename Tag>
 struct TagName: detail::TagNameNotCustomized
@@ -190,7 +194,7 @@ struct RequireUnqualifiedTagName
 /// plainly: it is not a class name and its template arguments alone, or the
 /// compiler's spelling of @p Tag mentions `const` or `volatile`, which the
 /// normalizer drops without a trace. See `detail::is_plain_type_name` and
-/// `detail::names_cv_qualifier` for what each refuses and what the compilers
+/// `NormalizedTypeName::qualified` for what each refuses and what the compilers
 /// print.
 ///
 /// **A wrong name is worse than none, and a name that differs per compiler
@@ -211,10 +215,12 @@ struct RequireReadableTagName
 {
     static_assert(!detail::TypeNameStorage<Tag>::recognised || detail::TypeNameStorage<Tag>::plain,
                   "formula: this tag's name, as the compiler spells it, cannot be shown plainly -- it is a "
-                  "lambda, an unnamed class, or a template specialization whose arguments are const- or "
-                  "volatile-qualified, function types, pointers or casts, so the name would be wrong or would "
-                  "differ between compilers; the tag appears in this diagnostic as template argument Tag of "
-                  "RequireReadableTagName -- specialise formula::TagName for it to say how it is spelled");
+                  "lambda or an unnamed class, or it has one as a template argument, or it is a template "
+                  "specialization whose arguments are const- or volatile-qualified, function types, pointers, "
+                  "casts, or char, floating-point or class-type values, which the compilers print differently, "
+                  "so the name would be wrong or would differ between compilers; the tag appears in this "
+                  "diagnostic as template argument Tag of RequireReadableTagName -- specialise formula::TagName "
+                  "for it to say how it is spelled");
 
     /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
     static constexpr bool value = true;

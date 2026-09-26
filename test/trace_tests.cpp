@@ -1646,3 +1646,33 @@ TEST_CASE("an overlay applied at run time still counts in the method as publishe
     CHECK(afterPin.steps[afterPin.root()].variantIndex == 1);
     CHECK(afterPin.steps[afterPin.root()].variantCount == 3);
 }
+
+TEST_CASE("overlay steps compose, and the position still counts in the method as published", "[trace][method][overlay]")
+{
+    // Two prunes in ONE overlay: the second is applied to the method the
+    // first produced, whose layout is already `{ 1, 2 }` of 3.
+    constexpr auto twoPrunes =
+        formula::apply(formula::overlay(formula::prune_variant<Plate>(), formula::prune_variant<Disc>()), bearing);
+    formula::Trace<> afterTwoPrunes {};
+    (void) formula::evaluate_method<Ring>(twoPrunes, loadOn(100, 50), formula::RecordingSink<> { afterTwoPrunes });
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantIndex == 2);
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantCount == 3);
+
+    // A prune, then a pin: two `apply` calls, since one overlay refuses both.
+    // The pin picks from the pruned layout, and keeps the Ring's own place.
+    constexpr auto pruneThenPin = formula::apply(formula::overlay(formula::pin_variant<Ring>()),
+                                                 formula::apply(formula::overlay(formula::prune_variant<Plate>()), bearing));
+    formula::Trace<> afterPruneThenPin {};
+    (void) formula::evaluate_method<Ring>(pruneThenPin, loadOn(100, 50), formula::RecordingSink<> { afterPruneThenPin });
+    CHECK(afterPruneThenPin.steps[afterPruneThenPin.root()].variantIndex == 2);
+    CHECK(afterPruneThenPin.steps[afterPruneThenPin.root()].variantCount == 3);
+
+    // Two prunes by two `apply` calls, in the order that removes the MIDDLE
+    // variant first, so the second prune acts on the layout `{ 0, 2 }`.
+    constexpr auto twoApplies = formula::apply(formula::overlay(formula::prune_variant<Plate>()),
+                                               formula::apply(formula::overlay(formula::prune_variant<Disc>()), bearing));
+    formula::Trace<> afterTwoApplies {};
+    (void) formula::evaluate_method<Ring>(twoApplies, loadOn(100, 50), formula::RecordingSink<> { afterTwoApplies });
+    CHECK(afterTwoApplies.steps[afterTwoApplies.root()].variantIndex == 2);
+    CHECK(afterTwoApplies.steps[afterTwoApplies.root()].variantCount == 3);
+}

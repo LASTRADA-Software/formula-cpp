@@ -34,6 +34,9 @@ struct TagSized;
 template <typename A, typename B>
 struct TagPair;
 
+template <typename T, typename U = int const>
+struct TagDefaultedConst;
+
 template <bool B>
 struct TagFlag;
 
@@ -239,17 +242,52 @@ TEST_CASE("a class named for linkage by a typedef has a name, and it is shown", 
     STATIC_REQUIRE(tag_name<TagLinkageNamed>() == "TagLinkageNamed");
 }
 
-TEST_CASE("const and volatile are found as whole words in the raw spelling, and only there", "[tag]")
+TEST_CASE("a cv qualifier counts where the name shows it, and not in a scope it discards", "[tag]")
 {
-    using formula::detail::names_cv_qualifier;
-    STATIC_REQUIRE(names_cv_qualifier("TagBox<const ns::A>"));
-    STATIC_REQUIRE(names_cv_qualifier("struct TagBox<struct ns::A const >"));
-    STATIC_REQUIRE(names_cv_qualifier("TagBox<volatile A>"));
+    using formula::detail::normalized_type_name;
+    // Dropped with the scope the `::` cut takes, and so the name would be
+    // another type's: clang and GCC spell it this way.
+    STATIC_REQUIRE(normalized_type_name<64>("TagBox<const ns::A>").qualified);
+    STATIC_REQUIRE(normalized_type_name<64>("TagBox<volatile ns::A>").qualified);
+    // cl spells it after the type, where the name keeps it.
+    STATIC_REQUIRE(normalized_type_name<64>("struct TagBox<struct ns::A const >").qualified);
+    // In a later argument, and deeper.
+    STATIC_REQUIRE(normalized_type_name<64>("TagPair<int, const ns::A>").qualified);
+    STATIC_REQUIRE(normalized_type_name<64>("TagBox<TagBox<const ns::A>>").qualified);
+    // In the argument list of an enclosing scope the name discards: the
+    // `const` qualified that scope's argument, not the tag.
+    STATIC_REQUIRE(!normalized_type_name<64>("Outer<const int>::Inner").qualified);
+    STATIC_REQUIRE(!normalized_type_name<64>("struct Outer<int const >::Inner").qualified);
+    STATIC_REQUIRE(!normalized_type_name<64>("TagBox<Outer<const int>::Inner>").qualified);
+    // But a scope's argument list is not a licence for what follows it.
+    STATIC_REQUIRE(normalized_type_name<64>("TagBox<const Outer<int>::Inner>").qualified);
     // Part of a longer identifier is not the keyword.
-    STATIC_REQUIRE(!names_cv_qualifier("TagBox<constant>"));
-    STATIC_REQUIRE(!names_cv_qualifier("TagBox<const_tag>"));
-    STATIC_REQUIRE(!names_cv_qualifier("TagBox<Myconst>"));
-    STATIC_REQUIRE(!names_cv_qualifier("volatility"));
+    STATIC_REQUIRE(!normalized_type_name<64>("TagBox<constant>").qualified);
+    STATIC_REQUIRE(!normalized_type_name<64>("TagBox<const_tag>").qualified);
+    STATIC_REQUIRE(!normalized_type_name<64>("TagBox<Myconst>").qualified);
+    STATIC_REQUIRE(!normalized_type_name<64>("volatility").qualified);
+}
+
+TEST_CASE("a tag nested in a class template over a const type is named, since the const is not its own", "[tag]")
+{
+    STATIC_REQUIRE(tag_name<TagTemplateHolder<int const>::Member>() == "Member");
+    STATIC_REQUIRE(tag_name<TagBox<TagTemplateHolder<int const>::Member>>() == "TagBox<Member>");
+}
+
+TEST_CASE("a defaulted const argument is shown only by cl, and refused only there", "[tag]")
+{
+    // cl prints the defaulted argument, `TagDefaultedConst<TagGlobal, int
+    // const>`, where its `const` is part of the name shown; clang and GCC
+    // leave it out, and name the tag. So this tag compiles everywhere but
+    // on cl, where `TagName` is needed -- pinned here rather than left to a
+    // comment.
+    using Storage = formula::detail::TypeNameStorage<TagDefaultedConst<TagGlobal>>;
+#if defined(_MSC_VER) && !defined(__clang__)
+    STATIC_REQUIRE(!Storage::plain);
+#else
+    STATIC_REQUIRE(Storage::plain);
+    STATIC_REQUIRE(tag_name<TagDefaultedConst<TagGlobal>>() == "TagDefaultedConst<TagGlobal>");
+#endif
 }
 
 TEST_CASE("a plain name is a class name and its arguments, and nothing else", "[tag]")
@@ -266,4 +304,15 @@ TEST_CASE("a plain name is a class name and its arguments, and nothing else", "[
     STATIC_REQUIRE(!is_plain_type_name("TagBox<'x'>"));
     STATIC_REQUIRE(!is_plain_type_name("TagBox<1.5>"));
     STATIC_REQUIRE(!is_plain_type_name("9Lives"));
+    // Every argument starts with a letter, a digit, `_` or `-`: a compiler's
+    // placeholder, nested, starts with `<`.
+    STATIC_REQUIRE(is_plain_type_name("TagSized<-3>"));
+    STATIC_REQUIRE(is_plain_type_name("TagPair<int, _Tail>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<<lambda_1_>>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<<unnamed struct>>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagPair<int, <unnamed-type-member>>"));
+    STATIC_REQUIRE(is_plain_type_name("TagBox<>"));
+    STATIC_REQUIRE(!is_plain_type_name("TagBox<"));
+    // A class-type value.
+    STATIC_REQUIRE(!is_plain_type_name("TagSized<Dim{3}>"));
 }

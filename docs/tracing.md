@@ -352,12 +352,16 @@ in three different ways, and cl alone in two. A class template specialization ke
 cannot be evened out: cl prints a `bool`, `char` or enumeration argument as a
 number, `Flag<1>` where the others print `Flag<true>`, and it prints a
 defaulted argument the others leave out, `Opt<Cube, void>` for `Opt<Cube>`.
-And some tags have no reflected name that could be shown at all: a lambda, an
-unnamed class, or a specialization over a `const` type, a function type, a
-pointer or a cast. The compilers print those as file paths, as fragments, or
--- for `TagBox<const ns::A>` -- as a name that, once its qualifiers are gone,
-is `TagBox<A>`: the name of a different type. Rather than record a wrong name,
-the library refuses to compile such a tag and says to name it. An author who wants a
+And some tags have no reflected name that could be shown at all: a lambda or
+an unnamed class, or a specialization with one as an argument, or over a
+`const` type, a function type, a pointer or a cast. The compilers print those
+as file paths, as placeholders, as fragments, or -- for `TagBox<const ns::A>`
+-- as a name that, once its qualifiers are gone, is `TagBox<A>`: the name of
+a different type. A `char`, floating-point or class-type value as an argument
+is refused too, because the compilers print it differently: `Ch<'x'>` from
+clang and GCC is `Ch<120>` from cl, which cl then accepts, so such a tag
+compiles on cl and nowhere else until it is named. Rather than record a wrong
+name, the library refuses to compile such a tag and says to name it. An author who wants a
 tag to read the same everywhere, or to read the way a published method words
 the variant, specializes `formula::TagName` (`tag.hpp`), which has the shape
 and the refusals of `EnumeratorName`:

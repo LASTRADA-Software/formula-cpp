@@ -442,9 +442,9 @@ formula_add_negative_test(tag_name_dangling_view
 # A tag whose reflected name cannot be shown plainly (`RequireReadableTagName`,
 # `tag.hpp`), one case per shape the two rules exist for. The first three are
 # refused by the character rule and compile without it; the const argument is
-# refused only by the whole-word `const` search of the raw spelling, and
-# compiles without that -- each deletion measured on cl, clang-cl, clang and
-# GCC.
+# refused only by the normalizer's cv verdict (`NormalizedTypeName::qualified`),
+# and compiles without that -- each deletion measured on cl, clang-cl, clang
+# and GCC.
 formula_add_negative_test(tag_name_unreadable_lambda
     "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
 
@@ -455,6 +455,16 @@ formula_add_negative_test(tag_name_unreadable_function_argument
     "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
 
 formula_add_negative_test(tag_name_unreadable_const_argument
+    "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
+
+# The same placeholders one level down, as a template argument, where the
+# whole name starts with a letter. Refused on cl and GCC by the rule that
+# every argument starts with a letter, a digit, `_` or `-`, and compiled
+# there without it; clang is refused by the `(` of its own spelling either way.
+formula_add_negative_test(tag_name_unreadable_nested_lambda
+    "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
+
+formula_add_negative_test(tag_name_unreadable_nested_unnamed
     "formula: this tag's name, as the compiler spells it, cannot be shown plainly")
 
 formula_add_negative_test(exact_lookup_int_key_table
