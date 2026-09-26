@@ -2050,11 +2050,13 @@ namespace detail
             annotation = rounding_rule_suffix(recorded);
         // A constant that replaced a value a person typed in says so, inside
         // the clause that says who fixed it: the typed value was not used, and
-        // a reader must not assume it was.
+        // a reader must not assume it was. An entry typed in empty says that
+        // too, in the words a typed-in empty input has: no value was replaced.
         else if (recorded.kind == StepKind::OverriddenConstant)
             annotation = recorded.inputSource == ValueSource::ManuallyEntered
                              ? " [fixed by " + overlay_source_text(recorded.citation)
-                                   + ", replacing a value entered by hand]"
+                                   + (recorded.replacedEntryEmpty ? ", replacing a value entered by hand as empty]"
+                                                                  : ", replacing a value entered by hand]")
                              : overridden_constant_suffix(recorded.citation);
         else if (recorded.kind == StepKind::SnappedToPermitted)
             annotation = snap_suffix(recorded);

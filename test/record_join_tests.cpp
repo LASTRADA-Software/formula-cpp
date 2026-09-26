@@ -21,7 +21,8 @@ TEST_CASE("an overlaid method reads from another record, with the overlay reachi
     // 3.88 MPa is 1.5464, which the overlay's rule rounds to 1.55. The wrong
     // answers: no overlay, 6 / 4 = 1.5 under the method's own 0.1; the
     // overlay outside the scope only, keeping the reference's typed-in 1,
-    // 1.50; read from this record, 6 / (6 x 0.97) = 1.03.
+    // 1.50; read from this record, 6 / (90 000 N / (197 mm x 103 mm) x 0.97)
+    // = 6 / 4.3024 = 1.39.
     constexpr auto value = formula::evaluate_method<Cube>(overlaid, context());
     STATIC_REQUIRE(value.has_value());
     STATIC_REQUIRE(**value == formula::Rational { 155, 100 });
@@ -108,11 +109,12 @@ TEST_CASE("check_method through a context reads the constraint's value from the 
     CHECK(constraintOperandIsForeign);
 }
 
-TEST_CASE("the joined method agrees across translation units", "[record-join]")
+TEST_CASE("the joined method crosses translation units by its type", "[record-join]")
 {
-    CHECK(page() == record_join_page_in_other_tu());
-    CHECK(trace() == record_join_trace_in_other_tu());
-    auto const theirs = record_join_value_in_other_tu();
+    // The other unit's function takes the method, so this call links only if
+    // both units see one type (see `record_cross_tu.hpp`); the value then
+    // catches a split that changes the result.
+    auto const theirs = record_join_evaluate_in_other_tu(overlaid);
     REQUIRE(theirs.has_value());
     CHECK(**theirs == formula::Rational { 155, 100 });
 }
@@ -139,17 +141,19 @@ inline constexpr auto deriveRatio = formula::overlay(formula::add_derived<EdgeRa
 TEST_CASE("a constant and a derived quantity reach inside a scope in either order, to the same method", "[record-join]")
 {
     // Judged against what is produced: the two orders give the same method
-    // type, the same page and the same value. 0.97 x 139/103 here, times
-    // 0.97 x 139/103 x 57 268 N = 74 965.48 N there, is 98 131.997 N, rounded
-    // to 98 132 (half away from zero). Leaving either quantity unsubstituted inside the scope
-    // would read the reference's own shape factor, or ask its environment for
-    // an edge ratio it does not hold.
+    // type, the same page and the same value. 0.97 x 197/103 here (197 / 103
+    // mm), times 0.97 x 139/103 x 57 268 N = 74 965.48 N there (139 / 103
+    // mm), is 139 079.16 N, rounded to 139 079 N. Leaving either quantity
+    // unsubstituted inside the scope would read the reference's own shape
+    // factor, or ask its environment for an edge ratio it does not hold;
+    // deriving the ratio from this record's edges inside the scope would give
+    // 197 112 N.
     constexpr auto fixedFirst = formula::apply(deriveRatio, formula::apply(fixShape, bothPlaces));
     constexpr auto derivedFirst = formula::apply(fixShape, formula::apply(deriveRatio, bothPlaces));
     STATIC_REQUIRE(std::is_same_v<decltype(fixedFirst), decltype(derivedFirst)>);
     STATIC_REQUIRE(formula::evaluate_method<Cube>(fixedFirst, context())
                    == formula::evaluate_method<Cube>(derivedFirst, context()));
-    STATIC_REQUIRE(**formula::evaluate_method<Cube>(fixedFirst, context()) == formula::Rational { 98'132 });
+    STATIC_REQUIRE(**formula::evaluate_method<Cube>(fixedFirst, context()) == formula::Rational { 139'079 });
     CHECK(formula::render(std::get<0>(fixedFirst.variantSet.cases).expression)
           == formula::render(std::get<0>(derivedFirst.variantSet.cases).expression));
 }
@@ -161,7 +165,7 @@ namespace
 inline constexpr auto fixedHere = formula::apply(
     formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, annex)),
     formula::method(
-        formula::variants(formula::variant<Cube>(var<ShapeFactor>* var<Force>)),
+        formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<Force>)),
         formula::rounding_rule<unit::Newton, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(),
         formula::constraints()));
 
@@ -217,4 +221,72 @@ TEST_CASE("an overlay's constant that replaced a measured value, or none, says o
     CHECK(overNothing.kind == formula::StepKind::OverriddenConstant);
     CHECK_FALSE(overNothing.inputSource.has_value());
     CHECK(nothingText.find("replacing") == std::string::npos);
+}
+
+TEST_CASE("one constant fixed here and inside a scope traces each step with its own record and source",
+          "[record-join]")
+{
+    // The task 8 review's L1. This record's shape factor was measured and the
+    // reference's typed in, so a step stamped with the other's origin, or the
+    // two sources swapped, reads differently.
+    constexpr auto fixedBoth = formula::apply(deriveRatio, formula::apply(fixShape, bothPlaces));
+    formula::Trace<> recorded {};
+    (void) formula::evaluate_method<Cube>(fixedBoth, context(), formula::RecordingSink { recorded });
+
+    std::size_t fixedSteps = 0;
+    for (formula::Step<> const& step: recorded.steps)
+    {
+        if (step.kind != formula::StepKind::OverriddenConstant)
+            continue;
+        ++fixedSteps;
+        if (step.record.has_value())
+        {
+            CHECK(step.record->role() == "Reference");
+            CHECK(step.inputSource == formula::ValueSource::ManuallyEntered);
+        }
+        else
+            CHECK(step.inputSource == formula::ValueSource::Measured);
+    }
+    CHECK(fixedSteps == 2);
+}
+
+TEST_CASE("an overlay's constant that replaced an entry typed in empty says so, here and inside a scope",
+          "[record-join]")
+{
+    // The task 8 review's M1: no value was replaced, and the line says what
+    // the entry held, in the words a typed-in empty input has.
+    auto const [overEmpty, emptyText] =
+        fixed_step_over(formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
+                                             formula::entered(formula::Measured<ShapeFactor>::absent())));
+    INFO(emptyText);
+    CHECK(overEmpty.inputSource == formula::ValueSource::ManuallyEntered);
+    CHECK(overEmpty.replacedEntryEmpty);
+    CHECK(emptyText.find("k_s = 97/100 [fixed by jurisdiction overlay: Example Standard 14:2022 NA, NA.1, replacing a "
+                         "value entered by hand as empty]")
+          != std::string::npos);
+
+    constexpr auto thereEmpty =
+        formula::environment(formula::Measured<Force> { formula::Rational { 57'268 } },
+                             formula::Measured<EdgeX> { formula::Rational { 139 } },
+                             formula::Measured<EdgeY> { formula::Rational { 103 } },
+                             formula::entered(formula::Measured<ShapeFactor>::absent()));
+    constexpr auto emptyThere = formula::record_context(
+        formula::record<formula::ThisRecord>(
+            formula::record_key(formula::sample_id(17), formula::test_id(5)), here, formula::lineage<MaterialBatch>(4411)),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), thereEmpty,
+                                   formula::lineage<MaterialBatch>(4411)));
+    formula::Trace<> recorded {};
+    (void) formula::evaluate_method<Cube>(overlaid, emptyThere, formula::RecordingSink { recorded, north });
+    std::string const scopedText = formula::render_trace(recorded, { .maxSteps = 40 });
+    INFO(scopedText);
+    CHECK(scopedText.find("k = 97/100, from record Reference (sample 23, test 3) [fixed by jurisdiction overlay: "
+                          "Example Standard 14:2022 NA, NA.1, replacing a value entered by hand as empty]")
+          != std::string::npos);
+
+    // A filled typed-in entry keeps the plain clause: the flag is not set.
+    auto const [overFilled, filledText] =
+        fixed_step_over(formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
+                                             formula::entered(formula::Measured<ShapeFactor> { formula::Rational { 1 } })));
+    CHECK_FALSE(overFilled.replacedEntryEmpty);
+    CHECK(filledText.find("as empty") == std::string::npos);
 }

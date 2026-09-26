@@ -1114,12 +1114,19 @@ struct Step
     /// For `Variable`: whether the value was measured or typed in by a
     /// person, as the environment's entry says -- `Measured<Q>` or
     /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant`: the same,
-    /// of the environment's value the overlay's constant replaced; empty when
-    /// the environment held none. Never `Derived`: an input is not computed.
-    /// Empty for every other kind, and for an environment that cannot say
-    /// (one without `is_entered`), which is recorded as not known rather than
-    /// guessed.
+    /// of the environment's entry the overlay's constant replaced -- whether
+    /// or not that entry held a value, which `replacedEntryEmpty` says -- and
+    /// empty when the environment has no entry for the quantity at all. Never
+    /// `Derived`: an input is not computed. Empty for every other kind, and
+    /// for an environment that cannot say (one without `is_entered`), which
+    /// is recorded as not known rather than guessed.
     std::optional<ValueSource> inputSource {};
+
+    /// For `OverriddenConstant`: true when the environment's entry the
+    /// overlay's constant replaced held no value -- an entry left empty, by
+    /// hand or not -- so a trace says no value was replaced. False for every
+    /// other kind, and when the environment has no entry for the quantity.
+    bool replacedEntryEmpty {};
 
     /// Which record this step's value was read from: set on **every** step
     /// recorded inside a `from_record` scope -- a constant, a lookup or a
@@ -1328,6 +1335,16 @@ struct Trace
     ///
     /// Bookkeeping, as `marks` is, and for the same reason.
     std::optional<ValueSource> pendingInputSource {};
+
+    /// Whether the overridden constant being recorded replaced an empty
+    /// entry, between its `entered` and its `produced`:
+    /// `RecordingSink::replaced_entry_empty` sets it and `produced` moves it
+    /// onto the `OverriddenConstant` step. A single slot, emptied by
+    /// `entered` and `produced` for every node, for the reasons
+    /// `pendingInputSource` gives.
+    ///
+    /// Bookkeeping, as `marks` is, and for the same reason.
+    bool pendingReplacedEntryEmpty {};
 
     /// The origin of each `from_record` scope still open: `record_entered`
     /// pushes one, and `produced` pops it with the scope's own step. A stack
@@ -2285,6 +2302,7 @@ class RecordingSink
         _trace->branchStack.clear();
         _trace->rejectionsInProgress.clear();
         _trace->pendingInputSource.reset();
+        _trace->pendingReplacedEntryEmpty = false;
         _trace->recordStack.clear();
     }
 
@@ -2301,6 +2319,7 @@ class RecordingSink
     {
         _trace->marks.push_back(_trace->steps.size());
         _trace->pendingInputSource.reset();
+        _trace->pendingReplacedEntryEmpty = false;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
             _trace->branchStack.push_back(Branch::Neither);
     }
@@ -2319,6 +2338,16 @@ class RecordingSink
     void input_source(VarNode<Q> const&, ValueSource source) noexcept
     {
         _trace->pendingInputSource = source;
+    }
+
+    /// Told, by the overridden constant's evaluator (`overlay.hpp`), that the
+    /// environment's entry its constant replaced held no value; `produced`
+    /// puts it on the step. Optional, and public, for the reasons
+    /// `input_source` gives, with the same boundary.
+    template <Described Q>
+    void replaced_entry_empty(OverriddenConstantNode<Q> const&) noexcept
+    {
+        _trace->pendingReplacedEntryEmpty = true;
     }
 
     /// Told, by a `from_record` scope's evaluator (`record.hpp`), right after
@@ -2458,6 +2487,9 @@ class RecordingSink
                       || detail::StepKindOf<N>::value == StepKind::OverriddenConstant)
             nodeStep.inputSource = _trace->pendingInputSource;
         _trace->pendingInputSource.reset();
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OverriddenConstant)
+            nodeStep.replacedEntryEmpty = _trace->pendingReplacedEntryEmpty;
+        _trace->pendingReplacedEntryEmpty = false;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             nodeStep.citation = node.citation;
         // What an overlay cited for the value it fixed, the quantity it

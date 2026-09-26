@@ -154,12 +154,18 @@ function(formula_negative_test_quote out value)
 endfunction()
 
 function(formula_add_negative_test name expected)
-    cmake_parse_arguments(PARSE_ARGV 2 arg "" "" "REJECT")
+    cmake_parse_arguments(PARSE_ARGV 2 arg "" "EXPECT_COUNT" "REJECT")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
             "formula_add_negative_test(${name}): unexpected arguments after the expected text: "
             "${arg_UNPARSED_ARGUMENTS}\n"
-            "The only keyword accepted there is REJECT, followed by the text that must not appear.")
+            "The keywords accepted there are EXPECT_COUNT, followed by how many times the expected "
+            "text must appear, and REJECT, followed by the text that must not appear.")
+    endif()
+    if(DEFINED arg_EXPECT_COUNT AND NOT arg_EXPECT_COUNT MATCHES "^[1-9][0-9]*$")
+        message(FATAL_ERROR
+            "formula_add_negative_test(${name}): EXPECT_COUNT must be a positive whole number, "
+            "not '${arg_EXPECT_COUNT}'.")
     endif()
     if(arg_KEYWORDS_MISSING_VALUES)
         message(FATAL_ERROR
@@ -173,11 +179,28 @@ function(formula_add_negative_test name expected)
 
     formula_negative_test_quote(quoted "${expected}")
     set(content "set(EXPECT ${quoted})\n")
+    # How many times EXPECT must appear: one message per mistake, made a check
+    # that can fail. Not under cl, which stops at the first failed
+    # static_assert of an instantiation chain, so a count there cannot tell one
+    # message from several (measured on cl 19.51 with the task 8 review's L5
+    # case: 1 either way). clang-cl counts as clang++ does.
+    if(DEFINED arg_EXPECT_COUNT AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        string(APPEND content "set(EXPECT_COUNT ${arg_EXPECT_COUNT})\n")
+    endif()
     set(rejectCount 0)
     if(ARGC GREATER 2)
         math(EXPR lastArgument "${ARGC} - 1")
+        set(skipCountValue FALSE)
         foreach(index RANGE 2 ${lastArgument})
             set(value "${ARGV${index}}")
+            if(skipCountValue)
+                set(skipCountValue FALSE)
+                continue()
+            endif()
+            if(value STREQUAL "EXPECT_COUNT")
+                set(skipCountValue TRUE)
+                continue()
+            endif()
             if(value STREQUAL "REJECT")
                 continue()
             endif()
@@ -1420,13 +1443,6 @@ formula_add_negative_test(record_role_name_template_argument
 formula_add_negative_test(record_role_name_control_character
     "formula: this record role's displayed name is not identifier-like")
 
-# The same unseeable node inside three scope types. The overlay sees through
-# every scope, so the mistake is refused once -- counted by hand, one error
-# line on g++ and clang++ -- not once per scope type (the task 3 review's L5).
-formula_add_negative_test(record_scope_overlay_one_refusal
-    "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
-    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
-
 formula_add_negative_test(overlay_constant_unknown_node
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
@@ -1437,6 +1453,16 @@ formula_add_negative_test(overlay_constant_unknown_node
 # applied to, not only on the one it produced.
 formula_add_negative_test(overlay_constant_unknown_node_then_pruned
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+# The same unseeable node inside three scope types. The overlay sees through
+# every scope, so the mistake is refused once, not once per scope type (the
+# task 3 review's L5): EXPECT_COUNT pins one message, and gives three with
+# the scope's rewrite deleted. Not counted under cl, which stops at the first
+# failed static_assert in this chain and so reads 1 either way.
+formula_add_negative_test(record_scope_overlay_one_refusal
+    "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
+    EXPECT_COUNT 1
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 # An overlay applied to a malformed method. The method is refused where it is

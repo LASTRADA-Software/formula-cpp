@@ -98,6 +98,29 @@ if(_found EQUAL -1)
         "--- compiler output ---\n${combined}")
 endif()
 
+# EXPECT_COUNT, when the expectations file sets it, is how many times EXPECT
+# must occur: one mistake refused once, rather than once per place it was met.
+# formula_add_negative_test leaves it unset under cl -- see that function.
+if(DEFINED EXPECT_COUNT)
+    set(_rest "${combined}")
+    set(_occurrences 0)
+    string(LENGTH "${EXPECT}" _expectLength)
+    string(FIND "${_rest}" "${EXPECT}" _at)
+    while(NOT _at EQUAL -1)
+        math(EXPR _occurrences "${_occurrences} + 1")
+        math(EXPR _after "${_at} + ${_expectLength}")
+        string(SUBSTRING "${_rest}" ${_after} -1 _rest)
+        string(FIND "${_rest}" "${EXPECT}" _at)
+    endwhile()
+    if(NOT _occurrences EQUAL EXPECT_COUNT)
+        message(FATAL_ERROR
+            "negative test ${TARGET}: the build failed for the RIGHT reason, but reported it "
+            "${_occurrences} times, not ${EXPECT_COUNT}.\n"
+            "Expected to find: ${EXPECT}\n"
+            "--- compiler output ---\n${combined}")
+    endif()
+endif()
+
 # Every value is checked, and every one that is found is reported, not only
 # the first. An empty value would be found in every output -- string(FIND) of
 # an empty needle returns 0 -- so formula_add_negative_test refuses one at

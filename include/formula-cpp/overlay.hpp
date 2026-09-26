@@ -467,17 +467,24 @@ namespace detail
 /// -- through the same optional hook a variable uses
 /// (`detail::report_input_source`, `evaluate.hpp`). So a trace can say that
 /// the overlay replaced a value a person typed in, rather than stay silent
-/// about it.
+/// about it. A sink that also asks (`replaced_entry_empty`) is told when
+/// that entry held no value, so an entry left empty by hand is not traced as
+/// a value that was replaced.
 template <typename Rep = Rational, Described Q, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(OverriddenConstantNode<Q> const& node,
-                                                           Env const&,
+                                                           Env const& environment,
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
     Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.value(), Describe<Q>::unit);
     if constexpr (requires { Env::template provides<Q>; })
         if constexpr (Env::template provides<Q>)
+        {
             detail::report_input_source<Q, Env>(node, sink);
+            if constexpr (requires { sink.replaced_entry_empty(node); })
+                if (environment.template get<Q>().is_absent())
+                    sink.replaced_entry_empty(node);
+        }
     sink.produced(node, evaluated);
     return evaluated;
 }

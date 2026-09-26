@@ -4,12 +4,22 @@
 /// @file
 /// One overlaid method that reads from another record, one vocabulary and
 /// one context, `inline` in a header and used from two translation units:
-/// `record_join_tests.cpp` and `record_cross_tu_b.cpp`. Each unit renders
-/// and traces the method through its own copy of the helpers at the bottom,
-/// and `record_join_tests.cpp` compares the texts and the value, and the
-/// method's own type crosses between them. A mangling defect or an ODR split
-/// between the units -- in the scope node, its rewritten operand, its role or
-/// its lineage requirement -- would make them disagree or fail to link.
+/// `record_join_tests.cpp` and `record_cross_tu_b.cpp`.
+///
+/// **What crosses is the method's type.** `record_join_evaluate_in_other_tu`
+/// takes the method as a parameter and is defined in the other unit, so its
+/// mangled name spells the whole type -- the scope node, its role, its
+/// lineage requirement and the rewritten operand. A split in which one unit
+/// sees a different type fails to link. Measured by compiling the other unit
+/// against a copy of this header with the lineage requirement dropped: the
+/// link fails on cl, g++ and clang++. A function merely *returning* the type
+/// would not do on g++ and clang++, where a return type is not part of the
+/// mangled name (the task 8 review's M2).
+///
+/// **What cannot be caught here:** a split that changes only a value and not
+/// a type -- a citation's text, say -- is an ODR violation no link sees. The
+/// value itself is compared, so a split that changes the result is caught at
+/// run time instead.
 ///
 /// **Everything shared lives in a named namespace**, never an anonymous one,
 /// for the reason `method_cross_tu.hpp` gives.
@@ -21,6 +31,7 @@
 #include <formula-cpp/trace_render.hpp>
 
 #include <string>
+#include <type_traits>
 
 namespace record_cross_tu
 {
@@ -84,11 +95,13 @@ inline constexpr auto overlaid = formula::apply(
 /// The page's words: the force is P, the shape factor k.
 inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"), formula::renames<ShapeFactor>("k"));
 
-/// This record: 6 MPa, 85 902 N; and the reference: 57 268 N over 139 by
-/// 103 mm, its shape factor 1 typed in by hand; both batch 4411.
+/// This record: 6 MPa, 90 000 N over 197 by 103 mm; and the reference:
+/// 57 268 N over 139 by 103 mm, its shape factor 1 typed in by hand; both
+/// batch 4411. The edges differ, so a read from the wrong record gives a
+/// different value.
 inline constexpr auto here = formula::environment(formula::Measured<Strength> { formula::Rational { 6 } },
-                                                  formula::Measured<Force> { formula::Rational { 85'902 } },
-                                                  formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                                  formula::Measured<Force> { formula::Rational { 90'000 } },
+                                                  formula::Measured<EdgeX> { formula::Rational { 197 } },
                                                   formula::Measured<EdgeY> { formula::Rational { 103 } },
                                                   formula::Measured<ShapeFactor> { formula::Rational { 1 } });
 inline constexpr auto there =
@@ -122,9 +135,8 @@ inline std::string trace()
 }
 } // namespace record_cross_tu
 
-/// The same, computed in `record_cross_tu_b.cpp`.
-std::string record_join_page_in_other_tu();
-/// The same, computed in `record_cross_tu_b.cpp`.
-std::string record_join_trace_in_other_tu();
-/// The overlaid Cube's value, computed in `record_cross_tu_b.cpp`.
-formula::Evaluated<formula::Rational> record_join_value_in_other_tu();
+/// The Cube of @p method over `context()`, evaluated in
+/// `record_cross_tu_b.cpp`. Taking the method is what makes its type part of
+/// this function's mangled name; see the file comment.
+formula::Evaluated<formula::Rational>
+    record_join_evaluate_in_other_tu(std::remove_cvref_t<decltype(record_cross_tu::overlaid)> const& method);
