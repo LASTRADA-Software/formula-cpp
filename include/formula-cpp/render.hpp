@@ -223,6 +223,25 @@ namespace detail
         return PrecedenceOf<S>::value;
     }
 
+    /// How tightly @p node binds as written in dialect @p D: `precedence_of`'s
+    /// answer, for every node kind spelled alike in every dialect.
+    template <Dialect D, typename N>
+    [[nodiscard]] constexpr Precedence precedence_in(N const& node) noexcept
+    {
+        return precedence_of(node);
+    }
+
+    /// A sum is a call, `sum(...)`, that groups itself in plain text and
+    /// Markdown, but a large operator in LaTeX, whose reach a reader takes to
+    /// run on over anything multiplied after it: `\sum x_i \cdot m_t` reads
+    /// as the sum of the products. There it brackets as an additive
+    /// expression would.
+    template <Dialect D, SeriesNode S>
+    [[nodiscard]] constexpr Precedence precedence_in(SumNode<S> const&) noexcept
+    {
+        return D == Dialect::LaTeX ? Precedence::Additive : Precedence::Atom;
+    }
+
     /// @p quantitySymbol -- already the jurisdiction's, through `symbol_of` -- marked
     /// as a series in dialect @p D: `x_m(i)` in plain text, `` `x_m(i)` `` in
     /// Markdown (the marker inside the backticks, so the code span keeps it
@@ -664,7 +683,7 @@ namespace detail
     [[nodiscard]] std::string render_operand(Child const& child, Precedence context, V const& vocabulary)
     {
         std::string childText = render<D>(child, vocabulary);
-        if (static_cast<int>(precedence_of(child)) < static_cast<int>(context))
+        if (static_cast<int>(precedence_in<D>(child)) < static_cast<int>(context))
             return "(" + childText + ")";
         return childText;
     }
@@ -791,6 +810,34 @@ template <Dialect D, UnaryOperator Op, SeriesNode Operand, Vocabulary V>
 {
     static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
     return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary, vocabulary);
+}
+
+/// A running total renders as a call naming its end: `cumulative(m_r(i), from
+/// last)`, and in LaTeX `\operatorname{cumulative}_{\text{from last}}(...)`,
+/// the end on a subscript as a rounding's granularity is. The direction is
+/// always written: without it the rendering states half the formula.
+template <Dialect D, CumulativeDirection Direction, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render_node(CumulativeNode<Direction, S> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.operand, vocabulary);
+    std::string const end { describe(Direction) };
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{cumulative}_{\\text{" + end + "}}(" + inner + ")";
+    else
+        return "cumulative(" + inner + ", " + end + ")";
+}
+
+/// A sum renders as a call on its series, `sum(m_r(i))`, and in LaTeX as the
+/// large operator, `\sum {m_r}_{i}`, whose operand already carries the
+/// series marker -- the sum itself is one value and carries none. See
+/// `detail::precedence_in` for where the LaTeX form is bracketed.
+template <Dialect D, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render_node(SumNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\sum " + detail::render_operand<D>(node.operand, detail::Precedence::Multiplicative, vocabulary);
+    else
+        return "sum(" + render<D>(node.operand, vocabulary) + ")";
 }
 
 /// A per-element constant renders as its list of values, `values(0.7 mm,

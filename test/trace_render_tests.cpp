@@ -2083,3 +2083,93 @@ TEST_CASE("a failing scalar operand is reported without a position", "[series][t
     CHECK(text.find("7. #1 * #6 = division by zero\n") != std::string::npos);
     CHECK(text.find("at element") == std::string::npos);
 }
+
+TEST_CASE("a running total is one step naming its end, in the operand's unit", "[series][trace]")
+{
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<series_trace::Retained, 5>),
+        series_trace::allPresent,
+        formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 })
+          == "1. m_r = 130 g; 210 g; 95 g; 340 g; 28 g\n"
+             "2. cumulative(#1, from last) = 803 g; 673 g; 463 g; 368 g; 28 g\n");
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(trace.steps[1].kind == formula::StepKind::CumulativeSum);
+    CHECK(trace.steps[1].cumulativeDirection == formula::CumulativeDirection::FromLast);
+    CHECK(trace.steps[1].operands == std::vector<std::size_t> { 0 });
+
+    // The other end, over the series with its middle element unmeasured:
+    // every total from there on is absent, and says so.
+    formula::Trace<> fromFirst {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<series_trace::Retained, 5>),
+        series_trace::inputs,
+        formula::RecordingSink<> { fromFirst });
+    CHECK(formula::render_trace(fromFirst, { .maxSteps = 30 })
+          == "1. m_r = 130 g; 210 g; (not measured); 340 g; 28 g\n"
+             "2. cumulative(#1, from first) = 130 g; 340 g; (not measured); (not measured); (not measured)\n");
+    REQUIRE(fromFirst.steps.size() == 2);
+    CHECK(fromFirst.steps[1].cumulativeDirection == formula::CumulativeDirection::FromFirst);
+}
+
+TEST_CASE("a sum is a single-value step whose operand is the series step", "[series][trace]")
+{
+    auto const explained =
+        formula::explain<series_trace::TotalMass>(formula::sum(formula::series<series_trace::Retained, 5>),
+                                                  series_trace::allPresent);
+    CHECK(explained.outcome.measurement().value() == formula::Rational { 803 });
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 30 })
+          == "1. m_r = 130 g; 210 g; 95 g; 340 g; 28 g\n"
+             "2. sum(#1) = 803 g\n");
+    REQUIRE(explained.trace.steps.size() == 2);
+    CHECK(explained.trace.steps[1].kind == formula::StepKind::SeriesSum);
+    CHECK(explained.trace.steps[1].value == formula::Rational { 803, 1000 }); // one value, in coherent SI
+    CHECK(explained.trace.steps[1].elements.empty());
+    CHECK(explained.trace.steps[1].operands == std::vector<std::size_t> { 0 });
+}
+
+TEST_CASE("a series with nothing measured traces as absence at every element, and never as zero", "[series][trace]")
+{
+    // Review Focus 1: a running total or a sum that started from zero would
+    // print 0 g somewhere. Nothing here may.
+    constexpr auto noneMeasured = formula::environment(formula::measured_series<series_trace::Retained>(
+        formula::Measured<series_trace::Retained>::absent(), formula::Measured<series_trace::Retained>::absent(),
+        formula::Measured<series_trace::Retained>::absent(), formula::Measured<series_trace::Retained>::absent(),
+        formula::Measured<series_trace::Retained>::absent()));
+    auto const explained = formula::explain<series_trace::TotalMass>(
+        formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<series_trace::Retained, 5>)),
+        noneMeasured);
+    CHECK(explained.outcome.measurement().is_absent());
+    std::string const text = formula::render_trace(explained.trace, { .maxSteps = 40 });
+    CHECK(text
+          == "1. m_r = (not measured); (not measured); (not measured); (not measured); (not measured)\n"
+             "2. cumulative(#1, from last) = (not measured); (not measured); (not measured); (not measured); "
+             "(not measured)\n"
+             "3. sum(#2) = (not measured)\n");
+    CHECK(text.find('0') == std::string::npos);
+}
+
+TEST_CASE("a running total that overflowed names its element, counted from one", "[series][trace]")
+{
+    // Stated in tonnes and read into kilograms, each large element just over
+    // half of Rational's limit. The two in the middle overflow the total from
+    // the first at zero-based 3 -- element 4 in the text.
+    constexpr std::int64_t halfOfLimitInKg = std::numeric_limits<std::int64_t>::max() / 2000 + 1;
+    constexpr auto heavy = formula::environment(formula::measured_series<series_trace::Stockpile>(
+        formula::Measured<series_trace::Stockpile> { formula::Rational { 1 } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { 2 } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { halfOfLimitInKg } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { halfOfLimitInKg } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { 3 } }));
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<series_trace::Stockpile, 5>),
+        heavy,
+        formula::RecordingSink<> { trace });
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(trace.steps[1].failedElement == std::optional<std::size_t> { 3 });
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 }).find(
+              "2. cumulative(#1, from first) = overflow in exact arithmetic at element 4\n")
+          != std::string::npos);
+}

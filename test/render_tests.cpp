@@ -1454,6 +1454,14 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3> / formula::series<Strength, 3>));
     isInertInMarkdown(formula::render<Dialect::Markdown>(
         formula::series_constant<formula::unit::Megapascal>(rat(1), rat(-2), rat(3, 4)))); // SeriesConstantNode
+    // A running total, from each end, and the sum that reduces a series to one
+    // value -- alone and in a product, where LaTeX brackets it.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Strength, 3>))); // CumulativeNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<Strength, 3>)));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::sum(formula::series<Strength, 3>))); // SumNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::sum(formula::series<Strength, 3>) * var<Strength>));
 
     // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
@@ -1686,4 +1694,46 @@ TEST_CASE("a per-element constant renders as its list of values", "[series][rend
     constexpr auto plain = formula::series_constant<formula::unit::One>(rat(1), rat(2));
     CHECK(formula::render(plain) == "values(1, 2)");
     CHECK(formula::render(formula::series<series_render::Retained, 2> * plain) == "m_r(i) * values(1, 2)");
+}
+
+TEST_CASE("a running total renders with its direction, and a sum as a call on the series", "[series][render]")
+{
+    using series_render::Retained;
+    constexpr auto s = formula::series<Retained, 5>;
+    constexpr auto fromLast = formula::cumulative<formula::CumulativeDirection::FromLast>(s);
+    constexpr auto fromFirst = formula::cumulative<formula::CumulativeDirection::FromFirst>(s);
+    // The direction is part of the formula: a rendering without it would state
+    // half of it, so both ends are pinned and read differently.
+    CHECK(formula::render(fromLast) == "cumulative(m_r(i), from last)");
+    CHECK(formula::render(fromFirst) == "cumulative(m_r(i), from first)");
+    CHECK(formula::render<formula::Dialect::Markdown>(fromLast) == "cumulative(`m_r(i)`, from last)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fromLast)
+          == "\\operatorname{cumulative}_{\\text{from last}}({m_r}_{i})");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fromFirst)
+          == "\\operatorname{cumulative}_{\\text{from first}}({m_r}_{i})");
+
+    // The sum's operand is a series and carries the marker; its result is one
+    // value and carries none.
+    constexpr auto total = formula::sum(s);
+    CHECK(formula::render(total) == "sum(m_r(i))");
+    CHECK(formula::render<formula::Dialect::Markdown>(total) == "sum(`m_r(i)`)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(total) == "\\sum {m_r}_{i}");
+
+    // In context. Plain text's call groups itself; LaTeX's large operator does
+    // not, so it is bracketed wherever an additive expression would be -- and
+    // a fraction groups it itself.
+    constexpr auto share = s / formula::sum(s);
+    CHECK(formula::render(share) == "m_r(i) / sum(m_r(i))");
+    CHECK(formula::render<formula::Dialect::LaTeX>(share) == "\\frac{{m_r}_{i}}{\\sum {m_r}_{i}}");
+    constexpr auto scaled = formula::sum(s) * formula::var<series_render::Total>;
+    CHECK(formula::render(scaled) == "sum(m_r(i)) * m_t");
+    CHECK(formula::render<formula::Dialect::LaTeX>(scaled) == "(\\sum {m_r}_{i}) \\cdot m_t");
+    constexpr auto passing = formula::constant<formula::unit::Percent>(rat(100)) - fromLast / formula::var<series_render::Total>;
+    CHECK(formula::render(passing) == "100 % - cumulative(m_r(i), from last) / m_t");
+    CHECK(formula::render<formula::Dialect::Markdown>(passing) == "100 % - cumulative(`m_r(i)`, from last) / `m_t`");
+    // Under a jurisdiction's symbol, in every dialect.
+    constexpr auto everyone = formula::vocabulary(formula::renames<Retained>("x_m"));
+    CHECK(formula::render(formula::sum(fromFirst), everyone) == "sum(cumulative(x_m(i), from first))");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::sum(fromFirst), everyone)
+          == "\\sum \\operatorname{cumulative}_{\\text{from first}}({x_m}_{i})");
 }

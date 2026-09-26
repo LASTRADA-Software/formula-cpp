@@ -731,6 +731,12 @@ namespace detail
                 return binary_expression(step, "*");
             case StepKind::ElementwiseDivide:
                 return binary_expression(step, "/");
+            // The end is written, as `render()` writes it: a running total
+            // without it is half a derivation.
+            case StepKind::CumulativeSum:
+                return "cumulative(" + sole_operand(step) + ", " + std::string { describe(step.cumulativeDirection) } + ")";
+            case StepKind::SeriesSum:
+                return "sum(" + sole_operand(step) + ")";
         }
         return "unknown step kind";
     }
@@ -985,7 +991,8 @@ namespace detail
     {
         return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant || stepKind == StepKind::ElementwiseNegate
                || stepKind == StepKind::ElementwiseAdd || stepKind == StepKind::ElementwiseSubtract
-               || stepKind == StepKind::ElementwiseMultiply || stepKind == StepKind::ElementwiseDivide;
+               || stepKind == StepKind::ElementwiseMultiply || stepKind == StepKind::ElementwiseDivide
+               || stepKind == StepKind::CumulativeSum;
     }
 
     /// A series step's line, without its number: the expression, an `=`, and

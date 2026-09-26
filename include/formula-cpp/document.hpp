@@ -314,6 +314,12 @@ namespace detail
     template <Vocabulary V, BinaryOperator Op, typename Left, typename Right>
     void collect(Walk<V>& walk, ElementwiseBinaryNode<Op, Left, Right> const& node);
 
+    template <Vocabulary V, CumulativeDirection D, SeriesNode S>
+    void collect(Walk<V>& walk, CumulativeNode<D, S> const& node);
+
+    template <Vocabulary V, SeriesNode S>
+    void collect(Walk<V>& walk, SumNode<S> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -628,6 +634,21 @@ namespace detail
     {
         collect(walk, node.lhs);
         collect(walk, node.rhs);
+    }
+
+    /// A running total names nothing of its own; its series does.
+    template <Vocabulary V, CumulativeDirection D, SeriesNode S>
+    void collect(Walk<V>& walk, CumulativeNode<D, S> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A sum is one value, but what it reads is a series, and the row says
+    /// so: the series variable beneath it contributes its series row.
+    template <Vocabulary V, SeriesNode S>
+    void collect(Walk<V>& walk, SumNode<S> const& node)
+    {
+        collect(walk, node.operand);
     }
 } // namespace detail
 

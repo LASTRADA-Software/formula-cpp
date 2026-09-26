@@ -192,6 +192,19 @@ enum class StepKind : std::uint8_t
     ElementwiseMultiply,
     /// Elementwise division.
     ElementwiseDivide,
+    /// A running total along a series (`CumulativeNode`): one step for the
+    /// whole series, every total in `Step::elements`, the end it ran from in
+    /// `Step::cumulativeDirection`, shown in its operand's unit. Checked on
+    /// GCC under `-Wshadow`: the node is `CumulativeNode` and its factory
+    /// `cumulative`, so nothing in namespace `formula` is spelt
+    /// `CumulativeSum`.
+    CumulativeSum,
+    /// The total of a series (`SumNode`): a single-value step, its value in
+    /// `Step::value`, whose operand is the series step; shown in its
+    /// operand's unit. Recorded through `detail::StepKindOf`, since a sum is a
+    /// `Node`. Checked on GCC under `-Wshadow`: the node is `SumNode` and its
+    /// factory `sum`, so nothing in namespace `formula` is spelt `SeriesSum`.
+    SeriesSum,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -761,6 +774,11 @@ struct Step
     /// `trace_render.hpp` prints it one-based, as every text this library
     /// writes prints a position. Empty for every other step.
     std::optional<std::size_t> failedElement {};
+
+    /// For `CumulativeSum`: the end the running total started from. Zero-
+    /// initialises to `FromFirst`, a real direction, so -- as with
+    /// `comparison` -- no reader may use it without checking `kind` first.
+    CumulativeDirection cumulativeDirection {};
 };
 
 /// A recorded derivation: a flat arena of steps.
@@ -984,6 +1002,12 @@ namespace detail
     concept PassesThroughRecordedStep =
         requires { typename PassedThrough<N>::type; } && RecordsStep<typename PassedThrough<N>::type>;
 
+    template <SeriesNode S>
+    struct StepKindOf<SumNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SeriesSum;
+    };
+
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
     /// `SeriesNode`, and closed the same way. The primary template is left
     /// undefined, so a series node kind added without an entry here fails to
@@ -1018,6 +1042,29 @@ namespace detail
                                           : Op == BinaryOperator::Multiply ? StepKind::ElementwiseMultiply
                                                                            : StepKind::ElementwiseDivide;
     };
+
+    template <CumulativeDirection D, SeriesNode S>
+    struct SeriesStepKindOf<CumulativeNode<D, S>>
+    {
+        static constexpr StepKind value = StepKind::CumulativeSum;
+    };
+
+    /// The unit a total is shown in: its operand step's, when it claimed one
+    /// of its own dimension -- a total of grams reads in grams, as the masses
+    /// summed do -- and @p fallback otherwise. Read off the operand's step,
+    /// never off a type, so a computed operand's coherent unit carries over
+    /// too.
+    template <typename Rep>
+    [[nodiscard]] constexpr Unit operand_unit_or(std::vector<Step<Rep>> const& steps,
+                                                 std::vector<std::size_t> const& operands,
+                                                 Dimension dimension,
+                                                 Unit fallback) noexcept
+    {
+        if (operands.size() != 1)
+            return fallback;
+        Unit const operandUnit = steps[operands.front()].unit;
+        return operandUnit.dimension == dimension ? operandUnit : fallback;
+    }
 
     /// Whether @p stepKind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
@@ -1535,6 +1582,11 @@ class RecordingSink
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
                 nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
+        // A sum reads in its series' unit, which only the claimed operand
+        // step knows.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum)
+            nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
+
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means
         // reading the operand step it just claimed, so the claim has to have
@@ -1784,6 +1836,14 @@ class RecordingSink
             ++firstClaimed;
         seriesStep.operands.assign(firstClaimed, _trace->unclaimed.end());
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        // A running total reads in its operand's unit, and says which end it
+        // ran from.
+        if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::CumulativeSum)
+        {
+            seriesStep.unit = detail::operand_unit_or(_trace->steps, seriesStep.operands, seriesStep.dimension, seriesStep.unit);
+            seriesStep.cumulativeDirection = S::direction;
+        }
 
         if (!result.has_value())
         {

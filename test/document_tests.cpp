@@ -862,3 +862,27 @@ TEST_CASE("an elementwise formula's symbol table reads left to right, one row pe
     CHECK(both.symbols[1].shape == formula::ValueShape::Single);
     CHECK(both.symbols[0].symbol == both.symbols[1].symbol);
 }
+
+TEST_CASE("a sum is one value whose symbol table still says it reads a series", "[series][document]")
+{
+    using series_document::Retained;
+    using series_document::TotalMass;
+    auto const page = formula::document(
+        formula::sum(formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<Retained, 5>))
+        / formula::var<TotalMass>);
+    CHECK(page.formula == "sum(cumulative(m_r(i), from first)) / m_t");
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "m_r");
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[0].length == 5);
+    CHECK(page.symbols[1].symbol == "m_t");
+    CHECK(page.symbols[1].shape == formula::ValueShape::Single);
+
+    // A running total documents as a series, its operand's row and nothing of
+    // its own.
+    auto const totals =
+        formula::document(formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>));
+    CHECK(totals.formula == "cumulative(m_r(i), from last)");
+    REQUIRE(totals.symbols.size() == 1);
+    CHECK(totals.symbols[0].shape == formula::ValueShape::Series);
+}
