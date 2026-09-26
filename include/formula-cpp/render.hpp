@@ -943,6 +943,30 @@ template <Dialect D, SampleSource S, Vocabulary V>
         return "sample_mean(" + render<D>(node.sample, vocabulary) + ")";
 }
 
+/// A sample's variance renders as a call on its sample,
+/// `sample_variance(m(i))`, and in LaTeX as `s^{2}({m}_{i})`, the spelling
+/// task 1 typeset clean. The variance is one value and carries no series
+/// marker; its sample carries its own.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleVarianceNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "s^{2}(" + render<D>(node.sample, vocabulary) + ")";
+    else
+        return "sample_variance(" + render<D>(node.sample, vocabulary) + ")";
+}
+
+/// A sample's range renders as a call on its sample, `sample_range(m(i))`,
+/// and in LaTeX as `\operatorname{range}({m}_{i})`.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleRangeNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{range}(" + render<D>(node.sample, vocabulary) + ")";
+    else
+        return "sample_range(" + render<D>(node.sample, vocabulary) + ")";
+}
+
 /// A sum renders as a call on its series, `sum(m_r(i))`, and in LaTeX as the
 /// large operator, `\sum {m_r}_{i}`, whose operand already carries the
 /// series marker -- the sum itself is one value and carries none. See

@@ -685,12 +685,15 @@ inline constexpr formula::BandTable<2> everyClasses { formula::band(0, 1, 163, 1
 
 // Every sample statistic, in a variant of its own: the mean of the retained
 // masses, with the overlay's constant inside the sample, over the total and
-// the count. 10, 20 and 40 g times 3/2 are 15, 30 and 60 g, whose mean is
-// 35 g; over 2020 g and 3, 7/1212 -- 0.6 % at 1 dp.
+// the count, plus the variance over the squared range. 10, 20 and 40 g times
+// 3/2 are 15, 30 and 60 g, whose mean is 35 g; over 2020 g and 3, 7/1212.
+// The variance of 10, 20 and 40 g is 700/3 g^2 and the range 30 g, so
+// 7/27; the whole is 2891/10908 -- 26.5 % at 1 dp.
 [[nodiscard]] constexpr auto everySampleKind()
 {
     constexpr auto s = formula::series<EveryRetained, 3>;
-    return formula::sample_mean(s * var<EveryFixed>) / var<EveryTotal> / formula::sample_count(s);
+    return formula::sample_mean(s * var<EveryFixed>) / var<EveryTotal> / formula::sample_count(s)
+           + formula::sample_variance(s) / (formula::sample_range(s) * formula::sample_range(s));
 }
 
 inline constexpr auto everyMethod = formula::method(
@@ -774,11 +777,15 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
 
     // Every sample statistic: the sample marked, the statistic not.
     constexpr auto sampleVariant = std::get<5>(everyOverlaid.variantSet.cases).expression;
-    CHECK(formula::render(sampleVariant, everyVocabulary) == "sample_mean(m_n(i) * x_n) / M_n / sample_count(m_n(i))");
+    CHECK(formula::render(sampleVariant, everyVocabulary)
+          == "sample_mean(m_n(i) * x_n) / M_n / sample_count(m_n(i)) + sample_variance(m_n(i)) / (sample_range(m_n(i)) "
+             "* sample_range(m_n(i)))");
     CHECK(formula::render<formula::Dialect::Markdown>(sampleVariant, everyVocabulary)
-          == "sample_mean(`m_n(i)` * `x_n`) / `M_n` / sample_count(`m_n(i)`)");
+          == "sample_mean(`m_n(i)` * `x_n`) / `M_n` / sample_count(`m_n(i)`) + sample_variance(`m_n(i)`) "
+             "/ (sample_range(`m_n(i)`) * sample_range(`m_n(i)`))");
     CHECK(formula::render<formula::Dialect::LaTeX>(sampleVariant, everyVocabulary)
-          == "\\frac{\\frac{\\overline{{m_n}_{i} \\cdot x_n}}{M_n}}{n({m_n}_{i})}");
+          == "\\frac{\\frac{\\overline{{m_n}_{i} \\cdot x_n}}{M_n}}{n({m_n}_{i})} + \\frac{s^{2}({m_n}_{i})}"
+             "{\\operatorname{range}({m_n}_{i}) \\cdot \\operatorname{range}({m_n}_{i})}");
 
     // Every curve kind, the series marked, the domains listed, the direction
     // stated.
@@ -955,8 +962,17 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "7. m_n = 10 g; 20 g; 40 g\n"
              "8. sample_count(#7) = 3\n"
              "9. #6 / #8 = 10409/1818000\n"
-             "10. round(#9, in %) = 3/5 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "11. #10 = 3/5 % [variant EverySample (6th of 6), selected by tag]\n");
+             "10. m_n = 10 g; 20 g; 40 g\n"
+             "11. sample_variance(#10) = 7/30000\n"
+             "12. m_n = 10 g; 20 g; 40 g\n"
+             "13. sample_range(#12) = 30 g\n"
+             "14. m_n = 10 g; 20 g; 40 g\n"
+             "15. sample_range(#14) = 30 g\n"
+             "16. #13 * #15 = 9/10000\n"
+             "17. #11 / #16 = 7/27\n"
+             "18. #9 + #17 = 1445227/5454000\n"
+             "19. round(#18, in %) = 53/2 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "20. #19 = 53/2 % [variant EverySample (6th of 6), selected by tag]\n");
     CHECK(everyTraceOf<EverySeries>()
           == "1. m_n = 10 g; 20 g; 40 g\n"
              "2. -#1 = -1/100; -1/50; -1/25\n"

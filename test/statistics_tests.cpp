@@ -50,6 +50,22 @@ struct Heavy: formula::Quantity<Heavy, "m_h", "heavy mass", unit::Kilogram>
 {
 };
 
+/// A gram squared, the unit a variance of masses in grams is stated in.
+/// Invented here rather than shipped: the library has no squared mass unit.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+/// A variance of masses, held by the evaluator in kg^2.
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
+/// A spread or a range of masses, in grams.
+struct Spread: formula::Quantity<Spread, "s", "spread of the determinations", unit::Gram>
+{
+};
+
 [[nodiscard]] constexpr formula::Measured<Mass> grams(Rational value)
 {
     return formula::Measured<Mass> { value };
@@ -265,6 +281,225 @@ TEST_CASE("a mean joins a method: evaluated, rounded, rendered in a vocabulary, 
              "2. sample_mean(#1) = 2429/60 g\n"
              "3. round(#2, in g) = 81/2 g [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "4. #3 = 81/2 g [variant MeanOfSix (1st of 1), selected by tag]\n");
+}
+
+// ------------------------------------------------------------ dispersion
+
+namespace
+{
+// Fixture E, invented: five equal determinations of 40.0 g.
+inline constexpr auto fixtureE = formula::environment(
+    formula::measured_series<Mass>(grams(rat(40)), grams(rat(40)), grams(rat(40)), grams(rat(40)), grams(rat(40))));
+
+/// The variance of the six determinations.
+inline constexpr auto variance = formula::sample_variance(determinations);
+/// Their range.
+inline constexpr auto range = formula::sample_range(determinations);
+
+/// The spread reported exactly: the variance's root, rounded to 2 dp of g.
+inline constexpr auto spread =
+    formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(variance);
+} // namespace
+
+TEST_CASE("sample_variance divides by n - 1, and sample_range is the largest less the smallest", "[statistics]")
+{
+    // Fixture A: squared deviations 1.21, 2.25, 0.64, 7.29, 1.69 and 4.00 g^2
+    // total 17.08 g^2, so 427/125 g^2 over n - 1 = 5, held as kg^2. Over
+    // n = 6 (the population variance) it would be 427/150 g^2.
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, fixtureA)->measurement().value() == rat(427, 125));
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, fixtureA)->value() == rat(427, 125'000'000));
+    STATIC_REQUIRE(decltype(variance)::dimension == formula::dim::Mass * formula::dim::Mass);
+    // 44.0 - 39.8 = 4.2 g. The extremes are the fourth and the second
+    // determinations, not the ends: last - first would give 3.1 g.
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(range, fixtureA)->measurement().value() == rat(42, 10));
+    STATIC_REQUIRE(decltype(range)::dimension == formula::dim::Mass);
+
+    // Fixture B: 4057/600 g^2 (the population variance, 4057/720), and
+    // 45.2 - 37.2 = 8.0 g (last - first would give -3.0 g).
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, fixtureB)->measurement().value() == rat(4057, 600));
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(range, fixtureB)->measurement().value() == rat(8));
+}
+
+TEST_CASE("equal determinations have no dispersion, exactly", "[statistics]")
+{
+    // Fixture E: variance 0 and range 0, never a division by zero.
+    constexpr auto equal = formula::series<Mass, 5>;
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(formula::sample_variance(equal), fixtureE)->measurement().value()
+                   == rat(0));
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(formula::sample_range(equal), fixtureE)->measurement().value()
+                   == rat(0));
+}
+
+TEST_CASE("one determination has a range of 0 and no variance", "[statistics]")
+{
+    // A variance needs two determinations: n - 1 = 0 is refused as a domain
+    // error, never read as 0 or as a division by zero.
+    constexpr auto single = formula::environment(formula::measured_series<Mass>(grams(rat(433, 10))));
+    STATIC_REQUIRE(
+        formula::checked_evaluate<MassVariance>(formula::sample_variance(formula::series<Mass, 1>), single).error()
+        == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(
+        formula::checked_evaluate<Spread>(formula::sample_range(formula::series<Mass, 1>), single)->measurement().value()
+        == rat(0));
+}
+
+TEST_CASE("one absent determination makes the variance and the range absent (T2)", "[statistics]")
+{
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, fixtureAMissingThird)->is_empty());
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(range, fixtureAMissingThird)->is_empty());
+}
+
+TEST_CASE("the variance is computed in two passes, which holds far past where the one-pass formula overflows",
+          "[statistics]")
+{
+    // Fixture A scaled by 2^25: 40.2 g becomes 1348888166.4 g. The textbook
+    // one-pass form, (sum x^2 - (sum x)^2 / n) / (n - 1), overflows Rational
+    // in coherent SI at a scale of 2^25; the two-pass form (the mean, then
+    // the squared deviations from it) holds until 2^31 -- and gives exactly
+    // 427/125 g^2 times 2^50, in kg^2. Measured with fixtures A and B
+    // alike; at 10^4, the brief's first guess, neither overflows (the forms
+    // part only between 10^11 and 10^12 when scaled by powers of ten).
+    constexpr std::int64_t scale = std::int64_t { 1 } << 25;
+    constexpr auto scaledA = formula::environment(formula::measured_series<Mass>(grams(rat(402 * scale, 10)),
+                                                                                 grams(rat(398 * scale, 10)),
+                                                                                 grams(rat(405 * scale, 10)),
+                                                                                 grams(rat(440 * scale, 10)),
+                                                                                 grams(rat(400 * scale, 10)),
+                                                                                 grams(rat(433 * scale, 10))));
+    STATIC_REQUIRE(formula::checked_evaluate_si(variance, scaledA)->value()
+                   == rat(427 * (std::int64_t { 1 } << 44), 1'953'125));
+}
+
+TEST_CASE("the spread is reported exactly: the rounded root of the variance", "[statistics][rounded_root]")
+{
+    // sqrt(427/125) = 1.8482... g -> 1.85 g; sqrt(4057/600) = 2.6003... g ->
+    // 2.60 g. A population variance would give 1.69 g and 2.37 g.
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(spread, fixtureA)->measurement().value() == rat(185, 100));
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(spread, fixtureB)->measurement().value() == rat(260, 100));
+
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Spread>(spread, fixtureA, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
+             "2. sample_variance(#1) = 427/125000000\n"
+             "3. round(sqrt(#2), to 2 dp of g) = 37/20 g [nearest, ties away from zero]\n");
+    CHECK(formula::render(spread) == "round(sqrt(sample_variance(m(i))), to 2 dp of g)");
+}
+
+TEST_CASE("equal determinations: the spread is 0 exactly, and a precision check over it is satisfied",
+          "[statistics][precision]")
+{
+    constexpr auto equal = formula::series<Mass, 5>;
+    constexpr auto equalSpread =
+        formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            formula::sample_variance(equal));
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(equalSpread, fixtureE)->measurement().value() == rat(0));
+    constexpr auto agree =
+        formula::constraint(equalSpread <= formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                                formula::sample_mean(equal),
+                                formula::constant<unit::Gram>(rat(1, 10)) + rat(1, 50) * formula::precision_level<Mass>),
+                            formula::Verdict { "repeat the determinations" });
+    STATIC_REQUIRE(formula::check(agree, fixtureE).is_satisfied());
+}
+
+namespace
+{
+// Four invented determinations, 40.35, 40.45, 40.50 and 40.55 g: range
+// 0.2 g, mean 3237/80 = 40.4625 g. The critical-value table below is
+// invented and plainly so -- non-monotone, with a factor of 11/50 at n = 4
+// that no published table holds.
+inline constexpr formula::SampleSizeTable<5> JoinSizes { 3, 4, 5, 6, 8 };
+
+inline constexpr auto fourDeterminations = formula::environment(
+    formula::measured_series<Mass>(grams(rat(807, 20)), grams(rat(809, 20)), grams(rat(81, 2)), grams(rat(811, 20))));
+
+// The range against the table's factor times the repeatability limit at
+// the level of the mean:
+//  - at the mean, 11/50 * (1/10 + 3237/80 / 50) = 40007/200000 g =
+//    0.200035 g, so 0.2 g is satisfied;
+//  - at the first determination (the level-is-the-first-result mutation),
+//    11/50 * (1/10 + 40.35 / 50) = 9977/50000 g = 0.19954 g: violated;
+//  - at level 0 (an unbound placeholder), 0.022 g: violated;
+//  - with the count ignored and n = 3 read instead, 10 * 0.90925 g: still
+//    satisfied -- the count's own tests are task 3's.
+inline constexpr auto rangeCheck = formula::constraint(
+    formula::sample_range(formula::series<Mass, 4>)
+        <= formula::critical_value<JoinSizes, unit::One>(formula::sample_count(formula::series<Mass, 4>),
+                                                         { rat(10), rat(11, 50), rat(20), rat(50), rat(40) })
+               * formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                   formula::sample_mean(formula::series<Mass, 4>),
+                   formula::constant<unit::Gram>(rat(1, 10)) + rat(1, 50) * formula::precision_level<Mass>),
+    formula::Verdict { "repeat the determinations" });
+} // namespace
+
+TEST_CASE("a range checked against a critical value times a precision limit at the mean", "[statistics][precision]")
+{
+    STATIC_REQUIRE(formula::check(rangeCheck, fourDeterminations).is_satisfied());
+    // The same check with the level taken as the first determination fails:
+    // that is the mutation the numbers above were chosen to kill.
+    constexpr auto atFirst = formula::constraint(
+        formula::sample_range(formula::series<Mass, 4>)
+            <= formula::critical_value<JoinSizes, unit::One>(formula::sample_count(formula::series<Mass, 4>),
+                                                             { rat(10), rat(11, 50), rat(20), rat(50), rat(40) })
+                   * formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                       formula::constant<unit::Gram>(rat(807, 20)),
+                       formula::constant<unit::Gram>(rat(1, 10)) + rat(1, 50) * formula::precision_level<Mass>),
+        formula::Verdict { "repeat the determinations" });
+    STATIC_REQUIRE(formula::check(atFirst, fourDeterminations).is_violated());
+
+    formula::Trace<> trace {};
+    (void) formula::check(rangeCheck, fourDeterminations, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. m = 807/20 g; 809/20 g; 81/2 g; 811/20 g\n"
+             "2. sample_range(#1) = 1/5 g\n"
+             "3. m = 807/20 g; 809/20 g; 81/2 g; 811/20 g\n"
+             "4. sample_count(#3) = 4\n"
+             "5. critical(#4) = 11/50 [critical value at n = 4]\n"
+             "6. m = 807/20 g; 809/20 g; 81/2 g; 811/20 g\n"
+             "7. sample_mean(#6) = 3237/80 g\n"
+             "8. level (pass 1 of 2) = #7 = 3237/80 g\n"
+             "9. 1/10 g\n"
+             "10. 1/50\n"
+             "11. level = 3237/80 g [bound by #14]\n"
+             "12. #10 * #11 = 3237/4000000\n"
+             "13. #9 + #12 = 3637/4000000\n"
+             "14. r at level #8 (pass 2 of 2) = #13 = 3637/4000000\n"
+             "15. #5 * #14 = 40007/200000000\n"
+             "16. require #2 <= #15 [satisfied]\n");
+}
+
+TEST_CASE("the variance and the range trace, render and document as the mean does",
+          "[statistics][trace-render][render][document]")
+{
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<MassVariance>(variance, fixtureA, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
+             "2. sample_variance(#1) = 427/125000000\n");
+    formula::Trace<> ranged {};
+    (void) formula::checked_evaluate<Spread>(range, fixtureA, formula::RecordingSink<> { ranged });
+    CHECK(formula::render_trace(ranged, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
+             "2. sample_range(#1) = 21/5 g\n");
+    formula::Trace<> absent {};
+    (void) formula::checked_evaluate<MassVariance>(variance, fixtureAMissingThird, formula::RecordingSink<> { absent });
+    CHECK(formula::render_trace(absent, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; (not measured); 44 g; 40 g; 433/10 g\n"
+             "2. sample_variance(#1) = (not measured)\n");
+
+    constexpr auto jurisdiction = formula::vocabulary(formula::renames<Mass>("x_m"));
+    CHECK(formula::render(variance, jurisdiction) == "sample_variance(x_m(i))");
+    CHECK(formula::render(range, jurisdiction) == "sample_range(x_m(i))");
+    CHECK(formula::render<formula::Dialect::Markdown>(variance, jurisdiction) == "sample_variance(`x_m(i)`)");
+    CHECK(formula::render<formula::Dialect::Markdown>(range, jurisdiction) == "sample_range(`x_m(i)`)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(variance, jurisdiction) == "s^{2}({x_m}_{i})");
+    CHECK(formula::render<formula::Dialect::LaTeX>(range, jurisdiction) == "\\operatorname{range}({x_m}_{i})");
+
+    formula::Documentation const page = formula::document(spread + range, jurisdiction);
+    REQUIRE(page.symbols.size() == 1);
+    CHECK(page.symbols[0].symbol == "x_m");
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[0].length == 6);
 }
 
 TEST_CASE("a statistic used from two translation units is one formula", "[statistics]")

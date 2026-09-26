@@ -1940,6 +1940,18 @@ namespace detail
     {
     };
 
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleVarianceNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleVarianceNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleRangeNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleRangeNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
     template <typename Sub, SeriesNode S>
     struct ConstantRewrite<Sub, SumNode<S>>:
         ConstantRewriteOperand<Sub, S, SumNode<typename ConstantRewriteOf<Sub, S>::type>>
@@ -2317,6 +2329,16 @@ namespace detail
 
     template <SampleSource S>
     struct SubstitutedIn<SampleMeanNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleVarianceNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleRangeNode<S>>: SubstitutedInOperand<S>
     {
     };
 

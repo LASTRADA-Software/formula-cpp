@@ -839,6 +839,10 @@ namespace detail
                 return "sample_count(" + sole_operand(step) + ")";
             case StepKind::SampleMean:
                 return "sample_mean(" + sole_operand(step) + ")";
+            case StepKind::SampleVariance:
+                return "sample_variance(" + sole_operand(step) + ")";
+            case StepKind::SampleRange:
+                return "sample_range(" + sole_operand(step) + ")";
             // Every granularity, in the series' order, in the unit rounded
             // in, as `render()` writes it; the mode goes in the suffix, as
             // for `Round`.
@@ -1705,9 +1709,10 @@ namespace detail
             annotation = lookup_suffix(trace, stepIndex, recorded);
         else if (recorded.kind == StepKind::PrecisionLevel)
             annotation = precision_suffix(trace, stepIndex);
-        // A mean whose total overflowed names the determination it overflowed
-        // at, counted from one, as a failed series step does.
-        else if (recorded.kind == StepKind::SampleMean && recorded.error.has_value() && recorded.failedElement.has_value())
+        // A mean or a variance whose total overflowed names the determination
+        // it overflowed at, counted from one, as a failed series step does.
+        else if ((recorded.kind == StepKind::SampleMean || recorded.kind == StepKind::SampleVariance)
+                 && recorded.error.has_value() && recorded.failedElement.has_value())
             annotation = " at element " + std::to_string(*recorded.failedElement + 1);
 
         if (recorded.kind == StepKind::Constant)

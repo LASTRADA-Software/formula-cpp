@@ -355,6 +355,12 @@ namespace detail
     template <Vocabulary V, SampleSource S>
     void collect(Walk<V>& walk, SampleMeanNode<S> const& node);
 
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleVarianceNode<S> const& node);
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleRangeNode<S> const& node);
+
     template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
     void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node);
 
@@ -801,6 +807,18 @@ namespace detail
 
     template <Vocabulary V, SampleSource S>
     void collect(Walk<V>& walk, SampleMeanNode<S> const& node)
+    {
+        collect(walk, node.sample);
+    }
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleVarianceNode<S> const& node)
+    {
+        collect(walk, node.sample);
+    }
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleRangeNode<S> const& node)
     {
         collect(walk, node.sample);
     }

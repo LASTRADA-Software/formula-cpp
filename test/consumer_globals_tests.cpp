@@ -39,7 +39,8 @@
 // domain, a pairing, a splice and an interpolation -- on the same surfaces;
 // raw observations, `from` and `get_observations`, binned into classes and
 // divided by their sum, on the same surfaces;
-// a sample's count and mean, on the same surfaces; and the four table
+// a sample's count, mean, variance and range, and a rounded root of the
+// variance, on the same surfaces; and the four table
 // validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -560,6 +561,24 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::document(sampleMean * sampleCount, north).symbols.size() == 1
                            && formula::render_trace(sampleTrace, { .maxSteps = 4 }).find("sample_mean(#1) = 253/2 mm")
                                   != std::string::npos);
+    // The range and the variance of the same sample, and the variance's
+    // exact root: 150 and 103 mm give a range of 47 mm and a variance of
+    // 2209/2 mm^2, whose root is 33.23 mm to 2 dp.
+    auto const sampleRange = formula::sample_range(formula::series<EdgeX, 2>);
+    auto const sampleSpread =
+        formula::rounded_sqrt<unit::Millimetre, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            formula::sample_variance(formula::series<EdgeX, 2>));
+    formula::Trace<> spreadTrace {};
+    auto const rangedEdges = formula::checked_evaluate<EdgeX>(sampleRange, bothScreens);
+    auto const spreadEdges =
+        formula::checked_evaluate<EdgeX>(sampleSpread, bothScreens, formula::RecordingSink { spreadTrace, north });
+    probe.checks.push_back(
+        rangedEdges.has_value() && rangedEdges->measurement().value() == formula::Rational { 47 } && spreadEdges.has_value()
+        && spreadEdges->measurement().value() == formula::Rational { 3323, 100 }
+        && formula::render(sampleSpread, north) == "round(sqrt(sample_variance(x_m(i))), to 2 dp of mm)"
+        && formula::render<formula::Dialect::LaTeX>(sampleRange) == "\\operatorname{range}({x_m}_{i})"
+        && formula::document(sampleSpread + sampleRange, north).symbols.size() == 1
+        && formula::render_trace(spreadTrace, { .maxSteps = 4 }).find("sample_variance(#1)") != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

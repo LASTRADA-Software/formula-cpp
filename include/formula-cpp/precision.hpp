@@ -625,6 +625,16 @@ namespace detail
     {
     };
 
+    template <SampleSource S>
+    struct LevelChildren<SampleVarianceNode<S>>: LevelParent<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct LevelChildren<SampleRangeNode<S>>: LevelParent<S>
+    {
+    };
+
     /// Whether @p N is a `PrecisionLevelNode`.
     template <typename N>
     inline constexpr bool is_precision_level = false;

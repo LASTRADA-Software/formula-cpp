@@ -342,6 +342,22 @@ enum class StepKind : std::uint8_t
     /// factory `sample_mean`, so nothing in namespace `formula` is spelt
     /// `SampleMean`.
     SampleMean,
+    /// A `SampleVarianceNode`: the sample variance, over n - 1. Its one
+    /// operand is the sample's own step. Shown in the coherent unit of its
+    /// squared dimension, as every computed step is: no declared unit names
+    /// a squared mass.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleVarianceNode` and
+    /// the factory `sample_variance`, so nothing in namespace `formula` is
+    /// spelt `SampleVariance`.
+    SampleVariance,
+    /// A `SampleRangeNode`: the largest determination less the smallest,
+    /// shown in its operand's unit, as a mean is.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleRangeNode` and the
+    /// factory `sample_range`, so nothing in namespace `formula` is spelt
+    /// `SampleRange`.
+    SampleRange,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1375,6 +1391,18 @@ namespace detail
         static constexpr StepKind value = StepKind::SampleMean;
     };
 
+    template <SampleSource S>
+    struct StepKindOf<SampleVarianceNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleVariance;
+    };
+
+    template <SampleSource S>
+    struct StepKindOf<SampleRangeNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleRange;
+    };
+
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
     /// `SeriesNode`, and closed the same way. The primary template is left
     /// undefined, so a series node kind added without an entry here fails to
@@ -2219,10 +2247,11 @@ class RecordingSink
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
                 nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
-        // A sum and a mean read in their series' unit, which only the
-        // claimed operand step knows.
+        // A sum, a mean and a range read in their series' unit, which only
+        // the claimed operand step knows.
         if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum
-                      || detail::StepKindOf<N>::value == StepKind::SampleMean)
+                      || detail::StepKindOf<N>::value == StepKind::SampleMean
+                      || detail::StepKindOf<N>::value == StepKind::SampleRange)
             nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
 
         // After the operands are claimed, and not before: telling this

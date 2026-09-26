@@ -734,6 +734,14 @@ formula_add_negative_test(sample_count_of_single_value
     "formula: a sample statistic needs a sample (a series or observations), not a single value"
     REJECT "no matching" "this expression is a series, not a single value"
            "this result quantity does not measure the dimension this expression computes")
+formula_add_negative_test(sample_variance_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
+formula_add_negative_test(sample_range_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
 # Phase 12's series-quantity refusal, reused unchanged for a statistic.
 formula_add_negative_test(sample_mean_overlay_constant_on_sample
     "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
