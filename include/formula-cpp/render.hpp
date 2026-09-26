@@ -866,15 +866,16 @@ namespace detail
 
 /// A per-element rounding renders as `RoundNode` does, with every element's
 /// granularity in the series' order: `round(p(i), to 0/0/1 dp of %)`, and in
-/// LaTeX `\operatorname{round}_{0/-1/2\,\mathrm{mm}}(...)`. The unit symbol is
-/// emitted verbatim, as every rounding node emits it (`unit.hpp`). The mode is
-/// absent, for `RoundNode`'s reason, and appears in the trace.
+/// LaTeX `\operatorname{round}_{0/-1/2\,\mathrm{mm}}(...)`. The unit clause is
+/// `RoundNode`'s: set upright and escaped in LaTeX (`detail::latex_unit`), and
+/// dropped for a unit with no symbol. The mode is absent, for `RoundNode`'s
+/// reason, and appears in the trace.
 template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render_node(ElementwiseRoundNode<U, Places, Mode, S> const& node, V const& vocabulary)
 {
     std::string const inner = render<D>(node.operand, vocabulary);
-    constexpr Unit unit = U;
-    std::string const unitSymbol { view(unit.symbolText) };
+    constexpr Unit roundedIn = U;
+    std::string const unitSymbol { view(roundedIn.symbolText) };
     // Places already refused (`countMatches`) are not a table to list; the
     // text is never seen, since the program does not compile.
     std::string placesText = "(refused)";
@@ -882,9 +883,10 @@ template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocab
         placesText = detail::granularities_text<Places>();
 
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + "\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}("
+               + inner + ")";
     else
-        return "round(" + inner + ", to " + placesText + " dp of " + unitSymbol + ")";
+        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
 }
 
 /// A running total renders as a call naming its end: `cumulative(m_r(i), from

@@ -2248,4 +2248,23 @@ TEST_CASE("a per-element rounding records each element's granularity and its mod
     CHECK(formula::render_trace(trace, { .maxSteps = 8 })
           == "1. p = 125/2 %; 127/2 %; 486/5 %; 165/4 %; 161/20 %\n"
              "2. round(#1, to 0/0/0/1/1 dp of %) = 63 %; ... 4 more [nearest, ties away from zero]\n");
+
+    // A dimensionless unit has no symbol, and the line then names none, as a
+    // scalar rounding's does and as `render()` writes the node (final review,
+    // M4): never a dangling "dp of )".
+    struct Share: formula::Quantity<Share, "s", "share passing a screen", unit::One>
+    {
+    };
+    static constexpr formula::PlacesTable<2> sharePlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 } };
+    constexpr auto shares = formula::environment(
+        formula::measured_series<Share>(formula::Measured<Share> { formula::Rational { 7, 8 } },
+                                        formula::Measured<Share> { formula::Rational { 3, 8 } }));
+    constexpr auto roundedShares =
+        formula::rounded_elementwise<unit::One, sharePlaces, formula::RoundingMode::HalfAwayFromZero>(formula::series<Share, 2>);
+    formula::Trace<> shareTrace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(roundedShares, shares, formula::RecordingSink<> { shareTrace });
+    CHECK(formula::render_trace(shareTrace, { .maxSteps = 30 })
+          == "1. s = 7/8; 3/8\n"
+             "2. round(#1, to 0/1 dp) = 1; 2/5 [nearest, ties away from zero]\n");
+    CHECK(formula::render(roundedShares) == "round(s(i), to 0/1 dp)");
 }

@@ -1174,9 +1174,10 @@ class SeriesOutcome
 {
   public:
     /// A series and its provenance -- the counterpart of `Outcome::value`.
-    [[nodiscard]] static constexpr SeriesOutcome value(std::array<Measured<Q>, N> measurements, ValueSource source) noexcept
+    [[nodiscard]] static constexpr SeriesOutcome value(std::array<Measured<Q>, N> measurements,
+                                                       ValueSource provenance) noexcept
     {
-        return SeriesOutcome { measurements, source };
+        return SeriesOutcome { measurements, provenance };
     }
 
     /// Every element, in order.
@@ -1216,9 +1217,9 @@ class SeriesOutcome
     [[nodiscard]] constexpr bool operator==(SeriesOutcome const&) const noexcept = default;
 
   private:
-    constexpr SeriesOutcome(std::array<Measured<Q>, N> measurements, ValueSource source) noexcept:
+    constexpr SeriesOutcome(std::array<Measured<Q>, N> measurements, ValueSource provenance) noexcept:
         _elements { measurements },
-        _source { source }
+        _source { provenance }
     {
     }
 

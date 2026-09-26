@@ -784,8 +784,8 @@ namespace detail
             // in, as `render()` writes it; the mode goes in the suffix, as
             // for `Round`.
             case StepKind::ElementwiseRound:
-                return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp of "
-                       + std::string { view(step.unit.symbolText) } + ")";
+                return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
             // A declared domain's line is its points, as a per-element
             // constant's is its values -- see `series_step_line`.
             case StepKind::SeriesDomain:
