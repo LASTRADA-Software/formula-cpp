@@ -57,7 +57,8 @@ add_executable(formula-cpp-tests
     enumerator_tests.cpp
     tag_tests.cpp
     method_tests.cpp
-    method_consumer_globals_tests.cpp
+    consumer_globals_tests.cpp
+    consumer_globals_run_tests.cpp
     method_lookup_tests.cpp
     overlay_tests.cpp
     vocabulary_tests.cpp
@@ -1141,6 +1142,14 @@ add_test(NAME hygiene.testnames
 # Every symbol render(), document() and the trace write goes through the
 # vocabulary they were given -- see the script for why the trace is the case
 # that needs a check.
+# `consumer_globals_tests.cpp` guards the headers it includes against hiding
+# a consumer's global (cl C4459); this fails when a public header is missing
+# from its include list.
+add_test(NAME hygiene.consumer-globals
+    COMMAND "${CMAKE_COMMAND}"
+            -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckConsumerGlobalsIncludes.cmake")
+
 add_test(NAME hygiene.vocabulary-reach
     COMMAND "${CMAKE_COMMAND}"
             -D "SOURCE_DIR=${PROJECT_SOURCE_DIR}"
