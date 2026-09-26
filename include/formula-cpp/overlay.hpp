@@ -402,7 +402,7 @@ struct Overlay
     static_assert(detail::RequireWellFormedOverlay<Ops...>::value);
 
     /// The operations, in the order they apply.
-    std::tuple<Ops...> operations {};
+    std::tuple<Ops...> operations;
 };
 
 /// Builds an overlay: `overlay(with_constant<Q>(v), prune_variant<Cube>())`.
@@ -962,19 +962,63 @@ namespace detail
             return formula::method(pack, rounding, constraintSet);
     }
 
+    /// Whether every node of every variant and constraint of a method is a kind
+    /// the rewrite knows, asked without firing anything.
+    ///
+    /// Asked of the method an overlay is **applied to**, as a gate on the
+    /// result check below. The rewrite passes an unknown node through
+    /// untouched, and a pin or a prune only ever removes nodes, so "every node
+    /// of the input is known" is exactly "`RequireOverlaySeesNode` did not
+    /// fire". Asking the produced method instead is not the same: a later pin
+    /// or prune can remove the variant holding the unknown node, and the
+    /// result would then look all-known and add "nothing reads it" to the
+    /// refusal that already said the overlay cannot see where it is read.
+    ///
+    /// Strips `const` from the method's parts for the reason `Method` does:
+    /// a `Method<decltype(pack), ...>` names `const Variants<...>`, which no
+    /// specialisation below matches, and reading that as "not all known"
+    /// would silently switch the result check off.
+    template <typename Q, typename Vs, typename Constraints>
+    struct IsKnownParts: std::false_type
+    {
+    };
+
+    template <typename Q, typename... Tags, Node... Exprs, Predicate... Ps>
+    struct IsKnownParts<Q, Variants<VariantCase<Tags, Exprs>...>, ConstraintSet<Ps...>>:
+        std::bool_constant<(ConstantRewriteOf<Q, Exprs>::known && ...) && (ConstantRewriteOf<Q, Ps>::known && ...)>
+    {
+    };
+
+    template <typename Q, typename M>
+    struct IsKnownMethod: std::false_type
+    {
+    };
+
+    template <typename Q, typename Vs, typename Rounding, typename Constraints>
+    struct IsKnownMethod<Q, Method<Vs, Rounding, Constraints>>:
+        IsKnownParts<Q, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>
+    {
+    };
+
     /// Whether one operation of an overlay still does something in the method
     /// @p M the overlay produced. Only `with_constant` can stop doing
     /// something after it has been applied -- a later pin or prune can remove
     /// every variant that reads its quantity -- so every other operation is
     /// true here; theirs are refused where they are applied.
-    template <typename M, typename Operation>
+    ///
+    /// @p Input is the method the overlay was applied to, and the question is
+    /// asked only when every node of it is a kind the rewrite knows -- see
+    /// `IsKnownMethod`.
+    template <typename M, typename Input, typename Operation>
     struct RequireOperationRead: std::true_type
     {
     };
 
-    template <typename Vs, typename Rounding, typename Constraints, typename Q>
-    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, ConstantOverride<Q>>:
-        std::bool_constant<RequireConstantApplies<Q, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>::value>
+    template <typename Vs, typename Rounding, typename Constraints, typename Input, typename Q>
+    struct RequireOperationRead<Method<Vs, Rounding, Constraints>, Input, ConstantOverride<Q>>:
+        std::bool_constant<std::conditional_t<IsKnownMethod<Q, Input>::value,
+                                              RequireConstantApplies<Q, std::remove_cv_t<Vs>, std::remove_cv_t<Constraints>>,
+                                              std::true_type>::value>
     {
     };
 
@@ -987,10 +1031,10 @@ namespace detail
     /// depend on order: `overlay(with_constant<Q>(v), pin_variant<Cube>())`
     /// and `overlay(pin_variant<Cube>(), with_constant<Q>(v))` produce the same
     /// method, and a per-step check refused only the second.
-    template <typename M, typename... Ops>
+    template <typename M, typename Input, typename... Ops>
     struct RequireOverridesRead
     {
-        static constexpr bool value = (RequireOperationRead<M, Ops>::value && ...);
+        static constexpr bool value = (RequireOperationRead<M, Input, Ops>::value && ...);
     };
 
     /// Applies the operations of an overlay from position @p Index onwards,
@@ -1030,7 +1074,9 @@ template <typename... Ops, typename Vs, typename Rounding, typename Constraints>
     else
     {
         auto const result = detail::apply_from<0>(o.operations, m);
-        static_assert(detail::RequireOverridesRead<std::remove_cv_t<decltype(result)>, Ops...>::value);
+        static_assert(detail::RequireOverridesRead<std::remove_cv_t<decltype(result)>,
+                                                   Method<Vs, Rounding, Constraints>,
+                                                   Ops...>::value);
         return result;
     }
 }

@@ -720,8 +720,11 @@ formula_add_negative_test(overlay_constant_after_pin
 formula_add_negative_test(overlay_constant_before_pin
     "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
-# One overlay both pinning and pruning, in either order. The REJECTs pin that
-# `apply` is not instantiated over the refused overlay.
+# One overlay both pinning and pruning, in either order. The pin-first case's
+# REJECT pins that `apply` is not instantiated over the refused overlay:
+# applied, its prune would be refused as naming a variant the pin removed.
+# The prune-first case compiles cleanly even when applied, so its REJECT
+# cannot fire; it is there only for the order.
 formula_add_negative_test(overlay_pins_then_prunes
     "formula: this overlay both pins a variant and prunes one"
     REJECT "formula: this overlay pins or prunes a variant the method does not declare")
@@ -755,6 +758,14 @@ formula_add_negative_test(overlay_argument_not_an_operation
 # is known: the only use here is inside the unknown node, where it cannot be
 # seen, and "unused" would be false.
 formula_add_negative_test(overlay_constant_unknown_node
+    "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+# The same, with a prune afterwards that removes the variant holding the
+# unknown node. The method produced then looks entirely known, so the REJECT
+# pins that the unused-quantity check is gated on the method the overlay was
+# applied to, not only on the one it produced.
+formula_add_negative_test(overlay_constant_unknown_node_then_pruned
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 

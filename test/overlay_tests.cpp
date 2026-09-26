@@ -82,29 +82,27 @@ inline constexpr formula::Citation nationalAnnex { .title = "Shape factor",
 inline constexpr auto national =
     formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, nationalAnnex));
 
-/// `expression` with `Ratio` fixed at 4, evaluated against an environment
-/// holding nothing at all -- so it compiles only if every use of `Ratio` in
-/// `expression` was rewritten.
-///
-/// Asks the rewrite `with_constant` applies to each variant directly rather
-/// than through a method, because no lookup -- banded, exact or interpolating,
-/// at the root of a variant or nested inside it -- can be in a variant's
-/// expression on clang++ 20 with libstdc++ 14 today. `Variants` holds its
-/// variants in a `std::tuple`, whose default-constructor check makes clang
-/// instantiate the zero-argument constructor of the lookup's `Corrections`,
-/// and that constructor is the refusal of a short corrections list. cl,
-/// clang-cl and g++ accept the same method. That is a defect of `lookup.hpp`
-/// and `method.hpp` together, not of the overlay, and the tests above already
-/// take the rewrite through `apply` for the node kinds a method can hold
-/// everywhere.
+/// A method of one Cube variant, `expression`, reported to three decimals of
+/// a dimensionless ratio, with `Ratio` fixed at 4 by an overlay.
+template <typename Expr>
+[[nodiscard]] constexpr auto withRatioFixedAtFourMethod(Expr expression)
+{
+    constexpr auto fixed = formula::overlay(formula::with_constant<Ratio>(formula::Rational { 4 }));
+    return formula::apply(
+        fixed,
+        formula::method(
+            formula::variants(formula::variant<Cube>(expression)),
+            formula::rounding_rule<unit::One, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(),
+            formula::constraints()));
+}
+
+/// `withRatioFixedAtFourMethod(expression)`, evaluated against an environment
+/// holding nothing at all -- so it compiles only if `apply` rewrote every use
+/// of `Ratio` in `expression`.
 template <typename Expr>
 [[nodiscard]] constexpr formula::Rational withRatioFixedAtFour(Expr expression)
 {
-    using Rewrite = formula::detail::ConstantRewrite<Ratio, Expr>;
-    static_assert(Rewrite::known && Rewrite::mentions);
-    auto const evaluated = formula::checked_evaluate_si(
-        Rewrite::apply(expression, formula::with_constant<Ratio>(formula::Rational { 4 })), formula::environment());
-    return evaluated.value().value();
+    return formula::evaluate_method<Cube>(withRatioFixedAtFourMethod(expression), formula::environment()).value().value();
 }
 
 enum class Shape : std::uint8_t
@@ -210,8 +208,9 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
 {
     // Each call compiles only if the rewrite reached `var<Ratio>` through that
     // node kind -- see `withRatioFixedAtFour` -- and the value says the node
-    // was rebuilt with its own contents: an operand, a citation, a table. The
-    // values are unrounded: no method, so no method's rounding rule.
+    // was rebuilt with its own contents: an operand, a citation, a table. Each
+    // goes through `apply` and `evaluate_method`, the path an author's method
+    // takes, so the values are rounded to the method's three decimals.
     namespace f = formula;
     using f::Rational;
     constexpr auto r = var<Ratio>;
@@ -225,11 +224,9 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
     // The citation is the one piece of a rebuilt node no value can show, and
     // provenance is what this phase exists for: the rewritten wrapper must
     // still cite what the original cited.
-    using Wrapped = decltype(f::documented(r, nationalAnnex));
-    STATIC_REQUIRE(f::detail::ConstantRewrite<Ratio, Wrapped>::apply(f::documented(r, nationalAnnex),
-                                                                     f::with_constant<Ratio>(Rational { 4 }))
-                       .citation
-                   == nationalAnnex);
+    STATIC_REQUIRE(
+        std::get<0>(withRatioFixedAtFourMethod(f::documented(r, nationalAnnex)).variantSet.cases).expression.citation
+        == nationalAnnex);
     STATIC_REQUIRE(withRatioFixedAtFour(f::rounded<unit::One, f::DecimalPlaces { 0 }, f::RoundingMode::HalfAwayFromZero>(
                        r / f::number(Rational { 3 })))
                    == Rational { 1 });
@@ -252,7 +249,7 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
     STATIC_REQUIRE(
         withRatioFixedAtFour(r * f::exact_lookup<ShapeKeys, unit::One>(Shape::Round, { Rational { 2 }, Rational { 3 } }))
         == Rational { 12 });
-    STATIC_REQUIRE(withRatioFixedAtFour(r * f::pi) == Rational { 4 } * f::Pi);
+    STATIC_REQUIRE(withRatioFixedAtFour(r * f::pi) == Rational { 12'566, 1'000 });
 }
 
 TEST_CASE("an overlay fixes a constant under a const child type", "[overlay]")
