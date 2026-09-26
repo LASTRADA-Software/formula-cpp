@@ -1906,7 +1906,7 @@ namespace series_trace
     inline constexpr auto inputs = formula::environment(
         formula::measured_series<Retained>(
             retained(130), retained(210), formula::Measured<Retained>::absent(), retained(340), retained(28)),
-        formula::Measured<TotalMass> { formula::Rational { 1000 } });
+        formula::Measured<TotalMass> { formula::Rational { 1250 } });
 
     inline constexpr auto allPresent = formula::environment(
         formula::measured_series<Retained>(retained(130), retained(210), retained(95), retained(340), retained(28)));
@@ -1997,7 +1997,7 @@ TEST_CASE("a long series shares the one maxSteps budget and says how much it lef
              "... 1 further step not shown\n");
     CHECK(formula::render_trace(trace, { .maxSteps = 7 })
           == "1. m_r = 130 g; 210 g; (not measured); 340 g; 28 g\n"
-             "2. m_t = 1000 g\n");
+             "2. m_t = 1250 g\n");
     // The line itself and nothing else: every element is left out, and said so.
     CHECK(formula::render_trace(trace, { .maxSteps = 1 })
           == "1. m_r = ... 5 more\n"
@@ -2034,7 +2034,7 @@ TEST_CASE("an elementwise step names its operands, and a broadcast scalar appear
                                                                               series_trace::retained(95),
                                                                               series_trace::retained(340),
                                                                               series_trace::retained(28)),
-                             formula::Measured<series_trace::TotalMass> { formula::Rational { 1000 } });
+                             formula::Measured<series_trace::TotalMass> { formula::Rational { 1250 } });
     formula::Trace<> trace {};
     (void) formula::detail::dispatch_series<formula::Rational>(formula::series<series_trace::Retained, 5>
                                                                    / formula::var<series_trace::TotalMass>,
@@ -2044,8 +2044,8 @@ TEST_CASE("an elementwise step names its operands, and a broadcast scalar appear
     // the fraction is shown in the coherent unit, exactly.
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
           == "1. m_r = 130 g; 210 g; 95 g; 340 g; 28 g\n"
-             "2. m_t = 1000 g\n"
-             "3. #1 / #2 = 13/100; 21/100; 19/200; 17/50; 7/250\n");
+             "2. m_t = 1250 g\n"
+             "3. #1 / #2 = 13/125; 21/125; 19/250; 34/125; 14/625\n");
     REQUIRE(trace.steps.size() == 3);
     CHECK(trace.steps[2].kind == formula::StepKind::ElementwiseDivide);
     CHECK(trace.steps[2].operands == std::vector<std::size_t> { 0, 1 });
@@ -2072,7 +2072,7 @@ TEST_CASE("a failing scalar operand is reported without a position", "[series][t
 {
     constexpr auto screens = formula::environment(
         formula::measured_series<series_trace::Retained>(series_trace::retained(130), series_trace::retained(210)),
-        formula::Measured<series_trace::TotalMass> { formula::Rational { 1000 } });
+        formula::Measured<series_trace::TotalMass> { formula::Rational { 1250 } });
     constexpr auto total = formula::var<series_trace::TotalMass>;
     formula::Trace<> trace {};
     (void) formula::detail::dispatch_series<formula::Rational>(

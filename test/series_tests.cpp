@@ -163,11 +163,11 @@ TEST_CASE("get_series returns the elements exactly as they were supplied", "[ser
 TEST_CASE("a series and single values share one environment, each read its own way", "[series]")
 {
     constexpr auto mixed =
-        formula::environment(formula::measured_series<Retained>(m<Retained>(130), m<Retained>(210)), m<TotalMass>(1000));
+        formula::environment(formula::measured_series<Retained>(m<Retained>(130), m<Retained>(210)), m<TotalMass>(1250));
 
-    STATIC_REQUIRE(mixed.get<TotalMass>().value() == rat(1000));
+    STATIC_REQUIRE(mixed.get<TotalMass>().value() == rat(1250));
     constexpr auto total = formula::checked_evaluate<TotalMass>(formula::var<TotalMass>, mixed);
-    STATIC_REQUIRE(total->measurement().value() == rat(1000));
+    STATIC_REQUIRE(total->measurement().value() == rat(1250));
     constexpr auto retained = formula::checked_evaluate_series<Retained>(formula::series<Retained, 2>, mixed);
     STATIC_REQUIRE(retained->element(1).value() == rat(210));
 }
@@ -297,7 +297,8 @@ namespace
 namespace elementwise
 {
     // Invented quantities; the shared fixture's retained masses and a total
-    // of 1000 g.
+    // of 1250 g -- 1.25 in SI, so dividing by it cannot pass for dividing by
+    // one.
     struct FractionRetained: formula::Quantity<FractionRetained, "p_r", "fraction retained", formula::unit::Percent>
     {
     };
@@ -314,12 +315,12 @@ namespace elementwise
     constexpr auto screenInputs =
         formula::environment(formula::measured_series<Retained>(
                                  m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)),
-                             m<TotalMass>(1000));
+                             m<TotalMass>(1250));
 
     constexpr auto absentMiddle = formula::environment(
         formula::measured_series<Retained>(
             m<Retained>(130), m<Retained>(210), formula::Measured<Retained>::absent(), m<Retained>(340), m<Retained>(28)),
-        m<TotalMass>(1000));
+        m<TotalMass>(1250));
 
     constexpr auto absentTotal =
         formula::environment(formula::measured_series<Retained>(
@@ -340,16 +341,17 @@ TEST_CASE("a scalar divides every element, and each element keeps its own place"
 {
     using elementwise::FractionRetained;
     constexpr auto fraction = formula::series<Retained, 5> / formula::var<TotalMass>;
-    // (fixture: m_t = 1000 g) -> 13 %, 21 %, 9.5 %, 34 %, 2.8 %. A broadcast
-    // applied to element 0 only, or a reversed operand order, gives
-    // different numbers at every position; all five are asserted.
+    // (fixture: m_t = 1250 g) -> 10.4 %, 16.8 %, 7.6 %, 27.2 %, 2.24 %. A
+    // broadcast applied to element 0 only, a reversed operand order, or a
+    // scalar skipped (dividing by one) gives different numbers at every
+    // position; all five are asserted.
     constexpr auto out = formula::checked_evaluate_series<FractionRetained>(fraction, elementwise::screenInputs);
     STATIC_REQUIRE(out.has_value());
-    STATIC_REQUIRE(out->element(0).value() == rat(13));
-    STATIC_REQUIRE(out->element(1).value() == rat(21));
-    STATIC_REQUIRE(out->element(2).value() == formula::Rational { 19, 2 });
-    STATIC_REQUIRE(out->element(3).value() == rat(34));
-    STATIC_REQUIRE(out->element(4).value() == formula::Rational { 14, 5 });
+    STATIC_REQUIRE(out->element(0).value() == formula::Rational { 52, 5 });
+    STATIC_REQUIRE(out->element(1).value() == formula::Rational { 84, 5 });
+    STATIC_REQUIRE(out->element(2).value() == formula::Rational { 38, 5 });
+    STATIC_REQUIRE(out->element(3).value() == formula::Rational { 136, 5 });
+    STATIC_REQUIRE(out->element(4).value() == formula::Rational { 56, 25 });
     STATIC_REQUIRE(decltype(fraction)::length == 5);
     STATIC_REQUIRE(decltype(fraction)::dimension == formula::unit::One.dimension);
 }
@@ -405,9 +407,9 @@ TEST_CASE("an absent scalar makes every element absent; an absent element only i
     constexpr auto fraction = formula::series<Retained, 5> / formula::var<TotalMass>;
 
     constexpr auto oneAbsent = formula::checked_evaluate_series<FractionRetained>(fraction, elementwise::absentMiddle);
-    STATIC_REQUIRE(oneAbsent->element(1).value() == rat(21));
+    STATIC_REQUIRE(oneAbsent->element(1).value() == formula::Rational { 84, 5 });
     STATIC_REQUIRE(oneAbsent->element(2).is_absent());
-    STATIC_REQUIRE(oneAbsent->element(3).value() == rat(34));
+    STATIC_REQUIRE(oneAbsent->element(3).value() == formula::Rational { 136, 5 });
 
     constexpr auto allAbsent = formula::checked_evaluate_series<FractionRetained>(fraction, elementwise::absentTotal);
     STATIC_REQUIRE(allAbsent.has_value());
@@ -419,13 +421,13 @@ TEST_CASE("an absent scalar makes every element absent; an absent element only i
 TEST_CASE("a scalar or a bare number broadcasts from either side, and negation is per element", "[series]")
 {
     constexpr auto s = formula::series<Retained, 5>;
-    // m_t - m_r: 870, 790, 905, 660, 972 g. The reversed order gives the
+    // m_t - m_r: 1120, 1040, 1155, 910, 1222 g. The reversed order gives the
     // negatives, and a broadcast to element 0 only leaves the rest unchanged.
     constexpr auto passing =
         formula::checked_evaluate_series<Retained>(formula::var<TotalMass> - s, elementwise::screenInputs);
-    STATIC_REQUIRE(passing->element(0).value() == rat(870));
-    STATIC_REQUIRE(passing->element(2).value() == rat(905));
-    STATIC_REQUIRE(passing->element(4).value() == rat(972));
+    STATIC_REQUIRE(passing->element(0).value() == rat(1120));
+    STATIC_REQUIRE(passing->element(2).value() == rat(1155));
+    STATIC_REQUIRE(passing->element(4).value() == rat(1222));
 
     constexpr auto doubled = formula::checked_evaluate_series<Retained>(s * rat(2), elementwise::screenInputs);
     constexpr auto doubledLeft = formula::checked_evaluate_series<Retained>(rat(2) * s, elementwise::screenInputs);
@@ -479,6 +481,8 @@ TEST_CASE("elementwise arithmetic works in double as well as in Rational", "[ser
     auto const out = formula::detail::dispatch_series<double>(
         formula::series<Retained, 5> / formula::var<TotalMass>, elementwise::screenInputs, formula::NullSink {});
     REQUIRE(out.has_value());
-    CHECK(out->elements[0] == 0.13);
-    CHECK(out->elements[4] == 0.028);
+    // Each side is read into SI and converted to double, then divided in
+    // double: 0.13 kg / 1.25 kg, exactly the division written here.
+    CHECK(out->elements[0] == 0.13 / 1.25);
+    CHECK(out->elements[4] == 0.028 / 1.25);
 }
