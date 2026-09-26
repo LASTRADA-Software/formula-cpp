@@ -12,8 +12,8 @@ struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", f
 {
 };
 
-inline constexpr formula::BreakpointTable<3> disordered { formula::breakpoint(7, 10), formula::breakpoint(33, 10),
-                                                          formula::breakpoint(19, 10) };
+inline constexpr formula::BreakpointTable<3> disordered { formula::breakpoint(11), formula::breakpoint(41),
+                                                          formula::breakpoint(29) };
 
 inline constexpr auto paired =
     formula::curve(formula::domain<formula::unit::Metre, disordered>(), formula::series<Passing, 2>);

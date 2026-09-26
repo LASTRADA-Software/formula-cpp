@@ -12,9 +12,9 @@ struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", f
 {
 };
 
-inline constexpr formula::BreakpointTable<5> screens { formula::breakpoint(7, 10), formula::breakpoint(19, 10),
-                                                       formula::breakpoint(33, 10), formula::breakpoint(71, 10),
-                                                       formula::breakpoint(137, 10) };
+inline constexpr formula::BreakpointTable<5> screens { formula::breakpoint(11), formula::breakpoint(29),
+                                                       formula::breakpoint(41), formula::breakpoint(59),
+                                                       formula::breakpoint(83) };
 
 inline constexpr auto read = formula::interpolate_at(
     formula::curve(formula::domain<formula::unit::Metre, screens>(), formula::series<Passing, 4>),

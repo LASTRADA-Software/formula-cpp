@@ -1261,7 +1261,7 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
     return detail::lookup_call<D>("snap", render<D>(node.operand, vocabulary), permittedField);
 }
 
-/// A declared domain renders as its points, `domain(7/10, 19/10, 33/10 mm)`,
+/// A declared domain renders as its points, `domain(11, 29, 41 mm)`,
 /// in their declared order with the unit once, as a snap's set is. A list
 /// already reads as many values, so it carries no index marker, as a
 /// per-element constant carries none.

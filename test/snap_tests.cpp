@@ -32,15 +32,14 @@ struct OpeningInCm: formula::Quantity<OpeningInCm, "d_c", "screen opening", unit
 {
 };
 
-// The permitted openings, in metres: 0.7, 1.9, 3.3, 7.1 and 13.7. Invented:
-// not any published aperture series, and in metres so that nobody could take
-// them for one. Their gaps differ, so a midpoint in one gap is not a midpoint
-// in another.
-constexpr formula::BreakpointTable<5> permitted { breakpoint(7, 10),
-                                                  breakpoint(19, 10),
-                                                  breakpoint(33, 10),
-                                                  breakpoint(71, 10),
-                                                  breakpoint(137, 10) };
+// The permitted openings, in metres: 11, 29, 41, 59 and 83. Invented: primes,
+// and not a sieve size in any unit. The midpoints of their gaps -- 20, 35,
+// 50 and 71 -- are all different, so a tie in one gap is no tie in another.
+constexpr formula::BreakpointTable<5> permitted { breakpoint(11),
+                                                  breakpoint(29),
+                                                  breakpoint(41),
+                                                  breakpoint(59),
+                                                  breakpoint(83) };
 
 template <SnapTie Tie>
 constexpr auto snappedOpening(formula::Rational metres)
@@ -73,70 +72,70 @@ constexpr auto higher = SnapTie::TowardHigher;
 
 TEST_CASE("a value snaps to the nearest permitted one by plain distance, and a tie by the stated rule", "[snap]")
 {
-    // 5.2 m is exactly midway between 3.3 and 7.1: the rule decides.
-    STATIC_REQUIRE(snapOf<lower>(rat(52, 10)) == rat(33, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(52, 10)) == rat(71, 10));
+    // 50 m is exactly midway between 41 and 59: the rule decides.
+    STATIC_REQUIRE(snapOf<lower>(rat(50)) == rat(41));
+    STATIC_REQUIRE(snapOf<higher>(rat(50)) == rat(59));
     // Nearer below and nearer above: the rule does not enter.
-    STATIC_REQUIRE(snapOf<lower>(rat(49, 10)) == rat(33, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(49, 10)) == rat(33, 10));
-    STATIC_REQUIRE(snapOf<lower>(rat(55, 10)) == rat(71, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(55, 10)) == rat(71, 10));
+    STATIC_REQUIRE(snapOf<lower>(rat(48)) == rat(41));
+    STATIC_REQUIRE(snapOf<higher>(rat(48)) == rat(41));
+    STATIC_REQUIRE(snapOf<lower>(rat(52)) == rat(59));
+    STATIC_REQUIRE(snapOf<higher>(rat(52)) == rat(59));
     // A billionth of a metre either side of that midpoint is no tie: only an
     // exact midpoint is, never one within a tolerance.
-    STATIC_REQUIRE(snapOf<lower>(rat(5'199'999'999, 1'000'000'000)) == rat(33, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(5'199'999'999, 1'000'000'000)) == rat(33, 10));
-    STATIC_REQUIRE(snapOf<lower>(rat(5'200'000'001, 1'000'000'000)) == rat(71, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(5'200'000'001, 1'000'000'000)) == rat(71, 10));
+    STATIC_REQUIRE(snapOf<lower>(rat(49'999'999'999, 1'000'000'000)) == rat(41));
+    STATIC_REQUIRE(snapOf<higher>(rat(49'999'999'999, 1'000'000'000)) == rat(41));
+    STATIC_REQUIRE(snapOf<lower>(rat(50'000'000'001, 1'000'000'000)) == rat(59));
+    STATIC_REQUIRE(snapOf<higher>(rat(50'000'000'001, 1'000'000'000)) == rat(59));
     // On a permitted value: an exact hit, not a tie.
-    STATIC_REQUIRE(snapOf<lower>(rat(19, 10)) == rat(19, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(19, 10)) == rat(19, 10));
-    // A tie in the first gap (1.3 m) and in the last (10.4 m), against a
+    STATIC_REQUIRE(snapOf<lower>(rat(29)) == rat(29));
+    STATIC_REQUIRE(snapOf<higher>(rat(29)) == rat(29));
+    // A tie in the first gap (20 m) and in the last (71 m), against a
     // check of one gap only.
-    STATIC_REQUIRE(snapOf<lower>(rat(13, 10)) == rat(7, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(13, 10)) == rat(19, 10));
-    STATIC_REQUIRE(snapOf<lower>(rat(104, 10)) == rat(71, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(104, 10)) == rat(137, 10));
+    STATIC_REQUIRE(snapOf<lower>(rat(20)) == rat(11));
+    STATIC_REQUIRE(snapOf<higher>(rat(20)) == rat(29));
+    STATIC_REQUIRE(snapOf<lower>(rat(71)) == rat(59));
+    STATIC_REQUIRE(snapOf<higher>(rat(71)) == rat(83));
 }
 
 TEST_CASE("both ends of the permitted set are inside it, and anything beyond them misses", "[snap]")
 {
-    STATIC_REQUIRE(snapOf<lower>(rat(7, 10)) == rat(7, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(7, 10)) == rat(7, 10));
-    STATIC_REQUIRE(snapOf<lower>(rat(137, 10)) == rat(137, 10));
-    STATIC_REQUIRE(snapOf<higher>(rat(137, 10)) == rat(137, 10));
+    STATIC_REQUIRE(snapOf<lower>(rat(11)) == rat(11));
+    STATIC_REQUIRE(snapOf<higher>(rat(11)) == rat(11));
+    STATIC_REQUIRE(snapOf<lower>(rat(83)) == rat(83));
+    STATIC_REQUIRE(snapOf<higher>(rat(83)) == rat(83));
     // Below the first and above the last: a miss, never the nearest end.
-    STATIC_REQUIRE(misses<lower>(rat(6, 10)));
-    STATIC_REQUIRE(misses<higher>(rat(6, 10)));
-    STATIC_REQUIRE(misses<lower>(rat(14)));
-    STATIC_REQUIRE(misses<higher>(rat(14)));
+    STATIC_REQUIRE(misses<lower>(rat(10)));
+    STATIC_REQUIRE(misses<higher>(rat(10)));
+    STATIC_REQUIRE(misses<lower>(rat(84)));
+    STATIC_REQUIRE(misses<higher>(rat(84)));
 }
 
 TEST_CASE("a value in another unit is converted into the key unit before it is compared", "[snap]")
 {
-    // 520 cm is 5.2 m, the midpoint of 3.3 and 7.1 m.
-    constexpr auto inCm = formula::environment(formula::Measured<OpeningInCm> { rat(520) });
+    // 5000 cm is 50 m, the midpoint of 41 and 59 m.
+    constexpr auto inCm = formula::environment(formula::Measured<OpeningInCm> { rat(5000) });
     constexpr auto towardLower = formula::checked_evaluate<Opening>(
         formula::snapped<unit::Metre, permitted, lower>(formula::var<OpeningInCm>), inCm);
     constexpr auto towardHigher = formula::checked_evaluate<Opening>(
         formula::snapped<unit::Metre, permitted, higher>(formula::var<OpeningInCm>), inCm);
-    STATIC_REQUIRE(towardLower->measurement().value() == rat(33, 10));
-    STATIC_REQUIRE(towardHigher->measurement().value() == rat(71, 10));
+    STATIC_REQUIRE(towardLower->measurement().value() == rat(41));
+    STATIC_REQUIRE(towardHigher->measurement().value() == rat(59));
 }
 
 TEST_CASE("distances are taken in the key unit, where a form in SI would overflow", "[snap]")
 {
     // Invented at Rational's limit, in millimetres: the first permitted value
     // is 1/10^16 mm, which is 1/10^19 m -- a denominator no int64 holds. In
-    // the key unit every distance is exact, and 1.9 mm (given in metres)
-    // snaps to 2 mm; a snap that compared in SI would have to convert that
+    // the key unit every distance is exact, and 11.9 mm (given in metres)
+    // snaps to 11 mm; a snap that compared in SI would have to convert that
     // value and could only fail. Equivalent wherever both forms can be
     // represented; told apart here.
-    constexpr formula::BreakpointTable<3> atTheLimit { breakpoint(1, 10'000'000'000'000'000), breakpoint(2), breakpoint(3) };
+    constexpr formula::BreakpointTable<3> atTheLimit { breakpoint(1, 10'000'000'000'000'000), breakpoint(11), breakpoint(13) };
     constexpr auto snapped = formula::checked_evaluate<Opening>(
         formula::snapped<unit::Millimetre, atTheLimit, lower>(formula::var<Opening>),
-        formula::environment(formula::Measured<Opening> { rat(19, 10'000) }));
+        formula::environment(formula::Measured<Opening> { rat(119, 10'000) }));
     STATIC_REQUIRE(snapped.has_value());
-    STATIC_REQUIRE(snapped->measurement().value() == rat(1, 500));
+    STATIC_REQUIRE(snapped->measurement().value() == rat(11, 1000));
 }
 
 namespace
@@ -199,21 +198,21 @@ TEST_CASE("a snap is a scalar node carrying its key unit, set and tie rule", "[s
 TEST_CASE("a snap renders its permitted set and no tie rule", "[snap][render]")
 {
     constexpr auto snap = formula::snapped<unit::Metre, permitted, higher>(formula::var<Opening>);
-    CHECK(formula::render(snap) == "snap(d, to 7/10, 19/10, 33/10, 71/10, 137/10 m)");
-    CHECK(formula::render<formula::Dialect::Markdown>(snap) == "snap(`d`, to 7/10, 19/10, 33/10, 71/10, 137/10 m)");
+    CHECK(formula::render(snap) == "snap(d, to 11, 29, 41, 59, 83 m)");
+    CHECK(formula::render<formula::Dialect::Markdown>(snap) == "snap(`d`, to 11, 29, 41, 59, 83 m)");
     CHECK(formula::render<formula::Dialect::LaTeX>(snap)
-          == "\\operatorname{snap}(d,\\allowbreak \\mathrm{to\\ 7/10,\\ 19/10,\\ 33/10,\\ 71/10,\\ 137/10\\ m})");
+          == "\\operatorname{snap}(d,\\allowbreak \\mathrm{to\\ 11,\\ 29,\\ 41,\\ 59,\\ 83\\ m})");
     // A call groups itself: no brackets in a product, and the operand in the
     // page's words.
     constexpr auto everyone = formula::vocabulary(formula::renames<Opening>("w"));
-    CHECK(formula::render(snap * rat(2), everyone) == "snap(w, to 7/10, 19/10, 33/10, 71/10, 137/10 m) * 2");
+    CHECK(formula::render(snap * rat(2), everyone) == "snap(w, to 11, 29, 41, 59, 83 m) * 2");
 }
 
 TEST_CASE("a snap documents its operand's row", "[snap][document]")
 {
     formula::Documentation const page =
         formula::document(formula::snapped<unit::Metre, permitted, lower>(formula::var<Opening>));
-    CHECK(page.formula == "snap(d, to 7/10, 19/10, 33/10, 71/10, 137/10 m)");
+    CHECK(page.formula == "snap(d, to 11, 29, 41, 59, 83 m)");
     REQUIRE(page.symbols.size() == 1);
     CHECK(page.symbols[0].symbol == "d");
 }
@@ -233,28 +232,28 @@ std::string traceOf(formula::Rational metres, formula::Trace<>& trace)
 TEST_CASE("a snap step names the two neighbours, and the tie rule where it decided", "[snap][trace]")
 {
     formula::Trace<> tie {};
-    CHECK(traceOf<higher>(rat(52, 10), tie)
-          == "1. d = 26/5 m\n"
-             "2. snap(#1) = 71/10 m [33/10 m to 71/10 m; tie, toward higher]\n");
+    CHECK(traceOf<higher>(rat(50), tie)
+          == "1. d = 50 m\n"
+             "2. snap(#1) = 59 m [41 m to 59 m; tie, toward higher]\n");
     REQUIRE(tie.steps.size() == 2);
     CHECK(tie.steps[1].kind == formula::StepKind::SnappedToPermitted);
-    CHECK(tie.steps[1].selectedSegment == formula::Segment { breakpoint(33, 10), breakpoint(71, 10) });
+    CHECK(tie.steps[1].selectedSegment == formula::Segment { breakpoint(41), breakpoint(59) });
     CHECK(tie.steps[1].snapTie == SnapTie::TowardHigher);
     CHECK(tie.steps[1].tieBroken);
 
     formula::Trace<> nearer {};
-    CHECK(traceOf<higher>(rat(49, 10), nearer).ends_with("2. snap(#1) = 33/10 m [33/10 m to 71/10 m; nearer 33/10 m]\n"));
+    CHECK(traceOf<higher>(rat(48), nearer).ends_with("2. snap(#1) = 41 m [41 m to 59 m; nearer 41 m]\n"));
     CHECK(!nearer.steps[1].tieBroken);
 
     formula::Trace<> exact {};
-    CHECK(traceOf<lower>(rat(19, 10), exact).ends_with("2. snap(#1) = 19/10 m [on 19/10 m]\n"));
-    CHECK(exact.steps[1].selectedSegment == formula::Segment { breakpoint(19, 10), breakpoint(19, 10) });
+    CHECK(traceOf<lower>(rat(29), exact).ends_with("2. snap(#1) = 29 m [on 29 m]\n"));
+    CHECK(exact.steps[1].selectedSegment == formula::Segment { breakpoint(29), breakpoint(29) });
     CHECK(exact.steps[1].snapTie == SnapTie::TowardLower);
 
     formula::Trace<> missed {};
-    CHECK(traceOf<lower>(rat(14), missed)
+    CHECK(traceOf<lower>(rat(84), missed)
               .ends_with("2. snap(#1) = argument outside the domain of the operation "
-                         "[outside the permitted set, 7/10 m to 137/10 m]\n"));
+                         "[outside the permitted set, 11 m to 83 m]\n"));
     CHECK(!missed.steps[1].selectedSegment.has_value());
     REQUIRE(missed.steps[1].coveredRange.has_value());
 }

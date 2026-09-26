@@ -1700,11 +1700,11 @@ TEST_CASE("a per-element constant renders as its list of values", "[series][rend
     // S14: a series constant prints its rows, which already reads as many
     // values, so it carries no index marker. Each value is spelled as a
     // constant holding it would be.
-    constexpr auto factors = formula::series_constant<formula::unit::Millimetre>(rat(7, 10), rat(19, 10), rat(33, 10));
-    CHECK(formula::render(factors) == "values(7/10 mm, 19/10 mm, 33/10 mm)");
-    CHECK(formula::render<formula::Dialect::Markdown>(factors) == "values(7/10 mm, 19/10 mm, 33/10 mm)");
+    constexpr auto factors = formula::series_constant<formula::unit::Millimetre>(rat(11), rat(29), rat(41));
+    CHECK(formula::render(factors) == "values(11 mm, 29 mm, 41 mm)");
+    CHECK(formula::render<formula::Dialect::Markdown>(factors) == "values(11 mm, 29 mm, 41 mm)");
     CHECK(formula::render<formula::Dialect::LaTeX>(factors)
-          == "\\operatorname{values}(7/10\\,\\mathrm{mm},\\allowbreak 19/10\\,\\mathrm{mm},\\allowbreak 33/10\\,\\mathrm{mm})");
+          == "\\operatorname{values}(11\\,\\mathrm{mm},\\allowbreak 29\\,\\mathrm{mm},\\allowbreak 41\\,\\mathrm{mm})");
     constexpr auto plain = formula::series_constant<formula::unit::One>(rat(1), rat(2));
     CHECK(formula::render(plain) == "values(1, 2)");
     CHECK(formula::render(formula::series<series_render::Retained, 2> * plain) == "m_r(i) * values(1, 2)");

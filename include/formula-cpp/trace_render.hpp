@@ -1148,9 +1148,9 @@ namespace detail
     }
 
     /// An interpolation along a curve's clause: the two points the answer
-    /// lay between, `[between 33/10 and 71/10 m]`, or `[on the row at 33/10
+    /// lay between, `[between 41 and 59 m]`, or `[on the row at 41
     /// m]` -- `segment_text`, an interpolating lookup's words -- and on a miss
-    /// `[outside the curve, which runs 7/10 to 137/10 m]`. Nothing when
+    /// `[outside the curve, which runs 11 to 83 m]`. Nothing when
     /// nothing was located: a failed or absent curve or point.
     [[nodiscard]] inline std::string curve_interpolation_suffix(Step<Rational> const& recorded)
     {
@@ -1222,10 +1222,10 @@ namespace detail
         return "unknown outcome";
     }
 
-    /// A snap step's clause: the two neighbours, `[33/10 mm to 71/10 mm;
-    /// nearer 33/10 mm]`, or with the tie rule when it decided, `[33/10 mm to
-    /// 71/10 mm; tie, toward higher]`; `[on 19/10 mm]` for an exact hit; and on
-    /// a miss `[outside the permitted set, 7/10 mm to 137/10 mm]`. Nothing
+    /// A snap step's clause: the two neighbours, `[41 m to 59 m; nearer
+    /// 41 m]`, or with the tie rule when it decided, `[41 m to 59 m; tie,
+    /// toward higher]`; `[on 29 m]` for an exact hit; and on a miss
+    /// `[outside the permitted set, 11 m to 83 m]`. Nothing
     /// when nothing was snapped -- a failed or absent operand.
     [[nodiscard]] inline std::string snap_suffix(Step<Rational> const& recorded)
     {

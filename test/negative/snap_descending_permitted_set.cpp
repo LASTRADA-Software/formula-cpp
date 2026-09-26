@@ -17,7 +17,7 @@ struct Mass: formula::Quantity<Mass, "m", "mass", formula::unit::Gram>
 {
 };
 
-inline constexpr formula::BreakpointTable<3> permitted { formula::breakpoint(33, 10), formula::breakpoint(19, 10), formula::breakpoint(71, 10) };
+inline constexpr formula::BreakpointTable<3> permitted { formula::breakpoint(41), formula::breakpoint(29), formula::breakpoint(59) };
 
 inline constexpr auto snap =
     formula::snapped<formula::unit::Millimetre, permitted, formula::SnapTie::TowardLower>(formula::var<Mass>);
