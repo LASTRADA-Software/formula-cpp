@@ -154,6 +154,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 
 #include <array>
 #include <cstddef>
@@ -1905,6 +1906,40 @@ namespace detail
     {
     };
 
+    /// A sample statistic, rebuilt around its rewritten sample.
+    template <typename Sub, typename Sample, typename Rebuilt>
+    struct ConstantRewriteSample
+    {
+        /// How the sample is rewritten.
+        using Inner = ConstantRewriteOf<Sub, Sample>;
+
+        /// Whether the sample is a kind this header knows, all the way down.
+        static constexpr bool known = Inner::known;
+        /// Whether the sample uses `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same statistic, around the rewritten sample.
+        using type = Rebuilt;
+
+        /// The statistic, around the rewritten sample.
+        template <typename N>
+        [[nodiscard]] static constexpr type apply(N const& node, Sub const& overriding) noexcept
+        {
+            return type { {}, Inner::apply(node.sample, overriding) };
+        }
+    };
+
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleCountNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleCountNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleMeanNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleMeanNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
     template <typename Sub, SeriesNode S>
     struct ConstantRewrite<Sub, SumNode<S>>:
         ConstantRewriteOperand<Sub, S, SumNode<typename ConstantRewriteOf<Sub, S>::type>>
@@ -2273,6 +2308,16 @@ namespace detail
     {
         /// Whatever the curve or the point substitutes.
         using type = SubstitutedInAll<C, At>;
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleCountNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleMeanNode<S>>: SubstitutedInOperand<S>
+    {
     };
 
     template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>

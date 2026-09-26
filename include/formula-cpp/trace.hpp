@@ -30,6 +30,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
@@ -325,6 +326,22 @@ enum class StepKind : std::uint8_t
     /// the factory `precision_limit`, so nothing in namespace `formula` is
     /// spelt `PrecisionLimit`.
     PrecisionLimit,
+    /// A `SampleCountNode`: how many determinations a sample holds, a bare
+    /// number. Its one operand is the sample's own step, with every element.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleCountNode` and the
+    /// factory `sample_count`, so nothing in namespace `formula` is spelt
+    /// `SampleCount`.
+    SampleCount,
+    /// A `SampleMeanNode`: the mean of a sample, shown in its operand's unit,
+    /// as a sum is. Its one operand is the sample's own step. A total that
+    /// overflowed names, in `Step::failedElement`, the determination at which
+    /// it did.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleMeanNode` and the
+    /// factory `sample_mean`, so nothing in namespace `formula` is spelt
+    /// `SampleMean`.
+    SampleMean,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1346,6 +1363,18 @@ namespace detail
         static constexpr StepKind value = StepKind::CurveInterpolation;
     };
 
+    template <SampleSource S>
+    struct StepKindOf<SampleCountNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleCount;
+    };
+
+    template <SampleSource S>
+    struct StepKindOf<SampleMeanNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleMean;
+    };
+
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
     /// `SeriesNode`, and closed the same way. The primary template is left
     /// undefined, so a series node kind added without an entry here fails to
@@ -2190,9 +2219,10 @@ class RecordingSink
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
                 nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
-        // A sum reads in its series' unit, which only the claimed operand
-        // step knows.
-        if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum)
+        // A sum and a mean read in their series' unit, which only the
+        // claimed operand step knows.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum
+                      || detail::StepKindOf<N>::value == StepKind::SampleMean)
             nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
 
         // After the operands are claimed, and not before: telling this
@@ -2387,6 +2417,17 @@ class RecordingSink
     void acceptance_entered(ConstraintOrigin const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Told the zero-based position of the determination at which the
+    /// statistic just produced failed -- a mean whose total overflowed there.
+    /// Amends that step, the last recorded, whose error is already set: the
+    /// scalar channel carries only the error, and the position survives here,
+    /// as a series step's does (phase 12's S8).
+    void sample_failed_at(std::size_t at)
+    {
+        if (!_trace->steps.empty())
+            _trace->steps.back().failedElement = at;
     }
 
     /// Told that a precision limit is about to be evaluated. Remembers

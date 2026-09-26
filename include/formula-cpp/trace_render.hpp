@@ -832,6 +832,13 @@ namespace detail
             // value landed in its suffix -- see `snap_suffix`.
             case StepKind::SnappedToPermitted:
                 return "snap(" + sole_operand(step) + ")";
+
+            // `render()`'s head names; the sample's own step, with every
+            // element, is the operand.
+            case StepKind::SampleCount:
+                return "sample_count(" + sole_operand(step) + ")";
+            case StepKind::SampleMean:
+                return "sample_mean(" + sole_operand(step) + ")";
             // Every granularity, in the series' order, in the unit rounded
             // in, as `render()` writes it; the mode goes in the suffix, as
             // for `Round`.
@@ -1698,6 +1705,10 @@ namespace detail
             annotation = lookup_suffix(trace, stepIndex, recorded);
         else if (recorded.kind == StepKind::PrecisionLevel)
             annotation = precision_suffix(trace, stepIndex);
+        // A mean whose total overflowed names the determination it overflowed
+        // at, counted from one, as a failed series step does.
+        else if (recorded.kind == StepKind::SampleMean && recorded.error.has_value() && recorded.failedElement.has_value())
+            annotation = " at element " + std::to_string(*recorded.failedElement + 1);
 
         if (recorded.kind == StepKind::Constant)
             return valueText + annotation;

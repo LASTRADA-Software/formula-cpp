@@ -56,6 +56,7 @@
 /// The other laboratory's result is an ordinary input here; reading another
 /// test's record is a later phase's.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/critical_value.hpp>
@@ -77,6 +78,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/unit.hpp>
 
 #include <cstddef>
@@ -517,6 +519,28 @@ namespace detail
     struct LevelChildren<InterpolateAlongNode<C, At>>: LevelParent<C, At>
     {
     };
+
+    // Phase 12's raw observations, and the classes they are binned into.
+    template <Described Q, std::size_t Capacity>
+    struct LevelChildren<ObservationsVarNode<Q, Capacity>>: LevelLeaf
+    {
+    };
+
+    template <Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    struct LevelChildren<BinnedNode<KeyUnit, Classes, Obs>>: LevelParent<Obs>
+    {
+    };
+
+    template <SampleSource S>
+    struct LevelChildren<SampleCountNode<S>>: LevelParent<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct LevelChildren<SampleMeanNode<S>>: LevelParent<S>
+    {
+    };
+
     /// Whether @p N is a `PrecisionLevelNode`.
     template <typename N>
     inline constexpr bool is_precision_level = false;

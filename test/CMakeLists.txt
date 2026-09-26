@@ -73,6 +73,8 @@ add_executable(formula-cpp-tests
     snap_tests.cpp
     binning_tests.cpp
     curve_tests.cpp
+    statistics_tests.cpp
+    statistics_cross_tu_b.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -712,6 +714,23 @@ formula_add_negative_test(precision_level_derived_into_nested_level
 formula_add_negative_test(precision_level_derived_into_level
     "formula: this precision_limit's level expression reads precision_level"
     REJECT "precision_level is meaningful only inside" "cannot see inside")
+
+# Sample statistics. A single value handed to one is refused once, and the
+# refusing overload returns what the statistic would have been -- the value
+# itself for a mean, a bare number for a count -- so nothing downstream, and
+# no concept failure of the sample overload, adds a second message.
+formula_add_negative_test(sample_mean_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
+formula_add_negative_test(sample_count_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
+# Phase 12's series-quantity refusal, reused unchanged for a statistic.
+formula_add_negative_test(sample_mean_overlay_constant_on_sample
+    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    REJECT "overrides a quantity that no variant or constraint of the method uses" "cannot see inside")
 
 # The same check sees through phase 12's series kinds: a placeholder added to
 # every element of a series a nested level sums.

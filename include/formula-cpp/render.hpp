@@ -51,6 +51,7 @@
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -916,6 +917,30 @@ template <Dialect D, CumulativeDirection Direction, SeriesNode S, Vocabulary V>
         return "\\operatorname{cumulative}_{\\text{" + runsFrom + "}}(" + inner + ")";
     else
         return "cumulative(" + inner + ", " + runsFrom + ")";
+}
+
+/// A sample's count renders as a call on its sample, `sample_count(m(i))`,
+/// and in LaTeX as `n({m}_{i})`. The count is one value and carries no series
+/// marker; its sample carries its own.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleCountNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "n(" + render<D>(node.sample, vocabulary) + ")";
+    else
+        return "sample_count(" + render<D>(node.sample, vocabulary) + ")";
+}
+
+/// A sample's mean renders as a call on its sample, `sample_mean(m(i))`, and
+/// in LaTeX as a bar over it, `\overline{{m}_{i}}`, which groups itself. The
+/// mean is one value and carries no series marker; its sample carries its own.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleMeanNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\overline{" + render<D>(node.sample, vocabulary) + "}";
+    else
+        return "sample_mean(" + render<D>(node.sample, vocabulary) + ")";
 }
 
 /// A sum renders as a call on its series, `sum(m_r(i))`, and in LaTeX as the

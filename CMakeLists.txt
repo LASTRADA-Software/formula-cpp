@@ -82,6 +82,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/series.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/snap.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/sink.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/statistics.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/tag.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace_render.hpp"

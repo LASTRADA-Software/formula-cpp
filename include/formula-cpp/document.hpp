@@ -22,6 +22,7 @@
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
@@ -347,6 +348,12 @@ namespace detail
 
     template <Vocabulary V, SeriesNode S>
     void collect(Walk<V>& walk, SumNode<S> const& node);
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleCountNode<S> const& node);
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleMeanNode<S> const& node);
 
     template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
     void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node);
@@ -782,6 +789,20 @@ namespace detail
     void collect(Walk<V>& walk, SumNode<S> const& node)
     {
         collect(walk, node.operand);
+    }
+
+    /// A sample statistic is one value, but what it reads is a sample, and
+    /// the row says so: the series beneath it contributes its series row.
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleCountNode<S> const& node)
+    {
+        collect(walk, node.sample);
+    }
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleMeanNode<S> const& node)
+    {
+        collect(walk, node.sample);
     }
 
     /// A refused series names nothing: it only keeps `document` from adding a

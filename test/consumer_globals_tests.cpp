@@ -39,7 +39,8 @@
 // domain, a pairing, a splice and an interpolation -- on the same surfaces;
 // raw observations, `from` and `get_observations`, binned into classes and
 // divided by their sum, on the same surfaces;
-// and the four table validators. A template it does not reach is not
+// a sample's count and mean, on the same surfaces; and the four table
+// validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -141,6 +142,7 @@ int index;
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
@@ -542,6 +544,22 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::document<formula::Dialect::LaTeX>(edgeShares).formula.find("bin") != std::string::npos
         && formula::document(binnedEdges, north).symbols.front().shape == formula::ValueShape::Observations
         && formula::render_trace(binningTrace, { .maxSteps = 20 }).find("bin(#1) = 1; 2") != std::string::npos);
+
+    // The count and the mean of a sample, evaluated, rendered, documented
+    // and traced: 150 and 103 mm give 253/2 mm from 2 determinations.
+    auto const sampleMean = formula::sample_mean(formula::series<EdgeX, 2>);
+    auto const sampleCount = formula::sample_count(formula::series<EdgeX, 2>);
+    formula::Trace<> sampleTrace {};
+    auto const meanEdge =
+        formula::checked_evaluate<EdgeX>(sampleMean, bothScreens, formula::RecordingSink { sampleTrace, north });
+    auto const countedEdges = formula::checked_evaluate<Factor>(sampleCount, bothScreens);
+    probe.checks.push_back(meanEdge.has_value() && meanEdge->measurement().value() == formula::Rational { 253, 2 }
+                           && countedEdges.has_value() && countedEdges->measurement().value() == formula::Rational { 2 }
+                           && formula::render(sampleMean, north) == "sample_mean(x_m(i))"
+                           && formula::render<formula::Dialect::LaTeX>(sampleCount) == "n({x_m}_{i})"
+                           && formula::document(sampleMean * sampleCount, north).symbols.size() == 1
+                           && formula::render_trace(sampleTrace, { .maxSteps = 4 }).find("sample_mean(#1) = 253/2 mm")
+                                  != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });
