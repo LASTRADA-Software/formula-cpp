@@ -48,6 +48,7 @@ add_executable(formula-cpp-tests
     trace_tests.cpp
     trace_render_tests.cpp
     rounding_node_tests.cpp
+    rounded_root_tests.cpp
     predicate_tests.cpp
     constraint_tests.cpp
     conditional_tests.cpp
@@ -611,6 +612,28 @@ formula_add_negative_test(escape_blank_justification
 
 formula_add_negative_test(escape_unit_dimension_mismatch
     "formula: this numeric_value_of names a unit that does not measure the dimension")
+
+# The class-body check, reached through the factory and around it. Each
+# REJECTs the dimension messages of the nodes a rounded root could be
+# mistaken for, or built from: a rounding node's unit check and the
+# evaluator's result check.
+formula_add_negative_test(rounded_sqrt_unit_dimension_mismatch
+    "formula: this rounded_sqrt names a unit whose square does not measure the dimension of its radicand"
+    REJECT "formula: this rounding node names a unit that does not measure the dimension"
+           "does not measure the dimension this expression computes"
+           "formula: these two dimensions are not the same")
+
+formula_add_negative_test(rounded_sqrt_no_factory_dimension_mismatch
+    "formula: this rounded_sqrt names a unit whose square does not measure the dimension of its radicand"
+    REJECT "formula: this rounding node names a unit that does not measure the dimension"
+           "does not measure the dimension this expression computes"
+           "formula: these two dimensions are not the same")
+
+# `RepRounding<double>`'s own refusal, not one of the rounded root's: the node
+# rounds through the representation's rounding, as every rounding node does.
+formula_add_negative_test(rounded_sqrt_rep_double
+    "formula: a rounding node cannot be evaluated with Rep = double"
+    REJECT "formula: this rounded_sqrt names a unit")
 
 # Same NAME-not-message shape as the exponent and symbol-length sentinels
 # above: there is no static_assert to quote here, only a deleted default

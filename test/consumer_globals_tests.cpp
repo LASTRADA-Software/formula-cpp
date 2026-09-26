@@ -131,6 +131,7 @@ int index;
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -356,6 +357,12 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(withPi.is_value());
     probe.checks.push_back(rooted.is_value());
     probe.checks.push_back(mixed.is_value());
+    // The irrational path of the rounded root: sqrt(2) to 0.01 is 1.41.
+    auto const spread = formula::evaluate<Factor>(
+        formula::rounded_sqrt<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Factor> * formula::Rational { 2 }),
+        specimen);
+    probe.checks.push_back(spread.is_value() && spread.measurement().value() == formula::Rational { 141, 100 });
     pages += formula::render(-var<Force>) + formula::render(formula::pi * var<Force>)
              + formula::render<formula::Dialect::LaTeX>(formula::cbrt(var<Force>));
 
