@@ -371,6 +371,25 @@ formula_add_negative_test(series_elementwise_dimension_mismatch
 formula_add_negative_test(series_elementwise_length_and_dimension_mismatch
     "the two series combined here have different lengths"
     REJECT "the two sides of this addition or subtraction measure different")
+# The mistake FIRST in a chain: the refused node marks itself refused, and
+# the node over it asks nothing. REJECT cannot refuse a second copy of the
+# EXPECTed text, so the last REJECT names the second message's own operand
+# instead: on g++ and clang++ it names the refused node as the guard's left
+# template argument, which the first message never does. cl 19.51 gave one
+# message before the flag too. Counted by hand: one message on cl 19.51,
+# g++-14 and clang++-20; two on g++ and clang++ without the flag.
+formula_add_negative_test(series_elementwise_short_first
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::ElementwiseBinaryNode")
+formula_add_negative_test(series_elementwise_short_first_product
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::ElementwiseBinaryNode")
+formula_add_negative_test(series_elementwise_wrong_dimension_first
+    "the two sides of this addition or subtraction measure different"
+    REJECT "the two series combined here have different lengths"
+    "RequireAddendsAgree<formula::ElementwiseBinaryNode")
 
 # A per-element constant given fewer values than its stated length, through
 # the factory and through aggregate initialisation of the node itself.

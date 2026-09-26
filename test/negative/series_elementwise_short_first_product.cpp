@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: the two series combined here have different lengths
 // REJECT: the two sides of this addition or subtraction measure different
+// REJECT: RequireSeriesLengthsAgree<formula::ElementwiseBinaryNode
 //
-// Three series of one dimension, the shorter one in the MIDDLE of a + b + c:
-// a check of only the first or only the last pair would miss it. Refused
-// once, naming both lengths (as the series types in RequireSeriesLengthsAgree's
-// template arguments), and nothing past the refusal asks for a dimension or an
-// evaluation: the sum `a + b` is marked refused, so `+ c` asks nothing and
-// adds no second message.
+// The shorter series first in (b * a) / c: multiplication and division go
+// through the same gate as addition. One message, counted by hand on cl
+// 19.51, g++-14 and clang++-20 -- see series_elementwise_short_first.
 #include <formula-cpp/series.hpp>
 
 struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
@@ -20,7 +18,7 @@ struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", formula:
 {
 };
 
-inline constexpr auto combined = formula::series<Retained, 5> + formula::series<Sieved, 4> + formula::series<TotalMass, 5>;
+inline constexpr auto combined = formula::series<Sieved, 4> * formula::series<Retained, 5> / formula::series<TotalMass, 5>;
 
 int main()
 {
