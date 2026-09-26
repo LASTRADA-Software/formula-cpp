@@ -196,8 +196,12 @@ inline constexpr auto everyOperation = formula::overlay(
     formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>());
 
 inline constexpr auto overlaid = formula::apply(everyOperation, baseMethod);
-inline constexpr auto pinned = formula::apply(formula::overlay(formula::pin_variant<Cube>()), baseMethod);
-inline constexpr auto pruned = formula::apply(formula::overlay(formula::prune_variant<Cylinder>()), baseMethod);
+inline constexpr auto pinned = formula::apply(
+    formula::overlay(formula::pin_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+    baseMethod);
+inline constexpr auto pruned = formula::apply(
+    formula::overlay(formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+    baseMethod);
 inline constexpr auto derived =
     formula::apply(formula::overlay(formula::add_derived<Factor>(var<EdgeX> / var<EdgeX>)), baseMethod);
 

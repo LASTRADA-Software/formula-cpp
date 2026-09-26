@@ -1593,7 +1593,9 @@ TEST_CASE("an overlaid method's selection is counted in the method as published"
     // published one; the overlay that pinned or pruned is elsewhere. So the
     // position a trace reports must not move when a variant before it is
     // removed. Tags are not read here -- see the note above this section.
-    constexpr auto pruned = formula::apply(formula::overlay(formula::prune_variant<Plate>()), bearing);
+    constexpr auto pruned = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        bearing);
     formula::Trace<> afterPrune {};
     (void) formula::evaluate_method<Disc>(pruned, loadOn(100, 50), formula::RecordingSink<> { afterPrune });
     formula::Step<> const& prunedRoot = afterPrune.steps[afterPrune.root()];
@@ -1607,7 +1609,9 @@ TEST_CASE("an overlaid method's selection is counted in the method as published"
     CHECK(lastAfterPrune.steps[lastAfterPrune.root()].variantCount == 3);
 
     // A pin leaves one variant, which is still the 2nd of 3, not the 1st of 1.
-    constexpr auto pinned = formula::apply(formula::overlay(formula::pin_variant<Disc>()), bearing);
+    constexpr auto pinned = formula::apply(
+        formula::overlay(formula::pin_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        bearing);
     formula::Trace<> afterPin {};
     (void) formula::evaluate_method<Disc>(pinned, loadOn(100, 50), formula::RecordingSink<> { afterPin });
     CHECK(afterPin.steps[afterPin.root()].variantIndex == 1);
@@ -1616,7 +1620,9 @@ TEST_CASE("an overlaid method's selection is counted in the method as published"
     // And through an operation that rewrites every variant, after the prune
     // that moved them: the positions survive the rewrite too.
     constexpr auto rewritten = formula::apply(
-        formula::overlay(formula::prune_variant<Plate>(), formula::with_constant<Side>(formula::Rational { 50 })), bearing);
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::with_constant<Side>(formula::Rational { 50 })),
+        bearing);
     formula::Trace<> afterRewrite {};
     (void) formula::evaluate_method<Ring>(rewritten, loadOn(100, 7), formula::RecordingSink<> { afterRewrite });
     CHECK(afterRewrite.steps[afterRewrite.root()].variantIndex == 2);
@@ -1631,8 +1637,12 @@ TEST_CASE("an overlay applied at run time still counts in the method as publishe
     // moved, `{ 1, 2 }` of 3, so a layout rebuilt from the tags alone -- or
     // from the pack's own order -- would report the Ring as the 1st of 1.
     auto const base = bearing;
-    auto const withoutPlate = formula::apply(formula::overlay(formula::prune_variant<Plate>()), base);
-    auto const ringOnly = formula::apply(formula::overlay(formula::prune_variant<Disc>()), withoutPlate);
+    auto const withoutPlate = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        base);
+    auto const ringOnly = formula::apply(
+        formula::overlay(formula::prune_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        withoutPlate);
 
     formula::Trace<> afterTwoPrunes {};
     (void) formula::evaluate_method<Ring>(ringOnly, loadOn(100, 50), formula::RecordingSink<> { afterTwoPrunes });
@@ -1640,7 +1650,9 @@ TEST_CASE("an overlay applied at run time still counts in the method as publishe
     CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantCount == 3);
 
     // A pin over the moved layout: the Disc is still the 2nd of 3.
-    auto const discOnly = formula::apply(formula::overlay(formula::pin_variant<Disc>()), withoutPlate);
+    auto const discOnly = formula::apply(
+        formula::overlay(formula::pin_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        withoutPlate);
     formula::Trace<> afterPin {};
     (void) formula::evaluate_method<Disc>(discOnly, loadOn(100, 50), formula::RecordingSink<> { afterPin });
     CHECK(afterPin.steps[afterPin.root()].variantIndex == 1);
@@ -1651,8 +1663,10 @@ TEST_CASE("overlay steps compose, and the position still counts in the method as
 {
     // Two prunes in ONE overlay: the second is applied to the method the
     // first produced, whose layout is already `{ 1, 2 }` of 3.
-    constexpr auto twoPrunes =
-        formula::apply(formula::overlay(formula::prune_variant<Plate>(), formula::prune_variant<Disc>()), bearing);
+    constexpr auto twoPrunes = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::prune_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        bearing);
     formula::Trace<> afterTwoPrunes {};
     (void) formula::evaluate_method<Ring>(twoPrunes, loadOn(100, 50), formula::RecordingSink<> { afterTwoPrunes });
     CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantIndex == 2);
@@ -1660,8 +1674,11 @@ TEST_CASE("overlay steps compose, and the position still counts in the method as
 
     // A prune, then a pin: two `apply` calls, since one overlay refuses both.
     // The pin picks from the pruned layout, and keeps the Ring's own place.
-    constexpr auto pruneThenPin = formula::apply(formula::overlay(formula::pin_variant<Ring>()),
-                                                 formula::apply(formula::overlay(formula::prune_variant<Plate>()), bearing));
+    constexpr auto pruneThenPin = formula::apply(
+        formula::overlay(formula::pin_variant<Ring>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        formula::apply(formula::overlay(
+                           formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                       bearing));
     formula::Trace<> afterPruneThenPin {};
     (void) formula::evaluate_method<Ring>(pruneThenPin, loadOn(100, 50), formula::RecordingSink<> { afterPruneThenPin });
     CHECK(afterPruneThenPin.steps[afterPruneThenPin.root()].variantIndex == 2);
@@ -1669,8 +1686,11 @@ TEST_CASE("overlay steps compose, and the position still counts in the method as
 
     // Two prunes by two `apply` calls, in the order that removes the MIDDLE
     // variant first, so the second prune acts on the layout `{ 0, 2 }`.
-    constexpr auto twoApplies = formula::apply(formula::overlay(formula::prune_variant<Plate>()),
-                                               formula::apply(formula::overlay(formula::prune_variant<Disc>()), bearing));
+    constexpr auto twoApplies = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        formula::apply(
+            formula::overlay(formula::prune_variant<Disc>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+            bearing));
     formula::Trace<> afterTwoApplies {};
     (void) formula::evaluate_method<Ring>(twoApplies, loadOn(100, 50), formula::RecordingSink<> { afterTwoApplies });
     CHECK(afterTwoApplies.steps[afterTwoApplies.root()].variantIndex == 2);

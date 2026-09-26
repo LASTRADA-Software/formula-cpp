@@ -28,9 +28,9 @@
 ///  - `add_derived<Q>(expression)` defines `Q` by an expression over other
 ///    inputs wherever the method uses it -- the jurisdiction computing what
 ///    the base standard left to the specimen;
-///  - `pin_variant<Tag>()` keeps only the variant tagged `Tag`, making it
+///  - `pin_variant<Tag>(source)` keeps only the variant tagged `Tag`, making it
 ///    mandatory;
-///  - `prune_variant<Tag>()` deletes the variant tagged `Tag` outright;
+///  - `prune_variant<Tag>(source)` deletes the variant tagged `Tag` outright;
 ///  - `replace_variant<Tag>(expression)` replaces the formula of the variant
 ///    tagged `Tag` wholesale;
 ///  - `with_rounding<U, Places, Mode>()` replaces the method's rounding rule;
@@ -128,8 +128,8 @@
 /// Operations apply **in the order the overlay lists them**, each to the method
 /// the previous one produced. "Nothing" in the rule above is nothing in the
 /// method the overlay produces, not in the method as it stood when one
-/// operation was applied. So `overlay(pin_variant<Cube>(), with_constant<Q>(v))`
-/// and `overlay(with_constant<Q>(v), prune_variant<Cylinder>())` are both
+/// operation was applied. So `overlay(pin_variant<Cube>(source), with_constant<Q>(v))`
+/// and `overlay(with_constant<Q>(v), prune_variant<Cylinder>(source))` are both
 /// refused when only the variant that goes away reads `Q`: in either order,
 /// the method produced never reads it.
 
@@ -501,7 +501,7 @@ template <Described Q>
     return ConstantOverride<Q> { value, source };
 }
 
-/// The operation `pin_variant<Tag>()` builds: keep only the variant tagged
+/// The operation `pin_variant<Tag>(source)` builds: keep only the variant tagged
 /// `Tag`.
 ///
 /// `Tag` obeys the tag rule a variant's tag obeys, through the same guard,
@@ -525,17 +525,32 @@ struct VariantPin
 ///
 /// Refused when no variant declares `Tag`: see the file comment.
 ///
-/// @p source cites where the requirement comes from, as `with_constant`'s
-/// does; the trace of the selected variant says the jurisdiction pinned it,
-/// `[variant Cylinder (3rd of 3), selected by tag; pinned by jurisdiction
-/// overlay: ...]`, whether or not anything is cited.
+/// @p source cites where the requirement comes from, and is required: which
+/// variant is mandatory is a jurisdiction's decision (spec section 16.7), and
+/// a pin nobody can attribute is what the trace exists to prevent. The trace
+/// of the selected variant says the jurisdiction pinned it, `[variant
+/// Cylinder (3rd of 3), selected by tag; pinned by jurisdiction overlay:
+/// ...]`.
 template <typename Tag>
-[[nodiscard]] constexpr VariantPin<Tag> pin_variant(Citation source = {}) noexcept
+[[nodiscard]] constexpr VariantPin<Tag> pin_variant(Citation source) noexcept
 {
     return VariantPin<Tag> { source };
 }
 
-/// The operation `prune_variant<Tag>()` builds: delete the variant tagged
+/// Refuses a pin with no citation, in the library's words rather than the
+/// compiler's "too few arguments". A template on @p Stated only so that the
+/// refusal waits for a call.
+template <typename Tag, bool Stated = false>
+[[nodiscard]] constexpr VariantPin<Tag> pin_variant() noexcept
+{
+    static_assert(Stated,
+                  "formula: pin_variant<Tag>() was given no citation; which variant is mandatory is a jurisdiction's "
+                  "decision, and a trace must say whose -- pass the Citation of the clause that makes it, "
+                  "pin_variant<Tag>(citation)");
+    return {};
+}
+
+/// The operation `prune_variant<Tag>(source)` builds: delete the variant tagged
 /// `Tag`. `Tag` obeys the tag rule, as `VariantPin` says.
 template <typename Tag>
 struct VariantPrune
@@ -554,14 +569,26 @@ struct VariantPrune
 /// Refused when no variant declares `Tag`, and when it is the last variant
 /// left: see the file comment.
 ///
-/// @p source cites where the deletion comes from; the trace of the variant
-/// selected from what is left says how many were pruned and by whom,
-/// `[variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by
-/// jurisdiction overlay: ...]`.
+/// @p source cites where the deletion comes from, and is required, for the
+/// reason `pin_variant`'s is. The trace of the variant selected from what is
+/// left says how many were pruned and by whom, `[variant Cylinder (2nd of
+/// 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: ...]`.
 template <typename Tag>
-[[nodiscard]] constexpr VariantPrune<Tag> prune_variant(Citation source = {}) noexcept
+[[nodiscard]] constexpr VariantPrune<Tag> prune_variant(Citation source) noexcept
 {
     return VariantPrune<Tag> { source };
+}
+
+/// Refuses a prune with no citation, as the `pin_variant` overload above
+/// refuses a pin.
+template <typename Tag, bool Stated = false>
+[[nodiscard]] constexpr VariantPrune<Tag> prune_variant() noexcept
+{
+    static_assert(Stated,
+                  "formula: prune_variant<Tag>() was given no citation; which variants apply is a jurisdiction's "
+                  "decision, and a trace must say whose -- pass the Citation of the clause that deletes it, "
+                  "prune_variant<Tag>(citation)");
+    return {};
 }
 
 /// The operation `with_rounding<U, Places, Mode>()` builds: replace the
@@ -747,8 +774,8 @@ namespace detail
     {
         static_assert(IsOverlayOperation<Operation>::value,
                       "formula: this argument of overlay(...) is not an overlay operation; every argument "
-                      "must be what with_constant<Q>(value), add_derived<Q>(expression), pin_variant<Tag>(), "
-                      "prune_variant<Tag>(), replace_variant<Tag>(expression), with_rounding<U, Places, "
+                      "must be what with_constant<Q>(value), add_derived<Q>(expression), pin_variant<Tag>(citation), "
+                      "prune_variant<Tag>(citation), replace_variant<Tag>(expression), with_rounding<U, Places, "
                       "Mode>() or with_constraints(constraints(...)) returns -- the offending argument appears in this "
                       "diagnostic as the template argument Operation of RequireOverlayOperation, and Index is "
                       "its ZERO-BASED position, so 0 is the first argument");
@@ -1005,7 +1032,7 @@ struct Overlay
     std::tuple<Ops...> operations;
 };
 
-/// Builds an overlay: `overlay(with_constant<Q>(v), prune_variant<Cube>())`.
+/// Builds an overlay: `overlay(with_constant<Q>(v), prune_variant<Cube>(source))`.
 ///
 /// An empty `overlay()` is accepted, and applying it yields the method
 /// unchanged. It declares no change rather than a change that silently fails
@@ -2619,8 +2646,8 @@ namespace detail
     /// Asked of the **result**, never of the method as it stands when the
     /// constant is applied. The rule is that an override doing nothing in the
     /// method the overlay produces is refused, and asked per step it would
-    /// depend on order: `overlay(with_constant<Q>(v), pin_variant<Cube>())`
-    /// and `overlay(pin_variant<Cube>(), with_constant<Q>(v))` produce the same
+    /// depend on order: `overlay(with_constant<Q>(v), pin_variant<Cube>(source))`
+    /// and `overlay(pin_variant<Cube>(source), with_constant<Q>(v))` produce the same
     /// method, and a per-step check refused only the second.
     template <typename M, typename Input, typename... Ops>
     struct RequireOverridesRead

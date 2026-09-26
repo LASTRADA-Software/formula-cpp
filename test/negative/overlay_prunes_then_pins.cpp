@@ -50,7 +50,9 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::prune_variant<Cylinder>(), formula::pin_variant<Cube>()), m);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::pin_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 0 ? 1 : 0;
 }

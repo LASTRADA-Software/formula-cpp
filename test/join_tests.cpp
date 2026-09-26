@@ -102,7 +102,9 @@ TEST_CASE("an overlaid method's selected variant traces in the jurisdiction's vo
              "14. #13 = 45/11 [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3]\n"
              "15. round(#14, in %) = 40909/100 % [rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, "
              "NA.4); nearest, ties away from zero]\n"
-             "16. #15 = 40909/100 % [variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction overlay]\n");
+             "16. #15 = 40909/100 % [variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: "
+             "Example Standard 12:2021 NA, NA.1.2; pinned by jurisdiction overlay: Example Standard 12:2024 NA, "
+             "NA.1.1]\n");
 
     std::string const northern = trace(north);
     CHECK(northern.find("7. R = 30 MPa\n") != std::string::npos);

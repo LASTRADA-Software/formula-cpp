@@ -741,6 +741,12 @@ formula_add_negative_test(overlay_prunes_every_variant
 # A pinned or pruned tag obeys the tag rule, through the same guard a variant's
 # tag does, and that rule is asked FIRST -- the REJECT pins the order, once for
 # each operation, because each gates the declared-variant rule separately.
+# A pin or a prune must cite the clause that makes it.
+formula_add_negative_test(overlay_pin_without_citation
+    "formula: pin_variant<Tag>() was given no citation")
+formula_add_negative_test(overlay_prune_without_citation
+    "formula: prune_variant<Tag>() was given no citation")
+
 formula_add_negative_test(overlay_pin_tag_cv_qualified
     "formula: this tag is not a plain class type"
     REJECT "formula: this overlay pins or prunes a variant the method does not declare")

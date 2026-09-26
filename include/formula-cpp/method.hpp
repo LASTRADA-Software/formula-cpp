@@ -630,9 +630,12 @@ namespace detail
     /// increasing selection of entries from an increasing layout below its
     /// count is one too, so nothing is left to check at run time.
     ///
-    /// **It also records a pin or a prune** -- `narrowing()`, with what the
-    /// overlay cited -- stated only through `PublishedLayoutAccess` by the
-    /// two operations that make one, and carried wherever the positions are.
+    /// **It also records the pin and the prunes** -- `pinned()`, `pinned_by()`,
+    /// `pruned_count()` and `pruned_by()`, with what the overlays cited --
+    /// stated only through `PublishedLayoutAccess` by the two operations that
+    /// make them, and carried wherever the positions are. The fields are
+    /// private for the reason the positions are: which variants a method
+    /// keeps is a jurisdiction's decision, the library's to record.
     ///
     /// **What remains: a copy.** A layout copied from another method's pack
     /// of the same size -- `pack.published = other.published`, or the same in
@@ -689,9 +692,10 @@ namespace detail
             PublishedLayout<sizeof...(Kept)> keptLayout { typename PublishedLayout<sizeof...(Kept)>::Selected {},
                                                           { _positions[Kept]... },
                                                           _total };
-            keptLayout._narrowing = _narrowing;
+            keptLayout._pinned = _pinned;
+            keptLayout._pinnedBy = _pinnedBy;
             keptLayout._prunedCount = _prunedCount;
-            keptLayout._narrowedBy = _narrowedBy;
+            keptLayout._prunedBy = _prunedBy;
             return keptLayout;
         }
 
@@ -707,24 +711,29 @@ namespace detail
             return _total;
         }
 
-        /// Whether an overlay pinned or pruned the pack this layout belongs
-        /// to -- see `VariantNarrowing` (`sink.hpp`).
-        [[nodiscard]] constexpr VariantNarrowing narrowing() const noexcept
+        /// Whether an overlay pinned the pack this layout belongs to to its
+        /// one variant.
+        [[nodiscard]] constexpr bool pinned() const noexcept
         {
-            return _narrowing;
+            return _pinned;
         }
 
-        /// How many variants overlays pruned; zero unless `narrowing()` is
-        /// `Pruned`.
+        /// What the overlay that pinned it cited; empty when none did.
+        [[nodiscard]] constexpr Citation const& pinned_by() const noexcept
+        {
+            return _pinnedBy;
+        }
+
+        /// How many variants overlays pruned from the pack.
         [[nodiscard]] constexpr std::size_t pruned_count() const noexcept
         {
             return _prunedCount;
         }
 
-        /// What the overlay that pinned, or the last one that pruned, cited.
-        [[nodiscard]] constexpr Citation const& narrowed_by() const noexcept
+        /// What the last overlay that pruned cited; empty when none did.
+        [[nodiscard]] constexpr Citation const& pruned_by() const noexcept
         {
-            return _narrowedBy;
+            return _prunedBy;
         }
 
       private:
@@ -770,9 +779,10 @@ namespace detail
         /// Stated only through `PublishedLayoutAccess`, as the positions are:
         /// a pin or a prune is a jurisdiction's decision, the library's to
         /// record.
-        VariantNarrowing _narrowing = VariantNarrowing::None;
+        bool _pinned = false;
+        Citation _pinnedBy {};
         std::size_t _prunedCount = 0;
-        Citation _narrowedBy {};
+        Citation _prunedBy {};
     };
 
     template <std::size_t Count>
@@ -786,8 +796,8 @@ namespace detail
     constexpr PublishedLayout<Count> PublishedLayoutAccess::pinned(PublishedLayout<Count> layout,
                                                                    Citation const& cited) noexcept
     {
-        layout._narrowing = VariantNarrowing::Pinned;
-        layout._narrowedBy = cited;
+        layout._pinned = true;
+        layout._pinnedBy = cited;
         return layout;
     }
 
@@ -795,9 +805,8 @@ namespace detail
     constexpr PublishedLayout<Count> PublishedLayoutAccess::pruned(PublishedLayout<Count> layout,
                                                                    Citation const& cited) noexcept
     {
-        layout._narrowing = VariantNarrowing::Pruned;
         ++layout._prunedCount;
-        layout._narrowedBy = cited;
+        layout._prunedBy = cited;
         return layout;
     }
 } // namespace detail
@@ -1880,9 +1889,9 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
             selectedTagName,
             m.variantSet.published.position(Selection::index),
             m.variantSet.published.count(),
-            m.variantSet.published.narrowing(),
             m.variantSet.published.pruned_count(),
-            m.variantSet.published.narrowing() == VariantNarrowing::None ? nullptr : &m.variantSet.published.narrowed_by(),
+            m.variantSet.published.pruned_count() == 0 ? nullptr : &m.variantSet.published.pruned_by(),
+            m.variantSet.published.pinned() ? &m.variantSet.published.pinned_by() : nullptr,
         };
         if constexpr (requires(Evaluated<Rep> const& variantResult) {
                           sink.variant_entered(variantSelection);

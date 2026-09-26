@@ -49,9 +49,9 @@ inline constexpr auto m =
 
 int main()
 {
-    constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::pin_variant<Cylinder>(),
-                                        formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 })),
-                       m);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::pin_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 })),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 0 ? 1 : 0;
 }

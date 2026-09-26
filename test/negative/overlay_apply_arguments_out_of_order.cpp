@@ -39,7 +39,8 @@ inline constexpr auto m = formula::method(formula::rounding_rule<formula::unit::
 
 int main()
 {
-    constexpr auto overlaid = formula::apply(formula::overlay(formula::pin_variant<Cube>()), m);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::pin_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" })), m);
     static_cast<void>(overlaid);
     return 0;
 }

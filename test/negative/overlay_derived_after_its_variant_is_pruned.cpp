@@ -55,6 +55,8 @@ inline constexpr auto m =
 int main()
 {
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::prune_variant<Cube>(), formula::add_derived<ShapeFactor>(var<EdgeY> / var<EdgeX>)), m);
+        formula::overlay(formula::prune_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::add_derived<ShapeFactor>(var<EdgeY> / var<EdgeX>)),
+        m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 1 ? 0 : 1;
 }

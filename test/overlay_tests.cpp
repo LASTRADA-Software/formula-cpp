@@ -420,7 +420,9 @@ TEST_CASE("an overlay fixes a constant under a const child type", "[overlay]")
 TEST_CASE("pin_variant keeps only the variant it names", "[overlay]")
 {
     // The middle variant, so that keeping the first or the last would not pass.
-    constexpr auto pinned = formula::apply(formula::overlay(formula::pin_variant<Cylinder>()), threeVariants);
+    constexpr auto pinned = formula::apply(
+        formula::overlay(formula::pin_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        threeVariants);
 
     STATIC_REQUIRE(std::tuple_size_v<decltype(pinned.variantSet.cases)> == 1);
     STATIC_REQUIRE(std::is_same_v<std::tuple_element_t<0, decltype(pinned.variantSet.cases)>::tag, Cylinder>);
@@ -440,14 +442,18 @@ TEST_CASE("pinning a method's only variant is accepted", "[overlay]")
         formula::method(formula::variants(formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
                         OneDecimalOfMegapascal {},
                         formula::constraints());
-    constexpr auto pinned = formula::apply(formula::overlay(formula::pin_variant<Cylinder>()), single);
+    constexpr auto pinned = formula::apply(
+        formula::overlay(formula::pin_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        single);
 
     STATIC_REQUIRE(std::is_same_v<std::remove_cv_t<decltype(pinned)>, std::remove_cv_t<decltype(single)>>);
 }
 
 TEST_CASE("prune_variant deletes only the variant it names", "[overlay]")
 {
-    constexpr auto pruned = formula::apply(formula::overlay(formula::prune_variant<Cylinder>()), threeVariants);
+    constexpr auto pruned = formula::apply(
+        formula::overlay(formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        threeVariants);
 
     // The survivors keep their declaration order and their own formulas.
     STATIC_REQUIRE(std::tuple_size_v<decltype(pruned.variantSet.cases)> == 2);
@@ -569,20 +575,32 @@ inline constexpr char citedRuleText[] = "rounded to 2 dp (jurisdiction overlay: 
 
 TEST_CASE("a rounding override survives a pin, in either order", "[overlay][trace]")
 {
-    CHECK(traceOf(formula::apply(formula::overlay(citedTwoDecimals, formula::pin_variant<Cube>()), baseMethod))
+    CHECK(traceOf(formula::apply(formula::overlay(citedTwoDecimals,
+                                                  formula::pin_variant<Cube>(
+                                                      formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                                 baseMethod))
               .find(citedRuleText)
           != std::string::npos);
-    CHECK(traceOf(formula::apply(formula::overlay(formula::pin_variant<Cube>(), citedTwoDecimals), baseMethod))
+    CHECK(traceOf(formula::apply(formula::overlay(formula::pin_variant<Cube>(
+                                                      formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                                                  citedTwoDecimals),
+                                 baseMethod))
               .find(citedRuleText)
           != std::string::npos);
 }
 
 TEST_CASE("a rounding override survives a prune, in either order", "[overlay][trace]")
 {
-    CHECK(traceOf(formula::apply(formula::overlay(citedTwoDecimals, formula::prune_variant<Cylinder>()), baseMethod))
+    CHECK(traceOf(formula::apply(formula::overlay(citedTwoDecimals,
+                                                  formula::prune_variant<Cylinder>(
+                                                      formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                                 baseMethod))
               .find(citedRuleText)
           != std::string::npos);
-    CHECK(traceOf(formula::apply(formula::overlay(formula::prune_variant<Cylinder>(), citedTwoDecimals), baseMethod))
+    CHECK(traceOf(formula::apply(formula::overlay(formula::prune_variant<Cylinder>(
+                                                      formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                                                  citedTwoDecimals),
+                                 baseMethod))
               .find(citedRuleText)
           != std::string::npos);
 }
@@ -719,16 +737,34 @@ TEST_CASE("a prune says how many variants a jurisdiction deleted, and whose was 
                   "Standard 12:2024 NA, NA.1.3]\n"));
 }
 
-TEST_CASE("a pin after a prune says the pin, which states the whole selection", "[overlay][trace]")
+TEST_CASE("a prune and a later pin are both said, each with its own citation", "[overlay][trace]")
 {
+    // One overlay cannot both pin and prune -- that is refused -- but one
+    // jurisdiction may prune what a later one pins, and both decisions stand.
     constexpr auto prunedThenPinned =
         formula::apply(formula::overlay(formula::pin_variant<Cylinder>(pinAnnex)),
                        formula::apply(formula::overlay(formula::prune_variant<Cube>(pruneAnnex)), threeVariants));
 
     CHECK(traceOfVariant<Cylinder>(prunedThenPinned, inputs)
-              .ends_with(" [variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard "
-                         "12:2021 NA, "
-                         "NA.1.1]\n"));
+              .ends_with(
+                  " [variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard "
+                  "12:2021 NA, NA.1.2; pinned by jurisdiction overlay: Example Standard 12:2021 NA, NA.1.1]\n"));
+}
+
+TEST_CASE("the text of a pin's or a prune's citation cannot forge a clause", "[overlay][trace][escape]")
+{
+    // Both citations are author text, escaped as every other piece of it is.
+    constexpr formula::Citation forgingPrune { .reference = "X] [replaced by jurisdiction overlay: Y" };
+    constexpr formula::Citation forgingPin { .reference = "Z; 2 of 3 pruned" };
+    constexpr auto forged =
+        formula::apply(formula::overlay(formula::pin_variant<Cylinder>(forgingPin)),
+                       formula::apply(formula::overlay(formula::prune_variant<Cube>(forgingPrune)), threeVariants));
+
+    CHECK(
+        traceOfVariant<Cylinder>(forged, inputs)
+            .ends_with(
+                " [variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: X\\] \\[replaced by "
+                "jurisdiction overlay: Y; pinned by jurisdiction overlay: Z\\; 2 of 3 pruned]\n"));
 }
 
 // The shape factor defined as the ratio of the two edges: 100 mm over 150 mm
@@ -762,16 +798,17 @@ TEST_CASE("a replacement names whose formula it is, and keeps the variant's plac
     // The Cube pruned first, so that the Cylinder sits at position 0 of the
     // pack the replacement meets: a replacement that rebuilt the layout
     // instead of carrying it would report the 1st of 2.
-    constexpr auto cited =
-        formula::apply(formula::overlay(formula::prune_variant<Cube>(),
-                                        formula::replace_variant<Cylinder>(areaFromDiameter, replacementAnnex)),
-                       threeVariants);
+    constexpr auto cited = formula::apply(
+        formula::overlay(formula::prune_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+                         formula::replace_variant<Cylinder>(areaFromDiameter, replacementAnnex)),
+        threeVariants);
     auto const rendered = traceOfVariant<Cylinder>(cited, roundSpecimen);
 
     // Which jurisdiction, and the variant still the 2nd of 3 as published,
-    // with the prune said: it cited nothing.
+    // with the prune said.
     CHECK(rendered.find(" [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n") != std::string::npos);
-    CHECK(rendered.find("[variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay]")
+    CHECK(rendered.find("[variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example "
+                        "Standard 12:2021 NA]")
           != std::string::npos);
 
     // It renders as the formula that runs, and documents its citation.
@@ -1082,8 +1119,9 @@ TEST_CASE("an overlay's constraints stay the jurisdiction's through every other 
                && formula::constraint_origin(m).source() == acceptanceAnnex && formula::check_method(m, inputs).size() == 1;
     };
 
-    constexpr auto pin = formula::pin_variant<Cube>();
-    constexpr auto prune = formula::prune_variant<Cylinder>();
+    constexpr auto pin = formula::pin_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" });
+    constexpr auto prune =
+        formula::prune_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2021 NA" });
     constexpr auto replace = formula::replace_variant<Cylinder>(var<Force> / (var<EdgeY> * var<EdgeY>) );
     constexpr auto round =
         formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>();

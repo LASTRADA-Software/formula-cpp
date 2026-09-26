@@ -343,10 +343,12 @@ in a second clause, with what the overlay cited: `pin_variant<Cylinder>(annex)`
 gives `[variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction
 overlay: ...]`, and a prune gives `; 1 of 3 pruned by jurisdiction overlay:
 ...` -- or, after prunes by more than one overlay, `; 2 of 3 pruned, the last
-by jurisdiction overlay: ...`, naming what the last one cited. A pin after a
-prune says the pin, which states the whole selection. (`test/overlay_tests.cpp`,
-`"a pin says which jurisdiction made the variant mandatory"` and the two cases
-after it.)
+by jurisdiction overlay: ...`, naming what the last one cited. One overlay
+cannot both pin and prune, but one jurisdiction may prune what a later one
+pins, and then both clauses appear, the prune first. Both citations are
+required, and escaped as every other piece of author text is.
+(`test/overlay_tests.cpp`, `"a pin says which jurisdiction made the variant
+mandatory"` and the three cases after it.)
 
 A method tells a sink about its choice through two optional members,
 `variant_entered` and `variant_produced`, with a `VariantSelection`

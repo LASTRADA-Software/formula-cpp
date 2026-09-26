@@ -3,7 +3,7 @@
 // REJECT: formula: this overlay overrides a quantity that no variant or constraint of the method uses
 //
 // `with_constant<ShapeFactor>` over a formula whose only use of the shape
-// factor sits inside a consumer's own node kind, then `prune_variant<Cube>()`,
+// factor sits inside a consumer's own node kind, then `prune_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" })`,
 // which removes the variant holding that node.
 //
 // The rewrite refuses the unknown node. The method the overlay produces no
@@ -75,7 +75,8 @@ inline constexpr auto m = formula::method(
 int main()
 {
     constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }), formula::prune_variant<Cube>()),
+        formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }),
+                         formula::prune_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 0 ? 1 : 0;
 }

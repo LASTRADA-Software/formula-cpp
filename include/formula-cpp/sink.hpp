@@ -20,7 +20,6 @@
 #include <formula-cpp/expression.hpp>
 
 #include <cstddef>
-#include <cstdint>
 #include <string_view>
 
 namespace formula
@@ -73,21 +72,6 @@ struct NullSink
 
 struct Citation;
 
-/// Whether a jurisdiction's overlay narrowed a method's variants before one
-/// was selected: `pin_variant` kept only one, or `prune_variant` deleted some
-/// (`overlay.hpp`). Spec section 16.7 lists which variant is mandatory as a
-/// jurisdiction's decision, so a trace says when one made it.
-enum class VariantNarrowing : std::uint8_t
-{
-    /// No overlay pinned or pruned: the method's variants as published.
-    None,
-    /// An overlay pinned the method to the selected variant.
-    Pinned,
-    /// Overlays pruned variants from the method; the selected one is among
-    /// those left.
-    Pruned,
-};
-
 /// Which variant a method selected, as `evaluate_method` (`method.hpp`) tells
 /// a sink that asks.
 ///
@@ -124,20 +108,24 @@ struct VariantSelection
     /// How many variants the method declares as published.
     std::size_t count {};
 
-    /// Whether an overlay pinned the method, or pruned variants from it,
-    /// before this one was selected. A pin after prunes is `Pinned`: a pin
-    /// states the whole selection.
-    VariantNarrowing narrowing {};
-
-    /// For `Pruned`: how many variants overlays pruned. Zero otherwise.
+    /// How many variants overlays pruned from the method before this one
+    /// was selected (`prune_variant`, `overlay.hpp`); zero when none did.
+    /// Spec section 16.7 makes which variants apply a jurisdiction's
+    /// decision, so a trace says when one made it.
     std::size_t prunedCount {};
 
-    /// What the overlay that pinned, or the last one that pruned, cited --
-    /// held by the method being evaluated, and valid only for the call that
-    /// tells a sink of this selection; a sink that keeps it copies it. Null
-    /// when nothing was narrowed. A pointer because `citation.hpp`, which
-    /// defines `Citation`, includes this header.
-    Citation const* narrowedBy = nullptr;
+    /// What the last overlay that pruned cited; null when none pruned.
+    ///
+    /// This and `pinnedBy` are held by the method being evaluated, and valid
+    /// only for the call that tells a sink of this selection; a sink that
+    /// keeps one copies it. Pointers because `citation.hpp`, which defines
+    /// `Citation`, includes this header.
+    Citation const* prunedBy = nullptr;
+
+    /// What the overlay that pinned the method to this variant cited
+    /// (`pin_variant`); null when none pinned it. Prunes before a pin are
+    /// still reported: a jurisdiction may prune what another then pins.
+    Citation const* pinnedBy = nullptr;
 };
 
 namespace detail

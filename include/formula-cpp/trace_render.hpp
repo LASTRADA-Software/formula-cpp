@@ -152,10 +152,42 @@ namespace detail
         return escaped_author_text(view(shownUnit.symbolText));
     }
 
-    /// A copy of a step whose every piece of author text -- the symbol, the
-    /// citation's five fields, the justification, the variant tag, the lookup
-    /// key's name and a violated constraint's verdict label -- is escaped by
-    /// `escaped_author_text`, held here, and pointed at by the copy's views.
+    /// A citation's five fields, escaped by `escaped_author_text` and held
+    /// here, for a copy of the citation to point at -- see `EscapedStep`.
+    struct EscapedCitation
+    {
+        explicit EscapedCitation(Citation const& cited):
+            title { escaped_author_text(cited.title) },
+            reference { escaped_author_text(cited.reference) },
+            section { escaped_author_text(cited.section) },
+            equation { escaped_author_text(cited.equation) },
+            text { escaped_author_text(cited.text) }
+        {
+        }
+
+        EscapedCitation(EscapedCitation const&) = delete;
+        EscapedCitation& operator=(EscapedCitation const&) = delete;
+
+        /// The escaped citation, pointing into this object.
+        [[nodiscard]] Citation cited() const noexcept
+        {
+            return Citation {
+                .title = title, .reference = reference, .section = section, .equation = equation, .text = text
+            };
+        }
+
+        std::string title;
+        std::string reference;
+        std::string section;
+        std::string equation;
+        std::string text;
+    };
+
+    /// A copy of a step whose every piece of author text -- the symbol, both
+    /// citations (the step's own, and a selection's prune's), the
+    /// justification, the variant tag, the lookup key's name and a violated
+    /// constraint's verdict label -- is escaped by `escaped_author_text`,
+    /// held here, and pointed at by the copy's views.
     ///
     /// `step_line` renders from this copy and never from the step it was
     /// given, so no helper below can print author text unescaped by reading
@@ -168,11 +200,8 @@ namespace detail
             justification { escaped_author_text(recorded.justification) },
             variantTag { escaped_author_text(recorded.variantTag) },
             lookupKeyName { escaped_author_text(recorded.lookupKeyName) },
-            citationTitle { escaped_author_text(recorded.citation.title) },
-            citationReference { escaped_author_text(recorded.citation.reference) },
-            citationSection { escaped_author_text(recorded.citation.section) },
-            citationEquation { escaped_author_text(recorded.citation.equation) },
-            citationText { escaped_author_text(recorded.citation.text) },
+            citation { recorded.citation },
+            variantPrunedBy { recorded.variantPrunedBy },
             verdictLabel { recorded.outcome.verdict().has_value() ? escaped_author_text(recorded.outcome.verdict()->label)
                                                                   : std::string {} },
             step { recorded }
@@ -181,11 +210,8 @@ namespace detail
             step.justification = justification;
             step.variantTag = variantTag;
             step.lookupKeyName = lookupKeyName;
-            step.citation.title = citationTitle;
-            step.citation.reference = citationReference;
-            step.citation.section = citationSection;
-            step.citation.equation = citationEquation;
-            step.citation.text = citationText;
+            step.citation = citation.cited();
+            step.variantPrunedBy = variantPrunedBy.cited();
             if (recorded.outcome.kind() == ConstraintOutcomeKind::Violated)
                 step.outcome = ConstraintOutcome::violated(Verdict { verdictLabel });
         }
@@ -197,11 +223,8 @@ namespace detail
         std::string justification;
         std::string variantTag;
         std::string lookupKeyName;
-        std::string citationTitle;
-        std::string citationReference;
-        std::string citationSection;
-        std::string citationEquation;
-        std::string citationText;
+        EscapedCitation citation;
+        EscapedCitation variantPrunedBy;
         std::string verdictLabel;
         /// The step to render.
         Step<Rational> step;
@@ -819,27 +842,25 @@ namespace detail
         return std::to_string(ordinal) + std::string { ordinalSuffix };
     }
 
-    /// What a jurisdiction's overlay did to the variants before one was
-    /// selected, as a second clause of the variant's bracket: `; pinned by
-    /// jurisdiction overlay: ...`, `; 1 of 3 pruned by jurisdiction overlay:
-    /// ...`, or -- when overlays pruned more than one -- `; 2 of 3 pruned, the
-    /// last by jurisdiction overlay: ...`, naming what the last one cited.
-    /// Empty when no overlay pinned or pruned.
+    /// What jurisdictions' overlays did to the variants before one was
+    /// selected, as further clauses of the variant's bracket: the prunes,
+    /// `; 1 of 3 pruned by jurisdiction overlay: ...` -- or, when overlays
+    /// pruned more than one, `; 2 of 3 pruned, the last by jurisdiction
+    /// overlay: ...`, naming what the last one cited -- and then a pin, `;
+    /// pinned by jurisdiction overlay: ...`. Both when one jurisdiction
+    /// pruned and a later one pinned; one overlay cannot do both. Empty when
+    /// none pinned or pruned.
     [[nodiscard]] inline std::string variant_narrowing_clause(Step<Rational> const& recorded)
     {
-        switch (recorded.variantNarrowing)
-        {
-            case VariantNarrowing::None:
-                return {};
-            case VariantNarrowing::Pinned:
-                return "; pinned by " + overlay_source_text(recorded.citation);
-            case VariantNarrowing::Pruned:
-                return "; " + std::to_string(recorded.variantPrunedCount) + " of " + std::to_string(recorded.variantCount)
-                       + (recorded.variantPrunedCount == 1 ? " pruned by " : " pruned, the last by ")
-                       + overlay_source_text(recorded.citation);
-        }
-        // A hand-built `Step` may hold any value of the underlying type.
-        return "; narrowed in an unknown way";
+        std::string narrowingText;
+        if (recorded.variantPrunedCount > 0)
+            narrowingText += "; " + std::to_string(recorded.variantPrunedCount) + " of "
+                             + std::to_string(recorded.variantCount)
+                             + (recorded.variantPrunedCount == 1 ? " pruned by " : " pruned, the last by ")
+                             + overlay_source_text(recorded.variantPrunedBy);
+        if (recorded.variantPinned)
+            narrowingText += "; pinned by " + overlay_source_text(recorded.citation);
+        return narrowingText;
     }
 
     /// Which variant a method selected, and on what, in one bracketed clause:

@@ -90,13 +90,14 @@ inline constexpr auto southernOverlay = formula::overlay(
     formula::with_constant<NationalFactor>(formula::Rational { 3, 2 }, constantAnnex),
     formula::add_derived<SizeFactor>(var<Diameter> / formula::constant<unit::Millimetre>(formula::Rational { 100 }),
                                      derivedAnnex),
-    formula::prune_variant<Prism>(),
+    formula::prune_variant<Prism>(formula::Citation { .reference = "Example Standard 12:2021 NA", .section = "NA.1.2" }),
     formula::with_rounding<unit::Percent, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
         roundingAnnex));
 
 /// A second overlay pinning what the first left: a pin and a prune may not
 /// share one overlay, so the pin comes from another.
-inline constexpr auto pinCylinder = formula::overlay(formula::pin_variant<Cylinder>());
+inline constexpr auto pinCylinder = formula::overlay(
+    formula::pin_variant<Cylinder>(formula::Citation { .reference = "Example Standard 12:2024 NA", .section = "NA.1.1" }));
 
 inline constexpr auto joined = formula::apply(pinCylinder, formula::apply(southernOverlay, baseMethod));
 

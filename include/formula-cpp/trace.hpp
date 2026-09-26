@@ -678,15 +678,18 @@ struct Step
     /// refused where it is declared.
     std::size_t variantCount {};
 
-    /// For `VariantSelected`: whether an overlay pinned the method to the
-    /// selected variant, or pruned others from it -- see `VariantNarrowing`
-    /// (`sink.hpp`). What the overlay cited is in `citation`. `None`
-    /// otherwise.
-    VariantNarrowing variantNarrowing {};
-
-    /// For `VariantSelected` with `variantNarrowing` `Pruned`: how many
-    /// variants overlays pruned. Zero otherwise.
+    /// For `VariantSelected`: how many variants overlays pruned before it
+    /// was selected (`VariantSelection::prunedCount`, `sink.hpp`). Zero
+    /// otherwise, and when none did.
     std::size_t variantPrunedCount {};
+
+    /// For `VariantSelected`: what the last overlay that pruned cited. Empty
+    /// otherwise.
+    Citation variantPrunedBy {};
+
+    /// For `VariantSelected`: whether an overlay pinned the method to the
+    /// selected variant; what it cited is in `citation`. `false` otherwise.
+    bool variantPinned {};
 
     /// Indices of the steps this one consumed, in evaluation order.
     ///
@@ -1460,10 +1463,12 @@ class RecordingSink
         selectionStep.variantTag = variantSelection.tag;
         selectionStep.variantIndex = variantSelection.index;
         selectionStep.variantCount = variantSelection.count;
-        selectionStep.variantNarrowing = variantSelection.narrowing;
         selectionStep.variantPrunedCount = variantSelection.prunedCount;
-        if (variantSelection.narrowedBy != nullptr)
-            selectionStep.citation = *variantSelection.narrowedBy;
+        if (variantSelection.prunedBy != nullptr)
+            selectionStep.variantPrunedBy = *variantSelection.prunedBy;
+        selectionStep.variantPinned = variantSelection.pinnedBy != nullptr;
+        if (variantSelection.pinnedBy != nullptr)
+            selectionStep.citation = *variantSelection.pinnedBy;
 
         // Everything unclaimed from `selectionMark` onwards belongs to this selection
         // -- see `produced` above for why this is a `while`.
