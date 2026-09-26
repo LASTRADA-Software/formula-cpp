@@ -255,3 +255,34 @@ TEST_CASE("checked_explain returns a refused read together with its trace", "[li
     CHECK(agreed->outcome.measurement() == formula::Measured<Force> { formula::Rational { 60'000 } });
     CHECK(agreed->trace.steps.size() == 5);
 }
+
+TEST_CASE("a comparison with a record not yet made is not checked, and reads nothing", "[lineage-trace]")
+{
+    // The compared record is unbound: its batch is not known, so the
+    // attribute is not checked and the read is absent -- never read anyway,
+    // and never refused. The read record itself is bound and agrees with
+    // this one, so only the comparison with the unbound record decides.
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
+                                             formula::lineage<MaterialBatch>(4411)),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there,
+                                   formula::lineage<MaterialBatch>(4411)),
+        formula::Record<PriorTest, std::remove_cv_t<decltype(there)>, Batch>::unbound());
+    constexpr auto gated = formula::from_record<Reference>(
+        var<Force>, formula::same_lineage<MaterialBatch>(formula::against<PriorTest>));
+    formula::Trace<> trace {};
+    auto const evaluated = formula::checked_evaluate_si<formula::Rational>(gated, context, formula::RecordingSink { trace });
+    REQUIRE(evaluated.has_value());
+    CHECK(!evaluated->has_value());
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+    INFO(text);
+    CHECK(text.find("1. same MaterialBatch as PriorTest: unknown and 4411, not checked\n") != std::string::npos);
+    CHECK(text.find("F =") == std::string::npos); // the operand was never read
+}
+
+TEST_CASE("a failed checked_explain always says which error it failed with", "[lineage-explain]")
+{
+    // A default-constructed failure would have to claim the enumeration's
+    // first error, DivisionByZero, which nothing raised.
+    STATIC_REQUIRE(!std::is_default_constructible_v<formula::CheckedExplainFailure<>>);
+}

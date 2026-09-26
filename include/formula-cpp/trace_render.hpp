@@ -961,11 +961,12 @@ namespace detail
                 return "rejection failed";
             case StepKind::RejectionUndecided:
                 return "rejection undecided";
+            // One lineage attribute compared: the attribute and both keys.
+            case StepKind::LineageChecked:
+                return lineage_expression(step);
             // The derivation over the other record, then whose record it is.
             // With no record bound there is no operand to name: nothing was
             // read, and the line says so by origin alone.
-            case StepKind::LineageChecked:
-                return lineage_expression(step);
             case StepKind::RecordScope:
                 if (!step.record.has_value())
                     return step.operands.empty() ? std::string { "from another record" }

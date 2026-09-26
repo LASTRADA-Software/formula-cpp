@@ -1909,6 +1909,12 @@ formula_add_negative_test(record_scope_requirement_not_lineage
     "formula: a record scope's requirement is not a lineage requirement"
     REJECT "RequireForeignRole" "RequireComparandNotSubject")
 
+# A sink defining only one of the two scope hooks. After the refusal the
+# evaluator reports to neither, so nothing else follows.
+formula_add_negative_test(record_scope_sink_one_hook
+    "formula: this sink defines only one of record_entered and lineage_checked"
+    REJECT "RequireProvided" "RequireBoundRole")
+
 formula_add_negative_test(record_scope_nested
     "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
     REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")

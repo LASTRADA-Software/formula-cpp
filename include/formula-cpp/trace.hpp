@@ -3386,13 +3386,24 @@ template <Described Result, SeriesNode S, typename Env, Vocabulary V = DefaultVo
 /// derivation recorded up to it. A refusal without the steps that led to it
 /// -- which attribute of a lineage requirement disagreed, say -- would say
 /// that the number was refused and not why.
+///
+/// Not default-constructible: a failure with no error given would have to
+/// claim one -- the enumeration's first, `DivisionByZero` -- that nothing
+/// raised.
 template <typename Rep = Rational>
 struct CheckedExplainFailure
 {
+    /// The failure @p raised, with the trace @p recorded up to it.
+    CheckedExplainFailure(ArithmeticError raised, Trace<Rep> recorded) noexcept:
+        error { raised },
+        trace { std::move(recorded) }
+    {
+    }
+
     /// What `checked_evaluate` returned instead of an outcome.
-    ArithmeticError error {};
+    ArithmeticError error;
     /// Every step recorded before the error, the failing step included.
-    Trace<Rep> trace {};
+    Trace<Rep> trace;
 };
 
 /// Evaluates @p expression for @p Result and records how, without throwing:

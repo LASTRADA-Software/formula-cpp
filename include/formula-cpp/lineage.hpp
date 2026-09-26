@@ -35,8 +35,6 @@
 /// declares an attribute twice, a read that compares an attribute either
 /// record does not declare, and `against<Role>` naming the read's own role.
 
-#include <formula-cpp/constraint.hpp>
-#include <formula-cpp/method.hpp>
 #include <formula-cpp/tag.hpp>
 
 #include <cstddef>

@@ -57,6 +57,9 @@
 ///   instead, which they catch.
 ///
 /// Not prevented, and documented here plainly:
+/// - `Record::lineage_of<Attr>` is a public member template, and explicitly
+///   specialising it for a record type can make a lineage check compare any
+///   key at all: outside the contract (see below), and not prevented;
 /// - `Trace::steps` is a public arena any code may append to or edit, as it
 ///   has been since the trace was introduced;
 /// - a `RecordOrigin` the library built can be copied, and handed to a
@@ -93,6 +96,7 @@
 /// `RecordKey { .sample = 17 }` either, because such an aggregate would
 /// value-initialize the missing test key to 0, and 0 is a real key.
 
+#include <formula-cpp/constraint.hpp>
 #include <formula-cpp/environment.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
@@ -907,6 +911,23 @@ namespace detail
         static constexpr bool value = (... && RequireDeclaredOnBoth<Attrs, Subject, ComparandRecord>::value);
     };
 
+    /// Fails to compile when a sink defines one of `record_entered` and
+    /// `lineage_checked` without the other. Told of neither, such a sink's
+    /// trace would show a refused read with no origin and no attribute that
+    /// refused it; told of one, it would show half of that. A sink defines
+    /// both or neither.
+    template <typename Sink, bool Together>
+    struct RequireScopeHooksTogether
+    {
+        static_assert(Together,
+                      "formula: this sink defines only one of record_entered and lineage_checked; a scope tells a "
+                      "sink of the record it reads and of every lineage attribute it compares together, so define "
+                      "both or neither -- the sink appears in this diagnostic as the template argument of "
+                      "RequireScopeHooksTogether");
+
+        static constexpr bool value = true;
+    };
+
     /// What comparing a requirement's attributes decided.
     enum class LineageVerdict : std::uint8_t
     {
@@ -1078,11 +1099,14 @@ template <typename Rep = Rational, typename Role, typename Requirement, Node Ope
                 auto const& foreignRecord = recordContext.template record<Role>();
                 // The origin, from the same record the operand is read from
                 // below, before anything inside the scope is recorded.
-                constexpr bool reports = requires(RecordOrigin const& openedFrom, LineageCheck const& attributeCheck,
-                                                  ConstraintOutcome const& attributeOutcome) {
-                    sink.record_entered(openedFrom);
-                    sink.lineage_checked(attributeCheck, attributeOutcome);
-                };
+                constexpr bool knowsOrigin = requires(RecordOrigin const& openedFrom) { sink.record_entered(openedFrom); };
+                constexpr bool knowsLineage =
+                    requires(LineageCheck const& attributeCheck, ConstraintOutcome const& attributeOutcome) {
+                        sink.lineage_checked(attributeCheck, attributeOutcome);
+                    };
+                static_assert(detail::RequireScopeHooksTogether<Sink, knowsOrigin == knowsLineage>::value);
+                // After a refusal, neither: the refusal is the only message.
+                constexpr bool reports = knowsOrigin && knowsLineage;
                 if constexpr (reports)
                     sink.record_entered(detail::RecordOriginAccess::of(foreignRecord));
 
