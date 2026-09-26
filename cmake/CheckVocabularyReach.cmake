@@ -7,9 +7,28 @@
 # The trace is the case that made this a check rather than a habit -- its
 # symbols are written by the sink at evaluation time, so a renderer threaded
 # with the vocabulary says nothing about them -- and a new step kind that
-# names a quantity copies the old line as naturally as not. So these four
-# headers may not contain a `Describe<...>::symbol` or a `quantity_symbol()`
-# outside a comment; `symbol_of<Q>(vocabulary)` is how they ask.
+# names a quantity copies the old line as naturally as not.
+#
+# **This is a tripwire for the ordinary spellings, not the guarantee.** The
+# guarantee is behavioural: `test/vocabulary_tests.cpp` puts every node kind
+# through `render`, `document` and the trace under a crossed-over vocabulary,
+# and `render.hpp` refuses a one-argument `render_node` of this library's at
+# compile time. What this script refuses, outside a whole-line comment, in
+# the four headers below:
+#
+#  - `::symbol` as a whole name, which is how `Describe<Q>::symbol` (at any
+#    nesting of template arguments), `N::quantity::symbol` (a CRTP quantity's
+#    inherited member) and an alias of `Describe` all spell it;
+#  - `quantity_symbol(`, `Measured`'s accessor for the same text;
+#  - `DefaultVocabulary {`, outside the public overloads that forward to
+#    their vocabulary-taking counterparts -- a surface that resolves through
+#    the default vocabulary has thrown away the one it was given;
+#  - a one-argument `render<...>(x)` call, outside the public plain-text
+#    overloads that forward to their dialect counterparts -- a
+#    sub-expression rendered that way is in the declared symbols.
+#
+# What it cannot see: a spelling none of these match. That is why it is not
+# the guarantee.
 
 set(surfaces
     "${SOURCE_DIR}/include/formula-cpp/render.hpp"
@@ -25,17 +44,32 @@ foreach(file IN LISTS surfaces)
             "header moved. A check that examines nothing is a check that lies.")
     endif()
     file(READ "${file}" contents)
-    # Whole-line comments only: a symbol read never hides behind one, and
-    # the doc comments in these headers name `Describe<Q>::symbol` freely.
+    file(RELATIVE_PATH rel "${SOURCE_DIR}" "${file}")
+
+    # Whole-line comments: the doc comments in these headers name
+    # `Describe<Q>::symbol` and one-argument calls freely.
     string(REGEX REPLACE "\n[ \t]*//[^\n]*" "\n" code "${contents}")
-    if(code MATCHES "Describe<[^>]*>::symbol|quantity_symbol[(]")
-        file(RELATIVE_PATH rel "${SOURCE_DIR}" "${file}")
-        string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0}")
+    # The public forwarding overloads, each exactly one line of this shape.
+    string(REGEX REPLACE "\n[ \t]*return (render|document)<[A-Za-z:]+>[(]node, DefaultVocabulary {}[)];" "\n" code
+                         "${code}")
+    string(REGEX REPLACE "\n[ \t]*return render<Dialect::Plain>[(]node[)];" "\n" code "${code}")
+
+    if(code MATCHES "::symbol[^_A-Za-z0-9]")
+        string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- a symbol read past the vocabulary")
+    endif()
+    if(code MATCHES "quantity_symbol[(]")
+        string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- a symbol read past the vocabulary")
+    endif()
+    if(code MATCHES "DefaultVocabulary *{")
+        string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- the given vocabulary thrown away")
+    endif()
+    if(code MATCHES "[^_A-Za-z0-9]render<[^<>()]*>[(][^,()]*[)]")
+        string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- rendered without the vocabulary")
     endif()
 endforeach()
 
 if(offenders)
     message(FATAL_ERROR
-        "a symbol is read straight off Describe, bypassing the vocabulary -- write "
-        "symbol_of<Q>(vocabulary) instead:${offenders}")
+        "a symbol is written without the vocabulary the surface was given -- resolve it with "
+        "symbol_of<Q>(vocabulary), and render a sub-expression with render<D>(x, vocabulary):${offenders}")
 endif()
