@@ -196,6 +196,21 @@ template <typename Tag, Node Expr>
     return VariantCase<Tag, Expr> { expression };
 }
 
+/// A series handed to `variant<Tag>`: fails to compile, in this library's
+/// words. A method reports one value (S13 of the phase 12 plan), so a variant
+/// holds a `Node`; a series becomes one only through a reduction.
+///
+/// What it returns is a variant of the right tag and dimension over a
+/// placeholder constant, so that `variants(...)` and `method(...)` around the
+/// call find nothing further to refuse: the author made one mistake, and is
+/// told about one.
+template <typename Tag, SeriesNode Expr>
+[[nodiscard]] constexpr VariantCase<Tag, ConstantNode<coherent(Expr::dimension)>> variant(Expr) noexcept
+{
+    static_assert(detail::RequireSingleValueExpression<Expr>::value);
+    return VariantCase<Tag, ConstantNode<coherent(Expr::dimension)>> { ConstantNode<coherent(Expr::dimension)> {} };
+}
+
 namespace detail
 {
     /// Whether a type is a `VariantCase` -- whatever produced it, whether

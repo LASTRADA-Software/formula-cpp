@@ -64,6 +64,8 @@ add_executable(formula-cpp-tests
     vocabulary_tests.cpp
     join_tests.cpp
     method_cross_tu_b.cpp
+    series_tests.cpp
+    series_cross_tu_b.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -276,11 +278,41 @@ formula_add_negative_test(environment_series_read_as_single
     "this environment holds a series for this quantity, not a single value"
     REJECT "provides no value for this quantity")
 
+# A single value read as a series: neither a missing quantity nor a length.
+formula_add_negative_test(environment_single_read_as_series
+    "this environment holds a single value for this quantity, not a series"
+    REJECT "provides no value for this quantity" "holds a series of a different length")
+
+# Four supplied, five read. The lengths print as RequireSeriesLength's
+# template arguments Supplied and Read; their exact spelling differs between
+# compilers, so the case matches the sentence.
+formula_add_negative_test(environment_series_length_mismatch
+    "this environment holds a series of a different length for this quantity than the one read"
+    REJECT "holds a single value for this quantity")
+
 # A braced list of three for a series of five, which std::array would pad
 # with absent elements.
 formula_add_negative_test(measured_series_short
     "this series was given a different number of elements than its length")
 
+# A series where one value is asked for: checked_evaluate, evaluate and
+# variant<Tag>. The REJECTs pin that nothing past the refusal reads the
+# environment, and that variants(...) and method(...) around a refused
+# variant find nothing further to refuse.
+formula_add_negative_test(evaluate_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series"
+    REJECT "holds a series for this quantity")
+formula_add_negative_test(evaluate_throwing_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series"
+    REJECT "holds a series for this quantity")
+formula_add_negative_test(method_variant_holds_series
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series"
+    REJECT "is not a variant of a method" "RequireVariantsAgree" "RequireRoundingRuleMeasuresVariants")
+
+# A series result quantity is held to the expression's dimension, with
+# checked_evaluate's own guard.
+formula_add_negative_test(evaluate_series_result_dimension_mismatch
+    "does not measure the dimension this expression computes")
 
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")

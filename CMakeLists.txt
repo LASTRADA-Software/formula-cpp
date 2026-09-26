@@ -73,6 +73,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rational.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/rounding_node.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/series.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/sink.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/tag.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/trace.hpp"

@@ -26,6 +26,8 @@
 // of its own; `apply` with every overlay operation; `Outcome`'s factories;
 // `checked_convert_to`, `checked_within_bounds`, `checked_round_to_declared`,
 // `transform` and `combine`; `entered`, `Environment::get` and `source_of`;
+// `measured_series`, `entered` of a series, `Environment::get_series` and
+// `checked_evaluate_series` of a series variable, derived and entered;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -118,6 +120,7 @@ int index;
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/trace.hpp>
@@ -353,6 +356,18 @@ ConsumerGlobalsProbe probe_consumer_globals()
         edge, edge, [](formula::Rational augend, formula::Rational addend) { return augend + addend; });
     probe.checks.push_back(inMetres.has_value() && withinBounds.has_value() && declared.has_value());
     probe.checks.push_back(doubled.value() == formula::Rational { 300 } && summed.value() == formula::Rational { 300 });
+
+    // A series: built, entered, read from an environment and evaluated both
+    // ways, derived and entered.
+    auto const screens = formula::measured_series<EdgeX>(edge, formula::Measured<EdgeX>::absent());
+    auto const seriesInputs = formula::environment(screens);
+    auto const typedInSeries = formula::environment(formula::entered(screens));
+    auto const readSeries = formula::checked_evaluate_series<EdgeX>(formula::series<EdgeX, 2>, seriesInputs);
+    auto const overriddenSeries = formula::checked_evaluate_series<EdgeX>(formula::series<EdgeX, 2>, typedInSeries);
+    probe.checks.push_back(readSeries.has_value() && readSeries->element(0).value() == formula::Rational { 150 }
+                           && readSeries->element(1).is_absent());
+    probe.checks.push_back(overriddenSeries.has_value() && overriddenSeries->is_overridden()
+                           && seriesInputs.get_series<EdgeX, 2>() == screens);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

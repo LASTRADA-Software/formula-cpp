@@ -93,8 +93,8 @@ class MeasuredSeries
     /// elements nobody typed absent, silently. An array the caller has already
     /// built is taken as it is -- whatever its own initialisation left in it is
     /// beyond this type's sight.
-    constexpr explicit MeasuredSeries(std::array<Measured<Q>, N> elements) noexcept:
-        _elements { elements }
+    constexpr explicit MeasuredSeries(std::array<Measured<Q>, N> measurements) noexcept:
+        _elements { measurements }
     {
     }
 
