@@ -342,7 +342,7 @@ TEST_CASE("render: a predicate renders as lhs comparison rhs", "[render][predica
 
     CHECK(formula::render<Dialect::Plain>(overFifty) == "f > 50 MPa");
     CHECK(formula::render<Dialect::Markdown>(overFifty) == "`f` > 50 MPa");
-    CHECK(formula::render<Dialect::LaTeX>(overFifty) == "f > 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(overFifty) == "f > 50\\,\\mathrm{MPa}");
     // The default dialect for a Predicate is plain, exactly as for a Node.
     CHECK(formula::render(overFifty) == "f > 50 MPa");
 }
@@ -361,12 +361,12 @@ TEST_CASE("render: every comparison spells correctly, and three of them get a La
     CHECK(formula::render(var<Strength> == threshold) == "f == 50 MPa");
     CHECK(formula::render(var<Strength> != threshold) == "f != 50 MPa");
 
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> < threshold) == "f < 50 MPa");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> <= threshold) == "f \\leq 50 MPa");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> > threshold) == "f > 50 MPa");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> >= threshold) == "f \\geq 50 MPa");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> == threshold) == "f = 50 MPa");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> != threshold) == "f \\neq 50 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> < threshold) == "f < 50\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> <= threshold) == "f \\leq 50\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> > threshold) == "f > 50\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> >= threshold) == "f \\geq 50\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> == threshold) == "f = 50\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> != threshold) == "f \\neq 50\\,\\mathrm{MPa}");
 
     // Markdown only backtick-quotes the variable; the comparison symbol
     // itself is unaffected, the same way it is unaffected for BinaryNode.
@@ -402,7 +402,8 @@ TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases b
     CHECK(formula::render<Dialect::Plain>(chosen) == "if f > 50 MPa then f * 2 else f * 4");
     CHECK(formula::render<Dialect::Markdown>(chosen) == "if `f` > 50 MPa then `f` * 2 else `f` * 4");
     CHECK(formula::render<Dialect::LaTeX>(chosen)
-          == "\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} \\end{cases}");
+          == "\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
+             "\\end{cases}");
     // RoundingMode is not the only thing this phase deliberately keeps out of
     // the rendered text -- WhenNode has no state to omit, but note that its
     // predicate's operands are plain quantities and constants here on
@@ -421,7 +422,8 @@ TEST_CASE("render: a conditional inside a power keeps its bracket", "[render][co
     CHECK(formula::render(formula::pow<2>(chosen)) == "(if f > 50 MPa then f * 2 else f * 4)^2");
     CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(chosen)) == "(if `f` > 50 MPa then `f` * 2 else `f` * 4)^2");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(chosen))
-          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} \\end{cases})^{2}");
+          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
+             "\\end{cases})^{2}");
 }
 
 TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][conditional]")
@@ -433,9 +435,10 @@ TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][
 
     CHECK(formula::render(chosen * rat(2)) == "(if f > 50 MPa then f * 2 else f * 4) * 2");
     CHECK(formula::render<Dialect::Markdown>(chosen * rat(2)) == "(if `f` > 50 MPa then `f` * 2 else `f` * 4) * 2");
-    CHECK(
-        formula::render<Dialect::LaTeX>(chosen * rat(2))
-        == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} \\end{cases}) \\cdot 2");
+    CHECK(formula::render<Dialect::LaTeX>(chosen * rat(2))
+          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
+             "\\end{cases}) "
+             "\\cdot 2");
 }
 
 // ------------------------------------------------- phase 8: numeric_value_of
@@ -500,7 +503,8 @@ TEST_CASE("render: a rounding node wrapping a conditional keeps the granularity 
     CHECK(formula::render<Dialect::Plain>(rounded) == "round(if f > 50 MPa then d * 2 else d * 3, to 1 dp of mm)");
     CHECK(formula::render<Dialect::Markdown>(rounded) == "round(if `f` > 50 MPa then `d` * 2 else `d` * 3, to 1 dp of mm)");
     CHECK(formula::render<Dialect::LaTeX>(rounded)
-          == "\\operatorname{round}_{1\\,\\mathrm{mm}}(\\begin{cases} d \\cdot 2 & \\text{if } f > 50 MPa \\\\ d \\cdot 3 & "
+          == "\\operatorname{round}_{1\\,\\mathrm{mm}}(\\begin{cases} d \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ "
+             "d \\cdot 3 & "
              "\\text{otherwise} \\end{cases})");
 }
 
@@ -518,7 +522,7 @@ TEST_CASE("render: a numeric-value escape hatch wrapping a conditional keeps the
     CHECK(formula::render<Dialect::Plain>(numeric) == "numeric(if f > 50 MPa then f * 2 else f * 4, in MPa)");
     CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(if `f` > 50 MPa then `f` * 2 else `f` * 4, in MPa)");
     CHECK(formula::render<Dialect::LaTeX>(numeric)
-          == "\\{\\begin{cases} f \\cdot 2 & \\text{if } f > 50 MPa \\\\ f \\cdot 4 & \\text{otherwise} "
+          == "\\{\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
              "\\end{cases}/\\mathrm{MPa}\\}");
 }
 
@@ -544,7 +548,7 @@ TEST_CASE("render: a predicate comparing two rounded operands needs no extra bra
 
     CHECK(formula::render<Dialect::Plain>(guarded) == "round(d, to 1 dp of mm) > 5 mm");
     CHECK(formula::render<Dialect::Markdown>(guarded) == "round(`d`, to 1 dp of mm) > 5 mm");
-    CHECK(formula::render<Dialect::LaTeX>(guarded) == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d) > 5 mm");
+    CHECK(formula::render<Dialect::LaTeX>(guarded) == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d) > 5\\,\\mathrm{mm}");
 }
 
 TEST_CASE("render: a conditional nested inside another conditional's branches is unambiguous without brackets",
@@ -584,14 +588,18 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
           == "if `f` > 50 MPa then (if `f` > 50 MPa then `f` else `f` * 3) else if `f` > 50 MPa then `f` else `f` * 3");
 
     CHECK(formula::render<Dialect::LaTeX>(nestedInThen)
-          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f \\cdot 3 & \\text{otherwise} \\end{cases} & "
-             "\\text{if } f > 50 MPa \\\\ f \\cdot 5 & \\text{otherwise} \\end{cases}");
+          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 3 & \\text{otherwise} "
+             "\\end{cases} & "
+             "\\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 5 & \\text{otherwise} \\end{cases}");
     CHECK(formula::render<Dialect::LaTeX>(nestedInElse)
-          == "\\begin{cases} f \\cdot 5 & \\text{if } f > 50 MPa \\\\ \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f "
+          == "\\begin{cases} f \\cdot 5 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ \\begin{cases} f & \\text{if } f > "
+             "50\\,\\mathrm{MPa} \\\\ f "
              "\\cdot 3 & \\text{otherwise} \\end{cases} & \\text{otherwise} \\end{cases}");
     CHECK(formula::render<Dialect::LaTeX>(nestedInBoth)
-          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f \\cdot 3 & \\text{otherwise} \\end{cases} & "
-             "\\text{if } f > 50 MPa \\\\ \\begin{cases} f & \\text{if } f > 50 MPa \\\\ f \\cdot 3 & \\text{otherwise} "
+          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 3 & \\text{otherwise} "
+             "\\end{cases} & "
+             "\\text{if } f > 50\\,\\mathrm{MPa} \\\\ \\begin{cases} f & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 3 "
+             "& \\text{otherwise} "
              "\\end{cases} & \\text{otherwise} \\end{cases}");
 }
 
@@ -837,8 +845,9 @@ TEST_CASE("render: a banded lookup renders its operand and one field per band", 
     CHECK(formula::render<Dialect::Markdown>(bandedLookup())
           == "lookup(`d`, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
     CHECK(formula::render<Dialect::LaTeX>(bandedLookup())
-          == "\\operatorname{lookup}(d,\\allowbreak \\text{2 to under 5/2 mm gives 19/20},\\allowbreak \\text{5/2 to under "
-             "9 mm gives 7/5},\\allowbreak \\text{9 to under 61/2 mm gives 21/20})");
+          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{2\\ to\\ under\\ 5/2\\ mm\\ gives\\ 19/20},\\allowbreak "
+             "\\mathrm{5/2\\ to\\ under\\ 9\\ mm\\ gives\\ 7/5},\\allowbreak \\mathrm{9\\ to\\ under\\ 61/2\\ mm\\ gives\\ "
+             "21/20})");
     // The default dialect is plain, exactly as for every other node kind.
     CHECK(formula::render(bandedLookup())
           == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
@@ -853,12 +862,13 @@ TEST_CASE("render: an exact lookup renders the key it selects with and one field
     // accident: an exact lookup has no operand.
     CHECK(formula::render<Dialect::Markdown>(shapeLookup())
           == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
-    // `key Cylinder` is words, not mathematics, so LaTeX sets the subject as text too
-    // -- unlike the other two kinds, whose subject is a real sub-expression.
+    // `key Cylinder` is words, not mathematics, so LaTeX sets the subject
+    // upright as the rows are -- unlike the other two kinds, whose subject is
+    // a real sub-expression.
     CHECK(formula::render<Dialect::LaTeX>(shapeLookup())
-          == "\\operatorname{lookup}(\\text{key Cylinder},\\allowbreak \\text{key Cube gives 31/25 MPa},\\allowbreak "
-             "\\text{key Cylinder "
-             "gives 4 MPa},\\allowbreak \\text{key Prism gives 13/10 MPa})");
+          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak \\mathrm{key\\ Cube\\ gives\\ 31/25\\ MPa},"
+             "\\allowbreak \\mathrm{key\\ Cylinder\\ gives\\ 4\\ MPa},\\allowbreak \\mathrm{key\\ Prism\\ gives\\ 13/10\\ "
+             "MPa})");
     CHECK(formula::render(shapeLookup())
           == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
 }
@@ -882,8 +892,8 @@ TEST_CASE("render: an interpolating lookup renders its operand and one field per
     CHECK(formula::render<Dialect::Markdown>(curveLookup())
           == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
     CHECK(formula::render<Dialect::LaTeX>(curveLookup())
-          == "\\operatorname{interpolate}(d,\\allowbreak \\text{at 2 mm gives 9/10 MPa},\\allowbreak \\text{at 15/2 mm "
-             "gives -23/20 MPa},\\allowbreak \\text{at 19 mm gives 6/5 MPa})");
+          == "\\operatorname{interpolate}(d,\\allowbreak \\mathrm{at\\ 2\\ mm\\ gives\\ 9/10\\ MPa},\\allowbreak "
+             "\\mathrm{at\\ 15/2\\ mm\\ gives\\ -23/20\\ MPa},\\allowbreak \\mathrm{at\\ 19\\ mm\\ gives\\ 6/5\\ MPa})");
     CHECK(formula::render(curveLookup())
           == "interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
 }
@@ -977,9 +987,9 @@ TEST_CASE("render: every lookup kind nests inside a product and a power without 
     CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(curveLookup()))
           == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)^2");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(shapeLookup()))
-          == "\\operatorname{lookup}(\\text{key Cylinder},\\allowbreak \\text{key Cube gives 31/25 MPa},\\allowbreak "
-             "\\text{key Cylinder "
-             "gives 4 MPa},\\allowbreak \\text{key Prism gives 13/10 MPa})^{2}");
+          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak \\mathrm{key\\ Cube\\ gives\\ 31/25\\ MPa},"
+             "\\allowbreak \\mathrm{key\\ Cylinder\\ gives\\ 4\\ MPa},\\allowbreak \\mathrm{key\\ Prism\\ gives\\ 13/10\\ "
+             "MPa})^{2}");
 }
 
 TEST_CASE("render: a table with no rows says so, and a table with one row renders it", "[render][lookup]")
@@ -996,7 +1006,7 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
           == "interpolate(d, no rows)");
 
     CHECK(formula::render<Dialect::LaTeX>(banded_lookup<unit::Millimetre, NoBands, unit::One>(var<Diameter>, {}))
-          == "\\operatorname{lookup}(d,\\allowbreak \\text{no rows})");
+          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{no\\ rows})");
 
     // One row is the other degenerate shape: the only row is simultaneously
     // the first and the last, and there is no separator between rows for a
@@ -1086,21 +1096,22 @@ TEST_CASE("render: a key's name is shown literally in every dialect, whatever ch
     // The one piece of text in a rendering this library did not write. In
     // Markdown, `*A*` unescaped is emphasis, `_` can open
     // emphasis and `&` can start an entity; in LaTeX, `_` and `&` are errors
-    // and `%` silently eats the rest of the line, even inside `\text{...}`.
-    // So each dialect escapes the name the way an author writing in it by
-    // hand would, and the words around it -- `key`, `gives` -- are untouched.
+    // and `%` silently eats the rest of the line. So each dialect escapes the
+    // name: Markdown the way an author writing in it by hand would, LaTeX
+    // inside the row's `\mathrm{...}`, where a space is `\ ` as well.
     // Kills a renderer that puts the name in unescaped, and one that escapes
     // for the wrong dialect.
     //
-    // Both measured rather than reasoned: the LaTeX string compiles with
-    // tectonic 0.17.0 inside `$...$` and shows the name as written, and the
-    // Markdown string does the same through python-markdown and pandoc's
-    // CommonMark and GFM readers.
+    // Both measured rather than reasoned: the LaTeX string typesets with
+    // tectonic 0.17.0 under `\usepackage[OT1]{fontenc}` and with MathJax
+    // 3.2.2 under the site's configuration, and shows the name as written in
+    // both; the Markdown string does the same through python-markdown and
+    // pandoc's CommonMark and GFM readers.
     CHECK(formula::render<Dialect::Markdown>(finishLookup(MouldFinish::Hollow_Core))
           == "lookup(key Hollow\\_Core, key polished \\*A\\* 100% &amp; oiled gives 1, key Hollow\\_Core gives 2)");
     CHECK(formula::render<Dialect::LaTeX>(finishLookup(MouldFinish::Hollow_Core))
-          == "\\operatorname{lookup}(\\text{key Hollow\\_Core},\\allowbreak \\text{key polished *A* 100\\% \\& oiled "
-             "gives 1},\\allowbreak \\text{key Hollow\\_Core gives 2})");
+          == "\\operatorname{lookup}(\\mathrm{key\\ Hollow\\_Core},\\allowbreak \\mathrm{key\\ polished\\ *A*\\ 100\\%\\ "
+             "\\&\\ oiled\\ gives\\ 1},\\allowbreak \\mathrm{key\\ Hollow\\_Core\\ gives\\ 2})");
     // Plain is for a terminal, where nothing is markup, so nothing is escaped.
     CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Hollow_Core))
           == "lookup(key Hollow_Core, key polished *A* 100% & oiled gives 1, key Hollow_Core gives 2)");
@@ -1132,20 +1143,22 @@ struct formula::EnumeratorName<MouldMarking>
 TEST_CASE("render: every character either dialect escapes in a key's name is escaped", "[render][lookup][markdown][latex]")
 {
     // One fixture for every escape branch of `detail::literal_words_in_dialect`
-    // in both dialects: deleting any single `case` from either switch fails
-    // this test, and it is the only test that fails for most of them. The
-    // escaped forms were each measured -- see that function's comment.
+    // (Markdown) and `detail::latex_math_words` (LaTeX): deleting any single
+    // `case` from either switch fails this test, and it is the only test that
+    // fails for most of them. The escaped forms were each measured -- see
+    // those functions' comments.
     constexpr auto node = exact_lookup<MarkingKeys, unit::One>(MouldMarking::Stamped, { rat(1) });
 
     // Markdown has no ligatures to break: the pairs pass through unchanged.
     std::string const markdown = "a\\\\b\\`c\\*d\\_efg&lt;h&gt;i&amp;j&#124;k&#126;l&#36;m^n{o}p#q%r\"s--t---u''v,,w";
     CHECK(formula::render<Dialect::Markdown>(node) == "lookup(key " + markdown + ", key " + markdown + " gives 1)");
 
-    std::string const latex = "a\\textbackslash{}b\\textasciigrave{}c*d\\_efg\\textless{}h\\textgreater{}i\\&j\\textbar{}"
-                              "k\\textasciitilde{}l\\$m\\textasciicircum{}n\\{o\\}p\\#q\\%r{\\ttfamily\\char34}s"
-                              "-{}-t-{}-{}-u'{}'v,{},w";
+    // Math mode has no ligatures, so the pairs need no empty group -- but
+    // `'` is a prime there, so each one is set as text.
+    std::string const latex = "a\\backslash{}b\\grave{}c*d\\_efg<h>i\\&j|k\\tilde{}l\\$m\\hat{}n\\{o\\}p\\#q\\%r"
+                              "\\mathtt{\"}s--t---u\\text{'}\\text{'}v,,w";
     CHECK(formula::render<Dialect::LaTeX>(node)
-          == "\\operatorname{lookup}(\\text{key " + latex + "},\\allowbreak \\text{key " + latex + " gives 1})");
+          == "\\operatorname{lookup}(\\mathrm{key\\ " + latex + "},\\allowbreak \\mathrm{key\\ " + latex + "\\ gives\\ 1})");
 
     std::string const plain = "a\\b`c*d_efg<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
     CHECK(formula::render<Dialect::Plain>(node) == "lookup(key " + plain + ", key " + plain + " gives 1)");
@@ -1156,7 +1169,7 @@ TEST_CASE("render: every character either dialect escapes in a key's name is esc
     // Kept rather than deleted, as a second line behind that refusal: a
     // Markdown link label is the defect they prevent.
     CHECK(formula::detail::literal_words_in_dialect<Dialect::Markdown>("e[f]g") == "e\\[f\\]g");
-    CHECK(formula::detail::literal_words_in_dialect<Dialect::LaTeX>("e[f]g") == "e[f]g");
+    CHECK(formula::detail::latex_math_words("e[f]g") == "e[f]g");
 }
 
 TEST_CASE("render: a documented lookup renders as the bare lookup, like every other wrapped node", "[render][lookup]")
@@ -1242,11 +1255,12 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
     // label by searching for the band label would pass whatever the two
     // dialects said.
     //
-    // LaTeX's own decoration is stripped, not searched for: `\text{...}` is a
-    // dialect-wide fact about how this library sets words in mathematics (the
-    // same kind of fact as Markdown's backticks round a symbol), so comparing
-    // LaTeX's field to plain's field *modulo that wrapper* compares the two
-    // renderers' choice of words, which is the thing that can drift.
+    // LaTeX's own decoration is applied to plain's field, not searched for:
+    // `\mathrm{...}` round the escaped words is a dialect-wide fact about how
+    // this library sets words in mathematics (the same kind of fact as
+    // Markdown's backticks round a symbol), so comparing LaTeX's field to
+    // plain's field *modulo that wrapper* compares the two renderers' choice
+    // of words, which is the thing that can drift.
     auto const dialectsAgree = [](auto const& node, std::size_t fieldCount) {
         std::vector<std::string> const plain = callFields(formula::render<Dialect::Plain>(node), ", ");
         std::vector<std::string> const markdown = callFields(formula::render<Dialect::Markdown>(node), ", ");
@@ -1264,7 +1278,7 @@ TEST_CASE("render: the three dialects name a lookup's rows the same way, for all
         {
             REQUIRE(!plain[field].empty());
             CHECK(markdown[field] == plain[field]);
-            CHECK(latex[field] == "\\text{" + plain[field] + "}");
+            CHECK(latex[field] == "\\mathrm{" + formula::detail::latex_math_words(plain[field]) + "}");
         }
     };
 
@@ -1467,4 +1481,93 @@ TEST_CASE("render: a rounding or a numeric value in a unit with no symbol adds n
                                            formula::DecimalPlaces { 1 },
                                            formula::RoundingMode::HalfAwayFromZero>(var<Diameter>))
           == "round(d, to 1 dp of mm)");
+}
+
+// ------------------------------------ LaTeX: a unit's specials, a key's name
+
+namespace
+{
+struct Share: formula::Quantity<Share, "s", "share of the mix", formula::unit::Percent>
+{
+};
+
+/// An author's unit whose symbol holds six of TeX's specials.
+inline constexpr formula::Unit SpecialUnit { .dimension = formula::dim::Scalar,
+                                             .symbolText = formula::symbol("a#b&c_d$e{f}g"),
+                                             .decimals = 1 };
+struct Special: formula::Quantity<Special, "q", "a quantity in the author's unit", SpecialUnit>
+{
+};
+
+inline constexpr BandTable<2> ShareBands { band(0, 1, 100, 1), band(100, 1, 150, 1) };
+
+/// A reflected name holding an underscore, the way an identifier does.
+enum class LatexFit : std::uint8_t
+{
+    fit_2 = 1,
+    loose = 2,
+};
+
+inline constexpr KeyTable<LatexFit, 2> LatexFitKeys { LatexFit::fit_2, LatexFit::loose };
+} // namespace
+
+TEST_CASE("render: a percent sign is escaped wherever a unit's symbol enters LaTeX", "[render][latex]")
+{
+    // `%` is TeX's comment character. Written bare it commented out the rest
+    // of the formula: a percent-valued lookup row stopped tectonic with "File
+    // ended while scanning use of \text@", and a constant `5 %` with "Missing
+    // $ inserted" -- while the site's MathJax silently dropped the `%`. Each
+    // clause a unit's symbol reaches, spelt exactly.
+    CHECK(formula::render<Dialect::LaTeX>(var<Share> * formula::constant<formula::unit::Percent>(rat(5)))
+          == "s \\cdot 5\\,\\mathrm{\\%}");
+    CHECK(
+        formula::render<Dialect::LaTeX>(
+            formula::rounded<formula::unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+                var<Share>))
+        == "\\operatorname{round}_{1\\,\\mathrm{\\%}}(s)");
+    CHECK(formula::render<Dialect::LaTeX>(formula::rounded_to_digits<formula::unit::Percent,
+                                                                     formula::SignificantDigits { 2 },
+                                                                     formula::RoundingMode::HalfAwayFromZero>(var<Share>))
+          == "\\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{\\%}}(s)");
+    CHECK(formula::render<Dialect::LaTeX>(formula::numeric_value_of<formula::unit::Percent, "fit stated in %">(var<Share>))
+          == "\\{s/\\mathrm{\\%}\\}");
+    // A lookup's result unit, and its key unit.
+    CHECK(formula::render<Dialect::LaTeX>(banded_lookup<formula::unit::Millimetre, ShareBands, formula::unit::Percent>(
+              var<Diameter>, { rat(95), rat(100) }))
+          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{0\\ to\\ under\\ 100\\ mm\\ gives\\ 95\\ \\%},\\allowbreak "
+             "\\mathrm{100\\ to\\ under\\ 150\\ mm\\ gives\\ 100\\ \\%})");
+    CHECK(formula::render<Dialect::LaTeX>(
+              banded_lookup<formula::unit::Percent, ShareBands, formula::unit::One>(var<Share>, { rat(1), rat(2) }))
+          == "\\operatorname{lookup}(s,\\allowbreak \\mathrm{0\\ to\\ under\\ 100\\ \\%\\ gives\\ 1},\\allowbreak "
+             "\\mathrm{100\\ to\\ under\\ 150\\ \\%\\ gives\\ 2})");
+    // Plain and Markdown are for a terminal and a web page, where `%` is
+    // nothing special: untouched there.
+    CHECK(formula::render(formula::constant<formula::unit::Percent>(rat(5))) == "5 %");
+    CHECK(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Percent>(rat(5))) == "5 %");
+}
+
+TEST_CASE("render: every TeX special in an author's unit symbol is escaped in LaTeX", "[render][latex]")
+{
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<SpecialUnit>(rat(3)))
+          == "3\\,\\mathrm{a\\#b\\&c\\_d\\$e\\{f\\}g}");
+    CHECK(formula::render<Dialect::LaTeX>(
+              formula::rounded<SpecialUnit, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+                  var<Special>))
+          == "\\operatorname{round}_{1\\,\\mathrm{a\\#b\\&c\\_d\\$e\\{f\\}g}}(q)");
+    // A named unit is only wrapped, and a unit with no symbol adds nothing.
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<formula::unit::Millimetre>(rat(150))) == "150\\,\\mathrm{mm}");
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<formula::unit::One>(rat(3))) == "3");
+}
+
+TEST_CASE("render: a lookup key's name is set in math mode, where the site's MathJax reads its escapes", "[render][latex]")
+{
+    // `\text{key fit\_2}` is right for a TeX engine and shows `key fit\_2`,
+    // backslash and all, on the site: MathJax does not load `textmacros`, so
+    // it reads `\text{...}` literally. In `\mathrm{...}` both read `\_` and
+    // `\ ` the same way.
+    CHECK(
+        formula::render<Dialect::LaTeX>(exact_lookup<LatexFitKeys, formula::unit::One>(LatexFit::fit_2, { rat(1), rat(2) }))
+        == "\\operatorname{lookup}(\\mathrm{key\\ fit\\_2},\\allowbreak \\mathrm{key\\ fit\\_2\\ gives\\ 1},\\allowbreak "
+           "\\mathrm{key\\ loose\\ gives\\ 2})");
+    CHECK(formula::detail::latex_math_words("key fit_2") == "key\\ fit\\_2");
 }

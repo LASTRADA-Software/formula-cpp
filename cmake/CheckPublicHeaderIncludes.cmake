@@ -11,6 +11,9 @@
 # too -- it needs <vector> for its arena, but deliberately not <string>, which
 # is what keeps trace_render.hpp -- the one that does need <string>, to turn a
 # recorded derivation into text -- separately optional from it.
+# detail/latex_math.hpp qualifies as a part of render.hpp: it builds the
+# `std::string` render.hpp puts inside a LaTeX `\mathrm{...}`, and render.hpp
+# is its only includer, which check 2 keeps true.
 #
 # Being named here does not, by itself, permit anything: check 2 below
 # enforces that no other header may reach one of these, which is what stops
@@ -21,6 +24,7 @@ set(exemptHeaders
     "${SOURCE_DIR}/include/formula-cpp/document.hpp"
     "${SOURCE_DIR}/include/formula-cpp/trace.hpp"
     "${SOURCE_DIR}/include/formula-cpp/trace_render.hpp"
+    "${SOURCE_DIR}/include/formula-cpp/detail/latex_math.hpp"
 )
 
 file(GLOB_RECURSE headers "${SOURCE_DIR}/include/*.hpp")
@@ -123,6 +127,7 @@ set(exemptAllowances
     "document.hpp=string,vector"
     "trace.hpp=vector"
     "trace_render.hpp=string"
+    "latex_math.hpp=string"
 )
 
 set(overreaches "")

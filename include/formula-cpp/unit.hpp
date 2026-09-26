@@ -174,11 +174,11 @@ struct Unit
 /// requirements from any standard; a caller that needs a different precision
 /// states it at the point of use.
 ///
-/// **Symbols are emitted verbatim, in every dialect.** `render.hpp` appends
-/// `view(unit.symbolText)` to the number without escaping it -- in plain text,
-/// in Markdown, and inside `\mathrm{...}` in LaTeX. So the symbol text has to
-/// be safe in all three by construction, and that rules out two characters a
-/// unit might otherwise want:
+/// **Symbols are emitted verbatim in plain text and in Markdown.**
+/// `render.hpp` appends `view(unit.symbolText)` to the number without escaping
+/// it there; in LaTeX it escapes it and sets it inside `\mathrm{...}`. So the
+/// symbol text has to be safe in Markdown by construction, and that rules out
+/// two characters a unit might otherwise want:
 ///
 ///  - `*`, which is Markdown emphasis. Two symbols carrying one on a single
 ///    rendered line italicise everything between them, so a pascal second is
@@ -189,8 +189,9 @@ struct Unit
 /// `/` is safe in all three and is used freely (`kg/m3`, `m/s`). Multi-byte
 /// UTF-8 passes through byte-for-byte, as `Celsius` has always relied on, and
 /// `Micrometre` and `PerMille` rely on it too. `Percent`'s `%` is a LaTeX
-/// comment character and predates this note; it is left alone rather than
-/// changed under cover of an unrelated task.
+/// comment character, and safe all the same: `render.hpp` escapes every
+/// unit symbol it writes into LaTeX (`detail::latex_math_words`), so a symbol
+/// holding one of TeX's specials is shown rather than obeyed.
 namespace unit
 {
     /// The coherent, dimensionless unit -- a bare number.

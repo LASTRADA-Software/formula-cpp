@@ -185,19 +185,11 @@ constexpr auto compactionAdjustedDensity = formula::documented(
 // interval, an exact table is keyed on a category, and an interpolating table
 // computes a value between two rows that appears in no row at all.
 //
-// **None of the three states a value in percent, and that is deliberate.**
-// `unit::Percent`'s symbol is `%`, which is TeX's comment character, and this
-// page publishes every formula as a `$$ ... $$` block. Measured with tectonic
-// 0.15.0 over a three-way control: the same row with no percent sign typesets
-// (exit 0), the exact bytes `render<Dialect::LaTeX>` emits for a percent-valued
-// row fail with `!File ended while scanning use of \text@` (exit 1), and the
-// row with the sign escaped as `\%` typesets again (exit 0). The library does
-// not escape it today, so a percent-valued table renders to LaTeX that does not
-// compile. That is a defect in `render.hpp` rather than in this page, and it is
-// reported as one -- but a page whose whole claim is that its snippets came
-// from a real run is the wrong place to publish a formula that is known not to
-// typeset, so the tables here are stated in megapascals and in plain
-// dimensionless factors.
+// The tables are stated in megapascals and in plain dimensionless factors.
+// They were chosen while `render<Dialect::LaTeX>` still wrote a unit's symbol
+// unescaped, when a percent-valued row failed to typeset: `%` is TeX's
+// comment character. The library now escapes it (`detail::latex_math_words`),
+// so a table in percent typesets too; these were left as they are.
 
 struct CrushingStrength: formula::Quantity<CrushingStrength, "f", "measured crushing strength", unit::Megapascal>
 {

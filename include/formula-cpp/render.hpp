@@ -34,6 +34,7 @@
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/detail/latex_math.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
@@ -229,11 +230,13 @@ namespace detail
         return unitSymbol.empty() ? std::string {} : std::string { lead } + std::string { unitSymbol };
     }
 
-    /// A unit's symbol set upright in LaTeX, `\mathrm{mm}`, or nothing for a
-    /// unit with none, for `unit_clause` to drop.
+    /// A unit's symbol set upright in LaTeX, `\mathrm{mm}` or `\mathrm{\%}`,
+    /// or nothing for a unit with none, for `unit_clause` to drop. Escaped by
+    /// `latex_math_words` (`detail/latex_math.hpp`): `%` is TeX's comment
+    /// character, and an author's unit may hold any of its specials.
     [[nodiscard]] inline std::string latex_unit(std::string_view unitSymbol)
     {
-        return unitSymbol.empty() ? std::string {} : "\\mathrm{" + std::string { unitSymbol } + "}";
+        return unitSymbol.empty() ? std::string {} : "\\mathrm{" + latex_math_words(unitSymbol) + "}";
     }
 
     /// A bound a table declared as a numerator/denominator pair -- a band's
@@ -265,38 +268,23 @@ namespace detail
                                 keySymbol);
     }
 
-    /// Author-supplied words -- a key's name -- made literal in dialect @p D,
-    /// so that whatever characters they hold are shown rather than obeyed.
+    /// Author-supplied words -- a key's name -- made literal in Markdown, so
+    /// that whatever characters they hold are shown rather than obeyed; Plain
+    /// changes nothing.
     ///
     /// Needed because a key's name is the one piece of text in a rendering
-    /// that this library did not write. A reflected name is an identifier,
-    /// and an identifier's underscore is already enough to break LaTeX:
-    /// `\text{key Hollow_Core}` is a "Missing $ inserted" error, because `_`
-    /// is a math-mode character even inside `\text`. A customized spelling
+    /// that this library did not write. A customized spelling
     /// (`EnumeratorName`, `enumerator.hpp`) may hold anything at all --
     /// `[150 mm]`, `*` -- which in Markdown is exactly the link and emphasis
     /// syntax this file's ruling and the guard test in `render_tests.cpp`
     /// exist to keep out.
     ///
-    /// **LaTeX** escapes its ten special characters the way a text-mode author
-    /// would -- `^` and `~` as `\textasciicircum{}` and `\textasciitilde{}`,
-    /// which are ASCII glyphs under T1 and TU where `\^{}` and `\~{}` are
-    /// accents over nothing -- and five more that are not special but print as
-    /// the wrong glyph. Under pdflatex's default OT1 font encoding `<`, `>`,
-    /// `|` and a double quote come out as an inverted exclamation mark, an
-    /// inverted question mark, an em dash and a closing curly quote, and a
-    /// backtick comes out as an opening curly quote in every encoding. They
-    /// become `\textless{}`, `\textgreater{}`, `\textbar{}` and
-    /// `\textasciigrave{}`, which need no package on a LaTeX kernel from
-    /// 2020-02 or later (the one that absorbed textcomp). The quote becomes a
-    /// typewriter `\char34`, because `\textquotedbl` -- the obvious spelling --
-    /// is "unavailable in encoding OT1" without a package, and even under TU a
-    /// bare `"` is turned into a curly quote. Finally, TeX's ligatures are
-    /// broken with an empty group: `--`, `---`, `''` and `,,` would otherwise
-    /// print as an en dash, an em dash, a closing double quote and a low
-    /// double quote -- measured in OT1, T1 and TU alike -- so each such pair is
-    /// written `-{}-`, `'{}'`, `,{}`. A lone `'` is left alone: it prints as a
-    /// right single quote, which is how TeX sets an apostrophe.
+    /// **Not LaTeX.** LaTeX sets a key's name inside the `\mathrm{...}` of the
+    /// row it stands in, and `lookup_words_in_dialect` escapes the whole row
+    /// with `latex_math_words` (`detail/latex_math.hpp`). This function once
+    /// escaped for LaTeX text mode, inside `\text{...}` -- `\_`,
+    /// `\textbackslash{}`, `{\ttfamily\char34}` -- which a TeX engine reads
+    /// and the site's MathJax, without `textmacros`, shows backslash and all.
     ///
     /// **Markdown** backslash-escapes the six characters that open inline
     /// markup -- a backslash, a backtick, `*`, `_`, `[`, `]` -- and writes six
@@ -307,18 +295,15 @@ namespace detail
     /// with the site's extensions shows a backslash before `|` or `~`
     /// literally, where CommonMark would drop it.
     ///
-    /// Measured, not reasoned. The LaTeX set was compiled with tectonic 0.17.0
-    /// forced to OT1 (`\usepackage[OT1]{fontenc}`), where the four wrong glyphs
-    /// reproduce, and also under T1 and TU; the escaped text reads back as
-    /// the original in all three. The Markdown set was rendered by
+    /// Measured, not reasoned: the Markdown set was rendered by
     /// python-markdown with exactly the extensions `mkdocs.yml` enables
     /// (admonition, pymdownx.highlight, pymdownx.superfences,
     /// pymdownx.arithmatex in generic mode), and by pandoc's CommonMark and
     /// GFM readers, in a paragraph and in a GFM table cell, and reads back as
-    /// the original in every one. Plain changes nothing. Text with none of
-    /// these characters is the same in all three dialects, which is what the
-    /// cross-dialect test relies on.
+    /// the original in every one. Text with none of these characters is the
+    /// same in both dialects, which is what the cross-dialect test relies on.
     template <Dialect D>
+        requires(D != Dialect::LaTeX)
     [[nodiscard]] std::string literal_words_in_dialect(std::string_view words)
     {
         if constexpr (D == Dialect::Plain)
@@ -327,98 +312,40 @@ namespace detail
         {
             std::string keyText;
             keyText.reserve(words.size());
-            for (std::size_t at = 0; at < words.size(); ++at)
+            for (char const byte: words)
             {
-                char const byte = words[at];
-                if constexpr (D == Dialect::LaTeX)
+                switch (byte)
                 {
-                    switch (byte)
-                    {
-                        case '-':
-                        case '\'':
-                        case ',':
-                            // Harmless alone, a ligature in pairs: `--` is an
-                            // en dash (`---` an em dash), `''` a closing
-                            // quote, `,,` a low quote. An empty group
-                            // between the two keeps them two characters.
-                            keyText += byte;
-                            if (at + 1 < words.size() && words[at + 1] == byte)
-                                keyText += "{}";
-                            break;
-                        case '\\':
-                            keyText += "\\textbackslash{}";
-                            break;
-                        case '^':
-                            keyText += "\\textasciicircum{}";
-                            break;
-                        case '~':
-                            keyText += "\\textasciitilde{}";
-                            break;
-                        case '`':
-                            keyText += "\\textasciigrave{}";
-                            break;
-                        case '<':
-                            keyText += "\\textless{}";
-                            break;
-                        case '>':
-                            keyText += "\\textgreater{}";
-                            break;
-                        case '|':
-                            keyText += "\\textbar{}";
-                            break;
-                        case '"':
-                            keyText += "{\\ttfamily\\char34}";
-                            break;
-                        case '{':
-                        case '}':
-                        case '$':
-                        case '&':
-                        case '#':
-                        case '_':
-                        case '%':
-                            keyText += '\\';
-                            keyText += byte;
-                            break;
-                        default:
-                            keyText += byte;
-                            break;
-                    }
-                }
-                else
-                {
-                    switch (byte)
-                    {
-                        case '<':
-                            keyText += "&lt;";
-                            break;
-                        case '>':
-                            keyText += "&gt;";
-                            break;
-                        case '&':
-                            keyText += "&amp;";
-                            break;
-                        case '$':
-                            keyText += "&#36;";
-                            break;
-                        case '|':
-                            keyText += "&#124;";
-                            break;
-                        case '~':
-                            keyText += "&#126;";
-                            break;
-                        case '\\':
-                        case '`':
-                        case '*':
-                        case '_':
-                        case '[':
-                        case ']':
-                            keyText += '\\';
-                            keyText += byte;
-                            break;
-                        default:
-                            keyText += byte;
-                            break;
-                    }
+                    case '<':
+                        keyText += "&lt;";
+                        break;
+                    case '>':
+                        keyText += "&gt;";
+                        break;
+                    case '&':
+                        keyText += "&amp;";
+                        break;
+                    case '$':
+                        keyText += "&#36;";
+                        break;
+                    case '|':
+                        keyText += "&#124;";
+                        break;
+                    case '~':
+                        keyText += "&#126;";
+                        break;
+                    case '\\':
+                    case '`':
+                    case '*':
+                    case '_':
+                    case '[':
+                    case ']':
+                        keyText += '\\';
+                        keyText += byte;
+                        break;
+                    default:
+                        keyText += byte;
+                        break;
                 }
             }
             return keyText;
@@ -433,7 +360,9 @@ namespace detail
     /// differently through `EnumeratorName` (`enumerator.hpp`). A reader
     /// reconciling this against a published table reads the author's word for
     /// the row, not a number they would have to look up in the author's code.
-    /// The name is made literal in the dialect by `literal_words_in_dialect`.
+    /// The name is made literal in Markdown by `literal_words_in_dialect`,
+    /// and in LaTeX by `lookup_words_in_dialect`, which escapes the whole row
+    /// the name stands in.
     ///
     /// **The underlying value is the fallback, and only the fallback**: `key
     /// 9` for a key that names no row of the table, which is exactly the key
@@ -458,7 +387,14 @@ namespace detail
     {
         std::string_view const keyName = key_name<Keys>(key);
         if (!keyName.empty())
-            return "key " + literal_words_in_dialect<D>(keyName);
+        {
+            // LaTeX's escape is `lookup_words_in_dialect`'s, applied to the
+            // whole row the name stands in.
+            if constexpr (D == Dialect::LaTeX)
+                return "key " + std::string { keyName };
+            else
+                return "key " + literal_words_in_dialect<D>(keyName);
+        }
 
         using Underlying = std::underlying_type_t<KeyOf<Keys>>;
         if constexpr (std::is_signed_v<Underlying>)
@@ -478,26 +414,33 @@ namespace detail
     /// A run of words a lookup contributes, as the dialect writes it: a row,
     /// the empty table's own statement, or an exact lookup's key.
     ///
-    /// LaTeX sets words as upright text -- `to under`, `gives`, `key` and `at`
-    /// are words, and math mode would set each as a product of italic letters
-    /// (`k \cdot e \cdot y`) -- so it wraps them in `\text{...}`, the same
-    /// construct `render_node(Constraint)` and `render_node(WhenNode)` already
-    /// use for the words in their own output. This was found by reading the
-    /// LaTeX output rather than by a string comparison, which is exactly the
-    /// class of defect a string comparison cannot see.
+    /// LaTeX sets words upright -- `to under`, `gives`, `key` and `at` are
+    /// words, and bare math mode would set each as a product of italic
+    /// letters (`k \cdot e \cdot y`) -- so it wraps them in `\mathrm{...}`,
+    /// escaped by `latex_math_words` (`detail/latex_math.hpp`): a space as
+    /// `\ `, `_` as `\_`, `%` as `\%`, and so on.
+    ///
+    /// **`\mathrm`, not `\text`.** This was `\text{...}` once, and a row
+    /// holds a unit's symbol and a key's name, which may hold TeX's specials.
+    /// A bare `%` in `\text` comments out the rest of the formula in a real
+    /// TeX engine, so a percent-valued table did not typeset at all; and the
+    /// escape a TeX engine needs, `\text{fit\_2}`, is shown backslash and all
+    /// by the site's MathJax, which does not load `textmacros`. In
+    /// `\mathrm{...}` both engines read the same escapes the same way.
     ///
     /// Everything a lookup renders goes through here **except the operand of
     /// a banded or an interpolating lookup**, which is a sub-expression and
     /// belongs in math mode -- it has already rendered itself in the dialect.
     ///
-    /// **The wrapped text itself is byte-identical in all three dialects**,
-    /// which is what lets the cross-dialect test in `render_tests.cpp` compare
-    /// the dialects against each other rather than assert each separately.
+    /// **The words themselves are the same in all three dialects**, before
+    /// LaTeX's escape and wrapper, which is what lets the cross-dialect test
+    /// in `render_tests.cpp` compare the dialects against each other rather
+    /// than assert each separately.
     template <Dialect D>
     [[nodiscard]] std::string lookup_words_in_dialect(std::string const& words)
     {
         if constexpr (D == Dialect::LaTeX)
-            return "\\text{" + words + "}";
+            return "\\mathrm{" + latex_math_words(words) + "}";
         else
             return words;
     }
@@ -505,7 +448,7 @@ namespace detail
     /// The separator between a rendered lookup's fields.
     ///
     /// **LaTeX adds `\allowbreak`, and that is a correctness fix rather than
-    /// typographic polish.** Each row is one atomic `\text{...}`, and TeX
+    /// typographic polish.** Each row is one atomic `\mathrm{...}`, and TeX
     /// gives a math comma no break penalty at all -- so without this there is
     /// **no legal break point anywhere in a rendered lookup, at any row
     /// count**. A table does not wrap; it runs off the line, and a wide enough
@@ -691,11 +634,20 @@ template <Dialect D, Described Q, Vocabulary V>
 /// The number-and-unit spelling is `detail::number_with_unit`, shared with the
 /// lookup tables below so that a table's row states a number exactly as a
 /// constant holding the same number does -- see that helper.
+///
+/// In LaTeX the symbol is set upright after a thin space, `150\,\mathrm{mm}`
+/// and `5\,\mathrm{\%}`, as the rounding clause sets it (`detail::latex_unit`):
+/// written bare in math mode, `150 mm` read as the product of two italic
+/// letters, and `5 %` commented out the rest of the formula.
 template <Dialect D, Unit U, Vocabulary V>
 [[nodiscard]] std::string render_node(ConstantNode<U> const& node, V const&)
 {
     constexpr Unit declaredUnit = U;
-    return detail::number_with_unit(detail::number_text(node.number), view(declaredUnit.symbolText));
+    if constexpr (D == Dialect::LaTeX)
+        return detail::number_text(node.number)
+               + detail::unit_clause("\\,", detail::latex_unit(view(declaredUnit.symbolText)));
+    else
+        return detail::number_with_unit(detail::number_text(node.number), view(declaredUnit.symbolText));
 }
 
 /// A unary node renders as its operator followed by its (parenthesised if

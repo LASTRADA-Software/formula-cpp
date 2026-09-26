@@ -149,9 +149,10 @@ TEST_CASE("a vocabulary reaches every node kind that holds an operand", "[vocabu
           == "\\begin{cases} (-R^{2} + \\sqrt[3]{E \\cdot E \\cdot E}^{2}) \\cdot "
              "\\operatorname{round}_{1\\,\\mathrm{MPa}}(R) "
              "\\cdot \\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{MPa}}(E) & \\text{if } R \\geq E \\\\ "
-             "\\{R/\\mathrm{MPa}\\} \\cdot \\operatorname{lookup}(D,\\allowbreak \\text{100 to under 150 mm gives 1 MPa},"
-             "\\allowbreak \\text{150 to under 300 mm gives 2 MPa}) \\cdot \\operatorname{interpolate}(D,\\allowbreak "
-             "\\text{at 100 mm gives 1},\\allowbreak \\text{at 300 mm gives 3}) \\cdot E^{3} & \\text{otherwise} "
+             "\\{R/\\mathrm{MPa}\\} \\cdot \\operatorname{lookup}(D,\\allowbreak \\mathrm{100\\ to\\ under\\ 150\\ mm\\ "
+             "gives\\ 1\\ MPa},\\allowbreak \\mathrm{150\\ to\\ under\\ 300\\ mm\\ gives\\ 2\\ MPa}) \\cdot "
+             "\\operatorname{interpolate}(D,\\allowbreak \\mathrm{at\\ 100\\ mm\\ gives\\ 1},\\allowbreak \\mathrm{at\\ "
+             "300\\ mm\\ gives\\ 3}) \\cdot E^{3} & \\text{otherwise} "
              "\\end{cases}");
 }
 
