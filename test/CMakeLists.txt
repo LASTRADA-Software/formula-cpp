@@ -629,6 +629,17 @@ formula_add_negative_test(rounded_sqrt_no_factory_dimension_mismatch
            "does not measure the dimension this expression computes"
            "formula: these two dimensions are not the same")
 
+# A unit with an offset (degrees Celsius) of the right dimension, and the
+# same unit over the wrong dimension: the offset check is gated on the
+# dimension matching, so the second draws the dimension message alone.
+formula_add_negative_test(rounded_sqrt_unit_has_offset
+    "formula: this rounded_sqrt names a unit with an offset, such as degrees Celsius"
+    REJECT "formula: this rounded_sqrt names a unit whose square does not measure")
+
+formula_add_negative_test(rounded_sqrt_offset_unit_dimension_mismatch
+    "formula: this rounded_sqrt names a unit whose square does not measure the dimension of its radicand"
+    REJECT "formula: this rounded_sqrt names a unit with an offset")
+
 # `RepRounding<double>`'s own refusal, not one of the rounded root's: the node
 # rounds through the representation's rounding, as every rounding node does.
 formula_add_negative_test(rounded_sqrt_rep_double

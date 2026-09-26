@@ -65,6 +65,28 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when the unit a rounded square root is stated in has an
+    /// offset, as degrees Celsius has. The root of a squared quantity is a
+    /// magnitude -- a spread, not a reading on a scale -- and a unit with an
+    /// offset states readings: every later reader converts the node's value
+    /// through that offset, so a spread of 2 K would read as -271.15 degC.
+    /// Name the offset-free unit of the same dimension instead, kelvin for a
+    /// temperature.
+    ///
+    /// Asked only when @p DimensionMatches, so that a unit that is wrong in
+    /// both ways draws `RequireRootUnitMatches`'s one message and not this one
+    /// as well: fixing the dimension is the first change either way.
+    template <Unit U, bool DimensionMatches>
+    struct RequireRootUnitWithoutOffset
+    {
+        static_assert(!DimensionMatches || U.offsetNumerator == 0,
+                      "formula: this rounded_sqrt names a unit with an offset, such as degrees Celsius; the root "
+                      "of a squared quantity is a spread, which an offset unit would misread as a point on its "
+                      "scale -- name the offset-free unit of the same dimension, such as kelvin");
+
+        static constexpr bool value = true;
+    };
+
     /// @p leftFactor times @p rightFactor, or nothing when the product leaves
     /// `std::uint64_t`.
     [[nodiscard]] constexpr std::optional<std::uint64_t> mul_unsigned_or_none(std::uint64_t leftFactor,
@@ -143,7 +165,11 @@ namespace detail
     /// Every intermediate is a `std::uint64_t`; there is no 128-bit integer,
     /// because cl has none. So the headroom is `floor(v) * 10^(2p) < 2^64`
     /// (and `b * 10^(2p) < 2^64` for the remainder): an integer radicand of
-    /// about 10^6 fits at 6 places and overflows at 7. Beyond it the answer is
+    /// about 10^6 fits at 6 places and overflows at 7. **The bound is on the
+    /// denominator b too**, whatever the value: at p places a denominator above
+    /// about 1.8 * 10^(19 - 2|p|) overflows, at a negative p because B is
+    /// b * 10^(2|p|). So 1/(2^63 - 1) at -1 places is `Overflow` although its
+    /// answer, 10 under `Ceiling`, would fit. Beyond the headroom the answer is
     /// `ArithmeticError::Overflow`, never a wrapped or clamped value.
     ///
     /// @return the rounded root; `DomainError` for a negative radicand, which
@@ -229,9 +255,9 @@ namespace detail
     /// coherent SI unit of `unit`'s dimension.
     ///
     /// The conversions are `checked_convert`'s, into and out of `unit`'s factor
-    /// and its square -- never a ratio written out here. `unit`'s offset, if it
-    /// has one, takes no part: the root of a squared quantity is a magnitude,
-    /// and a spread of 2 degC is a spread of 2 K.
+    /// and its square -- never a ratio written out here. `unit` has no offset:
+    /// `RoundedRootNode` refuses one (`RequireRootUnitWithoutOffset`), so the
+    /// scale built here is `unit` itself as far as any conversion can tell.
     [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rounded_square_root_in(
         Rational radicandInSi, Unit unit, DecimalPlaces places, RoundingMode roundingMode) noexcept
     {
@@ -268,6 +294,8 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
 struct RoundedRootNode: NodeBase
 {
     static_assert(detail::RequireRootUnitMatches<U, Radicand>::value);
+    static_assert(
+        detail::RequireRootUnitWithoutOffset<U, U.dimension * U.dimension == Radicand::dimension>::value);
 
     /// The expression whose square root is taken: a variance, a mean square,
     /// a sum of squared uncertainties.

@@ -3,6 +3,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
+#include <cstdint>
+#include <limits>
+
 namespace
 {
 namespace unit = formula::unit;
@@ -89,14 +93,20 @@ TEST_CASE("rounded_sqrt separates Ceiling from HalfAwayFromZero (fixture B)", "[
 
 TEST_CASE("an exactly representable root is the only tie, and the mode decides it (fixture F)", "[rounded_root]")
 {
-    // 9/4 g^2 -> 3/2 g exactly, halfway between 1 and 2 at 0 dp. The three
-    // half modes disagree only here. A half test comparing the radicand with
+    // 9/4 g^2 -> 3/2 g exactly, halfway between 1 and 2 at 0 dp. Only on a
+    // tie do the half modes disagree. A half test comparing the radicand with
     // (f + 1/2)^2 meets equality on this path, so whichever way it breaks the
     // tie, one of these three fails; the delegation to checked_round is what
     // decides it.
     STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfEven>(Rational { 9, 4 }) == Rational { 2 });
     STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfTowardZero>(Rational { 9, 4 }) == Rational { 1 });
     STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 9, 4 }) == Rational { 2 });
+
+    // At 3/2 the floor, 1, is odd, so HalfEven and HalfAwayFromZero agree and
+    // HalfEven read as "round half up" would pass. 25/4 g^2 -> 5/2 g has an
+    // even floor, 2: HalfEven stays there and HalfAwayFromZero goes to 3.
+    STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfEven>(Rational { 25, 4 }) == Rational { 2 });
+    STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 25, 4 }) == Rational { 3 });
 }
 
 TEST_CASE("the half-way test compares the remainder when the floor sits exactly on f*f + f", "[rounded_root]")
@@ -108,6 +118,10 @@ TEST_CASE("the half-way test compares the remainder when the floor sits exactly 
     // 23/10 at 0 dp: the same q, and r/b = 3/10 > 1/4, so 1.516... rounds to 2.
     STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 21, 10 }) == Rational { 1 });
     STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 23, 10 }) == Rational { 2 });
+    // 22/10 = 11/5 at 0 dp: the same q, and r = 1 = floor(B/4) with B = 5, so
+    // 4r = 4 < 5 and 1.483... rounds to 1. The code compares `r > B / 4`; the
+    // off-by-one `r >= B / 4` is true here, although 4r >= B is not, and gives 2.
+    STATIC_REQUIRE(rootInGrams<DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(Rational { 22, 10 }) == Rational { 1 });
 }
 
 TEST_CASE("rounded_sqrt to a negative number of places rounds the root to whole tens", "[rounded_root]")
@@ -161,6 +175,83 @@ TEST_CASE("rounded_sqrt reports overflow rather than a wrapped result", "[rounde
     constexpr auto outcome = formula::checked_evaluate<Spread>(node, variance(Rational { 1'000'001 }));
     STATIC_REQUIRE(!outcome.has_value());
     STATIC_REQUIRE(outcome.error() == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("rounded_sqrt reports overflow at the exact 2^64 edge of the whole part", "[rounded_root]")
+{
+    // v * 10^4 for 1844674407370955161/1000 is 18446744073709551610, six
+    // below 2^64: it fits, and its root rounds down to 42949672.95. One more in
+    // the numerator puts v * 10^4 at 2^64 + 4. There floor(v) * 10^4 still
+    // fits and it is adding the remainder's share that crosses, so this pins
+    // the check on that addition, which the case above never reaches.
+    using formula::detail::rounded_square_root;
+    STATIC_REQUIRE(
+        rounded_square_root(Rational { 1'844'674'407'370'955'161, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor).value()
+        == Rational { 858'993'459, 20 });
+    STATIC_REQUIRE(
+        rounded_square_root(Rational { 1'844'674'407'370'955'162, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor).error()
+        == formula::ArithmeticError::Overflow);
+}
+
+TEST_CASE("rounded_sqrt reports overflow when a negative number of places widens the denominator past 2^64",
+          "[rounded_root]")
+{
+    // At -1 places the divisor is b * 10^2. With b = 2^63 - 1 that leaves
+    // 64 bits, so the answer is Overflow -- although under Ceiling the true
+    // answer, 10, would fit: the documented headroom, on the denominator.
+    using formula::detail::rounded_square_root;
+    constexpr auto tiny = Rational::make(1, std::numeric_limits<std::int64_t>::max()).value();
+    STATIC_REQUIRE(rounded_square_root(tiny, DecimalPlaces { -1 }, RoundingMode::Ceiling).error()
+                   == formula::ArithmeticError::Overflow);
+    // A denominator well inside the bound fits: 100/((2^63 - 1)/100) is far
+    // below 25, so its root is below 5, and to whole tens under Ceiling is 10.
+    constexpr auto small = Rational::make(100, std::numeric_limits<std::int64_t>::max() / 100).value();
+    STATIC_REQUIRE(rounded_square_root(small, DecimalPlaces { -1 }, RoundingMode::Ceiling).value() == Rational { 10 });
+}
+
+TEST_CASE("rounded_sqrt runs its 64-bit path at runtime too", "[rounded_root]")
+{
+    // Every case above is a STATIC_REQUIRE, evaluated by the compiler, so a
+    // sanitizer never sees the uint64 arithmetic execute. These run it: the
+    // table is read at runtime, so each call happens there, in clang-ubsan as
+    // everywhere else.
+    struct Case
+    {
+        Rational radicand;
+        DecimalPlaces places;
+        RoundingMode mode;
+        Rational expected;
+    };
+    std::array<Case, 7> const cases { {
+        { Rational { 427, 125 }, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero, Rational { 37, 20 } },
+        { Rational { 4057, 600 }, DecimalPlaces { 2 }, RoundingMode::Ceiling, Rational { 261, 100 } },
+        { Rational { 9, 4 }, DecimalPlaces { 0 }, RoundingMode::HalfTowardZero, Rational { 1 } },
+        { Rational { 22, 10 }, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero, Rational { 1 } },
+        { Rational { 1234 }, DecimalPlaces { -1 }, RoundingMode::HalfAwayFromZero, Rational { 40 } },
+        { Rational { 1'000'001 }, DecimalPlaces { 6 }, RoundingMode::Floor, Rational { 1'000'000'499, 1'000'000 } },
+        { Rational { 1'844'674'407'370'955'161, 1000 },
+          DecimalPlaces { 2 },
+          RoundingMode::Floor,
+          Rational { 858'993'459, 20 } },
+    } };
+    for (Case const& each: cases)
+    {
+        auto const rooted = formula::detail::rounded_square_root(each.radicand, each.places, each.mode);
+        REQUIRE(rooted.has_value());
+        CHECK(*rooted == each.expected);
+    }
+
+    auto const wrapped = formula::detail::rounded_square_root(
+        Rational { 1'844'674'407'370'955'162, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor);
+    REQUIRE(!wrapped.has_value());
+    CHECK(wrapped.error() == formula::ArithmeticError::Overflow);
+
+    // And through the node's conversion, g^2 in, kg out, at runtime.
+    auto const inputs = variance(Rational { 4057, 600 });
+    auto const node = formula::rounded_sqrt<unit::Gram, DecimalPlaces { 3 }, RoundingMode::Ceiling>(var<MassSquared>);
+    auto const outcome = formula::checked_evaluate<Spread>(node, inputs);
+    REQUIRE(outcome.has_value());
+    CHECK(outcome->measurement().value() == Rational { 2601, 1000 });
 }
 
 TEST_CASE("the exact algorithm scales only the remainder, so a large denominator keeps its headroom", "[rounded_root]")
