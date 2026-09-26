@@ -146,6 +146,7 @@
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 
 #include <array>
@@ -1217,6 +1218,23 @@ namespace detail
         return {};
     }
 
+    /// A stand-in that counts only the uses of `Q` as a SERIES --
+    /// `series<Q, N>` -- which no substitution replaces: one constant or one
+    /// definition cannot stand for a value at every point. The result check
+    /// asks it, to refuse such a substitution in words that say so.
+    template <Described Q>
+    struct SeriesUseProbe
+    {
+        /// The quantity asked about.
+        using quantity = Q;
+    };
+
+    template <Described Q>
+    [[nodiscard]] constexpr VarNode<Q> substitute(SeriesUseProbe<Q> const&) noexcept
+    {
+        return {};
+    }
+
     /// A stand-in substitution for no quantity at all, for asking only
     /// whether every node of an expression is a kind the rewrite knows. Its
     /// `substitute` is declared for the rewrite's `type` to name, and never
@@ -1240,6 +1258,9 @@ namespace detail
     template <Described Q>
     inline constexpr bool countsPlainUse<SubstitutedUseProbe<Q>> = false;
 
+    template <Described Q>
+    inline constexpr bool countsPlainUse<SeriesUseProbe<Q>> = false;
+
     /// Whether @p Sub's `mentions` counts a node a substitution for `Q` left:
     /// every substitution and probe does, except `PlainUseProbe`.
     template <typename Sub>
@@ -1247,6 +1268,18 @@ namespace detail
 
     template <Described Q>
     inline constexpr bool countsSubstitutedUse<PlainUseProbe<Q>> = false;
+
+    template <Described Q>
+    inline constexpr bool countsSubstitutedUse<SeriesUseProbe<Q>> = false;
+
+    /// Whether @p Sub's `mentions` counts `series<Q, N>`: only
+    /// `SeriesUseProbe` does. A substitution never replaces a series, so to
+    /// it a series of `Q` is not a use of `Q` it could be in effect at.
+    template <typename Sub>
+    inline constexpr bool countsSeriesUse = false;
+
+    template <Described Q>
+    inline constexpr bool countsSeriesUse<SeriesUseProbe<Q>> = true;
 
     /// The type `substitute` returns for @p Sub.
     template <typename Sub>
@@ -1584,6 +1617,77 @@ namespace detail
         }
     };
 
+    /// A series variable: known, and never replaced -- not even when it is a
+    /// series of `Q`, since one constant or one definition cannot stand for a
+    /// value at every point. A substitution for a quantity the method reads
+    /// as a series is refused by the result check (`RequireConstantApplies`),
+    /// which finds it through `SeriesUseProbe`.
+    template <typename Sub, Described P, std::size_t N>
+    struct ConstantRewrite<Sub, SeriesVarNode<P, N>>
+    {
+        /// A kind this header knows.
+        static constexpr bool known = true;
+        /// Whether this is a series of `Q` and @p Sub counts one -- see
+        /// `countsSeriesUse`.
+        static constexpr bool mentions = std::is_same_v<typename Sub::quantity, P> && countsSeriesUse<Sub>;
+        /// Unchanged.
+        using type = SeriesVarNode<P, N>;
+
+        /// The node itself.
+        [[nodiscard]] static constexpr type apply(SeriesVarNode<P, N> const& original, Sub const&) noexcept
+        {
+            return original;
+        }
+    };
+
+    /// A per-element constant names no quantity; its values are carried over.
+    template <typename Sub, Unit U, std::size_t N>
+    struct ConstantRewrite<Sub, SeriesConstantNode<U, N>>: ConstantRewriteLeaf<Sub, SeriesConstantNode<U, N>>
+    {
+    };
+
+    template <typename Sub, UnaryOperator Op, SeriesNode Operand>
+    struct ConstantRewrite<Sub, ElementwiseUnaryNode<Op, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, ElementwiseUnaryNode<Op, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
+    template <typename Sub, CumulativeDirection D, SeriesNode S>
+    struct ConstantRewrite<Sub, CumulativeNode<D, S>>:
+        ConstantRewriteOperand<Sub, S, CumulativeNode<D, typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, SeriesNode S>
+    struct ConstantRewrite<Sub, SumNode<S>>: ConstantRewriteOperand<Sub, S, SumNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    /// An elementwise operation, either side a series or a broadcast scalar:
+    /// a `var<Q>` in the scalar side is replaced as it is anywhere else.
+    template <typename Sub, BinaryOperator Op, typename Left, typename Right>
+    struct ConstantRewrite<Sub, ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        /// How the left side is rewritten.
+        using LeftRewrite = ConstantRewriteOf<Sub, Left>;
+        /// How the right side is rewritten.
+        using RightRewrite = ConstantRewriteOf<Sub, Right>;
+
+        /// Whether both sides are known all the way down.
+        static constexpr bool known = LeftRewrite::known && RightRewrite::known;
+        /// Whether either side uses `Q`.
+        static constexpr bool mentions = LeftRewrite::mentions || RightRewrite::mentions;
+        /// The same operation, over the rewritten sides.
+        using type = ElementwiseBinaryNode<Op, typename LeftRewrite::type, typename RightRewrite::type>;
+
+        /// The node, over the rewritten sides.
+        [[nodiscard]] static constexpr type apply(ElementwiseBinaryNode<Op, Left, Right> const& original,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, LeftRewrite::apply(original.lhs, overriding), RightRewrite::apply(original.rhs, overriding) };
+        }
+    };
+
     template <typename Sub, BinaryOperator Op, Node Left, Node Right>
     struct ConstantRewrite<Sub, BinaryNode<Op, Left, Right>>
     {
@@ -1802,6 +1906,28 @@ namespace detail
         using type = SubstitutedInAll<P, Then, Else>;
     };
 
+    template <UnaryOperator Op, SeriesNode Operand>
+    struct SubstitutedIn<ElementwiseUnaryNode<Op, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <CumulativeDirection D, SeriesNode S>
+    struct SubstitutedIn<CumulativeNode<D, S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SeriesNode S>
+    struct SubstitutedIn<SumNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct SubstitutedIn<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        /// Whatever either side substitutes.
+        using type = SubstitutedInAll<Left, Right>;
+    };
+
     /// Fails to compile when `with_constant<Q>` is applied to a method that
     /// never uses `Q`. Such an override changes nothing, and the likeliest
     /// reason is that it names the wrong quantity.
@@ -1813,6 +1939,37 @@ namespace detail
                       "uses; an override nobody reads would silently do nothing, most likely because it names "
                       "the wrong quantity -- the quantity appears in this diagnostic as the template argument "
                       "Q of RequireConstantUsed");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `with_constant<Q>` is applied to a method that
+    /// reads `Q` as a series (`series<Q, N>`). A series is a value at every
+    /// point of the method's domain; one constant cannot stand for it, and
+    /// the substitution would leave the series reading the environment.
+    ///
+    /// Not `RequireConstantUsed`'s message: a variant or constraint does use
+    /// `Q`, and a message saying none does would be false.
+    template <typename Q, bool NotASeries>
+    struct RequireConstantNotSeries
+    {
+        static_assert(NotASeries,
+                      "formula: this overlay fixes a quantity the method reads as a series; one constant cannot "
+                      "stand for a series -- the quantity appears in this diagnostic as the template argument Q "
+                      "of RequireConstantNotSeries");
+
+        static constexpr bool value = true;
+    };
+
+    /// `RequireConstantNotSeries`'s rule for `add_derived<Q>`, in words that
+    /// say what the overlay did.
+    template <typename Q, bool NotASeries>
+    struct RequireDerivationNotSeries
+    {
+        static_assert(NotASeries,
+                      "formula: this overlay derives a quantity the method reads as a series; one definition "
+                      "cannot stand for a series -- the quantity appears in this diagnostic as the template "
+                      "argument Q of RequireDerivationNotSeries");
 
         static constexpr bool value = true;
     };
@@ -1971,6 +2128,16 @@ namespace detail
         /// Whether a node a substitution for `Q` left is still anywhere.
         static constexpr bool used = (ConstantRewriteOf<SubstitutedUseProbe<Q>, Exprs>::mentions || ...)
                                      || (ConstantRewriteOf<SubstitutedUseProbe<Q>, Ps>::mentions || ...);
+        /// Whether the method reads `Q` as a series anywhere, which no
+        /// substitution replaces.
+        static constexpr bool readsAsSeries = (ConstantRewriteOf<SeriesUseProbe<Q>, Exprs>::mentions || ...)
+                                              || (ConstantRewriteOf<SeriesUseProbe<Q>, Ps>::mentions || ...);
+
+        /// The refusal for a quantity read as a series, in the words of the
+        /// operation that cannot stand for it.
+        using SeriesRefusal = std::conditional_t<IsDerivation<Sub>::value,
+                                                 RequireDerivationNotSeries<Q, !readsAsSeries>,
+                                                 RequireConstantNotSeries<Q, !readsAsSeries>>;
 
         /// The refusal in the words of the operation that did nothing.
         using Refusal =
@@ -1988,18 +2155,23 @@ namespace detail
                                             RequireDerivationPrecedesItsUse<Q, !plainLeft>,
                                             RequireConstantPrecedesItsUse<Q, !plainLeft>>;
 
-        // Each message says only what is there. A node the substitution left,
-        // beside a plain use: the method reads `Q` both ways. No such node,
-        // but a plain use, and the substitution did meet uses when it was
-        // applied: a later operation removed them, so it was bypassed. No
-        // such node, a plain use, and no use met: a later operation put the
-        // use in, and the substitution was listed before it. No such node and
-        // no plain use: nothing reads `Q`, so the substitution does nothing.
+        // Each message says only what is there. A series of `Q`: the
+        // substitution cannot stand for it, whatever else is true, and every
+        // other message is gated off -- "nothing reads it" would be false. A
+        // node the substitution left, beside a plain use: the method reads `Q`
+        // both ways. No such node, but a plain use, and the substitution did
+        // meet uses when it was applied: a later operation removed them, so
+        // it was bypassed. No such node, a plain use, and no use met: a later
+        // operation put the use in, and the substitution was listed before
+        // it. No such node and no plain use: nothing reads `Q`, so the
+        // substitution does nothing.
+        static constexpr bool judged = known && !readsAsSeries;
+        static_assert(std::conditional_t<known, SeriesRefusal, std::true_type>::value);
         static_assert(
-            std::conditional_t<known && used, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used && Reached, Bypassed, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used && !Reached, TooEarly, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used && !plainLeft, Refusal, std::true_type>::value);
+            std::conditional_t<judged && used, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
+        static_assert(std::conditional_t<judged && !used && Reached, Bypassed, std::true_type>::value);
+        static_assert(std::conditional_t<judged && !used && !Reached, TooEarly, std::true_type>::value);
+        static_assert(std::conditional_t<judged && !used && !plainLeft, Refusal, std::true_type>::value);
 
         static constexpr bool value = true;
     };

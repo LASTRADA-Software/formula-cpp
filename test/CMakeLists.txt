@@ -389,6 +389,16 @@ formula_add_negative_test(series_cumulative_of_single_value
     "cumulative runs a total along a series, and this is a single value, not a series"
     REJECT "no matching")
 
+# A substitution for a quantity the method reads as a series: refused as
+# such, and the "nobody reads it" refusal gated off, since a variant does
+# read it.
+formula_add_negative_test(overlay_constant_on_series_quantity
+    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    REJECT "overrides a quantity that no variant or constraint of the method uses")
+formula_add_negative_test(overlay_derived_on_series_quantity
+    "formula: this overlay derives a quantity the method reads as a series; one definition cannot stand for a series"
+    REJECT "derives a quantity that no variant or constraint of the method uses")
+
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
 

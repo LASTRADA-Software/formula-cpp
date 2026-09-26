@@ -30,7 +30,9 @@
 // `checked_evaluate_series` of a series variable, derived and entered;
 // `render` and `document` of a series variable, and `explain_series` with
 // its trace rendered; elementwise arithmetic with a broadcast scalar,
-// negation and a per-element constant, on the same surfaces;
+// negation and a per-element constant, on the same surfaces; running totals
+// from either end and `sum`, inside a method an overlay's constant rewrote,
+// evaluated, rendered, documented and traced;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -227,6 +229,19 @@ inline constexpr auto specimen = formula::environment(formula::Measured<Force> {
 
 inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"));
 
+/// Every series node kind that reaches a method: a sum over a running total
+/// from each end, with the factor an overlay fixes inside the elementwise
+/// product.
+inline constexpr auto seriesMethod = formula::method(
+    formula::variants(formula::variant<Cube>(
+        formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<EdgeX, 2> * var<Factor>))
+        / formula::sum(formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<EdgeX, 2>)))),
+    formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+inline constexpr auto seriesOverlaid =
+    formula::apply(formula::overlay(formula::with_constant<Factor>(formula::Rational { 3 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+                   seriesMethod);
+
 /// A sink that asks for both pairs of method hooks, and nothing else of its
 /// own, so that `evaluate_method`'s and `check_method`'s hooked branches are
 /// instantiated for a sink other than `RecordingSink`.
@@ -397,6 +412,21 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(explainedSeries.outcome.has_value()
                            && formula::render_trace(explainedSeries.trace, { .maxSteps = 4 })
                                   == "1. x_m = 150 mm; (not measured)\n");
+    // Running totals and sums inside an overlaid method: 150 and 150 mm with
+    // the fixed factor 3 give totals 900 and 450 mm from the last, 150 and
+    // 300 mm from the first, and a quotient of sums of 1350/450 = 3.
+    auto const bothScreens = formula::environment(formula::measured_series<EdgeX>(edge, edge));
+    formula::Trace<> seriesMethodTrace {};
+    auto const seriesShare =
+        formula::evaluate_method<Cube>(seriesOverlaid, bothScreens, formula::RecordingSink { seriesMethodTrace, north });
+    constexpr auto seriesVariant = std::get<0>(seriesOverlaid.variantSet.cases).expression;
+    probe.checks.push_back(seriesShare.has_value() && *seriesShare == formula::Rational { 3 }
+                           && formula::render(seriesVariant, north).find("cumulative(x_m(i), from first)") != std::string::npos
+                           && formula::render<formula::Dialect::Markdown>(seriesVariant).find("sum(") != std::string::npos
+                           && formula::render<formula::Dialect::LaTeX>(seriesVariant).find("\\sum") != std::string::npos
+                           && formula::document(seriesVariant, north).symbols.size() == 2
+                           && formula::render_trace(seriesMethodTrace, { .maxSteps = 40 }).find("sum(#")
+                                  != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

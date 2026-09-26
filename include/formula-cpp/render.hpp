@@ -820,11 +820,11 @@ template <Dialect D, CumulativeDirection Direction, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render_node(CumulativeNode<Direction, S> const& node, V const& vocabulary)
 {
     std::string const inner = render<D>(node.operand, vocabulary);
-    std::string const end { describe(Direction) };
+    std::string const runsFrom { describe(Direction) };
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{cumulative}_{\\text{" + end + "}}(" + inner + ")";
+        return "\\operatorname{cumulative}_{\\text{" + runsFrom + "}}(" + inner + ")";
     else
-        return "cumulative(" + inner + ", " + end + ")";
+        return "cumulative(" + inner + ", " + runsFrom + ")";
 }
 
 /// A sum renders as a call on its series, `sum(m_r(i))`, and in LaTeX as the
