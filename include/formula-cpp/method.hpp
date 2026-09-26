@@ -102,7 +102,6 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <exception>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -548,20 +547,20 @@ namespace detail
     /// Reached only for a published layout that is not one -- see
     /// `PublishedLayout`. Its name is the refusal.
     ///
+    /// Reached only while building a published layout that is not one -- see
+    /// `PublishedLayout`. Its name is the refusal.
+    ///
     /// **Why a name and not a `static_assert`.** The positions are values, not
     /// types: a pack pruned down to `(Cylinder, Prism)` is published at
     /// `{ 1, 2 }` of 3, and a pack of exactly the same type written by hand
     /// at `{ 0, 1 }` of 2, so there is nothing in the type to assert on.
-    /// Instead this function is deliberately not `constexpr`, so a constant
-    /// expression that reaches it fails to compile, and each compiler names
-    /// the function it could not call. So every method and every `apply` in
-    /// a constant expression is refused in this library's own words. At run
-    /// time it ends the program: a trace counting in positions that are not
-    /// the method's would state a falsehood about which variant ran.
-    [[noreturn]] inline void published_positions_must_be_distinct_and_below_the_published_count() noexcept
-    {
-        std::terminate();
-    }
+    /// Instead this function is deliberately not `constexpr`, and it is only
+    /// ever called from a `consteval` constructor. A layout that is not one
+    /// therefore fails to compile, and each compiler names the function it
+    /// could not call. It is never called at run time -- there is no run time
+    /// path to it at all -- which is why its body is empty rather than one
+    /// that ends the program.
+    inline void published_positions_must_be_distinct_and_below_the_published_count() noexcept {}
 
     /// Where each variant of a pack sits in the method **as published**, and
     /// how many variants that method declares -- see `Variants::published`.
@@ -570,10 +569,25 @@ namespace detail
     /// part with an invariant of its own: every position below the count, and
     /// no two alike. As a pair of public members it let anyone state a layout
     /// that is not one -- the same position for two variants, or a 4th of 3
-    /// -- and a trace then counted in it without a word. The only ways in are
-    /// the two constructors, and the one that takes a layout checks it; see
-    /// `published_positions_must_be_distinct_and_below_the_published_count`
-    /// for how it refuses.
+    /// -- and a trace then counted in it without a word. There are three ways
+    /// in, and none of them can produce a layout that is not one:
+    ///
+    ///  - the default constructor, declaration order;
+    ///  - the `consteval` constructor, which checks a layout stated by hand and
+    ///    refuses one that is not -- see
+    ///    `published_positions_must_be_distinct_and_below_the_published_count`;
+    ///  - `select<Kept...>()`, which is how `apply` (`overlay.hpp`) carries a
+    ///    layout through a pin or a prune.
+    ///
+    /// **Why `select` and not the checking constructor.** Which variants a pin
+    /// or a prune keeps is known from the tags, at compile time, but where they
+    /// were published is not: the pack an overlay is applied to may itself be
+    /// the result of an earlier overlay, held in a variable whose layout is
+    /// run time data. `select` takes the positions to keep as template
+    /// arguments, checked by the same rule at compile time, and copies their
+    /// published positions out of a layout that is already valid. A selection
+    /// of distinct entries from a layout with distinct entries below its count
+    /// is one too, so nothing is left to check at run time.
     template <std::size_t Count>
     class PublishedLayout
     {
@@ -585,14 +599,31 @@ namespace detail
         {
         }
 
-        /// @p published of @p total, refused unless every position is below
-        /// @p total and no two are alike.
-        constexpr PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t total) noexcept:
+        /// @p published of @p total, refused at compile time unless every
+        /// position is below @p total and no two are alike. `consteval`, so
+        /// that no layout reaches a trace unchecked.
+        consteval PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t total) noexcept:
             _positions { published },
             _total { total }
         {
             if (!is_published_layout(published, total))
                 published_positions_must_be_distinct_and_below_the_published_count();
+        }
+
+        /// The layout of the variants at @p Kept, in that order: each keeps
+        /// its published position, and the count is unchanged.
+        ///
+        /// @p Kept are positions in THIS pack, not published ones, and are
+        /// held to the rule the layout itself obeys -- each below `Count`, no
+        /// two alike -- by the constructor that forms them, at compile time.
+        template <std::size_t... Kept>
+        [[nodiscard]] constexpr PublishedLayout<sizeof...(Kept)> select() const noexcept
+        {
+            constexpr PublishedLayout<sizeof...(Kept)> kept { std::array<std::size_t, sizeof...(Kept)> { Kept... }, Count };
+            static_cast<void>(kept);
+            return PublishedLayout<sizeof...(Kept)> { typename PublishedLayout<sizeof...(Kept)>::Selected {},
+                                                      { _positions[Kept]... },
+                                                      _total };
         }
 
         /// The ZERO-BASED published position of the variant at @p index.
@@ -608,6 +639,21 @@ namespace detail
         }
 
       private:
+        template <std::size_t>
+        friend class PublishedLayout;
+
+        /// Marks the constructor only `select` uses.
+        struct Selected
+        {
+        };
+
+        /// A layout `select` has already shown valid.
+        constexpr PublishedLayout(Selected, std::array<std::size_t, Count> const& published, std::size_t total) noexcept:
+            _positions { published },
+            _total { total }
+        {
+        }
+
         std::array<std::size_t, Count> _positions;
         std::size_t _total;
     };
@@ -695,17 +741,62 @@ enum class RoundingProvenance : std::uint8_t
     JurisdictionOverlay,
 };
 
+namespace detail
+{
+    /// Marks the one constructor of `RoundingRule` that states an overlay's
+    /// provenance.
+    struct OverlaidRule
+    {
+    };
+
+    /// The one way to build a rounding rule an overlay set:
+    /// `apply_operation` for `with_rounding` (`overlay.hpp`) is its only
+    /// caller. The provenance a trace reports is a statement of fact about
+    /// where a rule came from, so it is the library's to state, never an
+    /// author's -- see `RequireLibraryStatesProvenance`.
+    struct RoundingRuleAccess
+    {
+        /// @p Rule as a jurisdiction overlay's, citing @p source.
+        template <typename Rule>
+        [[nodiscard]] static constexpr Rule overlaid(Citation source) noexcept
+        {
+            return Rule { OverlaidRule {}, source };
+        }
+    };
+
+    /// Fails to compile when an author states a rounding rule's provenance.
+    ///
+    /// A method's own rule reporting itself as a jurisdiction overlay's would
+    /// put a false statement into every trace of that method, in the one field
+    /// an inspector reads to learn whose rule it was. `rounding_rule<...>()`
+    /// is the method's own rule and `with_rounding` an overlay's; nothing
+    /// else is either.
+    template <typename Rule>
+    struct RequireLibraryStatesProvenance
+    {
+        static_assert(!std::is_same_v<Rule, Rule>,
+                      "formula: a rounding rule's provenance is the library's to state, not an author's; "
+                      "rounding_rule<...>() is the method's own rule, and with_rounding<...>() applied by an "
+                      "overlay is a jurisdiction's -- the rule appears in this diagnostic as the template "
+                      "argument of RequireLibraryStatesProvenance");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
 /// A method's rounding rule, declared rather than applied after the fact, so
 /// the trace can say which rule fired and where it came from (spec section
 /// 9.1). Carries no operand: it is applied to whichever variant is selected.
 ///
-/// The granularity is the type; where it came from is data. `with_rounding`
+/// The granularity is the type; where it came from is data, private, and set
+/// only by the library -- see `detail::RoundingRuleAccess`. `with_rounding`
 /// (`overlay.hpp`) can replace a rule with one of the same granularity -- a
 /// jurisdiction adopting the base standard's rounding in its own name -- and
 /// the trace must still say whose rule it was.
 template <Unit U, DecimalPlaces Places, RoundingMode Mode>
-struct RoundingRule
+class RoundingRule
 {
+  public:
     /// The unit the rounding happens in -- see `rounding_node.hpp` for why a
     /// rounding that does not name one means nothing.
     static constexpr Unit unit = U;
@@ -714,12 +805,44 @@ struct RoundingRule
     /// Which way to break ties, and which way to go.
     static constexpr RoundingMode mode = Mode;
 
+    /// The method's own rule: what `rounding_rule<...>()` returns.
+    constexpr RoundingRule() noexcept = default;
+
+    /// Refused: see `detail::RequireLibraryStatesProvenance`. Declared only so
+    /// that `RoundingRule<...> { RoundingProvenance::JurisdictionOverlay, c }`
+    /// is refused in this library's words rather than the compiler's.
+    constexpr RoundingRule(RoundingProvenance, Citation = {}) noexcept
+    {
+        static_assert(detail::RequireLibraryStatesProvenance<RoundingRule>::value);
+    }
+
     /// Where the rule comes from: the method's own, unless an overlay's
     /// `with_rounding` replaced it.
-    RoundingProvenance provenance = RoundingProvenance::MethodDefault;
+    [[nodiscard]] constexpr RoundingProvenance provenance() const noexcept
+    {
+        return _provenance;
+    }
+
     /// What the overlay that replaced the rule cited for it; empty when it
     /// cited nothing, and for the method's own rule.
-    Citation source {};
+    [[nodiscard]] constexpr Citation const& source() const noexcept
+    {
+        return _source;
+    }
+
+  private:
+    friend struct detail::RoundingRuleAccess;
+
+    /// An overlay's rule, citing @p source -- reachable only through
+    /// `detail::RoundingRuleAccess`.
+    constexpr RoundingRule(detail::OverlaidRule, Citation source) noexcept:
+        _provenance { RoundingProvenance::JurisdictionOverlay },
+        _source { source }
+    {
+    }
+
+    RoundingProvenance _provenance = RoundingProvenance::MethodDefault;
+    Citation _source {};
 };
 
 /// The spelling of a method's rounding rule:
@@ -1183,8 +1306,8 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         using Selected = std::remove_cvref_t<decltype(selected.expression)>;
         RoundingRuleNode<Rule::unit, Rule::places, Rule::mode, Selected> const expression {
             { {}, selected.expression },
-            m.rounding.provenance,
-            m.rounding.source,
+            m.rounding.provenance(),
+            m.rounding.source(),
         };
 
         // The selection is named whether or not the sink asks for it, so that

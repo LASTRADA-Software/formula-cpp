@@ -819,6 +819,18 @@ formula_add_negative_test(method_published_position_repeated
 formula_add_negative_test(method_published_position_out_of_range
     "published_positions_must_be_distinct_and_below_the_published_count")
 
+# The route `apply` carries a layout by: `select` copies the published
+# positions of the variants a pin or a prune keeps, and holds the positions it
+# keeps to the same rule at compile time.
+formula_add_negative_test(method_published_selection_repeated
+    "published_positions_must_be_distinct_and_below_the_published_count")
+
+# A method's own rule claiming to be a jurisdiction overlay's. Provenance is
+# the library's to state: `rounding_rule<...>()` or `with_rounding` applied by
+# an overlay, nothing else.
+formula_add_negative_test(method_rounding_rule_provenance_hand_built
+    "formula: a rounding rule's provenance is the library's to state, not an author's")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

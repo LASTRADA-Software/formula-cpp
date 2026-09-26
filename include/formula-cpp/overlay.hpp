@@ -976,12 +976,16 @@ namespace detail
     /// made from -- see `Variants::published`, which every operation below
     /// carries through, so that a trace counts in the method as published
     /// rather than in the one an overlay produced.
+    ///
+    /// The layout comes from `PublishedLayout::select`, never from positions
+    /// stated here: which variants are kept is known from the tags at compile
+    /// time, but where they were published is the input pack's, which may be
+    /// run time data -- see `PublishedLayout`.
     template <typename... Ds>
     [[nodiscard]] constexpr Variants<Ds...> republished(Variants<Ds...> pack,
-                                                        std::array<std::size_t, sizeof...(Ds)> const& positions,
-                                                        std::size_t count) noexcept
+                                                        PublishedLayout<sizeof...(Ds)> const& layout) noexcept
     {
-        pack.published = PublishedLayout<sizeof...(Ds)> { positions, count };
+        pack.published = layout;
         return pack;
     }
 
@@ -991,8 +995,7 @@ namespace detail
     [[nodiscard]] constexpr auto variants_without(Variants<Cs...> const& pack, std::index_sequence<Kept...>) noexcept
     {
         return republished(formula::variants(std::get<positionsWithout<Tag, Cs...>[Kept]>(pack.cases)...),
-                           { pack.published.position(positionsWithout<Tag, Cs...>[Kept])... },
-                           pack.published.count());
+                           pack.published.template select<positionsWithout<Tag, Cs...>[Kept]...>());
     }
 
     /// `with_constant<Q>`: every variant and constraint, with `Q` fixed.
@@ -1036,8 +1039,7 @@ namespace detail
 
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
             return formula::method(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
-                                               { pack.published.position(variant_index<Tag, Cs...>()) },
-                                               pack.published.count()),
+                                               pack.published.template select<variant_index<Tag, Cs...>()>()),
                                    rounding,
                                    constraintSet);
         else
@@ -1082,7 +1084,7 @@ namespace detail
                                                  ConstraintSet<Ps...> const& constraintSet) noexcept
     {
         return formula::method(pack,
-                               RoundingRule<U, Places, Mode> { RoundingProvenance::JurisdictionOverlay, overriding.source },
+                               RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source),
                                constraintSet);
     }
 

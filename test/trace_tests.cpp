@@ -1622,3 +1622,27 @@ TEST_CASE("an overlaid method's selection is counted in the method as published"
     CHECK(afterRewrite.steps[afterRewrite.root()].variantIndex == 2);
     CHECK(afterRewrite.steps[afterRewrite.root()].variantCount == 3);
 }
+
+TEST_CASE("an overlay applied at run time still counts in the method as published", "[trace][method][overlay]")
+{
+    // Nothing here is a constant expression: each method is an ordinary local
+    // built from the one before it, so the layout each overlay starts from is
+    // run time data. The second prune starts from a layout the first one
+    // moved, `{ 1, 2 }` of 3, so a layout rebuilt from the tags alone -- or
+    // from the pack's own order -- would report the Ring as the 1st of 1.
+    auto const base = bearing;
+    auto const withoutPlate = formula::apply(formula::overlay(formula::prune_variant<Plate>()), base);
+    auto const ringOnly = formula::apply(formula::overlay(formula::prune_variant<Disc>()), withoutPlate);
+
+    formula::Trace<> afterTwoPrunes {};
+    (void) formula::evaluate_method<Ring>(ringOnly, loadOn(100, 50), formula::RecordingSink<> { afterTwoPrunes });
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantIndex == 2);
+    CHECK(afterTwoPrunes.steps[afterTwoPrunes.root()].variantCount == 3);
+
+    // A pin over the moved layout: the Disc is still the 2nd of 3.
+    auto const discOnly = formula::apply(formula::overlay(formula::pin_variant<Disc>()), withoutPlate);
+    formula::Trace<> afterPin {};
+    (void) formula::evaluate_method<Disc>(discOnly, loadOn(100, 50), formula::RecordingSink<> { afterPin });
+    CHECK(afterPin.steps[afterPin.root()].variantIndex == 1);
+    CHECK(afterPin.steps[afterPin.root()].variantCount == 3);
+}

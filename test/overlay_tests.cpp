@@ -517,6 +517,6 @@ TEST_CASE("a later overlay's rounding rule holds over an earlier one's", "[overl
 
     STATIC_REQUIRE(formula::evaluate_method<Cube>(first, unevenInputs)->value() == formula::Rational { 6'010'000 });
     STATIC_REQUIRE(formula::evaluate_method<Cube>(second, unevenInputs)->value() == formula::Rational { 6'000'000 });
-    STATIC_REQUIRE(second.rounding.source == roundingAnnex);
-    STATIC_REQUIRE(second.rounding.provenance == formula::RoundingProvenance::JurisdictionOverlay);
+    STATIC_REQUIRE(second.rounding.source() == roundingAnnex);
+    STATIC_REQUIRE(second.rounding.provenance() == formula::RoundingProvenance::JurisdictionOverlay);
 }
