@@ -84,7 +84,10 @@ struct Cylinder
 {
 };
 
-enum class Shape : std::uint8_t
+// A name of its own, not the `Shape` other test files use: two translation
+// units' anonymous-namespace key enumerations of one name, with tables of the
+// same values, fail to link on clang -- see `lookup.hpp`.
+enum class SpecimenForm : std::uint8_t
 {
     Square,
     Round,
@@ -103,7 +106,7 @@ struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit
 {
 };
 
-inline constexpr formula::KeyTable<Shape, 2> ShapeKeys { Shape::Square, Shape::Round };
+inline constexpr formula::KeyTable<SpecimenForm, 2> SpecimenFormKeys { SpecimenForm::Square, SpecimenForm::Round };
 inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 2, 1), formula::band(2, 1, 6, 1) };
 inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), formula::breakpoint(8) };
 
@@ -116,7 +119,8 @@ inline constexpr auto everything = formula::documented(
         * formula::when(
             var<Factor> > formula::number(formula::Rational { 0 }), var<Factor>, formula::number(formula::Rational { 1 }))
         * formula::sqrt(formula::pow<2>(var<Factor>))
-        * formula::exact_lookup<ShapeKeys, unit::One>(Shape::Round, { formula::Rational { 1 }, formula::Rational { 1 } })
+        * formula::exact_lookup<SpecimenFormKeys, unit::One>(SpecimenForm::Round,
+                                                             { formula::Rational { 1 }, formula::Rational { 1 } })
         * formula::banded_lookup<unit::One, Bands, unit::One>(var<Factor>,
                                                               { formula::Rational { 1 }, formula::Rational { 1 } })
         * formula::interpolating_lookup<unit::One, Points, unit::One>(var<Factor>,
