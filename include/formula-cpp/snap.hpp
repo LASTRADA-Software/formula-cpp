@@ -101,52 +101,47 @@ namespace detail
 
     /// Snaps @p key, in the key unit, to the nearest value of @p Permitted,
     /// or reports a miss (`DomainError`) below the first or above the last.
-    /// **The one scan**: evaluation and trace both ask it, so the derivation
+    /// **The one answer**: evaluation and trace both ask it, so the derivation
     /// cannot come to disagree with the number it derives.
     ///
-    /// A forward scan leaning on the ascending order the set's validation
-    /// enforces, equality first -- so a value on a permitted one is an exact
-    /// hit, never a tie between it and a neighbour.
+    /// Where the value sits is `locate_key`'s (`lookup.hpp`) -- the one scan
+    /// of ascending keys, shared with an interpolating lookup and a curve:
+    /// equality first, so a value on a permitted one is an exact hit, never a
+    /// tie between it and a neighbour, and a miss off either end. Only the
+    /// choice between the two neighbours is the snap's own.
     template <BreakpointTable Permitted, SnapTie Tie>
     [[nodiscard]] constexpr std::expected<SnapAnswer, ArithmeticError> locate_and_snap(Rational key) noexcept
     {
-        for (std::size_t pointIndex = 0; pointIndex < Permitted.size(); ++pointIndex)
-        {
-            std::expected<Rational, ArithmeticError> const rowKey =
-                Rational::make(Permitted[pointIndex].numerator, Permitted[pointIndex].denominator);
-            // Unreachable for a set that passed its validation; guarded as
-            // `locate_and_interpolate` guards the same call.
-            if (!rowKey.has_value())
-                return std::unexpected { ArithmeticError::DomainError };
-            if (*rowKey == key)
-                return SnapAnswer { *rowKey, Segment { Permitted[pointIndex], Permitted[pointIndex] }, false };
-            if (key < *rowKey)
-            {
-                // Below the first permitted value: a miss, never the first.
-                if (pointIndex == 0)
-                    return std::unexpected { ArithmeticError::DomainError };
-                std::expected<Rational, ArithmeticError> const previous =
-                    Rational::make(Permitted[pointIndex - 1].numerator, Permitted[pointIndex - 1].denominator);
-                if (!previous.has_value())
-                    return std::unexpected { ArithmeticError::DomainError };
+        // A value that does not reduce is unreachable for a set that passed
+        // its validation; `locate_key` reports it as a miss anyway.
+        auto const keyAt = [](std::size_t pointIndex) {
+            return Rational::make(Permitted[pointIndex].numerator, Permitted[pointIndex].denominator);
+        };
+        std::expected<KeyPosition, ArithmeticError> const located = locate_key(Permitted.size(), keyAt, key);
+        if (!located.has_value())
+            return std::unexpected { located.error() };
 
-                std::expected<Rational, ArithmeticError> const belowDistance = checked_sub(key, *previous);
-                if (!belowDistance.has_value())
-                    return std::unexpected { belowDistance.error() };
-                std::expected<Rational, ArithmeticError> const aboveDistance = checked_sub(*rowKey, key);
-                if (!aboveDistance.has_value())
-                    return std::unexpected { aboveDistance.error() };
+        // Both reduced a moment ago, inside the scan.
+        std::expected<Rational, ArithmeticError> const previous = keyAt(located->low);
+        std::expected<Rational, ArithmeticError> const rowKey = keyAt(located->high);
+        if (!previous.has_value() || !rowKey.has_value())
+            return std::unexpected { ArithmeticError::DomainError };
+        if (located->low == located->high)
+            return SnapAnswer { *rowKey, Segment { Permitted[located->low], Permitted[located->low] }, false };
 
-                Segment const neighbours { Permitted[pointIndex - 1], Permitted[pointIndex] };
-                if (*belowDistance < *aboveDistance)
-                    return SnapAnswer { *previous, neighbours, false };
-                if (*aboveDistance < *belowDistance)
-                    return SnapAnswer { *rowKey, neighbours, false };
-                return SnapAnswer { Tie == SnapTie::TowardLower ? *previous : *rowKey, neighbours, true };
-            }
-        }
-        // Above the last permitted value: a miss, never the last.
-        return std::unexpected { ArithmeticError::DomainError };
+        std::expected<Rational, ArithmeticError> const belowDistance = checked_sub(key, *previous);
+        if (!belowDistance.has_value())
+            return std::unexpected { belowDistance.error() };
+        std::expected<Rational, ArithmeticError> const aboveDistance = checked_sub(*rowKey, key);
+        if (!aboveDistance.has_value())
+            return std::unexpected { aboveDistance.error() };
+
+        Segment const neighbours { Permitted[located->low], Permitted[located->high] };
+        if (*belowDistance < *aboveDistance)
+            return SnapAnswer { *previous, neighbours, false };
+        if (*aboveDistance < *belowDistance)
+            return SnapAnswer { *rowKey, neighbours, false };
+        return SnapAnswer { Tie == SnapTie::TowardLower ? *previous : *rowKey, neighbours, true };
     }
 } // namespace detail
 
