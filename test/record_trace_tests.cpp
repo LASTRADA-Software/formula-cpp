@@ -86,8 +86,10 @@ TEST_CASE("an environment without is_entered records no input source", "[record-
 {
     // Compiling at all is half the test: the evaluator asks for the source
     // only when the environment can answer. The other half is that it then
-    // records none, rather than guessing Measured; and that computed steps
-    // never carry one.
+    // records none on either variable, rather than guessing Measured. Whether
+    // a computed step or the pending slot can carry a source is asked in the
+    // first test, where a source is actually recorded; here none ever is, so
+    // those checks could not fail.
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
     auto const evaluated =
@@ -96,8 +98,6 @@ TEST_CASE("an environment without is_entered records no input source", "[record-
     REQUIRE(trace.steps.size() == 3);
     CHECK(!trace.steps[0].inputSource.has_value());
     CHECK(!trace.steps[1].inputSource.has_value());
-    CHECK(!trace.steps[2].inputSource.has_value());
-    CHECK(!trace.pendingInputSource.has_value());
 }
 
 TEST_CASE("a source stated by hand outside a variable's own recording is not recorded", "[record-trace]")
@@ -116,13 +116,14 @@ TEST_CASE("a source stated by hand outside a variable's own recording is not rec
     CHECK(!trace.steps[0].inputSource.has_value());
 }
 
-TEST_CASE("an input typed in but left empty says it was not entered", "[record-trace]")
+TEST_CASE("an input typed in but left empty says it was entered by hand as empty", "[record-trace]")
 {
     // Absent is "(not measured)" for a measured input. For a typed-in one that
     // would be false -- it was never going to be measured -- and ", entered by
-    // hand" beside it would claim a number was typed. So an empty typed-in
-    // input reads "(not entered)": a person was to supply it and did not. The
-    // step still records where the entry came from.
+    // hand" beside it would contradict it. So an empty typed-in input reads
+    // "(entered by hand as empty)". The step records where the entry came
+    // from even though it holds no value: the absent path reports the source
+    // as the present path does.
     constexpr auto blank = formula::environment(formula::entered(formula::Measured<EdgeX>::absent()),
                                                 formula::Measured<EdgeY>::absent());
     formula::Trace<> trace {};
@@ -132,9 +133,10 @@ TEST_CASE("an input typed in but left empty says it was not entered", "[record-t
     CHECK(trace.steps[0].inputSource == formula::ValueSource::ManuallyEntered);
     CHECK(trace.steps[1].inputSource == formula::ValueSource::Measured);
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
-    CHECK(text.find("1. x_m = (not entered)\n") != std::string::npos);
+    INFO(text);
+    CHECK(text.find("1. x_m = (entered by hand as empty)\n") != std::string::npos);
     CHECK(text.find("2. y_m = (not measured)\n") != std::string::npos);
-    CHECK(text.find("entered by hand") == std::string::npos);
+    CHECK(text.find(", entered by hand") == std::string::npos);
 }
 
 TEST_CASE("every value read from another record says which record", "[record-trace]")

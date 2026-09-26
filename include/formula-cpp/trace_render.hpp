@@ -1986,11 +1986,13 @@ namespace detail
 
         // An input typed in but left empty was never going to be measured, so
         // "(not measured)" would be false of it, and ", entered by hand"
-        // beside it would claim a number was typed. It reads "(not entered)".
+        // beside it would contradict it. It reads "(entered by hand as
+        // empty)": a person's entry, and what it held.
         bool const enteredButEmpty = recorded.kind == StepKind::Variable
                                      && recorded.inputSource == ValueSource::ManuallyEntered
                                      && !recorded.value.has_value() && !recorded.error.has_value();
-        std::string const valueText = enteredButEmpty ? std::string { "(not entered)" } : step_value_text(recorded);
+        std::string const valueText =
+            enteredButEmpty ? std::string { "(entered by hand as empty)" } : step_value_text(recorded);
         std::string annotation;
         if (recorded.kind == StepKind::Documented)
             annotation = citation_suffix(recorded.citation);
