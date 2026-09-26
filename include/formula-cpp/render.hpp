@@ -242,6 +242,22 @@ namespace detail
         return D == Dialect::LaTeX ? Precedence::Additive : Precedence::Atom;
     }
 
+    /// A citation's wrapper renders as what it wraps, so it brackets as that
+    /// does, in every dialect -- a documented sum in LaTeX included.
+    template <Dialect D, Node Inner>
+    [[nodiscard]] constexpr Precedence precedence_in(DocumentedNode<Inner> const& node) noexcept
+    {
+        return precedence_in<D>(node.inner);
+    }
+
+    /// A jurisdiction's replacement renders as the replacement formula, so it
+    /// brackets as that does, for `DocumentedNode`'s reason.
+    template <Dialect D, Node Expr>
+    [[nodiscard]] constexpr Precedence precedence_in(ReplacedVariantNode<Expr> const& node) noexcept
+    {
+        return precedence_in<D>(node.replacement());
+    }
+
     /// @p quantitySymbol -- already the jurisdiction's, through `symbol_of` -- marked
     /// as a series in dialect @p D: `x_m(i)` in plain text, `` `x_m(i)` `` in
     /// Markdown (the marker inside the backticks, so the code span keeps it
@@ -810,6 +826,15 @@ template <Dialect D, UnaryOperator Op, SeriesNode Operand, Vocabulary V>
 {
     static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
     return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary, vocabulary);
+}
+
+/// A refused series (`detail::RefusedSeries`) renders as nothing a reader
+/// could take for a formula. A program holding one never compiles; this only
+/// keeps a `render` of it from adding a second, compiler-worded error.
+template <Dialect D, Dimension Dim, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedSeries<Dim> const&, V const&)
+{
+    return "(refused)";
 }
 
 namespace detail

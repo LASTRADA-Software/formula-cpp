@@ -1640,6 +1640,13 @@ namespace detail
         }
     };
 
+    /// A refused series names nothing, so an overlay over a method holding one
+    /// adds no "cannot see inside" message to the refusal that produced it.
+    template <typename Sub, Dimension Dim>
+    struct ConstantRewrite<Sub, RefusedSeries<Dim>>: ConstantRewriteLeaf<Sub, RefusedSeries<Dim>>
+    {
+    };
+
     /// A per-element constant names no quantity; its values are carried over.
     template <typename Sub, Unit U, std::size_t N>
     struct ConstantRewrite<Sub, SeriesConstantNode<U, N>>: ConstantRewriteLeaf<Sub, SeriesConstantNode<U, N>>

@@ -397,6 +397,9 @@ formula_add_negative_test(series_constant_short
     "this series constant was given a different number of elements than its length")
 formula_add_negative_test(series_constant_short_no_factory
     "this series constant was given a different number of elements than its length")
+formula_add_negative_test(series_constant_zero_length
+    "this series constant has no elements"
+    REJECT "no matching")
 
 # Task 5: sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT
@@ -406,7 +409,20 @@ formula_add_negative_test(series_sum_of_single_value
     REJECT "no matching")
 formula_add_negative_test(series_cumulative_of_single_value
     "cumulative runs a total along a series, and this is a single value, not a series"
-    REJECT "no matching")
+    REJECT "no matching" "this expression is a series, not a single value")
+# The refusing cumulative returns a series already refused, so a sum over
+# it, and checked_evaluate_series around it, add nothing (task 5 review, H1
+# and M1); on cl the second case used to lose the library's words entirely.
+formula_add_negative_test(series_sum_of_cumulative_of_single_value
+    "cumulative runs a total along a series, and this is a single value, not a series"
+    REJECT "sum adds up the elements of a series" "no matching")
+formula_add_negative_test(series_cumulative_of_single_value_as_series
+    "cumulative runs a total along a series, and this is a single value, not a series"
+    REJECT "no matching" "this expression is a series, not a single value")
+# A per-element rounding given a single value, likewise (final review, M1).
+formula_add_negative_test(series_round_of_single_value
+    "rounded_elementwise rounds each element of a series, and this is a single value, not a series"
+    REJECT "no matching" "this expression is a series, not a single value")
 
 # Task 6: a per-element rounding with a table of the wrong length, which
 # gates the unit check off, and one with a unit of the wrong dimension.

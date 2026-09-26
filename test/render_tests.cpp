@@ -1803,3 +1803,31 @@ TEST_CASE("a per-element rounding renders every granularity, in order, and no mo
     constexpr auto everyone = formula::vocabulary(formula::renames<Passing>("P"));
     CHECK(formula::render(passing * rat(2), everyone) == "round(P(i), to 0/0/0/1/1 dp of %) * 2");
 }
+
+TEST_CASE("a documented or replaced sum brackets in LaTeX as the bare one does", "[series][render]")
+{
+    using series_render::Retained;
+    using series_render::Total;
+    constexpr auto s = formula::series<Retained, 5>;
+    constexpr formula::Citation cited { .reference = "Example Standard 1:2020", .section = "4.2" };
+    // A citation is transparent to bracketing, as it is for a constant: the
+    // bracket that stops `\sum x_i \cdot m_t` reading as a sum of products
+    // survives the wrapper.
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::documented(formula::sum(s), cited) * formula::var<Total>)
+          == "(\\sum {m_r}_{i}) \\cdot m_t");
+    CHECK(formula::render(formula::documented(formula::sum(s), cited) * formula::var<Total>) == "sum(m_r(i)) * m_t");
+
+    // A jurisdiction's replacement: the variant replaced by a sum, then
+    // multiplied, brackets as the sum does.
+    struct Whole
+    {
+    };
+    constexpr auto m = formula::method(
+        formula::variants(formula::variant<Whole>(formula::sum(s) / formula::var<Total>)),
+        formula::rounding_rule<formula::unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    constexpr auto replaced = formula::apply(formula::overlay(formula::replace_variant<Whole>(formula::sum(s / formula::var<Total>), formula::Citation { .reference = "Example Standard 4" })),
+                                             m);
+    constexpr auto replacement = std::get<0>(replaced.variantSet.cases).expression;
+    CHECK(formula::render<formula::Dialect::LaTeX>(replacement * rat(2)) == "(\\sum \\frac{{m_r}_{i}}{m_t}) \\cdot 2");
+}

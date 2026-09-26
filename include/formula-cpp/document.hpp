@@ -323,6 +323,9 @@ namespace detail
     template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
     void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node);
 
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>& walk, RefusedSeries<Dim> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -652,6 +655,13 @@ namespace detail
     void collect(Walk<V>& walk, SumNode<S> const& node)
     {
         collect(walk, node.operand);
+    }
+
+    /// A refused series names nothing: it only keeps `document` from adding a
+    /// second error to the refusal that produced it.
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>&, RefusedSeries<Dim> const&)
+    {
     }
 
     /// A per-element rounding names nothing of its own; its series does.

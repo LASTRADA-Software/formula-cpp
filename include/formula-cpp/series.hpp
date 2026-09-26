@@ -161,6 +161,11 @@ struct Elements
 template <Unit U, std::size_t N>
 struct SeriesConstantNode: SeriesNodeBase
 {
+    static_assert(N > 0,
+                  "formula: this series constant has no elements; a series is a value at each point of a method's "
+                  "domain, and a domain of no points has nothing to sum, round or trace -- give it at least one "
+                  "value");
+
     /// The values. No `{}` initialiser, deliberately: see `Elements`.
     Elements<N> elements;
 
@@ -607,13 +612,63 @@ template <CumulativeDirection D, SeriesNode S>
     return CumulativeNode<D, S> { {}, seriesOperand };
 }
 
-/// A single value handed to `cumulative`: refused in this library's words. The
-/// body is the refusal; what it returns is never seen.
+namespace detail
+{
+    /// What a refused `cumulative` of a single value stands for: a series,
+    /// already refused (`refused`), so that nothing built over it -- a `sum`,
+    /// another `cumulative`, an elementwise operator, `checked_evaluate` or
+    /// `checked_evaluate_series` -- reports the one mistake a second time
+    /// (defect class 2). It evaluates to a `DomainError` with no position and
+    /// tells no sink: a program holding one never compiles, so neither is
+    /// ever seen.
+    template <Dimension D>
+    struct RefusedSeries: SeriesNodeBase
+    {
+        /// The dimension of the single value it stands in for.
+        static constexpr Dimension dimension = D;
+        /// One element, as the single value was.
+        static constexpr std::size_t length = 1;
+        /// Always refused.
+        static constexpr bool refused = true;
+    };
+} // namespace detail
+
+/// A single value handed to `cumulative`: refused in this library's words,
+/// returning a refused series (`detail::RefusedSeries`) that silences every
+/// check downstream. The return type is deduced, so that the body -- the
+/// refusal -- is instantiated wherever the call is, even inside an outer call
+/// whose own overload resolution would otherwise fail first and hide it (cl
+/// 19.51 did, for `checked_evaluate_series`).
 template <CumulativeDirection D, Node N>
-[[nodiscard]] constexpr N cumulative(N singleValue) noexcept
+[[nodiscard]] constexpr auto cumulative(N) noexcept
 {
     static_assert(detail::RequireCumulativeOfSeries<N>::value);
-    return singleValue;
+    return detail::RefusedSeries<N::dimension> {};
+}
+
+namespace detail
+{
+    /// Fails to compile when `rounded_elementwise` is given a single value.
+    /// Named so the operand prints.
+    template <typename Operand>
+    struct RequireRoundElementwiseOfSeries
+    {
+        static_assert(SeriesNode<Operand>,
+                      "formula: rounded_elementwise rounds each element of a series, and this is a single value, not "
+                      "a series; the operand appears in this diagnostic as the template argument of "
+                      "RequireRoundElementwiseOfSeries -- round a single value with rounded<U, Places, Mode>");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// A single value handed to `rounded_elementwise`: refused in this library's
+/// words, returning a refused series for `cumulative`'s reasons above.
+template <Unit U, auto Places, RoundingMode Mode, Node N>
+[[nodiscard]] constexpr auto rounded_elementwise(N) noexcept
+{
+    static_assert(detail::RequireRoundElementwiseOfSeries<N>::value);
+    return detail::RefusedSeries<N::dimension> {};
 }
 
 /// The total of every element of a series: **one value**, and so a `Node`,
@@ -644,10 +699,12 @@ template <SeriesNode S>
     return SumNode<S> { {}, seriesOperand };
 }
 
-/// A single value handed to `sum`: refused in this library's words. The body
-/// is the refusal; what it returns is never seen.
+/// A single value handed to `sum`: refused in this library's words. It returns
+/// the value itself, which is already the one value a sum would be, so nothing
+/// downstream refuses again. The return type is deduced, for `cumulative`'s
+/// reason above.
 template <Node N>
-[[nodiscard]] constexpr N sum(N singleValue) noexcept
+[[nodiscard]] constexpr auto sum(N singleValue) noexcept
 {
     static_assert(detail::RequireSumOfSeries<N>::value);
     return singleValue;
@@ -947,6 +1004,17 @@ template <typename Rep = Rational, BinaryOperator Op, typename Left, typename Ri
     }();
     detail::tell_series_produced<Rep>(sink, node, evaluated);
     return evaluated;
+}
+
+/// A refused series (`detail::RefusedSeries`): a `DomainError` belonging to no
+/// element, and nothing told to the sink. Never reached by a program that
+/// compiles.
+template <typename Rep = Rational, Dimension D, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr EvaluatedSeries<Rep, 1> checked_evaluate_series_si(detail::RefusedSeries<D> const&,
+                                                                           Env const&,
+                                                                           Sink = {}) noexcept
+{
+    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
 }
 
 /// Rounds each element to its own granularity in `U` (`ElementwiseRoundNode`).

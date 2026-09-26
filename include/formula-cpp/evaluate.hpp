@@ -180,7 +180,9 @@ namespace detail
     template <typename Expression>
     struct RequireSingleValueExpression
     {
-        static_assert(!SeriesNode<Expression>,
+        // A series already refused (`refused`, `series.hpp`) is not asked
+        // again: its own refusal is the one message for the mistake.
+        static_assert(!SeriesNode<Expression> || requires { requires Expression::refused; },
                       "formula: this expression is a series, not a single value; evaluate it with "
                       "checked_evaluate_series, or reduce it to one value first (sum, interpolate_at)");
 

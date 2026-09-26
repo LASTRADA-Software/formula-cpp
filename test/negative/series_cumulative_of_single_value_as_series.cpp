@@ -3,9 +3,11 @@
 // REJECT: no matching
 // REJECT: this expression is a series, not a single value
 //
-// cumulative given a single value: there is nothing to run a total along.
-// Refused in this library's words, through an overload that takes a Node for
-// no other purpose, rather than as a constraint nobody satisfied.
+// A running total of a single value, evaluated where a running total is
+// evaluated: through checked_evaluate_series. cl 19.51 used to print only its
+// own "no matching overloaded function" here, the library's words lost; the
+// refusal is now reached during the call, and the series it returns is
+// accepted without a second message.
 #include <formula-cpp/series.hpp>
 
 struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", formula::unit::Gram>
@@ -16,7 +18,7 @@ inline constexpr auto inputs = formula::environment(formula::Measured<TotalMass>
 
 int main()
 {
-    return formula::checked_evaluate<TotalMass>(
+    return formula::checked_evaluate_series<TotalMass>(
                formula::cumulative<formula::CumulativeDirection::FromLast>(formula::var<TotalMass>), inputs)
                    .has_value()
                ? 0
