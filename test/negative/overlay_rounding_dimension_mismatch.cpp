@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report
 //
-// An overlay that rounds a pressure method in millimetres. The result of
-// `apply` is a `Method`, and holds the overlay's rule to the check the
-// method's own rule was held to, in the same words -- the overlay does not
-// get to ship a rule the method itself could not have been declared with.
+// An overlay that rounds a pressure method in millimetres. `apply` holds
+// the overlay's rule to the check the method's own rule was held to, in the
+// same words -- the overlay does not get to ship a rule the method itself
+// could not have been declared with.
 //
 // Applied only, never evaluated: evaluating would build the rounding node,
 // whose own check would refuse the rule in its own words whether or not the

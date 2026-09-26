@@ -120,9 +120,10 @@
 /// when there are none, and that step names the overlay.
 ///
 /// A `with_rounding` whose unit does not measure what the method reports is
-/// refused by the method it produces, in `Method`'s own words: the result of
-/// `apply` is a `Method`, and holds the rule to the same dimension check the
-/// method's own rule was held to.
+/// refused where the overlay applies it, in `Method`'s own words: the rule is
+/// held to the same dimension check the method's own rule was held to. The
+/// operations after it are applied to the method as it stood, so the refusal
+/// is raised once, not again by each method they build.
 ///
 /// Operations apply **in the order the overlay lists them**, each to the method
 /// the previous one produced. "Nothing" in the rule above is nothing in the
@@ -2208,16 +2209,28 @@ namespace detail
     /// overlay's and what the overlay cited.
     ///
     /// A rule whose unit does not measure the variants' dimension is refused
-    /// by the `Method` this builds, in the words its own rule would be
-    /// refused in -- see `RequireRoundingRuleMeasuresVariants`.
+    /// here, in the words a method's own rule would be refused in -- see
+    /// `RequireRoundingRuleMeasuresVariants` -- and answers with the method
+    /// unchanged, as a refused pin or prune does. Built into the method, the
+    /// rule would be refused again by every method a later operation of the
+    /// overlay builds from it: g++ 13.3 and clang++ 20.1.8 printed one refusal
+    /// per method, cl 19.51 one in all.
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, typename... Cs, typename Rounding, typename Constraints>
     [[nodiscard]] constexpr auto apply_operation(RoundingOverride<U, Places, Mode> const& overriding,
                                                  Variants<Cs...> const& pack,
-                                                 Rounding const&,
+                                                 Rounding const& rounding,
                                                  Constraints const& constraintSet) noexcept
     {
-        return formula::method(
-            pack, RoundingRuleAccess::overlaid<RoundingRule<U, Places, Mode>>(overriding.source), constraintSet);
+        using Rule = RoundingRule<U, Places, Mode>;
+        constexpr bool measures =
+            !VariantsDimension<Variants<Cs...>>::known || U.dimension == VariantsDimension<Variants<Cs...>>::dimension;
+        static_assert(
+            std::conditional_t<measures, std::true_type, RequireRoundingRuleMeasuresVariants<Variants<Cs...>, Rule>>::value);
+
+        if constexpr (measures)
+            return formula::method(pack, RoundingRuleAccess::overlaid<Rule>(overriding.source), constraintSet);
+        else
+            return formula::method(pack, rounding, constraintSet);
     }
 
     /// `with_constraints(...)`: the same variants and rounding rule, checked

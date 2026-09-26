@@ -870,10 +870,18 @@ formula_add_negative_test(overlay_constant_after_its_constraint_is_replaced
     "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 # A rounding override whose unit does not measure what the method reports is
-# refused by the method `apply` produces, in the words the method's own rule
-# would be refused in.
+# refused where the overlay applies it, in the words the method's own rule
+# would be refused in -- alone, and followed by an operation that builds a
+# method again, which must not raise it a second time. The count is not
+# something a REJECT can say, but where the refusal is raised is: raised again
+# by the method the constant built, it names that method's variants, which
+# hold an `OverriddenConstantNode` -- the REJECT.
 formula_add_negative_test(overlay_rounding_dimension_mismatch
     "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report")
+
+formula_add_negative_test(overlay_rounding_dimension_mismatch_then_constant
+    "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report"
+    REJECT "OverriddenConstantNode")
 
 # A published layout that is not one: a repeated position, and a position at
 # the count. One case per half of the rule -- the ordering half and the range
