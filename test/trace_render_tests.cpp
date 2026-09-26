@@ -2177,14 +2177,16 @@ TEST_CASE("a series with nothing measured traces as absence at every element, an
 TEST_CASE("a running total that overflowed names its element, counted from one", "[series][trace]")
 {
     // Stated in tonnes and read into kilograms, each large element just over
-    // half of Rational's limit. The two in the middle overflow the total from
-    // the first at zero-based 3 -- element 4 in the text.
+    // half of Rational's limit, at zero-based 1 and 2 -- off the centre, so
+    // that from the last the position (1) is not the number of additions
+    // made (3). From the first the total overflows at zero-based 2, element 3
+    // in the text; from the last at zero-based 1, element 2.
     constexpr std::int64_t halfOfLimitInKg = std::numeric_limits<std::int64_t>::max() / 2000 + 1;
     constexpr auto heavy = formula::environment(formula::measured_series<series_trace::Stockpile>(
         formula::Measured<series_trace::Stockpile> { formula::Rational { 1 } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { halfOfLimitInKg } },
+        formula::Measured<series_trace::Stockpile> { formula::Rational { halfOfLimitInKg } },
         formula::Measured<series_trace::Stockpile> { formula::Rational { 2 } },
-        formula::Measured<series_trace::Stockpile> { formula::Rational { halfOfLimitInKg } },
-        formula::Measured<series_trace::Stockpile> { formula::Rational { halfOfLimitInKg } },
         formula::Measured<series_trace::Stockpile> { formula::Rational { 3 } }));
     formula::Trace<> trace {};
     (void) formula::detail::dispatch_series<formula::Rational>(
@@ -2192,9 +2194,20 @@ TEST_CASE("a running total that overflowed names its element, counted from one",
         heavy,
         formula::RecordingSink<> { trace });
     REQUIRE(trace.steps.size() == 2);
-    CHECK(trace.steps[1].failedElement == std::optional<std::size_t> { 3 });
+    CHECK(trace.steps[1].failedElement == std::optional<std::size_t> { 2 });
     CHECK(formula::render_trace(trace, { .maxSteps = 30 }).find(
-              "2. cumulative(#1, from first) = overflow in exact arithmetic at element 4\n")
+              "2. cumulative(#1, from first) = overflow in exact arithmetic at element 3\n")
+          != std::string::npos);
+
+    formula::Trace<> fromLast {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<series_trace::Stockpile, 5>),
+        heavy,
+        formula::RecordingSink<> { fromLast });
+    REQUIRE(fromLast.steps.size() == 2);
+    CHECK(fromLast.steps[1].failedElement == std::optional<std::size_t> { 1 });
+    CHECK(formula::render_trace(fromLast, { .maxSteps = 30 }).find(
+              "2. cumulative(#1, from last) = overflow in exact arithmetic at element 2\n")
           != std::string::npos);
 }
 

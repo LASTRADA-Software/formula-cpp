@@ -556,21 +556,25 @@ namespace running
 
     constexpr std::int64_t halfLimit = std::numeric_limits<std::int64_t>::max() / 2 + 1;
 
-    // Two elements just over half of Rational's limit, in the MIDDLE of five:
-    // from the first, the total overflows at element 3 (zero-based); from the
-    // last, at element 2. Neither end is where it fails.
+    // Two elements just over half of Rational's limit, at zero-based 1 and 2
+    // of five -- off the centre, so that neither end is where it fails and a
+    // position is never the number of additions made. From the first, the
+    // total overflows at element 2, the second addition; from the last, at
+    // element 1, the third addition.
     constexpr auto nearTheLimit =
         formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
+                                                            formula::Measured<Load> { rat(halfLimit) },
+                                                            formula::Measured<Load> { rat(halfLimit) },
                                                             formula::Measured<Load> { rat(2) },
-                                                            formula::Measured<Load> { rat(halfLimit) },
-                                                            formula::Measured<Load> { rat(halfLimit) },
                                                             formula::Measured<Load> { rat(3) }));
 
     constexpr auto oneScreen = formula::environment(formula::measured_series<Retained>(m<Retained>(130)));
 
-    constexpr auto noneMeasured = formula::environment(formula::measured_series<Retained>(
-        formula::Measured<Retained>::absent(), formula::Measured<Retained>::absent(), formula::Measured<Retained>::absent(),
-        formula::Measured<Retained>::absent(), formula::Measured<Retained>::absent()));
+    // The shared fixture with its first, and then its last, screen unmeasured.
+    constexpr auto absentFirst = formula::environment(formula::measured_series<Retained>(
+        formula::Measured<Retained>::absent(), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)));
+    constexpr auto absentLast = formula::environment(formula::measured_series<Retained>(
+        m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), formula::Measured<Retained>::absent()));
 } // namespace running
 } // namespace
 
@@ -705,12 +709,12 @@ TEST_CASE("a running total that overflows fails at the element where it overflow
     constexpr auto fromFirst = formula::detail::dispatch_series<formula::Rational>(
         formula::cumulative<formula::CumulativeDirection::FromFirst>(s), running::nearTheLimit, formula::NullSink {});
     STATIC_REQUIRE(!fromFirst.has_value());
-    STATIC_REQUIRE(fromFirst.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 3 });
+    STATIC_REQUIRE(fromFirst.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 2 });
 
     constexpr auto fromLast = formula::detail::dispatch_series<formula::Rational>(
         formula::cumulative<formula::CumulativeDirection::FromLast>(s), running::nearTheLimit, formula::NullSink {});
     STATIC_REQUIRE(!fromLast.has_value());
-    STATIC_REQUIRE(fromLast.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 2 });
+    STATIC_REQUIRE(fromLast.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1 });
 
     // A sum overflows as a whole: one value has no element to name.
     constexpr auto total = formula::checked_evaluate_si<formula::Rational>(formula::sum(s), running::nearTheLimit);
@@ -753,16 +757,48 @@ TEST_CASE("a failed series fails its sum and its running totals, with the failur
     STATIC_REQUIRE(total.error() == formula::ArithmeticError::DivisionByZero);
 }
 
-TEST_CASE("a series with nothing measured sums to nothing, never to zero", "[series]")
+TEST_CASE("an absent element at either end stops the totals past it, and the sum", "[series]")
 {
-    constexpr auto total =
-        formula::checked_evaluate<TotalMass>(formula::sum(formula::series<Retained, 5>), running::noneMeasured);
-    STATIC_REQUIRE(total.has_value());
-    STATIC_REQUIRE(total->measurement().is_absent());
-    constexpr auto fromFirst = formula::checked_evaluate_series<Retained>(
-        formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<Retained, 5>), running::noneMeasured);
-    STATIC_REQUIRE(fromFirst->element(0).is_absent());
-    STATIC_REQUIRE(fromFirst->element(4).is_absent());
+    // Replaces a test with nothing measured, which a sum or a running total
+    // that skipped absent elements passed as well: everything stays absent
+    // either way. Here an absent element comes BEFORE the first present one
+    // in the running direction, where a total that skipped it would start
+    // from the next.
+    constexpr auto s = formula::series<Retained, 5>;
+    using formula::CumulativeDirection;
+
+    // First screen unmeasured. From the first: absent at all five. From the
+    // last: 28, 368, 463, 673 g, with element 0 absent.
+    constexpr auto firstFromFirst =
+        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromFirst>(s), running::absentFirst);
+    STATIC_REQUIRE(firstFromFirst->element(0).is_absent());
+    STATIC_REQUIRE(firstFromFirst->element(1).is_absent());
+    STATIC_REQUIRE(firstFromFirst->element(4).is_absent());
+    constexpr auto firstFromLast =
+        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromLast>(s), running::absentFirst);
+    STATIC_REQUIRE(firstFromLast->element(0).is_absent());
+    STATIC_REQUIRE(firstFromLast->element(1).value() == rat(673));
+    STATIC_REQUIRE(firstFromLast->element(4).value() == rat(28));
+
+    // Last screen unmeasured. From the first: 130, 340, 435, 775 g, then
+    // absent. From the last: absent at all five.
+    constexpr auto lastFromFirst =
+        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromFirst>(s), running::absentLast);
+    STATIC_REQUIRE(lastFromFirst->element(0).value() == rat(130));
+    STATIC_REQUIRE(lastFromFirst->element(3).value() == rat(775));
+    STATIC_REQUIRE(lastFromFirst->element(4).is_absent());
+    constexpr auto lastFromLast =
+        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromLast>(s), running::absentLast);
+    STATIC_REQUIRE(lastFromLast->element(4).is_absent());
+    STATIC_REQUIRE(lastFromLast->element(3).is_absent());
+    STATIC_REQUIRE(lastFromLast->element(0).is_absent());
+
+    // The sum is absent both times: never 673 g or 775 g, the totals of what
+    // was measured.
+    constexpr auto sumFirst = formula::checked_evaluate<TotalMass>(formula::sum(s), running::absentFirst);
+    constexpr auto sumLast = formula::checked_evaluate<TotalMass>(formula::sum(s), running::absentLast);
+    STATIC_REQUIRE(sumFirst->measurement().is_absent());
+    STATIC_REQUIRE(sumLast->measurement().is_absent());
 }
 
 // ---- Per-element rounding (task 6) ----

@@ -416,15 +416,17 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(explainedSeries.outcome.has_value()
                            && formula::render_trace(explainedSeries.trace, { .maxSteps = 4 })
                                   == "1. x_m = 150 mm; (not measured)\n");
-    // Running totals and sums inside an overlaid method: 150 and 150 mm with
-    // the fixed factor 3 give totals 900 and 450 mm from the last, 150 and
-    // 300 mm from the first, and a quotient of sums of 1350/450 = 3.
-    auto const bothScreens = formula::environment(formula::measured_series<EdgeX>(edge, edge));
+    // Running totals and sums inside an overlaid method: 150 and 100 mm with
+    // the fixed factor 3 give totals 750 and 300 mm from the last, 150 and
+    // 250 mm from the first, and a quotient of sums of 1050/400 = 2.625, or
+    // 2.63 under the method's rule. Either direction swapped gives 3.
+    auto const bothScreens =
+        formula::environment(formula::measured_series<EdgeX>(edge, formula::Measured<EdgeX> { formula::Rational { 100 } }));
     formula::Trace<> seriesMethodTrace {};
     auto const seriesShare =
         formula::evaluate_method<Cube>(seriesOverlaid, bothScreens, formula::RecordingSink { seriesMethodTrace, north });
     constexpr auto seriesVariant = std::get<0>(seriesOverlaid.variantSet.cases).expression;
-    probe.checks.push_back(seriesShare.has_value() && *seriesShare == formula::Rational { 3 }
+    probe.checks.push_back(seriesShare.has_value() && *seriesShare == formula::Rational { 263, 100 }
                            && formula::render(seriesVariant, north).find("cumulative(x_m(i), from first)") != std::string::npos
                            && formula::render(seriesVariant, north).find("to 0/1 dp of mm") != std::string::npos
                            && formula::render<formula::Dialect::Markdown>(seriesVariant).find("sum(") != std::string::npos
