@@ -527,7 +527,7 @@ TEST_CASE("an overridden constant is traced as fixed by the overlay, holding its
           != std::string::npos);
 }
 
-TEST_CASE("an overridden constant the overlay cited nothing for is still traced as fixed", "[overlay][trace]")
+TEST_CASE("an overridden constant the overlay cited nothing for is traced as fixed, and as uncited", "[overlay][trace]")
 {
     constexpr auto overlaid = formula::apply(
         formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, formula::Citation {})),
@@ -535,7 +535,8 @@ TEST_CASE("an overridden constant the overlay cited nothing for is still traced 
 
     formula::Trace<> trace;
     (void) formula::evaluate_method<Cube>(overlaid, inputsWithoutShapeFactor, formula::RecordingSink<> { trace });
-    CHECK(formula::render_trace(trace, { .maxSteps = 20 }).find("1. k_s = 97/100 [fixed by jurisdiction overlay]\n")
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+              .find("1. k_s = 97/100 [fixed by jurisdiction overlay (no citation given)]\n")
           != std::string::npos);
 }
 
@@ -881,7 +882,8 @@ TEST_CASE("a derived quantity is traced as derived by the overlay", "[overlay][t
     // Uncited, it still says so.
     constexpr auto uncited =
         formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(edgeRatio, formula::Citation {})), baseMethod);
-    CHECK(traceOfVariant<Cube>(uncited, roundSpecimen).find("4. k_s = #3 = 2/3 [derived by jurisdiction overlay]\n")
+    CHECK(traceOfVariant<Cube>(uncited, roundSpecimen)
+              .find("4. k_s = #3 = 2/3 [derived by jurisdiction overlay (no citation given)]\n")
           != std::string::npos);
 }
 
@@ -1229,4 +1231,55 @@ TEST_CASE("an overlay's constraint judges a category code, and its verdict names
              "3. require #1 >= #2 [the annex does not accept this shape; jurisdiction overlay: Acceptance, "
              "Example Standard 12:2021 NA, NA.6]\n"
              "4. acceptance(#3) [jurisdiction overlay: Acceptance, Example Standard 12:2021 NA, NA.6]\n");
+}
+
+TEST_CASE("an operation given an empty citation says so in every clause", "[overlay][trace]")
+{
+    // Final re-review of phase 11, M4: every operation takes a citation
+    // argument, but an empty one compiles -- `{}`, or an operation's aggregate
+    // built directly with no citation at all. A clause reading `pinned by
+    // jurisdiction overlay` and nothing more would then look cited to a reader
+    // who does not know it could have said more, so each says it was not.
+    constexpr auto pinnedEmpty = formula::apply(formula::overlay(formula::pin_variant<Cylinder>({})), threeVariants);
+    CHECK(traceOfVariant<Cylinder>(pinnedEmpty, inputs)
+              .ends_with(" [variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction overlay (no citation "
+                         "given)]\n"));
+
+    constexpr auto pinnedByAggregate = formula::apply(formula::overlay(formula::VariantPin<Cylinder> {}), threeVariants);
+    CHECK(traceOfVariant<Cylinder>(pinnedByAggregate, inputs)
+              .ends_with(" [variant Cylinder (2nd of 3), selected by tag; pinned by jurisdiction overlay (no citation "
+                         "given)]\n"));
+
+    constexpr auto prunedEmpty = formula::apply(formula::overlay(formula::prune_variant<Cube>({})), threeVariants);
+    CHECK(traceOfVariant<Cylinder>(prunedEmpty, inputs)
+              .ends_with(" [variant Cylinder (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay (no "
+                         "citation given)]\n"));
+
+    constexpr auto fixedEmpty =
+        formula::apply(formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, {})), baseMethod);
+    constexpr auto fixedByAggregate = formula::apply(
+        formula::overlay(formula::ConstantOverride<ShapeFactor> { formula::Rational { 97, 100 } }), baseMethod);
+    for (auto const& fixedTrace: { traceOfVariant<Cube>(fixedEmpty, inputsWithoutShapeFactor),
+                                   traceOfVariant<Cube>(fixedByAggregate, inputsWithoutShapeFactor) })
+        CHECK(fixedTrace.find("1. k_s = 97/100 [fixed by jurisdiction overlay (no citation given)]\n") != std::string::npos);
+
+    constexpr auto roundedEmpty = formula::apply(
+        formula::overlay(
+            formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                {})),
+        baseMethod);
+    CHECK(traceOf(roundedEmpty).find("rounded to 2 dp (jurisdiction overlay (no citation given)); ") != std::string::npos);
+
+    constexpr auto replacedEmpty =
+        formula::apply(formula::overlay(formula::replace_variant<Cylinder>(areaFromDiameter, {})), baseMethod);
+    CHECK(traceOfVariant<Cylinder>(replacedEmpty, roundSpecimen)
+              .find(" [replaced by jurisdiction overlay (no citation given)]\n")
+          != std::string::npos);
+
+    constexpr auto constrainedEmpty =
+        formula::apply(formula::overlay(formula::with_constraints(oneConstraintSet, {})), baseMethod);
+    auto const acceptance = acceptanceTraceOf(constrainedEmpty, inputs);
+    CHECK(acceptance.find(" [the load is below the annex's minimum; jurisdiction overlay (no citation given)]\n")
+          != std::string::npos);
+    CHECK(acceptance.ends_with(" [jurisdiction overlay (no citation given)]\n"));
 }

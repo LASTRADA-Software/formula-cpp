@@ -101,12 +101,21 @@ namespace detail
     /// printed as written, one holding `] [derived by jurisdiction overlay:
     /// ...` wrote a clause no overlay made, and one holding a newline wrote a
     /// line that is no step. Escaped, an author's bracket can never close or
-    /// open a clause, and the library's own clauses, which are not escaped,
-    /// can never be imitated. The semicolon, because a verdict's clause is
-    /// `[<label>; <whose constraint>]`: a label holding `; jurisdiction
-    /// overlay: ...` would otherwise name a second, false owner beside the
-    /// true one. The backslash, so that an author's `\[` cannot pass for an
+    /// open a clause, nor an author's newline end a line. The semicolon,
+    /// because a verdict's clause is `[<label>; <whose constraint>]`: a label
+    /// holding `; jurisdiction overlay: ...` would otherwise name a second,
+    /// false owner beside the true one. The backslash, so that an author's `\[` cannot pass for an
     /// escaped bracket.
+    ///
+    /// **What it does not do.** It stops author text from breaking a line's
+    /// structure, not from holding a clause's words: a `documented()` citation
+    /// titled `replaced by jurisdiction overlay: ...` renders as a genuine
+    /// replacement's clause does. The structured fields of a `Step` -- `kind`,
+    /// the provenance enums, `variantPinned` and so on -- are what is
+    /// authoritative, and the method's author is trusted. Nor does it touch
+    /// anything but ASCII: a Unicode look-alike of a bracket (U+FF3B, U+FF3D)
+    /// or the line separator U+2028 is written as it is, since it cannot
+    /// break the ASCII structure the library writes.
     ///
     /// Applied by `step_line`, once, to every piece of author text a step
     /// holds -- see `EscapedStep` and `unit_symbol_text` -- and nowhere else:
@@ -705,6 +714,13 @@ namespace detail
         return "unknown step kind";
     }
 
+    /// What a clause says in place of a citation that names nothing. Every
+    /// operation of an overlay takes a citation argument, but an empty one
+    /// compiles -- `pin_variant<Cube>({})`, or an operation's aggregate built
+    /// directly -- and a clause that then read `fixed by jurisdiction overlay`
+    /// would look cited to a reader who does not know it could have said more.
+    inline constexpr std::string_view noCitationGiven = "(no citation given)";
+
     /// What a citation identifies itself by, unbracketed: its title,
     /// reference, section and equation, each that is not empty, joined by
     /// commas. Empty when all four are.
@@ -747,12 +763,15 @@ namespace detail
     }
 
     /// Where a value or a rule came from, when an overlay supplied it:
-    /// `jurisdiction overlay`, followed by what the overlay cited, when it
-    /// cited anything -- `jurisdiction overlay: Example Standard 12:2021 NA`.
+    /// `jurisdiction overlay: `, followed by what the overlay cited --
+    /// `jurisdiction overlay: Example Standard 12:2021 NA` -- or
+    /// `jurisdiction overlay (no citation given)` when the citation names
+    /// nothing. Every overlay clause is built on this, so none of them reads
+    /// as cited when it was not.
     [[nodiscard]] inline std::string overlay_source_text(Citation const& overlayCitation)
     {
         std::string const cited = citation_text(overlayCitation);
-        return cited.empty() ? std::string { "jurisdiction overlay" } : "jurisdiction overlay: " + cited;
+        return cited.empty() ? "jurisdiction overlay " + std::string { noCitationGiven } : "jurisdiction overlay: " + cited;
     }
 
     /// An overridden constant's clause: `[fixed by jurisdiction overlay:

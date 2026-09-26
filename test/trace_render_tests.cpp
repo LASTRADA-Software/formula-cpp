@@ -1565,3 +1565,106 @@ TEST_CASE("a unit's symbol cannot close the clause it stands in", "[trace-render
 
     CHECK(formula::render_trace(trace, { .maxSteps = 10 }) == "1. P = 4 N\\] \\[x\n");
 }
+
+namespace
+{
+// Author text the compile-time rules let through -- a semicolon and a
+// backslash are refused nowhere -- in a variant's tag and a lookup key's name.
+// Final re-review of phase 11, L3: each escaped today, and no test said so.
+struct EscapedTag
+{
+};
+
+enum class EscapedGrade : std::uint8_t
+{
+    Plain,
+    Forging,
+};
+
+inline constexpr formula::KeyTable<EscapedGrade, 2> EscapedGradeKeys { EscapedGrade::Plain, EscapedGrade::Forging };
+
+inline constexpr formula::BandTable<1> ForgingLoadBands { formula::band(1, 1, 9, 1) };
+} // namespace
+
+template <>
+struct formula::TagName<EscapedTag>
+{
+    static constexpr std::string_view of() noexcept
+    {
+        return "steel; y \\";
+    }
+};
+
+template <>
+struct formula::EnumeratorName<EscapedGrade>
+{
+    static constexpr std::string_view of(EscapedGrade grade) noexcept
+    {
+        return grade == EscapedGrade::Forging ? "steel; y \\" : "plain";
+    }
+};
+
+TEST_CASE("a justification cannot close the clause it stands in", "[trace-render][escape]")
+{
+    constexpr auto read = formula::numeric_value_of<unit::Newton, "why; not] [x">(var<ForgingLoad>);
+    auto const environment = formula::environment(formula::Measured<ForgingLoad> { formula::Rational { 4 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(read, environment, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 }).ends_with("2. numeric(#1, in N) = 4 (why\\; not\\] \\[x)\n"));
+}
+
+TEST_CASE("a unit's symbol is escaped in a numeric value, a method's rounding and a lookup", "[trace-render][escape]")
+{
+    auto const environment = formula::environment(formula::Measured<ForgingLoad> { formula::Rational { 4 } });
+
+    formula::Trace<> numericTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::numeric_value_of<ForgingNewton, "the annex states it in N">(var<ForgingLoad>),
+        environment,
+        formula::RecordingSink<> { numericTrace });
+    CHECK(formula::render_trace(numericTrace, { .maxSteps = 10 }).find("2. numeric(#1, in N\\] \\[x) = 4 ")
+          != std::string::npos);
+
+    auto const m = formula::method(
+        formula::variants(formula::variant<PlainDensity>(var<ForgingLoad>)),
+        formula::rounding_rule<ForgingNewton, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    formula::Trace<> roundingTrace {};
+    (void) formula::evaluate_method<PlainDensity>(m, environment, formula::RecordingSink<> { roundingTrace });
+    CHECK(formula::render_trace(roundingTrace, { .maxSteps = 10 }).find("2. round(#1, in N\\] \\[x) = 4 N\\] \\[x [rounded")
+          != std::string::npos);
+
+    formula::Trace<> lookupTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::banded_lookup<ForgingNewton, ForgingLoadBands, unit::One>(var<ForgingLoad>, { formula::Rational { 2 } }),
+        environment,
+        formula::RecordingSink<> { lookupTrace });
+    CHECK(formula::render_trace(lookupTrace, { .maxSteps = 10 }).ends_with(" [1 to under 9 N\\] \\[x]\n"));
+}
+
+TEST_CASE("a variant's tag and a lookup key's name are escaped", "[trace-render][escape]")
+{
+    auto const environment = formula::environment(formula::Measured<Mass> { formula::Rational { 6 } },
+                                                  formula::Measured<Volume> { formula::Rational { 3 } });
+    auto const m = formula::method(formula::variants(formula::variant<EscapedTag>(var<Mass> / var<Volume>)),
+                                   formula::rounding_rule<unit::KilogramPerCubicMetre,
+                                                          formula::DecimalPlaces { 0 },
+                                                          formula::RoundingMode::HalfAwayFromZero>(),
+                                   formula::constraints());
+    formula::Trace<> variantTrace {};
+    (void) formula::evaluate_method<EscapedTag>(m, environment, formula::RecordingSink<> { variantTrace });
+    CHECK(formula::render_trace(variantTrace, { .maxSteps = 10 })
+              .find(" [variant steel\\; y \\\\ (1st of 1), selected by tag]\n")
+          != std::string::npos);
+
+    formula::Trace<> keyTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::exact_lookup<EscapedGradeKeys, unit::One>(EscapedGrade::Forging,
+                                                           { formula::Rational { 1 }, formula::Rational { 2 } }),
+        environment,
+        formula::RecordingSink<> { keyTrace });
+    CHECK(formula::render_trace(keyTrace, { .maxSteps = 10 }) == "1. lookup(key steel\\; y \\\\) = 2\n");
+}

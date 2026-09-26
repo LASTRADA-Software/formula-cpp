@@ -497,9 +497,11 @@ struct ConstantOverride
 /// constant means: the value is no longer the specimen's to state.
 ///
 /// @p source records where the value comes from -- a national annex, say --
-/// and travels with every node the override leaves behind. It is required:
-/// the trace exists to say why a value is what it is, and "fixed by
-/// jurisdiction overlay" with no citation says nothing a reader can check.
+/// and travels with every node the override leaves behind. Every operation
+/// takes a citation argument: the trace exists to say why a value is what it
+/// is, and "fixed by jurisdiction overlay" with no citation says nothing a
+/// reader can check. An empty one still compiles, and is shown as `(no
+/// citation given)` in every clause that would have cited it.
 ///
 /// Refused when no variant or constraint uses `Q`: see the file comment.
 template <Described Q>

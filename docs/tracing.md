@@ -395,8 +395,8 @@ section 9.1 asks the trace to record which rounding rule applied **and where
 it came from**, and `rounded to 1 dp` alone is true whether the method's
 author chose the rule or a jurisdiction did. So the bracket says whose it was:
 `(method default)` for the rule the method was declared with, and
-`(jurisdiction overlay)` for one an overlay's `with_rounding` put in its place,
-followed by what the overlay cited when it cited anything:
+`(jurisdiction overlay: ...)` for one an overlay's `with_rounding` put in its
+place, followed by what the overlay cited:
 
 ```
 8. round(#7, in MPa) = 601/100 MPa [rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, NA.4.1); nearest, ties away from zero]
@@ -404,9 +404,18 @@ followed by what the overlay cited when it cited anything:
 
 (`test/overlay_tests.cpp`, `"the trace says where the rounding rule came
 from"`.) A jurisdiction that restates the method's own granularity still gets
-`(jurisdiction overlay)`: the rule is then its rule, and the trace does not
-decide whose it was by comparing numbers. The provenance is in
+`(jurisdiction overlay: ...)`: the rule is then its rule, and the trace does
+not decide whose it was by comparing numbers. The provenance is in
 `Step::roundingProvenance`, and the citation in `Step::citation`.
+
+Every overlay operation takes a citation argument, but an empty one compiles:
+`with_rounding<...>({})`, `pin_variant<Cube>({})`, or an operation's aggregate
+built directly, such as `VariantPin<Cube> {}`. Every clause an overlay adds then
+says so, `(jurisdiction overlay (no citation given))` here and `[fixed by
+jurisdiction overlay (no citation given)]` below, rather than a bare
+`jurisdiction overlay` that a reader could take for a cited one.
+(`test/overlay_tests.cpp`, `"an operation given an empty citation says so in
+every clause"`.)
 
 A constant an overlay fixed with `with_constant` is traced the same way, as
 `StepKind::OverriddenConstant` rather than as a variable. It reads as its
