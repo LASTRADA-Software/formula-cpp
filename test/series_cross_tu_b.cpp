@@ -10,3 +10,8 @@ series_cross_tu::Read series_read_in_other_tu() noexcept
 {
     return formula::checked_evaluate_series<series_cross_tu::Retained>(series_cross_tu::retained, series_cross_tu::inputs);
 }
+
+series_cross_tu::Read totals_read_in_other_tu(decltype(series_cross_tu::totals) const& totalsExpression) noexcept
+{
+    return formula::checked_evaluate_series<series_cross_tu::Retained>(totalsExpression, series_cross_tu::inputs);
+}

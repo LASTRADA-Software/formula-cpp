@@ -290,6 +290,19 @@ TEST_CASE("a series formula declared in a header is one formula in every transla
     CHECK(there->element(1).value() == formula::Rational { 21 });
 }
 
+TEST_CASE("a series expression passed to another translation unit is the same type there", "[series]")
+{
+    // Passed as a parameter, so the two units must agree on its whole type
+    // -- the cumulative, the product and the series inside it -- or the call
+    // does not link on any compiler. 13, 21, 34 g doubled and totalled from
+    // the last: 136, 110, 68 g.
+    auto const there = totals_read_in_other_tu(series_cross_tu::totals);
+    REQUIRE(there.has_value());
+    CHECK(there->element(0).value() == formula::Rational { 136 });
+    CHECK(there->element(1).value() == formula::Rational { 110 });
+    CHECK(there->element(2).value() == formula::Rational { 68 });
+}
+
 // ---- Elementwise arithmetic and per-element constants (task 4) ----
 
 namespace

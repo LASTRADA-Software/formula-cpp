@@ -33,6 +33,10 @@ inline constexpr auto inputs =
                                                             formula::Measured<Retained> { formula::Rational { 21 } },
                                                             formula::Measured<Retained> { formula::Rational { 34 } }));
 
+/// A series expression whose type nests several node templates, taken as a
+/// parameter by the other unit's function below.
+inline constexpr auto totals = formula::cumulative<formula::CumulativeDirection::FromLast>(retained * formula::Rational { 2 });
+
 using Read = std::expected<formula::SeriesOutcome<Retained, 3>, formula::SeriesFailure>;
 } // namespace series_cross_tu
 
@@ -42,3 +46,12 @@ using Read = std::expected<formula::SeriesOutcome<Retained, 3>, formula::SeriesF
 
 /// Defined in `series_cross_tu_b.cpp`: the shared formula evaluated there.
 [[nodiscard]] series_cross_tu::Read series_read_in_other_tu() noexcept;
+
+/// Defined in `series_cross_tu_b.cpp`: @p totalsExpression evaluated there.
+///
+/// The formula is a **parameter**, not only a return value: a parameter's
+/// type is part of the function's mangled name on every compiler, so a
+/// formula whose type differs between the two units names a different
+/// function and fails the link -- where a return type alone would do so on
+/// cl only.
+[[nodiscard]] series_cross_tu::Read totals_read_in_other_tu(decltype(series_cross_tu::totals) const& totalsExpression) noexcept;
