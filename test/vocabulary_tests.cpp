@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 
 namespace
@@ -290,6 +291,104 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
              "10. #9 = 231/5 MPa [variant Cube (1st of 1), selected by tag]\n");
 }
 
+TEST_CASE("the documentation of an overlaid formula agrees with its formula", "[vocabulary][document]")
+{
+    // The fixed row is written by its own `collect` overload, not the plain
+    // variable's; a formula reading `k_s` beside a fixed row labelled `k`
+    // would leave a reader unable to find the fixed value in the formula.
+    constexpr auto cube = std::get<0>(formula::apply(fixedFactor, crossedMethod).variantSet.cases).expression;
+    formula::Documentation const southern = formula::document(cube, everyNamedQuantity);
+
+    CHECK(southern.formula == "k_s * E * lookup(D, 100 to under 150 mm gives 1, 150 to under 300 mm gives 2) - R");
+    REQUIRE(southern.symbols.size() == 4);
+    CHECK(southern.symbols[0].symbol == "k_s");
+    CHECK(southern.symbols[0].description == "shape factor");
+    REQUIRE(southern.symbols[0].fixedValue.has_value());
+    CHECK(*southern.symbols[0].fixedValue == rat(97, 100));
+    CHECK(southern.symbols[1].symbol == "E");
+    CHECK(southern.symbols[1].description == "compressive strength");
+    CHECK(!southern.symbols[1].fixedValue.has_value());
+    CHECK(southern.symbols[2].symbol == "D");
+    CHECK(southern.symbols[3].symbol == "R");
+    CHECK(southern.symbols[3].description == "elastic modulus");
+
+    // A plain read of the same quantity shares the fixed row, in the
+    // vocabulary's word -- met first, so the row is the plain overload's.
+    // Only an overlay builds an overridden constant, so the formula holding
+    // both is assembled from the one `apply` put in `cube`: `k_s * E * lookup
+    // - R` parses as `((k_s * E) * lookup) - R`.
+    constexpr auto fixed = cube.lhs.lhs.lhs;
+    formula::Documentation const both = formula::document(var<Factor> + fixed, everyNamedQuantity);
+    CHECK(both.formula == "k_s + k_s");
+    REQUIRE(both.symbols.size() == 1);
+    CHECK(both.symbols[0].symbol == "k_s");
+    CHECK(both.symbols[0].fixedValue.has_value());
+}
+
+TEST_CASE("a vocabulary looks through const on the quantity it names", "[vocabulary]")
+{
+    // `renames<Strength const>` applies to `var<Strength>`, and a lookup of
+    // `Strength const` finds `renames<Strength>`: in `symbol_of`, and so in
+    // every surface that asks it.
+    constexpr auto constEntry = formula::vocabulary(formula::renames<Strength const>("R"));
+    STATIC_REQUIRE(formula::symbol_of<Strength>(constEntry) == "R");
+    STATIC_REQUIRE(formula::symbol_of<Strength const>(north) == "R");
+    STATIC_REQUIRE(formula::symbol_of<Strength const>(south) == "E");
+
+    CHECK(formula::render(f, constEntry) == "R / E_m");
+
+    formula::Documentation const documentation = formula::document(f, constEntry);
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[0].symbol == "R");
+    CHECK(documentation.symbols[1].symbol == "E_m");
+
+    formula::Trace<> trace {};
+    (void) formula::check(formula::constraint(var<Strength> >= var<Modulus>, formula::Verdict { "reject the specimen" }),
+                          crossedInputs,
+                          formula::RecordingSink { trace, constEntry });
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. R = 30 MPa\n"
+             "2. E_m = 12 MPa\n"
+             "3. require #1 >= #2 [satisfied]\n");
+}
+
+namespace
+{
+/// A sink built from a vocabulary local to the function that built it, and
+/// returned: the vocabulary is gone before the sink is used. The sink holds a
+/// copy, so nothing dangles.
+[[nodiscard]] formula::RecordingSink<formula::Rational, std::remove_cvref_t<decltype(south)>> southernSink(
+    formula::Trace<>& trace)
+{
+    auto const local = formula::vocabulary(formula::renames<Strength>("E"), formula::renames<Modulus>("R"));
+    return formula::RecordingSink { trace, local };
+}
+} // namespace
+
+TEST_CASE("a sink keeps its own copy of the vocabulary", "[vocabulary][trace]")
+{
+    constexpr auto limit = formula::constraint(var<Strength> >= var<Modulus>, formula::Verdict { "reject the specimen" });
+
+    formula::Trace<> returned {};
+    (void) formula::check(limit, crossedInputs, southernSink(returned));
+    CHECK(formula::render_trace(returned, { .maxSteps = 10 })
+          == "1. E = 30 MPa\n"
+             "2. R = 12 MPa\n"
+             "3. require #1 >= #2 [satisfied]\n");
+
+    formula::Trace<> temporary {};
+    (void) formula::check(
+        limit, crossedInputs, formula::RecordingSink { temporary, formula::vocabulary(formula::renames<Modulus>("M")) });
+    CHECK(formula::render_trace(temporary, { .maxSteps = 10 })
+          == "1. f_c = 30 MPa\n"
+             "2. M = 12 MPa\n"
+             "3. require #1 >= #2 [satisfied]\n");
+
+    // The default vocabulary is empty and takes no space: a sink that names
+    // none is the one pointer it was before vocabularies existed.
+    STATIC_REQUIRE(sizeof(formula::RecordingSink<>) == sizeof(formula::Trace<>*));
+}
+
 TEST_CASE("a constraint's trace names quantities in the sink's vocabulary", "[vocabulary][trace]")
 {
     constexpr auto limit = formula::constraint(var<Strength> >= var<Modulus>, formula::Verdict { "reject the specimen" });
@@ -368,6 +467,29 @@ TEST_CASE("a consumer's one-argument render_node is still found", "[vocabulary][
     // The consumer's node renders as it always did, and the vocabulary still
     // reaches the library's own nodes around it.
     CHECK(formula::render(expression, north) == "gauge * R");
+}
+
+namespace
+{
+/// A consumer's node deriving from one of the library's, with a one-argument
+/// `render_node` of its own -- which it keeps, rather than being rendered as
+/// the `VarNode` it derives from (`detail::render_in_vocabulary`).
+struct Labelled: formula::VarNode<Strength>
+{
+};
+
+template <formula::Dialect D>
+[[nodiscard]] std::string render_node(Labelled const&)
+{
+    return "labelled";
+}
+} // namespace
+
+TEST_CASE("a consumer's node derived from a library node keeps its own render_node", "[vocabulary][render]")
+{
+    CHECK(formula::render(Labelled {}) == "labelled");
+    CHECK(formula::render(Labelled {}, north) == "labelled");
+    CHECK(formula::render(Labelled {} / var<Modulus>, north) == "labelled / E");
 }
 
 TEST_CASE("a consumer's two-argument render_node receives the vocabulary", "[vocabulary][render]")

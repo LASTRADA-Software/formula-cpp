@@ -391,13 +391,18 @@ Three things a vocabulary does not do:
   two-argument form, `render_node(TheirNode const&, V const& vocabulary)`,
   and hand `vocabulary` on to `formula::render<D>(operand, vocabulary)` to
   opt in (`"a consumer's two-argument render_node receives the
-  vocabulary"`).
+  vocabulary"`). A node of yours that derives from one of the library's --
+  `struct Labelled: formula::VarNode<Q>` -- keeps its own one-argument
+  `render_node`, as before, rather than rendering as the node it derives
+  from; to receive the vocabulary it defines the two-argument form instead
+  of the one-argument one, not beside it.
 
 A vocabulary renaming one quantity twice does not compile, and neither does
-`renames<Q>("")`, which would leave a blank where the quantity stands. `renames` is
-`consteval` and takes a character array, so it accepts a string literal and
-refuses a buffer on the stack: a trace keeps a view of the symbol for as long
-as it lives.
+`renames<Q>("")`, which would leave a blank where the quantity stands; nor
+does a symbol that is all whitespace or holds a NUL. `renames` is `consteval`
+and takes a `const` character array, so it accepts a string literal and
+refuses a buffer on the stack or one that is not `const`: a trace keeps a
+view of the symbol for as long as it lives.
 
 ## Generating a page
 

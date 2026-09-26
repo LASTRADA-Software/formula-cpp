@@ -989,24 +989,52 @@ formula_add_negative_test(vocabulary_not_an_entry
     "formula: a vocabulary holds only entries made by renames<Q>(symbol)"
     REJECT "formula: this vocabulary renames the same quantity twice" "quantity'")
 
-# An empty symbol, which would leave a blank where the quantity stands.
+# An empty symbol, which would leave a blank where the quantity stands. It has
+# no characters, so it is vacuously all whitespace too; the REJECT pins that
+# `renames` refuses it once, as empty, and not again as blank.
 formula_add_negative_test(vocabulary_empty_symbol
-    "formula: renames<Q>(\"\") gives the quantity an empty symbol")
+    "formula: renames<Q>(\"\") gives the quantity an empty symbol"
+    REJECT "renames_symbol_must_not_be_all_whitespace")
 
-# A sink built over a temporary vocabulary would keep a dangling pointer.
-formula_add_negative_test(vocabulary_sink_temporary
-    "formula: a RecordingSink keeps a pointer to its vocabulary")
+# `Q const` names the same quantity as `Q`, so the two renamed together are a
+# double rename -- the cv-blind matching `renamesOf` claims, pinned.
+formula_add_negative_test(vocabulary_duplicate_cv
+    "formula: this vocabulary renames the same quantity twice")
 
+# Symbols `renames` refuses in this library's words. A buffer that is not
+# const, whatever its storage, meets the overload that exists to refuse it; the
+# other three are values, not types, so each is refused by a call to a
+# function whose name is the refusal (`vocabulary.hpp`). The unterminated
+# array and the embedded NUL are two separate checks in `renames`, so each
+# has its own case.
+formula_add_negative_test(vocabulary_symbol_mutable_buffer
+    "formula: renames<Q> was given a buffer that is not const")
+formula_add_negative_test(vocabulary_symbol_embedded_nul
+    "renames_symbol_must_be_a_string_with_no_embedded_nul")
+formula_add_negative_test(vocabulary_symbol_unterminated
+    "renames_symbol_must_be_a_string_with_no_embedded_nul")
+formula_add_negative_test(vocabulary_symbol_whitespace
+    "renames_symbol_must_not_be_all_whitespace")
 
-# A symbol in a local buffer, which a trace step would keep a dangling view
-# of. `renames` is `consteval` and takes a character array, so the argument
-# must be usable in a constant expression, and nothing in this library can
-# phrase that refusal: the text is the compilers' own. Measured in these words
-# on cl 19.51 (C7595), clang-cl 22.1.3, clang++ 20.1.8 and g++ 13.3 -- not on
-# CI's g++-14 or Apple clang -- and no form of `renames` appears in all four
-# (g++ names only `Renames<Strength>`). Deleting `consteval` makes the case
+# A render_node of the library's own that takes no vocabulary. Declared in
+# `formula` before render.hpp, where qualified lookup finds it as it finds
+# every one of the library's (`detail::render_in_vocabulary`).
+formula_add_negative_test(render_node_without_vocabulary
+    "formula: a render_node of this library takes no vocabulary")
+
+# A symbol in a const buffer on the stack, which a trace step would keep a
+# dangling view of. `renames` is `consteval` and takes a character array, so
+# the argument must be usable in a constant expression, and nothing in this
+# library can phrase that refusal: storage duration is neither a type nor a
+# value a constant expression can inspect, so the text is the compilers' own.
+# (A buffer that is not const is refused in the library's words, above.)
+# Measured: cl 19.51 and clang-cl 22.1.3 and clang++ 20.1.8 say "is not a
+# constant expression", g++ 13.3 says "is not usable in a constant
+# expression" -- the case now fails while `renames` reads the buffer's
+# characters, which g++ refuses first. Their shared words are the EXPECT. Not
+# measured on CI's g++-14 or Apple clang. Deleting `consteval` makes the case
 # compile.
-formula_add_negative_test(vocabulary_symbol_not_static "is not a constant expression")
+formula_add_negative_test(vocabulary_symbol_not_static "a constant expression")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

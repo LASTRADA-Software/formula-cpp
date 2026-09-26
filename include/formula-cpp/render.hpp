@@ -647,11 +647,12 @@ namespace detail
 // One overload per node kind. Each is found by argument-dependent lookup from
 // `render` below, exactly as the evaluator's overloads are.
 //
-// An overload whose node names a quantity or holds a sub-expression takes the
-// vocabulary as a second argument and hands it on; one whose node does neither
-// (a constant, pi, an exact lookup) keeps the one-argument form, and `render`
-// reaches it through the same fallback that keeps a consumer's own
-// one-argument `render_node` working -- see `detail::render_in`.
+// Every overload takes the vocabulary as a second argument, and one whose node
+// names a quantity or holds a sub-expression hands it on. The ones whose node
+// does neither (a constant, pi, an exact lookup) take it too and ignore it:
+// a one-argument `render_node` in this namespace is refused, so that a node
+// kind added later cannot render its operands in the declared symbols without
+// anything saying so -- see `detail::render_in_vocabulary`.
 
 /// A variable renders as its quantity's symbol under @p vocabulary --
 /// backtick-quoted in Markdown. An overridden constant (`overlay.hpp`) renders
@@ -671,8 +672,8 @@ template <Dialect D, Described Q, Vocabulary V>
 /// The number-and-unit spelling is `detail::number_with_unit`, shared with the
 /// lookup tables below so that a table's row states a number exactly as a
 /// constant holding the same number does -- see that helper.
-template <Dialect D, Unit U>
-[[nodiscard]] std::string render_node(ConstantNode<U> const& node)
+template <Dialect D, Unit U, Vocabulary V>
+[[nodiscard]] std::string render_node(ConstantNode<U> const& node, V const&)
 {
     constexpr Unit unit = U;
     return detail::number_with_unit(detail::number_text(node.number), view(unit.symbolText));
@@ -859,8 +860,8 @@ template <Dialect D, Unit U, detail::FixedString Justification, Node Operand, Vo
 }
 
 /// Pi renders as `\pi` in LaTeX, and as `pi` in every other dialect.
-template <Dialect D>
-[[nodiscard]] inline std::string render_node(PiNode const&)
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(PiNode const&, V const&)
 {
     if constexpr (D == Dialect::LaTeX)
         return "\\pi";
@@ -880,10 +881,10 @@ template <Dialect D, Node Inner, Vocabulary V>
 /// replacement: the formula is what runs. That it is a jurisdiction's is the
 /// trace's to say, and the citation `document()`'s -- as `DocumentedNode`'s
 /// citation is.
-template <Dialect D, Node Expr>
-[[nodiscard]] std::string render_node(ReplacedVariantNode<Expr> const& node)
+template <Dialect D, Node Expr, Vocabulary V>
+[[nodiscard]] std::string render_node(ReplacedVariantNode<Expr> const& node, V const& vocabulary)
 {
-    return render<D>(node.replacement());
+    return render<D>(node.replacement(), vocabulary);
 }
 
 // ------------------------------------------------------- phase 10: lookups
@@ -962,8 +963,8 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
 /// spelling of it through `EnumeratorName` (`enumerator.hpp`) -- and as its
 /// underlying value only when it names no row of the table. See
 /// `detail::key_text`.
-template <Dialect D, KeyTable Keys, Unit ResultUnit>
-[[nodiscard]] std::string render_node(ExactLookupNode<Keys, ResultUnit> const& node)
+template <Dialect D, KeyTable Keys, Unit ResultUnit, Vocabulary V>
+[[nodiscard]] std::string render_node(ExactLookupNode<Keys, ResultUnit> const& node, V const&)
 {
     constexpr Unit resultUnit = ResultUnit;
 
@@ -1136,33 +1137,67 @@ template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
 
 namespace detail
 {
-    /// Renders @p node through whichever `render_node` it has: one taking the
-    /// vocabulary where one exists, the one-argument form otherwise.
+    /// Renders @p node through the `render_node` it has, and refuses a node of
+    /// this library's whose `render_node` would not take the vocabulary.
     ///
-    /// `render_node` is found by argument-dependent lookup, so a consumer with
-    /// a node kind of their own can write `template <Dialect D>
-    /// std::string render_node(TheirNode const&)` and have `render` find it.
-    /// Passing the vocabulary as a second argument would leave every such
-    /// overload unreachable -- measured by the phase-11 spike on clang++
-    /// 20.1.8 ("no matching function for call to 'render_node'"), and again
-    /// on cl 19.51 by deleting the fallback below (C2672). The `requires` below is
-    /// `sink.hpp`'s `detail::dispatch`, applied to rendering: prefer the
-    /// vocabulary-aware overload, fall back to the one-argument one.
+    /// **This library's nodes** all render through the two-argument form,
+    /// `render_node(node, vocabulary)`. Which overloads are this library's is
+    /// answered by *qualified* lookup, `::formula::render_node`: that finds
+    /// only the overloads declared in `formula` before this point, which is
+    /// every one this library defines, and never a consumer's -- a consumer's
+    /// lives in their own namespace, and is found only by the unqualified,
+    /// argument-dependent calls. A one-argument overload of this library's is
+    /// refused outright: it would render its node's operands in the declared
+    /// symbols under every vocabulary, the defect the phase-11 review found
+    /// waiting for the join with derived and replaced variants, and one no
+    /// test that lacks such a node would see.
+    ///
+    /// **A consumer's nodes** keep the extension point every earlier phase
+    /// published, `template <Dialect D> std::string render_node(TheirNode
+    /// const&)`. Passing the vocabulary as a second argument would leave every
+    /// such overload unreachable -- measured by the phase-11 spike on clang++
+    /// 20.1.8 ("no matching function for call to 'render_node'"), and again on
+    /// cl 19.51 by deleting the fallback below (C2672). So, in order:
+    ///
+    ///  1. a two-argument overload that is not this library's -- the consumer
+    ///     opted in -- is called with the vocabulary;
+    ///  2. otherwise a one-argument overload, which by then can only be the
+    ///     consumer's, is called without it. `sink.hpp`'s `detail::dispatch`
+    ///     makes the same two-step choice for evaluation;
+    ///  3. otherwise this library's two-argument overload is called.
+    ///
+    /// Step 2 comes before step 3 for a consumer's node that **derives from
+    /// one of this library's**, `struct Labelled: formula::VarNode<Q>`: it
+    /// renders through its own one-argument overload, as it did before
+    /// vocabularies existed, rather than as the base it derives from. That
+    /// node's own text is then in the declared symbols; to receive the
+    /// vocabulary it defines the two-argument form **instead**. Were it to
+    /// define both, the one-argument form would win, because its two-argument
+    /// overload cannot be told apart from its base's by lookup alone.
     ///
     /// **What the fallback cannot do** is carry the vocabulary into a
-    /// one-argument overload: whatever such a node renders of its own, and
-    /// any operand it renders with `render<D>(operand)`, is written in the
-    /// default vocabulary. A consumer who wants their node's operands renamed
-    /// writes the two-argument form, `template <Dialect D, Vocabulary V>
-    /// std::string render_node(TheirNode const&, V const& vocabulary)`, and
-    /// hands the vocabulary on with `render<D>(operand, vocabulary)`.
+    /// one-argument overload: whatever such a node renders of its own, and any
+    /// operand it renders with `render<D>(operand)`, is written in the default
+    /// vocabulary. A consumer who wants their node's operands renamed writes
+    /// `template <Dialect D, Vocabulary V> std::string render_node(TheirNode
+    /// const&, V const& vocabulary)`, and hands the vocabulary on with
+    /// `render<D>(operand, vocabulary)`.
     template <Dialect D, typename N, Vocabulary V>
-    [[nodiscard]] std::string render_in(N const& node, V const& vocabulary)
+    [[nodiscard]] std::string render_in_vocabulary(N const& node, V const& vocabulary)
     {
-        if constexpr (requires { render_node<D>(node, vocabulary); })
+        constexpr bool libraryTakesVocabulary = requires { ::formula::render_node<D>(node, vocabulary); };
+        constexpr bool libraryIgnoresVocabulary = requires { ::formula::render_node<D>(node); };
+        static_assert(!libraryIgnoresVocabulary,
+                      "formula: a render_node of this library takes no vocabulary, so it would render this node "
+                      "in the declared symbols under every vocabulary. Give it the second parameter, "
+                      "Vocabulary V const& vocabulary, and hand it on to every operand it renders");
+
+        if constexpr (!libraryTakesVocabulary && requires { render_node<D>(node, vocabulary); })
             return render_node<D>(node, vocabulary);
-        else
+        else if constexpr (requires { render_node<D>(node); })
             return render_node<D>(node);
+        else
+            return render_node<D>(node, vocabulary);
     }
 } // namespace detail
 
@@ -1170,7 +1205,7 @@ namespace detail
 template <Dialect D, Node N, Vocabulary V>
 [[nodiscard]] std::string render(N const& node, V const& vocabulary)
 {
-    return detail::render_in<D>(node, vocabulary);
+    return detail::render_in_vocabulary<D>(node, vocabulary);
 }
 
 /// Renders @p node as plain text, writing symbols as @p vocabulary says.
@@ -1200,7 +1235,7 @@ template <Node N>
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(P const& node, V const& vocabulary)
 {
-    return detail::render_in<D>(node, vocabulary);
+    return detail::render_in_vocabulary<D>(node, vocabulary);
 }
 
 /// Renders @p node as plain text, writing symbols as @p vocabulary says.
@@ -1231,7 +1266,7 @@ template <Predicate P>
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary)
 {
-    return detail::render_in<D>(node, vocabulary);
+    return detail::render_in_vocabulary<D>(node, vocabulary);
 }
 
 /// Renders @p node as plain text, writing symbols as @p vocabulary says.

@@ -81,17 +81,18 @@ the `Trace` it writes into. Its constructor takes one by reference and keeps
 only a pointer:
 
 ```cpp
-explicit constexpr RecordingSink(Trace<Rep>& trace) noexcept: _trace { &trace }
-{
-    _trace->marks.clear();
-    _trace->unclaimed.clear();
-}
+explicit constexpr RecordingSink(Trace<Rep>& trace, V vocabulary = V {}) noexcept:
+    _trace { &trace },
+    _vocabulary { vocabulary }
 ```
 
 and that pointer, `Trace<Rep>* _trace`, is the whole of `RecordingSink`'s
-storage (`trace.hpp`). `RecordingSink` is a **handle**, not an owner: the
-caller owns the `Trace` and it must outlive the walk. One pointer copies for
-free at every node; a `Trace` copied at every node would not.
+storage when no vocabulary is given (`trace.hpp`): the default vocabulary is
+empty and takes no space. `RecordingSink` is a **handle** to the `Trace`, not
+its owner: the caller owns the `Trace` and it must outlive the walk. One
+pointer copies for free at every node; a `Trace` copied at every node would
+not. A jurisdiction's vocabulary, when one is given, is copied with the sink
+-- a few views of string literals, see [Whose symbols](#whose-symbols).
 
 There is a second consequence, and it is not optional the way "keep it
 small" is a matter of degree: **a sink must not throw.** Every
@@ -468,8 +469,9 @@ constraint, a variant selection and a replaced variant refer to their
 operands by number -- and so reaches the vocabulary through the steps beneath
 it.
 
-The sink holds the vocabulary by pointer, as it holds the `Trace`, so the
-vocabulary must outlive the evaluation; a temporary one does not compile.
+The sink keeps its own copy of the vocabulary -- plain data holding views of
+string literals -- so, unlike the `Trace`, the vocabulary need not outlive
+the evaluation, and a temporary one is fine.
 
 ## The bound is a required argument, not a default
 

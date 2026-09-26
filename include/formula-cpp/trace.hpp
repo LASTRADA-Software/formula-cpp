@@ -1137,11 +1137,16 @@ namespace detail
 /// consumer sharing one `Trace` with an evaluation already under way can, and
 /// no runtime guard is levied on every walk to prevent it.
 ///
-/// **A vocabulary, when one is given, is held the same way** -- by pointer, so
-/// it must outlive the evaluation as the `Trace` must -- and every step naming
-/// a quantity writes its symbol through it (`Step::symbol`). A temporary
-/// vocabulary is refused at compile time rather than left to dangle. The
-/// symbol is written *here*, during evaluation: rendering the page in a
+/// **A vocabulary, when one is given, is held by value**, and every step
+/// naming a quantity writes its symbol through it (`Step::symbol`). By value
+/// and not, like the `Trace`, by pointer: a vocabulary is plain data holding
+/// views of static storage, so a copy has no lifetime to outlive, where a
+/// pointer to one declared in a function that returned would dangle. The
+/// default vocabulary is empty and takes no space (`FORMULA_NO_UNIQUE_ADDRESS`),
+/// so a sink that names none is the one pointer it always was; a scoped one
+/// adds one `std::string_view` per renamed quantity to every copy the evaluator
+/// makes.
+/// The symbol is written *here*, during evaluation: rendering the page in a
 /// vocabulary does not make the trace agree with it, so give the sink the one
 /// `render()` and `document()` are given.
 ///
@@ -1152,32 +1157,18 @@ class RecordingSink
   public:
     /// @p trace must outlive the evaluation. Begins a new walk: see the class
     /// comment for why this clears `trace.marks`, `trace.unclaimed`, and
-    /// `trace.branchStack`. Writes every symbol as @p vocabulary says, which
-    /// must outlive the evaluation too; left out, it is the default
-    /// vocabulary, which renames nothing and is static.
+    /// `trace.branchStack`. Writes every symbol as @p vocabulary says, and
+    /// keeps a copy of it; left out, it is the default vocabulary, which
+    /// renames nothing.
     ///
     /// @pre no other `RecordingSink` is part-way through a walk of @p trace.
-    explicit constexpr RecordingSink(Trace<Rep>& trace, V const& vocabulary = detail::defaultVocabulary) noexcept:
+    explicit constexpr RecordingSink(Trace<Rep>& trace, V vocabulary = V {}) noexcept:
         _trace { &trace },
-        _vocabulary { &vocabulary }
+        _vocabulary { vocabulary }
     {
         _trace->marks.clear();
         _trace->unclaimed.clear();
         _trace->branchStack.clear();
-    }
-
-    /// Refused: the sink would keep a pointer to a vocabulary that dies at the
-    /// end of the statement constructing it. A member rather than `= delete`,
-    /// so that the refusal is in this library's words; it is instantiated,
-    /// and so refuses, only when overload resolution chooses it.
-    RecordingSink(Trace<Rep>&, V const&&) noexcept:
-        _trace {},
-        _vocabulary {}
-    {
-        static_assert(!std::is_same_v<V, V>,
-                      "formula: a RecordingSink keeps a pointer to its vocabulary, and this one is a "
-                      "temporary that dies at the end of the statement. Declare the vocabulary as a "
-                      "variable that outlives the evaluation, as the Trace must");
     }
 
     /// Remembers how much of the arena predates this node, so `produced` can
@@ -1260,7 +1251,7 @@ class RecordingSink
             step.unit = N::unit;
 
         if constexpr (namesQuantity)
-            step.symbol = symbol_of<typename N::quantity>(*_vocabulary);
+            step.symbol = symbol_of<typename N::quantity>(_vocabulary);
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             step.citation = node.citation;
         // What an overlay cited for the value it fixed, the quantity it
@@ -1456,12 +1447,12 @@ class RecordingSink
 
   private:
     Trace<Rep>* _trace;
-    V const* _vocabulary;
+    FORMULA_NO_UNIQUE_ADDRESS V _vocabulary;
 };
 
 /// `RecordingSink { trace, vocabulary }` records in @p vocabulary's terms.
 template <typename Rep, Vocabulary V>
-RecordingSink(Trace<Rep>&, V const&) -> RecordingSink<Rep, V>;
+RecordingSink(Trace<Rep>&, V) -> RecordingSink<Rep, V>;
 
 /// An outcome together with the derivation that produced it.
 template <Described Result, typename Rep = Rational>

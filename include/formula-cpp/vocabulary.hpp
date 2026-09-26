@@ -40,7 +40,8 @@
 /// not make the trace agree with it.
 ///
 /// **A renamed symbol is written verbatim**, exactly as a `Describe` symbol
-/// is: beyond refusing an empty one, nothing checks what it says, so a symbol
+/// is: beyond refusing an empty one, one that is all whitespace and one
+/// holding a NUL (see `renames`), nothing checks what it says, so a symbol
 /// containing Markdown or LaTeX
 /// markup, or text that reads like a trace annotation, reaches the page and
 /// the trace as written. The vocabulary is the author's data, like the
@@ -60,6 +61,16 @@
 #include <tuple>
 #include <type_traits>
 
+/// `[[no_unique_address]]`, spelled for the compiler reading it: cl and
+/// clang-cl ignore the standard spelling under the MSVC ABI, and honour
+/// `[[msvc::no_unique_address]]` instead. Lets a member of an empty type --
+/// `DefaultVocabulary` held by `RecordingSink` (`trace.hpp`) -- take no space.
+#if defined(_MSC_VER)
+    #define FORMULA_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+    #define FORMULA_NO_UNIQUE_ADDRESS [[no_unique_address]]
+#endif
+
 namespace formula
 {
 
@@ -75,13 +86,32 @@ class Renames;
 /// symbol has. A `std::string_view` parameter would accept a view of a
 /// `std::string` that dies at the end of the statement. Taken as an array
 /// reference by an immediate function, the argument has to be usable in a
-/// constant expression, which a string literal is and a local buffer is not.
+/// constant expression, which a string literal is and a buffer on the stack
+/// is not. A buffer that is not `const` -- whose text could change after a
+/// trace kept a view of it -- is refused by the overload below, in this
+/// library's words, whatever its storage. Without that overload it would
+/// still be refused, because this one reads the characters and a constant
+/// expression cannot read an object that is not `const`, but in the
+/// compiler's words (measured on cl 19.51 by deleting the overload).
 ///
-/// **An empty symbol is refused**: a formula rendered with a blank where a
-/// quantity stands cannot be read. Nothing else about the text is checked --
-/// see the file comment.
+/// **Refused, because a formula rendered with it cannot be read:**
+///
+///  - an empty symbol, `renames<Q>("")`;
+///  - a symbol holding a NUL before its end, `renames<Q>("\0")`, or an array
+///    with no terminating NUL -- see
+///    `detail::renames_symbol_must_be_a_string_with_no_embedded_nul`;
+///  - a symbol that is all whitespace -- see
+///    `detail::renames_symbol_must_not_be_all_whitespace`.
+///
+/// Nothing else about the text is checked -- see the file comment.
 template <Described Q, std::size_t N>
 [[nodiscard]] consteval Renames<Q> renames(char const (&symbol)[N]) noexcept;
+
+/// Refuses a symbol in a buffer that is not `const`. A better match than the
+/// overload above for any such array, so it is the one chosen, and it never
+/// compiles.
+template <Described Q, std::size_t N>
+[[nodiscard]] consteval Renames<Q> renames(char (&symbol)[N]) noexcept;
 
 /// One entry of a vocabulary: quantity @p Q is written as `symbol()`.
 ///
@@ -115,15 +145,72 @@ class Renames
     std::string_view _symbol;
 };
 
+namespace detail
+{
+    /// Called only from `renames`, when its symbol is not a string: a NUL
+    /// before the end, or none at the end. Deliberately not `constexpr`, so
+    /// that the immediate call cannot complete and the compiler names this
+    /// function in refusing it: its name is the refusal. The shape
+    /// `published_positions_must_be_distinct_and_below_the_published_count`
+    /// (`method.hpp`) has, for the same reason -- the text is a value, not a
+    /// type, so no `static_assert` can state it. Never called at run time.
+    inline void renames_symbol_must_be_a_string_with_no_embedded_nul() noexcept {}
+
+    /// Called only from `renames`, when every character of its symbol is
+    /// whitespace: a blank where the quantity stands, as an empty symbol
+    /// would leave. See the function above for why a name.
+    inline void renames_symbol_must_not_be_all_whitespace() noexcept {}
+
+    /// True for the characters `std::isspace` answers true for in the "C"
+    /// locale, which is not `constexpr`.
+    [[nodiscard]] constexpr bool is_blank(char character) noexcept
+    {
+        return character == ' ' || character == '\t' || character == '\n' || character == '\r' || character == '\v'
+               || character == '\f';
+    }
+
+    /// A `false` that depends on @p N, for an assertion that must fire only
+    /// when its template is instantiated.
+    template <std::size_t N>
+    inline constexpr bool dependentFalse = false;
+} // namespace detail
+
 template <Described Q, std::size_t N>
 [[nodiscard]] consteval Renames<Q> renames(char const (&symbol)[N]) noexcept
 {
     // The length is in the argument's type, so this is a type-level fact and
-    // an ordinary assertion can state it.
+    // an ordinary assertion can state it. The characters are values, checked
+    // below.
     static_assert(N > 1,
                   "formula: renames<Q>(\"\") gives the quantity an empty symbol, which would leave a blank "
                   "where it stands in every rendered formula and trace line");
+    // Gated on the assertion above, so that an empty symbol -- which has no
+    // characters, and so is vacuously all whitespace -- is refused once, as
+    // empty, and not a second time here.
+    if constexpr (N > 1)
+    {
+        bool blank = true;
+        for (std::size_t index = 0; index + 1 < N; ++index)
+        {
+            if (symbol[index] == '\0')
+                detail::renames_symbol_must_be_a_string_with_no_embedded_nul();
+            blank = blank && detail::is_blank(symbol[index]);
+        }
+        if (symbol[N - 1] != '\0')
+            detail::renames_symbol_must_be_a_string_with_no_embedded_nul();
+        if (blank)
+            detail::renames_symbol_must_not_be_all_whitespace();
+    }
     return Renames<Q> { std::string_view { symbol, N - 1 } };
+}
+
+template <Described Q, std::size_t N>
+[[nodiscard]] consteval Renames<Q> renames(char (&)[N]) noexcept
+{
+    static_assert(detail::dependentFalse<N>,
+                  "formula: renames<Q> was given a buffer that is not const. A trace keeps a view of the symbol "
+                  "for as long as it lives, so the symbol must be a string literal nothing can overwrite");
+    return renames<Q>("?");
 }
 
 namespace detail
@@ -255,10 +342,6 @@ template <typename... Es>
 
 namespace detail
 {
-    /// The instance a `RecordingSink` built without a vocabulary points at
-    /// (`trace.hpp`): static, so the pointer never dangles.
-    inline constexpr DefaultVocabulary defaultVocabulary {};
-
     template <typename V>
     inline constexpr bool isVocabulary = false;
 
