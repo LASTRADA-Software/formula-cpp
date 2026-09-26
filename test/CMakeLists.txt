@@ -75,6 +75,7 @@ add_executable(formula-cpp-tests
     curve_tests.cpp
     statistics_tests.cpp
     statistics_cross_tu_b.cpp
+    rejection_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -742,6 +743,37 @@ formula_add_negative_test(sample_range_of_single_value
     "formula: a sample statistic needs a sample (a series or observations), not a single value"
     REJECT "no matching" "this expression is a series, not a single value"
            "this result quantity does not measure the dimension this expression computes")
+# Outlier rejection. Each refusal is gated so that one mistake draws one
+# message: the positive counts, the limit's dimension and the sample's
+# placeholders are asked only once the bounds are in order.
+formula_add_negative_test(rejection_bounds_swapped
+    "formula: without_outliers takes AtMost<k> and then KeepAtLeast<m>, in that order"
+    REJECT "declares AtMost<0>" "declares KeepAtLeast<0>" "does not measure what its criterion compares" "no matching")
+formula_add_negative_test(rejection_bounds_swapped_zero
+    "formula: without_outliers takes AtMost<k> and then KeepAtLeast<m>, in that order"
+    REJECT "declares AtMost<0>" "declares KeepAtLeast<0>")
+formula_add_negative_test(rejection_bound_not_a_bound
+    "formula: without_outliers takes AtMost<k> and then KeepAtLeast<m>, in that order"
+    REJECT "must be a class or namespace" "is not a member of" "prior to '::'" "no matching")
+formula_add_negative_test(rejection_at_most_zero
+    "formula: without_outliers declares AtMost<0>"
+    REJECT "in that order")
+formula_add_negative_test(rejection_keep_at_least_zero
+    "formula: without_outliers declares KeepAtLeast<0>"
+    REJECT "in that order")
+formula_add_negative_test(rejection_limit_dimension_mismatch
+    "formula: this rejection's limit does not measure what its criterion compares"
+    REJECT "pass_mean whose quantity")
+formula_add_negative_test(pass_mean_outside_rejection
+    "formula: pass_mean and pass_count are meaningful only inside the limit expression of without_outliers"
+    REJECT "provides no value for this quantity")
+formula_add_negative_test(pass_mean_in_rejected_sample
+    "formula: the sample this rejection reads mentions pass_mean or pass_count"
+    REJECT "meaningful only inside")
+formula_add_negative_test(rejection_of_single_value
+    "formula: without_outliers rejects determinations from a sample"
+    REJECT "no matching" "a sample statistic needs a sample")
+
 # Phase 12's series-quantity refusal, reused unchanged for a statistic.
 formula_add_negative_test(sample_mean_overlay_constant_on_sample
     "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"

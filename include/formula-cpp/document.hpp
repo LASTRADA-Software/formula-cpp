@@ -19,6 +19,7 @@
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/series.hpp>
@@ -120,6 +121,33 @@ struct SymbolEntry
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
 };
 
+/// A rejection of outliers the formula holds, as its page states it: the
+/// criterion, its limit rendered in the page's dialect and vocabulary, the
+/// four parameters that shape the result, and the author's verdict and
+/// citation.
+struct RejectionEntry
+{
+    /// Which statistic the criterion compares.
+    CriterionKind criterion {};
+    /// The limit expression, rendered as the formula is.
+    std::string limit {};
+    /// How many candidates one pass rejects.
+    PerPass perPass {};
+    /// What becomes of a determination exactly on the limit.
+    OnLimit onLimit {};
+    /// k: the most rejected in total.
+    std::size_t atMost {};
+    /// m: the fewest that may remain.
+    std::size_t keepAtLeast {};
+    /// What the author declares when the bound is reached.
+    Verdict verdict {};
+    /// Where the rule comes from.
+    Citation citation {};
+
+    /// Memberwise equality.
+    [[nodiscard]] bool operator==(RejectionEntry const&) const = default;
+};
+
 /// Everything a documentation page needs from a formula: the formula itself
 /// rendered to text, what it cites, and the symbol table for what it reads.
 struct Documentation
@@ -143,6 +171,10 @@ struct Documentation
     /// the base standard's page for a formula that is not the base
     /// standard's. A cited replacement's citation also joins `citations`.
     std::vector<Citation> replacedBy {};
+    /// One entry per rejection of outliers the formula holds, in the order
+    /// met (`RejectionEntry`). A cited rejection's citation also joins
+    /// `citations`.
+    std::vector<RejectionEntry> rejections {};
 };
 
 namespace detail
@@ -357,6 +389,15 @@ namespace detail
 
     template <Vocabulary V, SampleSource S>
     void collect(Walk<V>& walk, SampleVarianceNode<S> const& node);
+
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, PassMeanNode<Q> const& node);
+
+    template <Vocabulary V>
+    void collect(Walk<V>& walk, PassCountNode const& node);
+
+    template <Vocabulary V, PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    void collect(Walk<V>& walk, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node);
 
     template <Vocabulary V, SampleSource S>
     void collect(Walk<V>& walk, SampleRangeNode<S> const& node);
@@ -815,6 +856,40 @@ namespace detail
     void collect(Walk<V>& walk, SampleVarianceNode<S> const& node)
     {
         collect(walk, node.sample);
+    }
+
+    /// A pass placeholder names no quantity of its own: it is a value the
+    /// rejection computed, not one measured.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>&, PassMeanNode<Q> const&)
+    {
+    }
+
+    template <Vocabulary V>
+    void collect(Walk<V>&, PassCountNode const&)
+    {
+    }
+
+    /// A rejection lists its sample's row and whatever its limit reads, and
+    /// states itself: criterion, limit, the four parameters, verdict and
+    /// citation (`RejectionEntry`).
+    template <Vocabulary V, PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    void collect(Walk<V>& walk, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node)
+    {
+        Citation const& cited = node.citation;
+        if (!cited.title.empty() || !cited.reference.empty() || !cited.section.empty() || !cited.equation.empty())
+            walk.documentation.citations.push_back(cited);
+        collect(walk, node.sample);
+        collect(walk, node.criterion.limit);
+        walk.documentation.rejections.push_back(
+            RejectionEntry { .criterion = Criterion::kind,
+                             .limit = render_in(walk.dialect, node.criterion.limit, walk.vocabulary),
+                             .perPass = P,
+                             .onLimit = L,
+                             .atMost = detail::bound_value<AtMostT>,
+                             .keepAtLeast = detail::bound_value<KeepAtLeastT>,
+                             .verdict = node.verdict,
+                             .citation = node.citation });
     }
 
     template <Vocabulary V, SampleSource S>

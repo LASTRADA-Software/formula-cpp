@@ -21,8 +21,8 @@ struct Width: formula::Quantity<Width, "w", "specimen width", formula::unit::Mil
 
 int main()
 {
-    auto const outcome = formula::checked_evaluate<ResultA>(
-        formula::var<ResultA> + formula::precision_level<ResultA>,
-        formula::environment(formula::Measured<ResultA> { formula::Rational { 40 } }));
+    auto const outcome =
+        formula::checked_evaluate<ResultA>(formula::var<ResultA> + formula::precision_level<ResultA>,
+                                           formula::environment(formula::Measured<ResultA> { formula::Rational { 40 } }));
     return outcome.has_value() ? 0 : 1;
 }

@@ -47,6 +47,7 @@
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -714,6 +715,12 @@ template <Dialect D, CurveExpression C, Vocabulary V>
 /// The `Constraint` counterpart of the overload above.
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary);
+
+/// The counterpart for a sample transformer -- a rejection of outliers
+/// (`rejection.hpp`) -- which is neither a `Node` nor a series.
+template <Dialect D, typename R, Vocabulary V>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node, V const& vocabulary);
 
 namespace detail
 {
@@ -1500,6 +1507,73 @@ template <Dialect D, Described Q, Vocabulary V>
         return "level";
 }
 
+/// The current pass's mean renders as words, `pass mean`, and in LaTeX as
+/// `\bar{x}_{\text{pass}}`: a symbol could collide with an author's own
+/// quantity's (T11).
+template <Dialect D, Described Q, Vocabulary V>
+[[nodiscard]] std::string render_node(PassMeanNode<Q> const&, V const&)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\bar{x}_{\\text{pass}}";
+    else
+        return "pass mean";
+}
+
+/// The current pass's size renders as `pass n`, and in LaTeX as
+/// `n_{\text{pass}}`.
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(PassCountNode const&, V const&)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "n_{\\text{pass}}";
+    else
+        return "pass n";
+}
+
+/// A rejection renders with every parameter that shapes its result stated:
+/// `without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most
+/// extreme per pass; keep on limit; at most 2; keep at least 4)`. A rendering
+/// that left one out would state half the rule. The deviation is `abs(...)`,
+/// never bars, outside LaTeX: a bar inside a Markdown table cell ends the cell
+/// (T11); the Markdown guard checks it. In LaTeX the parentheses are plain,
+/// not `\left(`...`\right)`: TeX never breaks a line inside that pair, and
+/// the `\allowbreak` after each `;` is what lets so long a formula wrap.
+template <Dialect D,
+          PerPass P,
+          OnLimit L,
+          typename AtMostT,
+          typename KeepAtLeastT,
+          typename S,
+          typename Criterion,
+          Vocabulary V>
+[[nodiscard]] std::string render_node(RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node,
+                                      V const& vocabulary)
+{
+    constexpr bool latex = D == Dialect::LaTeX;
+    constexpr bool inStddevs = Criterion::kind == CriterionKind::DeviationInStddevs;
+    std::string const deviation =
+        latex ? std::string { "\\left|x - \\bar{x}_{\\text{pass}}\\right|" } : std::string { "abs(x - pass mean)" };
+    std::string const statistic = inStddevs ? (latex ? "\\frac{" + deviation + "}{s}" : deviation + " / s") : deviation;
+    std::string const comparison = L == OnLimit::Keep ? " > " : (latex ? " \\geq " : " >= ");
+    std::string const between = latex ? ";\\allowbreak " : "; ";
+    auto const inWords = [](std::string_view phrase) {
+        return latex ? "\\text{" + std::string { phrase } + "}" : std::string { phrase };
+    };
+    std::string const perPass = inWords(P == PerPass::MostExtreme ? "most extreme per pass" : "every exceeding per pass");
+    std::string const onLimit = inWords(L == OnLimit::Keep ? "keep on limit" : "reject on limit");
+    std::string const atMost = latex ? "\\text{at most }" + std::to_string(detail::bound_value<AtMostT>)
+                                     : "at most " + std::to_string(detail::bound_value<AtMostT>);
+    std::string const keepAtLeast = latex ? "\\text{keep at least }" + std::to_string(detail::bound_value<KeepAtLeastT>)
+                                          : "keep at least " + std::to_string(detail::bound_value<KeepAtLeastT>);
+    std::string const inside = render<D>(node.sample, vocabulary) + between + statistic + comparison
+                               + render<D>(node.criterion.limit, vocabulary) + between + perPass + between + onLimit
+                               + between + atMost + between + keepAtLeast;
+    if constexpr (latex)
+        return "\\operatorname{without\\ outliers}(" + inside + ")";
+    else
+        return "without outliers(" + inside + ")";
+}
+
 /// A precision limit renders as its symbol applied to its limit expression,
 /// with the level it is evaluated at stated beside it:
 /// `r(0.1 g + 1/50 * level; level = (x_A + x_B) / 2)`, `R(...)` for
@@ -1751,6 +1825,40 @@ template <Dialect D, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render(S const& node, V const& vocabulary)
 {
     return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the sample transformer @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, typename R, Vocabulary V>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the sample transformer @p node as plain text, writing symbols as
+/// @p vocabulary says.
+template <typename R, Vocabulary V>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders the sample transformer @p node as plain text.
+template <typename R>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node)
+{
+    return render<Dialect::Plain>(node, DefaultVocabulary {});
+}
+
+/// Renders the sample transformer @p node in dialect @p D.
+template <Dialect D, typename R>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
 }
 
 /// Renders the series @p node as plain text, writing symbols as

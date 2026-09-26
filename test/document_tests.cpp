@@ -294,10 +294,12 @@ inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
 TEST_CASE("document: a critical value shows its declared sizes, its count and the method's citation", "[document]")
 {
     constexpr auto node = formula::documented(
-        formula::critical_value<DeviationSizes, formula::unit::One>(
-            formula::var<Determinations>,
-            { formula::Rational { 10 }, formula::Rational { 30 }, formula::Rational { 20 }, formula::Rational { 50 },
-              formula::Rational { 40 } }),
+        formula::critical_value<DeviationSizes, formula::unit::One>(formula::var<Determinations>,
+                                                                    { formula::Rational { 10 },
+                                                                      formula::Rational { 30 },
+                                                                      formula::Rational { 20 },
+                                                                      formula::Rational { 50 },
+                                                                      formula::Rational { 40 } }),
         formula::Citation { .title = "Deviation limits", .reference = "Example Standard 7:2021", .section = "B.2" });
     formula::Documentation const documentation = formula::document(node);
 

@@ -58,10 +58,13 @@ struct Determinations: formula::Quantity<Determinations, "n_d", "number of deter
 inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
 
 /// The deviation table's critical value, read at the number of determinations.
-inline constexpr auto criticalLimit = formula::critical_value<DeviationSizes, formula::unit::One>(
-    formula::var<Determinations>,
-    { formula::Rational { 10 }, formula::Rational { 30 }, formula::Rational { 20 }, formula::Rational { 50 },
-      formula::Rational { 40 } });
+inline constexpr auto criticalLimit =
+    formula::critical_value<DeviationSizes, formula::unit::One>(formula::var<Determinations>,
+                                                                { formula::Rational { 10 },
+                                                                  formula::Rational { 30 },
+                                                                  formula::Rational { 20 },
+                                                                  formula::Rational { 50 },
+                                                                  formula::Rational { 40 } });
 
 /// The root of the variance, to 0.01 g -- the spelling every dialect below pins.
 inline constexpr auto roundedSpread =
@@ -207,7 +210,8 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     CHECK(formula::render<Dialect::Markdown>(citedDiameter) == "`d`");                                  // DocumentedNode
     CHECK(formula::render<Dialect::Markdown>(roundedSpread) == "round(sqrt(`s2`), to 2 dp of g)");      // RoundedRootNode
     CHECK(formula::render<Dialect::Markdown>(criticalLimit) == "critical(`n_d`, at 3, 4, 5, 6, 8)"); // SampleSizeLookupNode
-    CHECK(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>)) == "abs(`d` - `d`)"); // AbsoluteValueNode
+    CHECK(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>))
+          == "abs(`d` - `d`)"); // AbsoluteValueNode
     CHECK(formula::render<Dialect::Markdown>(precisionOfDiameter)
           == "r(1/50 * level; level = (`d` + `d`) / 2)"); // PrecisionLimitNode, PrecisionLevelNode
 }
@@ -1542,7 +1546,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSpread));                         // RoundedRootNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(criticalLimit));                         // SampleSizeLookupNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>))); // AbsoluteValueNode
-    isInertInMarkdown(formula::render<Dialect::Markdown>(precisionOfDiameter));                   // PrecisionLimitNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(precisionOfDiameter));                         // PrecisionLimitNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint

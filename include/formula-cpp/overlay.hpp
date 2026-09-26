@@ -149,6 +149,7 @@
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -1928,6 +1929,66 @@ namespace detail
         }
     };
 
+    /// The pass placeholders name no quantity; carried over unchanged.
+    template <typename Sub, Described Q>
+    struct ConstantRewrite<Sub, PassMeanNode<Q>>: ConstantRewriteLeaf<Sub, PassMeanNode<Q>>
+    {
+    };
+
+    template <typename Sub>
+    struct ConstantRewrite<Sub, PassCountNode>: ConstantRewriteLeaf<Sub, PassCountNode>
+    {
+    };
+
+    /// A criterion of the same kind over @p NewLimit.
+    template <typename Criterion, typename NewLimit>
+    struct RebindCriterion;
+
+    template <Node Limit, typename NewLimit>
+    struct RebindCriterion<DeviationFromMean<Limit>, NewLimit>
+    {
+        using type = DeviationFromMean<NewLimit>;
+    };
+
+    template <Node Limit, typename NewLimit>
+    struct RebindCriterion<DeviationInStddevs<Limit>, NewLimit>
+    {
+        using type = DeviationInStddevs<NewLimit>;
+    };
+
+    /// A rejection, rebuilt around its rewritten sample and limit, with its
+    /// own bounds, verdict and citation: a jurisdiction's tolerance reaches
+    /// the limit (`with_constant<Tolerance>`, §16.7), and a substitution for
+    /// the sample's quantity is refused by the result check, as it is for any
+    /// series (phase 12's message).
+    template <typename Sub, PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    struct ConstantRewrite<Sub, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>
+    {
+        /// How the sample is rewritten.
+        using SampleRewrite = ConstantRewriteOf<Sub, S>;
+        /// How the limit is rewritten.
+        using LimitRewrite = ConstantRewriteOf<Sub, std::remove_cvref_t<decltype(std::declval<Criterion>().limit)>>;
+        /// The criterion, over the rewritten limit.
+        using RewrittenCriterion = typename RebindCriterion<Criterion, typename LimitRewrite::type>::type;
+
+        /// Whether both are kinds this header knows, all the way down.
+        static constexpr bool known = SampleRewrite::known && LimitRewrite::known;
+        /// Whether either uses `Q`.
+        static constexpr bool mentions = SampleRewrite::mentions || LimitRewrite::mentions;
+        /// The same rejection, around the rewritten sample and limit.
+        using type = RejectionNode<P, L, AtMostT, KeepAtLeastT, typename SampleRewrite::type, RewrittenCriterion>;
+
+        /// The rejection, rebuilt.
+        [[nodiscard]] static constexpr type apply(RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { SampleRewrite::apply(node.sample, overriding),
+                          RewrittenCriterion { LimitRewrite::apply(node.criterion.limit, overriding) },
+                          node.verdict,
+                          node.citation };
+        }
+    };
+
     template <typename Sub, SampleSource S>
     struct ConstantRewrite<Sub, SampleCountNode<S>>:
         ConstantRewriteSample<Sub, S, SampleCountNode<typename ConstantRewriteOf<Sub, S>::type>>
@@ -2325,6 +2386,13 @@ namespace detail
     template <SampleSource S>
     struct SubstitutedIn<SampleCountNode<S>>: SubstitutedInOperand<S>
     {
+    };
+
+    template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    struct SubstitutedIn<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>
+    {
+        /// Whatever the sample and the limit substitute.
+        using type = SubstitutedInAll<S, std::remove_cvref_t<decltype(std::declval<Criterion>().limit)>>;
     };
 
     template <SampleSource S>

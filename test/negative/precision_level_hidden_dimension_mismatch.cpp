@@ -40,7 +40,8 @@ constexpr formula::Evaluated<Rep> checked_evaluate_si(Passthrough<Operand> const
 
 int main()
 {
-    constexpr auto hidden = consumer::Passthrough<formula::PrecisionLevelNode<Width>> { {}, formula::precision_level<Width> };
+    constexpr auto hidden =
+        consumer::Passthrough<formula::PrecisionLevelNode<Width>> { {}, formula::precision_level<Width> };
     constexpr auto broken = formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::var<ResultA>, hidden);
     auto const outcome = formula::checked_evaluate<ResultA>(
         broken, formula::environment(formula::Measured<ResultA> { formula::Rational { 40 } }));

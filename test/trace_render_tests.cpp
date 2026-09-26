@@ -2375,7 +2375,9 @@ inline constexpr formula::Unit Enormous { .dimension = formula::dim::Scalar,
                                           .decimals = 0 };
 
 /// The critical value at @p countExpression, traced.
-template <formula::Unit ResultUnit = unit::One, formula::SampleSizeTable Sizes = DeviationSizes, typename Count,
+template <formula::Unit ResultUnit = unit::One,
+          formula::SampleSizeTable Sizes = DeviationSizes,
+          typename Count,
           typename Env>
 [[nodiscard]] formula::Trace<> criticalTraceOf(Count countExpression, Env const& countInputs)
 {
@@ -2384,10 +2386,13 @@ template <formula::Unit ResultUnit = unit::One, formula::SampleSizeTable Sizes =
     if constexpr (Sizes.size() == 5)
         (void) formula::checked_evaluate_si<formula::Rational>(
             formula::critical_value<Sizes, ResultUnit>(countExpression,
-                                                       { formula::Rational { 10 }, formula::Rational { 30 },
-                                                         formula::Rational { 20 }, formula::Rational { 50 },
+                                                       { formula::Rational { 10 },
+                                                         formula::Rational { 30 },
+                                                         formula::Rational { 20 },
+                                                         formula::Rational { 50 },
                                                          formula::Rational { 40 } }),
-            countInputs, sink);
+            countInputs,
+            sink);
     else
         (void) formula::checked_evaluate_si<formula::Rational>(
             formula::critical_value<Sizes, ResultUnit>(countExpression, {}), countInputs, sink);
@@ -2450,7 +2455,8 @@ TEST_CASE("a derivation of a critical value says whose failure it carries", "[tr
     // The count itself fails, dividing by zero: the lookup relays it and says
     // so, never "no row".
     std::string const relayed = formula::render_trace(
-        criticalTraceOf(var<Determinations> / (var<Determinations> - var<Determinations>), sixSpecimens), { .maxSteps = 10 });
+        criticalTraceOf(var<Determinations> / (var<Determinations> - var<Determinations>), sixSpecimens),
+        { .maxSteps = 10 });
     CHECK(relayed.ends_with(" [carried up from #5]\n"));
 
     // The row is found, and converting its value out of the table's unit

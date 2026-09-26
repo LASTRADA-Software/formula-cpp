@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression
+// EXPECT: formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the
+// dimension of the level expression
 //
 // The same mistake as `precision_level_dimension_mismatch.cpp`, on the route
 // it cannot reach: the node aggregate-initialised directly, with no call to
@@ -24,9 +25,8 @@ namespace
 {
 inline constexpr auto level = formula::var<ResultA>;
 inline constexpr auto limit = formula::Rational { 1, 50 } * formula::precision_level<Width>;
-inline constexpr formula::PrecisionLimitNode<formula::PrecisionKind::Repeatability, decltype(level), decltype(limit)> broken {
-    {}, level, limit
-};
+inline constexpr formula::PrecisionLimitNode<formula::PrecisionKind::Repeatability, decltype(level), decltype(limit)>
+    broken { {}, level, limit };
 } // namespace
 
 int main()

@@ -590,6 +590,26 @@ namespace detail
     {
     };
 
+    template <SampleSource S>
+    struct LevelChildren<SampleCountNode<S>>: LevelParent<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct LevelChildren<SampleMeanNode<S>>: LevelParent<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct LevelChildren<SampleVarianceNode<S>>: LevelParent<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct LevelChildren<SampleRangeNode<S>>: LevelParent<S>
+    {
+    };
+
     // Phase 14's snap and curves: a snap reads its operand, a curve its two
     // series, a splice its two curves, an interpolation its curve and the
     // point it is read at. A declared domain is a table of points.
@@ -626,26 +646,6 @@ namespace detail
 
     template <Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
     struct LevelChildren<BinnedNode<KeyUnit, Classes, Obs>>: LevelParent<Obs>
-    {
-    };
-
-    template <SampleSource S>
-    struct LevelChildren<SampleCountNode<S>>: LevelParent<S>
-    {
-    };
-
-    template <SampleSource S>
-    struct LevelChildren<SampleMeanNode<S>>: LevelParent<S>
-    {
-    };
-
-    template <SampleSource S>
-    struct LevelChildren<SampleVarianceNode<S>>: LevelParent<S>
-    {
-    };
-
-    template <SampleSource S>
-    struct LevelChildren<SampleRangeNode<S>>: LevelParent<S>
     {
     };
 

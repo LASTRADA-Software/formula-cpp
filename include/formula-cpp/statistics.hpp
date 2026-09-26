@@ -44,18 +44,36 @@
 namespace formula
 {
 
+namespace detail
+{
+    /// Whether @p T is a sample transformer -- a source of determinations that
+    /// is neither a series nor a `Node`: a rejection of outliers
+    /// (`RejectionNode`, `rejection.hpp`), which specialises this. Its
+    /// determinations are evaluated by a `checked_evaluate_sample_si` found
+    /// by argument-dependent lookup.
+    template <typename T>
+    inline constexpr bool is_sample_transformer = false;
+} // namespace detail
+
 /// A source of repeated determinations of one quantity: a phase 12 series,
-/// or any expression over one. Its dimension is `S::dimension`, and how many
-/// determinations it can hold is `detail::sample_capacity<S>` -- `N` for a
-/// series.
+/// any expression over one, or a rejection of outliers from one
+/// (`without_outliers`, `rejection.hpp`). Its dimension is `S::dimension`,
+/// and how many determinations it can hold is `detail::sample_capacity<S>`
+/// -- `N` for a series.
 template <typename S>
-concept SampleSource = SeriesNode<S>;
+concept SampleSource = SeriesNode<S> || detail::is_sample_transformer<std::remove_cvref_t<S>>;
 
 namespace detail
 {
-    /// How many determinations @p S can hold: its length, for a series.
+    /// How many determinations @p S can hold: its length, for a series; its
+    /// declared capacity, for a transformer.
     template <SampleSource S>
-    inline constexpr std::size_t sample_capacity = std::remove_cvref_t<S>::length;
+    inline constexpr std::size_t sample_capacity = [] {
+        if constexpr (requires { std::remove_cvref_t<S>::capacity; })
+            return std::size_t { std::remove_cvref_t<S>::capacity };
+        else
+            return std::size_t { std::remove_cvref_t<S>::length };
+    }();
 
     /// A sample, evaluated: its present values in the coherent SI unit, each
     /// one's zero-based position in the sample as entered, and how many there
@@ -85,14 +103,13 @@ using EvaluatedSample = std::expected<std::optional<detail::SampleValue<Rep, C>>
 
 namespace detail
 {
-    /// Evaluates the sample @p node: `dispatch_series`, plus T2's strict
-    /// absence -- one absent element and the whole sample is absent. A
-    /// failure keeps its position only when that is one of the sample's own
-    /// determinations (`relayed_failure`).
-    template <typename Rep, SampleSource S, typename Env, typename Sink>
-    [[nodiscard]] constexpr EvaluatedSample<Rep, sample_capacity<S>> dispatch_sample(S const& node,
-                                                                                     Env const& environment,
-                                                                                     Sink sink) noexcept
+    /// `dispatch_sample` for a series: every element, or absent as a whole.
+    /// A failure keeps its position only when that is one of the sample's
+    /// own determinations (`relayed_failure`).
+    template <typename Rep, SeriesNode S, typename Env, typename Sink>
+    [[nodiscard]] constexpr EvaluatedSample<Rep, sample_capacity<S>> dispatch_series_sample(S const& node,
+                                                                                            Env const& environment,
+                                                                                            Sink sink) noexcept
     {
         constexpr std::size_t sampleCapacity = sample_capacity<S>;
         EvaluatedSeries<Rep, sampleCapacity> const evaluated = dispatch_series<Rep>(node, environment, sink);
@@ -109,6 +126,20 @@ namespace detail
             ++sampled.count;
         }
         return std::optional<SampleValue<Rep, sampleCapacity>> { sampled };
+    }
+
+    /// Evaluates the sample @p node: a series through
+    /// `dispatch_series_sample`, a transformer through the
+    /// `checked_evaluate_sample_si` its header declares.
+    template <typename Rep, SampleSource S, typename Env, typename Sink>
+    [[nodiscard]] constexpr EvaluatedSample<Rep, sample_capacity<S>> dispatch_sample(S const& node,
+                                                                                     Env const& environment,
+                                                                                     Sink sink) noexcept
+    {
+        if constexpr (SeriesNode<S>)
+            return dispatch_series_sample<Rep>(node, environment, sink);
+        else
+            return checked_evaluate_sample_si<Rep>(node, environment, sink);
     }
 
     /// Fails to compile when a sample statistic is given a single value.

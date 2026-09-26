@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression
+// EXPECT: formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the
+// dimension of the level expression
 //
 // A level of masses read as a width. Refused where the limit is declared, and
 // the evaluation adds no second message: the placeholder's own dimension
@@ -24,8 +25,9 @@ int main()
     constexpr auto broken = formula::precision_limit<formula::PrecisionKind::Repeatability>(
         (formula::var<ResultA> + formula::var<ResultB>) / formula::Rational { 2 },
         formula::Rational { 1, 50 } * formula::precision_level<Width>);
-    auto const outcome = formula::checked_evaluate<Width>(
-        broken, formula::environment(formula::Measured<ResultA> { formula::Rational { 40 } },
-                                     formula::Measured<ResultB> { formula::Rational { 41 } }));
+    auto const outcome =
+        formula::checked_evaluate<Width>(broken,
+                                         formula::environment(formula::Measured<ResultA> { formula::Rational { 40 } },
+                                                              formula::Measured<ResultB> { formula::Rational { 41 } }));
     return outcome.has_value() ? 0 : 1;
 }

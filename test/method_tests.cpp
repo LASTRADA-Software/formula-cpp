@@ -381,9 +381,8 @@ inline constexpr auto pairMean = (var<FirstMass> + var<SecondMass>) / ratio(2);
 
 /// Fixture P's check, its coefficient an input: r(level) = 0.1 g + k_r * level.
 inline constexpr auto pairAgreement = formula::constraint(
-    formula::abs(var<FirstMass> - var<SecondMass>)
-        <= formula::precision_limit<formula::PrecisionKind::Repeatability>(
-            pairMean, formula::constant<unit::Gram>(ratio(1, 10)) + var<LevelCoefficient> * formula::precision_level<FirstMass>),
+    formula::abs(var<FirstMass> - var<SecondMass>) <= formula::precision_limit<formula::PrecisionKind::Repeatability>(
+        pairMean, formula::constant<unit::Gram>(ratio(1, 10)) + var<LevelCoefficient> * formula::precision_level<FirstMass>),
     formula::Verdict { "repeat the determinations" });
 
 inline constexpr auto pairMethod = formula::method(
@@ -421,9 +420,10 @@ TEST_CASE("with_constant reaches a coefficient inside a precision limit's limit 
     // so this compiles only if the rewrite reached inside the limit; and the
     // verdict flips from satisfied (1/50, an input nobody reads now) to
     // violated.
-    constexpr auto overlaid =
-        formula::apply(formula::overlay(formula::with_constant<LevelCoefficient>(
-                           ratio(1, 60), formula::Citation { .reference = "Example Standard 1:2020 NA", .section = "NA.3" })), pairMethod);
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::with_constant<LevelCoefficient>(
+            ratio(1, 60), formula::Citation { .reference = "Example Standard 1:2020 NA", .section = "NA.3" })),
+        pairMethod);
     constexpr auto withoutCoefficient = formula::environment(formula::Measured<FirstMass> { ratio(40) },
                                                              formula::Measured<SecondMass> { ratio(40905, 1000) });
     STATIC_REQUIRE(formula::check_method(overlaid, withoutCoefficient)[0].is_violated());

@@ -294,8 +294,7 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
 struct RoundedRootNode: NodeBase
 {
     static_assert(detail::RequireRootUnitMatches<U, Radicand>::value);
-    static_assert(
-        detail::RequireRootUnitWithoutOffset<U, U.dimension * U.dimension == Radicand::dimension>::value);
+    static_assert(detail::RequireRootUnitWithoutOffset<U, U.dimension * U.dimension == Radicand::dimension>::value);
 
     /// The expression whose square root is taken: a variance, a mean square,
     /// a sum of squared uncertainties.

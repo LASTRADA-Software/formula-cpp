@@ -40,7 +40,8 @@
 // raw observations, `from` and `get_observations`, binned into classes and
 // divided by their sum, on the same surfaces;
 // a sample's count, mean, variance and range, and a rounded root of the
-// variance, on the same surfaces; and the four table
+// variance, on the same surfaces; a rejection of outliers, evaluated alone
+// and under a mean, on the same surfaces; and the four table
 // validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -136,6 +137,7 @@ int index;
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding.hpp>
@@ -579,6 +581,27 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::render<formula::Dialect::LaTeX>(sampleRange) == "\\operatorname{range}({x_m}_{i})"
         && formula::document(sampleSpread + sampleRange, north).symbols.size() == 1
         && formula::render_trace(spreadTrace, { .maxSteps = 4 }).find("sample_variance(#1)") != std::string::npos);
+    // A rejection of outliers at 30 % of the pass's mean: 150 and 103 mm
+    // deviate 23.5 mm from 126.5 mm, inside 37.95 mm, so it settles in its
+    // first pass with both kept.
+    auto const trimmed = formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<1>>(
+            formula::series<EdgeX, 2>,
+            formula::deviation_from_mean(formula::Rational { 3, 10 } * formula::pass_mean<EdgeX>),
+            formula::Verdict { "repeat the test" });
+    formula::Trace<> trimmedTrace {};
+    auto const trimmedOutcome = formula::checked_evaluate_rejection<EdgeX>(trimmed, bothScreens);
+    auto const trimmedMean = formula::checked_evaluate<EdgeX>(
+        formula::sample_mean(trimmed), bothScreens, formula::RecordingSink { trimmedTrace, north });
+    probe.checks.push_back(trimmedOutcome.has_value()
+                           && trimmedOutcome->outcome().measurement().value() == formula::Rational { 253, 2 }
+                           && trimmedOutcome->rejected().empty() && trimmedMean.has_value()
+                           && trimmedMean->measurement().value() == formula::Rational { 253, 2 }
+                           && formula::render(trimmed, north).find("without outliers(x_m(i)") != std::string::npos
+                           && formula::render<formula::Dialect::LaTeX>(trimmed).find("\\bar{x}") != std::string::npos
+                           && formula::document(formula::sample_mean(trimmed), north).rejections.size() == 1
+                           && formula::render_trace(trimmedTrace, { .maxSteps = 20 }).find("settled: 0 rejected, 2 remain")
+                                  != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

@@ -193,8 +193,7 @@ TEST_CASE("rounded_sqrt reports overflow at the exact 2^64 edge of the whole par
         == formula::ArithmeticError::Overflow);
 }
 
-TEST_CASE("rounded_sqrt never wraps when a negative number of places widens the denominator past 2^64",
-          "[rounded_root]")
+TEST_CASE("rounded_sqrt never wraps when a negative number of places widens the denominator past 2^64", "[rounded_root]")
 {
     // At -1 places the divisor is b * 10^2. With b = 184467440737095517, the
     // smallest b for which that product reaches 2^64, a wrapping multiply

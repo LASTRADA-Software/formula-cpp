@@ -556,8 +556,10 @@ namespace detail
     template <typename Record>
     [[nodiscard]] Record const* record_for_step(std::vector<Record> const& records, std::size_t stepIndex)
     {
-        auto const match = std::lower_bound(records.begin(), records.end(), stepIndex,
-                                            [](Record const& each, std::size_t wanted) { return each.step < wanted; });
+        auto const match =
+            std::lower_bound(records.begin(), records.end(), stepIndex, [](Record const& each, std::size_t wanted) {
+                return each.step < wanted;
+            });
         if (match == records.end() || match->step != stepIndex)
             return nullptr;
         return &*match;
@@ -690,7 +692,8 @@ namespace detail
             // The count is not a number of determinations, so no row was
             // asked. Its value is the operand's, which the reference names.
             case LookupFailure::NotACount:
-                return " [no row for n = " + (recorded.operands.empty() ? std::string { "the count" } : sole_operand(recorded))
+                return " [no row for n = "
+                       + (recorded.operands.empty() ? std::string { "the count" } : sole_operand(recorded))
                        + ", which is not a whole, non-negative number" + declared_sizes_text(trace, stepIndex) + "]";
         }
         return " [unknown lookup failure]";
@@ -894,6 +897,22 @@ namespace detail
                 return "level";
             case StepKind::PrecisionLimit:
                 return "precision limit";
+            // Words, as `render()` writes them: a symbol could collide with
+            // an author's own quantity's.
+            case StepKind::PassMean:
+                return "pass mean";
+            case StepKind::PassCount:
+                return "pass n";
+            // Each reads its side-table record, which only `step_line` can
+            // reach; see `rejection_line`. Spelled here without it.
+            case StepKind::RejectionPass:
+                return "rejection pass";
+            case StepKind::OutlierRejected:
+                return "rejected element";
+            case StepKind::RejectionSettled:
+                return "rejection settled";
+            case StepKind::RejectionAborted:
+                return "rejection aborted";
         }
         return "unknown step kind";
     }
@@ -944,7 +963,7 @@ namespace detail
         detail::PrecisionRecord const* const precisionRecord = record_for_step(trace.precisionRecords, stepIndex);
         if (precisionRecord == nullptr)
             return recorded.kind == StepKind::PrecisionLimit ? "precision limit (its record is missing)"
-                                                              : "level (its record is missing)";
+                                                             : "level (its record is missing)";
         switch (precisionRecord->role)
         {
             case detail::PrecisionStepRole::LevelPass:
@@ -952,8 +971,7 @@ namespace detail
                                                  : "level (pass 1 of 2) = " + operand_reference(recorded.operands.back());
             case detail::PrecisionStepRole::Placeholder:
                 return "level";
-            case detail::PrecisionStepRole::LimitPass:
-            {
+            case detail::PrecisionStepRole::LimitPass: {
                 std::string const heading = std::string { precision_render_symbol(precisionRecord->kind) } + " at level "
                                             + recorded_step_reference(trace, precisionRecord->levelStep);
                 return recorded.operands.size() < 2
@@ -1625,6 +1643,127 @@ namespace detail
         return " [" + constraint_outcome_text(recorded.outcome) + constraint_provenance_clause(recorded) + "]";
     }
 
+    /// Whether @p stepKind is one of the four steps a rejection records.
+    [[nodiscard]] constexpr bool is_rejection_step(StepKind stepKind) noexcept
+    {
+        return stepKind == StepKind::RejectionPass || stepKind == StepKind::OutlierRejected
+               || stepKind == StepKind::RejectionSettled || stepKind == StepKind::RejectionAborted;
+    }
+
+    /// @p si, a value in the coherent unit of @p recorded's dimension -- or of
+    /// its square, when @p squared -- in @p recorded's unit (or its square),
+    /// with the unit's symbol: `27/10 g`, `729/100 g2`. Refuses to print, as
+    /// `value_in_declared_unit` does, a value its unit cannot show.
+    [[nodiscard]] inline std::string rejection_value_text(Step<Rational> const& recorded, Rational si, bool squared)
+    {
+        if (!squared)
+            return value_in_declared_unit(recorded, si);
+        Unit const shownUnit = recorded.unit;
+        std::expected<Rational, ArithmeticError> const magnitude =
+            Rational::make(shownUnit.magnitudeNumerator, shownUnit.magnitudeDenominator);
+        std::expected<Rational, ArithmeticError> const magnitudeSquared =
+            magnitude.has_value() ? checked_mul(*magnitude, *magnitude) : magnitude;
+        std::expected<Rational, ArithmeticError> const shown =
+            magnitudeSquared.has_value() ? checked_div(si, *magnitudeSquared) : magnitudeSquared;
+        if (!shown)
+            return "(not shown: " + std::string { describe(shown.error()) } + ")";
+        std::string valueText = number_text(*shown);
+        std::string const unitSymbol = unit_symbol_text(shownUnit);
+        if (!unitSymbol.empty())
+            valueText += " " + unitSymbol + "2";
+        return valueText;
+    }
+
+    /// `element 4 of 6`, or `elements 4 and 6 of 6`, or `elements 2, 4 and 6
+    /// of 6` -- positions counted from one, as every text shows them.
+    [[nodiscard]] inline std::string elements_text(std::vector<std::size_t> const& positions, std::size_t originalSize)
+    {
+        std::string listed = positions.size() == 1 ? "element " : "elements ";
+        for (std::size_t at = 0; at < positions.size(); ++at)
+        {
+            if (at > 0)
+                listed += at + 1 == positions.size() ? " and " : ", ";
+            listed += std::to_string(positions[at] + 1);
+        }
+        return listed + " of " + std::to_string(originalSize);
+    }
+
+    /// A rejection step's whole line, read from its side-table record:
+    ///
+    ///  - a pass: `pass 2: 5 values, mean 1019/25 g`;
+    ///  - a rejected determination: `rejected element 4 of 6 (44 g) in pass
+    ///    1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)` --
+    ///    for `deviation_in_stddevs`, the exact comparison the decision used,
+    ///    `(x - mean)^2 = ... g2 > limit^2 * s^2 = ... g2`;
+    ///  - settled: `settled: 2 rejected, 4 remain`;
+    ///  - aborted: `element 6 of 6 would be rejection 2 of at most 1: discard
+    ///    the determinations and repeat the test [Example Standard, 7.4]`.
+    ///
+    /// A step with no record says so rather than guess.
+    ///
+    /// @p recorded is the step's escaped copy (`EscapedStep`). The record is
+    /// read from @p trace at @p stepIndex, and its author text -- the verdict
+    /// and the citation -- is escaped here, as `EscapedStep` escapes a
+    /// step's own.
+    [[nodiscard]] inline std::string rejection_line(Trace<Rational> const& trace,
+                                                    std::size_t stepIndex,
+                                                    Step<Rational> const& recorded)
+    {
+        detail::RejectionRecord<Rational> const* const rejectionRecord = record_for_step(trace.rejectionRecords, stepIndex);
+        if (rejectionRecord == nullptr)
+            return step_expression(recorded) + " (its record is missing)";
+        switch (recorded.kind)
+        {
+            case StepKind::RejectionPass:
+                return "pass " + std::to_string(rejectionRecord->pass) + ": " + std::to_string(rejectionRecord->sampleSize)
+                       + " values, mean " + step_value_text(recorded);
+            case StepKind::OutlierRejected: {
+                if (!rejectionRecord->position.has_value() || !rejectionRecord->rejectedValue.has_value()
+                    || !rejectionRecord->statistic.has_value() || !rejectionRecord->limit.has_value())
+                    return "rejected element (its record is incomplete)";
+                std::string const comparison = rejectionRecord->onLimit == OnLimit::Keep ? " > " : " >= ";
+                std::string const decided =
+                    rejectionRecord->squared
+                        ? "(x - mean)^2 = " + rejection_value_text(recorded, *rejectionRecord->statistic, true) + comparison
+                              + "limit^2 * s^2 = " + rejection_value_text(recorded, *rejectionRecord->limit, true)
+                              + " (deviation in standard deviations)"
+                        : "abs(x - mean) = " + rejection_value_text(recorded, *rejectionRecord->statistic, false)
+                              + comparison + rejection_value_text(recorded, *rejectionRecord->limit, false)
+                              + " (deviation from mean)";
+                return "rejected " + elements_text({ *rejectionRecord->position }, rejectionRecord->originalSize) + " ("
+                       + rejection_value_text(recorded, *rejectionRecord->rejectedValue, false) + ") in pass "
+                       + std::to_string(rejectionRecord->pass) + ": " + decided;
+            }
+            case StepKind::RejectionSettled:
+                return "settled: " + std::to_string(rejectionRecord->rejectedCount) + " rejected, "
+                       + std::to_string(rejectionRecord->remaining) + " remain";
+            case StepKind::RejectionAborted: {
+                std::string reason;
+                if (rejectionRecord->belowKeepAtLeast)
+                    reason = " would leave "
+                             + std::to_string(rejectionRecord->remaining - rejectionRecord->wouldReject.size())
+                             + " of at least " + std::to_string(rejectionRecord->keepAtLeast);
+                else
+                {
+                    reason = rejectionRecord->wouldReject.size() == 1 ? " would be rejection " : " would be rejections ";
+                    for (std::size_t at = 0; at < rejectionRecord->wouldReject.size(); ++at)
+                    {
+                        if (at > 0)
+                            reason += at + 1 == rejectionRecord->wouldReject.size() ? " and " : ", ";
+                        reason += std::to_string(rejectionRecord->rejectedCount + at + 1);
+                    }
+                    reason += " of at most " + std::to_string(rejectionRecord->atMost);
+                }
+                EscapedCitation const cited { rejectionRecord->citation };
+                return elements_text(rejectionRecord->wouldReject, rejectionRecord->originalSize) + reason + ": "
+                       + escaped_author_text(rejectionRecord->verdict.label) + citation_suffix(cited.cited());
+            }
+            default:
+                break;
+        }
+        return step_expression(recorded);
+    }
+
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the kinds that need one -- a citation for
     /// `Documented`, the variant and its discriminator for `VariantSelected`,
@@ -1682,6 +1821,8 @@ namespace detail
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
         if (recorded.kind == StepKind::AcceptanceChecked)
             return acceptance_expression(recorded) + acceptance_suffix(recorded);
+        if (is_rejection_step(recorded.kind))
+            return rejection_line(trace, stepIndex, recorded);
 
         std::string const valueText = step_value_text(recorded);
         std::string annotation;
