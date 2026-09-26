@@ -57,6 +57,16 @@ generated documentation, and an overlay that would silently do nothing is refuse
 the later one holding. A vocabulary renders a formula and its trace in a jurisdiction's own symbols,
 and `TagName` spells a variant's tag.
 
+**Phase 12: series.** A quantity measured at every point of a method's domain, `series<Q, N>`,
+with each element absent or present on its own; elementwise arithmetic with a broadcast scalar,
+per-element constants, running totals from either end, `sum`, and per-element rounding. A failure
+names its element. Conformity judges each element against its own row of a limit envelope, closed
+at both ends and either side explicitly unbounded, and the trace records the rows judged against.
+`snapped` replaces a value with the nearest permitted one under a stated tie rule. Curves pair a
+domain with values, `interpolate_at` reads one between two points, and `splice` joins two curves
+into one whose values run in a required direction. A series renders with an index marker,
+`m_r(i)`, and its trace spends the same step budget, one unit per element.
+
 ### Changed
 
 - Invented example numbers replaced so none resembles a published table: the band edges, lookup
@@ -93,3 +103,7 @@ and `TagName` spells a variant's tag.
 - A lookup's rows and key names were set in LaTeX as `\text{...}`, whose escapes the site's MathJax
   shows literally: `\text{key fit\_2}` read `key fit\_2`. They are now set as `\mathrm{...}`, with a
   space as `\ ` (`detail::latex_math_words`).
+- A band table with a gap, an exact lookup table with a repeated key, or a breakpoint table out of
+  order drew up to five errors on clang++, one the library's message and the rest the compiler
+  reading the failed check. Each now draws the one message on cl, clang-cl, clang++ and g++, the
+  compilers the library is built and tested with.
