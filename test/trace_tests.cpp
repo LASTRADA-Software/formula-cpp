@@ -1586,3 +1586,39 @@ TEST_CASE("a sink that defines half of the variant pair is told nothing", "[trac
     CHECK(result->has_value());
     CHECK(told == 0);
 }
+
+TEST_CASE("an overlaid method's selection is counted in the method as published", "[trace][method][overlay]")
+{
+    // A reader counts back in the only `variants(...)` in the source, the
+    // published one; the overlay that pinned or pruned is elsewhere. So the
+    // position a trace reports must not move when a variant before it is
+    // removed. Tags are not read here -- see the note above this section.
+    constexpr auto pruned = formula::apply(formula::overlay(formula::prune_variant<Plate>()), bearing);
+    formula::Trace<> afterPrune {};
+    (void) formula::evaluate_method<Disc>(pruned, loadOn(100, 50), formula::RecordingSink<> { afterPrune });
+    formula::Step<> const& prunedRoot = afterPrune.steps[afterPrune.root()];
+    CHECK(prunedRoot.variantIndex == 1);
+    CHECK(prunedRoot.variantCount == 3);
+
+    // The last variant, with the first pruned: 3rd of 3, not 2nd of 2.
+    formula::Trace<> lastAfterPrune {};
+    (void) formula::evaluate_method<Ring>(pruned, loadOn(100, 50), formula::RecordingSink<> { lastAfterPrune });
+    CHECK(lastAfterPrune.steps[lastAfterPrune.root()].variantIndex == 2);
+    CHECK(lastAfterPrune.steps[lastAfterPrune.root()].variantCount == 3);
+
+    // A pin leaves one variant, which is still the 2nd of 3, not the 1st of 1.
+    constexpr auto pinned = formula::apply(formula::overlay(formula::pin_variant<Disc>()), bearing);
+    formula::Trace<> afterPin {};
+    (void) formula::evaluate_method<Disc>(pinned, loadOn(100, 50), formula::RecordingSink<> { afterPin });
+    CHECK(afterPin.steps[afterPin.root()].variantIndex == 1);
+    CHECK(afterPin.steps[afterPin.root()].variantCount == 3);
+
+    // And through an operation that rewrites every variant, after the prune
+    // that moved them: the positions survive the rewrite too.
+    constexpr auto rewritten = formula::apply(
+        formula::overlay(formula::prune_variant<Plate>(), formula::with_constant<Side>(formula::Rational { 50 })), bearing);
+    formula::Trace<> afterRewrite {};
+    (void) formula::evaluate_method<Ring>(rewritten, loadOn(100, 7), formula::RecordingSink<> { afterRewrite });
+    CHECK(afterRewrite.steps[afterRewrite.root()].variantIndex == 2);
+    CHECK(afterRewrite.steps[afterRewrite.root()].variantCount == 3);
+}

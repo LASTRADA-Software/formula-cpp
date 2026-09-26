@@ -889,11 +889,28 @@ namespace detail
     template <typename Tag, typename... Cs>
     inline constexpr std::array<std::size_t, sizeof...(Cs) - 1> positionsWithout = positions_without<Tag, Cs...>();
 
-    /// The variants at `positionsWithout<Tag, Cs...>`, in order.
+    /// @p pack with the published positions and count of the pack it was
+    /// made from -- see `Variants::publishedPositions`, which every operation
+    /// below carries through, so that a trace counts in the method as
+    /// published rather than in the one an overlay produced.
+    template <typename... Ds>
+    [[nodiscard]] constexpr Variants<Ds...> republished(Variants<Ds...> pack,
+                                                        std::array<std::size_t, sizeof...(Ds)> const& positions,
+                                                        std::size_t count) noexcept
+    {
+        pack.publishedPositions = positions;
+        pack.publishedCount = count;
+        return pack;
+    }
+
+    /// The variants at `positionsWithout<Tag, Cs...>`, in order, each keeping
+    /// its published position.
     template <typename Tag, typename... Cs, std::size_t... Kept>
     [[nodiscard]] constexpr auto variants_without(Variants<Cs...> const& pack, std::index_sequence<Kept...>) noexcept
     {
-        return formula::variants(std::get<positionsWithout<Tag, Cs...>[Kept]>(pack.cases)...);
+        return republished(formula::variants(std::get<positionsWithout<Tag, Cs...>[Kept]>(pack.cases)...),
+                           { pack.publishedPositions[positionsWithout<Tag, Cs...>[Kept]]... },
+                           pack.publishedCount);
     }
 
     /// `with_constant<Q>`: every variant and constraint, with `Q` fixed.
@@ -908,8 +925,10 @@ namespace detail
                                                  ConstraintSet<Ps...> const& constraintSet) noexcept
     {
         return formula::method(
-            std::apply([&](auto const&... cases) { return formula::variants(rewrite_variant(cases, overriding)...); },
-                       pack.cases),
+            republished(std::apply([&](auto const&... cases) { return formula::variants(rewrite_variant(cases, overriding)...); },
+                                   pack.cases),
+                        pack.publishedPositions,
+                        pack.publishedCount),
             rounding,
             std::apply([&](auto const&... items) { return formula::constraints(rewrite_constraint(items, overriding)...); },
                        constraintSet.items));
@@ -932,8 +951,11 @@ namespace detail
             std::conditional_t<isPlainClassTag<Tag>, RequireOverlayNamesDeclaredVariant<Tag, Cs...>, std::true_type>::value);
 
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
-            return formula::method(
-                formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)), rounding, constraintSet);
+            return formula::method(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
+                                               { pack.publishedPositions[variant_index<Tag, Cs...>()] },
+                                               pack.publishedCount),
+                                   rounding,
+                                   constraintSet);
         else
             return formula::method(pack, rounding, constraintSet);
     }

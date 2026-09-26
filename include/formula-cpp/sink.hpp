@@ -98,11 +98,12 @@ struct VariantSelection
     /// spelling could not be read, and then `index` is what identifies it.
     std::string_view tag {};
 
-    /// The selected variant's ZERO-BASED position in the method's `variants(...)`,
-    /// the order `Variants` documents as part of its contract.
+    /// The selected variant's ZERO-BASED position in the method's `variants(...)`
+    /// as published, before any overlay pinned or pruned -- see
+    /// `Variants::publishedPositions`.
     std::size_t index {};
 
-    /// How many variants the method declares.
+    /// How many variants the method declares as published.
     std::size_t count {};
 };
 

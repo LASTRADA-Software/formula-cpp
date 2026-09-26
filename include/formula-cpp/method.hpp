@@ -100,6 +100,7 @@
 
 #include <array>
 #include <cstddef>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -511,6 +512,20 @@ namespace detail
     };
 } // namespace detail
 
+namespace detail
+{
+    /// `0, 1, ..., Count - 1`: the published positions of a pack no overlay
+    /// has touched.
+    template <std::size_t Count>
+    [[nodiscard]] constexpr std::array<std::size_t, Count> positions_in_order() noexcept
+    {
+        std::array<std::size_t, Count> positions {};
+        for (std::size_t index = 0; index < Count; ++index)
+            positions[index] = index;
+        return positions;
+    }
+} // namespace detail
+
 /// The variants of one method, in declaration order:
 /// `variants(variant<Cube>(...), variant<Cylinder>(...))`.
 ///
@@ -545,6 +560,24 @@ struct Variants
     /// it -- is default-constructible hard-errors or answers `true` when a
     /// lookup is inside; see `Corrections` (`lookup.hpp`).
     std::tuple<Cs...> cases;
+
+    /// For each of `cases`, its ZERO-BASED position in the method **as
+    /// published** -- the `variants(...)` an author wrote, before any overlay
+    /// pinned or pruned one. What a trace reports as the selected variant's
+    /// position (`Step::variantIndex`), so that a reader counting back in the
+    /// only `variants(...)` in the source lands on the variant that ran.
+    ///
+    /// `variants(...)` numbers them in order; `apply` (`overlay.hpp`) carries
+    /// them through a pin or a prune, so that a published `(Cube, Cylinder,
+    /// Prism)` with `Cube` pruned still reports `Cylinder` as the 2nd of 3,
+    /// not the 1st of 2. A default member initialiser is safe here, unlike on
+    /// `cases`: it names no variant's type, so asking whether this pack is
+    /// default-constructible instantiates nothing of theirs.
+    std::array<std::size_t, sizeof...(Cs)> publishedPositions = detail::positions_in_order<sizeof...(Cs)>();
+
+    /// How many variants the method declares **as published** -- see
+    /// `publishedPositions`.
+    std::size_t publishedCount = sizeof...(Cs);
 };
 
 /// Builds a method's variants pack: `variants(a, b, c)`. See the file comment
@@ -986,12 +1019,16 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         auto const expression = rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression);
 
         // The selection is named whether or not the sink asks for it, so that
-        // a broken `TagName` specialization is refused the first time the
-        // method is evaluated with that tag, traced or not.
-        constexpr VariantSelection selection {
-            tag_name<Tag>(),
-            Selection::index,
-            std::tuple_size_v<std::remove_cvref_t<decltype(m.variantSet.cases)>>,
+        // a broken `TagName` specialization, or a tag whose name cannot be
+        // shown, is refused the first time the method is evaluated with that
+        // tag, traced or not. The position and count are the method's as
+        // published, which an overlay may differ from -- see
+        // `Variants::publishedPositions`.
+        constexpr std::string_view selectedTag = tag_name<Tag>();
+        VariantSelection const selection {
+            selectedTag,
+            m.variantSet.publishedPositions[Selection::index],
+            m.variantSet.publishedCount,
         };
         if constexpr (requires(Evaluated<Rep> const& result) {
                           sink.variant_entered(selection);

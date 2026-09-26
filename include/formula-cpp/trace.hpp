@@ -567,14 +567,18 @@ struct Step
     std::string_view variantTag {};
 
     /// For `VariantSelected`: the selected variant's ZERO-BASED position in
-    /// the method's `variants(...)`, the order `Variants` makes part of its
-    /// contract so that a reader can count back to the declaration.
+    /// the method's `variants(...)` **as published** -- the order `Variants`
+    /// makes part of its contract so that a reader can count back to the
+    /// declaration. An overlay that pinned or pruned does not move it: the
+    /// published `variants(...)` is the only one in the source to count in
+    /// (`Variants::publishedPositions`).
     /// `trace_render.hpp` prints it one-based, as an ordinal. Zero otherwise,
     /// which is a real position, so -- as with `comparison` -- no reader may
     /// use it without checking `kind` first.
     std::size_t variantIndex {};
 
-    /// For `VariantSelected`: how many variants the method declares. Zero
+    /// For `VariantSelected`: how many variants the method declares as
+    /// published, however many an overlay left. Zero
     /// otherwise -- never a real count, since a method with no variants is
     /// refused where it is declared.
     std::size_t variantCount {};

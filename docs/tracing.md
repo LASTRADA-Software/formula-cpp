@@ -329,7 +329,10 @@ value is exactly what `evaluate_method` returned. The bracket carries both
 halves of the answer. The tag's name is the discriminator the caller selected
 with; the position -- one-based here, zero-based in `Step::variantIndex` --
 is what a reader counts back to in the method's `variants(...)`, and it
-survives even where the name cannot be read. `selected by tag` says how the
+survives even where the name cannot be read. It is the position in the
+method **as published**: a jurisdiction's overlay that prunes the cube leaves
+the cylinder the 2nd of 3, not the 1st of 2, because the published
+`variants(...)` is the only one in the source to count in. `selected by tag` says how the
 choice was made rather than only that it was. Nothing in the line names a
 variant that was not taken: the neighbouring test selects the cylinder and
 checks that the word `Cube` appears nowhere in its derivation.
