@@ -317,7 +317,7 @@ std::printf("%s", formula::render_trace(trace, { .maxSteps = 20 }).c_str());
 1. F = 562 kN
 2. 22500 mm2
 3. #1 / #2 = 224800000/9
-4. round(#3, to 1 dp of MPa) = 25 MPa [nearest, ties away from zero]
+4. round(#3, in MPa) = 25 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
 5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]
 ```
 
@@ -369,6 +369,40 @@ struct formula::TagName<Cylinder>
     static constexpr std::string_view of() noexcept { return "cylinder 150 x 300 mm"; }
 };
 ```
+
+## Whose rounding rule, and whose constant
+
+The rounding line above is a step of its own kind,
+`StepKind::RoundingRuleApplied`, rather than an ordinary rounding step. Spec
+section 9.1 asks the trace to record which rounding rule applied **and where
+it came from**, and `rounded to 1 dp` alone is true whether the method's
+author chose the rule or a jurisdiction did. So the bracket says whose it was:
+`(method default)` for the rule the method was declared with, and
+`(jurisdiction overlay)` for one an overlay's `with_rounding` put in its place,
+followed by what the overlay cited when it cited anything:
+
+```
+8. round(#7, in MPa) = 601/100 MPa [rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, NA.4.1); nearest, ties away from zero]
+```
+
+(`test/overlay_tests.cpp`, `"the trace says where the rounding rule came
+from"`.) A jurisdiction that restates the method's own granularity still gets
+`(jurisdiction overlay)`: the rule is then its rule, and the trace does not
+decide whose it was by comparing numbers. The provenance is in
+`Step::roundingProvenance`, and the citation in `Step::citation`.
+
+A constant an overlay fixed with `with_constant` is traced the same way, as
+`StepKind::OverriddenConstant` rather than as a variable. It reads as its
+quantity, but it says the value was not the specimen's:
+
+```
+1. k_s = 97/100 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.3]
+```
+
+(`test/overlay_tests.cpp`, `"an overridden constant is traced as fixed by the
+overlay, holding its value"`.) `document()` marks it too: the quantity's row
+in the symbol table carries `fixedValue` and `fixedBy`, so a documentation
+page does not ask a reader to supply a value the formula never reads.
 
 ## The bound is a required argument, not a default
 

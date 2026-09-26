@@ -14,8 +14,12 @@
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/overlay.hpp>
+#include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
 
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -39,6 +43,21 @@ struct SymbolEntry
     std::string_view description {};
     /// The unit its values are expressed in.
     Unit unit {};
+
+    /// The value an overlay fixed this quantity at, in `unit`; empty for a
+    /// quantity the formula reads from the specimen.
+    ///
+    /// A row for an overridden constant (`OverriddenConstantNode`,
+    /// `overlay.hpp`) that looked like any other would tell a reader to supply
+    /// a value the formula will never read, and hide the one it does -- the
+    /// gap a trace step that said "variable" had, on the documentation page
+    /// instead of in the derivation.
+    std::optional<Rational> fixedValue {};
+
+    /// What the overlay that fixed the value cited for it; empty when it cited
+    /// nothing, and for a quantity nothing fixed. Whether the row is fixed is
+    /// `fixedValue`'s to say, not this.
+    Citation fixedBy {};
 
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
@@ -112,6 +131,9 @@ namespace detail
     template <Described Q>
     void collect(Walk& walk, VarNode<Q> const& node);
 
+    template <Described Q>
+    void collect(Walk& walk, OverriddenConstantNode<Q> const& node);
+
     template <Unit U>
     void collect(Walk& walk, ConstantNode<U> const& node);
 
@@ -174,6 +196,38 @@ namespace detail
         walk.seenQuantities.push_back(key);
         walk.documentation.symbols.push_back(SymbolEntry {
             .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+    }
+
+    /// An overridden constant contributes its quantity's row as a variable
+    /// does, marked as fixed: the overlay's value, and what it cited. See
+    /// `SymbolEntry::fixedValue` for why a plain row would mislead.
+    ///
+    /// Chosen over the `VarNode` overload above, which it derives from, for
+    /// the reason its `checked_evaluate_si` overload is (`overlay.hpp`).
+    ///
+    /// A quantity read plainly earlier in the same walk -- possible only in a
+    /// formula assembled by hand, since `apply` fixes every use of it -- has
+    /// its row marked here rather than left plain: the formula does read the
+    /// fixed value, and a page must not say otherwise because of the order the
+    /// two uses were met in.
+    template <Described Q>
+    void collect(Walk& walk, OverriddenConstantNode<Q> const& node)
+    {
+        void const* const key = &quantityIdentity<Q>;
+        std::size_t row = 0;
+        while (row < walk.seenQuantities.size() && walk.seenQuantities[row] != key)
+            ++row;
+        if (row == walk.seenQuantities.size())
+        {
+            walk.seenQuantities.push_back(key);
+            walk.documentation.symbols.push_back(SymbolEntry {
+                .symbol = Describe<Q>::symbol, .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+        }
+        SymbolEntry& entry = walk.documentation.symbols[row];
+        if (entry.fixedValue.has_value())
+            return;
+        entry.fixedValue = node.value;
+        entry.fixedBy = node.source;
     }
 
     /// A literal coefficient names no variable.

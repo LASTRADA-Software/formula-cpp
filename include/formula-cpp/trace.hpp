@@ -18,6 +18,8 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/method.hpp>
+#include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
 
@@ -106,6 +108,27 @@ enum class StepKind : std::uint8_t
     /// and the answer is the value those rows imply at that point -- a number
     /// that appears in no row of the table.
     InterpolatingLookup,
+    /// A method's rounding rule, applied to the variant it selected
+    /// (`RoundingRuleNode`, `method.hpp`). Rounds exactly as `Round` does,
+    /// and carries what `Round` cannot: where the rule came from --
+    /// `Step::roundingProvenance`, and for an overlay's rule what it cited,
+    /// in `Step::citation`. A step naming only the granularity is true
+    /// whether the method or a jurisdiction chose it, and so answers only
+    /// half of what spec section 9.1 asks.
+    ///
+    /// Checked on GCC under `-Wshadow`, the way `PiConstant` above had to
+    /// be: nothing in namespace `formula` is spelt `RoundingRuleApplied` --
+    /// the rule is `RoundingRule` and its node `RoundingRuleNode`.
+    RoundingRuleApplied,
+    /// A quantity an overlay fixed (`OverriddenConstantNode`, `overlay.hpp`):
+    /// the quantity's symbol and unit, the overlay's value, and what the
+    /// overlay cited, in `Step::citation`. Not a `Variable` step, which
+    /// reads as a number the specimen supplied.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node type carries the `Node`
+    /// suffix, so nothing in namespace `formula` is spelt
+    /// `OverriddenConstant`.
+    OverriddenConstant,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -246,12 +269,16 @@ struct Step
     /// Which kind of node produced this step.
     StepKind kind {};
 
-    /// For `Variable`: how the quantity is written. Points into the static
-    /// storage of the quantity's `Describe` specialisation, so it outlives any
-    /// trace -- the same guarantee `document.hpp`'s `SymbolEntry` relies on.
+    /// For `Variable` and `OverriddenConstant`: how the quantity is written.
+    /// Points into the static storage of the quantity's `Describe`
+    /// specialisation, so it outlives any trace -- the same guarantee
+    /// `document.hpp`'s `SymbolEntry` relies on.
     std::string_view symbol {};
 
-    /// For `Documented`: what the wrapped formula cites.
+    /// For `Documented`: what the wrapped formula cites. For
+    /// `OverriddenConstant` and `RoundingRuleApplied`: what the overlay that
+    /// fixed the value or set the rule cited, empty when it cited nothing --
+    /// and always empty for a method's own rule.
     Citation citation {};
 
     /// For `NumericValue`: why the dimension was dropped -- the compile-time
@@ -264,8 +291,8 @@ struct Step
     /// For `Power`: the exponent. For `Root`: the degree. Zero otherwise.
     int exponent {};
 
-    /// For `Round`: the decimal places kept. For `RoundSignificant`: the
-    /// significant digits kept. Zero otherwise.
+    /// For `Round` and `RoundingRuleApplied`: the decimal places kept. For
+    /// `RoundSignificant`: the significant digits kept. Zero otherwise.
     ///
     /// A field of its own rather than a third and fourth meaning piled onto
     /// `exponent` above, which already carries two (`Power`'s exponent,
@@ -308,8 +335,8 @@ struct Step
     /// exact same exception for the same reason.
     Comparison comparison {};
 
-    /// For `Round` and `RoundSignificant`: the tie-breaking rule the node
-    /// rounded under.
+    /// For `Round`, `RoundSignificant` and `RoundingRuleApplied`: the
+    /// tie-breaking rule the node rounded under.
     ///
     /// Two rounding nodes differing only in their mode produce different
     /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
@@ -321,15 +348,26 @@ struct Step
     ///
     /// As with `comparison` above, the zero value is a real mode
     /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
-    /// sentinel: meaningful only for the two rounding kinds.
+    /// sentinel: meaningful only for the three rounding kinds.
     RoundingMode mode {};
+
+    /// For `RoundingRuleApplied`: where the rule came from -- the method's
+    /// own, or a jurisdiction's overlay. The other half of what spec section
+    /// 9.1 asks of a rounding step; `granularity`, `unit` and `mode` are the
+    /// first.
+    ///
+    /// As with `mode` above, the zero value is a real provenance
+    /// (`RoundingProvenance::MethodDefault`) and not a "not applicable"
+    /// sentinel: meaningful only for `RoundingRuleApplied`.
+    RoundingProvenance roundingProvenance {};
 
     /// The dimension of what this step produced.
     Dimension dimension {};
 
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
-    /// for a variable, the constant's own unit for a constant, the node's own
-    /// unit for a `Round` or `RoundSignificant` step, and the coherent SI unit
+    /// for a variable or an overridden constant, the constant's own unit for
+    /// a constant, the node's own unit for a `Round`, `RoundSignificant` or
+    /// `RoundingRuleApplied` step, and the coherent SI unit
     /// of `dimension` for anything else computed, which has no declared unit
     /// of its own.
     ///
@@ -752,6 +790,24 @@ namespace detail
         static constexpr StepKind value = StepKind::InterpolatingLookup;
     };
 
+    /// Required, not a refinement: a partial specialisation never matches a
+    /// derived class, so without this a `RoundingRuleNode` -- which derives
+    /// from `RoundNode` -- would have no entry at all, rather than the
+    /// `Round` entry of its base.
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct StepKindOf<RoundingRuleNode<U, Places, Mode, Operand>>
+    {
+        static constexpr StepKind value = StepKind::RoundingRuleApplied;
+    };
+
+    /// Required for the same reason: `OverriddenConstantNode` derives from
+    /// `VarNode`, whose entry does not reach it.
+    template <Described Q>
+    struct StepKindOf<OverriddenConstantNode<Q>>
+    {
+        static constexpr StepKind value = StepKind::OverriddenConstant;
+    };
+
     /// Whether @p kind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
     /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
@@ -1120,16 +1176,30 @@ class RecordingSink
         // `checked_convert(value, coherent(dimension), unit)` would refuse
         // every such step as a dimension mismatch. See `Step::sourceUnit`,
         // which is where that unit goes instead.
+        //
+        // An overridden constant is a variable to this branch: it is `Q` at
+        // the overlay's value, in `Q`'s declared unit.
+        constexpr bool namesQuantity = detail::StepKindOf<N>::value == StepKind::Variable
+                                       || detail::StepKindOf<N>::value == StepKind::OverriddenConstant;
         step.unit = coherent(N::dimension);
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
+        if constexpr (namesQuantity)
             step.unit = Describe<typename N::quantity>::unit;
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             step.unit = N::unit;
 
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable)
+        if constexpr (namesQuantity)
             step.symbol = Describe<typename N::quantity>::symbol;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             step.citation = node.citation;
+        // What an overlay cited for the value it fixed, or for the rule it
+        // set -- the provenance each of these two steps exists to carry.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OverriddenConstant)
+            step.citation = node.source;
+        if constexpr (detail::StepKindOf<N>::value == StepKind::RoundingRuleApplied)
+        {
+            step.roundingProvenance = node.provenance;
+            step.citation = node.source;
+        }
         if constexpr (detail::StepKindOf<N>::value == StepKind::NumericValue)
         {
             step.justification = N::justification;

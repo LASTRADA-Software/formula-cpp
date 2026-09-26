@@ -20,14 +20,16 @@
 /// is closed and lives in the type; which one applies is a runtime choice made
 /// among methods that already exist.
 ///
-/// This header provides three operations:
+/// This header provides four operations:
 ///
 ///  - `with_constant<Q>(value)` fixes the quantity `Q` to `value` wherever the
 ///    method uses it -- the national body fixing a constant the base standard
 ///    left open;
 ///  - `pin_variant<Tag>()` keeps only the variant tagged `Tag`, making it
 ///    mandatory;
-///  - `prune_variant<Tag>()` deletes the variant tagged `Tag` outright.
+///  - `prune_variant<Tag>()` deletes the variant tagged `Tag` outright;
+///  - `with_rounding<U, Places, Mode>()` replaces the method's rounding rule,
+///    and a trace then says the rule applied was the overlay's.
 ///
 /// **An override that would silently do nothing is refused.** An overlay is
 /// written once per jurisdiction and read by nobody until an inspector asks why
@@ -44,7 +46,8 @@
 ///    because the empty pack's own message says the author declared no
 ///    variants, which is false of the author's method;
 ///  - one overlay listing the same operation twice, which leaves the first
-///    silently overridden by the second;
+///    silently overridden by the second -- and two `with_rounding` of any
+///    granularities are the same operation, since a method has one rule;
 ///  - one overlay that both pins and prunes: a pin already states the whole
 ///    selection, so a prune beside it either does nothing or contradicts it;
 ///  - `with_constant` over an expression holding a node kind this header cannot
@@ -55,7 +58,14 @@
 /// it changes nothing. The refusals above exist to catch a *mistaken name*,
 /// and a pin that names the one variant there is names it correctly: the
 /// method it yields is exactly what the overlay declares, a method whose only
-/// variant is that one.
+/// variant is that one. A `with_rounding` of the granularity the method
+/// already has is accepted for the same reason, and does change something:
+/// the rule is then the jurisdiction's, and the trace says so.
+///
+/// A `with_rounding` whose unit does not measure what the method reports is
+/// refused by the method it produces, in `Method`'s own words: the result of
+/// `apply` is a `Method`, and holds the rule to the same dimension check the
+/// method's own rule was held to.
 ///
 /// Operations apply **in the order the overlay lists them**, each to the method
 /// the previous one produced. "Nothing" in the rule above is nothing in the
@@ -98,23 +108,23 @@ namespace formula
 /// `0.97` in the formula has lost the one fact that answers it -- that this
 /// is the shape factor, fixed by that jurisdiction. So it derives from
 /// `VarNode<Q>` and reads as `Q` everywhere a variable is read:
-/// `render()` spells it as `Q`'s symbol and `document()` lists `Q` in its
-/// symbol table, both through their `VarNode` overloads, which accept this
-/// node as the base it is.
+/// `render()` spells it as `Q`'s symbol through its `VarNode` overload, which
+/// accepts this node as the base it is, and `document()` lists `Q` in its
+/// symbol table -- through an overload of its own, which marks the row fixed.
 ///
 /// Where it differs is evaluation: it never asks the environment. It evaluates
 /// to `value`, taken in `Q`'s declared unit exactly as a `Measured<Q>` is --
 /// so the overlay's value **wins over** any `Q` the environment supplies, and
 /// an environment need not supply `Q` at all.
 ///
-/// **Its trace step is interim.** Until the trace has a step kind of its own
-/// for an overridden constant, the evaluator reports this node to a sink as
-/// the `VarNode<Q>` it derives from, so a `RecordingSink` records an ordinary
-/// variable step: `Q`'s symbol, in `Q`'s unit, holding the overlay's value.
-/// That is true -- it is the value the formula used -- but it does not say the
-/// value came from an overlay rather than from the specimen. `value` and
-/// `source` are carried here so that the step that does say so has what it
-/// needs.
+/// **Its trace step says the value was fixed.** The evaluator reports this
+/// node to a sink as its own type, and a `RecordingSink` records a
+/// `StepKind::OverriddenConstant` step (`trace.hpp`): `Q`'s symbol, in `Q`'s
+/// unit, holding the overlay's value and citing `source` -- rendered as
+/// `k_s = 97/100 [fixed by jurisdiction overlay: ...]`. An ordinary variable
+/// step would be true of the value and false of where it came from: it reads
+/// as a number the specimen supplied. `document()` marks it the same way, as
+/// a symbol row fixed at `value` (`SymbolEntry::fixedValue`).
 template <Described Q>
 struct OverriddenConstantNode: VarNode<Q>
 {
@@ -127,8 +137,9 @@ struct OverriddenConstantNode: VarNode<Q>
 
 /// An overridden constant evaluates to the overlay's value, converted from
 /// `Q`'s declared unit to the coherent SI unit like any other leaf, and never
-/// consults @p environment -- see `OverriddenConstantNode` for why, and for
-/// why the sink is told about it as the `VarNode<Q>` it derives from.
+/// consults @p environment -- see `OverriddenConstantNode` for why. The sink
+/// is told about the node as its own type, so that a trace can say the value
+/// was fixed by an overlay rather than read from the specimen.
 ///
 /// Chosen over the `VarNode<Q>` overload in `evaluate.hpp` for every
 /// `OverriddenConstantNode<Q>`, because binding the node to its own type is an
@@ -138,10 +149,9 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
                                                            Env const&,
                                                            Sink sink = {}) noexcept
 {
-    VarNode<Q> const& asVariable = node;
-    sink.entered(asVariable);
+    sink.entered(node);
     Evaluated<Rep> const result = detail::in_si<Rep>(node.value, Describe<Q>::unit);
-    sink.produced(asVariable, result);
+    sink.produced(node, result);
     return result;
 }
 
@@ -224,6 +234,43 @@ template <typename Tag>
     return {};
 }
 
+/// The operation `with_rounding<U, Places, Mode>()` builds: replace the
+/// method's rounding rule.
+template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+struct RoundingOverride
+{
+    /// The rule that replaces the method's own, as `rounding_rule<>()` would
+    /// spell it.
+    using rule = RoundingRule<U, Places, Mode>;
+
+    /// Where the rule comes from; carried onto the method's rule, and from
+    /// there into the trace.
+    Citation source {};
+};
+
+/// Replaces the rounding rule of the method the overlay is applied to with
+/// `Places` decimal places of `U`, under `Mode` -- the jurisdiction rounding
+/// more finely, or more coarsely, than the base standard.
+///
+/// **The trace says whose rule it was.** The method's rule then records
+/// `RoundingProvenance::JurisdictionOverlay` and @p source, and a trace of the
+/// overlaid method renders its rounding step as `rounded to 2 dp
+/// (jurisdiction overlay: ...)` where the base method's reads `rounded to 1 dp
+/// (method default)`. Which rule applied is half of what spec section 9.1
+/// asks for; where it came from is the other half.
+///
+/// @p source cites where the rule comes from, as `with_constant`'s does;
+/// "jurisdiction overlay" alone does not say which jurisdiction.
+///
+/// Refused when `U` does not measure what the method reports, by the method
+/// the overlay produces, and when one overlay lists it twice: see the file
+/// comment. Across overlays, the later one's rule holds.
+template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+[[nodiscard]] constexpr RoundingOverride<U, Places, Mode> with_rounding(Citation source = {}) noexcept
+{
+    return RoundingOverride<U, Places, Mode> { source };
+}
+
 namespace detail
 {
     /// Whether a type is one of the operations an overlay can list.
@@ -247,6 +294,11 @@ namespace detail
     {
     };
 
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+    struct IsOverlayOperation<RoundingOverride<U, Places, Mode>>: std::true_type
+    {
+    };
+
     /// Fails to compile when something that is not an overlay operation was
     /// handed to `overlay(...)`. Templated on the position for the reason
     /// `RequireVariant` is.
@@ -255,10 +307,10 @@ namespace detail
     {
         static_assert(IsOverlayOperation<Operation>::value,
                       "formula: this argument of overlay(...) is not an overlay operation; every argument "
-                      "must be what with_constant<Q>(value), pin_variant<Tag>() or prune_variant<Tag>() "
-                      "returns -- the offending argument appears in this diagnostic as the template argument "
-                      "Operation of RequireOverlayOperation, and Index is its ZERO-BASED position, so 0 is "
-                      "the first argument");
+                      "must be what with_constant<Q>(value), pin_variant<Tag>(), prune_variant<Tag>() or "
+                      "with_rounding<U, Places, Mode>() returns -- the offending argument appears in this "
+                      "diagnostic as the template argument Operation of RequireOverlayOperation, and Index is "
+                      "its ZERO-BASED position, so 0 is the first argument");
 
         static constexpr bool value = true;
     };
@@ -274,24 +326,53 @@ namespace detail
         static constexpr bool value = (RequireOverlayOperation<Indices, Ops>::value && ...);
     };
 
+    /// What every `with_rounding` of an overlay is, for the repeat rule: one
+    /// operation, whatever its granularity -- see `OperationIdentity`.
+    struct AnyRoundingOverride
+    {
+    };
+
+    /// What an operation is, for the repeat rule: two operations with the same
+    /// identity cannot both do something.
+    ///
+    /// Every operation is its own type, except `with_rounding`: a method has
+    /// one rounding rule, so `with_rounding<Megapascal, 1>` and
+    /// `with_rounding<Megapascal, 2>` in one overlay are two different types
+    /// of which the second silently replaces the first.
+    template <typename Operation>
+    struct OperationIdentity
+    {
+        /// The operation itself.
+        using type = Operation;
+    };
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+    struct OperationIdentity<RoundingOverride<U, Places, Mode>>
+    {
+        /// Every rounding override alike.
+        using type = AnyRoundingOverride;
+    };
+
     /// Fails to compile when one overlay lists the same operation twice.
     ///
-    /// Two operations are the same when they are the same *type*, which is
+    /// Two operations are the same when they have the same identity, which is
     /// exactly the case where one of them does nothing: two overrides of one
     /// quantity are both `ConstantOverride<Q>` whatever their values, and the
     /// second replaces the first; two pins of one variant are both
-    /// `VariantPin<Tag>`, and the second pins what is already pinned. Asked
-    /// through `first_repeated_pair`, the same statement of "no two alike"
-    /// that the distinct-tag rule of `method.hpp` asks.
+    /// `VariantPin<Tag>`, and the second pins what is already pinned; two
+    /// rounding overrides of any granularities are both the method's one rule
+    /// -- see `OperationIdentity`. Asked through `first_repeated_pair`, the
+    /// same statement of "no two alike" that the distinct-tag rule of
+    /// `method.hpp` asks.
     template <std::size_t First, std::size_t Second, typename Operation>
     struct RequireOperationListedOnce
     {
         static_assert(First == Second,
                       "formula: this overlay lists the same operation twice; two overrides of one quantity, "
-                      "or two pins or prunes of one variant, leave the first silently doing nothing -- the "
-                      "operation appears in this diagnostic as the template argument Operation of "
-                      "RequireOperationListedOnce, and First and Second are the ZERO-BASED positions of the "
-                      "two arguments that list it, so 0 is the first argument");
+                      "two pins or prunes of one variant, or two rounding overrides, leave the first silently "
+                      "doing nothing -- the first of the two appears in this diagnostic as the template "
+                      "argument Operation of RequireOperationListedOnce, and First and Second are the "
+                      "ZERO-BASED positions of the two arguments that list it, so 0 is the first argument");
 
         static constexpr bool value = true;
     };
@@ -309,7 +390,8 @@ namespace detail
     struct RequireDistinctOperations<First, Rest...>
     {
         /// Where the first repeated operation sits, if anywhere.
-        static constexpr PositionPair repeated = first_repeated_pair<First, Rest...>();
+        static constexpr PositionPair repeated =
+            first_repeated_pair<typename OperationIdentity<First>::type, typename OperationIdentity<Rest>::type...>();
 
         /// True when no operation is repeated.
         static constexpr bool value =
@@ -388,7 +470,8 @@ namespace detail
     /// asks, asked without firing any of them.
     template <typename... Ops>
     inline constexpr bool isWellFormedOverlay =
-        (IsOverlayOperation<Ops>::value && ...) && all_distinct<Ops...>() && !pinsAndPrunes<Ops...>;
+        (IsOverlayOperation<Ops>::value && ...) && all_distinct<typename OperationIdentity<Ops>::type...>()
+        && !pinsAndPrunes<Ops...>;
 } // namespace detail
 
 /// One jurisdiction's changes to a method, in the order they apply.
@@ -890,16 +973,15 @@ namespace detail
     inline constexpr std::array<std::size_t, sizeof...(Cs) - 1> positionsWithout = positions_without<Tag, Cs...>();
 
     /// @p pack with the published positions and count of the pack it was
-    /// made from -- see `Variants::publishedPositions`, which every operation
-    /// below carries through, so that a trace counts in the method as
-    /// published rather than in the one an overlay produced.
+    /// made from -- see `Variants::published`, which every operation below
+    /// carries through, so that a trace counts in the method as published
+    /// rather than in the one an overlay produced.
     template <typename... Ds>
     [[nodiscard]] constexpr Variants<Ds...> republished(Variants<Ds...> pack,
                                                         std::array<std::size_t, sizeof...(Ds)> const& positions,
                                                         std::size_t count) noexcept
     {
-        pack.publishedPositions = positions;
-        pack.publishedCount = count;
+        pack.published = PublishedLayout<sizeof...(Ds)> { positions, count };
         return pack;
     }
 
@@ -909,8 +991,8 @@ namespace detail
     [[nodiscard]] constexpr auto variants_without(Variants<Cs...> const& pack, std::index_sequence<Kept...>) noexcept
     {
         return republished(formula::variants(std::get<positionsWithout<Tag, Cs...>[Kept]>(pack.cases)...),
-                           { pack.publishedPositions[positionsWithout<Tag, Cs...>[Kept]]... },
-                           pack.publishedCount);
+                           { pack.published.position(positionsWithout<Tag, Cs...>[Kept])... },
+                           pack.published.count());
     }
 
     /// `with_constant<Q>`: every variant and constraint, with `Q` fixed.
@@ -924,11 +1006,13 @@ namespace detail
                                                  Rounding const& rounding,
                                                  ConstraintSet<Ps...> const& constraintSet) noexcept
     {
+        auto rewritten = std::apply(
+            [&](auto const&... cases) { return formula::variants(rewrite_variant(cases, overriding)...); }, pack.cases);
+        // Rewriting a variant's expression moves nothing, so the layout is
+        // carried over as it stands, already checked.
+        rewritten.published = pack.published;
         return formula::method(
-            republished(std::apply([&](auto const&... cases) { return formula::variants(rewrite_variant(cases, overriding)...); },
-                                   pack.cases),
-                        pack.publishedPositions,
-                        pack.publishedCount),
+            rewritten,
             rounding,
             std::apply([&](auto const&... items) { return formula::constraints(rewrite_constraint(items, overriding)...); },
                        constraintSet.items));
@@ -952,8 +1036,8 @@ namespace detail
 
         if constexpr (namesDeclaredVariant<Tag, Cs...>)
             return formula::method(republished(formula::variants(std::get<variant_index<Tag, Cs...>()>(pack.cases)),
-                                               { pack.publishedPositions[variant_index<Tag, Cs...>()] },
-                                               pack.publishedCount),
+                                               { pack.published.position(variant_index<Tag, Cs...>()) },
+                                               pack.published.count()),
                                    rounding,
                                    constraintSet);
         else
@@ -982,6 +1066,24 @@ namespace detail
                 variants_without<Tag>(pack, std::make_index_sequence<sizeof...(Cs) - 1> {}), rounding, constraintSet);
         else
             return formula::method(pack, rounding, constraintSet);
+    }
+
+    /// `with_rounding<U, Places, Mode>`: the same variants and constraints,
+    /// rounded by the overlay's rule, which records that it is the
+    /// overlay's and what the overlay cited.
+    ///
+    /// A rule whose unit does not measure the variants' dimension is refused
+    /// by the `Method` this builds, in the words its own rule would be
+    /// refused in -- see `RequireRoundingRuleMeasuresVariants`.
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, typename... Cs, typename Rounding, Predicate... Ps>
+    [[nodiscard]] constexpr auto apply_operation(RoundingOverride<U, Places, Mode> const& overriding,
+                                                 Variants<Cs...> const& pack,
+                                                 Rounding const&,
+                                                 ConstraintSet<Ps...> const& constraintSet) noexcept
+    {
+        return formula::method(pack,
+                               RoundingRule<U, Places, Mode> { RoundingProvenance::JurisdictionOverlay, overriding.source },
+                               constraintSet);
     }
 
     /// Whether every node of every variant and constraint of a method is a kind

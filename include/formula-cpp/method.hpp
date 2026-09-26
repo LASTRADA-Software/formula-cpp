@@ -87,6 +87,7 @@
 /// own. So the unit half is enforced where the reported quantity is named,
 /// and the dimension half is enforced here, where the variants are.
 
+#include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -100,6 +101,8 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <exception>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -524,6 +527,90 @@ namespace detail
             positions[index] = index;
         return positions;
     }
+
+    /// Whether @p positions name variants' positions in a method of @p total
+    /// truthfully: each below @p total, and no two alike.
+    template <std::size_t Count>
+    [[nodiscard]] constexpr bool is_published_layout(std::array<std::size_t, Count> const& positions,
+                                                     std::size_t total) noexcept
+    {
+        for (std::size_t later = 0; later < Count; ++later)
+        {
+            if (positions[later] >= total)
+                return false;
+            for (std::size_t earlier = 0; earlier < later; ++earlier)
+                if (positions[earlier] == positions[later])
+                    return false;
+        }
+        return true;
+    }
+
+    /// Reached only for a published layout that is not one -- see
+    /// `PublishedLayout`. Its name is the refusal.
+    ///
+    /// **Why a name and not a `static_assert`.** The positions are values, not
+    /// types: a pack pruned down to `(Cylinder, Prism)` is published at
+    /// `{ 1, 2 }` of 3, and a pack of exactly the same type written by hand
+    /// at `{ 0, 1 }` of 2, so there is nothing in the type to assert on.
+    /// Instead this function is deliberately not `constexpr`, so a constant
+    /// expression that reaches it fails to compile, and each compiler names
+    /// the function it could not call. So every method and every `apply` in
+    /// a constant expression is refused in this library's own words. At run
+    /// time it ends the program: a trace counting in positions that are not
+    /// the method's would state a falsehood about which variant ran.
+    [[noreturn]] inline void published_positions_must_be_distinct_and_below_the_published_count() noexcept
+    {
+        std::terminate();
+    }
+
+    /// Where each variant of a pack sits in the method **as published**, and
+    /// how many variants that method declares -- see `Variants::published`.
+    ///
+    /// Encapsulated, unlike the rest of `Variants`, because this is the one
+    /// part with an invariant of its own: every position below the count, and
+    /// no two alike. As a pair of public members it let anyone state a layout
+    /// that is not one -- the same position for two variants, or a 4th of 3
+    /// -- and a trace then counted in it without a word. The only ways in are
+    /// the two constructors, and the one that takes a layout checks it; see
+    /// `published_positions_must_be_distinct_and_below_the_published_count`
+    /// for how it refuses.
+    template <std::size_t Count>
+    class PublishedLayout
+    {
+      public:
+        /// In declaration order, of `Count`: a pack no overlay has touched.
+        constexpr PublishedLayout() noexcept:
+            _positions { positions_in_order<Count>() },
+            _total { Count }
+        {
+        }
+
+        /// @p published of @p total, refused unless every position is below
+        /// @p total and no two are alike.
+        constexpr PublishedLayout(std::array<std::size_t, Count> const& published, std::size_t total) noexcept:
+            _positions { published },
+            _total { total }
+        {
+            if (!is_published_layout(published, total))
+                published_positions_must_be_distinct_and_below_the_published_count();
+        }
+
+        /// The ZERO-BASED published position of the variant at @p index.
+        [[nodiscard]] constexpr std::size_t position(std::size_t index) const noexcept
+        {
+            return _positions[index];
+        }
+
+        /// How many variants the method declares as published.
+        [[nodiscard]] constexpr std::size_t count() const noexcept
+        {
+            return _total;
+        }
+
+      private:
+        std::array<std::size_t, Count> _positions;
+        std::size_t _total;
+    };
 } // namespace detail
 
 /// The variants of one method, in declaration order:
@@ -563,21 +650,22 @@ struct Variants
 
     /// For each of `cases`, its ZERO-BASED position in the method **as
     /// published** -- the `variants(...)` an author wrote, before any overlay
-    /// pinned or pruned one. What a trace reports as the selected variant's
-    /// position (`Step::variantIndex`), so that a reader counting back in the
-    /// only `variants(...)` in the source lands on the variant that ran.
+    /// pinned or pruned one -- and how many variants that method declares.
+    /// What a trace reports as the selected variant's position and count
+    /// (`Step::variantIndex`, `Step::variantCount`), so that a reader counting
+    /// back in the only `variants(...)` in the source lands on the variant
+    /// that ran.
     ///
     /// `variants(...)` numbers them in order; `apply` (`overlay.hpp`) carries
     /// them through a pin or a prune, so that a published `(Cube, Cylinder,
     /// Prism)` with `Cube` pruned still reports `Cylinder` as the 2nd of 3,
-    /// not the 1st of 2. A default member initialiser is safe here, unlike on
-    /// `cases`: it names no variant's type, so asking whether this pack is
-    /// default-constructible instantiates nothing of theirs.
-    std::array<std::size_t, sizeof...(Cs)> publishedPositions = detail::positions_in_order<sizeof...(Cs)>();
-
-    /// How many variants the method declares **as published** -- see
-    /// `publishedPositions`.
-    std::size_t publishedCount = sizeof...(Cs);
+    /// not the 1st of 2. A layout with a repeated position, or one at or past
+    /// the count, is refused -- see `detail::PublishedLayout`.
+    ///
+    /// A default member initialiser is safe here, unlike on `cases`: it names
+    /// no variant's type, so asking whether this pack is default-constructible
+    /// instantiates nothing of theirs.
+    detail::PublishedLayout<sizeof...(Cs)> published {};
 };
 
 /// Builds a method's variants pack: `variants(a, b, c)`. See the file comment
@@ -588,9 +676,33 @@ template <typename... Cs>
     return Variants<Cs...> { std::tuple<Cs...> { cases... } };
 }
 
+/// Where a method's rounding rule comes from.
+///
+/// Spec section 9.1 asks the trace to say which rounding rule applied **and
+/// where it came from**. A trace naming only the granularity is true whether
+/// the method's author or a jurisdiction chose it, and so says nothing about
+/// the second half.
+///
+/// Checked on GCC under `-Wshadow`, the way `StepKind::PiConstant` had to be:
+/// nothing in namespace `formula` is spelt `MethodDefault` or
+/// `JurisdictionOverlay`.
+enum class RoundingProvenance : std::uint8_t
+{
+    /// The rule the method was declared with: `method(..., rounding_rule<...>(), ...)`.
+    MethodDefault,
+    /// A rule a jurisdiction's overlay put in its place: `with_rounding<...>()`
+    /// (`overlay.hpp`).
+    JurisdictionOverlay,
+};
+
 /// A method's rounding rule, declared rather than applied after the fact, so
 /// the trace can say which rule fired and where it came from (spec section
 /// 9.1). Carries no operand: it is applied to whichever variant is selected.
+///
+/// The granularity is the type; where it came from is data. `with_rounding`
+/// (`overlay.hpp`) can replace a rule with one of the same granularity -- a
+/// jurisdiction adopting the base standard's rounding in its own name -- and
+/// the trace must still say whose rule it was.
 template <Unit U, DecimalPlaces Places, RoundingMode Mode>
 struct RoundingRule
 {
@@ -601,6 +713,13 @@ struct RoundingRule
     static constexpr DecimalPlaces places = Places;
     /// Which way to break ties, and which way to go.
     static constexpr RoundingMode mode = Mode;
+
+    /// Where the rule comes from: the method's own, unless an overlay's
+    /// `with_rounding` replaced it.
+    RoundingProvenance provenance = RoundingProvenance::MethodDefault;
+    /// What the overlay that replaced the rule cited for it; empty when it
+    /// cited nothing, and for the method's own rule.
+    Citation source {};
 };
 
 /// The spelling of a method's rounding rule:
@@ -959,6 +1078,50 @@ namespace detail
     };
 } // namespace detail
 
+/// A method's rounding rule, applied: the selected variant rounded as a
+/// `RoundNode` rounds it, carrying where the rule came from.
+///
+/// **It rounds exactly as a `RoundNode` does**, and derives from one, so the
+/// unit, the places and the mode are stated once. What it adds is provenance.
+/// A method's rule used to be applied through an ordinary `rounded<>` node,
+/// traced as an ordinary `Round` step, which says to how many places a value
+/// was rounded but not whose rule that was: the method's author's, or a
+/// jurisdiction's. A trace records this node as a
+/// `StepKind::RoundingRuleApplied` step (`trace.hpp`), which says both.
+///
+/// Built only by `evaluate_method`, around the variant it selected. Nothing in
+/// a formula an author writes is one, so `render()` and `document()` never
+/// meet it.
+template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+struct RoundingRuleNode: RoundNode<U, Places, Mode, Operand>
+{
+    /// Where the rule comes from -- see `RoundingRule::provenance`.
+    RoundingProvenance provenance {};
+    /// What the overlay that set the rule cited -- see `RoundingRule::source`.
+    Citation source {};
+};
+
+/// Rounds as the `RoundNode` it derives from, and tells @p sink about the
+/// node as its own type, so that a trace can say where the rule came from.
+///
+/// Chosen over the `RoundNode` overload in `rounding_node.hpp` because binding
+/// the node to its own type is an identity conversion and binding it to its
+/// base is not -- the reason `OverriddenConstantNode`'s overload
+/// (`overlay.hpp`) is chosen over `VarNode`'s.
+template <typename Rep = Rational,
+          Unit U,
+          DecimalPlaces Places,
+          RoundingMode Mode,
+          Node Operand,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(RoundingRuleNode<U, Places, Mode, Operand> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    return detail::round_to_places<Rep>(node, environment, sink);
+}
+
 /// Evaluates the variant of @p m tagged `Tag`, rounded by @p m's own rounding
 /// rule, in the coherent SI unit of its dimension -- the same unit every
 /// `Evaluated<Rep>` in this library is in.
@@ -976,11 +1139,12 @@ namespace detail
 /// variant. That is the answer to "why the cylinder formula?" that spec
 /// section 9.1 asks for; see `VariantSelection` (`sink.hpp`).
 ///
-/// The rounding is the ordinary rounding node wrapped around the selected
+/// The rounding is a `RoundingRuleNode` wrapped around the selected
 /// expression, so it rounds in the rule's unit exactly as
-/// `rounded<U, Places, Mode>(...)` does, and a sink sees the steps it would
-/// see for that node. That is also why `Rep = double` is refused here as it
-/// is there -- see `RepRounding<double>`.
+/// `rounded<U, Places, Mode>(...)` does, and a sink is told where the rule
+/// came from: the method's own, or a jurisdiction's overlay. That is also why
+/// `Rep = double` is refused here as it is for `rounded<>` -- see
+/// `RepRounding<double>`.
 ///
 /// A malformed `Method` is refused where it is declared, and this body is
 /// then not instantiated at all, so that evaluating one adds nothing to that
@@ -1016,19 +1180,24 @@ template <typename Tag, typename Rep = Rational, typename M, typename Env, typen
         using Rule = std::remove_cvref_t<decltype(m.rounding)>;
 
         auto const& selected = std::get<Selection::index>(m.variantSet.cases);
-        auto const expression = rounded<Rule::unit, Rule::places, Rule::mode>(selected.expression);
+        using Selected = std::remove_cvref_t<decltype(selected.expression)>;
+        RoundingRuleNode<Rule::unit, Rule::places, Rule::mode, Selected> const expression {
+            { {}, selected.expression },
+            m.rounding.provenance,
+            m.rounding.source,
+        };
 
         // The selection is named whether or not the sink asks for it, so that
         // a broken `TagName` specialization, or a tag whose name cannot be
         // shown, is refused the first time the method is evaluated with that
         // tag, traced or not. The position and count are the method's as
         // published, which an overlay may differ from -- see
-        // `Variants::publishedPositions`.
+        // `Variants::published`.
         constexpr std::string_view selectedTag = tag_name<Tag>();
         VariantSelection const selection {
             selectedTag,
-            m.variantSet.publishedPositions[Selection::index],
-            m.variantSet.publishedCount,
+            m.variantSet.published.position(Selection::index),
+            m.variantSet.published.count(),
         };
         if constexpr (requires(Evaluated<Rep> const& result) {
                           sink.variant_entered(selection);

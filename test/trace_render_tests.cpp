@@ -1418,7 +1418,7 @@ TEST_CASE("a variant step reads as its operand, with the variant and its positio
           == "1. F = 562 kN\n"
              "2. 22500 mm2\n"
              "3. #1 / #2 = 224800000/9\n"
-             "4. round(#3, to 1 dp of MPa) = 25 MPa [nearest, ties away from zero]\n"
+             "4. round(#3, in MPa) = 25 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]\n");
 }
 
@@ -1449,4 +1449,30 @@ TEST_CASE("a variant whose tag could not be named is still identified by its pos
     // one thing still known, and it is said; no name is invented.
     CHECK(variantLine("", 1, 3)
           == "2. #1 = 1 [the 2nd of 3 variants, selected by a tag whose name could not be read]\n");
+}
+
+TEST_CASE("a rounding step whose provenance is no known value says so rather than guess", "[trace-render][method]")
+{
+    // A hand-built step may hold any value of the underlying type. Naming
+    // either provenance for it would claim a rule was the method's, or a
+    // jurisdiction's, on no evidence.
+    formula::Trace<> trace {};
+    formula::Step<> operand {};
+    operand.kind = formula::StepKind::Constant;
+    operand.value = formula::Rational { 1 };
+    trace.steps.push_back(std::move(operand));
+
+    formula::Step<> step {};
+    step.kind = formula::StepKind::RoundingRuleApplied;
+    step.granularity = 1;
+    step.roundingProvenance = static_cast<formula::RoundingProvenance>(7);
+    step.dimension = formula::dim::Pressure;
+    step.unit = unit::Megapascal;
+    step.value = formula::Rational { 1'000'000 };
+    step.operands = { 0 };
+    trace.steps.push_back(std::move(step));
+
+    std::string const text = formula::render_trace(trace, { .maxSteps = 2 });
+    CHECK(text.substr(text.find('\n') + 1)
+          == "2. round(#1, in MPa) = 1 MPa [rounded to 1 dp (unknown provenance); nearest, ties away from zero]\n");
 }

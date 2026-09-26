@@ -457,7 +457,11 @@ namespace detail
     {
         switch (step.kind)
         {
+            // An overridden constant reads as its quantity, as it does in
+            // `render()`; that the overlay fixed it goes in the suffix -- see
+            // `overridden_constant_suffix`.
             case StepKind::Variable:
+            case StepKind::OverriddenConstant:
                 return std::string { step.symbol };
             case StepKind::Constant:
                 return {};
@@ -491,6 +495,10 @@ namespace detail
             case StepKind::RoundSignificant:
                 return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf of "
                        + std::string { view(step.unit.symbolText) } + ")";
+            // The unit only: the granularity belongs with whose rule it is,
+            // in the suffix -- see `rounding_rule_suffix`.
+            case StepKind::RoundingRuleApplied:
+                return "round(" + sole_operand(step) + ", in " + std::string { view(step.unit.symbolText) } + ")";
             case StepKind::NumericValue:
                 return "numeric(" + sole_operand(step) + ", in " + std::string { view(step.sourceUnit.symbolText) }
                        + ")";
@@ -518,6 +526,23 @@ namespace detail
         return "unknown step kind";
     }
 
+    /// What a citation identifies itself by, unbracketed: its title,
+    /// reference, section and equation, each that is not empty, joined by
+    /// commas. Empty when all four are.
+    [[nodiscard]] inline std::string citation_text(Citation const& citation)
+    {
+        std::string text;
+        for (std::string_view const part: { citation.title, citation.reference, citation.section, citation.equation })
+        {
+            if (part.empty())
+                continue;
+            if (!text.empty())
+                text += ", ";
+            text += part;
+        }
+        return text;
+    }
+
     /// What a citation says, in one bracketed clause:
     /// `[Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]`.
     ///
@@ -532,18 +557,68 @@ namespace detail
     /// derivation is a line-per-step record, and a paragraph inside one line
     /// would defeat the bound the caller chose. A page that wants the full
     /// text has the `Citation` itself, through `document()`.
+    ///
+    /// The bracket goes around `citation_text`, which the overlay clauses
+    /// below share, so that a source reads the same wherever it is cited.
     [[nodiscard]] inline std::string citation_suffix(Citation const& citation)
     {
-        std::string text;
-        for (std::string_view const part: { citation.title, citation.reference, citation.section, citation.equation })
-        {
-            if (part.empty())
-                continue;
-            if (!text.empty())
-                text += ", ";
-            text += part;
-        }
+        std::string const text = citation_text(citation);
         return text.empty() ? text : " [" + text + "]";
+    }
+
+    /// Where a value or a rule came from, when an overlay supplied it:
+    /// `jurisdiction overlay`, followed by what the overlay cited, when it
+    /// cited anything -- `jurisdiction overlay: Example Standard 12:2021 NA`.
+    [[nodiscard]] inline std::string overlay_source_text(Citation const& source)
+    {
+        std::string const cited = citation_text(source);
+        return cited.empty() ? std::string { "jurisdiction overlay" } : "jurisdiction overlay: " + cited;
+    }
+
+    /// An overridden constant's clause: `[fixed by jurisdiction overlay:
+    /// Example Standard 12:2021 NA, NA.2.3]`.
+    ///
+    /// Present whether or not the overlay cited anything. The body of the line
+    /// -- `k_s = 97/100` -- reads exactly as a variable the specimen supplied,
+    /// and this clause is the only thing on it that says otherwise.
+    [[nodiscard]] inline std::string overridden_constant_suffix(Citation const& source)
+    {
+        return " [fixed by " + overlay_source_text(source) + "]";
+    }
+
+    /// Whose a `RoundingRuleApplied` step's rule was: `method default`, or
+    /// the overlay and what it cited.
+    [[nodiscard]] inline std::string rounding_provenance_text(Step<Rational> const& step)
+    {
+        switch (step.roundingProvenance)
+        {
+            case RoundingProvenance::MethodDefault:
+                return "method default";
+            case RoundingProvenance::JurisdictionOverlay:
+                return overlay_source_text(step.citation);
+        }
+        // A hand-built `Step` may hold any value of the underlying type, and
+        // naming either provenance for it would be a guess.
+        return "unknown provenance";
+    }
+
+    /// A method's rounding rule, and whose it was, in one bracketed clause:
+    /// `[rounded to 1 dp (method default); nearest, ties away from zero]`, or
+    /// `[rounded to 2 dp (jurisdiction overlay: ...); ...]`.
+    ///
+    /// **The provenance is the point.** Spec section 9.1 asks the trace to
+    /// say which rule applied and where it came from; `rounded to 1 dp` alone
+    /// is true of both, so the parenthesis is what makes the line answer the
+    /// second half. It sits beside the granularity, not after the mode, because
+    /// what it qualifies is the rule, and the granularity is the rule.
+    ///
+    /// A semicolon before the tie-breaking rule, not the comma
+    /// `rounding_mode_suffix` could otherwise have been joined with: a cited
+    /// source has commas of its own, and so does every half mode.
+    [[nodiscard]] inline std::string rounding_rule_suffix(Step<Rational> const& step)
+    {
+        return " [rounded to " + std::to_string(step.granularity) + " dp (" + rounding_provenance_text(step) + "); "
+               + std::string { describe(step.mode) } + "]";
     }
 
     /// @p position as an English ordinal: `1st`, `2nd`, `3rd`, `4th`, and
@@ -720,7 +795,9 @@ namespace detail
     /// and a trailing clause for the kinds that need one -- a citation for
     /// `Documented`, the variant and its discriminator for `VariantSelected`,
     /// a justification for `NumericValue`, the tie-breaking rule
-    /// for the two rounding kinds, for a `Conditional` whose predicate never
+    /// for the two rounding kinds, the granularity, provenance and tie rule
+    /// for a method's rounding rule, the overlay that fixed an overridden
+    /// constant, for a `Conditional` whose predicate never
     /// resolved `[no branch]`, and for the three lookup kinds the row selected
     /// or the failure's origin (see `lookup_suffix`).
     ///
@@ -750,6 +827,10 @@ namespace detail
             suffix = " [" + std::string { describe(step.branch) } + "]";
         else if (step.kind == StepKind::Round || step.kind == StepKind::RoundSignificant)
             suffix = rounding_mode_suffix(step.mode);
+        else if (step.kind == StepKind::RoundingRuleApplied)
+            suffix = rounding_rule_suffix(step);
+        else if (step.kind == StepKind::OverriddenConstant)
+            suffix = overridden_constant_suffix(step.citation);
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
         // value fell in, and on a failure it is the only thing separating a

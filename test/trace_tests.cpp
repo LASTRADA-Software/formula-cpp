@@ -1505,7 +1505,7 @@ TEST_CASE("a method's selection is the root step, and claims the rounded variant
     // selection is the walk's one root, and nothing is left unclaimed.
     REQUIRE(root.operands.size() == 1);
     formula::Step<> const& variant = trace.steps[root.operands.front()];
-    CHECK(variant.kind == formula::StepKind::Round);
+    CHECK(variant.kind == formula::StepKind::RoundingRuleApplied);
     CHECK(trace.unclaimed.size() == 1);
     CHECK(trace.marks.empty());
 

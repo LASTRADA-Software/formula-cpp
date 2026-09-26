@@ -795,6 +795,30 @@ formula_add_negative_test(overlay_apply_arguments_out_of_order
     "formula: this method's variants are not a variants pack"
     REJECT "apply_operation")
 
+# Two rounding overrides in one overlay, of different granularities -- two
+# different types, which a repeat rule comparing types alone lets through,
+# and the second silently replaces the first. The repeat rule compares each
+# operation's identity, and every rounding override has the same one.
+formula_add_negative_test(overlay_rounding_twice
+    "formula: this overlay lists the same operation twice; two overrides of one quantity, two pins or prunes of one variant, or two rounding overrides")
+
+# A rounding override whose unit does not measure what the method reports is
+# refused by the method `apply` produces, in the words the method's own rule
+# would be refused in.
+formula_add_negative_test(overlay_rounding_dimension_mismatch
+    "formula: this method's rounding rule rounds in a unit that does not measure the dimension its variants report")
+
+# A published layout that is not one: a repeated position, and a position at
+# the count. One case per half of the rule, because each half can be deleted
+# while the other still refuses its own case. The positions are values, not
+# types, so the refusal is a call no constant expression can make, and its
+# name is the message -- see `detail::PublishedLayout` (`method.hpp`).
+formula_add_negative_test(method_published_position_repeated
+    "published_positions_must_be_distinct_and_below_the_published_count")
+
+formula_add_negative_test(method_published_position_out_of_range
+    "published_positions_must_be_distinct_and_below_the_published_count")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

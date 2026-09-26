@@ -3,10 +3,13 @@
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <tuple>
 #include <type_traits>
 
@@ -81,6 +84,37 @@ inline constexpr formula::Citation nationalAnnex { .title = "Shape factor",
 
 inline constexpr auto national =
     formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }, nationalAnnex));
+
+inline constexpr formula::Citation roundingAnnex { .reference = "Example Standard 12:2021 NA", .section = "NA.4.1" };
+
+/// Two decimal places of a megapascal where the base method keeps one.
+inline constexpr auto tighterRounding = formula::overlay(
+    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>());
+
+/// The same, citing where the jurisdiction states it.
+inline constexpr auto citedTighterRounding = formula::overlay(
+    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+        roundingAnnex));
+
+/// The base method's own granularity, restated by a jurisdiction.
+inline constexpr auto sameRounding = formula::overlay(
+    formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>());
+
+// 90100 N over 150 mm by 100 mm is 6.00666... MPa: 6.0 to one decimal and
+// 6.01 to two, so a rounding rule that did not change shows in the value.
+inline constexpr auto unevenInputs = formula::environment(formula::Measured<Force> { formula::Rational { 90'100 } },
+                                                          formula::Measured<EdgeX> { formula::Rational { 150 } },
+                                                          formula::Measured<EdgeY> { formula::Rational { 100 } },
+                                                          formula::Measured<ShapeFactor> { formula::Rational { 1 } });
+
+/// The derivation of @p m's Cube variant against `unevenInputs`, rendered.
+template <typename M>
+[[nodiscard]] std::string traceOf(M const& m)
+{
+    formula::Trace<> trace {};
+    (void) formula::evaluate_method<Cube>(m, unevenInputs, formula::RecordingSink<> { trace });
+    return formula::render_trace(trace, { .maxSteps = 20 });
+}
 
 /// A method of one Cube variant, `expression`, reported to three decimals of
 /// a dimensionless ratio, with `Ratio` fixed at 4 by an overlay.
@@ -175,6 +209,41 @@ TEST_CASE("an overridden constant keeps its quantity's identity", "[overlay]")
     REQUIRE(!documentation.symbols.empty());
     CHECK(documentation.symbols.front().symbol == "k_s");
     CHECK(documentation.symbols.front().description == "shape factor");
+}
+
+TEST_CASE("the documentation marks an overridden constant as fixed, with its value and citation", "[overlay][document]")
+{
+    constexpr auto cube = std::get<0>(formula::apply(national, baseMethod).variantSet.cases).expression;
+    auto const documentation = formula::document(cube);
+
+    // Its row says it is fixed, at what and on whose authority: a plain row
+    // would ask a reader to supply a value the formula never reads.
+    REQUIRE(documentation.symbols.size() == 4);
+    formula::SymbolEntry const& factor = documentation.symbols[0];
+    CHECK(factor.symbol == "k_s");
+    REQUIRE(factor.fixedValue.has_value());
+    CHECK(*factor.fixedValue == formula::Rational { 97, 100 });
+    CHECK(factor.fixedBy == nationalAnnex);
+
+    // The rows the specimen supplies are not marked.
+    for (std::size_t row = 1; row < documentation.symbols.size(); ++row)
+    {
+        CHECK(!documentation.symbols[row].fixedValue.has_value());
+        CHECK(documentation.symbols[row].fixedBy == formula::Citation {});
+    }
+}
+
+TEST_CASE("a quantity read plainly and also fixed is documented as fixed", "[overlay][document]")
+{
+    // Only a formula assembled by hand holds both, since `apply` fixes every
+    // use. The plain use comes first, so a walk keeping the first row it met
+    // would hide the fixed value the formula does read.
+    constexpr formula::OverriddenConstantNode<ShapeFactor> fixed { {}, formula::Rational { 97, 100 }, nationalAnnex };
+    auto const documentation = formula::document(var<ShapeFactor> + fixed);
+
+    REQUIRE(documentation.symbols.size() == 1);
+    REQUIRE(documentation.symbols[0].fixedValue.has_value());
+    CHECK(*documentation.symbols[0].fixedValue == formula::Rational { 97, 100 });
 }
 
 TEST_CASE("an overlay fixes a constant in every variant and every constraint", "[overlay]")
@@ -337,12 +406,11 @@ TEST_CASE("an empty overlay yields the method unchanged", "[overlay]")
     STATIC_REQUIRE(formula::evaluate_method<Cube>(unchanged, inputs)->value() == formula::Rational { 6'000'000 });
 }
 
-TEST_CASE("an overridden constant is traced as its quantity, holding the overlay's value", "[overlay][trace]")
+TEST_CASE("an overridden constant is traced as fixed by the overlay, holding its value", "[overlay][trace]")
 {
-    // Interim: until the trace has a step kind of its own for an overridden
-    // constant, it records an ordinary variable step. This pins that the
-    // constant is in the trace at all, under the quantity's symbol and with
-    // the value the formula used.
+    // Its own step kind, not a variable's: a variable step reads as a number
+    // the specimen supplied. Under the quantity's symbol and unit, with the
+    // value the formula used and the overlay's citation.
     constexpr auto overlaid = formula::apply(national, baseMethod);
 
     formula::Trace<> trace;
@@ -353,11 +421,102 @@ TEST_CASE("an overridden constant is traced as its quantity, holding the overlay
     std::size_t factorSteps = 0;
     for (auto const& step: trace.steps)
     {
-        if (step.kind != formula::StepKind::Variable || step.symbol != "k_s")
+        if (step.symbol != "k_s")
             continue;
         ++factorSteps;
+        CHECK(step.kind == formula::StepKind::OverriddenConstant);
+        CHECK(step.unit == unit::One);
+        CHECK(step.citation == nationalAnnex);
         REQUIRE(step.value.has_value());
         CHECK(*step.value == formula::Rational { 97, 100 });
     }
     CHECK(factorSteps == 1);
+
+    // And it says so where a person reads it.
+    std::string const rendered = formula::render_trace(trace, { .maxSteps = 20 });
+    CHECK(rendered.find("1. k_s = 97/100 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, "
+                        "NA.2.3]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("an overridden constant the overlay cited nothing for is still traced as fixed", "[overlay][trace]")
+{
+    constexpr auto overlaid =
+        formula::apply(formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 })), baseMethod);
+
+    formula::Trace<> trace;
+    (void) formula::evaluate_method<Cube>(overlaid, inputsWithoutShapeFactor, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 }).find("1. k_s = 97/100 [fixed by jurisdiction overlay]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("the trace says where the rounding rule came from", "[trace][overlay]")
+{
+    auto const fromMethod = traceOf(baseMethod);
+    CHECK(fromMethod.find("rounded to 1 dp (method default)") != std::string::npos);
+
+    auto const fromOverlay = traceOf(formula::apply(tighterRounding, baseMethod));
+    CHECK(fromOverlay.find("rounded to 2 dp (jurisdiction overlay)") != std::string::npos);
+
+    // The two must differ. A test asserting only one provenance passes
+    // whether or not the distinction exists.
+    CHECK(fromMethod != fromOverlay);
+
+    // Nor may the granularity be what tells them apart: the base method's own
+    // rule, restated by a jurisdiction, is the jurisdiction's.
+    auto const restated = traceOf(formula::apply(sameRounding, baseMethod));
+    CHECK(restated.find("rounded to 1 dp (jurisdiction overlay)") != std::string::npos);
+    CHECK(restated != fromMethod);
+
+    // And which jurisdiction, when the overlay says.
+    auto const cited = traceOf(formula::apply(citedTighterRounding, baseMethod));
+    CHECK(cited.find("8. round(#7, in MPa) = 601/100 MPa [rounded to 2 dp (jurisdiction overlay: Example Standard "
+                     "12:2021 NA, NA.4.1); nearest, ties away from zero]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("with_rounding rounds the method's result by the overlay's rule", "[overlay]")
+{
+    // 6.00666... MPa: 6.0 by the method's rule, 6.01 by the overlay's. In
+    // pascals, as `evaluate_method` answers.
+    constexpr auto overlaid = formula::apply(tighterRounding, baseMethod);
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(baseMethod, unevenInputs)->value() == formula::Rational { 6'000'000 });
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(overlaid, unevenInputs)->value() == formula::Rational { 6'010'000 });
+
+    // Every variant, not only the first. The second is checked at a coarser
+    // rule, against a load that lands on a tie there.
+    constexpr auto coarser =
+        formula::apply(formula::overlay(formula::with_rounding<unit::Megapascal,
+                                                               formula::DecimalPlaces { 0 },
+                                                               formula::RoundingMode::HalfAwayFromZero>()),
+                       baseMethod);
+    constexpr auto slanted = formula::environment(formula::Measured<Force> { formula::Rational { 101'250 } },
+                                                  formula::Measured<EdgeX> { formula::Rational { 150 } },
+                                                  formula::Measured<EdgeY> { formula::Rational { 100 } });
+    // 101250 N over 150 mm squared is 4.5 MPa: 4.5 by the method, 5 by the
+    // overlay, rounding half away from zero.
+    STATIC_REQUIRE(formula::evaluate_method<Cylinder>(baseMethod, slanted)->value() == formula::Rational { 4'500'000 });
+    STATIC_REQUIRE(formula::evaluate_method<Cylinder>(coarser, slanted)->value() == formula::Rational { 5'000'000 });
+}
+
+TEST_CASE("a later overlay's rounding rule holds over an earlier one's", "[overlay]")
+{
+    // Regional to two decimals, then national back to none. The national rule
+    // is the one applied, and the national citation the one carried.
+    constexpr formula::Citation regional { .reference = "Example Standard 12:2021 RA" };
+    constexpr auto first = formula::apply(
+        formula::overlay(
+            formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                regional)),
+        baseMethod);
+    constexpr auto second = formula::apply(
+        formula::overlay(
+            formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+                roundingAnnex)),
+        first);
+
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(first, unevenInputs)->value() == formula::Rational { 6'010'000 });
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(second, unevenInputs)->value() == formula::Rational { 6'000'000 });
+    STATIC_REQUIRE(second.rounding.source == roundingAnnex);
+    STATIC_REQUIRE(second.rounding.provenance == formula::RoundingProvenance::JurisdictionOverlay);
 }
