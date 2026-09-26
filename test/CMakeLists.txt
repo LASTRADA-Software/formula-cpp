@@ -570,19 +570,24 @@ formula_add_negative_test(escape_unit_dimension_mismatch
 formula_add_negative_test(render_trace_no_step_limit "StepLimit")
 
 formula_add_negative_test(band_gap
-    "formula: this band table has a gap or overlap between two adjacent bands")
+    "formula: this band table has a gap or overlap between two adjacent bands"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(band_overlap
-    "formula: this band table has a gap or overlap between two adjacent bands")
+    "formula: this band table has a gap or overlap between two adjacent bands"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(band_inverted
-    "formula: this band is not well-formed")
+    "formula: this band is not well-formed"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(band_zero_width
-    "formula: this band is not well-formed")
+    "formula: this band is not well-formed"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(lookup_band_gap
-    "formula: this band table has a gap or overlap between two adjacent bands")
+    "formula: this band table has a gap or overlap between two adjacent bands"
+    REJECT "must be initialized by a constant expression")
 
 # The corrections-count guard is shared by every lookup table in lookup.hpp,
 # so its message names a table's "rows" rather than one kind's own word for
@@ -652,20 +657,23 @@ formula_add_negative_test(interpolating_lookup_key_dimension_mismatch
 #     which kills a check confined to the first pair, to the last pair, or to
 #     neighbours -- three mutations on one table;
 #   - _two_rows is the smallest table that can carry a duplicate at all, and
-#     is what fails when the underflow guard in `detail::key_table_is_valid`
-#     is widened from `size() < 2` to `< 3`;
+#     is what fails when the pair filter in `detail::KeyPairCheck` skips a
+#     table of two rows;
 #   - _no_factory declares the node directly, which is the ONLY case that
 #     tells a class-body `static_assert` from one in the factory -- the
 #     factory returns the node by value, so every other case completes the
 #     class either way.
 formula_add_negative_test(exact_lookup_duplicate_key
-    "formula: this exact lookup table declares the same key twice")
+    "formula: this exact lookup table declares the same key twice"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(exact_lookup_duplicate_key_two_rows
-    "formula: this exact lookup table declares the same key twice")
+    "formula: this exact lookup table declares the same key twice"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(exact_lookup_duplicate_key_no_factory
-    "formula: this exact lookup table declares the same key twice")
+    "formula: this exact lookup table declares the same key twice"
+    REJECT "must be initialized by a constant expression")
 
 # The scoped-enumeration requirement, at each of the three public entry points
 # that takes a key: the node, the runtime validator and the predicate both are

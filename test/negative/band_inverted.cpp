@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this band is not well-formed
+// REJECT: must be initialized by a constant expression
 //
 // A table with bands 0-103, 103-59 and 59-163 mis-buckets silently: band 1 is
 // inverted (its low bound, 103, is not below its high bound, 59), yet every

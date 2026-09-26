@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this band is not well-formed
+// REJECT: must be initialized by a constant expression
 //
 // A table with bands 0-103, 103-103 and 103-197 declares a band that covers no
 // value at all: band 1's low and high bound are the same rational, so no

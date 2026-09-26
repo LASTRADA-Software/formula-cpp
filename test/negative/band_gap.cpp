@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this band table has a gap or overlap between two adjacent bands
+// REJECT: must be initialized by a constant expression
 //
 // A table with bands 0-103, 103-197, 241-331 and 331-421 leaves the value 223
 // undefined -- exactly the kind of typo a real published table contains. The

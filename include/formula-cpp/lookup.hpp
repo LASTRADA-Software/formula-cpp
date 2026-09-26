@@ -1039,43 +1039,27 @@ struct RequireKeysDistinct
 
 namespace detail
 {
-    /// Expands to one `RequireKeysDistinct<Keys[Index], Keys[j]>::value` for
-    /// every `j` strictly after `Index`, `&&`-folded together. Every operand
-    /// of a fold expression is instantiated to form the expression,
-    /// independent of the runtime short-circuit `&&` also performs -- so
-    /// every later key is compared against this one and each duplicate
-    /// reports on its own. The same reasoning as
-    /// `require_all_bands_adjacent` (`band.hpp`).
-    template <KeyTable Keys, std::size_t Index, std::size_t... Later>
-    [[nodiscard]] constexpr bool require_key_distinct_from_later(std::index_sequence<Later...>) noexcept
-    {
-        return (RequireKeysDistinct<Keys[Index], Keys[Index + 1 + Later]>::value && ...);
-    }
+    /// The check for the pair at flat position @p Pair of a table of
+    /// @p Keys: rows `Pair / N` and `Pair % N`, compared only when the first
+    /// comes before the second, so every unordered pair is visited exactly
+    /// once. The other positions name no check -- and naming
+    /// `RequireKeysDistinct` as an argument of `std::conditional_t`, as here,
+    /// does not instantiate it.
+    template <KeyTable Keys, std::size_t Pair>
+    using KeyPairCheck = std::conditional_t<(Pair / Keys.size() < Pair % Keys.size()),
+                                            RequireKeysDistinct<Keys[Pair / Keys.size()], Keys[Pair % Keys.size()]>,
+                                            NoCheck<Pair>>;
 
-    /// The outer half of the pairwise sweep: one `Index` per row that has a
-    /// row after it, so every unordered pair is visited exactly once.
-    template <KeyTable Keys, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_keys_distinct(std::index_sequence<Index...>) noexcept
-    {
-        return (require_key_distinct_from_later<Keys, Index>(std::make_index_sequence<Keys.size() - 1 - Index> {}) && ...);
-    }
+    /// Every pair's `RequireKeysDistinct`, **instantiated as base classes**
+    /// -- see `BandChecks` (`band.hpp`) for why not a fold over `::value`.
+    /// Each duplicate reports on its own.
+    template <KeyTable Keys, typename Pairs>
+    struct KeyChecks;
 
-    /// Split out of `RequireValidKeyTable` so that `Keys.size() - 1` -- which
-    /// underflows for an empty table -- sits behind `if constexpr` and is
-    /// therefore never instantiated for `N < 2`. Guarding with `||` instead
-    /// would not be enough, for the reason `band_table_is_valid`'s own
-    /// comment gives: that operator's short circuit applies to *evaluation*,
-    /// not to forming the type of its right-hand operand, and
-    /// `std::make_index_sequence<Keys.size() - 1>` for an empty table would
-    /// still have to name a sequence of length `SIZE_MAX`.
-    template <KeyTable Keys>
-    [[nodiscard]] constexpr bool key_table_is_valid() noexcept
+    template <KeyTable Keys, std::size_t... Pair>
+    struct KeyChecks<Keys, std::index_sequence<Pair...>>: PositionedCheck<Pair, KeyPairCheck<Keys, Pair>>...
     {
-        if constexpr (Keys.size() < 2)
-            return true;
-        else
-            return require_all_keys_distinct<Keys>(std::make_index_sequence<Keys.size() - 1> {});
-    }
+    };
 
     /// Finds the index of the row in @p Keys whose key is @p key, or nothing
     /// when no row has it.
@@ -1143,13 +1127,12 @@ namespace detail
 /// through `RequireKeysDistinct` above. Reached through `::value`, for the
 /// same reason `RequireValidBandTable` is.
 template <KeyTable Keys>
-struct RequireValidKeyTable
+struct RequireValidKeyTable: detail::KeyChecks<Keys, std::make_index_sequence<Keys.size() * Keys.size()>>
 {
-    /// Always `true` once reached -- every `static_assert` this instantiates
-    /// has already failed compilation otherwise. Present so `::value` is the
-    /// spelling that instantiates the class template, exactly as
-    /// `RequireValidBandTable::value` (`band.hpp`) is.
-    static constexpr bool value = detail::key_table_is_valid<Keys>();
+    /// Always `true` once reached -- every `static_assert` this instantiates,
+    /// through its bases, has already failed compilation otherwise. A
+    /// literal, exactly as `RequireValidBandTable::value` (`band.hpp`) is.
+    static constexpr bool value = true;
 };
 
 /// A category key names a row, and that row selects a correction -- see the
@@ -1493,14 +1476,6 @@ struct RequireBreakpointsAscend
 
 namespace detail
 {
-    /// One check, told apart from another of the same type by its position,
-    /// so that a table naming one breakpoint twice does not name one base
-    /// class twice.
-    template <std::size_t Position, typename Check>
-    struct PositionedCheck: Check
-    {
-    };
-
     /// Every row's `RequireBreakpointWellFormed` and every adjacent pair's
     /// `RequireBreakpointsAscend`, **instantiated as base classes**: every row
     /// and every pair is checked, and each bad one reports on its own, with
@@ -1520,11 +1495,6 @@ namespace detail
         PositionedCheck<Points.size() + Pair, RequireBreakpointsAscend<Points[Pair], Points[Pair + 1]>>...
     {
     };
-
-    /// The pairs of a table of @p N rows: none below two rows, where `N - 1`
-    /// would underflow or name no pair.
-    template <std::size_t N>
-    using AdjacentPairs = std::make_index_sequence<(N < 2 ? 0 : N - 1)>;
 } // namespace detail
 
 /// The static_assert wiring for a breakpoint table -- an interpolating

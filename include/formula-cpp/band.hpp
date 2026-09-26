@@ -252,47 +252,47 @@ struct RequireBandWellFormed
 
 namespace detail
 {
-    /// Expands to one `RequireBandsAdjacent<Bands[i], Bands[i+1]>::value` per
-    /// index, `&&`-folded together. Every operand of a fold expression is
-    /// instantiated to form the expression, independent of the runtime
-    /// short-circuit `&&` also performs -- so every adjacent pair is checked,
-    /// and each one that fails reports on its own, naming its own two bands.
-    /// A defect in an earlier pair does not stop a later, independent
-    /// pair from being checked and does not stop it from being reported.
-    template <BandTable Bands, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_bands_adjacent(std::index_sequence<Index...>) noexcept
+    /// One check, told apart from another of the same type by its position,
+    /// so that a table naming one entry twice does not name one base class
+    /// twice. Shared by every table's validation: bands here, keys and
+    /// breakpoints in `lookup.hpp`.
+    template <std::size_t Position, typename Check>
+    struct PositionedCheck: Check
     {
-        return (RequireBandsAdjacent<Bands[Index], Bands[Index + 1]>::value && ...);
-    }
+    };
 
-    /// Same idea as `require_all_bands_adjacent`, one index per band rather
-    /// than per pair, so every band's own well-formedness is checked and
-    /// reported independently of every other band's.
-    template <BandTable Bands, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_bands_well_formed(std::index_sequence<Index...>) noexcept
+    /// No check at all, at @p Position: what a position that names no pair
+    /// stands for.
+    template <std::size_t Position>
+    struct NoCheck
     {
-        return (RequireBandWellFormed<Bands[Index]>::value && ...);
-    }
+    };
 
-    /// Split out of `RequireValidBandTable` so that `Bands.size() - 1` --
-    /// which underflows for an empty table -- sits behind `if constexpr` and
-    /// is therefore never instantiated for `N < 2`. Guarding it with `||`
-    /// instead would not be enough: that operator's short circuit applies to
-    /// *evaluation*, not to forming the type of its right-hand operand, and
-    /// `std::make_index_sequence<Bands.size() - 1>` for an empty table would
-    /// still have to name a sequence of length `SIZE_MAX`. The well-formed
-    /// fold has no such hazard (it indexes 0..N-1, not 0..N-2) and always
-    /// runs, so a table with only one bad band -- no pair to speak of -- is
-    /// still caught.
-    template <BandTable Bands>
-    [[nodiscard]] constexpr bool band_table_is_valid() noexcept
+    /// The pairs of a table of @p N rows that are adjacent: none below two
+    /// rows, where `N - 1` would underflow or name no pair.
+    template <std::size_t N>
+    using AdjacentPairs = std::make_index_sequence<(N < 2 ? 0 : N - 1)>;
+
+    /// Every band's `RequireBandWellFormed` and every adjacent pair's
+    /// `RequireBandsAdjacent`, **instantiated as base classes**: every band
+    /// and every pair is checked, and each bad one reports on its own, naming
+    /// its own bands. A defect in an earlier pair does not stop a later,
+    /// independent pair from being checked or reported.
+    ///
+    /// Base classes, not a fold over each check's `::value`: once a check's
+    /// own assert has failed, clang++ cannot read that `::value` in a
+    /// constant expression, and reported the read -- and everything built on
+    /// it -- as further errors, where g++ and cl gave one. Naming a check as
+    /// a base instantiates it without reading anything.
+    template <BandTable Bands, typename Rows, typename Pairs>
+    struct BandChecks;
+
+    template <BandTable Bands, std::size_t... Row, std::size_t... Pair>
+    struct BandChecks<Bands, std::index_sequence<Row...>, std::index_sequence<Pair...>>:
+        PositionedCheck<Row, RequireBandWellFormed<Bands[Row]>>...,
+        PositionedCheck<Bands.size() + Pair, RequireBandsAdjacent<Bands[Pair], Bands[Pair + 1]>>...
     {
-        bool const wellFormed = require_all_bands_well_formed<Bands>(std::make_index_sequence<Bands.size()> {});
-        if constexpr (Bands.size() < 2)
-            return wellFormed;
-        else
-            return wellFormed && require_all_bands_adjacent<Bands>(std::make_index_sequence<Bands.size() - 1> {});
-    }
+    };
 } // namespace detail
 
 /// The static_assert wiring: instantiating this with a `BandTable` that is a
@@ -307,14 +307,16 @@ namespace detail
 /// comment for why a band table cannot express a curve. Reached through
 /// `::value`, for the same reason `RequireBandsAdjacent` is.
 template <BandTable Bands>
-struct RequireValidBandTable
+struct RequireValidBandTable:
+    detail::BandChecks<Bands, std::make_index_sequence<Bands.size()>, detail::AdjacentPairs<Bands.size()>>
 {
-    /// Always `true` once reached -- every `static_assert` this instantiates
-    /// has already failed compilation otherwise. Present so `::value` is the
+    /// Always `true` once reached -- every `static_assert` this instantiates,
+    /// through its bases, has already failed compilation otherwise. A
+    /// literal, never read off a check, so that nothing downstream of a
+    /// failed check has anything left to fail on. Present so `::value` is the
     /// spelling that instantiates the class template; see the class comment
-    /// for why that spelling matters, and `RequireBandsAdjacent::value` for
-    /// the same member playing the same part one level down.
-    static constexpr bool value = detail::band_table_is_valid<Bands>();
+    /// for why that spelling matters.
+    static constexpr bool value = true;
 };
 
 } // namespace formula

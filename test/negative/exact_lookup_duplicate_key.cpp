@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this exact lookup table declares the same key twice
+// REJECT: must be initialized by a constant expression
 //
 // A key declared twice makes the later row unreachable: a correction the
 // author entered is silently never selected, and which of the two wins
