@@ -1,11 +1,26 @@
 # SPDX-License-Identifier: Apache-2.0
 # No real standard is named anywhere in this repository: every citation in
 # the sources, tests, documentation and examples is an invented "Example
-# Standard". This check scans every tracked file for a real standards body's
-# identifier -- the body's name followed by a number, with or without a space,
-# a hyphen or a slash between them, and a letter before the number where a
-# body numbers its standards that way -- and fails on any match not on the
-# allow-list, naming the file, the match and the line it is on.
+# Standard". This check scans every tracked file for one of the bodies listed
+# in `bodies` below, in these forms, and fails on any match not on the
+# allow-list, naming the file, the line and the match:
+#
+#  - the body's name, not the tail of a longer word, and case-sensitive:
+#    `ISO` and `ÖNORM`, never `iso`;
+#  - then any run of separators -- a space, a tab, a no-break space (U+00A0),
+#    a narrow no-break space (U+202F), a thin or figure space (U+2009,
+#    U+2007), a non-breaking hyphen (U+2011), an en dash (U+2013), `.`, `/`,
+#    `_` or `-` -- or none;
+#  - or one line break among them, with the next line's indentation and a
+#    comment leader (`//`, `///`, `#`, `*`), so that a body at the end of one
+#    line and its number at the start of the next are one identifier, as
+#    wrapped prose and wrapped comments put them;
+#  - then an optional capital letter (and separators), where a body numbers
+#    its standards that way, `ASTM C39`;
+#  - then a digit.
+#
+# Each file is read whole, as bytes, so a body spelt outside ASCII (`ÖNORM`)
+# and a separator outside ASCII are matched as written.
 #
 # The files are git's tracked files when SOURCE_DIR is a git work tree, and
 # otherwise every file under it outside build and site output, so that a
@@ -13,19 +28,36 @@
 # that examines nothing is a check that lies.
 #
 # The allow-list, cmake/real-standards-allowlist.txt, holds one identifier per
-# line exactly as it may appear, then `|` and the reason it is allowed. It is
-# not itself scanned, and neither is this file.
+# line exactly as it may appear, then `|` and the reason it is allowed. Each
+# allowed identifier is removed from a file's text before the file is
+# scanned, so it allows exactly the text it spells and nothing around it. The
+# allow-list is not itself scanned, and neither is this file.
 
 set(allowListPath "${SOURCE_DIR}/cmake/real-standards-allowlist.txt")
 set(selfPath "cmake/CheckNoRealStandards.cmake")
 set(allowListRelative "cmake/real-standards-allowlist.txt")
 
-# The bodies, as an alternation. `CEN/TS` before the bare names, so that it
-# is read whole.
-set(bodies "CEN/TS|DIN|EN|ISO|IEC|ASTM|AASHTO|BS|NF|ÖNORM|OENORM|SN|UNI|TL|TP|ZTV")
-# A body name that is not the tail of a longer word, then an optional
-# separator, an optional letter (and space), and a digit.
-set(identifier "(^|[^A-Za-z0-9_])(${bodies})[ /_-]?([A-Z] ?)?[0-9]+")
+# The characters outside ASCII that the rule names, built from their UTF-8
+# bytes so that none of them sits invisibly in this file.
+string(ASCII 195 150 capitalOWithDiaeresis)
+string(ASCII 194 160 noBreakSpace)
+string(ASCII 226 128 175 narrowNoBreakSpace)
+string(ASCII 226 128 137 thinSpace)
+string(ASCII 226 128 135 figureSpace)
+string(ASCII 226 128 145 nonBreakingHyphen)
+string(ASCII 226 128 147 enDash)
+set(unicodeSeparators "${noBreakSpace};${narrowNoBreakSpace};${thinSpace};${figureSpace};${nonBreakingHyphen};${enDash}")
+
+# The bodies, as an alternation. The two-part names first, so that each is
+# read whole.
+set(bodies "CEN/TS|ISO/TR|ISO/TS|prEN|DIN|EN|ISO|IEC|IEEE|ASTM|AASHTO|BS|NF|${capitalOWithDiaeresis}NORM|OENORM|SN|UNI|TL|TP|ZTV")
+# Separators within a line, and one line break with the next line's
+# indentation and comment leader. Every separator outside ASCII has been
+# replaced by a space before this is applied.
+set(separators "[ \t./_-]*(\r?\n[ \t]*(///?|#+|\\*)?[ \t]*)?[ \t./_-]*")
+# A body name that is not the tail of a longer word, then separators, an
+# optional letter (and separators), and a digit.
+set(identifier "(^|[^A-Za-z0-9_])(${bodies})${separators}([A-Z][ \t./_-]*)?[0-9]+")
 
 if(EXISTS "${SOURCE_DIR}/.git")
     execute_process(COMMAND git -c core.quotepath=off -C "${SOURCE_DIR}" ls-files
@@ -72,26 +104,24 @@ foreach(relative IN LISTS files)
     if(NOT EXISTS "${path}" OR IS_DIRECTORY "${path}")
         continue()
     endif()
-    file(STRINGS "${path}" lines REGEX "${identifier}")
-    foreach(line IN LISTS lines)
-        string(REGEX MATCHALL "${identifier}" matches "${line}")
-        foreach(match IN LISTS matches)
-            string(REGEX REPLACE "^[^A-Za-z0-9_]" "" match "${match}")
-            set(isAllowed FALSE)
-            foreach(entry IN LISTS allowed)
-                string(FIND "${line}" "${entry}" allowedAt)
-                if(NOT allowedAt EQUAL -1)
-                    string(FIND "${entry}" "${match}" inEntry)
-                    if(NOT inEntry EQUAL -1)
-                        set(isAllowed TRUE)
-                    endif()
-                endif()
-            endforeach()
-            if(NOT isAllowed)
-                string(STRIP "${line}" shownLine)
-                list(APPEND found "${relative}: ${match}    (in: ${shownLine})")
-            endif()
-        endforeach()
+    file(READ "${path}" content)
+    foreach(entry IN LISTS allowed)
+        string(REPLACE "${entry}" "" content "${content}")
+    endforeach()
+    foreach(separator IN LISTS unicodeSeparators)
+        string(REPLACE "${separator}" " " content "${content}")
+    endforeach()
+    string(REGEX MATCHALL "${identifier}" matches "${content}")
+    foreach(match IN LISTS matches)
+        string(REGEX REPLACE "^[^A-Za-z0-9_]" "" match "${match}")
+        # The line it starts on, counted from one, for the report.
+        string(FIND "${content}" "${match}" matchAt)
+        string(SUBSTRING "${content}" 0 ${matchAt} before)
+        string(REGEX MATCHALL "\n" newlines "${before}")
+        list(LENGTH newlines lineIndex)
+        math(EXPR lineNumber "${lineIndex} + 1")
+        string(REGEX REPLACE "\r?\n" "<line break>" shownMatch "${match}")
+        list(APPEND found "${relative}:${lineNumber}: ${shownMatch}")
     endforeach()
 endforeach()
 

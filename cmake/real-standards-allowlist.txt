@@ -6,3 +6,5 @@
 #
 # Keep it short: every entry is a place the rule "no real standard is named
 # anywhere" does not hold, and must say why.
+
+IEEE-754 | floating-point format, not a test standard: `double`'s layout (rational.hpp) and the tie rule HalfEven follows (rounding.hpp)
