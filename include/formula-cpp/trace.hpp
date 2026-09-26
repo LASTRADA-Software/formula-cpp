@@ -1854,6 +1854,9 @@ class RecordingSink
         {
             seriesStep.unit = S::unit;
             seriesStep.mode = S::mode;
+            // Never instantiated for places already refused (`countMatches`):
+            // the evaluator tells no sink then, so this loop only ever runs
+            // over a table.
             for (DecimalPlaces const elementPlaces: S::places)
                 seriesStep.elementGranularities.push_back(elementPlaces.value);
         }

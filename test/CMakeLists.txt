@@ -390,6 +390,26 @@ formula_add_negative_test(series_elementwise_wrong_dimension_first
     "the two sides of this addition or subtraction measure different"
     REJECT "the two series combined here have different lengths"
     "RequireAddendsAgree<formula::ElementwiseBinaryNode")
+# The refusal passed upward along each other path, the second REJECT naming
+# what only a second message prints on g++ and clang++: a refused right-hand
+# operand, a negation, a running total, and a per-element rounding over a
+# refused operand (task 6 review, L1; each deletion-checked on both).
+formula_add_negative_test(series_elementwise_short_on_the_right
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::SeriesVarNode<TotalMass, 5>")
+formula_add_negative_test(series_elementwise_short_under_negation
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::ElementwiseUnaryNode")
+formula_add_negative_test(series_elementwise_short_under_cumulative
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::CumulativeNode")
+formula_add_negative_test(series_round_over_refused_operand
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequirePlacesPerElement<")
 
 # A per-element constant given fewer values than its stated length, through
 # the factory and through aggregate initialisation of the node itself.
@@ -399,6 +419,9 @@ formula_add_negative_test(series_constant_short_no_factory
     "this series constant was given a different number of elements than its length")
 formula_add_negative_test(series_constant_zero_length
     "this series constant has no elements"
+    REJECT "no matching")
+formula_add_negative_test(series_zero_length
+    "this series has no elements"
     REJECT "no matching")
 
 # Task 5: sum and cumulative given a single value, refused in this library's
@@ -427,11 +450,26 @@ formula_add_negative_test(series_round_of_single_value
 # Task 6: a per-element rounding with a table of the wrong length, which
 # gates the unit check off, and one with a unit of the wrong dimension.
 formula_add_negative_test(series_round_places_count_mismatch
-    "this per-element rounding was given a different number of decimal places than its series has elements"
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
     REJECT "this rounding node names a unit that does not measure the dimension of the expression it rounds")
 formula_add_negative_test(series_round_unit_dimension_mismatch
     "this rounding node names a unit that does not measure the dimension of the expression it rounds"
-    REJECT "this per-element rounding was given a different number of decimal places than its series has elements")
+    REJECT "are not a PlacesTable<N> of one DecimalPlaces per element of its series")
+# Past a refused table nothing indexes or loops over it: evaluated in a
+# constant expression, rendered, documented and traced, a table of the wrong
+# count, and a lone DecimalPlaces, each draw the one message; a table of the
+# right count but the wrong type is told the truth (task 6 review, L2).
+formula_add_negative_test(series_round_places_count_mismatch_evaluated
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
+    REJECT "outside the bounds" "must be initialized by a constant expression" "no match" "not a range" "subscript"
+    "was not declared")
+formula_add_negative_test(series_round_places_not_a_table
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
+    REJECT "outside the bounds" "must be initialized by a constant expression" "no match" "not a range" "subscript"
+    "was not declared")
+formula_add_negative_test(series_round_places_int_array
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
+    REJECT "different number")
 
 # A substitution for a quantity the method reads as a series: refused as
 # such, and the "nobody reads it" refusal gated off, since a variant does

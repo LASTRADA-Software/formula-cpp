@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: this per-element rounding was given a different number of decimal places than its series has elements
+// EXPECT: are not a PlacesTable<N> of one DecimalPlaces per element of its series
 // REJECT: this rounding node names a unit that does not measure the dimension of the expression it rounds
 //
 // Four granularities for a series of five: refused naming the table and the

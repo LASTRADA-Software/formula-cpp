@@ -867,7 +867,11 @@ template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocab
     std::string const inner = render<D>(node.operand, vocabulary);
     constexpr Unit unit = U;
     std::string const unitSymbol { view(unit.symbolText) };
-    std::string const placesText = detail::granularities_text<Places>();
+    // Places already refused (`countMatches`) are not a table to list; the
+    // text is never seen, since the program does not compile.
+    std::string placesText = "(refused)";
+    if constexpr (ElementwiseRoundNode<U, Places, Mode, S>::countMatches)
+        placesText = detail::granularities_text<Places>();
 
     if constexpr (D == Dialect::LaTeX)
         return "\\operatorname{round}_{" + placesText + "\\,\\mathrm{" + unitSymbol + "}}(" + inner + ")";

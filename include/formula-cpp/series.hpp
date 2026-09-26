@@ -68,6 +68,10 @@ struct SeriesVarNode: SeriesNodeBase
                   "formula: this quantity describes a dimension its own unit does not measure, so "
                   "no formula containing it can be trusted; the quantity appears in this "
                   "diagnostic as the template argument of SeriesVarNode");
+    static_assert(N > 0,
+                  "formula: this series has no elements; a series is a value at each point of a method's domain, "
+                  "and a domain of no points has nothing to sum, round or trace -- the quantity appears in this "
+                  "diagnostic as the template argument of SeriesVarNode");
 
     /// The quantity this node names -- the key an `Environment` is asked with.
     using quantity = Q;
@@ -450,15 +454,17 @@ namespace detail
     template <typename Places, std::size_t N>
     inline constexpr bool places_per_element = std::is_same_v<std::remove_cv_t<Places>, PlacesTable<N>>;
 
-    /// Fails to compile when a per-element rounding is given a different
-    /// number of granularities than its series has elements. Named so the
-    /// table's type -- with its count -- and the length both print.
+    /// Fails to compile when a per-element rounding's places are not a
+    /// `PlacesTable` of one granularity per element of its series: a table of
+    /// another length, or anything else (a lone `DecimalPlaces`, an array of
+    /// `int`). Named so the places' type -- with its count, when it has one --
+    /// and the length both print.
     template <typename Places, std::size_t N>
     struct RequirePlacesPerElement
     {
         static_assert(places_per_element<Places, N>,
-                      "formula: this per-element rounding was given a different number of decimal places than its "
-                      "series has elements; the places table and the series length appear in this diagnostic as "
+                      "formula: this per-element rounding's places are not a PlacesTable<N> of one DecimalPlaces per "
+                      "element of its series; the places' type and the series length appear in this diagnostic as "
                       "the template arguments of RequirePlacesPerElement -- give one granularity per point of the "
                       "series, as a PlacesTable<N>");
 
@@ -481,7 +487,10 @@ struct ElementwiseRoundNode: SeriesNodeBase
 {
     /// Whether the operand was already refused -- see `detail::refused_already`.
     static constexpr bool operandRefused = detail::refused_already<S>();
-    /// Whether the table has one granularity per element.
+    /// Whether the places are a table of one granularity per element. When
+    /// they are not, nothing past the refusal reads them: the evaluator, the
+    /// trace and the renderer each check this first, so that no index or loop
+    /// over them adds a compiler-worded error to the one refusal.
     static constexpr bool countMatches = detail::places_per_element<decltype(Places), S::length>;
 
     static_assert(std::conditional_t<!operandRefused,
@@ -1026,28 +1035,34 @@ template <typename Rep = Rational, Unit U, auto Places, RoundingMode Mode, Serie
     ElementwiseRoundNode<U, Places, Mode, S> const& node, Env const& environment, Sink sink = {}) noexcept
 {
     constexpr std::size_t seriesLength = S::length;
-    detail::tell_series_entered<Rep>(sink, node);
-    EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
-        EvaluatedSeries<Rep, seriesLength> const operandResult =
-            detail::dispatch_series<Rep>(node.operand, environment, sink);
-        if (!operandResult.has_value())
-            return std::unexpected { operandResult.error() };
+    // Refused already (`countMatches`): the places are not a table to index.
+    if constexpr (!ElementwiseRoundNode<U, Places, Mode, S>::countMatches)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
+    else
+    {
+        detail::tell_series_entered<Rep>(sink, node);
+        EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
+            EvaluatedSeries<Rep, seriesLength> const operandResult =
+                detail::dispatch_series<Rep>(node.operand, environment, sink);
+            if (!operandResult.has_value())
+                return std::unexpected { operandResult.error() };
 
-        SeriesValue<Rep, seriesLength> roundedElements;
-        for (std::size_t at = 0; at < seriesLength; ++at)
-        {
-            if (!operandResult->elements[at].has_value())
-                continue;
-            std::expected<Rep, ArithmeticError> const elementResult =
-                RepRounding<Rep>::round_in(*operandResult->elements[at], U, Places[at], Mode);
-            if (!elementResult.has_value())
-                return std::unexpected { SeriesFailure { elementResult.error(), at } };
-            roundedElements.elements[at] = *elementResult;
-        }
-        return roundedElements;
-    }();
-    detail::tell_series_produced<Rep>(sink, node, evaluated);
-    return evaluated;
+            SeriesValue<Rep, seriesLength> roundedElements;
+            for (std::size_t at = 0; at < seriesLength; ++at)
+            {
+                if (!operandResult->elements[at].has_value())
+                    continue;
+                std::expected<Rep, ArithmeticError> const elementResult =
+                    RepRounding<Rep>::round_in(*operandResult->elements[at], U, Places[at], Mode);
+                if (!elementResult.has_value())
+                    return std::unexpected { SeriesFailure { elementResult.error(), at } };
+                roundedElements.elements[at] = *elementResult;
+            }
+            return roundedElements;
+        }();
+        detail::tell_series_produced<Rep>(sink, node, evaluated);
+        return evaluated;
+    }
 }
 
 /// The running total along the operand, from the end `D` names.
