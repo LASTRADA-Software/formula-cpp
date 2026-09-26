@@ -22,9 +22,9 @@
 # Each file is read whole, as bytes, so a body spelt outside ASCII (`ÖNORM`)
 # and a separator outside ASCII are matched as written.
 #
-# The files are git's tracked files when SOURCE_DIR is a git work tree, and
-# otherwise every file under it outside build and site output, so that a
-# source tarball is scanned too. A scan that examined no file fails: a check
+# The files are git's tracked files when SOURCE_DIR is a git work tree git can
+# read, and otherwise every file under it outside build and site output, so
+# that a source tarball is scanned too. A scan that examined no file fails: a check
 # that examines nothing is a check that lies.
 #
 # The allow-list, cmake/real-standards-allowlist.txt, holds one identifier per
@@ -59,18 +59,47 @@ set(separators "[ \t./_-]*(\r?\n[ \t]*(///?|#+|\\*)?[ \t]*)?[ \t./_-]*")
 # optional letter (and separators), and a digit.
 set(identifier "(^|[^A-Za-z0-9_])(${bodies})${separators}([A-Z][ \t./_-]*)?[0-9]+")
 
+# A `.git` that git cannot read is scanned as a tree without one, not refused.
+# A worktree's `.git` is a file naming its git directory by an absolute path,
+# and one created by git for Windows names it `D:/...`, which git in WSL on
+# the same checkout cannot resolve (`fatal: not a git repository`, exit 128):
+# refusing there failed every POSIX build of such a worktree on a check about
+# the files' contents. The glob scans every file git would list, and untracked
+# ones besides, so falling back never scans less.
+set(gitListed FALSE)
 if(EXISTS "${SOURCE_DIR}/.git")
     execute_process(COMMAND git -c core.quotepath=off -C "${SOURCE_DIR}" ls-files
                     OUTPUT_VARIABLE tracked
                     RESULT_VARIABLE gitResult
+                    ERROR_VARIABLE gitError
                     OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if(NOT gitResult EQUAL 0)
-        message(FATAL_ERROR "no-real-standards check: `git ls-files` failed in ${SOURCE_DIR} (exit ${gitResult}).")
+    if(gitResult EQUAL 0)
+        string(REPLACE "\n" ";" files "${tracked}")
+        set(gitListed TRUE)
+    else()
+        string(STRIP "${gitError}" gitError)
+        message(STATUS
+            "no-real-standards check: `git ls-files` failed in ${SOURCE_DIR} (exit ${gitResult}: ${gitError}); "
+            "scanning every file outside build and site output instead")
     endif()
-    string(REPLACE "\n" ";" files "${tracked}")
-else()
-    file(GLOB_RECURSE files RELATIVE "${SOURCE_DIR}" "${SOURCE_DIR}/*")
-    list(FILTER files EXCLUDE REGEX "^(out|build[^/]*|site|\\.git|\\.superpowers)/")
+endif()
+if(NOT gitListed)
+    # The excluded top-level entries are left out before recursing, not
+    # filtered after: build trees hold tens of thousands of files, and walking
+    # them first took minutes on a checkout reached through WSL's /mnt.
+    set(files "")
+    file(GLOB topLevel RELATIVE "${SOURCE_DIR}" LIST_DIRECTORIES true "${SOURCE_DIR}/*")
+    foreach(entry IN LISTS topLevel)
+        if(entry MATCHES "^(out|build[^/]*|site|\\.git|\\.superpowers)$")
+            continue()
+        endif()
+        if(IS_DIRECTORY "${SOURCE_DIR}/${entry}")
+            file(GLOB_RECURSE below RELATIVE "${SOURCE_DIR}" "${SOURCE_DIR}/${entry}/*")
+            list(APPEND files ${below})
+        else()
+            list(APPEND files "${entry}")
+        endif()
+    endforeach()
 endif()
 
 list(REMOVE_ITEM files "${selfPath}" "${allowListRelative}")
