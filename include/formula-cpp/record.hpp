@@ -28,13 +28,13 @@
 /// time, each with one message. A scope over a role bound to an unbound
 /// record -- a test not done yet -- is absent, never zero.
 ///
-/// **Traced, but not yet rendered or documented.** A trace records a scope
-/// -- through `explain` or a `RecordingSink` -- and every step inside it
-/// carries a `RecordOrigin` saying which record it was read from
-/// (`trace.hpp`). Until the page learns the scope, `render` and `document`
-/// over a formula holding one are refused with the compiler's own errors,
-/// not with a message of this library's. That is a refusal, not a silent
-/// gap: no page omits a scope it was given.
+/// **Traced, rendered and documented.** A trace records a scope -- through
+/// `checked_explain`, `explain` or a `RecordingSink` -- and every step inside
+/// it carries a `RecordOrigin` saying which record it was read from
+/// (`trace.hpp`); the rendered line names it on each read and on the scope's
+/// own line. On the page a scope reads `f_c of Reference`, and `(F / A) of
+/// Reference` for a computation (`render.hpp`), and the symbol table keeps a
+/// row per record a quantity is read from (`document.hpp`).
 ///
 /// **What the library prevents, and what it does not.** Every field a trace
 /// reads for an origin comes from one of these:
@@ -70,10 +70,11 @@
 ///   held. No access check applies to `bit_cast`, and nothing in the
 ///   language lets a class refuse it while staying trivially copyable;
 /// - a caller can wrap a typed-in value as `Measured<Q>`, and the trace will
-///   then call it measured;
-/// - a role whose `TagName` spells "this record" still renders as `from
-///   record this record (sample ...)`: the framing and the key show the
-///   value is foreign, but the name misleads.
+///   then call it measured.
+///
+/// A role displayed as "this record", in any case, is refused
+/// (`detail::RequireRoleNameNotThisRecord`): every value read from it would
+/// be traced `from record this record (sample ...)`.
 ///
 /// The guarantee is about the recording path: the evaluator never attributes
 /// a value to a record it did not read it from.
@@ -233,8 +234,10 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// Whether @p displayed is identifier-like: ASCII letters, digits and
-    /// underscores, with single spaces between words and none at either end.
+    /// Whether @p displayed is identifier-like: it starts with an ASCII
+    /// letter, and holds only ASCII letters, digits and underscores, with
+    /// single spaces between words and none at the end. A leading digit is
+    /// refused, since `f_c of 9` reads as arithmetic on a number.
     /// Empty is accepted: `tag_name` answers empty only when the compiler's
     /// signature is not in the shape the library reads, a fault that is the
     /// library's and not the author's (see `RequireReadableTagName`).
@@ -242,7 +245,9 @@ namespace detail
     {
         if (displayed.empty())
             return true;
-        if (displayed.front() == ' ' || displayed.back() == ' ')
+        bool const startsWithLetter =
+            (displayed.front() >= 'A' && displayed.front() <= 'Z') || (displayed.front() >= 'a' && displayed.front() <= 'z');
+        if (!startsWithLetter || displayed.back() == ' ')
             return false;
         char previous = '\0';
         for (char const nameCharacter: displayed)
@@ -289,11 +294,62 @@ namespace detail
     {
         static_assert(role_name_is_identifier_like<Role>(),
                       "formula: this record role's displayed name is not identifier-like; a role's name is written "
-                      "into formulas and traces in every dialect, so it may hold only ASCII letters, digits, "
-                      "underscores and single spaces between words -- an operator character such as - < ' * would "
-                      "read as arithmetic, a control character breaks the page, and a non-ASCII character is dropped "
-                      "by some LaTeX fonts; the role appears in this diagnostic as the template argument of "
-                      "RequireIdentifierLikeRoleName -- specialise formula::TagName for it to spell its name so");
+                      "into formulas and traces in every dialect, so it must start with an ASCII letter and hold "
+                      "only ASCII letters, digits, underscores and single spaces between words -- a leading digit "
+                      "or an operator character such as - < ' * would read as arithmetic, a control character "
+                      "breaks the page, and a non-ASCII character is dropped by some LaTeX fonts; the role appears "
+                      "in this diagnostic as the template argument of RequireIdentifierLikeRoleName -- specialise "
+                      "formula::TagName for it to spell its name so");
+        static constexpr bool value = true;
+    };
+
+    /// Whether @p displayed is `this record`, in any mix of case.
+    [[nodiscard]] constexpr bool reads_as_this_record(std::string_view displayed) noexcept
+    {
+        constexpr std::string_view thisRecordWords = "this record";
+        if (displayed.size() != thisRecordWords.size())
+            return false;
+        for (std::size_t at = 0; at < displayed.size(); ++at)
+        {
+            char const lowered = displayed[at] >= 'A' && displayed[at] <= 'Z'
+                                     ? static_cast<char>(displayed[at] - 'A' + 'a')
+                                     : displayed[at];
+            if (lowered != thisRecordWords[at])
+                return false;
+        }
+        return true;
+    }
+
+    /// Whether @p Role's displayed name is not `this record`; true for a role
+    /// whose name is not identifier-like or that is not a plain class type,
+    /// each refused on its own, so that one mistake draws one message.
+    template <typename Role>
+    [[nodiscard]] consteval bool role_name_is_not_this_record() noexcept
+    {
+        if constexpr (isPlainClassTag<Role>)
+        {
+            if constexpr (role_name_is_identifier_like<Role>())
+                return !reads_as_this_record(tag_name<Role>());
+            else
+                return true;
+        }
+        else
+            return true;
+    }
+
+    /// Fails to compile when a role other than `ThisRecord` is displayed as
+    /// `this record`, in any case. Every value read from it would be traced
+    /// `from record this record (sample 23, test 3)`, and a lineage check
+    /// against it `same MaterialBatch as this record` -- which is how the
+    /// trace names the record being evaluated.
+    template <typename Role>
+    struct RequireRoleNameNotThisRecord
+    {
+        static_assert(role_name_is_not_this_record<Role>(),
+                      "formula: this record role is displayed as 'this record', which is how a trace names the "
+                      "record being evaluated; a value read from it would be traced as read from this record -- the "
+                      "role appears in this diagnostic as the template argument of RequireRoleNameNotThisRecord -- "
+                      "specialise formula::TagName for it to spell another name");
         static constexpr bool value = true;
     };
 
@@ -340,7 +396,8 @@ namespace detail
     /// What a record holds its values in: a plain `Environment`, or, after a
     /// refused `record()`, an `AbsentEnvironment`.
     template <typename Env>
-    concept RecordEnvironment = isEnvironment<Env> || std::is_same_v<Env, AbsentEnvironment>;
+    concept RecordEnvironment =
+        isEnvironment<std::remove_cv_t<Env>> || std::is_same_v<std::remove_cv_t<Env>, AbsentEnvironment>;
 
     /// Fails to compile when `record<Role>(key, values)` is given values that
     /// are not a plain `Environment` -- a `record_context`, above all. A
@@ -450,6 +507,7 @@ class Record
 {
     static_assert(detail::RequirePlainRole<Role>::value);
     static_assert(detail::RequireIdentifierLikeRoleName<Role>::value);
+    static_assert(detail::RequireRoleNameNotThisRecord<Role>::value);
     static_assert(detail::RequireLineageEntries<Lineage...>::value);
     static_assert(std::conditional_t<(detail::isLineageEntry<Lineage> && ...),
                                      detail::RequireAttributesDeclaredOnce<typename detail::AttributeOf<Lineage>::type...>,
@@ -467,13 +525,23 @@ class Record
     /// The environment type the record holds its values in.
     using environment_type = Env;
 
-    /// A record of this type that no actual record plays: no key, and every
-    /// value absent. Refused for `ThisRecord` -- see
-    /// `detail::RequireThisRecordBound`.
-    [[nodiscard]] static constexpr Record unbound() noexcept
+    /// A record of this type that no actual record plays: no key, every
+    /// value absent, and every lineage attribute it declares unknown -- so a
+    /// gated read over it is absent, as a read of its values is. Refused for
+    /// `ThisRecord` -- see `detail::RequireThisRecordBound`.
+    ///
+    /// @p Env may be named cv-qualified -- `Record<Reference,
+    /// decltype(there)>::unbound()`, where `there` is a `constexpr`
+    /// environment -- and the record returned is the unqualified one, the
+    /// type `record<Reference>(key, there)` builds, so a context holding
+    /// either is one type.
+    [[nodiscard]] static constexpr auto unbound() noexcept
     {
         static_assert(detail::RequireThisRecordBound<Role>::value);
-        return Record { detail::UnboundRecord {} };
+        if constexpr (!std::is_same_v<Env, std::remove_cv_t<Env>>)
+            return Record<Role, std::remove_cv_t<Env>, Lineage...>::unbound();
+        else
+            return Record { detail::UnboundRecord {} };
     }
 
     /// Whether an actual record plays the role.
@@ -1051,6 +1119,7 @@ struct RecordScopeNode: NodeBase
 {
     static_assert(detail::RequireForeignRole<Role>::value);
     static_assert(detail::RequireIdentifierLikeRoleName<Role>::value);
+    static_assert(detail::RequireRoleNameNotThisRecord<Role>::value);
     static_assert(detail::RequireLineageRequirement<Requirement>::value);
     static_assert(detail::RequireComparandNotSubject<Role, typename detail::ComparandOf<Requirement>::type>::value);
 

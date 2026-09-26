@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <string>
 #include <type_traits>
 
 namespace
@@ -297,4 +298,48 @@ TEST_CASE("a context passes for its record's environment through a recording sin
     REQUIRE(!viaContext.empty());
     REQUIRE(formula::render_trace(viaContext, { .maxSteps = 200 })
             == formula::render_trace(viaEnvironment, { .maxSteps = 200 }));
+}
+
+namespace
+{
+struct RecordBatch
+{
+};
+} // namespace
+
+TEST_CASE("an unbound record may name its environment's type as decltype gives it", "[record-context]")
+{
+    // The lead's ruling on the task 9 finding: `there` is a constexpr
+    // variable, so `decltype(there)` is const. The record returned is the
+    // unqualified one, the type `record<Reference>(key, there)` builds, so a
+    // context holding either is one type.
+    constexpr auto notYetTested = formula::Record<Reference, decltype(there)>::unbound();
+    STATIC_REQUIRE(std::is_same_v<std::remove_cv_t<decltype(notYetTested)>,
+                                  formula::Record<Reference, std::remove_cv_t<decltype(there)>>>);
+    STATIC_REQUIRE(std::is_same_v<std::remove_cv_t<decltype(notYetTested)>,
+                                  std::remove_cv_t<decltype(formula::record<Reference>(
+                                      formula::record_key(formula::sample_id(23), formula::test_id(3)), there))>>);
+    STATIC_REQUIRE(!notYetTested.is_bound());
+}
+
+TEST_CASE("a gated read over an unbound record is absent, and checks no lineage", "[record-context]")
+{
+    // The task 9 review's H1, ruled: an unbound record's lineage is unknown
+    // for every attribute it declares, so a gated read over it is absent, as
+    // a read of its values is. The attributes are named in its type, since
+    // `unbound()` takes nothing to declare them with.
+    constexpr auto gatedRead = formula::from_record<Reference>(var<Force>, formula::same_lineage<RecordBatch>());
+    constexpr auto notYetMade = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
+                                             formula::lineage<RecordBatch>(4411)),
+        formula::Record<Reference, decltype(there), formula::LineageEntry<RecordBatch>>::unbound());
+    constexpr auto read = formula::checked_evaluate_si<formula::Rational>(gatedRead, notYetMade);
+    STATIC_REQUIRE(read.has_value());
+    STATIC_REQUIRE(!read->has_value());
+
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(gatedRead, notYetMade, formula::RecordingSink { trace });
+    std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
+    INFO(text);
+    CHECK(text == "1. from record Reference (no record bound) = (not measured)\n");
 }

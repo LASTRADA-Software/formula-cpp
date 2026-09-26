@@ -188,8 +188,9 @@ namespace detail
     {
         static_assert(Declared,
                       "formula: this lineage requirement compares an attribute the record does not declare; "
-                      "declare it where the record is built, lineage<Attr>(key) or unknown_lineage<Attr>() -- the "
-                      "attribute and the record's role appear in this diagnostic as the template arguments of "
+                      "declare it where the record is built, lineage<Attr>(key) or unknown_lineage<Attr>(), or, for "
+                      "a record not yet made, in its type, Record<Role, Env, LineageEntry<Attr>...>::unbound() -- "
+                      "the attribute and the record's role appear in this diagnostic as the template arguments of "
                       "RequireDeclaredAttribute");
 
         static constexpr bool value = true;

@@ -106,7 +106,10 @@ TEST_CASE("a role's name must be identifier-like", "[record-render]")
     // (`record_role_name_*`) is the same through a real role.
     STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("Reference"));
     STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("reference specimen_B 2"));
-    STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("_private"));
+    STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("Reference_2"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("_private")); // not a letter first
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("2nd reference"));
+    STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("9"));
     STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("")); // unreadable signature: the library's fault
     STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("Reference-B"));
     STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("Batch<2>"));
@@ -120,6 +123,18 @@ TEST_CASE("a role's name must be identifier-like", "[record-render]")
     STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("two  spaces"));
     STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name(" leading"));
     STATIC_REQUIRE_FALSE(formula::detail::is_identifier_like_role_name("trailing "));
+}
+
+TEST_CASE("a role may not be displayed as this record", "[record-render]")
+{
+    // The task 9 review's M2, ruled: "from record this record" would name
+    // the record being evaluated. Any mix of case; nothing else.
+    STATIC_REQUIRE(formula::detail::reads_as_this_record("this record"));
+    STATIC_REQUIRE(formula::detail::reads_as_this_record("This Record"));
+    STATIC_REQUIRE(formula::detail::reads_as_this_record("THIS RECORD"));
+    STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("this record 2"));
+    STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("this"));
+    STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("ThisRecord"));
 }
 
 TEST_CASE("a quantity read here and from the reference has two rows", "[record-render]")

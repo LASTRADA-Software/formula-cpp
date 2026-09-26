@@ -1473,7 +1473,7 @@ struct PunctuatedRole
 template <>
 struct formula::TagName<PunctuatedRole>
 {
-    static constexpr std::string_view of() noexcept { return "_reference_"; }
+    static constexpr std::string_view of() noexcept { return "reference_B_"; }
 };
 
 TEST_CASE("render: Markdown output never contains text a CommonMark parser reinterprets, for any node kind",

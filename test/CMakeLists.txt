@@ -1443,6 +1443,17 @@ formula_add_negative_test(record_role_name_template_argument
 formula_add_negative_test(record_role_name_control_character
     "formula: this record role's displayed name is not identifier-like")
 
+# A role's name must start with a letter, and must not read as "this
+# record", in any case (the lead's rulings on the task 9 review's L5 and M2).
+# The second is identifier-like, so the identifier rule must not also fire:
+# the REJECT. Through a record and a scope at once, it draws one message.
+formula_add_negative_test(record_role_name_leading_digit
+    "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_role_name_this_record
+    "formula: this record role is displayed as 'this record'"
+    EXPECT_COUNT 1
+    REJECT "formula: this record role's displayed name is not identifier-like")
+
 formula_add_negative_test(overlay_constant_unknown_node
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
