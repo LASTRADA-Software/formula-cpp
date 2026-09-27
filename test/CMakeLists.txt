@@ -764,6 +764,18 @@ formula_add_negative_test(rejection_keep_at_least_zero
 formula_add_negative_test(rejection_limit_dimension_mismatch
     "formula: this rejection's limit does not measure what its criterion compares"
     REJECT "pass_mean whose quantity")
+formula_add_negative_test(rejection_limit_and_pass_mean_dimension_mismatch
+    "formula: this rejection's limit does not measure what its criterion compares"
+    REJECT "pass_mean whose quantity")
+formula_add_negative_test(pass_mean_wrong_dimension
+    "formula: this rejection's limit reads a pass_mean whose quantity does not measure the determinations' dimension"
+    REJECT "does not measure what its criterion compares")
+formula_add_negative_test(rejection_result_dimension
+    "formula: this result quantity does not measure what the rejection's determinations measure"
+    REJECT "the dimension this expression computes")
+formula_add_negative_test(rejection_under_double
+    "formula: a rejection of outliers can only be evaluated with Rep = Rational"
+    REJECT "no matching")
 formula_add_negative_test(pass_mean_outside_rejection
     "formula: pass_mean and pass_count are meaningful only inside the limit expression of without_outliers"
     REJECT "provides no value for this quantity")

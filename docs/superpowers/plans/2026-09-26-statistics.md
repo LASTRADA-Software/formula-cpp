@@ -1273,6 +1273,7 @@ Added by the lead on 2026-09-26, at the owner's request. It answers one question
   - two norm-*shaped* synthetic cases written for this task, with the numbers invented:
     - a 20-point mean, variance and range with 3-decimal inputs;
     - **named realistic case, from the task 6 review:** the variance of six masses near 40 g at 6 dp in g (microgram resolution), which overflows on 460 of 1,000 random samples -- for example 40.053270, 39.475922, 39.025798, 40.615904, 39.418416 and 40.131659 g. Report its headroom, and how often it fails, against G6's rule;
+    - **named realistic case, from the task 7 review:** a rejection of the same kind of sample by `deviation_in_stddevs(7/4)`, which also forms limit^2 * s^2 and so fails sooner -- 900 of 1,000 random six-element samples near 40 g at 6 dp in g overflow, and 0 of 1,000 at 4 or 5 dp (the relative criterion fails on none at any resolution). The same six masses above are one of them: the variance overflows at element 1 in pass 1. Report its headroom and failure rate beside the variance's;
     - a 64-element grading curve with cumulative percentages and one interpolation.
   - Phase 15's least-squares fit is added to the census when phase 15 lands (the phase 15 plan carries that note).
 - [ ] **Step 3: The instrument's own control.** A hand-built case whose intermediate is exactly `INT64_MAX`, or a product one bit short of it, must report 0 or 1 bits of headroom. A case one step further must report the library's `Overflow` error, never a figure.

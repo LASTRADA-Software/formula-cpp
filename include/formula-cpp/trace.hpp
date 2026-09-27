@@ -378,7 +378,7 @@ enum class StepKind : std::uint8_t
     /// `Trace::rejectionRecords`.
     ///
     /// Recorded by `RecordingSink::rejection_pass_produced`, not through
-    /// `detail::StepKindOf`: a rejection is not a `Node`. The six rejection
+    /// `detail::StepKindOf`: a rejection is not a `Node`. The eight rejection
     /// kinds are spelt as no name in namespace `formula` is (checked on GCC
     /// under `-Wshadow`).
     RejectionPass,
@@ -392,6 +392,14 @@ enum class StepKind : std::uint8_t
     /// A rejection that ended at its bound: the determinations that would
     /// have been rejected, the bound, and the author's verdict and citation.
     RejectionAborted,
+    /// A rejection whose pass failed: what failed -- the mean, the variance,
+    /// the limit (or a negative limit), limit^2 * s^2, or a determination's
+    /// deviation -- and the determination, when there is one. Its error is
+    /// the failure's. Its operands are every step of the rejection.
+    RejectionFailed,
+    /// A rejection whose limit was absent in a pass: no decision, and an
+    /// absent result. Its operands are every step of the rejection.
+    RejectionUndecided,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -593,7 +601,8 @@ namespace detail
         std::size_t sampleSize {};
         /// The determinations in the sample as entered.
         std::size_t originalSize {};
-        /// For a rejected determination: its zero-based position as entered.
+        /// For a rejected determination, or a failed pass that failed at one:
+        /// its zero-based position as entered.
         std::optional<std::size_t> position {};
         /// For a rejected determination: its value, in the coherent SI unit.
         std::optional<Rep> rejectedValue {};
@@ -616,9 +625,14 @@ namespace detail
         std::size_t rejectedCount {};
         std::size_t remaining {};
         /// For an abort: the positions that would have been rejected, and
-        /// whether `KeepAtLeast` rather than `AtMost` would have been passed.
+        /// which bound -- `AtMost`, `KeepAtLeast`, or both -- would have been
+        /// passed.
         std::vector<std::size_t> wouldReject {};
+        bool pastAtMost {};
         bool belowKeepAtLeast {};
+        /// For a failed pass: what failed. The determination it failed at,
+        /// when there is one, is `position`; the error is the step's own.
+        std::optional<RejectionFailurePoint> failurePoint {};
         /// For an abort: the author's verdict and citation.
         Verdict verdict {};
         Citation citation {};
@@ -2633,24 +2647,31 @@ class RecordingSink
         push_rejection_step(std::move(rejectedStep), std::move(rejectionRecord));
     }
 
-    /// Records the rejection's terminal step -- `RejectionSettled` or
-    /// `RejectionAborted` -- claiming every step of the rejection, the
-    /// sample's own first, so that whatever reads the rejection has one
-    /// operand. A rejection that failed, or found a determination absent,
-    /// records no terminal step: its steps are left for the reader to claim.
+    /// Records the rejection's terminal step -- `RejectionSettled`,
+    /// `RejectionAborted`, `RejectionFailed` or `RejectionUndecided` --
+    /// claiming every step of the rejection, the sample's own first, so that
+    /// whatever reads the rejection has one operand. A rejection that ended
+    /// before its first pass -- its sample failed, or held an absent
+    /// determination -- records none: the sample's own step, which says why,
+    /// is then the reader's operand.
     void rejection_finished(detail::RejectionEndEvent const& event)
     {
         if (_trace->rejectionsInProgress.empty())
             return;
         detail::RejectionInProgress const inProgress = _trace->rejectionsInProgress.back();
-        if (event.end != detail::RejectionEnd::Settled && event.end != detail::RejectionEnd::Aborted)
+        if (event.pass == 0)
         {
             _trace->rejectionsInProgress.pop_back();
             return;
         }
 
-        Step<Rep> endStep = rejection_step(event.end == detail::RejectionEnd::Settled ? StepKind::RejectionSettled
-                                                                                      : StepKind::RejectionAborted);
+        StepKind const endKind = event.end == detail::RejectionEnd::Settled   ? StepKind::RejectionSettled
+                                 : event.end == detail::RejectionEnd::Aborted ? StepKind::RejectionAborted
+                                 : event.end == detail::RejectionEnd::Failed  ? StepKind::RejectionFailed
+                                                                              : StepKind::RejectionUndecided;
+        Step<Rep> endStep = rejection_step(endKind);
+        if (event.error.has_value())
+            endStep.error = event.error;
         auto firstClaimed = _trace->unclaimed.begin();
         while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < inProgress.mark)
             ++firstClaimed;
@@ -2658,11 +2679,15 @@ class RecordingSink
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
         detail::RejectionRecord<Rep> rejectionRecord {};
+        rejectionRecord.pass = event.pass;
         rejectionRecord.originalSize = event.originalSize;
         rejectionRecord.rejectedCount = event.rejectedCount;
         rejectionRecord.remaining = event.remaining;
         rejectionRecord.wouldReject.assign(event.wouldReject.begin(), event.wouldReject.end());
+        rejectionRecord.pastAtMost = event.pastAtMost;
         rejectionRecord.belowKeepAtLeast = event.belowKeepAtLeast;
+        rejectionRecord.failurePoint = event.failurePoint;
+        rejectionRecord.position = event.failedPosition;
         rejectionRecord.atMost = event.atMost;
         rejectionRecord.keepAtLeast = event.keepAtLeast;
         rejectionRecord.verdict = event.verdict;

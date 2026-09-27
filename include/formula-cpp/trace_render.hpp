@@ -913,6 +913,10 @@ namespace detail
                 return "rejection settled";
             case StepKind::RejectionAborted:
                 return "rejection aborted";
+            case StepKind::RejectionFailed:
+                return "rejection failed";
+            case StepKind::RejectionUndecided:
+                return "rejection undecided";
         }
         return "unknown step kind";
     }
@@ -1643,11 +1647,33 @@ namespace detail
         return " [" + constraint_outcome_text(recorded.outcome) + constraint_provenance_clause(recorded) + "]";
     }
 
-    /// Whether @p stepKind is one of the four steps a rejection records.
+    /// Whether @p stepKind is one of the six steps a rejection records.
     [[nodiscard]] constexpr bool is_rejection_step(StepKind stepKind) noexcept
     {
         return stepKind == StepKind::RejectionPass || stepKind == StepKind::OutlierRejected
-               || stepKind == StepKind::RejectionSettled || stepKind == StepKind::RejectionAborted;
+               || stepKind == StepKind::RejectionSettled || stepKind == StepKind::RejectionAborted
+               || stepKind == StepKind::RejectionFailed || stepKind == StepKind::RejectionUndecided;
+    }
+
+    /// What a failed pass failed at, in the words its line uses.
+    [[nodiscard]] inline std::string rejection_failure_subject(detail::RejectionFailurePoint point)
+    {
+        switch (point)
+        {
+            case detail::RejectionFailurePoint::Mean:
+                return "the mean";
+            case detail::RejectionFailurePoint::Variance:
+                return "the variance";
+            case detail::RejectionFailurePoint::Limit:
+                return "the limit";
+            case detail::RejectionFailurePoint::NegativeLimit:
+                return "the limit is negative, which no deviation can be compared with";
+            case detail::RejectionFailurePoint::Threshold:
+                return "limit^2 * s^2";
+            case detail::RejectionFailurePoint::Statistic:
+                return "the deviation";
+        }
+        return "an unknown part of the pass";
     }
 
     /// @p si, a value in the coherent unit of @p recorded's dimension -- or of
@@ -1697,9 +1723,17 @@ namespace detail
     ///    `(x - mean)^2 = ... g2 > limit^2 * s^2 = ... g2`;
     ///  - settled: `settled: 2 rejected, 4 remain`;
     ///  - aborted: `element 6 of 6 would be rejection 2 of at most 1: discard
-    ///    the determinations and repeat the test [Example Standard, 7.4]`.
+    ///    the determinations and repeat the test [Example Standard, 7.4]` --
+    ///    naming both bounds when the rejection would pass both;
+    ///  - failed: `failed in pass 1: the variance: overflow in exact
+    ///    arithmetic at element 1 of 6`;
+    ///  - undecided: `no decision in pass 2: the limit is not measured`.
     ///
-    /// A step with no record says so rather than guess.
+    /// A step with no record says so rather than guess, and so does one whose
+    /// record contradicts itself -- a position past the sample, an abort
+    /// naming nobody, a count that would wrap: `Trace` and its records are
+    /// public aggregates, and a line built from such a record would print a
+    /// number no evaluation produced.
     ///
     /// @p recorded is the step's escaped copy (`EscapedStep`). The record is
     /// read from @p trace at @p stepIndex, and its author text -- the verdict
@@ -1721,6 +1755,8 @@ namespace detail
                 if (!rejectionRecord->position.has_value() || !rejectionRecord->rejectedValue.has_value()
                     || !rejectionRecord->statistic.has_value() || !rejectionRecord->limit.has_value())
                     return "rejected element (its record is incomplete)";
+                if (*rejectionRecord->position >= rejectionRecord->originalSize)
+                    return "rejected element (its record is invalid)";
                 std::string const comparison = rejectionRecord->onLimit == OnLimit::Keep ? " > " : " >= ";
                 std::string const decided =
                     rejectionRecord->squared
@@ -1738,12 +1774,17 @@ namespace detail
                 return "settled: " + std::to_string(rejectionRecord->rejectedCount) + " rejected, "
                        + std::to_string(rejectionRecord->remaining) + " remain";
             case StepKind::RejectionAborted: {
+                bool const namesNobody = rejectionRecord->wouldReject.empty();
+                bool const leavesFewerThanNone = rejectionRecord->remaining < rejectionRecord->wouldReject.size();
+                bool positionPastSample = false;
+                for (std::size_t const wouldGo: rejectionRecord->wouldReject)
+                    if (wouldGo >= rejectionRecord->originalSize)
+                        positionPastSample = true;
+                if (namesNobody || leavesFewerThanNone || positionPastSample
+                    || (!rejectionRecord->pastAtMost && !rejectionRecord->belowKeepAtLeast))
+                    return "rejection aborted (its record is invalid)";
                 std::string reason;
-                if (rejectionRecord->belowKeepAtLeast)
-                    reason = " would leave "
-                             + std::to_string(rejectionRecord->remaining - rejectionRecord->wouldReject.size())
-                             + " of at least " + std::to_string(rejectionRecord->keepAtLeast);
-                else
+                if (rejectionRecord->pastAtMost)
                 {
                     reason = rejectionRecord->wouldReject.size() == 1 ? " would be rejection " : " would be rejections ";
                     for (std::size_t at = 0; at < rejectionRecord->wouldReject.size(); ++at)
@@ -1754,10 +1795,32 @@ namespace detail
                     }
                     reason += " of at most " + std::to_string(rejectionRecord->atMost);
                 }
+                if (rejectionRecord->belowKeepAtLeast)
+                    reason += std::string { rejectionRecord->pastAtMost ? " and" : "" } + " would leave "
+                              + std::to_string(rejectionRecord->remaining - rejectionRecord->wouldReject.size())
+                              + " of at least " + std::to_string(rejectionRecord->keepAtLeast);
                 EscapedCitation const cited { rejectionRecord->citation };
                 return elements_text(rejectionRecord->wouldReject, rejectionRecord->originalSize) + reason + ": "
                        + escaped_author_text(rejectionRecord->verdict.label) + citation_suffix(cited.cited());
             }
+            case StepKind::RejectionFailed: {
+                if (!rejectionRecord->failurePoint.has_value() || !recorded.error.has_value())
+                    return "rejection failed (its record is incomplete)";
+                if (rejectionRecord->position.has_value() && *rejectionRecord->position >= rejectionRecord->originalSize)
+                    return "rejection failed (its record is invalid)";
+                std::string const atElement = rejectionRecord->position.has_value()
+                                                  ? " at element " + std::to_string(*rejectionRecord->position + 1) + " of "
+                                                        + std::to_string(rejectionRecord->originalSize)
+                                                  : std::string {};
+                if (*rejectionRecord->failurePoint == detail::RejectionFailurePoint::NegativeLimit)
+                    return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
+                           + rejection_failure_subject(*rejectionRecord->failurePoint);
+                return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
+                       + rejection_failure_subject(*rejectionRecord->failurePoint) + ": "
+                       + std::string { describe(*recorded.error) } + atElement;
+            }
+            case StepKind::RejectionUndecided:
+                return "no decision in pass " + std::to_string(rejectionRecord->pass) + ": the limit is not measured";
             default:
                 break;
         }

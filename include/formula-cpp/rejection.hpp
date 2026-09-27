@@ -36,7 +36,19 @@
 /// **Termination is guaranteed by the type.** Every pass but the last
 /// removes at least one determination and at most k are ever removed, so at
 /// most k + 1 passes run; the loop is bounded by that, and needs no cap of
-/// its own.
+/// its own. The bound is counted without forming k + 1, which for
+/// `AtMost<SIZE_MAX>` would wrap to zero and run no pass at all.
+///
+/// **A negative limit is refused**, under either criterion, as `DomainError`
+/// in the pass that evaluated it: `abs(x - mean) > -1 g` would make every
+/// determination an outlier, and squaring a negative number of standard
+/// deviations would silently decide it as the positive one. No rule means
+/// either.
+///
+/// **A pass that fails says where.** The mean, the variance, the limit,
+/// limit^2 * s^2 or one determination's deviation: the trace's terminal
+/// step names which, and the determination when there is one, and claims
+/// every step of the rejection, as a settled one does.
 ///
 /// **Abort.** When the next rejection would exceed k, or leave fewer than m,
 /// nothing more is rejected: the trace records the author's `Verdict`,
@@ -169,7 +181,9 @@ struct DeviationFromMean
 
 /// The deviation from the pass's mean in sample standard deviations,
 /// abs(x - mean) / s, against the bare number @p Limit -- decided exactly as
-/// (x - mean)^2 against limit^2 * s^2, with no square root.
+/// (x - mean)^2 against limit^2 * s^2, with no square root. That is the same
+/// decision only for a limit of zero or more, and a negative limit is
+/// refused (`DomainError`) before any comparison is made.
 template <Node Limit>
 struct DeviationInStddevs
 {
@@ -601,9 +615,25 @@ namespace detail
         Failed,
     };
 
+    /// Where in a pass a rejection failed.
+    enum class RejectionFailurePoint : std::uint8_t
+    {
+        /// The pass's mean.
+        Mean,
+        /// The pass's sample variance (`deviation_in_stddevs`).
+        Variance,
+        /// The limit expression.
+        Limit,
+        /// The limit was negative: no rule.
+        NegativeLimit,
+        /// limit^2 * s^2 (`deviation_in_stddevs`).
+        Threshold,
+        /// One determination's deviation, or its square.
+        Statistic,
+    };
+
     /// What one pass told the sink: its number, the sample size and mean it
-    /// ran at, and the limit it evaluated (absent, or an error, when it did
-    /// not produce one).
+    /// ran at (the mean's error, when it failed), and the limit it evaluated.
     struct RejectionPassEvent
     {
         std::size_t pass;
@@ -633,14 +663,23 @@ namespace detail
     struct RejectionEndEvent
     {
         RejectionEnd end;
+        /// The pass it ended in; 0 when no pass ran.
+        std::size_t pass;
         std::size_t originalSize;
         std::size_t rejectedCount;
         std::size_t remaining;
         /// For an abort: the positions that would have been rejected.
         std::span<std::size_t const> wouldReject;
-        /// For an abort: whether it was `KeepAtLeast`, not `AtMost`, that the
-        /// next rejection would have passed.
+        /// For an abort: whether the next rejection would have passed
+        /// `AtMost`, and whether it would have passed `KeepAtLeast` -- both,
+        /// when it would have passed both.
+        bool pastAtMost;
         bool belowKeepAtLeast;
+        /// For a failure in a pass: what failed, how, and the zero-based
+        /// position of the determination it failed at, when there is one.
+        std::optional<RejectionFailurePoint> failurePoint;
+        std::optional<ArithmeticError> error;
+        std::optional<std::size_t> failedPosition;
         std::size_t atMost;
         std::size_t keepAtLeast;
         Verdict verdict;
@@ -843,26 +882,34 @@ namespace detail
         for (std::size_t& each: wouldReject)
             each = 0;
         std::size_t wouldRejectCount = 0;
+        bool pastAtMost = false;
         bool belowKeepAtLeast = false;
+        std::optional<RejectionFailurePoint> failurePoint;
 
         auto const finish = [&](RejectionEnd ending) {
             run.end = ending;
             if constexpr (hears)
-                sink.rejection_finished(
-                    RejectionEndEvent { .end = ending,
-                                        .originalSize = sampleCapacity,
-                                        .rejectedCount = run.rejectedCount,
-                                        .remaining = run.survivors.count,
-                                        .wouldReject = std::span<std::size_t const> { wouldReject.data(), wouldRejectCount },
-                                        .belowKeepAtLeast = belowKeepAtLeast,
-                                        .atMost = bound_value<AtMostT>,
-                                        .keepAtLeast = bound_value<KeepAtLeastT>,
-                                        .verdict = node.verdict,
-                                        .citation = node.citation });
+                sink.rejection_finished(RejectionEndEvent {
+                    .end = ending,
+                    .pass = run.passes,
+                    .originalSize = sampleCapacity,
+                    .rejectedCount = run.rejectedCount,
+                    .remaining = run.survivors.count,
+                    .wouldReject = std::span<std::size_t const> { wouldReject.data(), wouldRejectCount },
+                    .pastAtMost = pastAtMost,
+                    .belowKeepAtLeast = belowKeepAtLeast,
+                    .failurePoint = failurePoint,
+                    .error = run.failure.has_value() ? std::optional<ArithmeticError> { run.failure->error } : std::nullopt,
+                    .failedPosition = run.failure.has_value() ? run.failure->element : std::nullopt,
+                    .atMost = bound_value<AtMostT>,
+                    .keepAtLeast = bound_value<KeepAtLeastT>,
+                    .verdict = node.verdict,
+                    .citation = node.citation });
             return run;
         };
-        auto const fail = [&](ArithmeticError failed, std::optional<std::size_t> at) {
+        auto const fail = [&](ArithmeticError failed, std::optional<std::size_t> at, RejectionFailurePoint point) {
             run.failure = SeriesFailure { failed, at };
+            failurePoint = point;
             return finish(RejectionEnd::Failed);
         };
 
@@ -878,8 +925,10 @@ namespace detail
 
         // At most k + 1 passes: every pass but the last removes at least one
         // determination, and at most k are ever removed (AtMost). This bound
-        // is the whole termination argument; no second cap is needed.
-        for (std::size_t passNumber = 1; passNumber <= bound_value<AtMostT> + 1; ++passNumber)
+        // is the whole termination argument; no second cap is needed. It is
+        // counted as passes already run against k, never as k + 1, which
+        // wraps to zero for AtMost<SIZE_MAX>.
+        for (std::size_t passNumber = 1;; ++passNumber)
         {
             run.passes = passNumber;
             SampleValue<Rational, sampleCapacity>& working = run.survivors;
@@ -930,6 +979,8 @@ namespace detail
                                         : std::nullopt;
             if (passError.has_value())
             {
+                // The pass line shows the mean when it was computed; the
+                // terminal step says whether the mean or the variance failed.
                 if constexpr (hears)
                 {
                     sink.rejection_pass_entered();
@@ -938,9 +989,11 @@ namespace detail
                         .sampleSize = passSize,
                         .passMean = passMean.has_value() ? std::optional<Rational> { *passMean } : std::nullopt,
                         .limit = Evaluated<Rational> { std::unexpected { *passError } },
-                        .error = passError });
+                        .error = passMean.has_value() ? std::nullopt : passError });
                 }
-                return fail(*passError, failedAt);
+                return fail(*passError,
+                            failedAt,
+                            passMean.has_value() ? RejectionFailurePoint::Variance : RejectionFailurePoint::Mean);
             }
 
             // The limit, once per pass, with the pass bound.
@@ -956,9 +1009,13 @@ namespace detail
                                                                   .limit = evaluatedLimit,
                                                                   .error = std::nullopt });
             if (!evaluatedLimit.has_value())
-                return fail(evaluatedLimit.error(), std::nullopt);
+                return fail(evaluatedLimit.error(), std::nullopt, RejectionFailurePoint::Limit);
             if (!evaluatedLimit->has_value())
                 return finish(RejectionEnd::Absent);
+            // A negative limit is no rule, under either criterion: see the
+            // file comment.
+            if (**evaluatedLimit < Rational { 0 })
+                return fail(ArithmeticError::DomainError, std::nullopt, RejectionFailurePoint::NegativeLimit);
 
             // Every determination equal: no outlier, whatever the criterion --
             // never a division by zero, never every element "on" a zero limit.
@@ -979,7 +1036,7 @@ namespace detail
                 std::expected<Rational, ArithmeticError> const scaledLimit =
                     limitSquared.has_value() ? RepTraits<Rational>::multiply(*limitSquared, *variance) : limitSquared;
                 if (!scaledLimit.has_value())
-                    return fail(scaledLimit.error(), std::nullopt);
+                    return fail(scaledLimit.error(), std::nullopt, RejectionFailurePoint::Threshold);
                 compareAgainst = *scaledLimit;
             }
 
@@ -994,14 +1051,14 @@ namespace detail
                 std::expected<Rational, ArithmeticError> const deviation =
                     RepTraits<Rational>::subtract(working.values[taken], *passMean);
                 if (!deviation.has_value())
-                    return fail(deviation.error(), working.positions[taken]);
+                    return fail(deviation.error(), working.positions[taken], RejectionFailurePoint::Statistic);
                 std::expected<Rational, ArithmeticError> measured =
                     *deviation < Rational { 0 } ? RepTraits<Rational>::negate(*deviation)
                                                 : std::expected<Rational, ArithmeticError> { *deviation };
                 if constexpr (Criterion::kind == CriterionKind::DeviationInStddevs)
                     measured = measured.has_value() ? RepTraits<Rational>::multiply(*deviation, *deviation) : measured;
                 if (!measured.has_value())
-                    return fail(measured.error(), working.positions[taken]);
+                    return fail(measured.error(), working.positions[taken], RejectionFailurePoint::Statistic);
                 statistics[taken] = *measured;
                 candidate[taken] = L == OnLimit::Keep ? compareAgainst < *measured : !(*measured < compareAgainst);
                 if (candidate[taken] && (!mostExtreme.has_value() || *mostExtreme < *measured))
@@ -1023,11 +1080,10 @@ namespace detail
             }
 
             // The bounds, before anything is removed.
-            bool const pastAtMost = run.rejectedCount + chosen > bound_value<AtMostT>;
-            bool const pastKeepAtLeast = passSize - chosen < bound_value<KeepAtLeastT>;
-            if (pastAtMost || pastKeepAtLeast)
+            pastAtMost = run.rejectedCount + chosen > bound_value<AtMostT>;
+            belowKeepAtLeast = passSize - chosen < bound_value<KeepAtLeastT>;
+            if (pastAtMost || belowKeepAtLeast)
             {
-                belowKeepAtLeast = !pastAtMost;
                 for (std::size_t taken = 0; taken < passSize; ++taken)
                     if (candidate[taken])
                         wouldReject[wouldRejectCount++] = working.positions[taken];
@@ -1060,10 +1116,11 @@ namespace detail
                 }
             }
             working.count = kept;
+            // Unreachable: pass k + 1 finds no candidate or aborts, since k
+            // are already rejected. Settled keeps the function total.
+            if (passNumber - 1 == bound_value<AtMostT>)
+                return finish(RejectionEnd::Settled);
         }
-        // Unreachable: pass k + 1 finds no candidate or aborts, since k are
-        // already rejected. Settled keeps the function total.
-        return finish(RejectionEnd::Settled);
     }
 
     /// Builds the `RejectionOutcome` a rejection's run describes; the one way

@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -34,6 +35,14 @@ struct Determinations: formula::Quantity<Determinations, "n", "number of determi
 };
 /// A relative tolerance a jurisdiction may tighten.
 struct Tolerance: formula::Quantity<Tolerance, "t", "relative tolerance", unit::One>
+{
+};
+/// A determination in kilograms, for sums that leave 64 bits.
+struct Heavy: formula::Quantity<Heavy, "m_h", "heavy mass", unit::Kilogram>
+{
+};
+/// An absolute limit an author may leave unmeasured.
+struct Band: formula::Quantity<Band, "b", "absolute band", unit::Gram>
 {
 };
 
@@ -568,5 +577,251 @@ TEST_CASE("a rejection joins a method: evaluated, overlaid, rendered, documented
     CHECK(formula::render_trace(abortedTrace, { .maxSteps = 60 })
               .find("would be rejection 2 of at most 1: discard the "
                     "determinations and repeat the test")
+          != std::string::npos);
+}
+
+TEST_CASE("a negative limit is no rule, under either criterion", "[rejection]")
+{
+    // abs(x - mean) / s > -7/4 would make every determination an outlier,
+    // and squaring the limit would decide it as +7/4 -- fixture B would
+    // settle at 321/8 g, rejecting {3, 5}, exactly as +7/4 does. Both
+    // criteria refuse it, in the first pass, as DomainError.
+    constexpr auto negativeStddevs =
+        rejectionOf<MostExtreme, Keep, 2, 4, 6>(formula::deviation_in_stddevs(formula::number(rat(-7, 4))));
+    constexpr auto inStddevs = formula::checked_evaluate_rejection<Mass>(negativeStddevs, fixtureB);
+    STATIC_REQUIRE(!inStddevs.has_value());
+    STATIC_REQUIRE(inStddevs.error().error == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(!inStddevs.error().element.has_value());
+    constexpr auto negativeGrams =
+        rejectionOf<MostExtreme, Keep, 2, 4, 6>(formula::deviation_from_mean(formula::constant<unit::Gram>(rat(-1))));
+    STATIC_REQUIRE(formula::checked_evaluate_rejection<Mass>(negativeGrams, fixtureB).error().error
+                   == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(formula::checked_evaluate<Mass>(formula::sample_mean(negativeGrams), fixtureB).error()
+                   == formula::ArithmeticError::DomainError);
+    // A limit of zero is a rule: every determination not at the mean is a
+    // candidate.
+    constexpr auto zero =
+        rejectionOf<MostExtreme, Keep, 2, 3, 5>(formula::deviation_from_mean(formula::constant<unit::Gram>(rat(0))));
+    STATIC_REQUIRE(formula::checked_evaluate_rejection<Mass>(zero, fixtureD)->rejected().size() == 1);
+
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Mass>(
+        formula::sample_mean(negativeStddevs), fixtureB, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 226/5 g; 40 g; 186/5 g\n"
+             "2. -7/4\n"
+             "3. pass 1: 6 values, mean 2429/60 g\n"
+             "4. failed in pass 1: the limit is negative, which no deviation can be compared with\n"
+             "5. sample_mean(#4) = argument outside the domain of the operation\n");
+}
+
+TEST_CASE("a pass that fails says what failed, and the rejection claims its steps", "[rejection][trace-render]")
+{
+    // The mean: INT64_MAX kg and 1 kg leave 64 bits at element 2.
+    constexpr auto heavyMean = formula::environment(
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+                                        formula::Measured<Heavy> { rat(1) },
+                                        formula::Measured<Heavy> { rat(2) }));
+    constexpr auto heavyRejection =
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            formula::series<Heavy, 3>, formula::deviation_from_mean(formula::constant<unit::Kilogram>(rat(1))), repeatTest);
+    constexpr auto meanFailed = formula::checked_evaluate_rejection<Heavy>(heavyRejection, heavyMean);
+    STATIC_REQUIRE(meanFailed.error().error == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(*meanFailed.error().element == 1);
+    formula::Trace<> meanTrace {};
+    (void) formula::checked_evaluate<Heavy>(
+        formula::sample_mean(heavyRejection), heavyMean, formula::RecordingSink<> { meanTrace });
+    CHECK(formula::render_trace(meanTrace, { .maxSteps = 20 })
+          == "1. m_h = 9223372036854775807 kg; 1 kg; 2 kg\n"
+             "2. pass 1: 3 values, mean overflow in exact arithmetic\n"
+             "3. failed in pass 1: the mean: overflow in exact arithmetic at element 2 of 3\n"
+             "4. sample_mean(#3) = overflow in exact arithmetic\n");
+
+    // The variance: task 6's six-decimal sample (40.053270 ... 40.131659 g)
+    // under 7/4 standard deviations. The mean fits; the squared deviations'
+    // total does not, at element 1 -- not the mean, which the pass line
+    // shows.
+    constexpr auto fine = sampleOf(rat(40053270, 1000000),
+                                   rat(39475922, 1000000),
+                                   rat(39025798, 1000000),
+                                   rat(40615904, 1000000),
+                                   rat(39418416, 1000000),
+                                   rat(40131659, 1000000));
+    constexpr auto fineRejection = rejectionOf<MostExtreme, Keep, 2, 4, 6>(sevenQuarters);
+    constexpr auto varianceFailed = formula::checked_evaluate_rejection<Mass>(fineRejection, fine);
+    STATIC_REQUIRE(varianceFailed.error().error == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(varianceFailed.error().element.has_value());
+    formula::Trace<> varianceTrace {};
+    (void) formula::checked_evaluate<Mass>(
+        formula::sample_mean(fineRejection), fine, formula::RecordingSink<> { varianceTrace });
+    CHECK(formula::render_trace(varianceTrace, { .maxSteps = 20 })
+          == "1. m = 4005327/100000 g; 19737961/500000 g; 19512899/500000 g; 1269247/31250 g; 2463651/62500 g; "
+             "40131659/1000000 g\n"
+             "2. pass 1: 6 values, mean 238720969/6000000 g\n"
+             "3. failed in pass 1: the variance: overflow in exact arithmetic at element 1 of 6\n"
+             "4. sample_mean(#3) = overflow in exact arithmetic\n");
+
+    // The limit: 1 kg / (pass n - 3) is a division by zero in a pass of 3.
+    constexpr auto smallHeavy = formula::environment(formula::measured_series<Heavy>(
+        formula::Measured<Heavy> { rat(0) }, formula::Measured<Heavy> { rat(1) }, formula::Measured<Heavy> { rat(5) }));
+    constexpr auto limitRejection =
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            formula::series<Heavy, 3>,
+            formula::deviation_from_mean(formula::constant<unit::Kilogram>(rat(1))
+                                         / (formula::pass_count - formula::number(rat(3)))),
+            repeatTest);
+    STATIC_REQUIRE(formula::checked_evaluate_rejection<Heavy>(limitRejection, smallHeavy).error().error
+                   == formula::ArithmeticError::DivisionByZero);
+    formula::Trace<> limitTrace {};
+    (void) formula::checked_evaluate<Heavy>(
+        formula::sample_mean(limitRejection), smallHeavy, formula::RecordingSink<> { limitTrace });
+    CHECK(formula::render_trace(limitTrace, { .maxSteps = 20 })
+          == "1. m_h = 0 kg; 1 kg; 5 kg\n"
+             "2. 1 kg\n"
+             "3. pass n = 3\n"
+             "4. 3\n"
+             "5. #3 - #4 = 0\n"
+             "6. #2 / #5 = division by zero\n"
+             "7. pass 1: 3 values, mean 2 kg\n"
+             "8. failed in pass 1: the limit: division by zero\n"
+             "9. sample_mean(#8) = division by zero\n");
+
+    // limit^2 * s^2: 4 * 10^9 standard deviations squared leaves 64 bits.
+    constexpr auto thresholdRejection =
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            formula::series<Heavy, 3>, formula::deviation_in_stddevs(formula::number(rat(4'000'000'000))), repeatTest);
+    constexpr auto thresholdFailed = formula::checked_evaluate_rejection<Heavy>(thresholdRejection, smallHeavy);
+    STATIC_REQUIRE(thresholdFailed.error().error == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(!thresholdFailed.error().element.has_value());
+    formula::Trace<> thresholdTrace {};
+    (void) formula::checked_evaluate_rejection<Heavy>(
+        thresholdRejection, smallHeavy, formula::RecordingSink<> { thresholdTrace });
+    CHECK(formula::render_trace(thresholdTrace, { .maxSteps = 20 })
+          == "1. m_h = 0 kg; 1 kg; 5 kg\n"
+             "2. 4000000000\n"
+             "3. pass 1: 3 values, mean 2 kg\n"
+             "4. failed in pass 1: limit^2 * s^2: overflow in exact arithmetic\n");
+
+    // A deviation: 4e18, 4e18 and -4e18 kg have a mean that fits, and
+    // 4e18 - 4e18/3 does not, at element 1.
+    constexpr auto wide =
+        formula::environment(formula::measured_series<Heavy>(formula::Measured<Heavy> { rat(4'000'000'000'000'000'000) },
+                                                             formula::Measured<Heavy> { rat(4'000'000'000'000'000'000) },
+                                                             formula::Measured<Heavy> { rat(-4'000'000'000'000'000'000) }));
+    constexpr auto wideRejection = formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+        formula::series<Heavy, 3>,
+        formula::deviation_from_mean(formula::constant<unit::Kilogram>(rat(3'000'000'000'000'000'000))),
+        repeatTest);
+    constexpr auto statisticFailed = formula::checked_evaluate_rejection<Heavy>(wideRejection, wide);
+    STATIC_REQUIRE(statisticFailed.error().error == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(*statisticFailed.error().element == 0);
+    formula::Trace<> statisticTrace {};
+    (void) formula::checked_evaluate<Heavy>(
+        formula::sample_mean(wideRejection), wide, formula::RecordingSink<> { statisticTrace });
+    CHECK(formula::render_trace(statisticTrace, { .maxSteps = 20 })
+          == "1. m_h = 4000000000000000000 kg; 4000000000000000000 kg; -4000000000000000000 kg\n"
+             "2. 3000000000000000000 kg\n"
+             "3. pass 1: 3 values, mean 4000000000000000000/3 kg\n"
+             "4. failed in pass 1: the deviation: overflow in exact arithmetic at element 1 of 3\n"
+             "5. sample_mean(#4) = overflow in exact arithmetic\n");
+}
+
+TEST_CASE("an absent limit decides nothing, and the outcome is empty", "[rejection]")
+{
+    // T2's strict absence: a limit nobody measured keeps no determination
+    // and rejects none -- the outcome is empty, never the unfiltered mean.
+    constexpr auto banded = rejectionOf<MostExtreme, Keep, 2, 4, 6>(formula::deviation_from_mean(var<Band>));
+    constexpr auto unmeasured = formula::environment(formula::measured_series<Mass>(grams(rat(402, 10)),
+                                                                                    grams(rat(398, 10)),
+                                                                                    grams(rat(405, 10)),
+                                                                                    grams(rat(44)),
+                                                                                    grams(rat(40)),
+                                                                                    grams(rat(433, 10))),
+                                                     formula::Measured<Band>::absent());
+    constexpr auto out = formula::checked_evaluate_rejection<Mass>(banded, unmeasured);
+    STATIC_REQUIRE(out->outcome().is_empty());
+    STATIC_REQUIRE(out->rejected().empty());
+    STATIC_REQUIRE(formula::checked_evaluate<Mass>(formula::sample_mean(banded), unmeasured)->is_empty());
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Mass>(formula::sample_mean(banded), unmeasured, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
+             "2. b = (not measured)\n"
+             "3. pass 1: 6 values, mean 413/10 g\n"
+             "4. no decision in pass 1: the limit is not measured\n"
+             "5. sample_mean(#4) = (not measured)\n");
+}
+
+TEST_CASE("an aborted rejection keeps its survivors, and names both bounds when it would pass both", "[rejection]")
+{
+    // Fixture A under AtMost<1>: element 3 went in pass 1, and the abort in
+    // pass 2 leaves the other five.
+    constexpr auto out = formula::checked_evaluate_rejection<Mass>(rejectionA1, fixtureA);
+    STATIC_REQUIRE(out->survivors().size() == 5);
+    STATIC_REQUIRE(out->survivors()[2] == 2);
+    STATIC_REQUIRE(out->survivors()[3] == 4);
+    STATIC_REQUIRE(out->survivors()[4] == 5);
+
+    // Fixture B, every exceeding one, AtMost<1> and KeepAtLeast<5>: two in
+    // pass 1 would be one too many, and would leave 4 of at least 5.
+    formula::Trace<> both {};
+    (void) formula::checked_evaluate_rejection<Mass>(
+        rejectionOf<EveryExceeding, Keep, 1, 5, 6>(sixPercent), fixtureB, formula::RecordingSink<> { both });
+    CHECK(formula::render_trace(both, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 226/5 g; 40 g; 186/5 g\n"
+             "2. 3/50\n"
+             "3. pass mean = 2429/60 g\n"
+             "4. #2 * #3 = 2429/1000000\n"
+             "5. pass 1: 6 values, mean 2429/60 g\n"
+             "6. elements 4 and 6 of 6 would be rejections 1 and 2 of at most 1 and would leave 4 of at least 5: discard "
+             "the determinations and repeat the test [Example Standard, 7.4]\n");
+}
+
+TEST_CASE("AtMost of the largest count still runs every pass it needs", "[rejection]")
+{
+    // k + 1 would wrap to 0 and run no pass at all. With a 1/10 g limit and
+    // KeepAtLeast<1>, fixture B rejects one determination a pass until one
+    // remains -- exactly as AtMost<5>, the most it could reject, does.
+    constexpr auto tight = formula::deviation_from_mean(formula::constant<unit::Gram>(rat(1, 10)));
+    constexpr auto largest = formula::checked_evaluate_rejection<Mass>(
+        rejectionOf<MostExtreme, Keep, std::numeric_limits<std::size_t>::max(), 1, 6>(tight), fixtureB);
+    constexpr auto five =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 5, 1, 6>(tight), fixtureB);
+    STATIC_REQUIRE(largest->passes() == five->passes());
+    STATIC_REQUIRE(largest->passes() > 1);
+    STATIC_REQUIRE(largest->rejected().size() == five->rejected().size());
+    STATIC_REQUIRE(largest->outcome().measurement().value() == five->outcome().measurement().value());
+}
+
+TEST_CASE("a rejection record that contradicts itself is refused, not printed", "[rejection][trace-render]")
+{
+    // Trace and its records are public aggregates. A hand-built record with
+    // a count that would wrap, an abort naming nobody, or a position past
+    // the sample prints "(its record is invalid)" -- never a number no
+    // evaluation produced.
+    formula::Trace<> aborted {};
+    (void) formula::checked_evaluate_rejection<Mass>(rejectionA1, fixtureA, formula::RecordingSink<> { aborted });
+    REQUIRE(!aborted.rejectionRecords.empty());
+    std::size_t const abortRecord = aborted.rejectionRecords.size() - 1;
+    std::size_t const outlierRecord = 1; // pass 1, then its rejection
+    REQUIRE(aborted.steps[aborted.rejectionRecords[outlierRecord].step].kind == formula::StepKind::OutlierRejected);
+
+    formula::Trace<> wrapped = aborted;
+    wrapped.rejectionRecords[abortRecord].remaining = 0;
+    wrapped.rejectionRecords[abortRecord].pastAtMost = false;
+    wrapped.rejectionRecords[abortRecord].belowKeepAtLeast = true;
+    CHECK(formula::render_trace(wrapped, { .maxSteps = 20 }).ends_with("rejection aborted (its record is invalid)\n"));
+
+    formula::Trace<> nobody = aborted;
+    nobody.rejectionRecords[abortRecord].wouldReject.clear();
+    CHECK(formula::render_trace(nobody, { .maxSteps = 20 }).ends_with("rejection aborted (its record is invalid)\n"));
+
+    formula::Trace<> pastSample = aborted;
+    pastSample.rejectionRecords[abortRecord].wouldReject = { 8 };
+    CHECK(formula::render_trace(pastSample, { .maxSteps = 20 }).ends_with("rejection aborted (its record is invalid)\n"));
+
+    formula::Trace<> outlierPast = aborted;
+    outlierPast.rejectionRecords[outlierRecord].position = 8;
+    CHECK(formula::render_trace(outlierPast, { .maxSteps = 20 }).find("rejected element (its record is invalid)\n")
           != std::string::npos);
 }
