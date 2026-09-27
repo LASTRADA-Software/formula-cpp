@@ -306,10 +306,11 @@ TEST_CASE("two one-point curves splice to a two-point curve", "[curve][splice]")
 
 namespace
 {
-// x falls from 20 % at 1 m to 10 % at 2 m, and y states 2 m again: a
-// duplicate beside a direction break. Invented.
-constexpr formula::BreakpointTable<2> xPoints { breakpoint(1), breakpoint(2) };
-constexpr formula::BreakpointTable<2> yPoints { breakpoint(2), breakpoint(4) };
+// x falls from 20 % at 3 m to 10 % at 7 m, and y states 7 m again: a
+// duplicate beside a direction break. Invented: 3, 7 and 19 are not a sieve
+// size in any unit.
+constexpr formula::BreakpointTable<2> xPoints { breakpoint(3), breakpoint(7) };
+constexpr formula::BreakpointTable<2> yPoints { breakpoint(7), breakpoint(19) };
 constexpr auto curveX =
     formula::curve(formula::domain<unit::Metre, xPoints>(), formula::series_constant<unit::Percent>(rat(20), rat(10)));
 constexpr auto curveY =
@@ -318,11 +319,11 @@ constexpr auto curveY =
 
 TEST_CASE("a duplicate point beside a direction break fails at the duplicate, in either order", "[curve][splice]")
 {
-    // Sorted, (x, y) reads 1 m: 20; 2 m: 10; 2 m: 30; 4 m: 40 and (y, x)
-    // reads 1 m: 20; 2 m: 30; 2 m: 10; 4 m: 40. Judged in one pass, the
-    // first breaks the direction at zero-based 1 and the second repeats 2 m
+    // Sorted, (x, y) reads 3 m: 20; 7 m: 10; 7 m: 30; 19 m: 40 and (y, x)
+    // reads 3 m: 20; 7 m: 30; 7 m: 10; 19 m: 40. Judged in one pass, the
+    // first breaks the direction at zero-based 1 and the second repeats 7 m
     // at 2; duplicates are judged over the whole union first, so both fail at
-    // the second 2 m.
+    // the second 7 m.
     constexpr formula::SeriesFailure duplicate { formula::ArithmeticError::DomainError, 2 };
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveX, curveY),
                                                                      noInputs)
@@ -547,7 +548,7 @@ TEST_CASE("a splice's failure line names the point and the rule, in either order
                                                                      noInputs, formula::RecordingSink<> { trace });
         CHECK(formula::render_trace(trace, { .maxSteps = 40 })
                   .ends_with("7. splice(#3, #6, non-decreasing) = argument outside the domain of the operation at element 3 "
-                             "[duplicate domain point 2 m]\n"));
+                             "[duplicate domain point 7 m]\n"));
         CHECK(trace.steps.back().curveBreak == formula::CurveBreak::DuplicatePoint);
     }
 

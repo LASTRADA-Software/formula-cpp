@@ -658,9 +658,9 @@ inline constexpr formula::BreakpointTable<2> everyCurveSnapSet { formula::breakp
 
 // Binning (S9): raw particle sizes counted into two classes, the upper
 // class's share times the overlay's fixed factor. Invented classes, 0 to
-// under 150 and 150 to under 300 mm; the 150 mm particle is on the boundary,
-// in the upper class.
-inline constexpr formula::BandTable<2> everyClasses { formula::band(0, 1, 150, 1), formula::band(150, 1, 300, 1) };
+// under 13 and 13 to under 37 mm -- not a sieve size in any unit; the 13 mm
+// particle is on the boundary, in the upper class.
+inline constexpr formula::BandTable<2> everyClasses { formula::band(0, 1, 13, 1), formula::band(13, 1, 37, 1) };
 
 [[nodiscard]] constexpr auto everyBinnedKind()
 {
@@ -704,7 +704,7 @@ inline constexpr auto everyInputs = formula::environment(
                                             formula::Measured<EveryRetained> { rat(20) },
                                             formula::Measured<EveryRetained> { rat(40) }),
     formula::Measured<EveryTotal> { rat(2020) },
-    formula::MeasuredObservations<EveryParticle, 4>(rat(60), rat(150), rat(250), rat(120)));
+    formula::MeasuredObservations<EveryParticle, 4>(rat(5), rat(13), rat(29), rat(11)));
 
 template <typename Tag>
 [[nodiscard]] std::string everyTraceOf()
@@ -764,8 +764,8 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
     // Binning, the observations marked, each class a band.
     constexpr auto binnedVariant = std::get<4>(everyOverlaid.variantSet.cases).expression;
     CHECK(formula::render(binnedVariant, everyVocabulary)
-          == "sum(bin(d_n(i), 0 to under 150 mm, 150 to under 300 mm) * values(0, 1)) / sum(bin(d_n(i), 0 to under 150 mm, "
-             "150 to under 300 mm)) * x_n");
+          == "sum(bin(d_n(i), 0 to under 13 mm, 13 to under 37 mm) * values(0, 1)) / sum(bin(d_n(i), 0 to under 13 mm, "
+             "13 to under 37 mm)) * x_n");
 
     for (std::string const& text: { formula::render<formula::Dialect::Markdown>(binnedVariant, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(binnedVariant, everyVocabulary),
@@ -934,16 +934,16 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "13. round(#12, in %) = 1/2 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
              "14. #13 = 1/2 % [variant EveryCurve (4th of 5), selected by tag]\n");
 
-    // Binning: 60, 150, 250 and 120 mm counted 2 and 2 -- the 150 mm particle
+    // Binning: 5, 13, 29 and 11 mm counted 2 and 2 -- the 13 mm particle
     // in the upper class -- the upper class's share 1/2, times the fixed 1487/1000.
     // Counted closed at the top, it would be 1/4, and 37.2 %.
     CHECK(everyTraceOf<EveryBinned>()
-          == "1. d_n = 60 mm; 150 mm; 250 mm; 120 mm\n"
+          == "1. d_n = 5 mm; 13 mm; 29 mm; 11 mm\n"
              "2. bin(#1) = 2; 2\n"
              "3. 0; 1\n"
              "4. #2 * #3 = 0; 2\n"
              "5. sum(#4) = 2\n"
-             "6. d_n = 60 mm; 150 mm; 250 mm; 120 mm\n"
+             "6. d_n = 5 mm; 13 mm; 29 mm; 11 mm\n"
              "7. bin(#6) = 2; 2\n"
              "8. sum(#7) = 4\n"
              "9. #5 / #8 = 1/2\n"

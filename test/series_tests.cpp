@@ -256,10 +256,10 @@ TEST_CASE("a series reads into double as well as into Rational", "[series]")
 TEST_CASE("a series of length one is a series", "[series]")
 {
     constexpr auto one =
-        formula::environment(formula::measured_series<Aperture>(formula::Measured<Aperture> { rat(7, 10) }));
+        formula::environment(formula::measured_series<Aperture>(formula::Measured<Aperture> { rat(29) }));
     constexpr auto outcome = formula::checked_evaluate_series<Aperture>(formula::series<Aperture, 1>, one);
     STATIC_REQUIRE(decltype(outcome)::value_type::size() == 1);
-    STATIC_REQUIRE(outcome->element(0).value() == rat(7, 10));
+    STATIC_REQUIRE(outcome->element(0).value() == rat(29));
     STATIC_REQUIRE(outcome->element(1).is_absent());
 }
 
