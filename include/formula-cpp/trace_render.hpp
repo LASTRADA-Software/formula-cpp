@@ -1682,8 +1682,6 @@ namespace detail
                 return "the mean";
             case detail::RejectionFailurePoint::Variance:
                 return "the variance";
-            case detail::RejectionFailurePoint::TooFewForStddevs:
-                return "fewer than the 3 a deviation in standard deviations needs";
             case detail::RejectionFailurePoint::Limit:
                 return "the limit";
             case detail::RejectionFailurePoint::NegativeLimit:
@@ -1757,9 +1755,7 @@ namespace detail
     ///    determinations and repeat the test`;
     ///  - failed: `failed in pass 1: the variance: overflow in exact
     ///    arithmetic at element 1 of 6`, or `failed in pass 1: the range:
-    ///    overflow in exact arithmetic`, or, for a deviation in standard
-    ///    deviations with too few left, `failed in pass 5: 1 value remains,
-    ///    fewer than the 3 a deviation in standard deviations needs`;
+    ///    overflow in exact arithmetic`;
     ///  - undecided: `no decision in pass 2: the limit is not measured`.
     ///
     /// A step with no record says so rather than guess, and so does one whose
@@ -1889,11 +1885,6 @@ namespace detail
                         : std::string {};
                 if (*rejectionRecord->failurePoint == detail::RejectionFailurePoint::NegativeLimit)
                     return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
-                           + rejection_failure_subject(*rejectionRecord->failurePoint);
-                if (*rejectionRecord->failurePoint == detail::RejectionFailurePoint::TooFewForStddevs)
-                    return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
-                           + std::to_string(rejectionRecord->remaining)
-                           + (rejectionRecord->remaining == 1 ? " value remains, " : " values remain, ")
                            + rejection_failure_subject(*rejectionRecord->failurePoint);
                 return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
                        + rejection_failure_subject(*rejectionRecord->failurePoint) + ": "

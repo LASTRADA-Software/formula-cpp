@@ -799,6 +799,21 @@ formula_add_negative_test(gap_to_range_limit_not_scalar
 formula_add_negative_test(rejection_series_shorter_than_keep_at_least
     "formula: without_outliers keeps at least m determinations of a series that holds fewer"
     REJECT "declares KeepAtLeast<0>")
+formula_add_negative_test(rejection_of_rejection
+    "formula: without_outliers takes a series or observations as its sample, not another without_outliers"
+    REJECT "keeps at least m")
+formula_add_negative_test(rejection_observations_below_keep_at_least
+    "formula: without_outliers keeps at least m determinations of observations that hold at most fewer"
+    REJECT "of a series that holds fewer")
+formula_add_negative_test(rejection_of_rejection_declared
+    "formula: without_outliers takes a series or observations as its sample, not another without_outliers"
+    REJECT "keeps at least m")
+formula_add_negative_test(rejection_observations_below_keep_at_least_declared
+    "formula: without_outliers keeps at least m determinations of observations that hold at most fewer"
+    REJECT "of a series that holds fewer")
+formula_add_negative_test(rejection_stddevs_keep_fewer_than_three
+    "formula: deviation_in_stddevs needs at least 3 determinations in every pass it decides"
+    REJECT "keeps at least m")
 formula_add_negative_test(pass_mean_outside_rejection
     "formula: pass_mean and pass_count are meaningful only inside the limit expression of without_outliers"
     REJECT "provides no value for this quantity")

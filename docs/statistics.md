@@ -138,6 +138,13 @@ Every parameter that shapes the result is required, none defaulted:
 - `AtMost<k>`: the most determinations rejected in total;
 - `KeepAtLeast<m>`: the fewest that may remain.
 
+**A rejection's sample is a series or observations, never another
+rejection.** The outer one would count and place its determinations among
+the inner one's survivors, and its trace could not say which it rejected or
+what it decided, so `without_outliers` over `without_outliers` is refused
+where it is written. State both criteria as one rejection, or evaluate the
+first and enter its survivors as the sample.
+
 The limit is an expression, evaluated again in every pass: `pass_mean<Mass>`
 is that pass's mean, and `pass_count` its size. Termination is guaranteed by
 the type: every pass but the last removes at least one, and at most k are
@@ -195,7 +202,8 @@ a tie: elements 3 and 5 rejected together in pass 1, result 40 g
 **`KeepAtLeast<m>` is also the method's precondition.** A sample that starts
 with fewer than m determinations -- raw observations, whose count is data --
 gives the verdict before pass 1, whether or not it holds an outlier. A
-series shorter than m is refused where it is written.
+series shorter than m, or observations with room for fewer, is refused where
+it is written.
 
 ```text
 1. m = 40 g; 40 g; 41 g
@@ -209,7 +217,10 @@ A criterion compares each determination's statistic with the pass's limit:
 - `deviation_from_mean(limit)`: abs(x - mean) against a limit in the
   sample's own unit -- a constant, or a share of `pass_mean`, as above;
 - `deviation_in_stddevs(limit)`: abs(x - mean) / s against a bare number,
-  s the pass's sample standard deviation;
+  s the pass's sample standard deviation. It needs three determinations in
+  every pass -- two always lie one standard deviation either side of their
+  mean -- so a rejection by it must declare `KeepAtLeast<3>` or more, and
+  fewer is refused where it is written;
 - `gap_to_range(limit)`: for the lowest and the highest determination only,
   the gap to its neighbour over the range, against a bare number.
 

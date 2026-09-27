@@ -1289,8 +1289,8 @@ namespace detail
     /// Whether the positions in @p trace's step @p stepIndex count raw
     /// observations, as `FailureSite::InputObservation` does: the step is
     /// the observations' own. False for any other step, and for an index
-    /// past the steps. (A rejection's sample is a series or observations,
-    /// never another rejection.)
+    /// past the steps. (A rejection's sample is a series or observations:
+    /// `without_outliers` refuses another rejection as its sample.)
     template <typename Rep>
     [[nodiscard]] bool step_counts_observations(Trace<Rep> const& trace, std::size_t stepIndex)
     {

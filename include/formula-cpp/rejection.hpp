@@ -338,6 +338,58 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when a rejection's sample is itself a rejection. The
+    /// outer rejection would count and place its determinations among the
+    /// inner one's survivors, while its trace records them against the
+    /// sample as entered, so it could not say which it rejected or what it
+    /// decided. Asked once the bounds are in order (@p Asked).
+    template <bool IsRejection, bool Asked>
+    struct RequireSampleNotARejection
+    {
+        static_assert(!Asked || !IsRejection,
+                      "formula: without_outliers takes a series or observations as its sample, not another "
+                      "without_outliers -- a rejection of survivors could not state in its trace which "
+                      "determinations it rejects; state both criteria as one rejection, or evaluate the first and "
+                      "enter its survivors as the sample");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when observations that hold at most @p Capacity are
+    /// to keep at least @p M: as `RequireSeriesHoldsKeepAtLeast`, every
+    /// evaluation would give the verdict before a single pass. Asked only
+    /// for observations, once the bounds are in order and m is positive
+    /// (@p Asked).
+    template <std::size_t Capacity, std::size_t M, bool Asked>
+    struct RequireObservationsHoldKeepAtLeast
+    {
+        static_assert(!Asked || Capacity >= M,
+                      "formula: without_outliers keeps at least m determinations of observations that hold at most "
+                      "fewer, so every evaluation would give the verdict before a single pass; the two counts appear "
+                      "in this diagnostic as the template arguments Capacity and M of "
+                      "RequireObservationsHoldKeepAtLeast -- declare KeepAtLeast<m> with m at most the observations' "
+                      "capacity");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `deviation_in_stddevs` is to keep fewer than 3:
+    /// a standard deviation of two determinations places each exactly one
+    /// deviation from their mean, so the criterion needs three in every pass
+    /// it decides, and a rejection that may leave two would fail the result
+    /// rather than decide. `KeepAtLeast<3>` or more keeps every pass at
+    /// three, and a sample that starts with fewer gives the verdict. Asked
+    /// once the bounds are in order and m is positive (@p Asked).
+    template <typename Criterion, std::size_t M, bool Asked>
+    struct RequireStddevsKeepThree
+    {
+        static_assert(!Asked || Criterion::kind != CriterionKind::DeviationInStddevs || M >= 3,
+                      "formula: deviation_in_stddevs needs at least 3 determinations in every pass it decides, so a "
+                      "rejection by it must declare KeepAtLeast<m> with m at least 3");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when `gap_to_range` is paired with
     /// `PerPass::EveryExceeding`: it examines two determinations, and "every
     /// exceeding" would read as though it examined more. Asked once the
@@ -491,10 +543,20 @@ struct RejectionNode
 
     static_assert(detail::RequireAtMostPositive<detail::bound_value<AtMostT>, boundsInOrder>::value);
     static_assert(detail::RequireKeepAtLeastPositive<detail::bound_value<KeepAtLeastT>, boundsInOrder>::value);
+    static_assert(
+        detail::RequireSampleNotARejection<detail::is_sample_transformer<std::remove_cvref_t<S>>, boundsInOrder>::value);
     static_assert(detail::RequireSeriesHoldsKeepAtLeast<detail::sample_capacity<S>,
                                                         detail::bound_value<KeepAtLeastT>,
                                                         boundsInOrder && SeriesNode<S>
                                                             && detail::bound_value<KeepAtLeastT> >= 1>::value);
+    static_assert(detail::RequireObservationsHoldKeepAtLeast<detail::sample_capacity<S>,
+                                                             detail::bound_value<KeepAtLeastT>,
+                                                             boundsInOrder
+                                                                 && detail::is_observations_sample<std::remove_cvref_t<S>>
+                                                                 && detail::bound_value<KeepAtLeastT> >= 1>::value);
+    static_assert(detail::RequireStddevsKeepThree<Criterion,
+                                                  detail::bound_value<KeepAtLeastT>,
+                                                  boundsInOrder && detail::bound_value<KeepAtLeastT> >= 1>::value);
     static_assert(detail::RequireGapToRangeMostExtreme<P, Criterion, boundsInOrder>::value);
 
     /// Whether the policy is one the criterion allows: the checks below are
@@ -701,9 +763,6 @@ namespace detail
         Mean,
         /// The pass's sample variance (`deviation_in_stddevs`).
         Variance,
-        /// Fewer than three determinations left for `deviation_in_stddevs`,
-        /// which refuses to judge them: no failure of any arithmetic.
-        TooFewForStddevs,
         /// The limit expression.
         Limit,
         /// The limit was negative: no rule.
@@ -1044,9 +1103,10 @@ namespace detail
             std::expected<Rational, ArithmeticError> const passMean = mean_of(working, failedAt);
 
             // The sample variance, for a criterion in standard deviations: over
-            // n - 1, the candidate included. Fewer than three determinations
-            // is refused: two are always equidistant from their mean, so every
-            // such pass would be a tie that empties the sample.
+            // n - 1, the candidate included. `KeepAtLeast<3>` or more is
+            // required at compile time (`RequireStddevsKeepThree`), so every
+            // pass holds three; fewer is refused here all the same, so that no
+            // pass divides by n - 1 = 0.
             std::expected<Rational, ArithmeticError> passVariance = Rational { 0 };
             if constexpr (Criterion::kind == CriterionKind::DeviationInStddevs)
             {
@@ -1099,10 +1159,7 @@ namespace detail
                         .error = passMean.has_value() ? std::nullopt : passError });
                 }
                 RejectionFailurePoint const failedPart =
-                    !passMean.has_value() ? RejectionFailurePoint::Mean
-                    : Criterion::kind == CriterionKind::DeviationInStddevs && passSize < 3
-                        ? RejectionFailurePoint::TooFewForStddevs
-                        : RejectionFailurePoint::Variance;
+                    !passMean.has_value() ? RejectionFailurePoint::Mean : RejectionFailurePoint::Variance;
                 return fail(*passError, failedAt, failedPart);
             }
 

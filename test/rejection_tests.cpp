@@ -294,16 +294,6 @@ TEST_CASE("a rejection that would leave fewer than KeepAtLeast aborts", "[reject
     STATIC_REQUIRE(out->passes() == 2);
 }
 
-TEST_CASE("deviation in standard deviations on a two-value pass is a domain error, not a tie that empties the sample",
-          "[rejection]")
-{
-    constexpr auto pair = sampleOf(rat(40), rat(44));
-    constexpr auto out =
-        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 1, 1, 2>(sevenQuarters), pair);
-    STATIC_REQUIRE(!out.has_value());
-    STATIC_REQUIRE(out.error().error == formula::ArithmeticError::DomainError);
-}
-
 TEST_CASE("an absent determination runs no pass and yields an empty outcome", "[rejection]")
 {
     constexpr auto missing = formula::environment(formula::measured_series<Mass>(grams(rat(402, 10)),
@@ -712,7 +702,7 @@ TEST_CASE("a pass that fails says what failed, and the rejection claims its step
 
     // limit^2 * s^2: 4 * 10^9 standard deviations squared leaves 64 bits.
     constexpr auto thresholdRejection =
-        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<3>>(
             formula::series<Heavy, 3>, formula::deviation_in_stddevs(formula::number(rat(4'000'000'000))), repeatTest);
     constexpr auto thresholdFailed = formula::checked_evaluate_rejection<Heavy>(thresholdRejection, smallHeavy);
     STATIC_REQUIRE(thresholdFailed.error().error == formula::ArithmeticError::Overflow);
@@ -931,22 +921,15 @@ TEST_CASE("a gap_to_range overflow is the range's, at no element; too few for st
     CHECK(formula::render_trace(rangeTrace, { .maxSteps = 20 })
               .ends_with("failed in pass 1: the range: overflow in exact arithmetic\n"));
 
-    // Fixture B at 1/10 standard deviations, keeping at least one: every
-    // pass rejects -- pass 4 a tie of two, 201/5 and 199/5 g around 40 g --
-    // until one remains, which a deviation in standard deviations refuses to
-    // judge. No arithmetic failed, and no variance is to blame.
+    // Fixture B at 1/10 standard deviations, keeping at least three -- the
+    // fewest a deviation in standard deviations may keep: every pass
+    // rejects until the next would leave two, and that is the author's
+    // verdict, not a failure.
     constexpr auto tenth = formula::deviation_in_stddevs(formula::number(rat(1, 10)));
-    constexpr auto refused =
-        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 5, 1, 6>(tenth), fixtureB);
-    STATIC_REQUIRE(refused.error().error == formula::ArithmeticError::DomainError);
-    STATIC_REQUIRE(!refused.error().element.has_value());
-    formula::Trace<> fewTrace {};
-    (void) formula::checked_evaluate_rejection<Mass>(
-        rejectionOf<MostExtreme, Keep, 5, 1, 6>(tenth), fixtureB, formula::RecordingSink<> { fewTrace });
-    CHECK(formula::render_trace(fewTrace, { .maxSteps = 60 })
-              .ends_with("15. pass 5: 1 value, mean 40 g\n"
-                         "16. failed in pass 5: 1 value remains, fewer than the 3 a deviation in standard deviations "
-                         "needs\n"));
+    constexpr auto kept =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 5, 3, 6>(tenth), fixtureB);
+    STATIC_REQUIRE(kept.has_value());
+    STATIC_REQUIRE(kept->outcome().is_verdict());
 }
 
 TEST_CASE("a critical value is read at each pass's own sample size (fixture B, the deviation table)", "[rejection]")
