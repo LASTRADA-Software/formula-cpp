@@ -2115,6 +2115,12 @@ formula_add_negative_test(least_squares_not_a_curve
 formula_add_negative_test(least_squares_in_double
     "formula: a curve can only be evaluated with Rep = Rational"
     REJECT "must be noexcept" "compute cannot be called")
+# A constant for a quantity read as a series inside an opaque call: the
+# rewrite sees through the call to its inputs, so the series refusal is the
+# one message -- not "cannot see inside", and not "nobody reads it".
+formula_add_negative_test(overlay_constant_inside_opaque_series
+    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

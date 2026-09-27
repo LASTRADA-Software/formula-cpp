@@ -145,6 +145,7 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
@@ -1942,6 +1943,39 @@ namespace detail
     {
     };
 
+    /// An opaque output, rewritten **through its call's inputs**: an opaque
+    /// operation's `compute` receives evaluated input values and never the
+    /// environment (`opaque.hpp`), so its inputs are everything it reads, and
+    /// a quantity fixed or defined in them is fixed or defined for the whole
+    /// call. Known when every input is; the call is rebuilt around the
+    /// rewritten inputs with the **same** citation.
+    template <typename Sub, std::size_t I, typename Op, typename... Inputs>
+    struct ConstantRewrite<Sub, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>>
+    {
+        /// Whether every input is a kind this header knows, all the way down.
+        static constexpr bool known = (ConstantRewriteOf<Sub, Inputs>::known && ...);
+        /// Whether any input uses `Q`.
+        static constexpr bool mentions = (ConstantRewriteOf<Sub, Inputs>::mentions || ...);
+        /// The call, around the rewritten inputs.
+        using Call = OpaqueCall<Op, typename ConstantRewriteOf<Sub, Inputs>::type...>;
+        /// The same output of the rewritten call.
+        using type = OpaqueOutputNode<I, Call>;
+
+        /// The output, of the call around the rewritten inputs, with its
+        /// citation.
+        [[nodiscard]] static constexpr type apply(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& original,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {},
+                          Call { [&]<std::size_t... At>(std::index_sequence<At...>) {
+                                    return std::tuple<typename ConstantRewriteOf<Sub, Inputs>::type...> {
+                                        ConstantRewriteOf<Sub, Inputs>::apply(std::get<At>(original.call.inputs), overriding)...
+                                    };
+                                }(std::index_sequence_for<Inputs...> {}),
+                                 original.call.citation } };
+        }
+    };
+
     template <typename Sub, UnaryOperator Op, SeriesNode Operand>
     struct ConstantRewrite<Sub, ElementwiseUnaryNode<Op, Operand>>:
         ConstantRewriteOperand<Sub, Operand, ElementwiseUnaryNode<Op, typename ConstantRewriteOf<Sub, Operand>::type>>
@@ -2473,6 +2507,13 @@ namespace detail
     {
         /// Whatever either side substitutes.
         using type = SubstitutedInAll<Left, Right>;
+    };
+
+    template <std::size_t I, typename Op, typename... Inputs>
+    struct SubstitutedIn<OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>>
+    {
+        /// Whatever any of the call's inputs substitutes.
+        using type = SubstitutedInAll<Inputs...>;
     };
 
     /// Fails to compile when `with_constant<Q>` is applied to a method that
