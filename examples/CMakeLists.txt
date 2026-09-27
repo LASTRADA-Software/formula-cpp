@@ -124,6 +124,28 @@ formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 127 mm gives 
 # vocabulary's crossed-over edge in a trace line.
 formula_add_example(methods_and_overlays methods_and_overlays.cpp [==[\[variant Cube \(2nd of 3\), selected by tag\].*\(method default\).*\[variant cylinder 135 x 271 mm \(3rd of 3\), selected by tag\].*fixed by jurisdiction overlay: Shape factor.*jurisdiction overlay: Example Standard 12:2021 NA, NA\.4.*derived by jurisdiction overlay.*replaced by jurisdiction overlay: Example Standard 7:2019 A, A\.5.*1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A\.1.*pinned by jurisdiction overlay: Example Standard 3:2023 E, E\.1.*4\. b = 163 mm.*all checks passed: yes]==])
 
+# docs/statistics.md quotes this program's output verbatim. Pinned here, in
+# the order the program prints them: the variance over n - 1, the spread
+# rounded exactly, the observations' count as made, a missing determination
+# absent, a settled rejection, an abort as the author's verdict, a tie, a
+# sample too small to begin with, the squared comparison, a critical value
+# read at the pass's size, the second precision pass, and the rounded level's
+# verdict.
+formula_add_example(statistics statistics.cpp [==[sample_variance\(m\(i\)\) = 427/125 g2.*= 37/20 g.*observations of 8 at most, 6 made: mean 413/10 g, count 6.*9 observations for 8 places: refused.*sample_mean\(#1\) = \(not measured\).*settled: 2 rejected, 4 remain.*would be rejection 2 of at most 1: discard the determinations and repeat the test.*rejected together in pass 1.*3 values, fewer than the at least 4 to keep.*limit\^2 \* s\^2.*\[critical value at n = 6\].*r at level #10 \(pass 2 of 2\).*level = the mean rounded to 1 g: violated.*all checks passed: yes]==])
+
+# Every ```text block of docs/statistics.md must be a run of lines the example
+# prints, and every ```cpp block a run of lines of its source.
+add_test(NAME docs.statistics-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-statistics>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/statistics.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.statistics-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/statistics.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/statistics.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
 # Every line of docs/methods-and-overlays.md's output blocks must be a line the
 # example really prints -- see the script for why the regex above cannot be
 # that check.

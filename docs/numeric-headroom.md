@@ -138,8 +138,9 @@ Each program's largest integers over everything it evaluates at run time.
 | example `constraints` | 26 | 20 | 26 | 37 |
 | example `lookup_tables` | 26 | 20 | 26 | 37 |
 | example `methods_and_overlays` | 58 | 39 | 58 | 5 |
+| example `statistics` | 20 | 35 | 35 | 28 |
 | example `series` | 15 | 15 | 15 | 48 |
-| the gallery generator | 29 | 25 | 29 | 34 |
+| the gallery generator | 29 | 27 | 29 | 34 |
 
 <!-- /census:examples -->
 
