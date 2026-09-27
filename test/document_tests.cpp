@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -762,4 +764,140 @@ TEST_CASE("document: the rendered formula and the symbol table agree on every lo
     formulaAndSymbolsAgree<PlateThickness, GaugeDiameter, AbsentReading>(var<GaugeDiameter> * bandedLookup());
     formulaAndSymbolsAgree<PlateThickness, GaugeDiameter, AbsentReading>(var<GaugeDiameter> * apparatusLookup());
     formulaAndSymbolsAgree<CoreLength, GaugeDiameter, AbsentReading>(profileLookup() * var<GaugeDiameter>);
+}
+
+// ---- A series in the symbol table (phase 12) ----
+
+namespace
+{
+namespace series_document
+{
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
+    {
+    };
+    struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", formula::unit::Gram>
+    {
+    };
+} // namespace series_document
+} // namespace
+
+TEST_CASE("the symbol table marks a series and its length", "[series][document]")
+{
+    using series_document::Retained;
+    auto const page = formula::document(formula::series<Retained, 5>, formula::vocabulary(formula::renames<Retained>("R")));
+    REQUIRE(page.symbols.size() == 1);
+    CHECK(page.symbols[0].symbol == "R");
+    CHECK(page.symbols[0].description == "mass retained on a screen");
+    CHECK(page.symbols[0].unit == formula::unit::Gram);
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[0].length == 5);
+    // The formula line carries the marker; the table says how long.
+    CHECK(page.formula == "R(i)");
+    CHECK(formula::document<formula::Dialect::LaTeX>(formula::series<Retained, 5>).formula == "{m_r}_{i}");
+
+    // A single value's row says so, and reads one value.
+    auto const single = formula::document(formula::var<Retained>);
+    REQUIRE(single.symbols.size() == 1);
+    CHECK(single.symbols[0].shape == formula::ValueShape::Single);
+    CHECK(single.symbols[0].length == 1);
+}
+
+TEST_CASE("a series row is one row per quantity, shape and length", "[series][document]")
+{
+    // No node combines a series with a single value until elementwise
+    // arithmetic arrives, so the walk is driven directly: a scalar read, the
+    // series read twice, and the same quantity over another length. The
+    // environment refuses to supply both shapes of one quantity, but the page
+    // describes the formula, not an environment, and says what it reads.
+    using series_document::Retained;
+    formula::detail::Walk<formula::DefaultVocabulary> walk {
+        .documentation = {}, .seenQuantities = {}, .dialect = formula::Dialect::Plain, .vocabulary = {}
+    };
+    formula::detail::collect(walk, formula::var<Retained>);
+    formula::detail::collect(walk, formula::series<Retained, 5>);
+    formula::detail::collect(walk, formula::series<Retained, 5>);
+    formula::detail::collect(walk, formula::series<Retained, 3>);
+    auto const& rows = walk.documentation.symbols;
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[0].shape == formula::ValueShape::Single);
+    CHECK(rows[1].shape == formula::ValueShape::Series);
+    CHECK(rows[1].length == 5);
+    CHECK(rows[2].shape == formula::ValueShape::Series);
+    CHECK(rows[2].length == 3);
+    // One symbol for all three rows: the table distinguishes them by shape
+    // and length, not by spelling.
+    CHECK(rows[0].symbol == rows[1].symbol);
+    CHECK(rows[1].symbol == rows[2].symbol);
+}
+
+TEST_CASE("an elementwise formula's symbol table reads left to right, one row per quantity and shape", "[series][document]")
+{
+    using series_document::Retained;
+    using series_document::TotalMass;
+    auto const fraction = formula::document(formula::series<Retained, 5> / formula::var<TotalMass>);
+    REQUIRE(fraction.symbols.size() == 2);
+    CHECK(fraction.symbols[0].symbol == "m_r");
+    CHECK(fraction.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(fraction.symbols[1].symbol == "m_t");
+    CHECK(fraction.symbols[1].shape == formula::ValueShape::Single);
+    CHECK(fraction.formula == "m_r(i) / m_t");
+
+    // Reversed operands, reversed rows: the walk visits lhs, then rhs.
+    auto const reversed = formula::document(formula::var<TotalMass> - formula::series<Retained, 5>);
+    REQUIRE(reversed.symbols.size() == 2);
+    CHECK(reversed.symbols[0].symbol == "m_t");
+    CHECK(reversed.symbols[1].symbol == "m_r");
+
+    // One quantity read both as a series and as a single value: two rows,
+    // one symbol, told apart by shape. A per-element constant reads nothing.
+    auto const both =
+        formula::document((formula::series<Retained, 5>
+                           - formula::var<Retained>) *formula::series_constant<formula::unit::One>(formula::Rational { 1 },
+                                                                                                   formula::Rational { 2 },
+                                                                                                   formula::Rational { 3 },
+                                                                                                   formula::Rational { 4 },
+                                                                                                   formula::Rational { 5 }));
+    REQUIRE(both.symbols.size() == 2);
+    CHECK(both.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(both.symbols[1].shape == formula::ValueShape::Single);
+    CHECK(both.symbols[0].symbol == both.symbols[1].symbol);
+}
+
+TEST_CASE("a sum is one value whose symbol table still says it reads a series", "[series][document]")
+{
+    using series_document::Retained;
+    using series_document::TotalMass;
+    auto const page = formula::document(
+        formula::sum(formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<Retained, 5>))
+        / formula::var<TotalMass>);
+    CHECK(page.formula == "sum(cumulative(m_r(i), from first)) / m_t");
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "m_r");
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[0].length == 5);
+    CHECK(page.symbols[1].symbol == "m_t");
+    CHECK(page.symbols[1].shape == formula::ValueShape::Single);
+
+    // A running total documents as a series, its operand's row and nothing of
+    // its own.
+    auto const totals =
+        formula::document(formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>));
+    CHECK(totals.formula == "cumulative(m_r(i), from last)");
+    REQUIRE(totals.symbols.size() == 1);
+    CHECK(totals.symbols[0].shape == formula::ValueShape::Series);
+}
+
+TEST_CASE("a per-element rounding documents as its series, with every granularity in the formula", "[series][document]")
+{
+    using series_document::Retained;
+    static constexpr formula::PlacesTable<3> places { formula::DecimalPlaces { 0 },
+                                                      formula::DecimalPlaces { 1 },
+                                                      formula::DecimalPlaces { 2 } };
+    auto const page =
+        formula::document(formula::rounded_elementwise<formula::unit::Gram, places, formula::RoundingMode::Floor>(
+            formula::series<Retained, 3>));
+    CHECK(page.formula == "round(m_r(i), to 0/1/2 dp of g)");
+    REQUIRE(page.symbols.size() == 1);
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[0].length == 3);
 }

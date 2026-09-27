@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this band table has a gap or overlap between two adjacent bands
+// REJECT: must be initialized by a constant expression
 //
 // Proves the reuse, not merely the declaration: task 1's validation must be
 // reachable through an actual `banded_lookup(...)` call, not only through

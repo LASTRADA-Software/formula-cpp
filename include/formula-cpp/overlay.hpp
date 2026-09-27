@@ -133,9 +133,11 @@
 /// refused when only the variant that goes away reads `Q`: in either order,
 /// the method produced never reads it.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
@@ -146,6 +148,8 @@
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
 
 #include <array>
@@ -1217,6 +1221,23 @@ namespace detail
         return {};
     }
 
+    /// A stand-in that counts only the uses of `Q` as a SERIES --
+    /// `series<Q, N>` -- which no substitution replaces: one constant or one
+    /// definition cannot stand for a value at every point. The result check
+    /// asks it, to refuse such a substitution in words that say so.
+    template <Described Q>
+    struct SeriesUseProbe
+    {
+        /// The quantity asked about.
+        using quantity = Q;
+    };
+
+    template <Described Q>
+    [[nodiscard]] constexpr VarNode<Q> substitute(SeriesUseProbe<Q> const&) noexcept
+    {
+        return {};
+    }
+
     /// A stand-in substitution for no quantity at all, for asking only
     /// whether every node of an expression is a kind the rewrite knows. Its
     /// `substitute` is declared for the rewrite's `type` to name, and never
@@ -1240,6 +1261,9 @@ namespace detail
     template <Described Q>
     inline constexpr bool countsPlainUse<SubstitutedUseProbe<Q>> = false;
 
+    template <Described Q>
+    inline constexpr bool countsPlainUse<SeriesUseProbe<Q>> = false;
+
     /// Whether @p Sub's `mentions` counts a node a substitution for `Q` left:
     /// every substitution and probe does, except `PlainUseProbe`.
     template <typename Sub>
@@ -1247,6 +1271,18 @@ namespace detail
 
     template <Described Q>
     inline constexpr bool countsSubstitutedUse<PlainUseProbe<Q>> = false;
+
+    template <Described Q>
+    inline constexpr bool countsSubstitutedUse<SeriesUseProbe<Q>> = false;
+
+    /// Whether @p Sub's `mentions` counts `series<Q, N>`: only
+    /// `SeriesUseProbe` does. A substitution never replaces a series, so to
+    /// it a series of `Q` is not a use of `Q` it could be in effect at.
+    template <typename Sub>
+    inline constexpr bool countsSeriesUse = false;
+
+    template <Described Q>
+    inline constexpr bool countsSeriesUse<SeriesUseProbe<Q>> = true;
 
     /// The type `substitute` returns for @p Sub.
     template <typename Sub>
@@ -1523,6 +1559,14 @@ namespace detail
     {
     };
 
+    template <typename Sub, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    struct ConstantRewrite<Sub, SnapNode<KeyUnit, Permitted, Tie, Operand>>:
+        ConstantRewriteOperand<Sub,
+                               Operand,
+                               SnapNode<KeyUnit, Permitted, Tie, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
     template <typename Sub, Unit U, FixedString Justification, Node Operand>
     struct ConstantRewrite<Sub, NumericValueNode<U, Justification, Operand>>:
         ConstantRewriteOperand<Sub,
@@ -1581,6 +1625,261 @@ namespace detail
         [[nodiscard]] static constexpr type apply(DocumentedNode<Inner> const& original, Sub const& overriding) noexcept
         {
             return type { {}, Wrapped::apply(original.inner, overriding), original.citation };
+        }
+    };
+
+    /// A series variable: known, and never replaced -- not even when it is a
+    /// series of `Q`, since one constant or one definition cannot stand for a
+    /// value at every point. A substitution for a quantity the method reads
+    /// as a series is refused by the result check (`RequireConstantApplies`),
+    /// which finds it through `SeriesUseProbe`.
+    template <typename Sub, Described P, std::size_t N>
+    struct ConstantRewrite<Sub, SeriesVarNode<P, N>>
+    {
+        /// A kind this header knows.
+        static constexpr bool known = true;
+        /// Whether this is a series of `Q` and @p Sub counts one -- see
+        /// `countsSeriesUse`.
+        static constexpr bool mentions = std::is_same_v<typename Sub::quantity, P> && countsSeriesUse<Sub>;
+        /// Unchanged.
+        using type = SeriesVarNode<P, N>;
+
+        /// The node itself.
+        [[nodiscard]] static constexpr type apply(SeriesVarNode<P, N> const& original, Sub const&) noexcept
+        {
+            return original;
+        }
+    };
+
+    /// A refused series names nothing, so an overlay over a method holding one
+    /// adds no "cannot see inside" message to the refusal that produced it.
+    template <typename Sub, Dimension Dim>
+    struct ConstantRewrite<Sub, RefusedSeries<Dim>>: ConstantRewriteLeaf<Sub, RefusedSeries<Dim>>
+    {
+    };
+
+    /// A per-element constant names no quantity; its values are carried over.
+    template <typename Sub, Unit U, std::size_t N>
+    struct ConstantRewrite<Sub, SeriesConstantNode<U, N>>: ConstantRewriteLeaf<Sub, SeriesConstantNode<U, N>>
+    {
+    };
+
+    /// A declared domain names no quantity: its points are in its type.
+    template <typename Sub, Unit U, BreakpointTable Points>
+    struct ConstantRewrite<Sub, DomainNode<U, Points>>: ConstantRewriteLeaf<Sub, DomainNode<U, Points>>
+    {
+    };
+
+    /// A node of two children, @p First and @p Second, rebuilt as @p Rebuilt
+    /// around both rewritten -- a curve's two series, a splice's two curves,
+    /// an interpolation's curve and point. @p Children reads the two back off
+    /// a node, in the order `Rebuilt` is aggregate-initialised.
+    template <typename Sub,
+              typename First,
+              typename Second,
+              template <typename, typename> typename Rebuilt,
+              typename Children>
+    struct ConstantRewriteTwo
+    {
+        /// How the first child is rewritten.
+        using FirstRewrite = ConstantRewriteOf<Sub, First>;
+        /// How the second child is rewritten.
+        using SecondRewrite = ConstantRewriteOf<Sub, Second>;
+
+        /// Whether both children are known all the way down.
+        static constexpr bool known = FirstRewrite::known && SecondRewrite::known;
+        /// Whether either child uses `Q`.
+        static constexpr bool mentions = FirstRewrite::mentions || SecondRewrite::mentions;
+        /// The same node kind, around the rewritten children.
+        using type = Rebuilt<typename FirstRewrite::type, typename SecondRewrite::type>;
+
+        /// The node, around the rewritten children.
+        template <typename N>
+        [[nodiscard]] static constexpr type apply(N const& original, Sub const& overriding) noexcept
+        {
+            return type { {},
+                          FirstRewrite::apply(Children::first_of(original), overriding),
+                          SecondRewrite::apply(Children::second_of(original), overriding) };
+        }
+    };
+
+    /// A curve's two series.
+    struct CurveChildren
+    {
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& first_of(N const& original) noexcept
+        {
+            return original.domainSeries;
+        }
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& second_of(N const& original) noexcept
+        {
+            return original.valueSeries;
+        }
+    };
+
+    /// A splice's two curves.
+    struct SpliceChildren
+    {
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& first_of(N const& original) noexcept
+        {
+            return original.first;
+        }
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& second_of(N const& original) noexcept
+        {
+            return original.second;
+        }
+    };
+
+    /// An interpolation's curve and point.
+    struct InterpolationChildren
+    {
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& first_of(N const& original) noexcept
+        {
+            return original.along;
+        }
+        template <typename N>
+        [[nodiscard]] static constexpr auto const& second_of(N const& original) noexcept
+        {
+            return original.at;
+        }
+    };
+
+    /// The three kinds as templates of their two children alone, for
+    /// `ConstantRewriteTwo`: aliases, whose template heads carry no
+    /// constraint for a template template parameter to be matched against.
+    template <typename DomainSeries, typename ValueSeries>
+    using CurveOf = CurveNode<DomainSeries, ValueSeries>;
+
+    template <typename C, typename At>
+    using InterpolationOf = InterpolateAlongNode<C, At>;
+
+    template <Monotone M>
+    struct SpliceIn
+    {
+        template <typename A, typename B>
+        using type = SpliceNode<M, A, B>;
+    };
+
+    template <typename Sub, SeriesNode DomainSeries, SeriesNode ValueSeries>
+    struct ConstantRewrite<Sub, CurveNode<DomainSeries, ValueSeries>>:
+        ConstantRewriteTwo<Sub, DomainSeries, ValueSeries, CurveOf, CurveChildren>
+    {
+    };
+
+    template <typename Sub, Monotone M, CurveExpression A, CurveExpression B>
+    struct ConstantRewrite<Sub, SpliceNode<M, A, B>>:
+        ConstantRewriteTwo<Sub, A, B, SpliceIn<M>::template type, SpliceChildren>
+    {
+    };
+
+    template <typename Sub, CurveExpression C, Node At>
+    struct ConstantRewrite<Sub, InterpolateAlongNode<C, At>>:
+        ConstantRewriteTwo<Sub, C, At, InterpolationOf, InterpolationChildren>
+    {
+    };
+
+    template <typename Sub, UnaryOperator Op, SeriesNode Operand>
+    struct ConstantRewrite<Sub, ElementwiseUnaryNode<Op, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, ElementwiseUnaryNode<Op, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
+    template <typename Sub, CumulativeDirection D, SeriesNode S>
+    struct ConstantRewrite<Sub, CumulativeNode<D, S>>:
+        ConstantRewriteOperand<Sub, S, CumulativeNode<D, typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, SeriesNode S>
+    struct ConstantRewrite<Sub, SumNode<S>>:
+        ConstantRewriteOperand<Sub, S, SumNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    struct ConstantRewrite<Sub, ElementwiseRoundNode<U, Places, Mode, S>>:
+        ConstantRewriteOperand<Sub, S, ElementwiseRoundNode<U, Places, Mode, typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    /// Raw observations: known, and never replaced, as a series variable is
+    /// -- one constant cannot stand for every observation -- and counted as
+    /// a series use of `Q`, so that a substitution for it is refused by the
+    /// result check.
+    template <typename Sub, Described P, std::size_t Capacity>
+    struct ConstantRewrite<Sub, ObservationsVarNode<P, Capacity>>
+    {
+        /// A kind this header knows.
+        static constexpr bool known = true;
+        /// Whether these are observations of `Q` and @p Sub counts a series
+        /// use -- see `countsSeriesUse`.
+        static constexpr bool mentions = std::is_same_v<typename Sub::quantity, P> && countsSeriesUse<Sub>;
+        /// Unchanged.
+        using type = ObservationsVarNode<P, Capacity>;
+
+        /// The node itself.
+        [[nodiscard]] static constexpr type apply(ObservationsVarNode<P, Capacity> const& original, Sub const&) noexcept
+        {
+            return original;
+        }
+    };
+
+    /// Observations refused already name nothing, as a refused series names
+    /// nothing.
+    template <typename Sub>
+    struct ConstantRewrite<Sub, RefusedObservations>: ConstantRewriteLeaf<Sub, RefusedObservations>
+    {
+    };
+
+    /// A binning, around its rewritten observations; its classes are in its
+    /// type.
+    template <typename Sub, Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    struct ConstantRewrite<Sub, BinnedNode<KeyUnit, Classes, Obs>>
+    {
+        /// How the observations are rewritten.
+        using Inner = ConstantRewriteOf<Sub, Obs>;
+
+        /// Whether the observations are known.
+        static constexpr bool known = Inner::known;
+        /// Whether the observations use `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same binning, around the rewritten observations.
+        using type = BinnedNode<KeyUnit, Classes, typename Inner::type>;
+
+        /// The binning, around the rewritten observations.
+        [[nodiscard]] static constexpr type apply(BinnedNode<KeyUnit, Classes, Obs> const& original,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, Inner::apply(original.source, overriding) };
+        }
+    };
+
+    /// An elementwise operation, either side a series or a broadcast scalar:
+    /// a `var<Q>` in the scalar side is replaced as it is anywhere else.
+    template <typename Sub, BinaryOperator Op, typename Left, typename Right>
+    struct ConstantRewrite<Sub, ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        /// How the left side is rewritten.
+        using LeftRewrite = ConstantRewriteOf<Sub, Left>;
+        /// How the right side is rewritten.
+        using RightRewrite = ConstantRewriteOf<Sub, Right>;
+
+        /// Whether both sides are known all the way down.
+        static constexpr bool known = LeftRewrite::known && RightRewrite::known;
+        /// Whether either side uses `Q`.
+        static constexpr bool mentions = LeftRewrite::mentions || RightRewrite::mentions;
+        /// The same operation, over the rewritten sides.
+        using type = ElementwiseBinaryNode<Op, typename LeftRewrite::type, typename RightRewrite::type>;
+
+        /// The node, over the rewritten sides.
+        [[nodiscard]] static constexpr type apply(ElementwiseBinaryNode<Op, Left, Right> const& original,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, LeftRewrite::apply(original.lhs, overriding), RightRewrite::apply(original.rhs, overriding) };
         }
     };
 
@@ -1766,6 +2065,11 @@ namespace detail
     {
     };
 
+    template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    struct SubstitutedIn<SnapNode<KeyUnit, Permitted, Tie, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
     template <Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
     struct SubstitutedIn<BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand>>: SubstitutedInOperand<Operand>
     {
@@ -1802,6 +2106,54 @@ namespace detail
         using type = SubstitutedInAll<P, Then, Else>;
     };
 
+    template <UnaryOperator Op, SeriesNode Operand>
+    struct SubstitutedIn<ElementwiseUnaryNode<Op, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <CumulativeDirection D, SeriesNode S>
+    struct SubstitutedIn<CumulativeNode<D, S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SeriesNode S>
+    struct SubstitutedIn<SumNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SeriesNode DomainSeries, SeriesNode ValueSeries>
+    struct SubstitutedIn<CurveNode<DomainSeries, ValueSeries>>
+    {
+        /// Whatever either series substitutes.
+        using type = SubstitutedInAll<DomainSeries, ValueSeries>;
+    };
+
+    template <Monotone M, CurveExpression A, CurveExpression B>
+    struct SubstitutedIn<SpliceNode<M, A, B>>
+    {
+        /// Whatever either curve substitutes.
+        using type = SubstitutedInAll<A, B>;
+    };
+
+    template <CurveExpression C, Node At>
+    struct SubstitutedIn<InterpolateAlongNode<C, At>>
+    {
+        /// Whatever the curve or the point substitutes.
+        using type = SubstitutedInAll<C, At>;
+    };
+
+    template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    struct SubstitutedIn<ElementwiseRoundNode<U, Places, Mode, S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct SubstitutedIn<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        /// Whatever either side substitutes.
+        using type = SubstitutedInAll<Left, Right>;
+    };
+
     /// Fails to compile when `with_constant<Q>` is applied to a method that
     /// never uses `Q`. Such an override changes nothing, and the likeliest
     /// reason is that it names the wrong quantity.
@@ -1813,6 +2165,37 @@ namespace detail
                       "uses; an override nobody reads would silently do nothing, most likely because it names "
                       "the wrong quantity -- the quantity appears in this diagnostic as the template argument "
                       "Q of RequireConstantUsed");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `with_constant<Q>` is applied to a method that
+    /// reads `Q` as a series (`series<Q, N>`). A series is a value at every
+    /// point of the method's domain; one constant cannot stand for it, and
+    /// the substitution would leave the series reading the environment.
+    ///
+    /// Not `RequireConstantUsed`'s message: a variant or constraint does use
+    /// `Q`, and a message saying none does would be false.
+    template <typename Q, bool NotASeries>
+    struct RequireConstantNotSeries
+    {
+        static_assert(NotASeries,
+                      "formula: this overlay fixes a quantity the method reads as a series; one constant cannot "
+                      "stand for a series -- the quantity appears in this diagnostic as the template argument Q "
+                      "of RequireConstantNotSeries");
+
+        static constexpr bool value = true;
+    };
+
+    /// `RequireConstantNotSeries`'s rule for `add_derived<Q>`, in words that
+    /// say what the overlay did.
+    template <typename Q, bool NotASeries>
+    struct RequireDerivationNotSeries
+    {
+        static_assert(NotASeries,
+                      "formula: this overlay derives a quantity the method reads as a series; one definition "
+                      "cannot stand for a series -- the quantity appears in this diagnostic as the template "
+                      "argument Q of RequireDerivationNotSeries");
 
         static constexpr bool value = true;
     };
@@ -1971,6 +2354,16 @@ namespace detail
         /// Whether a node a substitution for `Q` left is still anywhere.
         static constexpr bool used = (ConstantRewriteOf<SubstitutedUseProbe<Q>, Exprs>::mentions || ...)
                                      || (ConstantRewriteOf<SubstitutedUseProbe<Q>, Ps>::mentions || ...);
+        /// Whether the method reads `Q` as a series anywhere, which no
+        /// substitution replaces.
+        static constexpr bool readsAsSeries = (ConstantRewriteOf<SeriesUseProbe<Q>, Exprs>::mentions || ...)
+                                              || (ConstantRewriteOf<SeriesUseProbe<Q>, Ps>::mentions || ...);
+
+        /// The refusal for a quantity read as a series, in the words of the
+        /// operation that cannot stand for it.
+        using SeriesRefusal = std::conditional_t<IsDerivation<Sub>::value,
+                                                 RequireDerivationNotSeries<Q, !readsAsSeries>,
+                                                 RequireConstantNotSeries<Q, !readsAsSeries>>;
 
         /// The refusal in the words of the operation that did nothing.
         using Refusal =
@@ -1988,18 +2381,23 @@ namespace detail
                                             RequireDerivationPrecedesItsUse<Q, !plainLeft>,
                                             RequireConstantPrecedesItsUse<Q, !plainLeft>>;
 
-        // Each message says only what is there. A node the substitution left,
-        // beside a plain use: the method reads `Q` both ways. No such node,
-        // but a plain use, and the substitution did meet uses when it was
-        // applied: a later operation removed them, so it was bypassed. No
-        // such node, a plain use, and no use met: a later operation put the
-        // use in, and the substitution was listed before it. No such node and
-        // no plain use: nothing reads `Q`, so the substitution does nothing.
+        // Each message says only what is there. A series of `Q`: the
+        // substitution cannot stand for it, whatever else is true, and every
+        // other message is gated off -- "nothing reads it" would be false. A
+        // node the substitution left, beside a plain use: the method reads `Q`
+        // both ways. No such node, but a plain use, and the substitution did
+        // meet uses when it was applied: a later operation removed them, so
+        // it was bypassed. No such node, a plain use, and no use met: a later
+        // operation put the use in, and the substitution was listed before
+        // it. No such node and no plain use: nothing reads `Q`, so the
+        // substitution does nothing.
+        static constexpr bool judged = known && !readsAsSeries;
+        static_assert(std::conditional_t<known, SeriesRefusal, std::true_type>::value);
         static_assert(
-            std::conditional_t<known && used, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used && Reached, Bypassed, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used && !Reached, TooEarly, std::true_type>::value);
-        static_assert(std::conditional_t<known && !used && !plainLeft, Refusal, std::true_type>::value);
+            std::conditional_t<judged && used, RequireSubstitutionEverywhere<Q, !plainLeft>, std::true_type>::value);
+        static_assert(std::conditional_t<judged && !used && Reached, Bypassed, std::true_type>::value);
+        static_assert(std::conditional_t<judged && !used && !Reached, TooEarly, std::true_type>::value);
+        static_assert(std::conditional_t<judged && !used && !plainLeft, Refusal, std::true_type>::value);
 
         static constexpr bool value = true;
     };

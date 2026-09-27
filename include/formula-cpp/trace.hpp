@@ -11,9 +11,12 @@
 /// separately-optional header. Include this one to record a derivation, and
 /// that one as well to print it.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>
@@ -21,7 +24,9 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
@@ -159,6 +164,117 @@ enum class StepKind : std::uint8_t
     /// `-Wshadow`: nothing in namespace `formula` is spelt
     /// `AcceptanceChecked`.
     AcceptanceChecked,
+    /// A series variable (`SeriesVarNode`, `series.hpp`): the quantity's
+    /// symbol and declared unit, and every element, in `Step::elements` --
+    /// never in `Step::value`, which a series step leaves empty. A failure
+    /// records its element in `Step::failedElement`.
+    ///
+    /// Recorded by `RecordingSink::series_produced`, not through
+    /// `detail::StepKindOf`: a series is not a `Node`, and its registry is
+    /// `detail::SeriesStepKindOf`. Checked on GCC under `-Wshadow`: the node
+    /// is `SeriesVarNode` and its spelling in a formula `series`, so nothing
+    /// in namespace `formula` is spelt `SeriesVariable`.
+    SeriesVariable,
+    /// A per-element constant (`SeriesConstantNode`): its values, in the unit
+    /// it was written in, in `Step::elements`. Checked on GCC under
+    /// `-Wshadow`: the node carries the `Node` suffix and the factory is
+    /// `series_constant`, so nothing in namespace `formula` is spelt
+    /// `SeriesConstant`.
+    SeriesConstant,
+    /// Elementwise negation (`ElementwiseUnaryNode`). This and the four
+    /// below record one step for the whole series, with every element in
+    /// `Step::elements` and the operands -- a broadcast scalar's step once --
+    /// in `Step::operands`. Checked on GCC under `-Wshadow`: the nodes are
+    /// `ElementwiseUnaryNode` and `ElementwiseBinaryNode`, so nothing in
+    /// namespace `formula` is spelt like these five.
+    ElementwiseNegate,
+    /// Elementwise addition (`ElementwiseBinaryNode`).
+    ElementwiseAdd,
+    /// Elementwise subtraction.
+    ElementwiseSubtract,
+    /// Elementwise multiplication.
+    ElementwiseMultiply,
+    /// Elementwise division.
+    ElementwiseDivide,
+    /// A running total along a series (`CumulativeNode`): one step for the
+    /// whole series, every total in `Step::elements`, the end it ran from in
+    /// `Step::cumulativeDirection`, shown in its operand's unit. Checked on
+    /// GCC under `-Wshadow`: the node is `CumulativeNode` and its factory
+    /// `cumulative`, so nothing in namespace `formula` is spelt
+    /// `CumulativeSum`.
+    CumulativeSum,
+    /// The total of a series (`SumNode`): a single-value step, its value in
+    /// `Step::value`, whose operand is the series step; shown in its
+    /// operand's unit. Recorded through `detail::StepKindOf`, since a sum is a
+    /// `Node`. Checked on GCC under `-Wshadow`: the node is `SumNode` and its
+    /// factory `sum`, so nothing in namespace `formula` is spelt `SeriesSum`.
+    SeriesSum,
+    /// A series rounded element by element (`ElementwiseRoundNode`): one step
+    /// for the whole series, every rounded element in `Step::elements`, each
+    /// element's granularity in `Step::elementGranularities`, the unit
+    /// rounded in in `Step::unit` and the mode in `Step::mode`. Checked on
+    /// GCC under `-Wshadow`: the node is `ElementwiseRoundNode` and its
+    /// factory `rounded_elementwise`, so nothing in namespace `formula` is
+    /// spelt `ElementwiseRound`.
+    ElementwiseRound,
+    /// A conformity check (`Conformity`, `conformity.hpp`): one step for the
+    /// whole check, one outcome per element in `Step::elementOutcomes`, and
+    /// the subject's step as its operand. Recorded by
+    /// `RecordingSink::conformity_produced`, not through `detail::StepKindOf`:
+    /// a conformity check is not a `Node`. Checked on GCC under `-Wshadow`:
+    /// the type is `Conformity` and its factory `conformity`, so nothing in
+    /// namespace `formula` is spelt `ConformityChecked`.
+    ConformityChecked,
+    /// A value snapped to the nearest permitted one (`SnapNode`, `snap.hpp`):
+    /// the two permitted neighbours in `Step::selectedSegment`, the tie rule
+    /// in `Step::snapTie`, whether it decided in `Step::tieBroken`, and on a
+    /// miss the set's extent in `Step::coveredRange`. Checked on GCC under
+    /// `-Wshadow`: the node is `SnapNode` and its factory `snapped`, so
+    /// nothing in namespace `formula` is spelt `SnappedToPermitted`.
+    SnappedToPermitted,
+    /// A declared domain (`DomainNode`, `curve.hpp`): its points, in the unit
+    /// they were declared in -- a series step, recorded as a per-element
+    /// constant is. Checked on GCC under `-Wshadow`: the node is `DomainNode`
+    /// and its factory `domain`, so nothing in namespace `formula` is spelt
+    /// `SeriesDomain`.
+    SeriesDomain,
+    /// A domain paired with its values (`CurveNode`): the points in
+    /// `Step::domainElements`, shown in `Step::sourceUnit`, and the values in
+    /// `Step::elements`, shown in `Step::unit`; the two series' steps are its
+    /// operands. Recorded by `RecordingSink::curve_produced`: a curve is
+    /// neither a `Node` nor a series. Checked on GCC under `-Wshadow`: the
+    /// node is `CurveNode` and its factory `curve`.
+    CurvePairing,
+    /// A curve read at a point (`InterpolateAlongNode`): a single-value step
+    /// whose operands are the curve's step and the point's; the two points it
+    /// lay between in `Step::selectedSegment`, or on a miss the curve's extent
+    /// in `Step::coveredRange`, both in `Step::sourceUnit`. Checked on GCC
+    /// under `-Wshadow`: the node is `InterpolateAlongNode` and its factory
+    /// `interpolate_at`.
+    CurveInterpolation,
+    /// Two curves spliced into one (`SpliceNode`): recorded as a
+    /// `CurvePairing` is, with the direction in `Step::monotone` and on a
+    /// failure the element in `Step::failedElement` and the rule it broke in
+    /// `Step::curveBreak`. Checked on GCC under
+    /// `-Wshadow`: the node is `SpliceNode` and its factory `splice`.
+    CurveSplice,
+    /// Raw observations (`ObservationsVarNode`, `binning.hpp`): the
+    /// quantity's symbol and declared unit, and every observation made, in
+    /// `Step::elements`, as many as were made. A failure records the
+    /// observation it arose at in `Step::failedElement`. Recorded by
+    /// `RecordingSink::observations_produced`. Checked on GCC under
+    /// `-Wshadow`: the node is `ObservationsVarNode` and its spelling in a
+    /// formula `observations`, so nothing in namespace `formula` is spelt
+    /// `ObservationsVariable`.
+    ObservationsVariable,
+    /// Raw observations counted into classes (`BinnedNode`): one count per
+    /// class in `Step::elements`; the classes' unit in `Step::sourceUnit`,
+    /// their extent in `Step::coveredRange`, and the observations binned, in
+    /// the coherent SI unit, in `Step::domainElements`. A failure's
+    /// `Step::failedElement` is the **observation** it arose at, not a
+    /// count. Checked on GCC under `-Wshadow`: the node is `BinnedNode` and
+    /// its factory `binned`.
+    Binning,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -585,6 +701,9 @@ struct Step
     ///
     /// Empty for a table with no rows at all, which covers nothing and always
     /// misses.
+    ///
+    /// For `Binning`: its classes' extent, half-open as a band table's is,
+    /// recorded whether or not an observation missed.
     std::optional<LookupRange> coveredRange {};
 
     /// For `ExactLookup`: the key this lookup selected with, as the
@@ -710,6 +829,94 @@ struct Step
     /// is dispatched after the predicate, because a constraint has no
     /// branch.
     std::vector<std::size_t> operands {};
+
+    /// For a series step (`SeriesVariable`): every element it produced, in
+    /// the series' own order and in the coherent SI unit of `dimension`, each
+    /// empty when that element was not measured. `value` stays empty for a
+    /// series step, so that no renderer can mistake a series for one absent
+    /// number; `trace_render.hpp` reads these instead, and spends one unit of
+    /// `maxSteps` on each element it shows.
+    ///
+    /// Empty when the series failed: there is no partial series, and the
+    /// elements computed before the failure are not a result (`series.hpp`).
+    /// Empty for every step that is not a series.
+    ///
+    /// For `ConformityChecked`: the subject's elements, the values judged,
+    /// likewise in SI, so that each outcome can state the value it judged in
+    /// the check's own unit. Empty when the subject failed.
+    std::vector<std::optional<Rep>> elements {};
+
+    /// For a series step that failed: the ZERO-BASED position of the element
+    /// it failed at, or empty when the failure belongs to no single element.
+    /// `trace_render.hpp` prints it one-based, as every text this library
+    /// writes prints a position. Empty for every other step.
+    std::optional<std::size_t> failedElement {};
+
+    /// For `CumulativeSum`: the end the running total started from. Zero-
+    /// initialises to `FromFirst`, a real direction, so -- as with
+    /// `comparison` -- no reader may use it without checking `kind` first.
+    CumulativeDirection cumulativeDirection {};
+
+    /// For `ElementwiseRound`: the decimal places each element was rounded
+    /// to, in the series' own order. Empty for every other step, which keeps
+    /// its one granularity in `granularity`.
+    std::vector<int> elementGranularities {};
+
+    /// For `ConformityChecked`: the outcome for each element of the subject,
+    /// in the series' own order. Empty for every other step.
+    std::vector<ConstraintOutcome> elementOutcomes {};
+
+    /// For `SnappedToPermitted`: the rule for a value exactly midway.
+    /// Zero-initialises to `TowardLower`, a real rule, so -- as with
+    /// `comparison` -- no reader may use it without checking `kind` first.
+    SnapTie snapTie {};
+
+    /// For `SnappedToPermitted`: true when the value sat exactly midway
+    /// between two permitted values and `snapTie` chose between them. False
+    /// for every other step.
+    bool tieBroken {};
+
+    /// For `CurvePairing` and `CurveSplice`: the curve's points, in the
+    /// coherent SI unit of `sourceUnit`'s dimension, each at the position of
+    /// its value in `elements`. Empty for every other kind, and for a curve
+    /// that failed -- unless `curveBreak` names a rule, when they are the
+    /// points that broke it. For `Binning`: the observations it binned, in
+    /// the coherent SI unit of `sourceUnit`'s dimension, in the order made.
+    std::vector<std::optional<Rep>> domainElements {};
+
+    /// For `CurveSplice`: the direction its values had to run in.
+    /// Zero-initialises to `NonDecreasing`, a real setting, so -- like
+    /// `comparison` -- no reader may use it without checking `kind` first.
+    Monotone monotone {};
+
+    /// For a `CurvePairing` or `CurveSplice` that failed at an element: the
+    /// rule it broke there, at the point `domainElements[*failedElement]`.
+    /// A pairing's `domainElements` are then its points as its domain series
+    /// gave them; a splice's `domainElements` and `elements` are the sorted
+    /// union it judged. `None` for every other step, and for a failure that
+    /// broke no rule of a curve's own -- an operand's, or an overflow.
+    CurveBreak curveBreak {};
+
+    /// For a series step that failed at a position: what `failedElement`
+    /// counts, as the evaluation's `SeriesFailure::site` said -- an element of
+    /// the step's own series, or an observation it read (raw observations and
+    /// a binning). Zero-initialises to `ResultElement`, the site of every
+    /// other failure.
+    FailureSite failureSite {};
+};
+
+/// The rows one conformity step judged its elements against, in the unit
+/// its `Step::unit` names, one per element in the subject's order.
+///
+/// An envelope is master data, read at run time and free to change (see
+/// `conformity.hpp`): what a derivation says was judged must be the rows as
+/// they were, so they are copied here when the step is recorded.
+struct ConformityLimits
+{
+    /// The index, in `Trace::steps`, of the `ConformityChecked` step.
+    std::size_t step;
+    /// The rows it judged against.
+    std::vector<LimitRow> rows;
 };
 
 /// A recorded derivation: a flat arena of steps.
@@ -744,6 +951,11 @@ struct Trace
     ///
     /// Bookkeeping, as `marks` and `unclaimed` are, and for the same reason.
     std::vector<Branch> branchStack {};
+
+    /// The limits each conformity step judged against, keyed by its index in
+    /// `steps`. A side table rather than a member of `Step`, so that every
+    /// other step pays nothing for them.
+    std::vector<ConformityLimits> conformityLimits {};
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
@@ -932,6 +1144,116 @@ namespace detail
     template <typename N>
     concept PassesThroughRecordedStep =
         requires { typename PassedThrough<N>::type; } && RecordsStep<typename PassedThrough<N>::type>;
+
+    template <SeriesNode S>
+    struct StepKindOf<SumNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SeriesSum;
+    };
+
+    template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    struct StepKindOf<SnapNode<KeyUnit, Permitted, Tie, Operand>>
+    {
+        static constexpr StepKind value = StepKind::SnappedToPermitted;
+    };
+
+    template <CurveExpression C, Node At>
+    struct StepKindOf<InterpolateAlongNode<C, At>>
+    {
+        static constexpr StepKind value = StepKind::CurveInterpolation;
+    };
+
+    /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
+    /// `SeriesNode`, and closed the same way. The primary template is left
+    /// undefined, so a series node kind added without an entry here fails to
+    /// compile against `RecordingSink` rather than being recorded as some
+    /// other kind.
+    template <typename S>
+    struct SeriesStepKindOf;
+
+    template <Described Q, std::size_t N>
+    struct SeriesStepKindOf<SeriesVarNode<Q, N>>
+    {
+        static constexpr StepKind value = StepKind::SeriesVariable;
+    };
+
+    template <Unit U, std::size_t N>
+    struct SeriesStepKindOf<SeriesConstantNode<U, N>>
+    {
+        static constexpr StepKind value = StepKind::SeriesConstant;
+    };
+
+    template <UnaryOperator Op, SeriesNode Operand>
+    struct SeriesStepKindOf<ElementwiseUnaryNode<Op, Operand>>
+    {
+        static constexpr StepKind value = StepKind::ElementwiseNegate;
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct SeriesStepKindOf<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        static constexpr StepKind value = Op == BinaryOperator::Add        ? StepKind::ElementwiseAdd
+                                          : Op == BinaryOperator::Subtract ? StepKind::ElementwiseSubtract
+                                          : Op == BinaryOperator::Multiply ? StepKind::ElementwiseMultiply
+                                                                           : StepKind::ElementwiseDivide;
+    };
+
+    template <CumulativeDirection D, SeriesNode S>
+    struct SeriesStepKindOf<CumulativeNode<D, S>>
+    {
+        static constexpr StepKind value = StepKind::CumulativeSum;
+    };
+
+    template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    struct SeriesStepKindOf<ElementwiseRoundNode<U, Places, Mode, S>>
+    {
+        static constexpr StepKind value = StepKind::ElementwiseRound;
+    };
+
+    template <Unit U, BreakpointTable Points>
+    struct SeriesStepKindOf<DomainNode<U, Points>>
+    {
+        static constexpr StepKind value = StepKind::SeriesDomain;
+    };
+
+    template <Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    struct SeriesStepKindOf<BinnedNode<KeyUnit, Classes, Obs>>
+    {
+        static constexpr StepKind value = StepKind::Binning;
+    };
+
+    /// The `StepKind` a curve node maps to, closed as `SeriesStepKindOf` is.
+    template <typename C>
+    struct CurveStepKindOf;
+
+    template <SeriesNode D, SeriesNode V>
+    struct CurveStepKindOf<CurveNode<D, V>>
+    {
+        static constexpr StepKind value = StepKind::CurvePairing;
+    };
+
+    template <Monotone M, CurveExpression A, CurveExpression B>
+    struct CurveStepKindOf<SpliceNode<M, A, B>>
+    {
+        static constexpr StepKind value = StepKind::CurveSplice;
+    };
+
+    /// The unit a total is shown in: its operand step's, when it claimed one
+    /// of its own dimension -- a total of grams reads in grams, as the masses
+    /// summed do -- and @p fallback otherwise. Read off the operand's step,
+    /// never off a type, so a computed operand's coherent unit carries over
+    /// too.
+    template <typename Rep>
+    [[nodiscard]] constexpr Unit operand_unit_or(std::vector<Step<Rep>> const& steps,
+                                                 std::vector<std::size_t> const& operands,
+                                                 Dimension dimension,
+                                                 Unit fallback) noexcept
+    {
+        if (operands.size() != 1)
+            return fallback;
+        Unit const operandUnit = steps[operands.front()].unit;
+        return operandUnit.dimension == dimension ? operandUnit : fallback;
+    }
 
     /// Whether @p stepKind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
@@ -1192,6 +1514,197 @@ namespace detail
                 step.selectedSegment = answered->second;
         }
     }
+    /// Fills in a snap step's tie rule and, from `locate_and_snap` re-asked --
+    /// the one scan the evaluation used -- the two neighbours and whether the
+    /// tie rule decided, or on a miss the set's extent. Nothing more when the
+    /// operand failed, was absent or left no step: then nothing was snapped.
+    template <typename Rep, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    void record_snap(SnapNode<KeyUnit, Permitted, Tie, Operand> const&, Step<Rep>& step, std::vector<Step<Rep>> const& steps)
+    {
+        step.snapTie = Tie;
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            constexpr Unit keyUnit = KeyUnit;
+            if (an_operand_failed(steps, step))
+                return;
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
+                return;
+            std::expected<Rational, ArithmeticError> const valueInKey =
+                checked_convert(*operandValue, coherent(keyUnit.dimension), keyUnit);
+            if (!valueInKey.has_value())
+                return;
+            std::expected<SnapAnswer, ArithmeticError> const answered = locate_and_snap<Permitted, Tie>(*valueInKey);
+            if (!answered.has_value())
+            {
+                if (answered.error() == ArithmeticError::DomainError)
+                    step.coveredRange = points_cover<Permitted>();
+                return;
+            }
+            step.selectedSegment = answered->neighbours;
+            step.tieBroken = answered->tieBroken;
+        }
+    }
+
+    /// @p point, a point of a curve in the coherent SI unit, as a declared
+    /// `Breakpoint` in @p pointUnit, or nothing when it cannot be stated there.
+    [[nodiscard]] inline std::optional<Breakpoint> point_in(Rational point, Unit pointUnit) noexcept
+    {
+        std::expected<Rational, ArithmeticError> const stated =
+            checked_convert(point, coherent(pointUnit.dimension), pointUnit);
+        if (!stated.has_value())
+            return std::nullopt;
+        return Breakpoint { stated->numerator(), stated->denominator() };
+    }
+
+    /// Fills in an interpolation step along a curve: its values' unit and its
+    /// points' unit, taken off the curve's step, and -- from
+    /// `interpolate_along` re-asked on that step's points and values, the one
+    /// scan the evaluation used -- the two points the answer lay between, or
+    /// on a miss the curve's extent. Nothing more when the curve or the point
+    /// failed, was absent, or left no step.
+    template <typename Rep, CurveExpression C, Node At>
+    void record_curve_interpolation(InterpolateAlongNode<C, At> const&, Step<Rep>& step, std::vector<Step<Rep>> const& steps)
+    {
+        std::optional<std::size_t> curveStep;
+        std::optional<std::size_t> pointStep;
+        for (std::size_t const operandIndex: step.operands)
+        {
+            StepKind const operandKind = steps[operandIndex].kind;
+            if (!curveStep.has_value() && (operandKind == StepKind::CurvePairing || operandKind == StepKind::CurveSplice))
+                curveStep = operandIndex;
+            else
+                pointStep = operandIndex;
+        }
+        if (!curveStep.has_value())
+            return;
+        Step<Rep> const& curveRecorded = steps[*curveStep];
+        if (curveRecorded.unit.dimension == step.dimension)
+            step.unit = curveRecorded.unit;
+        step.sourceUnit = curveRecorded.sourceUnit;
+
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            if (curveRecorded.error.has_value() || !pointStep.has_value() || !steps[*pointStep].value.has_value())
+                return;
+            // An absent element anywhere makes the answer absent (S7): nothing
+            // was located, so no clause -- not a segment, and never a miss's
+            // range, which a curve absent inside its extent would otherwise
+            // state falsely.
+            if (curveRecorded.domainElements.size() != curveRecorded.elements.size())
+                return;
+            for (std::size_t at = 0; at < curveRecorded.elements.size(); ++at)
+                if (!curveRecorded.domainElements[at].has_value() || !curveRecorded.elements[at].has_value())
+                    return;
+            std::expected<std::pair<Rational, KeyPosition>, ArithmeticError> const answered =
+                interpolate_along(curveRecorded.domainElements, curveRecorded.elements, *steps[*pointStep].value);
+            if (answered.has_value())
+            {
+                std::optional<Breakpoint> const lowPoint =
+                    point_in(*curveRecorded.domainElements[answered->second.low], step.sourceUnit);
+                std::optional<Breakpoint> const highPoint =
+                    point_in(*curveRecorded.domainElements[answered->second.high], step.sourceUnit);
+                if (lowPoint.has_value() && highPoint.has_value())
+                    step.selectedSegment = Segment { *lowPoint, *highPoint };
+                return;
+            }
+            // A miss on a curve with every point present: say what it covers.
+            if (answered.error() != ArithmeticError::DomainError || curveRecorded.domainElements.empty())
+                return;
+            for (std::optional<Rational> const& curvePoint: curveRecorded.domainElements)
+                if (!curvePoint.has_value())
+                    return;
+            std::optional<Breakpoint> const lowPoint = point_in(*curveRecorded.domainElements.front(), step.sourceUnit);
+            std::optional<Breakpoint> const highPoint = point_in(*curveRecorded.domainElements.back(), step.sourceUnit);
+            if (lowPoint.has_value() && highPoint.has_value())
+                step.coveredRange = LookupRange { .lowNumerator = lowPoint->numerator,
+                                                  .lowDenominator = lowPoint->denominator,
+                                                  .highNumerator = highPoint->numerator,
+                                                  .highDenominator = highPoint->denominator };
+        }
+    }
+
+    /// Whether @p recorded, a curve's step, succeeded with @p pointCount
+    /// points and values, every one present.
+    [[nodiscard]] inline bool whole(Step<Rational> const& recorded, std::size_t pointCount) noexcept
+    {
+        if (recorded.error.has_value() || recorded.domainElements.size() != pointCount
+            || recorded.elements.size() != pointCount)
+            return false;
+        for (std::size_t at = 0; at < pointCount; ++at)
+            if (!recorded.domainElements[at].has_value() || !recorded.elements[at].has_value())
+                return false;
+        return true;
+    }
+
+    /// Names the rule a failed curve broke at its failed element, from the
+    /// judgement the evaluation made -- `judge_domain` or `judge_splice`,
+    /// re-asked on the operands' steps -- and keeps the points it judged, so
+    /// that the trace can state the point. Nothing when an operand failed, or
+    /// a splice's operand is not all there: the failure then was not a
+    /// curve's own rule. Otherwise a rule is the only way the evaluation
+    /// fails at an element, and the judgement lands on that element.
+    template <CurveExpression C>
+    void record_curve_break(Step<Rational>& failedStep, std::vector<Step<Rational>> const& steps)
+    {
+        if (failedStep.operands.size() != 2)
+            return;
+        Step<Rational> const& firstOperand = steps[failedStep.operands.front()];
+        Step<Rational> const& secondOperand = steps[failedStep.operands.back()];
+        std::vector<std::optional<Rational>> points;
+        std::vector<std::optional<Rational>> pointValues;
+        std::optional<CurveBreakAt> broken;
+        if constexpr (CurveStepKindOf<C>::value == StepKind::CurvePairing)
+        {
+            // The values must have succeeded too: the evaluation judges the
+            // domain only when both series did. An absent point is judged
+            // past, as the evaluation judges it.
+            if (firstOperand.error.has_value() || firstOperand.elements.size() != C::length
+                || secondOperand.error.has_value())
+                return;
+            points = firstOperand.elements;
+            broken = judge_domain(points);
+        }
+        else
+        {
+            std::size_t const firstCount = firstOperand.domainElements.size();
+            if (!whole(firstOperand, firstCount) || !whole(secondOperand, C::length - firstCount))
+                return;
+            points = firstOperand.domainElements;
+            points.insert(points.end(), secondOperand.domainElements.begin(), secondOperand.domainElements.end());
+            pointValues = firstOperand.elements;
+            pointValues.insert(pointValues.end(), secondOperand.elements.begin(), secondOperand.elements.end());
+            sort_by_domain(points, pointValues);
+            broken = judge_splice(points, pointValues, C::monotone);
+        }
+        if (!broken.has_value())
+            return;
+        failedStep.curveBreak = broken->rule;
+        failedStep.domainElements = std::move(points);
+        failedStep.elements = std::move(pointValues);
+    }
+
+    /// Fills in a binning step: the classes' unit and extent, from the node's
+    /// type, and the observations it binned, off its operand's step -- in
+    /// the coherent SI unit, as that step holds them. Nothing of the
+    /// observations when their step failed or is not there.
+    template <SeriesNode S, typename Rep>
+    void record_binning(Step<Rep>& binningStep, std::vector<Step<Rep>> const& steps)
+    {
+        binningStep.sourceUnit = S::unit;
+        constexpr auto binnedClasses = S::classes;
+        if constexpr (binnedClasses.size() > 0)
+            binningStep.coveredRange = LookupRange { .lowNumerator = binnedClasses.front().lowNumerator,
+                                                     .lowDenominator = binnedClasses.front().lowDenominator,
+                                                     .highNumerator = binnedClasses.back().highNumerator,
+                                                     .highDenominator = binnedClasses.back().highDenominator };
+        if (binningStep.operands.size() != 1)
+            return;
+        Step<Rep> const& observedStep = steps[binningStep.operands.front()];
+        if (observedStep.kind != StepKind::ObservationsVariable || observedStep.error.has_value())
+            return;
+        binningStep.domainElements = observedStep.elements;
+    }
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -1449,6 +1962,11 @@ class RecordingSink
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
                 nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
+        // A sum reads in its series' unit, which only the claimed operand
+        // step knows.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum)
+            nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
+
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means
         // reading the operand step it just claimed, so the claim has to have
@@ -1456,6 +1974,10 @@ class RecordingSink
         // `detail::record_lookup` for how each kind closes it.
         if constexpr (detail::is_lookup(detail::StepKindOf<N>::value))
             detail::record_lookup(node, nodeStep, _trace->steps);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SnappedToPermitted)
+            detail::record_snap(node, nodeStep, _trace->steps);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::CurveInterpolation)
+            detail::record_curve_interpolation(node, nodeStep, _trace->steps);
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
@@ -1649,6 +2171,244 @@ class RecordingSink
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
+    /// Told that a series node is about to be evaluated. Remembers where the
+    /// arena stood, exactly as `entered` does for a `Node`, so that
+    /// `series_produced` below can claim the steps beneath it.
+    ///
+    /// A series is not a `Node`, so it comes through this pair rather than
+    /// through `entered` and `produced` -- see `NullSink` (`sink.hpp`).
+    template <SeriesNode S>
+    void series_entered(S const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one step for the whole series @p node -- however long it is --
+    /// carrying every element in `Step::elements`, and claims as its operands
+    /// every step recorded since the matching `series_entered`.
+    ///
+    /// A series variable names its quantity, so its symbol is written here
+    /// through the vocabulary this sink was given, and its unit is the one
+    /// the quantity is declared in, for the renderer to convert each element
+    /// back to. A failure records its error and the element it arose at, and
+    /// no elements.
+    template <SeriesNode S>
+    void series_produced(S const&, EvaluatedSeries<Rep, S::length> const& result)
+    {
+        std::size_t const seriesMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> seriesStep {};
+        seriesStep.kind = detail::SeriesStepKindOf<S>::value;
+        seriesStep.dimension = S::dimension;
+        seriesStep.unit = coherent(S::dimension);
+        if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesVariable)
+        {
+            seriesStep.unit = Describe<typename S::quantity>::unit;
+            seriesStep.symbol = symbol_of<typename S::quantity>(_vocabulary);
+        }
+        // A per-element constant is shown in the unit it was written in; a
+        // computed series has no declared unit, as a computed scalar has
+        // none, and keeps the coherent one.
+        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::SeriesConstant
+                           || detail::SeriesStepKindOf<S>::value == StepKind::SeriesDomain)
+            seriesStep.unit = S::unit;
+        // A per-element rounding, like a scalar one, is shown in the unit it
+        // rounded in -- the fact a reader checks each granularity against --
+        // with every element's granularity and the one mode.
+        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::ElementwiseRound)
+        {
+            seriesStep.unit = S::unit;
+            seriesStep.mode = S::mode;
+            // Never instantiated for places already refused (`countMatches`):
+            // the evaluator tells no sink then, so this loop only ever runs
+            // over a table.
+            for (DecimalPlaces const elementPlaces: S::places)
+                seriesStep.elementGranularities.push_back(elementPlaces.value);
+        }
+
+        // Everything unclaimed from `seriesMark` onwards belongs to this
+        // series -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < seriesMark)
+            ++firstClaimed;
+        seriesStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        // A running total reads in its operand's unit, and says which end it
+        // ran from.
+        if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::CumulativeSum)
+        {
+            seriesStep.unit =
+                detail::operand_unit_or(_trace->steps, seriesStep.operands, seriesStep.dimension, seriesStep.unit);
+            seriesStep.cumulativeDirection = S::direction;
+        }
+        // A binning names its classes' unit and extent, and keeps the
+        // observations it binned, so that a miss can state the one that fit
+        // no class.
+        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::Binning)
+            detail::record_binning<S>(seriesStep, _trace->steps);
+
+        if (!result.has_value())
+        {
+            seriesStep.error = result.error().error;
+            seriesStep.failedElement = result.error().element;
+            seriesStep.failureSite = result.error().site;
+        }
+        else
+            seriesStep.elements.assign(result->elements.begin(), result->elements.end());
+
+        _trace->steps.push_back(std::move(seriesStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Records one step for raw observations, carrying every observation made
+    /// in `Step::elements`, in the coherent SI unit, shown in the unit the
+    /// quantity is declared in under the symbol this sink's vocabulary gives
+    /// it. A failure records its error and the observation it arose at, and
+    /// no observations. Observations are a leaf: the step claims nothing.
+    template <Described Q, std::size_t Capacity>
+    void observations_produced(ObservationsVarNode<Q, Capacity> const&, EvaluatedObservations<Rep, Capacity> const& result)
+    {
+        Step<Rep> observationsStep {};
+        observationsStep.kind = StepKind::ObservationsVariable;
+        observationsStep.dimension = Describe<Q>::dimension;
+        observationsStep.unit = Describe<Q>::unit;
+        observationsStep.symbol = symbol_of<Q>(_vocabulary);
+        if (!result.has_value())
+        {
+            observationsStep.error = result.error().error;
+            observationsStep.failedElement = result.error().element;
+            observationsStep.failureSite = result.error().site;
+        }
+        else
+            for (std::size_t at = 0; at < result->count; ++at)
+                observationsStep.elements.push_back(result->elements[at]);
+
+        _trace->steps.push_back(std::move(observationsStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a curve is about to be evaluated. Remembers where the arena
+    /// stood, as `series_entered` does.
+    template <CurveExpression C>
+    void curve_entered(C const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one step for the whole curve -- a pairing or a splice --
+    /// carrying every point in `Step::domainElements` and every value in
+    /// `Step::elements`, and claims as its operands every step recorded since
+    /// the matching `curve_entered`. The points are shown in the unit of the
+    /// step that supplied them and the values likewise -- a pairing's two
+    /// series, a splice's first curve -- or in the coherent unit when that
+    /// step's is of another dimension. A failure records its error and the
+    /// element it arose at, and neither points nor values.
+    template <CurveExpression C>
+    void curve_produced(C const&, EvaluatedCurve<Rep, C::length> const& result)
+    {
+        std::size_t const curveMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> curveStep {};
+        curveStep.kind = detail::CurveStepKindOf<C>::value;
+        curveStep.dimension = C::dimension;
+        curveStep.unit = coherent(C::dimension);
+        curveStep.sourceUnit = coherent(C::domainDimension);
+        if constexpr (detail::CurveStepKindOf<C>::value == StepKind::CurveSplice)
+            curveStep.monotone = C::monotone;
+
+        // Everything unclaimed from `curveMark` onwards belongs to this curve
+        // -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < curveMark)
+            ++firstClaimed;
+        curveStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        if (!curveStep.operands.empty())
+        {
+            Step<Rep> const& firstOperand = _trace->steps[curveStep.operands.front()];
+            Step<Rep> const& lastOperand = _trace->steps[curveStep.operands.back()];
+            if constexpr (detail::CurveStepKindOf<C>::value == StepKind::CurvePairing)
+            {
+                if (firstOperand.unit.dimension == C::domainDimension)
+                    curveStep.sourceUnit = firstOperand.unit;
+                if (lastOperand.unit.dimension == C::dimension)
+                    curveStep.unit = lastOperand.unit;
+            }
+            else
+            {
+                if (firstOperand.sourceUnit.dimension == C::domainDimension)
+                    curveStep.sourceUnit = firstOperand.sourceUnit;
+                if (firstOperand.unit.dimension == C::dimension)
+                    curveStep.unit = firstOperand.unit;
+            }
+        }
+
+        if (!result.has_value())
+        {
+            curveStep.error = result.error().error;
+            curveStep.failedElement = result.error().element;
+            if constexpr (std::is_same_v<Rep, Rational>)
+                if (curveStep.failedElement.has_value())
+                    detail::record_curve_break<C>(curveStep, _trace->steps);
+        }
+        else
+        {
+            curveStep.domainElements.assign(result->domain.begin(), result->domain.end());
+            curveStep.elements.assign(result->values.begin(), result->values.end());
+        }
+
+        _trace->steps.push_back(std::move(curveStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Told that a conformity check is about to judge its subject. Remembers
+    /// where the arena stood, as `series_entered` does, so that
+    /// `conformity_produced` can claim the subject's step.
+    template <Unit U, SeriesNode S>
+    void conformity_entered(Conformity<U, S> const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one step for the whole check, with every element's outcome in
+    /// `Step::elementOutcomes`, claiming as its operand the subject's step,
+    /// and the rows it judged against in `Trace::conformityLimits`.
+    template <Unit U, SeriesNode S>
+    void conformity_produced(Conformity<U, S> const& conformityCheck,
+                             std::array<ConstraintOutcome, S::length> const& outcomes)
+    {
+        std::size_t const conformityMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> conformityStep {};
+        conformityStep.kind = StepKind::ConformityChecked;
+        conformityStep.dimension = S::dimension;
+        conformityStep.unit = U;
+        conformityStep.elementOutcomes.assign(outcomes.begin(), outcomes.end());
+
+        // Everything unclaimed from `conformityMark` onwards belongs to this
+        // check -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < conformityMark)
+            ++firstClaimed;
+        conformityStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+        // The subject's step is the last one claimed: its elements are the
+        // values the check judged.
+        if (!conformityStep.operands.empty())
+            conformityStep.elements = _trace->steps[conformityStep.operands.back()].elements;
+
+        _trace->steps.push_back(std::move(conformityStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        _trace->conformityLimits.push_back(ConformityLimits {
+            .step = _trace->steps.size() - 1,
+            .rows = std::vector<LimitRow>(conformityCheck.envelope.rows.begin(), conformityCheck.envelope.rows.end()) });
+    }
+
   private:
     Trace<Rep>* _trace;
     FORMULA_NO_UNIQUE_ADDRESS V _vocabulary;
@@ -1709,6 +2469,39 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
     RecordingSink<Rep, V> recordingSink { explained.trace, vocabulary };
     explained.outcome = evaluate<Result>(expression, environment, recordingSink);
     return explained;
+}
+
+/// A series outcome together with the derivation that produced it -- the
+/// series counterpart of `Explained`.
+///
+/// `outcome` is what `checked_evaluate_series` returned, **failure included**:
+/// a series has no throwing spelling, since an exception would drop the
+/// position `SeriesFailure` carries (`series.hpp`), so unlike `Explained` this
+/// cannot hold a bare outcome and throw the failure away.
+template <Described Result, std::size_t N>
+struct ExplainedSeries
+{
+    /// Exactly what `checked_evaluate_series<Result>` returned.
+    std::expected<SeriesOutcome<Result, N>, SeriesFailure> outcome;
+    /// How it was reached -- **empty** when the outcome is a typed-in series,
+    /// which was not derived. See `explain`'s comment on the same case.
+    Trace<Rational> trace {};
+};
+
+/// Evaluates the series @p expression for @p Result and records how, writing
+/// every symbol as @p vocabulary says -- the series counterpart of `explain`.
+///
+/// The outcome is identical to `checked_evaluate_series<Result>(expression,
+/// environment)`: tracing observes, it does not participate.
+template <Described Result, SeriesNode S, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedSeries<Result, S::length> explain_series(S const& expression,
+                                                                Env const& environment,
+                                                                V const& vocabulary = V {})
+{
+    Trace<Rational> recorded {};
+    std::expected<SeriesOutcome<Result, S::length>, SeriesFailure> seriesOutcome =
+        checked_evaluate_series<Result>(expression, environment, RecordingSink<Rational, V> { recorded, vocabulary });
+    return ExplainedSeries<Result, S::length> { std::move(seriesOutcome), std::move(recorded) };
 }
 
 } // namespace formula

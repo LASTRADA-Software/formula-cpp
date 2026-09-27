@@ -64,6 +64,7 @@ for it, in the mode the method specifies.
 | [Constraints and verdicts](constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Lookup tables](lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
 | [Methods and overlays](methods-and-overlays.md) | Variants selected by tag, a method's own rounding rule and constraints, jurisdiction overlays and their provenance in the trace, a jurisdiction's own acceptance logic, and jurisdiction-scoped vocabularies |
+| [Series and grading curves](series.md) | One quantity at each point of a method's domain, the index marker, elementwise arithmetic, absence and failure per element, conformity against a limit envelope, snapping, grading curves and splicing, and binning raw observations |
 | [Gallery](gallery.md) | A documentation page the library generated about itself |
 
 New here? Read **[Expressions and evaluation](expressions.md)** first — it is the layer the library

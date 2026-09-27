@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this interpolating lookup table's breakpoints do not strictly ascend
+// EXPECT: formula: this breakpoint table's breakpoints do not strictly ascend
+// REJECT: must be initialized by a constant expression
 //
 // Two rows typed out of order -- the transposition an author makes copying a
 // published curve row by row. It is the other half of the one rule

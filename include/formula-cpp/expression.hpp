@@ -129,7 +129,7 @@ namespace detail
     /// prints `formula::VarNode<WaterVolume>::dimension ==
     /// formula::VarNode<BeamLength>::dimension` instead, and all three
     /// compilers name the two operand types and the formula's own source line.
-    template <Node Left, Node Right>
+    template <typename Left, typename Right>
     struct RequireAddendsAgree
     {
         static_assert(Left::dimension == Right::dimension,
@@ -299,5 +299,23 @@ template <Node Right>
 {
     return number(lhs) / rhs;
 }
+
+/// The base every series node derives from (`series.hpp`): an expression whose
+/// value is `length` values of one dimension, each of which may be absent.
+///
+/// Deliberately **not** derived from `NodeBase`, and declared in this header
+/// rather than in `series.hpp`. Every `Node` promises one value, and the
+/// operators, `checked_evaluate` and `variant<Tag>` are all constrained on
+/// `Node`, so a series derived from `NodeBase` would stand silently where a
+/// number stands. Kept apart, it cannot. `evaluate.hpp` and `method.hpp`
+/// need this concept to refuse a series in their own words, and neither can
+/// include `series.hpp`, which itself includes `evaluate.hpp`.
+struct SeriesNodeBase
+{
+};
+
+/// Anything that can appear in a formula as a series.
+template <typename T>
+concept SeriesNode = std::derived_from<std::remove_cvref_t<T>, SeriesNodeBase>;
 
 } // namespace formula

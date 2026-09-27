@@ -121,3 +121,29 @@ add_test(NAME docs.methods-and-overlays-snippets
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/methods_and_overlays.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/methods-and-overlays.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
+# docs/series.md quotes this program's output verbatim. Pinned here, in the
+# order the program prints them: the index marker on the series and not on the
+# total, the segment an interpolation lay between, the symbol table's shape,
+# a list cut short with its count, every row of the absence table (rounding in
+# grams, a running total made absent from the unrecorded screen on, an absent
+# curve read with no clause, three screens not checked), a failed element
+# named from one and zero, a closed lower limit
+# satisfied, the snap's nearer and tie clauses and its miss, the splice's
+# failure naming the point and the rule, the binning's classes, and its miss
+# naming the observation. No literal `;`: PASS_REGULAR_EXPRESSION is a list
+# property, and a `;` would split the regex (see the lookup_tables entry).
+formula_add_example(series series.cpp [==[100 % - cumulative\(m_r\(i\), from last\) / m_t.*\[between 163 and 197 m\].*m_r: series, 5 value\(s\).*m_t: single value.*cumulative\(#2, from last\) = \.\.\. 5 more.*round\(#1, to 0/0/0/0/0 dp of g\) = 130 g. 210 g. \(not measured\).*\(not measured\). 368 g. 28 g.*interpolate\(#8, at #9\) = \(not measured\).*not checked. not checked. not checked. satisfied.*division by zero at element 5.*element 4, counted from zero, a result element: yes.*3 satisfied, 1574/25 % \(at least 1574/25 %\).*\[127 m to 163 m. nearer 127 m\].*tie, toward lower\].*tie, toward higher\].*\[outside the permitted set, 103 m to 241 m\].*at element 4 \[breaks non-decreasing at 103 m\].*bin\(s\(i\), 0 to under 127 m, 127 to under 197 m, 197 to under 331 m\).*at observation 4 \[331 m in no class. the classes cover 0 to under 331 m\].*all checks passed: yes]==])
+
+# Every ```text block of docs/series.md must be lines the example really
+# prints, and every ```cpp block lines of its source.
+add_test(NAME docs.series-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-series>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/series.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.series-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/series.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/series.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")

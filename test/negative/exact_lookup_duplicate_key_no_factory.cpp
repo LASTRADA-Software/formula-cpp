@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this exact lookup table declares the same key twice
+// REJECT: must be initialized by a constant expression
 //
 // The same defect as `exact_lookup_duplicate_key.cpp`, declared WITHOUT the
 // factory -- and that single difference is the whole point of this file.

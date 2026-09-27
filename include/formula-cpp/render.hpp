@@ -31,9 +31,12 @@
 /// defect itself rather than a matter of taste.
 
 #include <formula-cpp/band.hpp>
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/detail/latex_math.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/expression.hpp>
@@ -43,6 +46,8 @@
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -91,12 +96,29 @@ namespace detail
         static constexpr Precedence value = Precedence::Atom;
     };
 
+    /// How tightly a binary operator binds -- one answer for the scalar
+    /// `BinaryNode` and the elementwise `ElementwiseBinaryNode`, which are
+    /// spelled alike.
+    template <BinaryOperator Op>
+    inline constexpr Precedence binary_precedence =
+        (Op == BinaryOperator::Add || Op == BinaryOperator::Subtract) ? Precedence::Additive : Precedence::Multiplicative;
+
     template <BinaryOperator Op, Node Left, Node Right>
     struct PrecedenceOf<BinaryNode<Op, Left, Right>>
     {
-        static constexpr Precedence value = (Op == BinaryOperator::Add || Op == BinaryOperator::Subtract)
-                                                ? Precedence::Additive
-                                                : Precedence::Multiplicative;
+        static constexpr Precedence value = binary_precedence<Op>;
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct PrecedenceOf<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        static constexpr Precedence value = binary_precedence<Op>;
+    };
+
+    template <UnaryOperator Op, SeriesNode Operand>
+    struct PrecedenceOf<ElementwiseUnaryNode<Op, Operand>>
+    {
+        static constexpr Precedence value = Precedence::Unary;
     };
 
     template <UnaryOperator Op, Node Operand>
@@ -195,6 +217,76 @@ namespace detail
     [[nodiscard]] constexpr Precedence precedence_of(ReplacedVariantNode<Expr> const& node) noexcept
     {
         return precedence_of(node.replacement());
+    }
+
+    /// A series node brackets by its type alone: nothing a series holds
+    /// changes its rendered shape at run time the way a constant's sign does.
+    template <SeriesNode S>
+    [[nodiscard]] constexpr Precedence precedence_of(S const&) noexcept
+    {
+        return PrecedenceOf<S>::value;
+    }
+
+    /// How tightly @p node binds as written in dialect @p D: `precedence_of`'s
+    /// answer, for every node kind spelled alike in every dialect.
+    template <Dialect D, typename N>
+    [[nodiscard]] constexpr Precedence precedence_in(N const& node) noexcept
+    {
+        return precedence_of(node);
+    }
+
+    /// A sum is a call, `sum(...)`, that groups itself in plain text and
+    /// Markdown, but a large operator in LaTeX, whose reach a reader takes to
+    /// run on over anything multiplied after it: `\sum x_i \cdot m_t` reads
+    /// as the sum of the products. There it brackets as an additive
+    /// expression would.
+    template <Dialect D, SeriesNode S>
+    [[nodiscard]] constexpr Precedence precedence_in(SumNode<S> const&) noexcept
+    {
+        return D == Dialect::LaTeX ? Precedence::Additive : Precedence::Atom;
+    }
+
+    /// A citation's wrapper renders as what it wraps, so it brackets as that
+    /// does, in every dialect -- a documented sum in LaTeX included.
+    template <Dialect D, Node Inner>
+    [[nodiscard]] constexpr Precedence precedence_in(DocumentedNode<Inner> const& node) noexcept
+    {
+        return precedence_in<D>(node.inner);
+    }
+
+    /// A jurisdiction's replacement renders as the replacement formula, so it
+    /// brackets as that does, for `DocumentedNode`'s reason.
+    template <Dialect D, Node Expr>
+    [[nodiscard]] constexpr Precedence precedence_in(ReplacedVariantNode<Expr> const& node) noexcept
+    {
+        return precedence_in<D>(node.replacement());
+    }
+
+    /// @p quantitySymbol -- already the jurisdiction's, through `symbol_of` -- marked
+    /// as a series in dialect @p D: `x_m(i)` in plain text, `` `x_m(i)` `` in
+    /// Markdown (the marker inside the backticks, so the code span keeps it
+    /// literal), and `{x_m}_{i}` in LaTeX (the whole symbol braced, then
+    /// subscripted, so the index attaches to the symbol even when it already
+    /// carries a subscript of its own).
+    ///
+    /// **The one place the marker is spelled.** Every series node that names
+    /// a quantity calls this, so the marker cannot drift between node kinds.
+    /// Chosen by the phase 12 spike: under MathJax 3.2.2 with the site's
+    /// configuration and under tectonic 0.17.0 with `[OT1]{fontenc}`,
+    /// `{x_m}_{i}`, `{R}_{i}` and `{f_{c}}_{i}` typeset, while `x_m_i` is a
+    /// "Double subscript" error in both; python-markdown 3.10.3 keeps
+    /// `` `x_m(i)` `` literal. A symbol that already ends in `)` reads
+    /// `w(t)(i)`, and a LaTeX symbol that is not a balanced TeX group breaks
+    /// the braces; neither is checked here.
+    template <Dialect D>
+    [[nodiscard]] std::string series_marker(std::string quantitySymbol)
+    {
+        if constexpr (D == Dialect::LaTeX)
+            return "{" + quantitySymbol + "}_{i}";
+        else if constexpr (D == Dialect::Markdown)
+            return "`" + quantitySymbol + "(i)`";
+        else
+            return quantitySymbol + "(i)";
     }
 
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
@@ -568,6 +660,12 @@ namespace detail
 template <Dialect D, Node N>
 [[nodiscard]] std::string render(N const& node);
 
+/// Renders the series @p node in dialect @p D. A series is not a `Node`
+/// (`expression.hpp`), so it needs overloads of its own; each series variable
+/// in it is marked as a series (`detail::series_marker`).
+template <Dialect D, SeriesNode S>
+[[nodiscard]] std::string render(S const& node);
+
 /// Renders @p node in dialect @p D. A `PredicateNode` is not a `Node` -- see
 /// `predicate.hpp` -- so it needs this second overload rather than the one
 /// above; `WhenNode::render_node` calls this one to render its predicate.
@@ -590,19 +688,62 @@ template <Dialect D, Node N, Vocabulary V>
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(P const& node, V const& vocabulary);
 
+/// The `SeriesNode` counterpart of the overload above.
+template <Dialect D, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(S const& node, V const& vocabulary);
+
+/// The `CurveExpression` counterpart of the overload above: a curve is
+/// neither a `Node` nor a series (`curve.hpp`).
+template <Dialect D, CurveExpression C, Vocabulary V>
+[[nodiscard]] std::string render(C const& node, V const& vocabulary);
+
 /// The `Constraint` counterpart of the overload above.
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary);
 
 namespace detail
 {
-    template <Dialect D, Node Child, Vocabulary V>
+    template <Dialect D, typename Child, Vocabulary V>
+        requires Node<Child> || SeriesNode<Child>
     [[nodiscard]] std::string render_operand(Child const& child, Precedence context, V const& vocabulary)
     {
         std::string childText = render<D>(child, vocabulary);
-        if (static_cast<int>(precedence_of(child)) < static_cast<int>(context))
+        if (static_cast<int>(precedence_in<D>(child)) < static_cast<int>(context))
             return "(" + childText + ")";
         return childText;
+    }
+
+    /// A binary operation, infix, bracketing each side only where its
+    /// precedence against the operator requires it; division in LaTeX as
+    /// `\frac{}{}`, which groups both sides itself. **The one spelling of the
+    /// four operators**, shared by the scalar `BinaryNode` and the elementwise
+    /// `ElementwiseBinaryNode`, so that `m_r(i) / m_t` is written exactly as
+    /// `m_r / m_t` is, and the two cannot drift apart.
+    template <Dialect D, BinaryOperator Op, typename Left, typename Right, Vocabulary V>
+    [[nodiscard]] std::string render_binary(Left const& leftOperand, Right const& rightOperand, V const& vocabulary)
+    {
+        constexpr Precedence ownPrecedence = binary_precedence<Op>;
+        constexpr Precedence rightContext = (Op == BinaryOperator::Subtract || Op == BinaryOperator::Divide)
+                                                ? static_cast<Precedence>(static_cast<int>(ownPrecedence) + 1)
+                                                : ownPrecedence;
+
+        if constexpr (D == Dialect::LaTeX && Op == BinaryOperator::Divide)
+            // \frac groups both sides itself, so neither operand needs a bracket.
+            return "\\frac{" + render<D>(leftOperand, vocabulary) + "}{" + render<D>(rightOperand, vocabulary) + "}";
+        else
+        {
+            std::string const leftText = render_operand<D>(leftOperand, ownPrecedence, vocabulary);
+            std::string const rightText = render_operand<D>(rightOperand, rightContext, vocabulary);
+
+            if constexpr (Op == BinaryOperator::Add)
+                return leftText + " + " + rightText;
+            else if constexpr (Op == BinaryOperator::Subtract)
+                return leftText + " - " + rightText;
+            else if constexpr (Op == BinaryOperator::Multiply)
+                return D == Dialect::LaTeX ? leftText + " \\cdot " + rightText : leftText + " * " + rightText;
+            else
+                return leftText + " / " + rightText;
+        }
     }
 } // namespace detail
 
@@ -627,6 +768,16 @@ template <Dialect D, Described Q, Vocabulary V>
         return "`" + quantitySymbol + "`";
     else
         return quantitySymbol;
+}
+
+/// A series variable renders as its quantity's symbol under @p vocabulary,
+/// marked as a series in the formula itself (`detail::series_marker`), so a
+/// reader can tell `x_m(i)` from the single value `x_m` without the symbol
+/// table. The marker wraps the jurisdiction's symbol, never the declared one.
+template <Dialect D, Described Q, std::size_t N, Vocabulary V>
+[[nodiscard]] std::string render_node(SeriesVarNode<Q, N> const&, V const& vocabulary)
+{
+    return detail::series_marker<D>(std::string { symbol_of<Q>(vocabulary) });
 }
 
 /// A constant renders as its number, followed by its unit's symbol when it has one.
@@ -666,28 +817,133 @@ template <Dialect D, UnaryOperator Op, Node Operand, Vocabulary V>
 template <Dialect D, BinaryOperator Op, Node Left, Node Right, Vocabulary V>
 [[nodiscard]] std::string render_node(BinaryNode<Op, Left, Right> const& node, V const& vocabulary)
 {
-    constexpr detail::Precedence ownPrecedence = detail::PrecedenceOf<BinaryNode<Op, Left, Right>>::value;
-    constexpr detail::Precedence rightContext = (Op == BinaryOperator::Subtract || Op == BinaryOperator::Divide)
-                                                    ? static_cast<detail::Precedence>(static_cast<int>(ownPrecedence) + 1)
-                                                    : ownPrecedence;
+    return detail::render_binary<D, Op>(node.lhs, node.rhs, vocabulary);
+}
 
-    if constexpr (D == Dialect::LaTeX && Op == BinaryOperator::Divide)
-        // \frac groups both sides itself, so neither operand needs a bracket.
-        return "\\frac{" + render<D>(node.lhs, vocabulary) + "}{" + render<D>(node.rhs, vocabulary) + "}";
-    else
+/// An elementwise binary node renders exactly as the scalar operator does
+/// (`detail::render_binary`): the operation adds no marker of its own, and a
+/// series operand carries its own (S14).
+template <Dialect D, BinaryOperator Op, typename Left, typename Right, Vocabulary V>
+[[nodiscard]] std::string render_node(ElementwiseBinaryNode<Op, Left, Right> const& node, V const& vocabulary)
+{
+    return detail::render_binary<D, Op>(node.lhs, node.rhs, vocabulary);
+}
+
+/// Elementwise negation renders as scalar negation does.
+template <Dialect D, UnaryOperator Op, SeriesNode Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(ElementwiseUnaryNode<Op, Operand> const& node, V const& vocabulary)
+{
+    static_assert(Op == UnaryOperator::Negate, "formula: unknown unary operator");
+    return "-" + detail::render_operand<D>(node.operand, detail::Precedence::Unary, vocabulary);
+}
+
+/// A refused series (`detail::RefusedSeries`) renders as nothing a reader
+/// could take for a formula. A program holding one never compiles; this only
+/// keeps a `render` of it from adding a second, compiler-worded error.
+template <Dialect D, Dimension Dim, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedSeries<Dim> const&, V const&)
+{
+    return "(refused)";
+}
+
+namespace detail
+{
+    /// A per-element rounding's granularities, `0/0/1`, in the series' order.
+    /// A slash rather than a comma, which already separates the call's
+    /// fields, and never brackets, which Markdown reads as a link.
+    template <auto Places>
+    [[nodiscard]] std::string granularities_text()
     {
-        std::string const leftText = detail::render_operand<D>(node.lhs, ownPrecedence, vocabulary);
-        std::string const rightText = detail::render_operand<D>(node.rhs, rightContext, vocabulary);
-
-        if constexpr (Op == BinaryOperator::Add)
-            return leftText + " + " + rightText;
-        else if constexpr (Op == BinaryOperator::Subtract)
-            return leftText + " - " + rightText;
-        else if constexpr (Op == BinaryOperator::Multiply)
-            return D == Dialect::LaTeX ? leftText + " \\cdot " + rightText : leftText + " * " + rightText;
-        else
-            return leftText + " / " + rightText;
+        std::string listed;
+        for (DecimalPlaces const elementPlaces: Places)
+        {
+            if (!listed.empty())
+                listed += "/";
+            listed += std::to_string(elementPlaces.value);
+        }
+        return listed;
     }
+} // namespace detail
+
+/// A per-element rounding renders as `RoundNode` does, with every element's
+/// granularity in the series' order: `round(p(i), to 0/0/1 dp of %)`, and in
+/// LaTeX `\operatorname{round}_{0/-1/2\,\mathrm{mm}}(...)`. The unit clause is
+/// `RoundNode`'s: set upright and escaped in LaTeX (`detail::latex_unit`), and
+/// dropped for a unit with no symbol. The mode is absent, for `RoundNode`'s
+/// reason, and appears in the trace.
+template <Dialect D, Unit U, auto Places, RoundingMode Mode, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render_node(ElementwiseRoundNode<U, Places, Mode, S> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.operand, vocabulary);
+    constexpr Unit roundedIn = U;
+    std::string const unitSymbol { view(roundedIn.symbolText) };
+    // Places already refused (`countMatches`) are not a table to list; the
+    // text is never seen, since the program does not compile.
+    std::string placesText = "(refused)";
+    if constexpr (ElementwiseRoundNode<U, Places, Mode, S>::countMatches)
+        placesText = detail::granularities_text<Places>();
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}("
+               + inner + ")";
+    else
+        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+}
+
+/// A running total renders as a call naming its end: `cumulative(m_r(i), from
+/// last)`, and in LaTeX `\operatorname{cumulative}_{\text{from last}}(...)`,
+/// the end on a subscript as a rounding's granularity is. The direction is
+/// always written: without it the rendering states half the formula.
+template <Dialect D, CumulativeDirection Direction, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render_node(CumulativeNode<Direction, S> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.operand, vocabulary);
+    std::string const runsFrom { describe(Direction) };
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{cumulative}_{\\text{" + runsFrom + "}}(" + inner + ")";
+    else
+        return "cumulative(" + inner + ", " + runsFrom + ")";
+}
+
+/// A sum renders as a call on its series, `sum(m_r(i))`, and in LaTeX as the
+/// large operator, `\sum {m_r}_{i}`, whose operand already carries the
+/// series marker -- the sum itself is one value and carries none. See
+/// `detail::precedence_in` for where the LaTeX form is bracketed.
+template <Dialect D, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render_node(SumNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\sum " + detail::render_operand<D>(node.operand, detail::Precedence::Multiplicative, vocabulary);
+    else
+        return "sum(" + render<D>(node.operand, vocabulary) + ")";
+}
+
+/// A per-element constant renders as its list of values, `values(0.7 mm,
+/// 1.9 mm, ...)`, each spelled as a constant holding it would be
+/// (`detail::number_with_unit`), separated as a lookup's rows are. A list
+/// already reads as many values, so it carries no index marker (S14). A
+/// formula's own values are never truncated.
+template <Dialect D, Unit U, std::size_t N, Vocabulary V>
+[[nodiscard]] std::string render_node(SeriesConstantNode<U, N> const& node, V const&)
+{
+    constexpr Unit statedIn = U;
+    std::string listed;
+    for (std::size_t at = 0; at < N; ++at)
+    {
+        if (at > 0)
+            listed += detail::lookup_separator<D>();
+        // Each value spelled as a `ConstantNode` holding it is, in every
+        // dialect: in LaTeX its unit set upright and escaped.
+        if constexpr (D == Dialect::LaTeX)
+            listed += detail::number_text(node.elements[at])
+                      + detail::unit_clause("\\,", detail::latex_unit(view(statedIn.symbolText)));
+        else
+            listed += detail::number_with_unit(detail::number_text(node.elements[at]), view(statedIn.symbolText));
+    }
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{values}(" + listed + ")";
+    else
+        return "values(" + listed + ")";
 }
 
 /// A power renders as its base with the exponent superscript -- braced in LaTeX.
@@ -985,6 +1241,119 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
     return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rowText);
 }
 
+/// A snap renders as `snap(<operand>, to <permitted values> <unit>)`: the set
+/// in its declared order, the unit once, shaped as a lookup is
+/// (`detail::lookup_call`). **No tie rule**, for `RoundNode`'s reason: a
+/// standard states a set of permitted values, not a rule for a value exactly
+/// midway; the trace carries the rule where it decided.
+template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(SnapNode<KeyUnit, Permitted, Tie, Operand> const& node, V const& vocabulary)
+{
+    constexpr Unit keyUnit = KeyUnit;
+    std::string listed;
+    for (std::size_t pointIndex = 0; pointIndex < Permitted.size(); ++pointIndex)
+    {
+        if (pointIndex > 0)
+            listed += ", ";
+        listed += detail::declared_number_text(Permitted[pointIndex].numerator, Permitted[pointIndex].denominator);
+    }
+    std::string const permittedField =
+        detail::lookup_separator<D>()
+        + detail::lookup_words_in_dialect<D>(detail::number_with_unit("to " + listed, view(keyUnit.symbolText)));
+    return detail::lookup_call<D>("snap", render<D>(node.operand, vocabulary), permittedField);
+}
+
+/// A declared domain renders as its points, `domain(103, 127, 163 mm)`,
+/// in their declared order with the unit once, as a snap's set is. A list
+/// already reads as many values, so it carries no index marker, as a
+/// per-element constant carries none.
+template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
+[[nodiscard]] std::string render_node(DomainNode<U, Points> const&, V const&)
+{
+    constexpr Unit declaredIn = U;
+    std::string listed;
+    for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
+    {
+        if (pointIndex > 0)
+            listed += ", ";
+        listed += detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator);
+    }
+    std::string const points =
+        detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{domain}(" + points + ")";
+    else
+        return "domain(" + points + ")";
+}
+
+/// Raw observations render as their quantity's symbol, marked as a series is
+/// (`detail::series_marker`): each is one of many values, and the symbol
+/// table says how many there can be.
+template <Dialect D, Described Q, std::size_t Capacity, Vocabulary V>
+[[nodiscard]] std::string render_node(ObservationsVarNode<Q, Capacity> const&, V const& vocabulary)
+{
+    return detail::series_marker<D>(std::string { symbol_of<Q>(vocabulary) });
+}
+
+/// Observations refused already: never seen, since the program does not
+/// compile.
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedObservations const&, V const&)
+{
+    return "(refused)";
+}
+
+/// A binning renders as `bin(<observations>, <class>, ...)`: one field per
+/// class, in the declared order, each in the one spelling of a band
+/// (`detail::band_text`), shaped as a lookup is (`detail::lookup_call`).
+template <Dialect D, Unit KeyUnit, BandTable Classes, ObservationsNode Obs, Vocabulary V>
+[[nodiscard]] std::string render_node(BinnedNode<KeyUnit, Classes, Obs> const& node, V const& vocabulary)
+{
+    constexpr Unit keyUnit = KeyUnit;
+    std::string classText;
+    for (std::size_t classIndex = 0; classIndex < Classes.size(); ++classIndex)
+        classText += detail::lookup_separator<D>()
+                     + detail::lookup_words_in_dialect<D>(detail::band_text(Classes[classIndex], view(keyUnit.symbolText)));
+    return detail::lookup_call<D>("bin", render_node<D>(node.source, vocabulary), classText);
+}
+
+/// A curve renders as a call on its two series, `curve(d(i), p(i))`, each
+/// carrying its series marker, shaped as a lookup is (`detail::lookup_call`).
+template <Dialect D, SeriesNode DomainSeries, SeriesNode ValueSeries, Vocabulary V>
+[[nodiscard]] std::string render_node(CurveNode<DomainSeries, ValueSeries> const& node, V const& vocabulary)
+{
+    return detail::lookup_call<D>("curve",
+                                  render<D>(node.domainSeries, vocabulary),
+                                  detail::lookup_separator<D>() + render<D>(node.valueSeries, vocabulary));
+}
+
+/// A splice renders both curves in the order written, and **always** its
+/// direction: `splice(curve(...), curve(...), non-decreasing)`. Without the
+/// direction the rendering states half the formula, as a running total
+/// without its end would.
+template <Dialect D, Monotone M, CurveExpression A, CurveExpression B, Vocabulary V>
+[[nodiscard]] std::string render_node(SpliceNode<M, A, B> const& node, V const& vocabulary)
+{
+    return detail::lookup_call<D>("splice",
+                                  render<D>(node.first, vocabulary),
+                                  detail::lookup_separator<D>() + render<D>(node.second, vocabulary)
+                                      + detail::lookup_separator<D>()
+                                      + detail::lookup_words_in_dialect<D>(std::string { describe(M) }));
+}
+
+/// An interpolation along a curve renders as `interpolate(<curve>, at
+/// <point>)` -- `render()`'s head for a value computed between two points, as
+/// an interpolating lookup's is. The point is an expression, rendered in the
+/// dialect; only the word before it is text.
+template <Dialect D, CurveExpression C, Node At, Vocabulary V>
+[[nodiscard]] std::string render_node(InterpolateAlongNode<C, At> const& node, V const& vocabulary)
+{
+    return detail::lookup_call<D>("interpolate",
+                                  render<D>(node.along, vocabulary),
+                                  detail::lookup_separator<D>() + detail::lookup_words_in_dialect<D>("at ")
+                                      + render<D>(node.at, vocabulary));
+}
+
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
 /// cannot go through `render_operand` -- its own operand context is computed
 /// directly from `PrecedenceOf<PredicateNode<...>>` instead, one rung above
@@ -1205,6 +1574,66 @@ template <Node N>
     return render<Dialect::Plain>(node);
 }
 
+/// Renders the series @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(S const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the series @p node as plain text, writing symbols as
+/// @p vocabulary says.
+template <SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(S const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders the series @p node in dialect @p D.
+template <Dialect D, SeriesNode S>
+[[nodiscard]] std::string render(S const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders the series @p node as plain text.
+template <SeriesNode S>
+[[nodiscard]] std::string render(S const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+/// Renders the curve @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, CurveExpression C, Vocabulary V>
+[[nodiscard]] std::string render(C const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the curve @p node as plain text, writing symbols as
+/// @p vocabulary says.
+template <CurveExpression C, Vocabulary V>
+[[nodiscard]] std::string render(C const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders the curve @p node in dialect @p D.
+template <Dialect D, CurveExpression C>
+[[nodiscard]] std::string render(C const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders the curve @p node as plain text.
+template <CurveExpression C>
+[[nodiscard]] std::string render(C const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
 /// Renders @p node in dialect @p D, writing symbols as @p vocabulary says.
 /// See the forward declaration above for why this overload -- for
 /// `Predicate`, not `Node` -- exists separately.
@@ -1264,6 +1693,67 @@ template <Dialect D, Predicate P>
 /// Renders @p node as plain text.
 template <Predicate P>
 [[nodiscard]] std::string render(Constraint<P> const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+namespace detail
+{
+    /// One row of an envelope as the range it permits, the unit after the
+    /// last number: `from 30 to 40 %`, `at least 60 %`, `at most 5 mm`, or
+    /// `any value` for a row unbounded on both sides.
+    [[nodiscard]] inline std::string limit_row_text(LimitRow limitRow, std::string_view unitSymbol)
+    {
+        std::optional<Rational> const lowerValue = limitRow.lower.value();
+        std::optional<Rational> const upperValue = limitRow.upper.value();
+        if (lowerValue.has_value() && upperValue.has_value())
+            return "from " + number_text(*lowerValue) + " to " + number_with_unit(number_text(*upperValue), unitSymbol);
+        if (lowerValue.has_value())
+            return "at least " + number_with_unit(number_text(*lowerValue), unitSymbol);
+        if (upperValue.has_value())
+            return "at most " + number_with_unit(number_text(*upperValue), unitSymbol);
+        return "any value";
+    }
+} // namespace detail
+
+/// Renders a conformity check in dialect @p D: `conform(<subject>, <row>,
+/// ...)`, one field per element in the series' order, each the range it
+/// permits (`detail::limit_row_text`), shaped as a lookup is
+/// (`detail::lookup_call`). The subject carries its series marker.
+///
+/// **The verdict stays out**, for `Constraint`'s reason: it is what a checker
+/// does once each element is decided, not part of what is checked. It
+/// appears in the trace.
+template <Dialect D, Unit U, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(Conformity<U, S> const& conformityCheck, V const& vocabulary)
+{
+    constexpr Unit limitsIn = U;
+    std::string rowFields;
+    for (std::size_t at = 0; at < S::length; ++at)
+        rowFields += detail::lookup_separator<D>()
+                     + detail::lookup_words_in_dialect<D>(
+                         detail::limit_row_text(conformityCheck.envelope[at], view(limitsIn.symbolText)));
+    return detail::lookup_call<D>("conform", render<D>(conformityCheck.subject, vocabulary), rowFields);
+}
+
+/// Renders a conformity check as plain text, writing symbols as @p vocabulary
+/// says.
+template <Unit U, SeriesNode S, Vocabulary V>
+[[nodiscard]] std::string render(Conformity<U, S> const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders a conformity check in dialect @p D.
+template <Dialect D, Unit U, SeriesNode S>
+[[nodiscard]] std::string render(Conformity<U, S> const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders a conformity check as plain text.
+template <Unit U, SeriesNode S>
+[[nodiscard]] std::string render(Conformity<U, S> const& node)
 {
     return render<Dialect::Plain>(node);
 }

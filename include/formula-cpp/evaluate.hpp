@@ -172,6 +172,24 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when a series (`series.hpp`) is handed to something
+    /// that answers with one value -- `checked_evaluate`, `evaluate` or
+    /// `variant<Tag>` (`method.hpp`). A series is not a `Node`, so without
+    /// this each would refuse it in the compiler's words, as a constraint
+    /// nobody satisfied. Named so the expression prints.
+    template <typename Expression>
+    struct RequireSingleValueExpression
+    {
+        // A series already refused (`refused`, `series.hpp`) is not asked
+        // again: its own refusal is the one message for the mistake.
+        static_assert(
+            !SeriesNode<Expression> || requires { requires Expression::refused; },
+            "formula: this expression is a series, not a single value; evaluate it with "
+            "checked_evaluate_series, or reduce it to one value first (sum, interpolate_at)");
+
+        static constexpr bool value = true;
+    };
+
     /// Wraps a bare `Rep` as a present value.
     template <typename Rep>
     [[nodiscard]] constexpr Evaluated<Rep> present(Rep value) noexcept
@@ -371,11 +389,34 @@ template <Described Result, Node Expression, typename Env, typename Sink = NullS
     }
 }
 
+/// A series handed to `checked_evaluate`: fails to compile, in this library's
+/// words, pointing at `checked_evaluate_series` (`series.hpp`). The body is the
+/// refusal and nothing else; what it returns is never seen.
+template <Described Result, SeriesNode Expression, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<Outcome<Result>, ArithmeticError> checked_evaluate(Expression const&,
+                                                                                         Env const&,
+                                                                                         Sink = {}) noexcept
+{
+    static_assert(detail::RequireSingleValueExpression<Expression>::value);
+    return Outcome<Result>::empty();
+}
+
 /// Throwing spelling of `checked_evaluate`, for callers who would only rethrow.
 template <Described Result, Node Expression, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Outcome<Result> evaluate(Expression const& expression, Env const& environment, Sink sink = {})
 {
     return detail::or_throw(checked_evaluate<Result>(expression, environment, sink));
+}
+
+/// A series handed to `evaluate`: refused as `checked_evaluate` refuses it. A
+/// series has no throwing spelling at all -- an exception would have to drop
+/// the position of the element that failed, which is the most useful fact a
+/// series failure carries.
+template <Described Result, SeriesNode Expression, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Outcome<Result> evaluate(Expression const&, Env const&, Sink = {}) noexcept
+{
+    static_assert(detail::RequireSingleValueExpression<Expression>::value);
+    return Outcome<Result>::empty();
 }
 
 } // namespace formula

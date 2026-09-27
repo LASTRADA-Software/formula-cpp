@@ -37,6 +37,8 @@
 
 #include <cstddef>
 #include <expected>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -253,6 +255,11 @@ namespace detail
     /// never dispatched the right one -- leaves exactly **one** recorded
     /// operand, not zero: dividing by zero itself only happens after both
     /// sides have run, so a real `Divide` that fails this way always has two.
+    /// The one operand named is then the **left** one, the operand that
+    /// failed: `+ #5 = division by zero` means "#5 failed, and the right side
+    /// was never evaluated", though it can read as "something plus #5". The
+    /// elementwise steps (`ElementwiseAdd` and the rest) share this spelling,
+    /// and `trace_render_tests.cpp` pins it for one.
     /// Zero operands is rarer still: it takes both children being untraced
     /// extension-point nodes (`sink.hpp`) that produced no step of their own
     /// to consume. A `Divide` with nothing recorded therefore renders as a
@@ -276,6 +283,20 @@ namespace detail
     [[nodiscard]] std::string sole_operand(Step<Rep> const& step)
     {
         return step.operands.empty() ? std::string {} : operand_reference(step.operands[0]);
+    }
+
+    /// Every operand, in order, separated by `, `: `#1, #2`.
+    template <typename Rep>
+    [[nodiscard]] std::string operands_text(Step<Rep> const& step)
+    {
+        std::string listed;
+        for (std::size_t const operandIndex: step.operands)
+        {
+            if (!listed.empty())
+                listed += ", ";
+            listed += operand_reference(operandIndex);
+        }
+        return listed;
     }
 
     /// A method's constraints, as the verdicts they reached:
@@ -623,6 +644,21 @@ namespace detail
         return " [unknown lookup failure]";
     }
 
+    /// A per-element rounding's granularities, `0/0/1`, in the series' order
+    /// -- `render()`'s spelling (`detail::granularities_text` there is the
+    /// same text from a `PlacesTable`).
+    [[nodiscard]] inline std::string granularities_text(std::vector<int> const& granularities)
+    {
+        std::string listed;
+        for (int const elementPlaces: granularities)
+        {
+            if (!listed.empty())
+                listed += "/";
+            listed += std::to_string(elementPlaces);
+        }
+        return listed;
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -711,6 +747,70 @@ namespace detail
                 return "lookup(" + lookup_key_text(step) + ")";
             case StepKind::InterpolatingLookup:
                 return "interpolate(" + sole_operand(step) + ")";
+            // The quantity, unmarked: the marker belongs to the formula
+            // (`render()`), and a derivation line names what it read. That it
+            // is a series shows in the list of elements after the `=`.
+            case StepKind::SeriesVariable:
+                return std::string { step.symbol };
+            // A per-element constant's expression is its values, as a scalar
+            // constant's is -- see `series_step_line`.
+            case StepKind::SeriesConstant:
+                return {};
+            case StepKind::ElementwiseNegate:
+                return "-" + sole_operand(step);
+            case StepKind::ElementwiseAdd:
+                return binary_expression(step, "+");
+            case StepKind::ElementwiseSubtract:
+                return binary_expression(step, "-");
+            case StepKind::ElementwiseMultiply:
+                return binary_expression(step, "*");
+            case StepKind::ElementwiseDivide:
+                return binary_expression(step, "/");
+            // The end is written, as `render()` writes it: a running total
+            // without it is half a derivation.
+            case StepKind::CumulativeSum:
+                return "cumulative(" + sole_operand(step) + ", " + std::string { describe(step.cumulativeDirection) } + ")";
+            case StepKind::SeriesSum:
+                return "sum(" + sole_operand(step) + ")";
+            // The subject; each element's outcome follows, in the bracket --
+            // see `conformity_line`.
+            case StepKind::ConformityChecked:
+                return "conform(" + sole_operand(step) + ")";
+            // The set is `render()`'s to print; the step names where the
+            // value landed in its suffix -- see `snap_suffix`.
+            case StepKind::SnappedToPermitted:
+                return "snap(" + sole_operand(step) + ")";
+            // Every granularity, in the series' order, in the unit rounded
+            // in, as `render()` writes it; the mode goes in the suffix, as
+            // for `Round`.
+            case StepKind::ElementwiseRound:
+                return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
+            // A declared domain's line is its points, as a per-element
+            // constant's is its values -- see `series_step_line`.
+            case StepKind::SeriesDomain:
+                return {};
+            // The two series paired, in order; the pairs follow the `=` --
+            // see `curve_step_line`.
+            case StepKind::CurvePairing:
+                return "curve(" + operands_text(step) + ")";
+            // The curve, and where it was read; the segment goes in the
+            // suffix -- see `curve_interpolation_suffix`.
+            case StepKind::CurveInterpolation:
+                return step.operands.size() >= 2 ? "interpolate(" + operand_reference(step.operands[0]) + ", at "
+                                                       + operand_reference(step.operands[1]) + ")"
+                                                 : "interpolate(" + sole_operand(step) + ")";
+            // The direction is always written, as `render()` writes it.
+            case StepKind::CurveSplice:
+                return "splice(" + operands_text(step) + ", " + std::string { describe(step.monotone) } + ")";
+            // The quantity, unmarked, as a series variable's is; the
+            // observations follow the `=`.
+            case StepKind::ObservationsVariable:
+                return std::string { step.symbol };
+            // The classes are `render()`'s to print, as a lookup's bands are;
+            // the counts follow the `=`.
+            case StepKind::Binning:
+                return "bin(" + sole_operand(step) + ")";
         }
         return "unknown step kind";
     }
@@ -916,22 +1016,20 @@ namespace detail
                + variant_narrowing_clause(recorded) + "]";
     }
 
-    /// What a step produced, as a person should read it.
-    ///
-    /// The value is stored in the coherent SI unit of the step's dimension;
-    /// this converts it back into the unit the step was declared in and
-    /// appends that unit's symbol, so an input entered as 180 l reads
-    /// `180 l`. A step that failed shows why, and one with no value at all
-    /// says so -- absence is not an error and must not be rendered as one.
-    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded)
+    /// @p storedValue -- a step's own, or one element of a series step's -- converted
+    /// from the coherent SI unit of @p recorded's dimension into the unit the
+    /// step was declared in, with that unit's symbol, or `(not measured)` when
+    /// it is empty. Shared by `step_value_text` and `series_step_line`, so that
+    /// an element of a series reads exactly as a single value of the same
+    /// quantity does.
+    [[nodiscard]] inline std::string value_in_declared_unit(Step<Rational> const& recorded,
+                                                            std::optional<Rational> const& storedValue)
     {
-        if (recorded.error.has_value())
-            return std::string { describe(*recorded.error) };
-        if (!recorded.value.has_value())
+        if (!storedValue.has_value())
             return "(not measured)";
 
         std::expected<Rational, ArithmeticError> const shown =
-            checked_convert(*recorded.value, coherent(recorded.dimension), recorded.unit);
+            checked_convert(*storedValue, coherent(recorded.dimension), recorded.unit);
         // Unreachable for a `Step` the recorder built -- it records a unit of
         // the step's own dimension -- but a `Step` is a public aggregate and a
         // caller may fill one in by hand. Refusing to print is the only
@@ -945,6 +1043,183 @@ namespace detail
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
         return valueText;
+    }
+
+    /// What a step produced, as a person should read it.
+    ///
+    /// The value is stored in the coherent SI unit of the step's dimension;
+    /// this converts it back into the unit the step was declared in and
+    /// appends that unit's symbol, so an input entered as 180 l reads
+    /// `180 l`. A step that failed shows why, and one with no value at all
+    /// says so -- absence is not an error and must not be rendered as one.
+    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded)
+    {
+        if (recorded.error.has_value())
+            return std::string { describe(*recorded.error) };
+        return value_in_declared_unit(recorded, recorded.value);
+    }
+
+    /// Whether @p kind is a series step, whose values are `Step::elements` and
+    /// never `Step::value`. One place, for the reason `is_lookup` gives.
+    [[nodiscard]] constexpr bool is_series(StepKind stepKind) noexcept
+    {
+        return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant
+               || stepKind == StepKind::ElementwiseNegate || stepKind == StepKind::ElementwiseAdd
+               || stepKind == StepKind::ElementwiseSubtract || stepKind == StepKind::ElementwiseMultiply
+               || stepKind == StepKind::ElementwiseDivide || stepKind == StepKind::CumulativeSum
+               || stepKind == StepKind::ElementwiseRound || stepKind == StepKind::SeriesDomain
+               || stepKind == StepKind::ObservationsVariable || stepKind == StepKind::Binning;
+    }
+
+    /// Where a series step's failure arose, counted from one: `at element 3`,
+    /// or `at observation 3` when `Step::failureSite` says the position is an
+    /// observation -- raw observations and a binning. A binning
+    /// that found no class for it says which, and what the classes cover:
+    /// `[331 m in no class; the classes cover 0 to under 331 m]`.
+    [[nodiscard]] inline std::string failed_position_text(Step<Rational> const& recorded)
+    {
+        if (!recorded.failedElement.has_value())
+            return {};
+        std::size_t const failedAt = *recorded.failedElement;
+        bool const namesObservation = recorded.failureSite == FailureSite::InputObservation;
+        std::string positionText = (namesObservation ? " at observation " : " at element ") + std::to_string(failedAt + 1);
+        if (recorded.kind != StepKind::Binning || recorded.error != ArithmeticError::DomainError
+            || failedAt >= recorded.domainElements.size() || !recorded.domainElements[failedAt].has_value()
+            || !recorded.coveredRange.has_value())
+            return positionText;
+        Step<Rational> observationShape {};
+        observationShape.dimension = recorded.sourceUnit.dimension;
+        observationShape.unit = recorded.sourceUnit;
+        std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
+        return positionText + " [" + value_in_declared_unit(observationShape, recorded.domainElements[failedAt])
+               + " in no class; the classes cover " + half_open_range_text(*recorded.coveredRange, keySymbol) + "]";
+    }
+
+    /// A series step's line, without its number: the expression, an `=`, and
+    /// the elements in order, separated by `; ` -- as many as @p budget
+    /// allows. Each element shown spends one unit of @p budget, and a list cut
+    /// short ends `... k more`, where `k` is exactly the number left out, so a
+    /// truncated series never reads as a complete one.
+    ///
+    /// A failed series shows its error and, when the failure belongs to one
+    /// element, that element counted from one: `overflow in exact arithmetic
+    /// at element 3` for the element at zero-based position 2.
+    ///
+    /// Reads `Step::elements` and never `Step::value`, which a series step
+    /// leaves empty: consulting it would print `(not measured)` for a series
+    /// every element of which was measured.
+    [[nodiscard]] inline std::string series_step_line(Step<Rational> const& recorded, std::size_t& budget)
+    {
+        // A per-element constant's line is its values alone, as a scalar
+        // constant's is its value alone: `1 kg; 2 kg`, not the tautology
+        // `values = 1 kg; 2 kg`.
+        bool const listsItself = recorded.kind == StepKind::SeriesConstant || recorded.kind == StepKind::SeriesDomain;
+        std::string lineText = listsItself ? std::string {} : step_expression(recorded) + " = ";
+        if (recorded.error.has_value())
+            return lineText + std::string { describe(*recorded.error) } + failed_position_text(recorded);
+        std::size_t const elementCount = recorded.elements.size();
+        if (elementCount == 0)
+            return lineText + "(no elements)";
+
+        std::size_t const listed = budget < elementCount ? budget : elementCount;
+        budget -= listed;
+        for (std::size_t at = 0; at < listed; ++at)
+        {
+            if (at > 0)
+                lineText += "; ";
+            lineText += value_in_declared_unit(recorded, recorded.elements[at]);
+        }
+        if (listed < elementCount)
+            lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(elementCount - listed) + " more";
+        return lineText;
+    }
+
+    /// A curve step's line, without its number: the expression, an `=`, and
+    /// each point with its value, `7/10 m: 894/25 %`, separated by `; ` --
+    /// as many pairs as @p budget allows, one unit each, as a series step's
+    /// elements are (`series_step_line`), and `... k more` where `k` is
+    /// exactly the number left out. The points are shown in `sourceUnit`, the
+    /// values in `unit`.
+    ///
+    /// A curve's point @p point, in the step's `sourceUnit`.
+    [[nodiscard]] inline std::string curve_point_text(Step<Rational> const& recorded, std::optional<Rational> const& point)
+    {
+        // A point is shown as a value of the point's own dimension and unit.
+        Step<Rational> pointShape {};
+        pointShape.dimension = recorded.sourceUnit.dimension;
+        pointShape.unit = recorded.sourceUnit;
+        return value_in_declared_unit(pointShape, point);
+    }
+
+    /// The rule a failed curve broke and the point it broke it at:
+    /// `[duplicate domain point 163 m]`, `[domain does not ascend at 113 m]`
+    /// or `[breaks non-decreasing at 103 m]`. Nothing when the step names no rule
+    /// or holds no point at its failed element.
+    [[nodiscard]] inline std::string curve_break_suffix(Step<Rational> const& recorded)
+    {
+        if (recorded.curveBreak == CurveBreak::None || !recorded.failedElement.has_value()
+            || *recorded.failedElement >= recorded.domainElements.size()
+            || !recorded.domainElements[*recorded.failedElement].has_value())
+            return {};
+        std::string const pointText = curve_point_text(recorded, recorded.domainElements[*recorded.failedElement]);
+        switch (recorded.curveBreak)
+        {
+            case CurveBreak::DuplicatePoint:
+                return " [duplicate domain point " + pointText + "]";
+            case CurveBreak::NotAscending:
+                return " [domain does not ascend at " + pointText + "]";
+            case CurveBreak::AgainstDirection:
+                return " [breaks " + std::string { describe(recorded.monotone) } + " at " + pointText + "]";
+            case CurveBreak::None:
+                break;
+        }
+        return {};
+    }
+
+    /// A failed curve shows its error and, when it belongs to one element,
+    /// that element counted from one, then the rule it broke there and the
+    /// point (`curve_break_suffix`).
+    [[nodiscard]] inline std::string curve_step_line(Step<Rational> const& recorded, std::size_t& budget)
+    {
+        std::string lineText = step_expression(recorded) + " = ";
+        if (recorded.error.has_value())
+        {
+            lineText += describe(*recorded.error);
+            if (recorded.failedElement.has_value())
+                lineText += " at element " + std::to_string(*recorded.failedElement + 1) + curve_break_suffix(recorded);
+            return lineText;
+        }
+        std::size_t const pairCount = recorded.elements.size();
+        if (pairCount == 0 || recorded.domainElements.size() != pairCount)
+            return lineText + "(no points)";
+
+        std::size_t const listed = budget < pairCount ? budget : pairCount;
+        budget -= listed;
+        for (std::size_t at = 0; at < listed; ++at)
+        {
+            if (at > 0)
+                lineText += "; ";
+            lineText += curve_point_text(recorded, recorded.domainElements[at]) + ": "
+                        + value_in_declared_unit(recorded, recorded.elements[at]);
+        }
+        if (listed < pairCount)
+            lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(pairCount - listed) + " more";
+        return lineText;
+    }
+
+    /// An interpolation along a curve's clause: the two points the answer
+    /// lay between, `[between 163 and 197 m]`, or `[on the row at
+    /// 163 m]` -- `segment_text`, an interpolating lookup's words -- and on a miss
+    /// `[outside the curve, which runs 103 to 241 m]`. Nothing when
+    /// nothing was located: a failed or absent curve or point.
+    [[nodiscard]] inline std::string curve_interpolation_suffix(Step<Rational> const& recorded)
+    {
+        std::string const pointSymbol = unit_symbol_text(recorded.sourceUnit);
+        if (recorded.selectedSegment.has_value())
+            return " [" + segment_text(*recorded.selectedSegment, pointSymbol) + "]";
+        if (recorded.coveredRange.has_value())
+            return " [outside the curve, which runs " + closed_range_text(*recorded.coveredRange, pointSymbol) + "]";
+        return {};
     }
 
     /// A `NumericValue` step's justification, in one bracketed clause. Empty
@@ -1005,6 +1280,114 @@ namespace detail
                 return std::string { describe(*checkedOutcome.error()) };
         }
         return "unknown outcome";
+    }
+
+    /// A snap step's clause: the two neighbours, `[127 m to 163 m;
+    /// nearer 127 m]`, or with the tie rule when it decided, `[127 m to 163 m;
+    /// tie, toward higher]`; `[on 127 m]` for an exact hit; and on a miss
+    /// `[outside the permitted set, 103 m to 241 m]`. Nothing
+    /// when nothing was snapped -- a failed or absent operand.
+    [[nodiscard]] inline std::string snap_suffix(Step<Rational> const& recorded)
+    {
+        std::string const keySymbol = unit_symbol_text(recorded.unit);
+        if (recorded.selectedSegment.has_value())
+        {
+            Segment const& neighbours = *recorded.selectedSegment;
+            std::string const lowText =
+                number_with_unit(declared_number_text(neighbours.low.numerator, neighbours.low.denominator), keySymbol);
+            std::string const highText =
+                number_with_unit(declared_number_text(neighbours.high.numerator, neighbours.high.denominator), keySymbol);
+            if (neighbours.low == neighbours.high)
+                return " [on " + lowText + "]";
+            if (recorded.tieBroken)
+                return " [" + lowText + " to " + highText + "; tie, " + std::string { describe(recorded.snapTie) } + "]";
+            std::string const nearer =
+                recorded.value.has_value() ? value_in_declared_unit(recorded, recorded.value) : std::string { "neither" };
+            return " [" + lowText + " to " + highText + "; nearer " + nearer + "]";
+        }
+        if (recorded.coveredRange.has_value())
+        {
+            LookupRange const& covered = *recorded.coveredRange;
+            return " [outside the permitted set, "
+                   + number_with_unit(declared_number_text(covered.lowNumerator, covered.lowDenominator), keySymbol) + " to "
+                   + number_with_unit(declared_number_text(covered.highNumerator, covered.highDenominator), keySymbol) + "]";
+        }
+        return {};
+    }
+
+    /// The rows @p trace kept for the step at @p stepIndex, or none.
+    [[nodiscard]] inline std::span<LimitRow const> conformity_limits_of(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        for (ConformityLimits const& kept: trace.conformityLimits)
+            if (kept.step == stepIndex)
+                return kept.rows;
+        return {};
+    }
+
+    /// One element's outcome in a conformity step, counted from one, with
+    /// the value judged in the check's unit and the row it was judged against
+    /// when the trace kept them: `2 satisfied, 36 % (from 30 to 40 %)`, `2
+    /// violated, 71 % (at least 60 %): reject the specimen`, `2 not checked
+    /// (...)`, or `2 invalid, 71 % (from 80 to 70 %): <the arithmetic
+    /// error>`. An element not measured states no value, and neither does
+    /// one whose subject failed.
+    [[nodiscard]] inline std::string element_outcome_text(std::size_t at,
+                                                          ConstraintOutcome const& checkedOutcome,
+                                                          std::string const& valueClause,
+                                                          std::string const& rowClause)
+    {
+        std::string const ordinal = std::to_string(at + 1);
+        switch (checkedOutcome.kind())
+        {
+            case ConstraintOutcomeKind::Satisfied:
+                return ordinal + " satisfied" + valueClause + rowClause;
+            case ConstraintOutcomeKind::Violated:
+                return ordinal + " violated" + valueClause + rowClause + ": "
+                       + std::string { checkedOutcome.verdict()->label };
+            case ConstraintOutcomeKind::NotChecked:
+                return ordinal + " not checked" + valueClause + rowClause;
+            case ConstraintOutcomeKind::Invalid:
+                return ordinal + " invalid" + valueClause + rowClause + ": "
+                       + std::string { describe(*checkedOutcome.error()) };
+        }
+        return ordinal + " unknown outcome" + rowClause;
+    }
+
+    /// A conformity step's line, without its number: `conform(#1)` and every
+    /// element's outcome in one bracket, each with the value judged, in the
+    /// check's unit, and the row it was judged against -- `[1 satisfied, 36 %
+    /// (from 30 to 40 %); 2 violated, 55 % (from 50 to 60 %): reject the
+    /// specimen; ...]` -- as many as @p budget allows, one
+    /// unit each, as a series step's elements are (`series_step_line`), and
+    /// `... k more` where `k` is exactly the number left out.
+    ///
+    /// @p limits are the rows `Trace::conformityLimits` kept for this step.
+    /// The rows are master data read at run time, so a derivation that
+    /// omitted them would not say what was judged; a hand-built trace with
+    /// no row for an element prints the outcome alone.
+    [[nodiscard]] inline std::string conformity_line(Step<Rational> const& recorded,
+                                                     std::span<LimitRow const> limits,
+                                                     std::size_t& budget)
+    {
+        std::size_t const outcomeCount = recorded.elementOutcomes.size();
+        std::size_t const listed = budget < outcomeCount ? budget : outcomeCount;
+        budget -= listed;
+        std::string lineText = step_expression(recorded) + " [";
+        for (std::size_t at = 0; at < listed; ++at)
+        {
+            if (at > 0)
+                lineText += "; ";
+            std::string const rowClause = at < limits.size()
+                                              ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit)) + ")"
+                                              : std::string {};
+            std::string const valueClause = at < recorded.elements.size() && recorded.elements[at].has_value()
+                                                ? ", " + value_in_declared_unit(recorded, recorded.elements[at])
+                                                : std::string {};
+            lineText += element_outcome_text(at, recorded.elementOutcomes[at], valueClause, rowClause);
+        }
+        if (listed < outcomeCount)
+            lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outcomeCount - listed) + " more";
+        return lineText + "]";
     }
 
     /// Whose a method's constraints were: `the method's own`, or the overlay
@@ -1105,10 +1488,40 @@ namespace detail
     /// `AcceptanceChecked`, for the same reason: it gathers verdicts, and has
     /// no value of its own.
     ///
+    /// **The one entry point for every step's line, a series included**, is
+    /// `step_line` below, which escapes the step and renders the copy here.
+    /// @p budget is what is left of `render_trace`'s `maxSteps` after this
+    /// line's own unit: a series spends one more unit on each element it shows
+    /// (`series_step_line`), and every other kind spends nothing here. Keeping
+    /// every kind on this path is what lets one change reach every line --
+    /// escaping author text, above all: the vocabulary symbol and the unit
+    /// symbol a series line prints are escaped wherever a scalar line's are.
+    ///
+    /// @p limits are the rows a `ConformityChecked` step judged against
+    /// (`Trace::conformityLimits`), and empty for every other kind.
+    ///
     /// Renders an `EscapedStep`'s copy, never the step itself -- see
     /// `step_line`, which makes it.
-    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded)
+    [[nodiscard]] inline std::string escaped_step_line(Step<Rational> const& recorded,
+                                                       std::size_t& budget,
+                                                       std::span<LimitRow const> limits)
     {
+        // A series first, before anything reads `value`: its values are its
+        // elements.
+        // A per-element rounding ends with its mode, as a scalar rounding
+        // does -- after the elements, however many were shown.
+        if (recorded.kind == StepKind::ElementwiseRound)
+            return series_step_line(recorded, budget) + rounding_mode_suffix(recorded.mode);
+        // A conformity check has outcomes, not a value, and spends the
+        // element budget on them as a series does on its elements.
+        if (recorded.kind == StepKind::ConformityChecked)
+            return conformity_line(recorded, limits, budget);
+        if (is_series(recorded.kind))
+            return series_step_line(recorded, budget);
+        // A curve's values are its pairs, which spend the element budget as
+        // a series' elements do.
+        if (recorded.kind == StepKind::CurvePairing || recorded.kind == StepKind::CurveSplice)
+            return curve_step_line(recorded, budget);
         if (recorded.kind == StepKind::Constraint)
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
         if (recorded.kind == StepKind::AcceptanceChecked)
@@ -1135,6 +1548,10 @@ namespace detail
             annotation = rounding_rule_suffix(recorded);
         else if (recorded.kind == StepKind::OverriddenConstant)
             annotation = overridden_constant_suffix(recorded.citation);
+        else if (recorded.kind == StepKind::SnappedToPermitted)
+            annotation = snap_suffix(recorded);
+        else if (recorded.kind == StepKind::CurveInterpolation)
+            annotation = curve_interpolation_suffix(recorded);
         else if (recorded.kind == StepKind::DerivedQuantity)
             annotation = derived_quantity_suffix(recorded.citation);
         else if (recorded.kind == StepKind::ReplacedVariant)
@@ -1155,10 +1572,15 @@ namespace detail
     /// what it holds. The one place author text is escaped: every piece of it
     /// in @p recorded is escaped into an `EscapedStep` here, before anything
     /// reads it, and the line is rendered from that copy.
-    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded)
+    ///
+    /// @p limits are the rows a `ConformityChecked` step judged against
+    /// (`Trace::conformityLimits`), and empty for every other kind.
+    [[nodiscard]] inline std::string step_line(Step<Rational> const& recorded,
+                                               std::size_t& budget,
+                                               std::span<LimitRow const> limits = {})
     {
         EscapedStep const escaped { recorded };
-        return escaped_step_line(escaped.step);
+        return escaped_step_line(escaped.step, budget, limits);
     }
 } // namespace detail
 
@@ -1171,6 +1593,13 @@ namespace detail
 /// it. When the trace is longer than the limit, the first `maxSteps` are shown
 /// followed by exactly one line stating how many were left out: a reader is
 /// told what they are not seeing rather than silently handed a prefix.
+///
+/// **A series step spends the same budget.** Its line costs one unit, as
+/// every line does, and each element it shows one more; a series cut short
+/// ends `... k more`, with `k` the exact number of elements left out, and the
+/// footer then counts the steps not shown at all. One number, chosen by the
+/// caller, bounds everything printed: a 256-element series printed in full on
+/// one line is the unusable line the limit exists to prevent.
 ///
 /// Only an exact (`Rational`) trace can be rendered. Converting a value back
 /// into the unit it was declared in is the unit layer's exact
@@ -1185,16 +1614,19 @@ template <typename Rep = Rational>
                   "formula: only an exact Rational trace can be rendered -- see render_trace's "
                   "documentation for why a floating-point derivation has no printable form here");
 
-    std::size_t const shown =
-        trace.steps.size() < options.maxSteps.value ? trace.steps.size() : options.maxSteps.value;
+    std::size_t budget = options.maxSteps.value;
+    std::size_t shown = 0;
 
     std::string renderedTrace;
-    for (std::size_t stepIndex = 0; stepIndex < shown; ++stepIndex)
+    while (shown < trace.steps.size() && budget > 0)
     {
-        renderedTrace += std::to_string(stepIndex + 1);
+        Step<Rational> const& recorded = trace.steps[shown];
+        --budget;
+        renderedTrace += std::to_string(shown + 1);
         renderedTrace += ". ";
-        renderedTrace += detail::step_line(trace.steps[stepIndex]);
+        renderedTrace += detail::step_line(recorded, budget, detail::conformity_limits_of(trace, shown));
         renderedTrace += "\n";
+        ++shown;
     }
 
     if (trace.steps.size() > shown)

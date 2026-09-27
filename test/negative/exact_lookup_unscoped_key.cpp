@@ -9,11 +9,11 @@
 // selects the wrong row, or no row at all. `int` keys are refused for the
 // same reason. This must not compile.
 //
-// ONE row, deliberately. With two or more, `detail::key_table_is_valid` runs
-// its pairwise sweep, which reaches `keys_match` and would refuse this table
+// ONE row, deliberately. With two or more, `RequireValidKeyTable` checks
+// every pair, which reaches `keys_match` and would refuse this table
 // through that guard instead -- so a table of two would still fail if
 // `ExactLookupNode`'s own `RequireScopedEnumKey` assertion were deleted. At
-// `N < 2` the sweep short-circuits and `keys_match` is never instantiated, so
+// `N < 2` there is no pair and `keys_match` is never instantiated, so
 // the node's own guard is the only thing left that can refuse this, which is
 // exactly what this file exists to pin. Its companions
 // `exact_lookup_keys_match_int_key.cpp` and `exact_lookup_int_key_table.cpp`

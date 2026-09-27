@@ -10,9 +10,12 @@
 /// consumer who wants it asks for by name.
 
 #include <formula-cpp/band.hpp>
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/enumerator.hpp>
@@ -32,6 +35,8 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>

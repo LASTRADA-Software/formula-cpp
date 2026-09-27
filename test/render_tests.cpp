@@ -4,6 +4,8 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/series.hpp>
+#include <formula-cpp/vocabulary.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -1360,6 +1362,15 @@ TEST_CASE("render: the Markdown guard tells an escaped character from a live one
     CHECK(unescapedPositions("[", '[') == std::vector<std::size_t> { 0 });
 }
 
+namespace
+{
+// The per-element rounding in the Markdown guard below: three granularities,
+// one of them negative.
+constexpr formula::PlacesTable<3> guardPlaces { formula::DecimalPlaces { 0 },
+                                                formula::DecimalPlaces { -1 },
+                                                formula::DecimalPlaces { 2 } };
+} // namespace
+
 TEST_CASE("render: Markdown output never contains text a CommonMark parser reinterprets, for any node kind",
           "[render][markdown]")
 {
@@ -1443,6 +1454,28 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3>));          // SeriesVarNode
+    // The elementwise nodes and a per-element constant, with a scalar
+    // broadcast on either side and a series on both.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(-formula::series<Strength, 3>)); // ElementwiseUnaryNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3> * var<Strength>));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength> - formula::series<Strength, 3>));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::series<Strength, 3> / formula::series<Strength, 3>));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::series_constant<formula::unit::Megapascal>(rat(1), rat(-2), rat(3, 4)))); // SeriesConstantNode
+    // A running total, from each end, and the sum that reduces a series to one
+    // value -- alone and in a product, where LaTeX brackets it.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Strength, 3>))); // CumulativeNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::cumulative<formula::CumulativeDirection::FromFirst>(formula::series<Strength, 3>)));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::sum(formula::series<Strength, 3>))); // SumNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::sum(formula::series<Strength, 3>) * var<Strength>));
+    // A per-element rounding: its table of granularities, which must not be
+    // bracketed the way a list often is.
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::rounded_elementwise<formula::unit::Megapascal, guardPlaces, formula::RoundingMode::HalfEven>(
+            formula::series<Strength, 3>))); // ElementwiseRoundNode
 
     // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
@@ -1600,4 +1633,203 @@ TEST_CASE("render: a lookup key's name is set in math mode, where the site's Mat
         == "\\operatorname{lookup}(\\mathrm{key\\ fit\\_2},\\allowbreak \\mathrm{key\\ fit\\_2\\ gives\\ 1127/1000},"
            "\\allowbreak \\mathrm{key\\ loose\\ gives\\ 863/1000})");
     CHECK(formula::detail::latex_math_words("key fit_2") == "key\\ fit\\_2");
+}
+
+// ---- A series variable, marked as a series in the formula itself (phase 12, S14) ----
+
+namespace
+{
+namespace series_render
+{
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
+    {
+    };
+    struct Total: formula::Quantity<Total, "m_t", "total dry mass", formula::unit::Gram>
+    {
+    };
+} // namespace series_render
+} // namespace
+
+TEST_CASE("a series variable is marked as a series in the formula itself, in every dialect", "[series][render]")
+{
+    // S14 as ruled; the marker task 1 chose (task-1-spike.md): LaTeX braces
+    // the whole symbol then subscripts it, plain and Markdown append `(i)`,
+    // Markdown inside the backticks.
+    using series_render::Retained;
+    constexpr auto everyone = formula::vocabulary(formula::renames<Retained>("x_m"));
+    CHECK(formula::render(formula::series<Retained, 5>, everyone) == "x_m(i)");
+    CHECK(formula::render<formula::Dialect::Markdown>(formula::series<Retained, 5>, everyone) == "`x_m(i)`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, everyone) == "{x_m}_{i}");
+    // A scalar of the same quantity is NOT marked, so the two read differently.
+    CHECK(formula::render(formula::var<Retained>, everyone) == "x_m");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::var<Retained>, everyone) == "x_m");
+    // The marker wraps the jurisdiction's symbol, never the declared one.
+    CHECK(formula::render(formula::series<Retained, 5>) == "m_r(i)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>) == "{m_r}_{i}");
+    // A symbol with a braced subscript still groups (typeset clean in task 1).
+    constexpr auto braced = formula::vocabulary(formula::renames<Retained>("f_{c}"));
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, braced) == "{f_{c}}_{i}");
+    // The known limit, pinned so it is a decision and not an accident: a
+    // symbol that already ends in `)` reads with two parenthesised groups.
+    constexpr auto parenthesised = formula::vocabulary(formula::renames<Retained>("w(t)"));
+    CHECK(formula::render(formula::series<Retained, 5>, parenthesised) == "w(t)(i)");
+    CHECK(formula::render<formula::Dialect::Markdown>(formula::series<Retained, 5>, parenthesised) == "`w(t)(i)`");
+}
+
+TEST_CASE("elementwise arithmetic renders as scalar arithmetic does, the series operand marked", "[series][render]")
+{
+    using series_render::Retained;
+    constexpr auto fraction = formula::series<Retained, 5> / formula::var<series_render::Total>;
+    // S14: the series variable carries the marker; the operation adds none.
+    CHECK(formula::render(fraction) == "m_r(i) / m_t");
+    CHECK(formula::render<formula::Dialect::Markdown>(fraction) == "`m_r(i)` / `m_t`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fraction) == "\\frac{{m_r}_{i}}{m_t}");
+    // Brackets exactly where the scalar operators put them: the right side of
+    // a subtraction, a sum inside a product, a negated sum.
+    constexpr auto s = formula::series<Retained, 5>;
+    CHECK(formula::render(formula::var<series_render::Total> - (s - formula::var<series_render::Total>) )
+          == "m_t - (m_r(i) - m_t)");
+    CHECK(formula::render((s + s) * formula::var<series_render::Total>) == "(m_r(i) + m_r(i)) * m_t");
+    CHECK(formula::render(-(s + s)) == "-(m_r(i) + m_r(i))");
+    CHECK(formula::render(-s) == "-m_r(i)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(s * formula::var<series_render::Total>) == "{m_r}_{i} \\cdot m_t");
+}
+
+TEST_CASE("a per-element constant renders as its list of values", "[series][render]")
+{
+    // S14: a series constant prints its rows, which already reads as many
+    // values, so it carries no index marker. Each value is spelled as a
+    // constant holding it would be.
+    constexpr auto factors = formula::series_constant<formula::unit::Millimetre>(rat(11), rat(29), rat(41));
+    CHECK(formula::render(factors) == "values(11 mm, 29 mm, 41 mm)");
+    CHECK(formula::render<formula::Dialect::Markdown>(factors) == "values(11 mm, 29 mm, 41 mm)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(factors)
+          == "\\operatorname{values}(11\\,\\mathrm{mm},\\allowbreak 29\\,\\mathrm{mm},\\allowbreak 41\\,\\mathrm{mm})");
+    constexpr auto plain = formula::series_constant<formula::unit::One>(rat(1), rat(2));
+    CHECK(formula::render(plain) == "values(1, 2)");
+    CHECK(formula::render(formula::series<series_render::Retained, 2> * plain) == "m_r(i) * values(1, 2)");
+}
+
+TEST_CASE("a running total renders with its direction, and a sum as a call on the series", "[series][render]")
+{
+    using series_render::Retained;
+    constexpr auto s = formula::series<Retained, 5>;
+    constexpr auto fromLast = formula::cumulative<formula::CumulativeDirection::FromLast>(s);
+    constexpr auto fromFirst = formula::cumulative<formula::CumulativeDirection::FromFirst>(s);
+    // The direction is part of the formula: a rendering without it would state
+    // half of it, so both ends are pinned and read differently.
+    CHECK(formula::render(fromLast) == "cumulative(m_r(i), from last)");
+    CHECK(formula::render(fromFirst) == "cumulative(m_r(i), from first)");
+    CHECK(formula::render<formula::Dialect::Markdown>(fromLast) == "cumulative(`m_r(i)`, from last)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fromLast) == "\\operatorname{cumulative}_{\\text{from last}}({m_r}_{i})");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fromFirst)
+          == "\\operatorname{cumulative}_{\\text{from first}}({m_r}_{i})");
+
+    // The sum's operand is a series and carries the marker; its result is one
+    // value and carries none.
+    constexpr auto total = formula::sum(s);
+    CHECK(formula::render(total) == "sum(m_r(i))");
+    CHECK(formula::render<formula::Dialect::Markdown>(total) == "sum(`m_r(i)`)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(total) == "\\sum {m_r}_{i}");
+
+    // In context. Plain text's call groups itself; LaTeX's large operator does
+    // not, so it is bracketed wherever an additive expression would be -- and
+    // a fraction groups it itself.
+    constexpr auto share = s / formula::sum(s);
+    CHECK(formula::render(share) == "m_r(i) / sum(m_r(i))");
+    CHECK(formula::render<formula::Dialect::LaTeX>(share) == "\\frac{{m_r}_{i}}{\\sum {m_r}_{i}}");
+    constexpr auto scaled = formula::sum(s) * formula::var<series_render::Total>;
+    CHECK(formula::render(scaled) == "sum(m_r(i)) * m_t");
+    CHECK(formula::render<formula::Dialect::LaTeX>(scaled) == "(\\sum {m_r}_{i}) \\cdot m_t");
+    constexpr auto passing =
+        formula::constant<formula::unit::Percent>(rat(100)) - fromLast / formula::var<series_render::Total>;
+    CHECK(formula::render(passing) == "100 % - cumulative(m_r(i), from last) / m_t");
+    CHECK(formula::render<formula::Dialect::Markdown>(passing) == "100 % - cumulative(`m_r(i)`, from last) / `m_t`");
+    // Under a jurisdiction's symbol, in every dialect.
+    constexpr auto everyone = formula::vocabulary(formula::renames<Retained>("x_m"));
+    CHECK(formula::render(formula::sum(fromFirst), everyone) == "sum(cumulative(x_m(i), from first))");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::sum(fromFirst), everyone)
+          == "\\sum \\operatorname{cumulative}_{\\text{from first}}({x_m}_{i})");
+}
+
+namespace
+{
+namespace series_rounding_render
+{
+    struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", formula::unit::Percent>
+    {
+    };
+    struct Opening: formula::Quantity<Opening, "d", "screen opening", formula::unit::Millimetre>
+    {
+    };
+
+    constexpr formula::PlacesTable<5> fivePlaces { formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 1 },
+                                                   formula::DecimalPlaces { 1 } };
+    constexpr formula::PlacesTable<3> threePlaces { formula::DecimalPlaces { 0 },
+                                                    formula::DecimalPlaces { -1 },
+                                                    formula::DecimalPlaces { 2 } };
+} // namespace series_rounding_render
+} // namespace
+
+TEST_CASE("a per-element rounding renders every granularity, in order, and no mode", "[series][render]")
+{
+    using series_rounding_render::Passing;
+    constexpr auto passing =
+        formula::rounded_elementwise<formula::unit::Percent,
+                                     series_rounding_render::fivePlaces,
+                                     formula::RoundingMode::HalfAwayFromZero>(formula::series<Passing, 5>);
+    // The granularities in the series' order, so a table read backwards
+    // (1/1/0/0/0) reads differently; the operand carries the marker.
+    CHECK(formula::render(passing) == "round(p(i), to 0/0/0/1/1 dp of %)");
+    CHECK(formula::render<formula::Dialect::Markdown>(passing) == "round(`p(i)`, to 0/0/0/1/1 dp of %)");
+    // A formula states a granularity, not a tie rule: the mode appears in the
+    // trace only, as for RoundNode. The exact strings above already hold no
+    // mode and no bracket.
+
+    // LaTeX, in millimetres -- percent's `%` is a LaTeX comment character, a
+    // limit every rounding node shares (`unit.hpp`) -- with a negative place.
+    constexpr auto openings =
+        formula::rounded_elementwise<formula::unit::Millimetre,
+                                     series_rounding_render::threePlaces,
+                                     formula::RoundingMode::HalfEven>(formula::series<series_rounding_render::Opening, 3>);
+    CHECK(formula::render(openings) == "round(d(i), to 0/-1/2 dp of mm)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(openings) == "\\operatorname{round}_{0/-1/2\\,\\mathrm{mm}}({d}_{i})");
+    // In a vocabulary, and nested in a product without brackets: the call
+    // groups itself.
+    constexpr auto everyone = formula::vocabulary(formula::renames<Passing>("P"));
+    CHECK(formula::render(passing * rat(2), everyone) == "round(P(i), to 0/0/0/1/1 dp of %) * 2");
+}
+
+TEST_CASE("a documented or replaced sum brackets in LaTeX as the bare one does", "[series][render]")
+{
+    using series_render::Retained;
+    using series_render::Total;
+    constexpr auto s = formula::series<Retained, 5>;
+    constexpr formula::Citation cited { .reference = "Example Standard 1:2020", .section = "4.2" };
+    // A citation is transparent to bracketing, as it is for a constant: the
+    // bracket that stops `\sum x_i \cdot m_t` reading as a sum of products
+    // survives the wrapper.
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::documented(formula::sum(s), cited) * formula::var<Total>)
+          == "(\\sum {m_r}_{i}) \\cdot m_t");
+    CHECK(formula::render(formula::documented(formula::sum(s), cited) * formula::var<Total>) == "sum(m_r(i)) * m_t");
+
+    // A jurisdiction's replacement: the variant replaced by a sum, then
+    // multiplied, brackets as the sum does.
+    struct Whole
+    {
+    };
+    constexpr auto m = formula::method(formula::variants(formula::variant<Whole>(formula::sum(s) / formula::var<Total>)),
+                                       formula::rounding_rule<formula::unit::Percent,
+                                                              formula::DecimalPlaces { 1 },
+                                                              formula::RoundingMode::HalfAwayFromZero>(),
+                                       formula::constraints());
+    constexpr auto replaced =
+        formula::apply(formula::overlay(formula::replace_variant<Whole>(
+                           formula::sum(s / formula::var<Total>), formula::Citation { .reference = "Example Standard 4" })),
+                       m);
+    constexpr auto replacement = std::get<0>(replaced.variantSet.cases).expression;
+    CHECK(formula::render<formula::Dialect::LaTeX>(replacement * rat(2)) == "(\\sum \\frac{{m_r}_{i}}{m_t}) \\cdot 2");
 }

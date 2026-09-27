@@ -11,15 +11,18 @@
 /// when you want a documentation page, alongside `render.hpp` for the text
 /// itself.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/series.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +31,18 @@
 
 namespace formula
 {
+
+/// Whether a symbol-table row is read as one value or as a series of them.
+enum class ValueShape : std::uint8_t
+{
+    /// One value: `var<Q>`.
+    Single,
+    /// A series of `SymbolEntry::length` values: `series<Q, N>`.
+    Series,
+    /// Raw observations, at most `SymbolEntry::length` of them:
+    /// `observations<Q, Capacity>`.
+    Observations,
+};
 
 /// One row of a formula's symbol table: how a variable is written, what it
 /// means, and the unit its values are expressed in.
@@ -86,6 +101,16 @@ struct SymbolEntry
     /// specimen's value is read as well, and one saying only "read" would hide
     /// the fixed value. It says both, in whichever order the two were met.
     bool alsoReadAsInput {};
+
+    /// Whether the formula reads this quantity as one value or as a series.
+    /// The rendered formula already marks a series (`x_m(i)`, see
+    /// `detail::series_marker`); this row says it again, for a reader who
+    /// starts at the table.
+    ValueShape shape = ValueShape::Single;
+
+    /// How many values the formula reads for this row: the series' length
+    /// `N`, the most observations there can be, or one for a single value.
+    std::size_t length = 1;
 
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
@@ -149,6 +174,20 @@ namespace detail
     /// a difference this library has already been bitten by once elsewhere.
     template <typename Q>
     inline bool quantityIdentity = false;
+
+    /// A distinct address per quantity @p Q read as a series of @p N, for
+    /// `quantityIdentity`'s reason and in the same writable form. Distinct from
+    /// `quantityIdentity<Q>` and from every other length, so that the symbol
+    /// table has one row per quantity, shape and length: `var<Q>` and
+    /// `series<Q, 5>` in one formula are two rows with one symbol.
+    template <typename Q, std::size_t N>
+    inline bool seriesIdentity = false;
+
+    /// A distinct address per quantity @p Q read as observations of at most
+    /// @p Capacity, for `seriesIdentity`'s reason: a series of `Q` and
+    /// observations of `Q` in one formula are two rows.
+    template <typename Q, std::size_t Capacity>
+    inline bool observationsIdentity = false;
 
     /// The walk's own state: the `Documentation` being assembled, plus which
     /// quantities have already contributed a row, tracked in parallel because
@@ -272,6 +311,54 @@ namespace detail
 
     template <Vocabulary V, Predicate P>
     void collect(Walk<V>& walk, Constraint<P> const& node);
+
+    template <Vocabulary V, Described Q, std::size_t N>
+    void collect(Walk<V>& walk, SeriesVarNode<Q, N> const& node);
+
+    template <Vocabulary V, Unit U, std::size_t N>
+    void collect(Walk<V>& walk, SeriesConstantNode<U, N> const& node);
+
+    template <Vocabulary V, UnaryOperator Op, SeriesNode Operand>
+    void collect(Walk<V>& walk, ElementwiseUnaryNode<Op, Operand> const& node);
+
+    template <Vocabulary V, BinaryOperator Op, typename Left, typename Right>
+    void collect(Walk<V>& walk, ElementwiseBinaryNode<Op, Left, Right> const& node);
+
+    template <Vocabulary V, CumulativeDirection D, SeriesNode S>
+    void collect(Walk<V>& walk, CumulativeNode<D, S> const& node);
+
+    template <Vocabulary V, SeriesNode S>
+    void collect(Walk<V>& walk, SumNode<S> const& node);
+
+    template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node);
+
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>& walk, RefusedSeries<Dim> const& node);
+
+    template <Vocabulary V, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    void collect(Walk<V>& walk, SnapNode<KeyUnit, Permitted, Tie, Operand> const& node);
+
+    template <Vocabulary V, Unit U, BreakpointTable Points>
+    void collect(Walk<V>& walk, DomainNode<U, Points> const& node);
+
+    template <Vocabulary V, Described Q, std::size_t Capacity>
+    void collect(Walk<V>& walk, ObservationsVarNode<Q, Capacity> const& node);
+
+    template <Vocabulary V>
+    void collect(Walk<V>& walk, RefusedObservations const& node);
+
+    template <Vocabulary V, Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    void collect(Walk<V>& walk, BinnedNode<KeyUnit, Classes, Obs> const& node);
+
+    template <Vocabulary V, SeriesNode DomainSeries, SeriesNode ValueSeries>
+    void collect(Walk<V>& walk, CurveNode<DomainSeries, ValueSeries> const& node);
+
+    template <Vocabulary V, Monotone M, CurveExpression A, CurveExpression B>
+    void collect(Walk<V>& walk, SpliceNode<M, A, B> const& node);
+
+    template <Vocabulary V, CurveExpression C, Node At>
+    void collect(Walk<V>& walk, InterpolateAlongNode<C, At> const& node);
 
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
@@ -546,6 +633,149 @@ namespace detail
             walk.documentation.citations.push_back(node.citation);
         collect(walk, node.predicate);
     }
+
+    /// A series variable contributes one row, marked as a series of @p N --
+    /// unless the same quantity has already contributed a series row of that
+    /// length. Deduplicated on quantity, shape and length (`seriesIdentity`),
+    /// so a single value of the same quantity, or a series of it over another
+    /// length, is a row of its own.
+    template <Vocabulary V, Described Q, std::size_t N>
+    void collect(Walk<V>& walk, SeriesVarNode<Q, N> const&)
+    {
+        void const* const identity = &seriesIdentity<Q, N>;
+        for (void const* const seen: walk.seenQuantities)
+            if (seen == identity)
+                return;
+        walk.seenQuantities.push_back(identity);
+        walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                                           .description = Describe<Q>::description,
+                                                           .unit = Describe<Q>::unit,
+                                                           .shape = ValueShape::Series,
+                                                           .length = N });
+    }
+
+    /// Raw observations contribute one row, marked as observations of at
+    /// most @p Capacity -- unless the same quantity has already contributed
+    /// such a row of that capacity. Deduplicated as a series variable is,
+    /// on quantity, shape and capacity (`observationsIdentity`).
+    template <Vocabulary V, Described Q, std::size_t Capacity>
+    void collect(Walk<V>& walk, ObservationsVarNode<Q, Capacity> const&)
+    {
+        void const* const identity = &observationsIdentity<Q, Capacity>;
+        for (void const* const seen: walk.seenQuantities)
+            if (seen == identity)
+                return;
+        walk.seenQuantities.push_back(identity);
+        walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                                           .description = Describe<Q>::description,
+                                                           .unit = Describe<Q>::unit,
+                                                           .shape = ValueShape::Observations,
+                                                           .length = Capacity });
+    }
+
+    /// Observations refused already name nothing.
+    template <Vocabulary V>
+    void collect(Walk<V>&, RefusedObservations const&)
+    {
+    }
+
+    /// A binning names nothing of its own; its observations do. Its classes
+    /// are `render()`'s to print, as a lookup's bands are.
+    template <Vocabulary V, Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    void collect(Walk<V>& walk, BinnedNode<KeyUnit, Classes, Obs> const& node)
+    {
+        collect(walk, node.source);
+    }
+
+    /// A per-element constant names no variable, as a scalar constant names
+    /// none.
+    template <Vocabulary V, Unit U, std::size_t N>
+    void collect(Walk<V>&, SeriesConstantNode<U, N> const&)
+    {
+    }
+
+    template <Vocabulary V, UnaryOperator Op, SeriesNode Operand>
+    void collect(Walk<V>& walk, ElementwiseUnaryNode<Op, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// Left before right, as for a scalar `BinaryNode`, so the table reads in
+    /// the formula's order.
+    template <Vocabulary V, BinaryOperator Op, typename Left, typename Right>
+    void collect(Walk<V>& walk, ElementwiseBinaryNode<Op, Left, Right> const& node)
+    {
+        collect(walk, node.lhs);
+        collect(walk, node.rhs);
+    }
+
+    /// A running total names nothing of its own; its series does.
+    template <Vocabulary V, CumulativeDirection D, SeriesNode S>
+    void collect(Walk<V>& walk, CumulativeNode<D, S> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A sum is one value, but what it reads is a series, and the row says
+    /// so: the series variable beneath it contributes its series row.
+    template <Vocabulary V, SeriesNode S>
+    void collect(Walk<V>& walk, SumNode<S> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A refused series names nothing: it only keeps `document` from adding a
+    /// second error to the refusal that produced it.
+    template <Vocabulary V, Dimension Dim>
+    void collect(Walk<V>&, RefusedSeries<Dim> const&)
+    {
+    }
+
+    /// A snap names nothing of its own; its operand does. Its set is
+    /// `render()`'s to print, as a lookup's rows are.
+    template <Vocabulary V, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
+    void collect(Walk<V>& walk, SnapNode<KeyUnit, Permitted, Tie, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A per-element rounding names nothing of its own; its series does.
+    template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
+    void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A declared domain names nothing: its points are `render()`'s to print.
+    template <Vocabulary V, Unit U, BreakpointTable Points>
+    void collect(Walk<V>&, DomainNode<U, Points> const&)
+    {
+    }
+
+    /// A curve names nothing of its own; its two series do, the domain first.
+    template <Vocabulary V, SeriesNode DomainSeries, SeriesNode ValueSeries>
+    void collect(Walk<V>& walk, CurveNode<DomainSeries, ValueSeries> const& node)
+    {
+        collect(walk, node.domainSeries);
+        collect(walk, node.valueSeries);
+    }
+
+    /// A splice names nothing of its own; its curves do, in the order
+    /// written.
+    template <Vocabulary V, Monotone M, CurveExpression A, CurveExpression B>
+    void collect(Walk<V>& walk, SpliceNode<M, A, B> const& node)
+    {
+        collect(walk, node.first);
+        collect(walk, node.second);
+    }
+
+    /// An interpolation names nothing of its own; its curve and its point do.
+    template <Vocabulary V, CurveExpression C, Node At>
+    void collect(Walk<V>& walk, InterpolateAlongNode<C, At> const& node)
+    {
+        collect(walk, node.along);
+        collect(walk, node.at);
+    }
 } // namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
@@ -569,6 +799,52 @@ template <Dialect D = Dialect::Plain, Node N, Vocabulary V>
 /// Documents @p node in the default vocabulary, which renames nothing.
 template <Dialect D = Dialect::Plain, Node N>
 [[nodiscard]] Documentation document(N const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
+
+/// Documents the series @p node: renders it in dialect @p D, each series
+/// variable marked, and walks it for the symbol table, whose rows say which
+/// quantities are read as a series and how long (`SymbolEntry::shape`,
+/// `SymbolEntry::length`). A series is not a `Node` (`expression.hpp`), so it
+/// needs this overload rather than the one above.
+template <Dialect D = Dialect::Plain, SeriesNode S, Vocabulary V>
+[[nodiscard]] Documentation document(S const& node, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents the series @p node in the default vocabulary, which renames
+/// nothing.
+template <Dialect D = Dialect::Plain, SeriesNode S>
+[[nodiscard]] Documentation document(S const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
+
+/// Documents the curve @p node: renders it in dialect @p D, each series marked,
+/// and walks both halves for the symbol table. A curve is neither a `Node`
+/// nor a series (`curve.hpp`), so it needs this overload.
+template <Dialect D = Dialect::Plain, CurveExpression C, Vocabulary V>
+[[nodiscard]] Documentation document(C const& node, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    detail::collect(walk, node);
+    return std::move(walk.documentation);
+}
+
+/// Documents the curve @p node in the default vocabulary, which renames
+/// nothing.
+template <Dialect D = Dialect::Plain, CurveExpression C>
+[[nodiscard]] Documentation document(C const& node)
 {
     return document<D>(node, DefaultVocabulary {});
 }
@@ -608,6 +884,36 @@ template <Dialect D = Dialect::Plain, Predicate P, Vocabulary V>
 /// Documents @p node in the default vocabulary, which renames nothing.
 template <Dialect D = Dialect::Plain, Predicate P>
 [[nodiscard]] Documentation document(Constraint<P> const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
+
+/// Documents a conformity check: its rendering in dialect @p D, its citation
+/// when it has one -- the author's own, as a constraint's is -- and the
+/// symbol table of its subject.
+///
+/// The page states the check, never the numbers' origin: an envelope's
+/// limits are master data (`conformity.hpp`), and the page shows them as
+/// the check was built with them.
+template <Dialect D = Dialect::Plain, Unit U, SeriesNode S, Vocabulary V>
+[[nodiscard]] Documentation document(Conformity<U, S> const& conformityCheck, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(conformityCheck, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    // An uncited check pushes nothing, for the reason the constraint overload
+    // of `collect` gives.
+    if (!(conformityCheck.citation == Citation {}))
+        walk.documentation.citations.push_back(conformityCheck.citation);
+    detail::collect(walk, conformityCheck.subject);
+    return std::move(walk.documentation);
+}
+
+/// Documents a conformity check in the default vocabulary, which renames
+/// nothing.
+template <Dialect D = Dialect::Plain, Unit U, SeriesNode S>
+[[nodiscard]] Documentation document(Conformity<U, S> const& node)
 {
     return document<D>(node, DefaultVocabulary {});
 }

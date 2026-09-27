@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this interpolating lookup table's breakpoints do not strictly ascend
+// EXPECT: formula: this breakpoint table's breakpoints do not strictly ascend
+// REJECT: must be initialized by a constant expression
 //
 // The same key typed on two rows. The table then claims two different values at
 // one key, and the segment between those two rows has zero width for the

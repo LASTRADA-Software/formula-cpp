@@ -64,6 +64,12 @@ add_executable(formula-cpp-tests
     vocabulary_tests.cpp
     join_tests.cpp
     method_cross_tu_b.cpp
+    series_tests.cpp
+    series_cross_tu_b.cpp
+    conformity_tests.cpp
+    snap_tests.cpp
+    binning_tests.cpp
+    curve_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -266,6 +272,331 @@ formula_add_negative_test(environment_missing_quantity
 formula_add_negative_test(evaluate_result_dimension_mismatch
     "does not measure the dimension this expression computes")
 
+# Series (`series.hpp`, `environment.hpp`). Each refusal is gated so that one
+# mistake draws one message, and each REJECT names the message that would be
+# the second, or the false, one.
+#
+# A series read as a single value: the environment does hold the quantity, so
+# "provides no value" would be false.
+formula_add_negative_test(environment_series_read_as_single
+    "this environment holds a series for this quantity, not a single value"
+    REJECT "provides no value for this quantity" "cannot convert" "no viable conversion" "could not convert")
+# Pins get()'s `if constexpr` gate, as `method_variants_agreement_gated`
+# pins its own: without it the series entry reaches get()'s scalar return
+# and the compiler adds a conversion error to the library's message -- cl
+# "cannot convert", clang "no viable conversion", g++ "could not convert",
+# measured on cl 19.51, clang-cl 22.1.3, clang++ 20.1.8, g++ 13.3 and
+# g++ 14.2 by the task 2 review. None of the three occurs with the gate.
+
+# A single value read as a series: neither a missing quantity nor a length.
+formula_add_negative_test(environment_single_read_as_series
+    "this environment holds a single value for this quantity, not a series"
+    REJECT "provides no value for this quantity" "holds a series of a different length")
+
+# Four supplied, five read. The lengths print as RequireSeriesLength's
+# template arguments Supplied and Read; their exact spelling differs between
+# compilers, so the case matches the sentence.
+formula_add_negative_test(environment_series_length_mismatch
+    "this environment holds a series of a different length for this quantity than the one read"
+    REJECT "holds a single value for this quantity")
+
+# A braced list of three for a series of five, which std::array would pad
+# with absent elements.
+formula_add_negative_test(measured_series_short
+    "this series was given a different number of elements than its length")
+
+# A series where one value is asked for: checked_evaluate, evaluate and
+# variant<Tag>. The REJECTs pin that nothing past the refusal reads the
+# environment, and that variants(...) and method(...) around a refused
+# variant find nothing further to refuse.
+formula_add_negative_test(evaluate_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series"
+    REJECT "holds a series for this quantity")
+formula_add_negative_test(evaluate_throwing_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series"
+    REJECT "holds a series for this quantity")
+formula_add_negative_test(method_variant_holds_series
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series"
+    REJECT "is not a variant of a method" "RequireVariantsAgree" "RequireRoundingRuleMeasuresVariants")
+
+# A series result quantity is held to the expression's dimension, with
+# checked_evaluate's own guard.
+formula_add_negative_test(evaluate_series_result_dimension_mismatch
+    "does not measure the dimension this expression computes"
+    REJECT "~expected")
+# The REJECT pins D5's `if constexpr` gate in checked_evaluate_series:
+# without it g++ 13.3 and 14.2 follow the refusal with errors from the
+# evaluation below, among them "no matching function for call to
+# ...~expected()" (3 more errors at 793dda5, 6 more once the series hooks
+# arrived). cl, clang-cl and clang++ give one message either way, so only
+# the gcc legs can see this REJECT fire.
+
+# A braced list std::array would pad with absent elements: every spelling
+# that could reach a std::array parameter, refused because the constructor
+# taking one is deduced. In the compiler's words, which differ by compiler
+# and share only the type's name -- see each case's comment. The one route
+# left open, a std::array the caller built short, is documented on the
+# constructor.
+formula_add_negative_test(measured_series_padded_triple_brace "MeasuredSeries<")
+formula_add_negative_test(measured_series_padded_double_brace "MeasuredSeries<")
+formula_add_negative_test(measured_series_padded_empty "MeasuredSeries<")
+formula_add_negative_test(entered_series_padded "MeasuredSeries<")
+formula_add_negative_test(entered_series_aggregate_padded "MeasuredSeries<")
+
+# Task 2's D3: an entered value is read in the shape the result asks for,
+# and refused in the other shape or another length, never computed over.
+formula_add_negative_test(series_evaluated_over_entered_single
+    "this environment holds a single value for this quantity, not a series"
+    REJECT "provides no value for this quantity" "holds a series of a different length")
+formula_add_negative_test(single_evaluated_over_entered_series
+    "this environment holds a series for this quantity, not a single value"
+    REJECT "provides no value for this quantity")
+formula_add_negative_test(entered_series_length_mismatch
+    "this environment holds a series of a different length for this quantity than the one read"
+    REJECT "holds a single value for this quantity")
+
+# get_series for a quantity the environment lacks: RequireProvided, once.
+formula_add_negative_test(environment_series_missing_quantity
+    "provides no value for this quantity"
+    REJECT "holds a single value for this quantity" "holds a series of a different length")
+
+# Elementwise arithmetic (task 4). A length mismatch refuses once and gates
+# the dimension check off, so the REJECT pins that the additive message stays
+# silent; a dimension mismatch between series of one length is the scalar
+# operators' own refusal, and the REJECT pins that no length is blamed.
+formula_add_negative_test(series_elementwise_length_mismatch
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different")
+formula_add_negative_test(series_elementwise_dimension_mismatch
+    "the two sides of this addition or subtraction measure different"
+    REJECT "the two series combined here have different lengths")
+# Both wrong at once: the length is refused, and the dimension check gated
+# behind it stays silent. Removing the gate makes this REJECT fire.
+formula_add_negative_test(series_elementwise_length_and_dimension_mismatch
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different")
+# The mistake FIRST in a chain: the refused node marks itself refused, and
+# the node over it asks nothing. REJECT cannot refuse a second copy of the
+# EXPECTed text, so the last REJECT names the second message's own operand
+# instead: on g++ and clang++ it names the refused node as the guard's left
+# template argument, which the first message never does. cl 19.51 gave one
+# message before the flag too. Counted by hand: one message on cl 19.51,
+# g++-14 and clang++-20; two on g++ and clang++ without the flag.
+formula_add_negative_test(series_elementwise_short_first
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::ElementwiseBinaryNode")
+formula_add_negative_test(series_elementwise_short_first_product
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::ElementwiseBinaryNode")
+formula_add_negative_test(series_elementwise_wrong_dimension_first
+    "the two sides of this addition or subtraction measure different"
+    REJECT "the two series combined here have different lengths"
+    "RequireAddendsAgree<formula::ElementwiseBinaryNode")
+# The refusal passed upward along each other path, the second REJECT naming
+# what only a second message prints on g++ and clang++: a refused right-hand
+# operand, a negation, a running total, and a per-element rounding over a
+# refused operand (task 6 review, L1; each deletion-checked on both).
+formula_add_negative_test(series_elementwise_short_on_the_right
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::SeriesVarNode<TotalMass, 5>")
+formula_add_negative_test(series_elementwise_short_under_negation
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::ElementwiseUnaryNode")
+formula_add_negative_test(series_elementwise_short_under_cumulative
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequireSeriesLengthsAgree<formula::CumulativeNode")
+formula_add_negative_test(series_round_over_refused_operand
+    "the two series combined here have different lengths"
+    REJECT "the two sides of this addition or subtraction measure different"
+    "RequirePlacesPerElement<")
+
+# A per-element constant given fewer values than its stated length, through
+# the factory and through aggregate initialisation of the node itself.
+formula_add_negative_test(series_constant_short
+    "this series constant was given a different number of elements than its length")
+formula_add_negative_test(series_constant_short_no_factory
+    "this series constant was given a different number of elements than its length")
+formula_add_negative_test(series_constant_zero_length
+    "this series constant has no elements"
+    REJECT "no matching")
+formula_add_negative_test(series_zero_length
+    "this series has no elements"
+    REJECT "no matching")
+
+# Task 7: an envelope of the wrong length, through the factory and through
+# aggregate initialisation of the check, and limits in a unit of the wrong
+# dimension.
+formula_add_negative_test(conformity_envelope_short
+    "this envelope was given a different number of rows than its series has elements"
+    REJECT "no matching")
+formula_add_negative_test(conformity_envelope_short_no_factory
+    "this envelope was given a different number of rows than its series has elements"
+    REJECT "no matching")
+formula_add_negative_test(conformity_unit_dimension_mismatch
+    "this conformity check states its limits in a unit that does not measure the dimension of its subject"
+    REJECT "this envelope was given a different number of rows")
+# Task 7 review, L3: a single value as the subject, and an envelope of {},
+# each refused once in the library's words.
+formula_add_negative_test(conformity_single_value_subject
+    "a conformity check judges each element of a series against its own row, and this subject is a single value"
+    REJECT "no matching" "this conformity check states its limits in a unit that does not measure")
+formula_add_negative_test(conformity_empty_envelope
+    "this envelope was given a different number of rows than its series has elements"
+    REJECT "no matching" "could not convert")
+
+# Task 11 review H1: conformity compares, so it is Rational-only, as the
+# snap, curve and binning are.
+formula_add_negative_test(conformity_rep_not_rational
+    "formula: a conformity check can only be evaluated with Rep = Rational")
+
+# Task 8: an empty permitted set refuses once, with the breakpoint validation
+# and the key check gated off; a descending set is the shipped breakpoint
+# validation's refusal, with the key check gated off; a key of the wrong
+# dimension.
+formula_add_negative_test(snap_empty_permitted_set
+    "this snap's permitted set is empty"
+    REJECT "RequireBreakpoint" "RequireValidBreakpointTable" "key unit does not measure" "no matching")
+formula_add_negative_test(snap_descending_permitted_set
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "key unit does not measure" "permitted set is empty"
+           "must be initialized by a constant expression")
+formula_add_negative_test(snap_key_dimension_mismatch
+    "this snap's key unit does not measure the dimension of the expression it snaps"
+    REJECT "breakpoints do not strictly ascend" "permitted set is empty")
+# Task 8 review, L5: a snap evaluated in anything but Rational.
+formula_add_negative_test(snap_rep_not_rational
+    "formula: a snap can only be evaluated with Rep = Rational")
+
+# Task 9: curves. Each mistake refused once; a curve, splice or interpolation
+# over a refused operand asks nothing more.
+formula_add_negative_test(curve_length_mismatch
+    "formula: this curve pairs a domain and values of different lengths"
+    REJECT "this curve is read at a point that does not measure")
+formula_add_negative_test(splice_domain_dimension_mismatch
+    "formula: the two curves spliced here have domains of different dimensions"
+    REJECT "have values of different dimensions")
+formula_add_negative_test(splice_value_dimension_mismatch
+    "formula: the two curves spliced here have values of different dimensions"
+    REJECT "have domains of different dimensions")
+formula_add_negative_test(interpolate_at_dimension_mismatch
+    "formula: this curve is read at a point that does not measure the dimension of its domain")
+formula_add_negative_test(domain_empty
+    "formula: this domain declares no points"
+    REJECT "this curve pairs a domain and values of different lengths")
+formula_add_negative_test(domain_descending
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression" "this curve pairs a domain and values of different lengths")
+formula_add_negative_test(curve_rep_not_rational
+    "formula: a curve can only be evaluated with Rep = Rational")
+# Task 9 concern 5, ruled: a single value given to curve() or splice() is
+# refused once in the library's words, as sum and cumulative refuse one.
+formula_add_negative_test(curve_of_single_value
+    "formula: a curve pairs a series of points with a series of values, and this is a single value"
+    REJECT "no matching" "this curve pairs a domain and values of different lengths"
+           "this curve is read at a point that does not measure")
+formula_add_negative_test(curve_of_single_values
+    "formula: a curve pairs a series of points with a series of values, and this is a single value"
+    REJECT "no matching")
+formula_add_negative_test(splice_of_single_value
+    "formula: splice joins two curves, and this is a single value, not a curve"
+    REJECT "no matching" "have domains of different dimensions" "have values of different dimensions")
+
+# Task 10: binning. More observations than the capacity; binned given a
+# series; a key unit of another dimension; classes with a gap (the shipped
+# band validation) and with none; a Rep other than Rational; and the four
+# reads of raw observations in the wrong shape or capacity, each refused once
+# in words true of it.
+formula_add_negative_test(observations_over_capacity
+    "more observations were listed than this set's capacity holds")
+formula_add_negative_test(binned_series_not_observations
+    "binned counts raw observations into classes, and this is not a set of observations"
+    REJECT "no matching" "this binning's key unit" "not raw observations" "must be initialized by a constant expression")
+formula_add_negative_test(binned_key_dimension_mismatch
+    "this binning's key unit does not measure the dimension of the observations it bins"
+    REJECT "gap or overlap" "declares no classes")
+formula_add_negative_test(binned_class_gap
+    "this band table has a gap or overlap between two adjacent bands"
+    REJECT "this binning's key unit" "declares no classes")
+formula_add_negative_test(binned_no_classes
+    "this binning declares no classes"
+    REJECT "this binning's key unit")
+formula_add_negative_test(binned_rep_not_rational
+    "a binning can only be evaluated with Rep = Rational")
+formula_add_negative_test(observations_read_as_single
+    "this environment holds raw observations for this quantity, which are neither a single value nor a series"
+    REJECT "provides no value for this quantity" "holds a series for this quantity" "cannot convert" "no viable conversion" "could not convert")
+formula_add_negative_test(observations_read_as_series
+    "this environment holds raw observations for this quantity, which are neither a single value nor a series"
+    REJECT "provides no value for this quantity" "holds a single value for this quantity" "cannot convert" "no viable conversion" "could not convert")
+formula_add_negative_test(series_read_as_observations
+    "this environment holds a single value or a series for this quantity, not raw observations"
+    REJECT "provides no value for this quantity" "different capacity" "cannot convert" "no viable conversion" "could not convert")
+formula_add_negative_test(observations_capacity_mismatch
+    "this environment holds observations of a different capacity for this quantity than the one read"
+    REJECT "provides no value for this quantity" "not raw observations" "cannot convert" "no viable conversion" "could not convert")
+
+# Task 5: sum and cumulative given a single value, refused in this library's
+# words by an overload that takes a Node for no other purpose. The REJECT
+# pins that the refusal is not the compiler's own "no matching function".
+formula_add_negative_test(series_sum_of_single_value
+    "sum adds up the elements of a series, and this is a single value, not a series"
+    REJECT "no matching")
+formula_add_negative_test(series_cumulative_of_single_value
+    "cumulative runs a total along a series, and this is a single value, not a series"
+    REJECT "no matching" "this expression is a series, not a single value")
+# The refusing cumulative returns a series already refused, so a sum over
+# it, and checked_evaluate_series around it, add nothing (task 5 review, H1
+# and M1); on cl the second case used to lose the library's words entirely.
+formula_add_negative_test(series_sum_of_cumulative_of_single_value
+    "cumulative runs a total along a series, and this is a single value, not a series"
+    REJECT "sum adds up the elements of a series" "no matching")
+formula_add_negative_test(series_cumulative_of_single_value_as_series
+    "cumulative runs a total along a series, and this is a single value, not a series"
+    REJECT "no matching" "this expression is a series, not a single value")
+# A per-element rounding given a single value, likewise (final review, M1).
+formula_add_negative_test(series_round_of_single_value
+    "rounded_elementwise rounds each element of a series, and this is a single value, not a series"
+    REJECT "no matching" "this expression is a series, not a single value")
+
+# Task 6: a per-element rounding with a table of the wrong length, which
+# gates the unit check off, and one with a unit of the wrong dimension.
+formula_add_negative_test(series_round_places_count_mismatch
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
+    REJECT "this rounding node names a unit that does not measure the dimension of the expression it rounds")
+formula_add_negative_test(series_round_unit_dimension_mismatch
+    "this rounding node names a unit that does not measure the dimension of the expression it rounds"
+    REJECT "are not a PlacesTable<N> of one DecimalPlaces per element of its series")
+# Past a refused table nothing indexes or loops over it: evaluated in a
+# constant expression, rendered, documented and traced, a table of the wrong
+# count, and a lone DecimalPlaces, each draw the one message; a table of the
+# right count but the wrong type is told the truth (task 6 review, L2).
+formula_add_negative_test(series_round_places_count_mismatch_evaluated
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
+    REJECT "outside the bounds" "must be initialized by a constant expression" "no match" "not a range" "subscript"
+    "was not declared")
+formula_add_negative_test(series_round_places_not_a_table
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
+    REJECT "outside the bounds" "must be initialized by a constant expression" "no match" "not a range" "subscript"
+    "was not declared")
+formula_add_negative_test(series_round_places_int_array
+    "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
+    REJECT "different number")
+
+# A substitution for a quantity the method reads as a series: refused as
+# such, and the "nobody reads it" refusal gated off, since a variant does
+# read it.
+formula_add_negative_test(overlay_constant_on_series_quantity
+    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    REJECT "overrides a quantity that no variant or constraint of the method uses")
+formula_add_negative_test(overlay_derived_on_series_quantity
+    "formula: this overlay derives a quantity the method reads as a series; one definition cannot stand for a series"
+    REJECT "derives a quantity that no variant or constraint of the method uses")
+
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
 
@@ -291,19 +622,24 @@ formula_add_negative_test(escape_unit_dimension_mismatch
 formula_add_negative_test(render_trace_no_step_limit "StepLimit")
 
 formula_add_negative_test(band_gap
-    "formula: this band table has a gap or overlap between two adjacent bands")
+    "formula: this band table has a gap or overlap between two adjacent bands"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(band_overlap
-    "formula: this band table has a gap or overlap between two adjacent bands")
+    "formula: this band table has a gap or overlap between two adjacent bands"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(band_inverted
-    "formula: this band is not well-formed")
+    "formula: this band is not well-formed"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(band_zero_width
-    "formula: this band is not well-formed")
+    "formula: this band is not well-formed"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(lookup_band_gap
-    "formula: this band table has a gap or overlap between two adjacent bands")
+    "formula: this band table has a gap or overlap between two adjacent bands"
+    REJECT "must be initialized by a constant expression")
 
 # The corrections-count guard is shared by every lookup table in lookup.hpp,
 # so its message names a table's "rows" rather than one kind's own word for
@@ -373,20 +709,23 @@ formula_add_negative_test(interpolating_lookup_key_dimension_mismatch
 #     which kills a check confined to the first pair, to the last pair, or to
 #     neighbours -- three mutations on one table;
 #   - _two_rows is the smallest table that can carry a duplicate at all, and
-#     is what fails when the underflow guard in `detail::key_table_is_valid`
-#     is widened from `size() < 2` to `< 3`;
+#     is what fails when the pair filter in `detail::KeyPairCheck` skips a
+#     table of two rows;
 #   - _no_factory declares the node directly, which is the ONLY case that
 #     tells a class-body `static_assert` from one in the factory -- the
 #     factory returns the node by value, so every other case completes the
 #     class either way.
 formula_add_negative_test(exact_lookup_duplicate_key
-    "formula: this exact lookup table declares the same key twice")
+    "formula: this exact lookup table declares the same key twice"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(exact_lookup_duplicate_key_two_rows
-    "formula: this exact lookup table declares the same key twice")
+    "formula: this exact lookup table declares the same key twice"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(exact_lookup_duplicate_key_no_factory
-    "formula: this exact lookup table declares the same key twice")
+    "formula: this exact lookup table declares the same key twice"
+    REJECT "must be initialized by a constant expression")
 
 # The scoped-enumeration requirement, at each of the three public entry points
 # that takes a key: the node, the runtime validator and the predicate both are
@@ -517,20 +856,23 @@ formula_add_negative_test(interpolating_lookup_rep_not_rational
 # Each puts its defect in the MIDDLE pair of four rows, which kills a sweep
 # confined to the first pair or to the last.
 formula_add_negative_test(interpolating_lookup_duplicate_breakpoint
-    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(interpolating_lookup_descending_breakpoint
-    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression")
 
 formula_add_negative_test(interpolating_lookup_descending_breakpoint_no_factory
-    "formula: this interpolating lookup table's breakpoints do not strictly ascend")
+    "formula: this breakpoint table's breakpoints do not strictly ascend"
+    REJECT "must be initialized by a constant expression")
 
 # The other rule: a row whose key is not a rational number at all. Separate from
 # the ordering rule because a one-row table has no pair for the ordering sweep
 # to look at, and because "not ascending" would be a true statement about the
 # wrong mistake.
 formula_add_negative_test(interpolating_lookup_malformed_breakpoint
-    "formula: this interpolating lookup table has a row whose key is not a rational number")
+    "formula: this breakpoint table -- an interpolating lookup's rows, a snap's permitted set, or a curve's domain -- has a breakpoint whose key is not a rational number")
 
 # A method reports one quantity, so its variants must agree on the dimension
 # they report -- they are free to disagree on everything else, and by design

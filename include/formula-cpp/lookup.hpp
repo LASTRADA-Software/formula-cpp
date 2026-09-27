@@ -1039,43 +1039,27 @@ struct RequireKeysDistinct
 
 namespace detail
 {
-    /// Expands to one `RequireKeysDistinct<Keys[Index], Keys[j]>::value` for
-    /// every `j` strictly after `Index`, `&&`-folded together. Every operand
-    /// of a fold expression is instantiated to form the expression,
-    /// independent of the runtime short-circuit `&&` also performs -- so
-    /// every later key is compared against this one and each duplicate
-    /// reports on its own. The same reasoning as
-    /// `require_all_bands_adjacent` (`band.hpp`).
-    template <KeyTable Keys, std::size_t Index, std::size_t... Later>
-    [[nodiscard]] constexpr bool require_key_distinct_from_later(std::index_sequence<Later...>) noexcept
-    {
-        return (RequireKeysDistinct<Keys[Index], Keys[Index + 1 + Later]>::value && ...);
-    }
+    /// The check for the pair at flat position @p Pair of a table of
+    /// @p Keys: rows `Pair / N` and `Pair % N`, compared only when the first
+    /// comes before the second, so every unordered pair is visited exactly
+    /// once. The other positions name no check -- and naming
+    /// `RequireKeysDistinct` as an argument of `std::conditional_t`, as here,
+    /// does not instantiate it.
+    template <KeyTable Keys, std::size_t Pair>
+    using KeyPairCheck = std::conditional_t<(Pair / Keys.size() < Pair % Keys.size()),
+                                            RequireKeysDistinct<Keys[Pair / Keys.size()], Keys[Pair % Keys.size()]>,
+                                            NoCheck<Pair>>;
 
-    /// The outer half of the pairwise sweep: one `Index` per row that has a
-    /// row after it, so every unordered pair is visited exactly once.
-    template <KeyTable Keys, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_keys_distinct(std::index_sequence<Index...>) noexcept
-    {
-        return (require_key_distinct_from_later<Keys, Index>(std::make_index_sequence<Keys.size() - 1 - Index> {}) && ...);
-    }
+    /// Every pair's `RequireKeysDistinct`, **instantiated as base classes**
+    /// -- see `BandChecks` (`band.hpp`) for why not a fold over `::value`.
+    /// Each duplicate reports on its own.
+    template <KeyTable Keys, typename Pairs>
+    struct KeyChecks;
 
-    /// Split out of `RequireValidKeyTable` so that `Keys.size() - 1` -- which
-    /// underflows for an empty table -- sits behind `if constexpr` and is
-    /// therefore never instantiated for `N < 2`. Guarding with `||` instead
-    /// would not be enough, for the reason `band_table_is_valid`'s own
-    /// comment gives: that operator's short circuit applies to *evaluation*,
-    /// not to forming the type of its right-hand operand, and
-    /// `std::make_index_sequence<Keys.size() - 1>` for an empty table would
-    /// still have to name a sequence of length `SIZE_MAX`.
-    template <KeyTable Keys>
-    [[nodiscard]] constexpr bool key_table_is_valid() noexcept
+    template <KeyTable Keys, std::size_t... Pair>
+    struct KeyChecks<Keys, std::index_sequence<Pair...>>: PositionedCheck<Pair, KeyPairCheck<Keys, Pair>>...
     {
-        if constexpr (Keys.size() < 2)
-            return true;
-        else
-            return require_all_keys_distinct<Keys>(std::make_index_sequence<Keys.size() - 1> {});
-    }
+    };
 
     /// Finds the index of the row in @p Keys whose key is @p key, or nothing
     /// when no row has it.
@@ -1143,13 +1127,12 @@ namespace detail
 /// through `RequireKeysDistinct` above. Reached through `::value`, for the
 /// same reason `RequireValidBandTable` is.
 template <KeyTable Keys>
-struct RequireValidKeyTable
+struct RequireValidKeyTable: detail::KeyChecks<Keys, std::make_index_sequence<Keys.size() * Keys.size()>>
 {
-    /// Always `true` once reached -- every `static_assert` this instantiates
-    /// has already failed compilation otherwise. Present so `::value` is the
-    /// spelling that instantiates the class template, exactly as
-    /// `RequireValidBandTable::value` (`band.hpp`) is.
-    static constexpr bool value = detail::key_table_is_valid<Keys>();
+    /// Always `true` once reached -- every `static_assert` this instantiates,
+    /// through its bases, has already failed compilation otherwise. A
+    /// literal, exactly as `RequireValidBandTable::value` (`band.hpp`) is.
+    static constexpr bool value = true;
 };
 
 /// A category key names a row, and that row selects a correction -- see the
@@ -1455,10 +1438,12 @@ template <Breakpoint B>
 struct RequireBreakpointWellFormed
 {
     static_assert(breakpoint_is_well_formed(B),
-                  "formula: this interpolating lookup table has a row whose key is not a rational "
-                  "number; its denominator is zero, or its numerator and denominator cannot be "
-                  "reduced without overflow; the offending Breakpoint value appears in this "
-                  "diagnostic as the template argument B of RequireBreakpointWellFormed");
+                  "formula: this breakpoint table -- an interpolating lookup's rows, a snap's permitted set, "
+                  "or a curve's domain -- has a breakpoint whose key is not a rational number; its denominator "
+                  "is zero, or "
+                  "its numerator and denominator cannot be reduced without overflow; the offending "
+                  "Breakpoint value appears in this diagnostic as the template argument B of "
+                  "RequireBreakpointWellFormed");
 
     /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
     static constexpr bool value = true;
@@ -1478,10 +1463,12 @@ template <Breakpoint First, Breakpoint Second>
 struct RequireBreakpointsAscend
 {
     static_assert(breakpoints_ascend(First, Second),
-                  "formula: this interpolating lookup table's breakpoints do not strictly ascend; two "
-                  "adjacent rows either state the same key twice or are declared out of order, and the "
-                  "two offending Breakpoint values appear in this diagnostic as the template arguments "
-                  "First and Second of RequireBreakpointsAscend");
+                  "formula: this breakpoint table's breakpoints do not strictly ascend -- an "
+                  "interpolating lookup's rows, a snap's permitted set, or a curve's domain; two adjacent "
+                  "breakpoints either "
+                  "state the same key twice or are declared out of order, and the two offending Breakpoint "
+                  "values appear in this diagnostic as the template arguments First and Second of "
+                  "RequireBreakpointsAscend");
 
     /// Always `true` once reached -- see `RequireBandsAdjacent::value`.
     static constexpr bool value = true;
@@ -1489,59 +1476,45 @@ struct RequireBreakpointsAscend
 
 namespace detail
 {
-    /// Expands to one `RequireBreakpointWellFormed<Points[i]>::value` per row,
-    /// `&&`-folded together. Every operand of a fold expression is instantiated
-    /// to form the expression, independent of the runtime short-circuit `&&`
-    /// also performs -- so every row is checked and each bad one reports on its
-    /// own. The same reasoning as `require_all_bands_well_formed` (`band.hpp`).
-    template <BreakpointTable Points, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_breakpoints_well_formed(std::index_sequence<Index...>) noexcept
-    {
-        return (RequireBreakpointWellFormed<Points[Index]>::value && ...);
-    }
+    /// Every row's `RequireBreakpointWellFormed` and every adjacent pair's
+    /// `RequireBreakpointsAscend`, **instantiated as base classes**: every row
+    /// and every pair is checked, and each bad one reports on its own, with
+    /// its offending breakpoints in the diagnostic.
+    ///
+    /// Base classes, not a fold over each check's `::value`: once a check's
+    /// own assert has failed, clang++ cannot read that `::value` in a constant
+    /// expression, and reported the read -- and everything built on it -- as
+    /// further errors, five for one descending pair, where g++ and cl gave
+    /// one. Naming a check as a base instantiates it without reading anything.
+    template <BreakpointTable Points, typename Rows, typename Pairs>
+    struct BreakpointChecks;
 
-    /// Same idea, one index per adjacent pair rather than per row, so every
-    /// pair is checked and reported independently of every other.
-    template <BreakpointTable Points, std::size_t... Index>
-    [[nodiscard]] constexpr bool require_all_breakpoints_ascend(std::index_sequence<Index...>) noexcept
+    template <BreakpointTable Points, std::size_t... Row, std::size_t... Pair>
+    struct BreakpointChecks<Points, std::index_sequence<Row...>, std::index_sequence<Pair...>>:
+        PositionedCheck<Row, RequireBreakpointWellFormed<Points[Row]>>...,
+        PositionedCheck<Points.size() + Pair, RequireBreakpointsAscend<Points[Pair], Points[Pair + 1]>>...
     {
-        return (RequireBreakpointsAscend<Points[Index], Points[Index + 1]>::value && ...);
-    }
-
-    /// Split out of `RequireValidBreakpointTable` so that `Points.size() - 1` --
-    /// which underflows for an empty table -- sits behind `if constexpr` and is
-    /// therefore never instantiated for `N < 2`. Guarding with `&&` instead
-    /// would not be enough, for the reason `band_table_is_valid`'s own comment
-    /// gives: that operator's short circuit applies to *evaluation*, not to
-    /// forming the type of its right-hand operand. The per-row fold has no such
-    /// hazard (it indexes 0..N-1, not 0..N-2) and always runs, so a one-row
-    /// table with a malformed key -- no pair to speak of -- is still caught.
-    template <BreakpointTable Points>
-    [[nodiscard]] constexpr bool breakpoint_table_is_valid() noexcept
-    {
-        bool const wellFormed = require_all_breakpoints_well_formed<Points>(std::make_index_sequence<Points.size()> {});
-        if constexpr (Points.size() < 2)
-            return wellFormed;
-        else
-            return wellFormed && require_all_breakpoints_ascend<Points>(std::make_index_sequence<Points.size() - 1> {});
-    }
+    };
 } // namespace detail
 
-/// The static_assert wiring for an interpolating table: instantiating this with
-/// a `BreakpointTable` that is a compile-time constant enforces, right there,
-/// that every row names a number and that the rows strictly ascend -- reusing
-/// `breakpoint_is_well_formed` and `breakpoints_ascend`, the same two
-/// predicates `breakpoint_table_is_well_formed` uses for a curve that only
+/// The static_assert wiring for a breakpoint table -- an interpolating
+/// lookup's rows, a snap's permitted set (`snap.hpp`), or a curve's domain
+/// (`curve.hpp`): instantiating this
+/// with a `BreakpointTable` that is a compile-time constant enforces, right
+/// there, that every row names a number and that the rows strictly ascend --
+/// reusing `breakpoint_is_well_formed` and `breakpoints_ascend`, the same two
+/// predicates `breakpoint_table_is_well_formed` uses for a table that only
 /// arrives at runtime. Reached through `::value`, for the same reason
 /// `RequireValidBandTable` is.
 template <BreakpointTable Points>
-struct RequireValidBreakpointTable
+struct RequireValidBreakpointTable:
+    detail::BreakpointChecks<Points, std::make_index_sequence<Points.size()>, detail::AdjacentPairs<Points.size()>>
 {
-    /// Always `true` once reached -- every `static_assert` this instantiates
-    /// has already failed compilation otherwise. Present so `::value` is the
-    /// spelling that instantiates the class template, exactly as
-    /// `RequireValidBandTable::value` (`band.hpp`) is.
-    static constexpr bool value = detail::breakpoint_table_is_valid<Points>();
+    /// Always `true` once reached -- every `static_assert` this instantiates,
+    /// through its bases, has already failed compilation otherwise. A literal,
+    /// never read off a check, so that nothing downstream of a failed check
+    /// has anything left to fail on.
+    static constexpr bool value = true;
 };
 
 namespace detail
@@ -1611,6 +1584,67 @@ namespace detail
         return checked_add(lowValue, *share);
     }
 
+    /// Where a key sits among keys that strictly ascend: on the key at `low`
+    /// (`low == high`), or between the keys at `low` and `high`, which is
+    /// `low + 1`.
+    struct KeyPosition
+    {
+        /// The key at or below the one located.
+        std::size_t low;
+        /// The key above it, or `low` again when the located key sat on one.
+        std::size_t high;
+    };
+
+    /// **The one scan of ascending keys**, shared by an interpolating lookup
+    /// (`locate_and_interpolate`, whose keys are a `BreakpointTable` in its
+    /// type) and a curve (`curve.hpp`, whose domain is a series evaluated at
+    /// run time): where @p key sits among the @p keyCount keys @p keyAt
+    /// yields, in order, or `ArithmeticError::DomainError` -- a miss -- below
+    /// the first key, above the last, or among none.
+    ///
+    /// A single forward scan, not a binary search, for the reason `find_band`
+    /// is one: a method's own curve is rows, not big data. It leans on the
+    /// keys ascending strictly, which each caller has already made sure of --
+    /// the first key **not** below @p key is where it sits, and everything
+    /// after it can be ignored.
+    ///
+    /// The equality test comes first, so that a key sitting exactly on one
+    /// is located **on** it rather than on a segment ending there. That is
+    /// observable at the last key, which begins no segment; everywhere else
+    /// interpolating would give the same number, because the weight is
+    /// exactly zero. It is also what makes `low == high` mean "on a key"
+    /// rather than "a segment of zero width", which strictly ascending keys
+    /// cannot contain.
+    ///
+    /// A key @p keyAt cannot yield is a miss too: reporting nothing is better
+    /// than locating against a number that was never there.
+    template <typename KeyAt>
+    [[nodiscard]] constexpr std::expected<KeyPosition, ArithmeticError> locate_key(std::size_t keyCount,
+                                                                                   KeyAt const& keyAt,
+                                                                                   Rational key) noexcept
+    {
+        for (std::size_t keyIndex = 0; keyIndex < keyCount; ++keyIndex)
+        {
+            std::expected<Rational, ArithmeticError> const rowKey = keyAt(keyIndex);
+            if (!rowKey.has_value())
+                return std::unexpected { ArithmeticError::DomainError };
+            if (*rowKey == key)
+                return KeyPosition { keyIndex, keyIndex };
+            if (key < *rowKey)
+            {
+                // Below the first key: a miss, never an extrapolation
+                // backwards along the first segment's slope.
+                if (keyIndex == 0)
+                    return std::unexpected { ArithmeticError::DomainError };
+                return KeyPosition { keyIndex - 1, keyIndex };
+            }
+        }
+        // Past the last key -- or no keys at all, past the last vacuously. A
+        // miss, never a clamp to the final key and never an extrapolation
+        // onwards along the final segment's slope.
+        return std::unexpected { ArithmeticError::DomainError };
+    }
+
     /// Answers @p key against @p Points and @p corrections **and says where the
     /// answer came from**: the row's own value when the key sits exactly on a
     /// row, the interpolation of the two surrounding rows when it sits between
@@ -1633,64 +1667,38 @@ namespace detail
     /// `interpolate_between`, which reports `Overflow` (or, unreachably,
     /// `DivisionByZero`) and never `DomainError`.
     ///
-    /// A single forward scan, not a binary search, for the reason `find_band`
-    /// is one: a method's own published curve is rows, not big data. It leans
-    /// on the ascending order `RequireValidBreakpointTable` has already
-    /// enforced -- the first row whose key is **not** below @p key is where the
-    /// answer is, and everything after it can be ignored.
-    ///
-    /// The equality test comes first, so that a key sitting exactly on a row
-    /// returns that row rather than interpolating a segment to it. That is
-    /// observable at the table's **last** row, which begins no segment; at
-    /// every other row interpolating would give the same number, because the
-    /// weight is exactly zero. See the file comment. It is also what makes the
-    /// returned `Segment`'s `low == high` mean "on a row" rather than "a
-    /// segment of zero width", which a well-formed table cannot contain.
+    /// The scan is `locate_key`'s, shared with a curve's; it leans on the
+    /// ascending order `RequireValidBreakpointTable` has already enforced. The
+    /// value between two rows is `interpolate_between`'s, the one formula for
+    /// it.
     template <BreakpointTable Points>
     [[nodiscard]] constexpr std::expected<std::pair<Rational, Segment>, ArithmeticError> locate_and_interpolate(
         Rational key, Corrections<Points.size()> const& corrections) noexcept
     {
-        for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
-        {
-            std::expected<Rational, ArithmeticError> const rowKey =
-                Rational::make(Points[pointIndex].numerator, Points[pointIndex].denominator);
-            // Unreachable for a `Points` that reached this point: every
-            // `InterpolatingLookupNode` instantiates
-            // `RequireValidBreakpointTable<Points>`, which already refuses a
-            // malformed key at compile time. Guarded anyway, for the same
-            // reason `find_band` guards its own: reporting nothing is better
-            // than interpolating against a number that was never there.
-            if (!rowKey.has_value())
-                return std::unexpected { ArithmeticError::DomainError };
+        // A key that does not reduce is unreachable for a `Points` that got
+        // here: every `InterpolatingLookupNode` instantiates
+        // `RequireValidBreakpointTable<Points>`, which refuses one at compile
+        // time. `locate_key` reports it as a miss anyway.
+        auto const keyAt = [](std::size_t pointIndex) {
+            return Rational::make(Points[pointIndex].numerator, Points[pointIndex].denominator);
+        };
+        std::expected<KeyPosition, ArithmeticError> const located = locate_key(Points.size(), keyAt, key);
+        if (!located.has_value())
+            return std::unexpected { located.error() };
+        if (located->low == located->high)
+            return std::pair<Rational, Segment> { corrections[located->low],
+                                                  Segment { Points[located->low], Points[located->low] } };
 
-            if (*rowKey == key)
-                return std::pair<Rational, Segment> { corrections[pointIndex],
-                                                      Segment { Points[pointIndex], Points[pointIndex] } };
-
-            if (key < *rowKey)
-            {
-                // Below the table's first row: a miss, never an extrapolation
-                // backwards along the first segment's slope.
-                if (pointIndex == 0)
-                    return std::unexpected { ArithmeticError::DomainError };
-
-                std::expected<Rational, ArithmeticError> const previous =
-                    Rational::make(Points[pointIndex - 1].numerator, Points[pointIndex - 1].denominator);
-                if (!previous.has_value())
-                    return std::unexpected { ArithmeticError::DomainError };
-
-                std::expected<Rational, ArithmeticError> const answered =
-                    interpolate_between(*previous, corrections[pointIndex - 1], *rowKey, corrections[pointIndex], key);
-                if (!answered.has_value())
-                    return std::unexpected { answered.error() };
-
-                return std::pair<Rational, Segment> { *answered, Segment { Points[pointIndex - 1], Points[pointIndex] } };
-            }
-        }
-        // Past the table's last row -- or an empty table, which is past its
-        // last row vacuously. A miss, never a clamp to the final row and never
-        // an extrapolation onwards along the final segment's slope.
-        return std::unexpected { ArithmeticError::DomainError };
+        // Both reduced a moment ago, inside the scan.
+        std::expected<Rational, ArithmeticError> const previous = keyAt(located->low);
+        std::expected<Rational, ArithmeticError> const rowKey = keyAt(located->high);
+        if (!previous.has_value() || !rowKey.has_value())
+            return std::unexpected { ArithmeticError::DomainError };
+        std::expected<Rational, ArithmeticError> const answered =
+            interpolate_between(*previous, corrections[located->low], *rowKey, corrections[located->high], key);
+        if (!answered.has_value())
+            return std::unexpected { answered.error() };
+        return std::pair<Rational, Segment> { *answered, Segment { Points[located->low], Points[located->high] } };
     }
 
     /// The answer alone, for the evaluation path, which has no use for the

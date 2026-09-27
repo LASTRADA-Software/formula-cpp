@@ -57,6 +57,28 @@ generated documentation, and an overlay that would silently do nothing is refuse
 the later one holding. A vocabulary renders a formula and its trace in a jurisdiction's own symbols,
 and `TagName` spells a variant's tag.
 
+**Phase 12: series.** A quantity measured at every point of a method's domain, `series<Q, N>`,
+with each element absent or present on its own; elementwise arithmetic with a broadcast scalar,
+per-element constants, running totals from either end, `sum`, and per-element rounding. A failure
+names its element. Conformity judges each element against its own row of a limit envelope, closed
+at both ends and either side explicitly unbounded, and the trace records each element's value, in
+the check's unit, and the row it was judged against.
+`snapped` replaces a value with the nearest permitted one under a stated tie rule. Curves pair a
+domain with values, `interpolate_at` reads one between two points, and `splice` joins two curves
+into one whose values run in a required direction; a curve that fails names the point and the
+rule it broke there. Raw observations, as many as were made up to a stated capacity, are binned
+into declared half-open classes; an observation in no class fails at its position, never dropped.
+A series renders with an index marker, `m_r(i)`, and its trace spends the same step budget, one
+unit per element. A series is evaluated with `checked_evaluate_series` and explained with
+`explain_series`, a curve with `checked_evaluate_curve`. A failure is a `SeriesFailure` naming its
+position, and its `FailureSite` says whether that is an element of the result or, for a binning,
+an observation of the input. `envelope_from` builds an envelope from rows read at run time, and
+`MeasuredObservations::from` a set of observations; each refuses a wrong count with both counts,
+never padding or truncating. Everything that compares -- a curve, a splice, a snap, a binning and
+a conformity check -- is evaluated with `Rational` only, and refuses any other `Rep` at compile
+time. A new guide, *Series and grading curves*, works a screen analysis through
+all of it, and the gallery gains a series, a grading curve and a binning.
+
 ### Changed
 
 - Invented example numbers replaced so none resembles a published table: the band edges, lookup
@@ -93,3 +115,7 @@ and `TagName` spells a variant's tag.
 - A lookup's rows and key names were set in LaTeX as `\text{...}`, whose escapes the site's MathJax
   shows literally: `\text{key fit\_2}` read `key fit\_2`. They are now set as `\mathrm{...}`, with a
   space as `\ ` (`detail::latex_math_words`).
+- A band table with a gap, an exact lookup table with a repeated key, or a breakpoint table out of
+  order drew up to five errors on clang++, one the library's message and the rest the compiler
+  reading the failed check. Each now draws the one message on cl, clang-cl, clang++ and g++, the
+  compilers the library is built and tested with.

@@ -536,6 +536,15 @@ struct EveryCube
 struct EveryCylinder
 {
 };
+struct EverySeries
+{
+};
+struct EveryCurve
+{
+};
+struct EveryBinned
+{
+};
 
 struct EveryStrength: formula::Quantity<EveryStrength, "A_decl", "compressive strength", unit::Megapascal>
 {
@@ -552,6 +561,15 @@ struct EveryDerived: formula::Quantity<EveryDerived, "K_decl", "size factor", un
 struct EveryFixed: formula::Quantity<EveryFixed, "X_decl", "national factor", unit::One>
 {
 };
+struct EveryRetained: formula::Quantity<EveryRetained, "S_decl", "mass retained on a screen", unit::Gram>
+{
+};
+struct EveryTotal: formula::Quantity<EveryTotal, "T_decl", "total dry mass", unit::Gram>
+{
+};
+struct EveryParticle: formula::Quantity<EveryParticle, "P_decl", "particle size", unit::Millimetre>
+{
+};
 
 enum class EveryFinish : std::uint8_t
 {
@@ -565,9 +583,19 @@ inline constexpr auto everyVocabulary = formula::vocabulary(formula::renames<Eve
                                                             formula::renames<EveryModulus>("R"),
                                                             formula::renames<EveryDiameter>("D"),
                                                             formula::renames<EveryDerived>("k_n"),
-                                                            formula::renames<EveryFixed>("x_n"));
+                                                            formula::renames<EveryFixed>("x_n"),
+                                                            formula::renames<EveryRetained>("m_n"),
+                                                            formula::renames<EveryTotal>("M_n"),
+                                                            formula::renames<EveryParticle>("d_n"));
 
 inline constexpr formula::Citation everyCited { .reference = "Example Standard 1:2020", .section = "3.1" };
+
+// Invented permitted factors for the snap below; x_n (1487/1000) is exactly
+// midway between 1437/1000 and 1537/1000, so the tie rule decides, inside the
+// overlay's rewrite.
+inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(1437, 1000),
+                                                            formula::breakpoint(1537, 1000),
+                                                            formula::breakpoint(1637, 1000) };
 
 [[nodiscard]] constexpr auto everyNodeKind()
 {
@@ -589,12 +617,66 @@ inline constexpr formula::Citation everyCited { .reference = "Example Standard 1
                    * formula::interpolating_lookup<unit::Millimetre, VocabularyDiameterPoints, unit::One>(
                        d, { rat(1043, 1000), rat(2917, 1000) }))
            * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
-           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) });
+           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) })
+           * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>);
+}
+
+inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
+                                                       formula::DecimalPlaces { 0 },
+                                                       formula::DecimalPlaces { -1 } };
+
+// Every series node kind, in the one variant a series can stand in: reduced to
+// one value by `sum`. The overlay's constant sits inside the elementwise
+// product, so it reaches there or the method is refused.
+[[nodiscard]] constexpr auto everySeriesKind()
+{
+    constexpr auto s = formula::series<EveryRetained, 3>;
+    return formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(
+               formula::rounded_elementwise<unit::Gram, everyPlaces, formula::RoundingMode::HalfAwayFromZero>(
+                   -s + s * formula::series_constant<unit::One>(rat(1), rat(2), rat(3)) * var<EveryFixed>)))
+           / var<EveryTotal>;
+}
+
+// Every curve kind, and the join with snapping (S17): two curves over declared
+// domains spliced, read at the overlay's fixed factor, and the answer snapped
+// to a permitted value. The overlay's constant is the point the curve is read
+// at, so it reaches inside the interpolation or the method is refused.
+inline constexpr formula::BreakpointTable<3> everyCurvePoints { formula::breakpoint(1),
+                                                                formula::breakpoint(2),
+                                                                formula::breakpoint(4) };
+inline constexpr formula::BreakpointTable<1> everyCurveTail { formula::breakpoint(5) };
+inline constexpr formula::BreakpointTable<2> everyCurveSnapSet { formula::breakpoint(1, 200), formula::breakpoint(1, 100) };
+
+[[nodiscard]] constexpr auto everyCurveKind()
+{
+    constexpr auto s = formula::series<EveryRetained, 3>;
+    return formula::snapped<unit::One, everyCurveSnapSet, formula::SnapTie::TowardLower>(formula::interpolate_at(
+        formula::splice<formula::Monotone::NonDecreasing>(
+            formula::curve(formula::domain<unit::One, everyCurvePoints>, s / var<EveryTotal>),
+            formula::curve(formula::domain<unit::One, everyCurveTail>, formula::series_constant<unit::One>(rat(1, 20)))),
+        var<EveryFixed>));
+}
+
+// Binning (S9): raw particle sizes counted into two classes, the upper
+// class's share times the overlay's fixed factor. Invented classes, 0 to
+// under 163 and 163 to under 277 mm -- three significant digits, none a
+// preferred number; the 163 mm particle is on the boundary, in the upper
+// class.
+inline constexpr formula::BandTable<2> everyClasses { formula::band(0, 1, 163, 1), formula::band(163, 1, 277, 1) };
+
+[[nodiscard]] constexpr auto everyBinnedKind()
+{
+    constexpr auto counted = formula::binned<unit::Millimetre, everyClasses>(formula::observations<EveryParticle, 4>);
+    return formula::sum(counted * formula::series_constant<unit::One>(rat(0), rat(1))) / formula::sum(counted)
+           * var<EveryFixed>;
 }
 
 inline constexpr auto everyMethod = formula::method(
     formula::variants(formula::variant<EveryCube>(everyNodeKind()),
-                      formula::variant<EveryCylinder>(var<EveryStrength> / var<EveryModulus>)),
+                      formula::variant<EveryCylinder>(var<EveryStrength> / var<EveryModulus>),
+                      formula::variant<EverySeries>(everySeriesKind()),
+                      formula::variant<EveryCurve>(everyCurveKind()),
+                      formula::variant<EveryBinned>(everyBinnedKind())),
     formula::rounding_rule<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 
@@ -608,9 +690,23 @@ inline constexpr auto everyOverlay = formula::overlay(
 inline constexpr auto everyOverlaid = formula::apply(everyOverlay, everyMethod);
 
 // 30 MPa, 12 MPa and 241 mm, distinct from each other and from every table row.
-inline constexpr auto everyInputs = formula::environment(formula::Measured<EveryStrength> { rat(30) },
-                                                         formula::Measured<EveryModulus> { rat(12) },
-                                                         formula::Measured<EveryDiameter> { rat(241) });
+// The series 10, 20 and 40 g against 2020 g: with the factors 1, 2, 3 and the
+// fixed 1487/1000, the elements are 4.87, 39.48 and 138.44 g; rounded to 0,
+// 0 and -1 places they are 5, 39 and 140 g; the totals from the last are 184,
+// 179 and 140 g, their sum 503 g, and the share 503/2020, 24.9 % -- unrounded
+// it would be 24.7 %, and a direction swapped gives 5, 44 and 184 g, summing
+// to 233 g. No element sits on a tie, so this fixture does not tell
+// HalfAwayFromZero from the other nearest modes: the signed `Deviation`
+// fixture in `series_tests.cpp` separates all seven modes and pins that one.
+inline constexpr auto everyInputs =
+    formula::environment(formula::Measured<EveryStrength> { rat(30) },
+                         formula::Measured<EveryModulus> { rat(12) },
+                         formula::Measured<EveryDiameter> { rat(241) },
+                         formula::measured_series<EveryRetained>(formula::Measured<EveryRetained> { rat(10) },
+                                                                 formula::Measured<EveryRetained> { rat(20) },
+                                                                 formula::Measured<EveryRetained> { rat(40) }),
+                         formula::Measured<EveryTotal> { rat(2020) },
+                         formula::MeasuredObservations<EveryParticle, 4>(rat(103), rat(163), rat(197), rat(127)));
 
 template <typename Tag>
 [[nodiscard]] std::string everyTraceOf()
@@ -635,12 +731,54 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
           == "(if E >= R then (-(E / R)^2 + root3(E / R * E / R * E / R)^3) * round(E / R, to 1 dp of %) "
              "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 103 to under 163 mm gives 1127/1000, "
              "163 to under 331 mm gives 1973/1000) * interpolate(D, at 103 mm gives 1043/1000, at 331 mm gives 2917/1000)) "
-             "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000)");
+             "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000) "
+             "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
-    for (std::string const& text: { formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
+
+    // Every series kind, the jurisdiction's symbol marked in each dialect.
+    constexpr auto seriesVariant = std::get<2>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(seriesVariant, everyVocabulary)
+          == "sum(cumulative(round(-m_n(i) + m_n(i) * values(1, 2, 3) * x_n, to 0/0/-1 dp of g), from last)) / M_n");
+    CHECK(formula::render<formula::Dialect::Markdown>(seriesVariant, everyVocabulary)
+          == "sum(cumulative(round(-`m_n(i)` + `m_n(i)` * values(1, 2, 3) * `x_n`, to 0/0/-1 dp of g), from last)) "
+             "/ `M_n`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary)
+          == "\\frac{\\sum \\operatorname{cumulative}_{\\text{from last}}(\\operatorname{round}_{0/0/-1\\,"
+             "\\mathrm{g}}(-{m_n}_{i} + {m_n}_{i} \\cdot \\operatorname{values}(1,\\allowbreak 2,\\allowbreak 3) "
+             "\\cdot x_n))}{M_n}");
+
+    // Every curve kind, the series marked, the domains listed, the direction
+    // stated.
+    constexpr auto curveVariant = std::get<3>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(curveVariant, everyVocabulary)
+          == "snap(interpolate(splice(curve(domain(1, 2, 4), m_n(i) / M_n), curve(domain(5), values(1/20)), "
+             "non-decreasing), at x_n), to 1/200, 1/100)");
+    CHECK(formula::render<formula::Dialect::Markdown>(curveVariant, everyVocabulary)
+          == "snap(interpolate(splice(curve(domain(1, 2, 4), `m_n(i)` / `M_n`), curve(domain(5), values(1/20)), "
+             "non-decreasing), at `x_n`), to 1/200, 1/100)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(curveVariant, everyVocabulary)
+          == "\\operatorname{snap}(\\operatorname{interpolate}(\\operatorname{splice}(\\operatorname{curve}("
+             "\\operatorname{domain}(\\mathrm{1,\\ 2,\\ 4}),\\allowbreak \\frac{{m_n}_{i}}{M_n}),\\allowbreak "
+             "\\operatorname{curve}(\\operatorname{domain}(\\mathrm{5}),\\allowbreak "
+             "\\operatorname{values}(1/20)),\\allowbreak \\mathrm{non-decreasing}),\\allowbreak \\mathrm{at\\ }x_n),"
+             "\\allowbreak \\mathrm{to\\ 1/200,\\ 1/100})");
+
+    // Binning, the observations marked, each class a band.
+    constexpr auto binnedVariant = std::get<4>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(binnedVariant, everyVocabulary)
+          == "sum(bin(d_n(i), 0 to under 163 mm, 163 to under 277 mm) * values(0, 1)) / sum(bin(d_n(i), 0 to under 163 mm, "
+             "163 to under 277 mm)) * x_n");
+
+    for (std::string const& text: { formula::render<formula::Dialect::Markdown>(binnedVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(binnedVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::Markdown>(curveVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(curveVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(cube, everyVocabulary),
                                     formula::render<formula::Dialect::Markdown>(cylinder, everyVocabulary),
-                                    formula::render<formula::Dialect::LaTeX>(cylinder, everyVocabulary) })
+                                    formula::render<formula::Dialect::LaTeX>(cylinder, everyVocabulary),
+                                    formula::render<formula::Dialect::Markdown>(seriesVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary) })
         CHECK(declares_no_symbol(text));
 }
 
@@ -673,10 +811,51 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
     CHECK(replaced.symbols[0].description == "elastic modulus");
     CHECK(replaced.symbols[1].symbol == "E");
 
-    for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
+    // The series variant: the series read once as a row of its own, marked
+    // with its length, the fixed factor, and the total.
+    constexpr auto seriesVariant = std::get<2>(everyOverlaid.variantSet.cases).expression;
+    formula::Documentation const seriesPage = formula::document(seriesVariant, everyVocabulary);
+    CHECK(seriesPage.formula == formula::render(seriesVariant, everyVocabulary));
+    REQUIRE(seriesPage.symbols.size() == 3);
+    CHECK(seriesPage.symbols[0].symbol == "m_n");
+    CHECK(seriesPage.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(seriesPage.symbols[0].length == 3);
+    CHECK(seriesPage.symbols[1].symbol == "x_n");
+    CHECK(seriesPage.symbols[1].fixedValue.has_value());
+    CHECK(seriesPage.symbols[2].symbol == "M_n");
+    CHECK(seriesPage.symbols[2].shape == formula::ValueShape::Single);
+
+    // The curve variant: the series row, the total, and the fixed factor the
+    // curve is read at.
+    constexpr auto curveVariant = std::get<3>(everyOverlaid.variantSet.cases).expression;
+    formula::Documentation const curvePage = formula::document(curveVariant, everyVocabulary);
+    CHECK(curvePage.formula == formula::render(curveVariant, everyVocabulary));
+    REQUIRE(curvePage.symbols.size() == 3);
+    CHECK(curvePage.symbols[0].symbol == "m_n");
+    CHECK(curvePage.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(curvePage.symbols[1].symbol == "M_n");
+    CHECK(curvePage.symbols[2].symbol == "x_n");
+    CHECK(curvePage.symbols[2].fixedValue.has_value());
+
+    // The binning variant: the observations read once, as a row of their
+    // capacity, and the fixed factor.
+    constexpr auto binnedVariant = std::get<4>(everyOverlaid.variantSet.cases).expression;
+    formula::Documentation const binnedPage = formula::document(binnedVariant, everyVocabulary);
+    REQUIRE(binnedPage.symbols.size() == 2);
+    CHECK(binnedPage.symbols[0].symbol == "d_n");
+    CHECK(binnedPage.symbols[0].shape == formula::ValueShape::Observations);
+    CHECK(binnedPage.symbols[0].length == 4);
+    CHECK(binnedPage.symbols[1].symbol == "x_n");
+    CHECK(binnedPage.symbols[1].fixedValue.has_value());
+
+    for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(binnedVariant, everyVocabulary),
+                                      formula::document<formula::Dialect::LaTeX>(binnedVariant, everyVocabulary),
+                                      formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
                                       formula::document<formula::Dialect::LaTeX>(cube, everyVocabulary),
                                       formula::document<formula::Dialect::Markdown>(cylinder, everyVocabulary),
-                                      formula::document<formula::Dialect::LaTeX>(cylinder, everyVocabulary) })
+                                      formula::document<formula::Dialect::LaTeX>(cylinder, everyVocabulary),
+                                      formula::document<formula::Dialect::Markdown>(seriesVariant, everyVocabulary),
+                                      formula::document<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary) })
     {
         CHECK(declares_no_symbol(documentation.formula));
         for (formula::SymbolEntry const& row: documentation.symbols)
@@ -702,6 +881,11 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
           != std::string::npos);
     CHECK(cube.find("39. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n")
           != std::string::npos);
+    // The snap over the fixed factor: the overlay's constant reached inside
+    // it, and the tie rule decided.
+    CHECK(cube.find("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n")
+          != cube.rfind("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"));
+    CHECK(cube.find("= 1537/1000 [1437/1000 to 1537/1000; tie, toward higher]\n") != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"
@@ -709,7 +893,66 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "3. #1 / #2 = 2/5\n"
              "4. #3 = 2/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "5. round(#4, in %) = 40 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "6. #5 = 40 % [variant EveryCylinder (2nd of 2), selected by tag]\n");
+             "6. #5 = 40 % [variant EveryCylinder (2nd of 5), selected by tag]\n");
+
+    // Every series kind: each series step in the jurisdiction's symbol, the
+    // fixed factor broadcast once, the running total from the last screen,
+    // and the sum a single value. Computed steps have no declared unit, so
+    // they read in kilograms, exactly.
+    CHECK(everyTraceOf<EverySeries>()
+          == "1. m_n = 10 g; 20 g; 40 g\n"
+             "2. -#1 = -1/100; -1/50; -1/25\n"
+             "3. m_n = 10 g; 20 g; 40 g\n"
+             "4. 1; 2; 3\n"
+             "5. #3 * #4 = 1/100; 1/25; 3/25\n"
+             "6. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "7. #5 * #6 = 1487/100000; 1487/25000; 4461/25000\n"
+             "8. #2 + #7 = 487/100000; 987/25000; 3461/25000\n"
+             "9. round(#8, to 0/0/-1 dp of g) = 5 g; 39 g; 140 g [nearest, ties away from zero]\n"
+             "10. cumulative(#9, from last) = 184 g; 179 g; 140 g\n"
+             "11. sum(#10) = 503 g\n"
+             "12. M_n = 2020 g\n"
+             "13. #11 / #12 = 503/2020\n"
+             "14. round(#13, in %) = 249/10 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "15. #14 = 249/10 % [variant EverySeries (3rd of 5), selected by tag]\n");
+
+    // Every curve kind: the retained masses as shares of the total, 1/202,
+    // 1/101 and 2/101 at 1, 2 and 4, spliced with 1/20 at 5; read at the
+    // fixed 1487/1000, 487/1000 of the way from 1 to 2, that is 1487/202000
+    // -- nearer 1/200 than 1/100, whose midpoint 3/400 it falls just short of.
+    CHECK(everyTraceOf<EveryCurve>()
+          == "1. 1; 2; 4\n"
+             "2. m_n = 10 g; 20 g; 40 g\n"
+             "3. M_n = 2020 g\n"
+             "4. #2 / #3 = 1/202; 1/101; 2/101\n"
+             "5. curve(#1, #4) = 1: 1/202; 2: 1/101; 4: 2/101\n"
+             "6. 5\n"
+             "7. 1/20\n"
+             "8. curve(#6, #7) = 5: 1/20\n"
+             "9. splice(#5, #8, non-decreasing) = 1: 1/202; 2: 1/101; 4: 2/101; 5: 1/20\n"
+             "10. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "11. interpolate(#9, at #10) = 1487/202000 [between 1 and 2]\n"
+             "12. snap(#11) = 1/200 [1/200 to 1/100; nearer 1/200]\n"
+             "13. round(#12, in %) = 1/2 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "14. #13 = 1/2 % [variant EveryCurve (4th of 5), selected by tag]\n");
+
+    // Binning: 103, 163, 197 and 127 mm counted 2 and 2 -- the 163 mm particle
+    // in the upper class -- the upper class's share 1/2, times the fixed 1487/1000.
+    // Counted closed at the top, it would be 1/4, and 37.2 %.
+    CHECK(everyTraceOf<EveryBinned>()
+          == "1. d_n = 103 mm; 163 mm; 197 mm; 127 mm\n"
+             "2. bin(#1) = 2; 2\n"
+             "3. 0; 1\n"
+             "4. #2 * #3 = 0; 2\n"
+             "5. sum(#4) = 2\n"
+             "6. d_n = 103 mm; 163 mm; 197 mm; 127 mm\n"
+             "7. bin(#6) = 2; 2\n"
+             "8. sum(#7) = 4\n"
+             "9. #5 / #8 = 1/2\n"
+             "10. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "11. #9 * #10 = 1487/2000\n"
+             "12. round(#11, in %) = 372/5 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "13. #12 = 372/5 % [variant EveryBinned (5th of 5), selected by tag]\n");
 }
 
 TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",
@@ -724,4 +967,188 @@ TEST_CASE("a constraint over the overlaid quantities traces and documents in the
              "2. R = 12 MPa\n"
              "3. require #1 >= #2 [satisfied]\n");
     CHECK(formula::document<formula::Dialect::LaTeX>(limit, everyVocabulary).formula == "\\text{require } E \\geq R");
+}
+
+// ---- A series in two jurisdictions' words (phase 12) ----
+
+namespace
+{
+namespace series_vocabulary
+{
+    struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+    {
+    };
+    struct Sieved: formula::Quantity<Sieved, "m_s", "mass passing a screen", unit::Gram>
+    {
+    };
+
+    // Crossed over, as `north` and `south` above are.
+    inline constexpr auto east = formula::vocabulary(formula::renames<Retained>("R"), formula::renames<Sieved>("S"));
+    inline constexpr auto west = formula::vocabulary(formula::renames<Retained>("S"), formula::renames<Sieved>("R"));
+} // namespace series_vocabulary
+} // namespace
+
+TEST_CASE("a series is written in the page's vocabulary, marked, in every dialect", "[series][vocabulary]")
+{
+    using series_vocabulary::east;
+    using series_vocabulary::Retained;
+    using series_vocabulary::Sieved;
+    using series_vocabulary::west;
+    CHECK(formula::render(formula::series<Retained, 5>, east) == "R(i)");
+    CHECK(formula::render(formula::series<Retained, 5>, west) == "S(i)");
+    CHECK(formula::render(formula::series<Sieved, 5>, west) == "R(i)");
+    CHECK(formula::render<formula::Dialect::Markdown>(formula::series<Retained, 5>, west) == "`S(i)`");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, west) == "{S}_{i}");
+
+    auto const page = formula::document(formula::series<Retained, 5>, west);
+    CHECK(page.formula == "S(i)");
+    REQUIRE(page.symbols.size() == 1);
+    CHECK(page.symbols[0].symbol == "S");
+    CHECK(page.symbols[0].description == "mass retained on a screen"); // what it is does not change
+}
+
+TEST_CASE("elementwise arithmetic is written in the page's vocabulary on every surface", "[series][vocabulary]")
+{
+    using series_vocabulary::east;
+    using series_vocabulary::Retained;
+    using series_vocabulary::Sieved;
+    using series_vocabulary::west;
+    constexpr auto ratio = formula::series<Retained, 3> / formula::series<Sieved, 3>;
+    CHECK(formula::render(ratio, east) == "R(i) / S(i)");
+    CHECK(formula::render(ratio, west) == "S(i) / R(i)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(ratio, west) == "\\frac{{S}_{i}}{{R}_{i}}");
+
+    auto const page = formula::document(ratio, west);
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "S");
+    CHECK(page.symbols[1].symbol == "R");
+
+    constexpr auto inputs = formula::environment(formula::measured_series<Retained>(formula::Measured<Retained> { rat(1) },
+                                                                                    formula::Measured<Retained> { rat(2) },
+                                                                                    formula::Measured<Retained> { rat(3) }),
+                                                 formula::measured_series<Sieved>(formula::Measured<Sieved> { rat(4) },
+                                                                                  formula::Measured<Sieved> { rat(5) },
+                                                                                  formula::Measured<Sieved> { rat(6) }));
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(ratio, inputs, formula::RecordingSink { trace, west });
+    std::string const text = formula::render_trace(trace, { .maxSteps = 30 });
+    CHECK(text.find("1. S = 1 g; 2 g; 3 g") != std::string::npos);
+    CHECK(text.find("2. R = 4 g; 5 g; 6 g") != std::string::npos);
+    CHECK(text.find("m_r") == std::string::npos);
+    CHECK(text.find("m_s") == std::string::npos);
+}
+
+// ---- The join: a series inside a method, under an overlay (phase 12, task 5) ----
+//
+// Phase 11's lesson: two separately verified things do not verify their join.
+// `sum` is the first series-holding `Node`, so it is where a series first sits
+// inside a method's variant; here it is evaluated, rendered, documented and
+// traced through a method an overlay rewrote, in a jurisdiction's words.
+
+namespace
+{
+namespace series_join
+{
+    using series_vocabulary::Retained;
+    struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", unit::Gram>
+    {
+    };
+
+    // The total divided out of the sum, and the total divided into every
+    // element before summing: the second puts `var<TotalMass>` inside an
+    // elementwise node inside `sum`, where the overlay must reach.
+    struct OfTheSum
+    {
+    };
+    struct OfEachElement
+    {
+    };
+
+    inline constexpr auto shareMethod = formula::method(
+        formula::variants(
+            formula::variant<OfTheSum>(formula::sum(formula::series<Retained, 5>) / formula::var<TotalMass>),
+            formula::variant<OfEachElement>(formula::sum(formula::series<Retained, 5> / formula::var<TotalMass>))),
+        formula::rounding_rule<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+
+    // The laboratory weighed 1250 g; the jurisdiction fixes 1606 g, so the
+    // share is 803/1606 = 1/2 where the overlay reached, and 803/1250 where
+    // it did not.
+    inline constexpr auto nationally =
+        formula::apply(formula::overlay(formula::with_constant<TotalMass>(
+                           rat(1606), formula::Citation { .reference = "Example Standard 5" })),
+                       shareMethod);
+
+    inline constexpr auto screens =
+        formula::environment(formula::measured_series<Retained>(formula::Measured<Retained> { rat(130) },
+                                                                formula::Measured<Retained> { rat(210) },
+                                                                formula::Measured<Retained> { rat(95) },
+                                                                formula::Measured<Retained> { rat(340) },
+                                                                formula::Measured<Retained> { rat(28) }),
+                             formula::Measured<TotalMass> { rat(1250) });
+
+    template <typename Tag>
+    [[nodiscard]] std::string traceOf()
+    {
+        formula::Trace<> trace {};
+        (void) formula::evaluate_method<Tag>(nationally, screens, formula::RecordingSink { trace, series_vocabulary::east });
+        return formula::render_trace(trace, { .maxSteps = 60 });
+    }
+} // namespace series_join
+} // namespace
+
+TEST_CASE("a sum of a series evaluates inside a method, under an overlay's constant", "[series][vocabulary]")
+{
+    using series_join::OfEachElement;
+    using series_join::OfTheSum;
+    // Unoverlaid, both read the laboratory's 1250 g: 803/1250 is 64.24 %,
+    // which the method's rule rounds to 64.2 %.
+    CHECK(formula::evaluate_method<OfTheSum>(series_join::shareMethod, series_join::screens)
+          == formula::detail::present(formula::Rational { 321, 500 }));
+    CHECK(formula::evaluate_method<OfEachElement>(series_join::shareMethod, series_join::screens)
+          == formula::detail::present(formula::Rational { 321, 500 }));
+    // Overlaid, both read the jurisdiction's 1606 g -- the second only if the
+    // constant reached inside the elementwise division inside the sum.
+    CHECK(formula::evaluate_method<OfTheSum>(series_join::nationally, series_join::screens)
+          == formula::detail::present(formula::Rational { 1, 2 }));
+    CHECK(formula::evaluate_method<OfEachElement>(series_join::nationally, series_join::screens)
+          == formula::detail::present(formula::Rational { 1, 2 }));
+}
+
+TEST_CASE("a sum of a series renders and documents inside an overlaid method, in the page's words", "[series][vocabulary]")
+{
+    constexpr auto ofTheSum = std::get<0>(series_join::nationally.variantSet.cases).expression;
+    constexpr auto ofEachElement = std::get<1>(series_join::nationally.variantSet.cases).expression;
+    CHECK(formula::render(ofTheSum, series_vocabulary::east) == "sum(R(i)) / m_t");
+    CHECK(formula::render(ofEachElement, series_vocabulary::east) == "sum(R(i) / m_t)");
+    CHECK(formula::render(ofTheSum, series_vocabulary::west) == "sum(S(i)) / m_t");
+    CHECK(formula::render<formula::Dialect::LaTeX>(ofTheSum, series_vocabulary::east) == "\\frac{\\sum {R}_{i}}{m_t}");
+    CHECK(formula::render<formula::Dialect::LaTeX>(ofEachElement, series_vocabulary::east) == "\\sum \\frac{{R}_{i}}{m_t}");
+
+    formula::Documentation const page = formula::document(ofEachElement, series_vocabulary::east);
+    CHECK(page.formula == "sum(R(i) / m_t)");
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "R");
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[0].length == 5);
+    CHECK(page.symbols[1].symbol == "m_t");
+    CHECK(page.symbols[1].fixedValue.has_value());
+}
+
+TEST_CASE("a sum of a series traces inside an overlaid method, in the sink's words", "[series][vocabulary][trace]")
+{
+    CHECK(series_join::traceOf<series_join::OfTheSum>()
+          == "1. R = 130 g; 210 g; 95 g; 340 g; 28 g\n"
+             "2. sum(#1) = 803 g\n"
+             "3. m_t = 1606 g [fixed by jurisdiction overlay: Example Standard 5]\n"
+             "4. #2 / #3 = 1/2\n"
+             "5. round(#4, in %) = 50 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "6. #5 = 50 % [variant OfTheSum (1st of 2), selected by tag]\n");
+    CHECK(series_join::traceOf<series_join::OfEachElement>()
+          == "1. R = 130 g; 210 g; 95 g; 340 g; 28 g\n"
+             "2. m_t = 1606 g [fixed by jurisdiction overlay: Example Standard 5]\n"
+             "3. #1 / #2 = 65/803; 105/803; 95/1606; 170/803; 14/803\n"
+             "4. sum(#3) = 1/2\n"
+             "5. round(#4, in %) = 50 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "6. #5 = 50 % [variant OfEachElement (2nd of 2), selected by tag]\n");
 }

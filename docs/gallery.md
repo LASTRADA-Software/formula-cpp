@@ -355,3 +355,66 @@ And by the overlay's two checks in its place. The overlay lists the shape factor
 7. acceptance(#3, #6) [jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
 ```
 
+## Worked derivation: the percentage passing each screen
+
+`m_r` = 130, 210, 95, 340 and 28 g retained on five screens, `m_t` = 1250 g. The series is marked `(i)` in the formula, and each step of its derivation carries every element:
+
+```
+100 % - cumulative(m_r(i), from last) / m_t
+```
+
+```
+1. 100 %
+2. m_r = 130 g; 210 g; 95 g; 340 g; 28 g
+3. cumulative(#2, from last) = 803 g; 673 g; 463 g; 368 g; 28 g
+4. m_t = 1250 g
+5. #3 / #4 = 803/1250; 673/1250; 463/1250; 184/625; 14/625
+6. #1 - #5 = 447/1250; 577/1250; 787/1250; 441/625; 611/625
+```
+
+## Worked derivation: a grading curve read between two screens
+
+The same percentages paired with the declared screens as a curve, and read at 173 m. The last step names the two screens the answer lay between. Its value, like every computed step's, reads in the coherent unit, a plain fraction for a percentage: 6927/10625 is about 65.2 %.
+
+```
+interpolate(curve(domain(103, 127, 163, 197, 241 m), 100 % - cumulative(m_r(i), from last) / m_t), at 173 m)
+```
+
+```
+1. 103 m; 127 m; 163 m; 197 m; 241 m
+2. 100 %
+3. m_r = 130 g; 210 g; 95 g; 340 g; 28 g
+4. cumulative(#3, from last) = 803 g; 673 g; 463 g; 368 g; 28 g
+5. m_t = 1250 g
+6. #4 / #5 = 803/1250; 673/1250; 463/1250; 184/625; 14/625
+7. #2 - #6 = 447/1250; 577/1250; 787/1250; 441/625; 611/625
+8. curve(#1, #7) = 103 m: 447/1250; 127 m: 577/1250; 163 m: 787/1250; 197 m: 441/625; 241 m: 611/625
+9. 173 m
+10. interpolate(#8, at #9) = 6927/10625 [between 163 and 197 m]
+```
+
+## Worked derivation: particles counted into classes, and one in no class
+
+Seven particles, counted into three half-open classes and divided by their total. 127 and 197 m sit on class boundaries and count in the upper class. The formula names the binning twice -- once counted, once summed -- and each is evaluated where it stands, so the observations are read, and binned, twice:
+
+```
+bin(s(i), 0 to under 127 m, 127 to under 197 m, 197 to under 331 m) / sum(bin(s(i), 0 to under 127 m, 127 to under 197 m, 197 to under 331 m))
+```
+
+```
+1. s = 103 m; 127 m; 163 m; 277 m; 113 m; 197 m; 241 m
+2. bin(#1) = 2; 2; 3
+3. s = 103 m; 127 m; 163 m; 277 m; 113 m; 197 m; 241 m
+4. bin(#3) = 2; 2; 3
+5. sum(#4) = 7
+6. #2 / #5 = 2/7; 2/7; 3/7
+```
+
+The fourth particle measured 331 m instead: the last class's high bound, in no class. A miss is not dropped, and the step names the observation. The division then relays the failure without a position, and names only the operand it evaluated: its divisor was never reached, so the line reads `/ #2`:
+
+```
+1. s = 103 m; 127 m; 163 m; 331 m; 113 m; 197 m; 241 m
+2. bin(#1) = argument outside the domain of the operation at observation 4 [331 m in no class; the classes cover 0 to under 331 m]
+3. / #2 = argument outside the domain of the operation
+```
+
