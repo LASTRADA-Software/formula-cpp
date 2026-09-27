@@ -1617,16 +1617,15 @@ namespace detail
         }
     }
 
-    /// Whether @p recorded succeeded with @p pointCount points and values, every one
-    /// present -- a curve's step, or with @p pointsOnly a series step's
-    /// elements alone.
-    [[nodiscard]] inline bool whole(Step<Rational> const& recorded, std::size_t pointCount, bool pointsOnly) noexcept
+    /// Whether @p recorded, a curve's step, succeeded with @p pointCount
+    /// points and values, every one present.
+    [[nodiscard]] inline bool whole(Step<Rational> const& recorded, std::size_t pointCount) noexcept
     {
-        std::vector<std::optional<Rational>> const& points = pointsOnly ? recorded.elements : recorded.domainElements;
-        if (recorded.error.has_value() || points.size() != pointCount || (!pointsOnly && recorded.elements.size() != pointCount))
+        if (recorded.error.has_value() || recorded.domainElements.size() != pointCount
+            || recorded.elements.size() != pointCount)
             return false;
         for (std::size_t at = 0; at < pointCount; ++at)
-            if (!points[at].has_value() || (!pointsOnly && !recorded.elements[at].has_value()))
+            if (!recorded.domainElements[at].has_value() || !recorded.elements[at].has_value())
                 return false;
         return true;
     }
@@ -1634,10 +1633,10 @@ namespace detail
     /// Names the rule a failed curve broke at its failed element, from the
     /// judgement the evaluation made -- `judge_domain` or `judge_splice`,
     /// re-asked on the operands' steps -- and keeps the points it judged, so
-    /// that the trace can state the point. Nothing when an operand failed or
-    /// is not all there: the failure then was not a curve's own rule. With
-    /// both whole, a rule is the only way the evaluation fails at an element,
-    /// and the judgement lands on that element.
+    /// that the trace can state the point. Nothing when an operand failed, or
+    /// a splice's operand is not all there: the failure then was not a
+    /// curve's own rule. Otherwise a rule is the only way the evaluation
+    /// fails at an element, and the judgement lands on that element.
     template <CurveExpression C>
     void record_curve_break(Step<Rational>& failedStep, std::vector<Step<Rational>> const& steps)
     {
@@ -1651,8 +1650,10 @@ namespace detail
         if constexpr (CurveStepKindOf<C>::value == StepKind::CurvePairing)
         {
             // The values must have succeeded too: the evaluation judges the
-            // domain only when both series did.
-            if (!whole(firstOperand, C::length, true) || secondOperand.error.has_value())
+            // domain only when both series did. An absent point is judged
+            // past, as the evaluation judges it.
+            if (firstOperand.error.has_value() || firstOperand.elements.size() != C::length
+                || secondOperand.error.has_value())
                 return;
             points = firstOperand.elements;
             broken = judge_domain(points);
@@ -1660,7 +1661,7 @@ namespace detail
         else
         {
             std::size_t const firstCount = firstOperand.domainElements.size();
-            if (!whole(firstOperand, firstCount, false) || !whole(secondOperand, C::length - firstCount, false))
+            if (!whole(firstOperand, firstCount) || !whole(secondOperand, C::length - firstCount))
                 return;
             points = firstOperand.domainElements;
             points.insert(points.end(), secondOperand.domainElements.begin(), secondOperand.domainElements.end());

@@ -20,7 +20,8 @@
 /// declared domain is checked at compile time already; a computed one --
 /// `curve(series<Opening, 5>, ...)` -- only arrives at run time, and one that
 /// does not strictly ascend fails the curve with a `DomainError` at its first
-/// element that is not above the one before it.
+/// element that is not above the one before it. An absent point is skipped:
+/// the present points on either side of it must still ascend.
 ///
 /// **Interpolation** locates the point with the one scan of ascending keys an
 /// interpolating lookup uses (`detail::locate_key`, `lookup.hpp`) and computes
@@ -532,17 +533,26 @@ namespace detail
         CurveBreak rule;
     };
 
-    /// The first point not above the one before it -- a `DuplicatePoint`
-    /// when it equals that one, else `NotAscending` -- or nothing when every
-    /// point strictly ascends. Asked only of points that are all present.
+    /// The first present point not above the present point before it -- a
+    /// `DuplicatePoint` when it equals that one, else `NotAscending` -- or
+    /// nothing when the present points strictly ascend. An absent point is
+    /// skipped, not judged: a gap in the domain makes a reading along the
+    /// curve absent, but it does not excuse the points on either side of it
+    /// from ascending.
     ///
     /// Spans, as `interpolate_along`'s are, so that the evaluator and the
     /// trace judge with this one function.
     [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_domain(std::span<std::optional<Rational> const> points) noexcept
     {
-        for (std::size_t at = 1; at < points.size(); ++at)
-            if (!(*points[at - 1] < *points[at]))
-                return CurveBreakAt { at, *points[at] == *points[at - 1] ? CurveBreak::DuplicatePoint : CurveBreak::NotAscending };
+        std::optional<Rational> previous;
+        for (std::size_t at = 0; at < points.size(); ++at)
+        {
+            if (!points[at].has_value())
+                continue;
+            if (previous.has_value() && !(*previous < *points[at]))
+                return CurveBreakAt { at, *points[at] == *previous ? CurveBreak::DuplicatePoint : CurveBreak::NotAscending };
+            previous = points[at];
+        }
         return std::nullopt;
     }
 
@@ -678,9 +688,8 @@ template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typ
             CurveValue<Rep, curveLength> paired;
             paired.domain = points->elements;
             paired.values = pairedValues->elements;
-            if (detail::all_present(paired.domain))
-                if (std::optional<detail::CurveBreakAt> const disorder = detail::judge_domain(paired.domain))
-                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, disorder->at } };
+            if (std::optional<detail::CurveBreakAt> const disorder = detail::judge_domain(paired.domain))
+                return std::unexpected { SeriesFailure { ArithmeticError::DomainError, disorder->at } };
             return paired;
         }();
         if constexpr (detail::HearsCurve<Sink, CurveNode<D, V>, Rep>)

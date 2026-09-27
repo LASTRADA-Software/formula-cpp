@@ -146,6 +146,32 @@ TEST_CASE("a computed domain that does not strictly ascend fails at its first of
         passingMeasured);
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(computed, repeated).error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 2 });
+
+    // A gap does not excuse the points around it (final review, M2): 163 m
+    // comes after 197 m with an absent point between them, and the curve
+    // fails there, at zero-based 3, rather than being returned with a domain
+    // that does not ascend. A point equal to one before the gap is a
+    // duplicate likewise.
+    constexpr auto gapped = formula::environment(
+        formula::measured_series<Opening>(m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(197),
+                                          m<Opening>(163), m<Opening>(241)),
+        passingMeasured);
+    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(computed, gapped).error()
+                   == formula::SeriesFailure { formula::ArithmeticError::DomainError, 3 });
+    constexpr auto gappedTwice = formula::environment(
+        formula::measured_series<Opening>(m<Opening>(103), m<Opening>(127), formula::Measured<Opening>::absent(),
+                                          m<Opening>(127), m<Opening>(241)),
+        passingMeasured);
+    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(computed, gappedTwice).error()
+                   == formula::SeriesFailure { formula::ArithmeticError::DomainError, 3 });
+    // A gapped domain that ascends is a curve, its point absent.
+    constexpr auto gappedAscending = formula::environment(
+        formula::measured_series<Opening>(m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(163),
+                                          m<Opening>(197), m<Opening>(241)),
+        passingMeasured);
+    constexpr auto withGap = formula::checked_evaluate_curve<Opening, Passing>(computed, gappedAscending);
+    STATIC_REQUIRE(withGap.has_value());
+    STATIC_REQUIRE(withGap->domain()[1].is_absent());
 }
 
 TEST_CASE("an absent element anywhere makes the interpolation absent", "[curve]")
@@ -624,6 +650,20 @@ TEST_CASE("a curve whose domain does not ascend names the element in the trace",
     CHECK(formula::render_trace(twice, { .maxSteps = 30 })
               .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 3 "
                          "[duplicate domain point 127 m]\n"));
+
+    // Past a gap, the rule the evaluation judged is named too: 163 m after
+    // 197 m, one-based 4.
+    constexpr auto gapped = formula::environment(
+        formula::measured_series<Opening>(m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(197),
+                                          m<Opening>(163), m<Opening>(241)),
+        passingMeasured);
+    formula::Trace<> pastGap {};
+    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, passing), gapped,
+                                                             formula::RecordingSink<> { pastGap });
+    CHECK(formula::render_trace(pastGap, { .maxSteps = 30 })
+              .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 4 "
+                         "[domain does not ascend at 163 m]\n"));
+    CHECK(pastGap.steps.back().curveBreak == formula::CurveBreak::NotAscending);
 
     // The values fail at element 3, where the domain also falls: the failure
     // is the values', and names no rule of the domain's.
