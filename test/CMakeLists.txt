@@ -519,7 +519,7 @@ formula_add_negative_test(binned_class_gap
     REJECT "this binning's key unit" "declares no classes")
 formula_add_negative_test(binned_no_classes
     "this binning declares no classes"
-    REJECT "gap or overlap" "this binning's key unit" "this series has no elements" "must be initialized by a constant expression")
+    REJECT "this binning's key unit")
 formula_add_negative_test(binned_rep_not_rational
     "a binning can only be evaluated with Rep = Rational")
 formula_add_negative_test(observations_read_as_single

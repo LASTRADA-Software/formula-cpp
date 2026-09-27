@@ -670,10 +670,10 @@ template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typ
         EvaluatedCurve<Rep, curveLength> const evaluated = [&]() -> EvaluatedCurve<Rep, curveLength> {
             EvaluatedSeries<Rep, curveLength> const points = detail::dispatch_series<Rep>(node.domainSeries, environment, sink);
             if (!points.has_value())
-                return std::unexpected { detail::relayed_failure<D>(points) };
+                return std::unexpected { detail::relayed_failure(points) };
             EvaluatedSeries<Rep, curveLength> const pairedValues = detail::dispatch_series<Rep>(node.valueSeries, environment, sink);
             if (!pairedValues.has_value())
-                return std::unexpected { detail::relayed_failure<V>(pairedValues) };
+                return std::unexpected { detail::relayed_failure(pairedValues) };
 
             CurveValue<Rep, curveLength> paired;
             paired.domain = points->elements;

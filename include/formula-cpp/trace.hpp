@@ -892,6 +892,13 @@ struct Step
     /// union it judged. `None` for every other step, and for a failure that
     /// broke no rule of a curve's own -- an operand's, or an overflow.
     CurveBreak curveBreak {};
+
+    /// For a series step that failed at a position: what `failedElement`
+    /// counts, as the evaluation's `SeriesFailure::site` said -- an element of
+    /// the step's own series, or an observation it read (raw observations and
+    /// a binning). Zero-initialises to `ResultElement`, the site of every
+    /// other failure.
+    FailureSite failureSite {};
 };
 
 /// The rows one conformity step judged its elements against, in the unit
@@ -2228,6 +2235,7 @@ class RecordingSink
         {
             seriesStep.error = result.error().error;
             seriesStep.failedElement = result.error().element;
+            seriesStep.failureSite = result.error().site;
         }
         else
             seriesStep.elements.assign(result->elements.begin(), result->elements.end());
@@ -2253,6 +2261,7 @@ class RecordingSink
         {
             observationsStep.error = result.error().error;
             observationsStep.failedElement = result.error().element;
+            observationsStep.failureSite = result.error().site;
         }
         else
             for (std::size_t at = 0; at < result->count; ++at)

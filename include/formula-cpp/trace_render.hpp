@@ -1071,8 +1071,8 @@ namespace detail
     }
 
     /// Where a series step's failure arose, counted from one: `at element 3`,
-    /// or `at observation 3` for raw observations and a binning, whose
-    /// failure names an observation, not an element of their own. A binning
+    /// or `at observation 3` when `Step::failureSite` says the position is an
+    /// observation -- raw observations and a binning. A binning
     /// that found no class for it says which, and what the classes cover:
     /// `[83 m in no class; the classes cover 0 to under 83 m]`.
     [[nodiscard]] inline std::string failed_position_text(Step<Rational> const& recorded)
@@ -1080,7 +1080,7 @@ namespace detail
         if (!recorded.failedElement.has_value())
             return {};
         std::size_t const failedAt = *recorded.failedElement;
-        bool const namesObservation = recorded.kind == StepKind::ObservationsVariable || recorded.kind == StepKind::Binning;
+        bool const namesObservation = recorded.failureSite == FailureSite::InputObservation;
         std::string positionText = (namesObservation ? " at observation " : " at element ") + std::to_string(failedAt + 1);
         if (recorded.kind != StepKind::Binning || recorded.error != ArithmeticError::DomainError
             || failedAt >= recorded.domainElements.size() || !recorded.domainElements[failedAt].has_value()
@@ -1151,7 +1151,7 @@ namespace detail
     }
 
     /// The rule a failed curve broke and the point it broke it at:
-    /// `[duplicate domain point 2 m]`, `[domain does not ascend at 17 m]` or
+    /// `[duplicate domain point 7 m]`, `[domain does not ascend at 17 m]` or
     /// `[breaks non-decreasing at 11 m]`. Nothing when the step names no rule
     /// or holds no point at its failed element.
     [[nodiscard]] inline std::string curve_break_suffix(Step<Rational> const& recorded)

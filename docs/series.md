@@ -292,7 +292,10 @@ class's high bound, so it falls in none:
 2. bin(#1) = argument outside the domain of the operation at observation 4 [83 m in no class; the classes cover 0 to under 83 m]
 ```
 
-The position is the **observation's**, counted from one. An operation over
+The position is the **observation's**, counted from one. In the API it is
+zero-based, `SeriesFailure { DomainError, 3 }`, and its `site` says
+`FailureSite::InputObservation`, so a consumer cannot take it for the fourth
+count. An operation over
 the counts, such as the shares above, relays the failure without it, because
 it would name a count that is not at fault. Binning a series instead of
 observations is refused:

@@ -748,15 +748,28 @@ struct SeriesValue
     [[nodiscard]] constexpr bool operator==(SeriesValue const&) const noexcept = default;
 };
 
+/// What a `SeriesFailure`'s position counts.
+enum class FailureSite : std::uint8_t
+{
+    /// An element of the series the failing step produces.
+    ResultElement,
+    /// An observation the failing step read: raw observations whose
+    /// conversion into the coherent unit failed, or a binning's
+    /// (`binning.hpp`), whose result is one count per class, so a position
+    /// among its observations names none of its own elements.
+    InputObservation,
+};
+
 /// Why a series could not be evaluated, and where.
 struct SeriesFailure
 {
     /// What went wrong.
     ArithmeticError error;
 
-    /// The zero-based position, in the series the failing step produces, of
-    /// the element it went wrong at -- or nothing, when the failure belongs to
-    /// no single element (a reduction's overflow, say). Never a stand-in
+    /// The zero-based position of what it went wrong at, counted as `site`
+    /// says: an element of the series the failing step produces, or an
+    /// observation it read -- or nothing, when the failure belongs to no
+    /// single element (a reduction's overflow, say). Never a stand-in
     /// position for such a failure: element 0 would name a real element that
     /// did nothing wrong.
     ///
@@ -765,8 +778,16 @@ struct SeriesFailure
     /// position one-based.
     ///
     /// A failed scalar operand of an elementwise operation belongs to no
-    /// element (`detail::operand_failure`), and produces the empty shape.
+    /// element (`detail::operand_failure`), so its failure has no position
+    /// here: `element` is empty.
     std::optional<std::size_t> element;
+
+    /// What `element` counts. `ResultElement` for every step but the two
+    /// that read raw observations -- the observations themselves and a
+    /// binning over them -- whose failure names an observation; an operation
+    /// over a binning's counts relays such a failure without its position
+    /// (`detail::relayed_failure`).
+    FailureSite site = FailureSite::ResultElement;
 
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SeriesFailure const&) const noexcept = default;
@@ -897,38 +918,30 @@ namespace detail
         return evaluatedScalar;
     }
 
-    /// Whether a failure of the series node @p S names one of its own
-    /// elements. True for every kind whose positions are its elements; a kind
-    /// whose failure names a position in something else -- a binning's names
-    /// an observation (`binning.hpp`) -- specialises it false.
-    template <typename S>
-    inline constexpr bool failure_names_element = true;
-
-    /// A failed series operand @p Operand's failure, relayed: with its
-    /// position when that is one of the operand's elements, which is then the
-    /// same element of the result, and without it when it is not
-    /// (`failure_names_element`) -- a position in something else would name
-    /// an element of the result that is not at fault. The operand's own step
-    /// names it either way.
-    template <typename Operand, typename Rep, std::size_t N>
+    /// A failed series operand's failure, relayed: with its position when
+    /// that is one of the operand's elements (`FailureSite::ResultElement`),
+    /// which is then the same element of the result, and without it when it
+    /// is an observation (`InputObservation`) -- a position among a
+    /// binning's observations would name an element of the result that is
+    /// not at fault. The operand's own step names it either way.
+    template <typename Rep, std::size_t N>
     [[nodiscard]] constexpr SeriesFailure relayed_failure(EvaluatedSeries<Rep, N> const& failed) noexcept
     {
-        if constexpr (failure_names_element<Operand>)
-            return failed.error();
-        else
+        if (failed.error().site == FailureSite::InputObservation)
             return SeriesFailure { failed.error().error, std::nullopt };
+        return failed.error();
     }
 
     /// A failed series operand's failure, relayed (`relayed_failure`).
-    template <typename Operand, typename Rep, std::size_t N>
+    template <typename Rep, std::size_t N>
     [[nodiscard]] constexpr SeriesFailure operand_failure(EvaluatedSeries<Rep, N> const& failed) noexcept
     {
-        return relayed_failure<Operand>(failed);
+        return relayed_failure(failed);
     }
 
     /// A failed scalar operand's failure: it belongs to no element, since the
     /// scalar was evaluated once, before any element was computed.
-    template <typename Operand, typename Rep>
+    template <typename Rep>
     [[nodiscard]] constexpr SeriesFailure operand_failure(Evaluated<Rep> const& failed) noexcept
     {
         return SeriesFailure { failed.error(), std::nullopt };
@@ -987,7 +1000,7 @@ template <typename Rep = Rational, UnaryOperator Op, SeriesNode Operand, typenam
         EvaluatedSeries<Rep, seriesLength> const operandResult =
             detail::dispatch_series<Rep>(node.operand, environment, sink);
         if (!operandResult.has_value())
-            return std::unexpected { detail::relayed_failure<Operand>(operandResult) };
+            return std::unexpected { detail::relayed_failure(operandResult) };
         SeriesValue<Rep, seriesLength> negated;
         for (std::size_t at = 0; at < seriesLength; ++at)
         {
@@ -1022,10 +1035,10 @@ template <typename Rep = Rational, BinaryOperator Op, typename Left, typename Ri
     EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
         auto const leftResult = detail::evaluate_operand<Rep>(node.lhs, environment, sink);
         if (!leftResult.has_value())
-            return std::unexpected { detail::operand_failure<Left>(leftResult) };
+            return std::unexpected { detail::operand_failure(leftResult) };
         auto const rightResult = detail::evaluate_operand<Rep>(node.rhs, environment, sink);
         if (!rightResult.has_value())
-            return std::unexpected { detail::operand_failure<Right>(rightResult) };
+            return std::unexpected { detail::operand_failure(rightResult) };
 
         SeriesValue<Rep, seriesLength> combined;
         for (std::size_t at = 0; at < seriesLength; ++at)
@@ -1075,7 +1088,7 @@ template <typename Rep = Rational, Unit U, auto Places, RoundingMode Mode, Serie
             EvaluatedSeries<Rep, seriesLength> const operandResult =
                 detail::dispatch_series<Rep>(node.operand, environment, sink);
             if (!operandResult.has_value())
-                return std::unexpected { detail::relayed_failure<S>(operandResult) };
+                return std::unexpected { detail::relayed_failure(operandResult) };
 
             SeriesValue<Rep, seriesLength> roundedElements;
             for (std::size_t at = 0; at < seriesLength; ++at)
@@ -1112,7 +1125,7 @@ template <typename Rep = Rational, CumulativeDirection D, SeriesNode S, typename
         EvaluatedSeries<Rep, seriesLength> const operandResult =
             detail::dispatch_series<Rep>(node.operand, environment, sink);
         if (!operandResult.has_value())
-            return std::unexpected { detail::relayed_failure<S>(operandResult) };
+            return std::unexpected { detail::relayed_failure(operandResult) };
 
         SeriesValue<Rep, seriesLength> totals;
         std::optional<Rep> runningTotal;
@@ -1259,7 +1272,9 @@ class SeriesOutcome
 /// series cannot be answered with one number.
 ///
 /// There is deliberately no throwing twin: an exception would have to drop the
-/// position `SeriesFailure` carries.
+/// position `SeriesFailure` carries. That position is an element of the
+/// result unless `SeriesFailure::site` says it is an observation, as it does
+/// for a binning that failed at one.
 template <Described Result, SeriesNode S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr std::expected<SeriesOutcome<Result, S::length>, SeriesFailure> checked_evaluate_series(
     S const& expression, Env const& environment, Sink sink = {}) noexcept

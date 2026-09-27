@@ -25,9 +25,10 @@
 /// `Classes.size()` counts, each present and dimensionless, in the order the
 /// classes are declared; `binned(...) / sum(binned(...))` is each class's
 /// share. **Its failure names an observation, not a class**: the position a
-/// `SeriesFailure` carries is the observation's, and an operation over the
-/// counts relays the failure without it (`detail::failure_names_element`),
-/// since it would name a count that is not at fault.
+/// `SeriesFailure` carries is the observation's, marked
+/// `FailureSite::InputObservation`, and an operation over the counts relays
+/// the failure without it (`detail::relayed_failure`), since it would name a
+/// count that is not at fault.
 ///
 /// Everything here compares, so binning is evaluated with `Rep = Rational`
 /// only, refused otherwise in this library's words, as a curve is
@@ -250,10 +251,6 @@ template <Unit KeyUnit, BandTable Classes, typename Obs>
 
 namespace detail
 {
-    /// A binning's failure names an observation, not one of its counts.
-    template <Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
-    inline constexpr bool failure_names_element<BinnedNode<KeyUnit, Classes, Obs>> = false;
-
     /// Whether @p Sink wants to hear about raw observations: true when it
     /// defines `observations_produced(node, result)`.
     template <typename Sink, typename O, typename Rep>
@@ -277,7 +274,7 @@ namespace detail
                 Measured<Q> const made = observed.observation(at);
                 Evaluated<Rep> const observationInSi = in_si<Rep>(*made.stored(), Describe<Q>::unit);
                 if (!observationInSi.has_value())
-                    return std::unexpected { SeriesFailure { observationInSi.error(), at } };
+                    return std::unexpected { SeriesFailure { observationInSi.error(), at, FailureSite::InputObservation } };
                 inCoherentUnit.elements[at] = **observationInSi;
             }
             inCoherentUnit.count = observed.size();
@@ -312,7 +309,7 @@ template <typename Rep = Rational,
         return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
     }
     // Refused already: nothing was binned, and nothing is told.
-    else if constexpr (BinnedNode<KeyUnit, Classes, Obs>::refused || classCount == 0)
+    else if constexpr (BinnedNode<KeyUnit, Classes, Obs>::refused)
         return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
     else
     {
@@ -329,10 +326,10 @@ template <typename Rep = Rational,
                 std::expected<Rational, ArithmeticError> const inKey =
                     checked_convert(observed->elements[at], coherent(KeyUnit.dimension), KeyUnit);
                 if (!inKey.has_value())
-                    return std::unexpected { SeriesFailure { inKey.error(), at } };
+                    return std::unexpected { SeriesFailure { inKey.error(), at, FailureSite::InputObservation } };
                 std::optional<std::size_t> const holding = detail::find_band<Classes>(*inKey);
                 if (!holding.has_value())
-                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, at } };
+                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, at, FailureSite::InputObservation } };
                 ++tally[*holding];
             }
             SeriesValue<Rep, classCount> counts;

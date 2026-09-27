@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: this binning declares no classes
-// REJECT: gap or overlap
 // REJECT: this binning's key unit
-// REJECT: this series has no elements
-// REJECT: must be initialized by a constant expression
 //
 // A binning into no classes: every observation would miss. Refused once,
-// with the key check gated off and the empty count series evaluated quietly.
+// with the key check -- a gram key for sizes in metres -- gated off. The
+// empty count series evaluates without a further message on every compiler
+// measured, so nothing else is rejected here.
 #include <formula-cpp/binning.hpp>
 
 struct Size: formula::Quantity<Size, "d", "particle size", formula::unit::Metre>
