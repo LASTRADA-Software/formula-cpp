@@ -474,16 +474,16 @@ git commit -m "feat(trace): name the variant that fired, and correct the degrada
 ```cpp
 TEST_CASE("an overlay overrides a constant and yields a method", "[overlay]")
 {
-    constexpr auto national = formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 }));
+    constexpr auto national = formula::overlay(formula::with_constant<ShapeFactor>(formula::Rational { 863, 1000 }));
     constexpr auto overlaid = formula::apply(national, baseMethod);
 
-    // The base method's factor is 1; the overlay's is 97/100, so the two
+    // The base method's factor is 1; the overlay's is 863/1000, so the two
     // results differ. A fixture where they agreed could not tell an applied
     // overlay from an ignored one.
     constexpr auto base = formula::evaluate_method<Cube>(baseMethod, inputs);
     constexpr auto after = formula::evaluate_method<Cube>(overlaid, inputs);
     STATIC_REQUIRE(base->value() != after->value());
-    STATIC_REQUIRE(after->value() == formula::Rational { 582, 100 });
+    STATIC_REQUIRE(after->value() == formula::Rational { 5178, 1000 });
 }
 ```
 

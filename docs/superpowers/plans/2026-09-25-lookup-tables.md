@@ -102,11 +102,11 @@ struct Bounds
 
 > Band tables must be validated for gaps and overlaps, because real published tables contain typos and undefined regions: **the loader must say so rather than silently mis-bucket.**
 
-A table with bands 30–40 and 45–50 leaves 42 undefined. One with 30–40 and 38–45 gives two answers at 39. Both occur in real published documents, because people type them.
+A table with bands 31.7–43.9 and 47.3–52.3 leaves 45.1 undefined. One with 31.7–43.9 and 41.3–47.3 gives two answers at 42.7. Both occur in real published documents, because people type them.
 
 **Bands are int64 numerator/denominator pairs, not `Rational`** — the spike proved `Rational` cannot be an NTTP on any of the four compilers, and `dimension.hpp` already said so. Follow `Bounds`' shape.
 
-**Bands are half-open `[low, high)`.** A published table writing "30 to 40" then "40 to 50" leaves 40 ambiguous, and every real table does this somewhere. Half-open resolves it one way; the guide must tell the caller to reconcile that against their source document rather than presenting it as an implementation detail. **Decide whether the last band needs a closed upper bound** — "up to and including the maximum" is a real thing tables say — and say which way you went and why.
+**Bands are half-open `[low, high)`.** A published table writing "31.7 to 43.9" then "43.9 to 52.3" leaves 43.9 ambiguous, and every real table does this somewhere. Half-open resolves it one way; the guide must tell the caller to reconcile that against their source document rather than presenting it as an implementation detail. **Decide whether the last band needs a closed upper bound** — "up to and including the maximum" is a real thing tables say — and say which way you went and why.
 
 **One predicate, used twice.** The same `constexpr` function must serve the `static_assert` and any runtime loader. Writing it twice guarantees they diverge; this project has watched two surfaces drift apart four times now.
 
