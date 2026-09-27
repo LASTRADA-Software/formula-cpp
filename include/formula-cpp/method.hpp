@@ -1821,10 +1821,10 @@ class RoundingRuleNode: public RoundNode<U, Places, Mode, Operand>
     /// Refused: see `detail::RequireMethodMadeRoundingNode`. Declared only so
     /// that building one by hand is refused in this library's words.
     explicit constexpr RoundingRuleNode(Operand rounded,
-                                        RoundingRule<U, Places, Mode> const& applied = {},
+                                        RoundingRule<U, Places, Mode> const& ruleApplied = {},
                                         detail::ProvenanceStatedByAuthor = {}) noexcept:
         RoundNode<U, Places, Mode, Operand> { {}, rounded },
-        _rule { applied }
+        _rule { ruleApplied }
     {
         static_assert(detail::RequireMethodMadeRoundingNode<RoundingRuleNode>::value);
     }
@@ -1839,9 +1839,11 @@ class RoundingRuleNode: public RoundNode<U, Places, Mode, Operand>
   private:
     friend struct detail::RoundingRuleNodeAccess;
 
-    constexpr RoundingRuleNode(detail::MethodMade, Operand rounded, RoundingRule<U, Places, Mode> const& applied) noexcept:
+    constexpr RoundingRuleNode(detail::MethodMade,
+                               Operand rounded,
+                               RoundingRule<U, Places, Mode> const& ruleApplied) noexcept:
         RoundNode<U, Places, Mode, Operand> { {}, rounded },
-        _rule { applied }
+        _rule { ruleApplied }
     {
     }
 

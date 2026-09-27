@@ -76,7 +76,7 @@ and `TagName` spells a variant's tag.
   `-Wunused-but-set-parameter` on the sink, in a consumer's own build under `-Werror`.
 - Locals and parameters in the public headers shared names with ordinary globals such as
   `result`, `value`, `index`, `here` and `origin`, so cl at `/W4 /WX` reported C4459 in a consumer
-  that declared one, and failed to build. They are renamed, and a test declares 258 such globals
+  that declared one, and failed to build. They are renamed, and a test declares 259 such globals
   before every header.
 - cl names an enumerator that is not one as a cast, `(enum Flag)true`; it was shown as a name, and
   is refused now.
