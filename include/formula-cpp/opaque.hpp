@@ -120,6 +120,23 @@ struct OpaqueCallFailure
     [[nodiscard]] constexpr bool operator==(OpaqueCallFailure const&) const noexcept = default;
 };
 
+/// What a sink is told of an opaque call it hears about (`opaque_entered`,
+/// `opaque_produced`): plain data, so that a sink needs no operation type to
+/// record the call. The views point into the operation's static members and
+/// into the call, which outlives the evaluation that tells the sink; a sink
+/// that keeps the citation copies it.
+struct OpaqueCallInfo
+{
+    /// The operation's name, `Op::name`.
+    std::string_view name {};
+    /// Why the method uses the operation here -- empty when it cited nothing.
+    Citation citation {};
+    /// The operation's output names, in its declared order.
+    std::span<std::string_view const> outputs {};
+    /// Each output's dimension, in the same order.
+    std::span<Dimension const> dimensions {};
+};
+
 /// What evaluating an opaque call produces: every output in the coherent SI
 /// unit of its dimension, nothing (an input was absent), or the failure.
 template <typename Rep, std::size_t M>
@@ -897,13 +914,42 @@ namespace detail
         }
     }
 
-    /// Evaluates the opaque call @p call: every input, then `compute`.
+    /// What a sink is told of @p call: its operation's name and outputs, the
+    /// outputs' dimensions and the call's citation, as plain data.
+    template <typename Op, typename... Inputs>
+    [[nodiscard]] constexpr OpaqueCallInfo opaque_call_info(OpaqueCall<Op, Inputs...> const& call) noexcept
+    {
+        return OpaqueCallInfo { .name = Op::name,
+                                .citation = call.citation,
+                                .outputs = std::span<std::string_view const> { Op::outputs },
+                                .dimensions = std::span<Dimension const> { OpaqueCall<Op, Inputs...>::output_dimensions } };
+    }
+
+    /// Whether @p Sink wants to hear about an opaque call: true when it
+    /// defines **both** `opaque_entered(info)` and `opaque_produced(info,
+    /// result)` -- `HearsSeries`' rule, for its reason (`series.hpp`).
+    template <typename Sink, typename Rep, std::size_t M>
+    concept HearsOpaque = requires(Sink sink, OpaqueCallInfo const& callInfo, OpaqueEvaluated<Rep, M> const& evaluated) {
+        sink.opaque_entered(callInfo);
+        sink.opaque_produced(callInfo, evaluated);
+    };
+
+    /// Evaluates the opaque call @p call: every input, then `compute`. A sink
+    /// that asks is told before the first input and after the last
+    /// (`HearsOpaque`), so that it can record the call as one step over its
+    /// inputs' steps.
     template <typename Rep, typename Op, typename... Inputs, typename Env, typename Sink>
     [[nodiscard]] constexpr OpaqueEvaluated<Rep, Op::outputs.size()> evaluate_call(OpaqueCall<Op, Inputs...> const& call,
                                                                                    Env const& environment,
                                                                                    Sink sink) noexcept
     {
-        return evaluate_opaque_from<Rep, 0>(call, environment, sink);
+        constexpr std::size_t outputCount = Op::outputs.size();
+        if constexpr (HearsOpaque<Sink, Rep, outputCount>)
+            sink.opaque_entered(opaque_call_info(call));
+        OpaqueEvaluated<Rep, outputCount> const evaluated = evaluate_opaque_from<Rep, 0>(call, environment, sink);
+        if constexpr (HearsOpaque<Sink, Rep, outputCount>)
+            sink.opaque_produced(opaque_call_info(call), evaluated);
+        return evaluated;
     }
 
     /// Whether `compute` is sound for @p Rep: proven by the call's own checks

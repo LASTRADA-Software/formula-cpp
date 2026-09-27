@@ -43,7 +43,8 @@
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
-// opaque operation's output, evaluated exactly and in double; and the four
+// opaque operation's output, evaluated exactly and in double, traced,
+// rendered and documented; and the four
 // table validators; and `record_key`, `sample_id`, `test_id`,
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
@@ -736,6 +737,15 @@ ConsumerGlobalsProbe probe_consumer_globals()
     auto const spanInDouble = formula::checked_evaluate_si<double>(edgeSpan, bothScreens);
     probe.checks.push_back(spanValue.has_value() && spanValue->measurement().value() == formula::Rational { 47 }
                            && spanInDouble.has_value() && spanInDouble->has_value());
+    // ... and on every surface: traced, rendered in the three dialects and
+    // documented.
+    auto const explainedSpan = formula::explain<EdgeX>(edgeSpan, bothScreens, north);
+    probe.checks.push_back(
+        formula::render_trace(explainedSpan.trace, { .maxSteps = 20 }).find("[inside not shown]") != std::string::npos
+        && formula::render(edgeSpan, north) == "edge span(x_m(i)).span"
+        && formula::render<formula::Dialect::Markdown>(edgeSpan).find("edge span") != std::string::npos
+        && formula::render<formula::Dialect::LaTeX>(edgeSpan).find("\\text{edge span}") != std::string::npos
+        && formula::document(edgeSpan, north).opaqueOperations.size() == 1);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

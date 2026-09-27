@@ -1014,6 +1014,13 @@ namespace detail
                                                       : sole_operand(shownStep) + " from another record";
                 return shownStep.operands.empty() ? record_origin_text(*shownStep.readFrom)
                                                   : sole_operand(shownStep) + " " + record_origin_text(*shownStep.readFrom);
+            // The operation's name is in `Trace::opaqueSteps`, which the line
+            // is rendered with (`opaque_call_line`); a step without its row --
+            // one built by hand -- still reads as a call on its inputs.
+            case StepKind::OpaqueOperation:
+                return "opaque(" + operands_text(shownStep) + ")";
+            case StepKind::OpaqueOutput:
+                return "output of " + sole_operand(shownStep);
         }
         return "unknown step kind";
     }
@@ -2009,6 +2016,126 @@ namespace detail
         return step_expression(recorded);
     }
 
+    /// What `render_trace` found in a trace's side tables for an opaque step:
+    /// the call's row -- the step's own for an `OpaqueOperation` step, and the
+    /// row of the call it claimed for an `OpaqueOutput` step -- and, for the
+    /// latter, which output it selected. Null and empty for every other step,
+    /// and for a step built by hand without its rows.
+    struct OpaqueLine
+    {
+        OpaqueStepData<Rational> const* call = nullptr;
+        std::optional<std::size_t> outputIndex {};
+    };
+
+    /// What an opaque call's line says of whose failure it carries, bracketed:
+    /// the operation's own, relayed from an input -- named, with its element
+    /// counted from one when the failure had one -- or undetermined.
+    [[nodiscard]] inline std::string opaque_failure_suffix(Step<Rational> const& recorded, OpaqueFailure carried)
+    {
+        switch (carried)
+        {
+            case OpaqueFailure::None:
+                return {};
+            case OpaqueFailure::Own:
+                return " [the operation itself failed, not any input]";
+            case OpaqueFailure::Propagated:
+            {
+                std::string relayed = " [carried up from ";
+                relayed += recorded.operands.empty() ? std::string { "an input" } : operands_text(recorded);
+                if (recorded.failedElement.has_value())
+                    relayed += ", at element " + std::to_string(*recorded.failedElement + 1);
+                return relayed + "]";
+            }
+            case OpaqueFailure::Undetermined:
+                return " [this operation or an input: an input recorded no step]";
+        }
+        return " [unknown failure]";
+    }
+
+    /// An opaque call's line, without its number: `series span(#1) = lowest
+    /// = 103 g; highest = 191 g; span = 88 g [inside not shown] [Spread of
+    /// readings, Example Standard 12, 4.2]`.
+    ///
+    /// Each output shown spends one unit of @p budget, as a series' elements
+    /// do, and a list cut short ends `... k more`. A failed call shows its
+    /// error and whose it is (`opaque_failure_suffix`); an absent one,
+    /// `(not measured)`.
+    ///
+    /// **`[inside not shown]` depends on the step's kind alone**: it is
+    /// written for every `OpaqueOperation` step, with or without its row, and
+    /// nothing a step or an operation holds can switch it off. The citation
+    /// clause is always written too, `(no citation given)` when the call
+    /// cited nothing, so that an uncited call never reads as a cited one.
+    ///
+    /// @p recorded has had its author text escaped already (`step_line`); the
+    /// row's names are escaped here, with the same function.
+    [[nodiscard]] inline std::string opaque_call_line(ShownStep const& recorded,
+                                                      OpaqueStepData<Rational> const* callRow,
+                                                      std::size_t& budget)
+    {
+        std::string lineText = callRow == nullptr
+                                   ? step_expression(recorded)
+                                   : escaped_author_text(callRow->operationName) + "(" + operands_text(recorded) + ")";
+        lineText += " = ";
+        if (recorded.error.has_value())
+            lineText += describe(*recorded.error);
+        else if (callRow == nullptr || callRow->outputs.empty() || !callRow->outputs.front().value.has_value())
+            lineText += "(not measured)";
+        else
+        {
+            std::size_t const outputCount = callRow->outputs.size();
+            std::size_t const listed = budget < outputCount ? budget : outputCount;
+            budget -= listed;
+            for (std::size_t at = 0; at < listed; ++at)
+            {
+                OpaqueOutputValue<Rational> const& shownOutput = callRow->outputs[at];
+                Step<Rational> outputShape {};
+                outputShape.dimension = shownOutput.dimension;
+                outputShape.unit = shownOutput.unit;
+                if (at > 0)
+                    lineText += "; ";
+                lineText += escaped_author_text(shownOutput.name) + " = " + value_in_declared_unit(outputShape, shownOutput.value);
+            }
+            if (listed < outputCount)
+                lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outputCount - listed) + " more";
+        }
+        lineText += " [inside not shown]";
+        if (callRow != nullptr)
+            lineText += opaque_failure_suffix(recorded, callRow->failure);
+        std::string const cited = citation_text(recorded.citation);
+        lineText += cited.empty() ? " " + std::string { noCitationGiven } : " [" + cited + "]";
+        return lineText;
+    }
+
+    /// An opaque output's line, without its number: `span of #2 = 88 g`, the
+    /// output named from its call's row; `output of #2` without one.
+    [[nodiscard]] inline std::string opaque_output_line(ShownStep const& recorded, OpaqueLine const& opaqueLine)
+    {
+        std::string outputText = step_expression(recorded);
+        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
+            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
+            outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
+                         + sole_operand(recorded);
+        return outputText + " = " + step_value_text(recorded);
+    }
+
+    /// What @p trace's side tables hold for the opaque step at @p stepIndex:
+    /// its own row, or the row of the call an output claimed and which output
+    /// it selected (`OpaqueLine`).
+    [[nodiscard]] inline OpaqueLine opaque_line_of(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        Step<Rational> const& recorded = trace.steps[stepIndex];
+        if (recorded.kind == StepKind::OpaqueOperation)
+            return OpaqueLine { .call = opaque_data(trace, stepIndex) };
+        if (recorded.kind != StepKind::OpaqueOutput)
+            return {};
+        OpaqueLine outputLine {};
+        if (OpaqueOutputStepData const* const chosenOutput = opaque_output_data(trace, stepIndex); chosenOutput != nullptr)
+            outputLine.outputIndex = chosenOutput->outputIndex;
+        if (recorded.operands.size() == 1)
+            outputLine.call = opaque_data(trace, recorded.operands.front());
+        return outputLine;
+    }
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the kinds that need one -- a citation for
     /// `Documented`, the variant and its discriminator for `VariantSelected`,
@@ -2046,6 +2173,13 @@ namespace detail
                                                        std::size_t& budget,
                                                        std::span<LimitRow const> limits)
     {
+        OpaqueLine const opaqueLine = opaque_line_of(trace, stepIndex);
+        // An opaque call's line is its outputs, and ends saying its inside is
+        // not shown; an output's names the output.
+        if (recorded.kind == StepKind::OpaqueOperation)
+            return opaque_call_line(recorded, opaqueLine.call, budget);
+        if (recorded.kind == StepKind::OpaqueOutput)
+            return opaque_output_line(recorded, opaqueLine);
         // A series first, before anything reads `value`: its values are its
         // elements.
         // A per-element rounding ends with its mode, as a scalar rounding

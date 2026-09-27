@@ -16,6 +16,7 @@
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/rational.hpp>
@@ -164,6 +165,22 @@ struct RejectionEntry
     [[nodiscard]] bool operator==(RejectionEntry const&) const = default;
 };
 
+/// One opaque operation a formula calls, as a documentation page lists it:
+/// what ran, why the method uses it there, and what it produces. Its inside
+/// is not shown, on the page or in the trace; what is shown is that it ran.
+struct OpaqueOperationEntry
+{
+    /// The operation's name, `Op::name`.
+    std::string_view name {};
+    /// What the call cited -- empty when it cited nothing, and still an entry.
+    Citation citation {};
+    /// The operation's output names, in its declared order.
+    std::vector<std::string_view> outputs {};
+
+    /// Memberwise equality.
+    [[nodiscard]] bool operator==(OpaqueOperationEntry const&) const = default;
+};
+
 /// Everything a documentation page needs from a formula: the formula itself
 /// rendered to text, what it cites, and the symbol table for what it reads.
 struct Documentation
@@ -191,6 +208,11 @@ struct Documentation
     /// met (`RejectionEntry`). A cited rejection's citation also joins
     /// `citations`.
     std::vector<RejectionEntry> rejections {};
+    /// One entry per opaque call the formula makes (`opaque.hpp`), in the
+    /// order met, each call once however many of its outputs the formula
+    /// uses: an entry even for a call that cited nothing, for
+    /// `replacedBy`'s reason. A cited call's citation also joins `citations`.
+    std::vector<OpaqueOperationEntry> opaqueOperations {};
 };
 
 namespace detail
@@ -273,6 +295,9 @@ namespace detail
     {
         Documentation documentation {};
         std::vector<SeenRow> seenQuantities {};
+        /// Which call type each of `documentation.opaqueOperations` came from,
+        /// index for index, so that two outputs of one call are one entry.
+        std::vector<void const*> seenCalls {};
         /// The dialect `document()` was asked for, which a derived quantity's
         /// definition is rendered in.
         Dialect dialect = Dialect::Plain;
@@ -474,6 +499,14 @@ namespace detail
 
     template <Vocabulary V, typename Operand>
     void collect(Walk<V>& walk, RefusedSeriesScope<Operand> const& node);
+
+    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs>
+    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& node);
+
+    /// A distinct address per opaque call type, for `quantityIdentity`'s
+    /// reason and in its writable form.
+    template <typename Call>
+    inline bool callIdentity = false;
 
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
@@ -1029,6 +1062,31 @@ namespace detail
     template <Vocabulary V, typename Operand>
     void collect(Walk<V>&, RefusedSeriesScope<Operand> const&)
     {
+    }
+
+    /// An opaque output lists its call -- once per call, however many of its
+    /// outputs are used: one call is one call type with one citation -- and
+    /// walks the call's inputs, which name its variables.
+    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs>
+    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& node)
+    {
+        void const* const identity = &callIdentity<OpaqueCall<Op, Inputs...>>;
+        bool metAlready = false;
+        for (std::size_t entryAt = 0; entryAt < walk.seenCalls.size(); ++entryAt)
+            if (walk.seenCalls[entryAt] == identity
+                && walk.documentation.opaqueOperations[entryAt].citation == node.call.citation)
+                metAlready = true;
+        if (!metAlready)
+        {
+            walk.seenCalls.push_back(identity);
+            walk.documentation.opaqueOperations.push_back(OpaqueOperationEntry {
+                .name = Op::name,
+                .citation = node.call.citation,
+                .outputs = std::vector<std::string_view>(Op::outputs.begin(), Op::outputs.end()) });
+            if (!(node.call.citation == Citation {}))
+                walk.documentation.citations.push_back(node.call.citation);
+        }
+        std::apply([&](auto const&... inputs) { (collect(walk, inputs), ...); }, node.call.inputs);
     }
 } // namespace detail
 

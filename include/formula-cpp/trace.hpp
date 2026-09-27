@@ -23,6 +23,7 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/record.hpp>
@@ -424,6 +425,24 @@ enum class StepKind : std::uint8_t
     /// `LineageCheck` -- so GCC's `-Wshadow`, with which gcc-release builds,
     /// has nothing to report.
     LineageChecked,
+    /// An opaque operation's call (`OpaqueCall`, `opaque.hpp`): its inputs'
+    /// steps as its operands, the call's citation in `Step::citation`, and on
+    /// a relayed failure the input's element in `Step::failedElement`. The
+    /// operation's name, each output's name, dimension and value, and whose
+    /// failure it carries are in `Trace::opaqueSteps`, not on the `Step`.
+    /// Its line always ends by saying that the operation's inside is not
+    /// shown -- on this kind alone, which no field can switch off.
+    ///
+    /// Recorded by `RecordingSink::opaque_produced`: a call is not a `Node`.
+    /// Checked on GCC under `-Wshadow`: the factory is `opaque` and the type
+    /// `OpaqueCall`, so nothing in namespace `formula` is spelt
+    /// `OpaqueOperation`.
+    OpaqueOperation,
+    /// One output of an opaque call (`OpaqueOutputNode`): a single-value step
+    /// whose operand is the call's step; which output, in
+    /// `Trace::opaqueOutputSteps`. Checked on GCC under `-Wshadow`: the node
+    /// is `OpaqueOutputNode` and its factory `opaque_output`.
+    OpaqueOutput,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1269,6 +1288,53 @@ struct LineageRow
     LineageCheck check;
 };
 
+/// One output of an opaque call, as its step recorded it.
+template <typename Rep = Rational>
+struct OpaqueOutputValue
+{
+    /// The output's name, as the operation declares it.
+    std::string_view name {};
+    /// The dimension the operation declares for it.
+    Dimension dimension {};
+    /// The unit it is shown in: the declared unit of the first input step of
+    /// its dimension, as a sum is shown in its series' unit, and the coherent
+    /// SI unit otherwise.
+    Unit unit {};
+    /// Its value, in the coherent SI unit of `dimension`; empty when the call
+    /// was absent or failed.
+    std::optional<Rep> value {};
+};
+
+/// What an `OpaqueOperation` step carries beyond its `Step`, keyed by its
+/// index in `Trace::steps`. A side table rather than members of `Step`, so
+/// that every other step pays nothing for them (`Trace::conformityLimits` is
+/// the precedent).
+template <typename Rep = Rational>
+struct OpaqueStepData
+{
+    /// The index, in `Trace::steps`, of the `OpaqueOperation` step.
+    std::size_t step {};
+    /// The operation's name, `Op::name`: static storage, so the view outlives
+    /// the trace.
+    std::string_view operationName {};
+    /// Every output, in the operation's declared order.
+    std::vector<OpaqueOutputValue<Rep>> outputs {};
+    /// Whose failure the step carries: `None`, the operation's `Own`, an
+    /// input's relayed (`Propagated`), or `Undetermined` when the call relayed
+    /// a failure no input step shows.
+    OpaqueFailure failure {};
+};
+
+/// Which output an `OpaqueOutput` step selected, keyed by its index in
+/// `Trace::steps`.
+struct OpaqueOutputStepData
+{
+    /// The index, in `Trace::steps`, of the `OpaqueOutput` step.
+    std::size_t step {};
+    /// The output's ZERO-BASED position among the operation's outputs.
+    std::size_t outputIndex {};
+};
+
 /// A recorded derivation: a flat arena of steps.
 template <typename Rep = Rational>
 struct Trace
@@ -1388,6 +1454,16 @@ struct Trace
     /// Bookkeeping, as `marks` is, and for the same reason.
     std::vector<std::uint32_t> recordStack {};
 
+    /// What each opaque call's step carries beyond its `Step`, keyed by its
+    /// index in `steps` -- see `OpaqueStepData`. Written by `RecordingSink`
+    /// alone; a `Trace` is plain data, so a caller may edit one by hand, as it
+    /// may edit any `Step`.
+    std::vector<OpaqueStepData<Rep>> opaqueSteps {};
+
+    /// Which output each opaque output's step selected, keyed as
+    /// `opaqueSteps` is.
+    std::vector<OpaqueOutputStepData> opaqueOutputSteps {};
+
     /// The index of the outermost step -- the one nothing else consumed.
     ///
     /// A `Trace` may hold more than one walk's steps: constructing a
@@ -1409,6 +1485,28 @@ struct Trace
     /// Whether anything was recorded.
     [[nodiscard]] bool empty() const noexcept { return steps.empty(); }
 };
+
+/// What @p trace recorded for the opaque call whose step is at @p stepIndex,
+/// or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] OpaqueStepData<Rep> const* opaque_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (OpaqueStepData<Rep> const& kept: trace.opaqueSteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
+
+/// Which output the opaque output step at @p stepIndex of @p trace selected,
+/// or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] OpaqueOutputStepData const* opaque_output_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (OpaqueOutputStepData const& kept: trace.opaqueOutputSteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
 
 namespace detail
 {
@@ -1669,6 +1767,12 @@ namespace detail
     struct StepKindOf<PassCountNode>
     {
         static constexpr StepKind value = StepKind::PassCount;
+    };
+
+    template <std::size_t I, typename Call>
+    struct StepKindOf<OpaqueOutputNode<I, Call>>
+    {
+        static constexpr StepKind value = StepKind::OpaqueOutput;
     };
 
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
@@ -2198,6 +2302,27 @@ namespace detail
         failedStep.elements = std::move(pointValues);
     }
 
+    /// The unit an opaque output of @p dimension is shown in: the declared
+    /// unit of the first input step of that dimension -- a curve's values, then
+    /// its points -- as a sum reads in its series' unit, and the coherent SI
+    /// unit otherwise.
+    template <typename Rep>
+    [[nodiscard]] Unit opaque_output_unit(std::vector<Step<Rep>> const& steps,
+                                          std::vector<std::size_t> const& operands,
+                                          Dimension dimension)
+    {
+        for (std::size_t const operandIndex: operands)
+        {
+            Step<Rep> const& inputStep = steps[operandIndex];
+            if (inputStep.unit.dimension == dimension)
+                return inputStep.unit;
+            if ((inputStep.kind == StepKind::CurvePairing || inputStep.kind == StepKind::CurveSplice)
+                && inputStep.sourceUnit.dimension == dimension)
+                return inputStep.sourceUnit;
+        }
+        return coherent(dimension);
+    }
+
     /// Fills in a binning step: the classes' unit and extent, from the node's
     /// type, and the observations it binned, off its operand's step -- in
     /// the coherent SI unit, as that step holds them. Nothing of the
@@ -2672,6 +2797,14 @@ class RecordingSink
             detail::record_snap(node, nodeStep, _trace->steps);
         if constexpr (detail::StepKindOf<N>::value == StepKind::CurveInterpolation)
             detail::record_curve_interpolation(node, nodeStep, _trace->steps);
+        // An opaque output is shown in the unit its call's step shows it in:
+        // the call's step is the one this node claimed.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OpaqueOutput)
+            if (nodeStep.operands.size() == 1)
+                if (OpaqueStepData<Rep> const* const callRow = opaque_data(*_trace, nodeStep.operands.front());
+                    callRow != nullptr && N::index < callRow->outputs.size()
+                    && callRow->outputs[N::index].unit.dimension == nodeStep.dimension)
+                    nodeStep.unit = callRow->outputs[N::index].unit;
 
         if constexpr (detail::StepKindOf<N>::value == StepKind::SampleSizeLookup)
             _trace->sampleSizeRecords.push_back(detail::SampleSizeRecord {
@@ -2721,6 +2854,9 @@ class RecordingSink
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OpaqueOutput)
+            _trace->opaqueOutputSteps.push_back(
+                OpaqueOutputStepData { .step = _trace->steps.size() - 1, .outputIndex = N::index });
     }
 
     /// Told that a `Constraint` is about to be checked. Remembers where the
@@ -3374,6 +3510,77 @@ class RecordingSink
         _trace->conformityLimits.push_back(ConformityLimits {
             .step = _trace->steps.size() - 1,
             .rows = std::vector<LimitRow>(conformityCheck.envelope.rows.begin(), conformityCheck.envelope.rows.end()) });
+    }
+
+    /// Told that an opaque call is about to evaluate its inputs. Remembers
+    /// where the arena stood, as `series_entered` does, so that
+    /// `opaque_produced` can claim the inputs' steps.
+    void opaque_entered(OpaqueCallInfo const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one `OpaqueOperation` step for the call @p callInfo describes,
+    /// claiming as its operands every step recorded since the matching
+    /// `opaque_entered` -- its inputs' -- and its operation's name, every
+    /// output and whose failure it carries in `Trace::opaqueSteps`.
+    ///
+    /// Whose failure is the evaluation's own answer (`OpaqueCallFailure::origin`),
+    /// never re-derived, with one exception: a relayed failure that no claimed
+    /// input step shows -- an input evaluated through a consumer's untraced
+    /// node -- is `Undetermined`, as `LookupFailure` records the same case.
+    template <std::size_t M>
+    void opaque_produced(OpaqueCallInfo const& callInfo, OpaqueEvaluated<Rep, M> const& result)
+    {
+        // Told what a walk produced without having been told it began: see
+        // `produced`.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const callMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> callStep {};
+        callStep.kind = StepKind::OpaqueOperation;
+        callStep.dimension = dim::Scalar;
+        callStep.unit = coherent(dim::Scalar);
+        callStep.citation = callInfo.citation;
+
+        // Everything unclaimed from `callMark` onwards belongs to this call
+        // -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < callMark)
+            ++firstClaimed;
+        callStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        OpaqueStepData<Rep> callRow {};
+        callRow.operationName = callInfo.name;
+        for (std::size_t outputAt = 0; outputAt < M && outputAt < callInfo.outputs.size()
+                                       && outputAt < callInfo.dimensions.size();
+             ++outputAt)
+        {
+            OpaqueOutputValue<Rep> recordedOutput {};
+            recordedOutput.name = callInfo.outputs[outputAt];
+            recordedOutput.dimension = callInfo.dimensions[outputAt];
+            recordedOutput.unit = detail::opaque_output_unit(_trace->steps, callStep.operands, recordedOutput.dimension);
+            if (result.has_value() && result->has_value())
+                recordedOutput.value = (**result)[outputAt];
+            callRow.outputs.push_back(recordedOutput);
+        }
+
+        if (!result.has_value())
+        {
+            callStep.error = result.error().error;
+            callStep.failedElement = result.error().element;
+            callRow.failure = result.error().origin;
+            if (callRow.failure == OpaqueFailure::Propagated && !detail::an_operand_failed(_trace->steps, callStep))
+                callRow.failure = OpaqueFailure::Undetermined;
+        }
+
+        _trace->steps.push_back(std::move(callStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        callRow.step = _trace->steps.size() - 1;
+        _trace->opaqueSteps.push_back(std::move(callRow));
     }
 
   private:

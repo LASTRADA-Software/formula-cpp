@@ -100,6 +100,12 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 /// (`stamp_origin`), which every path that appends to `Trace::steps` calls;
 /// a path added later that does not traces a value read from another record as
 /// this record's.
+///
+/// **An opaque call (`opaque.hpp`) reaches a sink the same way**, through
+/// `opaque_entered(info)` before its first input is evaluated and
+/// `opaque_produced(info, result)` after `compute`, asked for together
+/// (`detail::HearsOpaque`); `info` is an `OpaqueCallInfo`, plain data. Each
+/// output used is a `Node`, and is told through `entered` and `produced`.
 struct NullSink
 {
     /// Told that a node is about to be evaluated, and does nothing with it.

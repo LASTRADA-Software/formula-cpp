@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/opaque.hpp>
+#include <formula-cpp/render.hpp>
+#include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include "opaque_cross_tu.hpp"
 
@@ -11,9 +15,11 @@
 #include <expected>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 namespace
 {
@@ -464,4 +470,222 @@ TEST_CASE("an opaque output declared in a header is one formula in two translati
     REQUIRE(there.has_value());
     CHECK(here->measurement().value() == rat(197));
     CHECK(there->measurement().value() == rat(197));
+}
+
+namespace
+{
+// A consumer's own node kind, evaluated through the two-parameter extension
+// point (`sink.hpp`): it records no step, so a failure it relays through an
+// opaque call cannot be told apart from the call's own.
+struct UntracedFailure: formula::NodeBase
+{
+    static constexpr formula::Dimension dimension = formula::dim::Mass;
+};
+
+template <typename Rep = formula::Rational, typename Env>
+[[nodiscard]] constexpr formula::Evaluated<Rep> checked_evaluate_si(UntracedFailure const&, Env const&) noexcept
+{
+    return std::unexpected { formula::ArithmeticError::DomainError };
+}
+
+// The crossed-over vocabulary pattern (`vocabulary_tests.cpp`): each word is
+// the other quantity's, so a symbol written past the vocabulary shows.
+inline constexpr auto crossed = formula::vocabulary(formula::renames<Reading>("q"), formula::renames<Divisor>("r"));
+
+std::size_t occurrences(std::string const& haystack, std::string_view needle)
+{
+    std::size_t found = 0;
+    for (std::size_t at = haystack.find(needle); at != std::string::npos; at = haystack.find(needle, at + 1))
+        ++found;
+    return found;
+}
+
+formula::Trace<> traced_span(auto const& environment)
+{
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"span">(span_call), environment, formula::RecordingSink { recorded, crossed });
+    return recorded;
+}
+} // namespace
+
+TEST_CASE("an opaque step names the operation, its citation, every output, and that its inside is not shown",
+          "[opaque][trace]")
+{
+    formula::Trace<> const recorded = traced_span(readings);
+    // The input in the sink's vocabulary (q, not r); the outputs in the
+    // input's unit, grams; the output step naming its output.
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. q = 127 g; 103 g; 191 g; 139 g\n"
+             "2. series span(#1) = lowest = 103 g; highest = 191 g; span = 88 g [inside not shown] "
+             "[Spread of readings, Example Standard 12, 4.2]\n"
+             "3. span of #2 = 88 g\n");
+    REQUIRE(recorded.steps.size() == 3);
+    CHECK(recorded.steps[1].kind == formula::StepKind::OpaqueOperation);
+    CHECK(recorded.steps[2].kind == formula::StepKind::OpaqueOutput);
+    CHECK(recorded.steps[1].operands == std::vector<std::size_t> { 0 });
+    CHECK(recorded.steps[2].operands == std::vector<std::size_t> { 1 });
+    formula::OpaqueStepData<> const* const callRow = formula::opaque_data(recorded, 1);
+    REQUIRE(callRow != nullptr);
+    CHECK(callRow->operationName == "series span");
+    CHECK(callRow->failure == formula::OpaqueFailure::None);
+    REQUIRE(callRow->outputs.size() == 3);
+    CHECK(callRow->outputs[2].name == "span");
+    CHECK(callRow->outputs[2].value == rat(11, 125));
+    REQUIRE(formula::opaque_output_data(recorded, 2) != nullptr);
+    CHECK(formula::opaque_output_data(recorded, 2)->outputIndex == 2);
+    CHECK(formula::opaque_data(recorded, 2) == nullptr);
+}
+
+TEST_CASE("the inside-not-shown marker depends on the kind alone", "[opaque][trace]")
+{
+    formula::Step<> bare {};
+    bare.kind = formula::StepKind::OpaqueOperation; // no name, no outputs, no citation, no row
+    formula::Trace<> recorded {};
+    recorded.steps.push_back(bare);
+    CHECK(formula::render_trace(recorded, { .maxSteps = 5 })
+          == "1. opaque() = (not measured) [inside not shown] (no citation given)\n");
+}
+
+TEST_CASE("an uncited opaque call says so, in the trace and on the page", "[opaque][trace][document]")
+{
+    constexpr auto uncited = formula::opaque_output<"span">(formula::opaque<SeriesSpan>({}, formula::series<Reading, 4>));
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(uncited, readings, formula::RecordingSink { recorded });
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 20 });
+    CHECK(text.find("span = 88 g [inside not shown] (no citation given)\n") != std::string::npos);
+
+    formula::Documentation const page = formula::document(uncited);
+    REQUIRE(page.opaqueOperations.size() == 1);
+    CHECK(page.opaqueOperations[0].name == "series span");
+    CHECK(page.opaqueOperations[0].citation == formula::Citation {});
+    CHECK(page.citations.empty()); // an uncited call adds no empty citation
+}
+
+TEST_CASE("an opaque step tells its own failure from a relayed one", "[opaque][trace]")
+{
+    // The operation's own: every reading equal.
+    constexpr auto relative = formula::opaque_output<"ratio">(
+        formula::opaque<RelativeSpread>({ .reference = "Example Standard 12" }, formula::series<Reading, 4>));
+    constexpr auto flat = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(139) },
+                                                                                 formula::Measured<Reading> { rat(139) },
+                                                                                 formula::Measured<Reading> { rat(139) },
+                                                                                 formula::Measured<Reading> { rat(139) }));
+    formula::Trace<> own {};
+    (void) formula::detail::dispatch<formula::Rational>(relative, flat, formula::RecordingSink { own });
+    REQUIRE(formula::opaque_data(own, 1) != nullptr);
+    CHECK(formula::opaque_data(own, 1)->failure == formula::OpaqueFailure::Own);
+    CHECK(formula::render_trace(own, { .maxSteps = 10 })
+          == "1. r = 139 g; 139 g; 139 g; 139 g\n"
+             "2. relative spread(#1) = argument outside the domain of the operation [inside not shown] "
+             "[the operation itself failed, not any input] [Example Standard 12]\n"
+             "3. ratio of #2 = argument outside the domain of the operation\n");
+
+    // Relayed: a zero divisor fails the input series at its first element.
+    constexpr auto divided = formula::opaque_output<"span">(formula::opaque<SeriesSpan>(
+        { .reference = "Example Standard 12" }, formula::series<Reading, 4> / formula::var<Divisor>));
+    auto const zero = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(127) },
+                                                                             formula::Measured<Reading> { rat(103) },
+                                                                             formula::Measured<Reading> { rat(191) },
+                                                                             formula::Measured<Reading> { rat(139) }),
+                                           formula::Measured<Divisor> { rat(0) });
+    formula::Trace<> relayed {};
+    (void) formula::detail::dispatch<formula::Rational>(divided, zero, formula::RecordingSink { relayed, crossed });
+    std::string const text = formula::render_trace(relayed, { .maxSteps = 20 });
+    REQUIRE(formula::opaque_data(relayed, 3) != nullptr);
+    CHECK(formula::opaque_data(relayed, 3)->failure == formula::OpaqueFailure::Propagated);
+    CHECK(relayed.steps[3].failedElement == std::optional<std::size_t> { 0 });
+    CHECK(text.find("series span(#3) = division by zero [inside not shown] [carried up from #3, at element 1] "
+                    "[Example Standard 12]\n")
+          != std::string::npos);
+    // One failing input step, one relay by the call and one by its output:
+    // the division's own line, the call's and the output's -- counted by hand,
+    // since a REJECT cannot refuse a second copy of the same text.
+    CHECK(occurrences(text, "division by zero") == 3);
+    CHECK(occurrences(text, "[the operation itself failed") == 0);
+}
+
+TEST_CASE("a relayed failure no input step shows is undetermined, not guessed", "[opaque][trace]")
+{
+    constexpr auto shifted = formula::opaque_output<"shifted">(formula::opaque<ShiftedLowest>(
+        { .reference = "Example Standard 12" }, formula::series<Reading, 4>, UntracedFailure {}));
+    formula::Trace<> recorded {};
+    auto const outcome =
+        formula::detail::dispatch<formula::Rational>(shifted, readings, formula::RecordingSink { recorded });
+    REQUIRE(!outcome.has_value());
+    REQUIRE(formula::opaque_data(recorded, 1) != nullptr);
+    CHECK(formula::opaque_data(recorded, 1)->failure == formula::OpaqueFailure::Undetermined);
+    CHECK(formula::render_trace(recorded, { .maxSteps = 10 }).find("[this operation or an input: an input recorded no step]")
+          != std::string::npos);
+}
+
+TEST_CASE("an opaque step's outputs share the render budget and say how many were cut", "[opaque][trace]")
+{
+    formula::Trace<> const recorded = traced_span(readings);
+    // Six units: the series line and its four readings take five, the call's
+    // line the sixth, and it has none left for its outputs.
+    CHECK(formula::render_trace(recorded, { .maxSteps = 6 })
+          == "1. q = 127 g; 103 g; 191 g; 139 g\n"
+             "2. series span(#1) = ... 3 more [inside not shown] [Spread of readings, Example Standard 12, 4.2]\n"
+             "... 1 further step not shown\n");
+    // Eight: the call shows two outputs and says one more.
+    CHECK(formula::render_trace(recorded, { .maxSteps = 8 })
+          == "1. q = 127 g; 103 g; 191 g; 139 g\n"
+             "2. series span(#1) = lowest = 103 g; highest = 191 g; ... 1 more [inside not shown] "
+             "[Spread of readings, Example Standard 12, 4.2]\n"
+             "... 1 further step not shown\n");
+}
+
+TEST_CASE("an opaque output renders as a call to the named operation in every dialect", "[opaque][render]")
+{
+    constexpr auto spanOutput = formula::opaque_output<"span">(span_call);
+    CHECK(formula::render(spanOutput) == "series span(r(i)).span");
+    CHECK(formula::render<formula::Dialect::Markdown>(spanOutput) == "series span(`r(i)`).span");
+    CHECK(formula::render<formula::Dialect::LaTeX>(spanOutput) == "\\text{series span}({r}_{i})_{\\text{span}}");
+    // The inputs follow the vocabulary; the operation's name does not.
+    CHECK(formula::render(spanOutput, crossed) == "series span(q(i)).span");
+    // In arithmetic, a call is one operand and needs no bracket.
+    CHECK(formula::render(spanOutput / rat(2)) == "series span(r(i)).span / 2");
+    // No Markdown link syntax (the render_tests.cpp guard).
+    std::string const markdown = formula::render<formula::Dialect::Markdown>(spanOutput);
+    CHECK(markdown.find("](") == std::string::npos);
+    CHECK(markdown.find('[') == std::string::npos);
+}
+
+TEST_CASE("a curve input renders as its points and its values", "[opaque][render]")
+{
+    constexpr formula::BreakpointTable<3> openings { formula::breakpoint(103),
+                                                     formula::breakpoint(127),
+                                                     formula::breakpoint(163) };
+    constexpr auto slopeOutput = formula::opaque_output<"slope">(formula::opaque<EndToEndSlope>(
+        { .reference = "Example Standard 12" },
+        formula::curve(formula::domain<unit::Millimetre, openings>, formula::series<Load, 3>)));
+    CHECK(formula::render(slopeOutput) == "end to end slope(domain(103, 127, 163 mm), F_h(i)).slope");
+}
+
+TEST_CASE("a page lists each opaque call once, with its citation", "[opaque][document]")
+{
+    constexpr auto both = formula::opaque_output<"lowest">(span_call) + formula::opaque_output<"span">(span_call);
+    formula::Documentation const page = formula::document(both, crossed);
+    REQUIRE(page.opaqueOperations.size() == 1);
+    CHECK(page.opaqueOperations[0].name == "series span");
+    CHECK(page.opaqueOperations[0].outputs == std::vector<std::string_view> { "lowest", "highest", "span" });
+    CHECK(page.opaqueOperations[0].citation.reference == "Example Standard 12");
+    REQUIRE(page.citations.size() == 1);
+    CHECK(page.citations[0].section == "4.2");
+    // The input's row, in the page's vocabulary.
+    REQUIRE(page.symbols.size() == 1);
+    CHECK(page.symbols[0].symbol == "q");
+    CHECK(page.symbols[0].shape == formula::ValueShape::Series);
+}
+
+TEST_CASE("opaque trace data lives in side tables, and a Step is no larger for it", "[opaque][trace]")
+{
+    // Measured at the branch point, d09657e: 1008 bytes on cl 19.51 (MSVC STL,
+    // release) and on g++ 13.3 and clang++ 20.1.8 (libstdc++), 1048 on cl 19.51
+    // debug, whose checked iterators make each of Step's five vectors 32 bytes
+    // rather than 24. Less those five vectors it is 888 in every one. A field
+    // added to Step for an opaque step, or later a retry's, fails this. Not
+    // measured on libc++.
+    STATIC_REQUIRE(sizeof(formula::Step<formula::Rational>) - 5 * sizeof(std::vector<std::size_t>) == 888);
 }

@@ -43,6 +43,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
@@ -1630,6 +1631,51 @@ template <Dialect D, PrecisionKind K, Node Level, Node Limit, Vocabulary V>
         return symbolText + "\\left(" + limitText + "\\right)\\Big\\vert_{\\text{level} = " + levelText + "}";
     else
         return symbolText + "(" + limitText + "; level = " + levelText + ")";
+}
+
+namespace detail
+{
+    /// One input of an opaque call as its call writes it: a pairing curve as
+    /// its two series, points then values -- the two spans `compute` receives
+    /// -- and any other input as itself.
+    template <Dialect D, typename Input, Vocabulary V>
+    [[nodiscard]] std::string opaque_argument_text(Input const& input, V const& vocabulary)
+    {
+        if constexpr (requires { input.domainSeries; input.valueSeries; })
+            return render<D>(input.domainSeries, vocabulary) + ", " + render<D>(input.valueSeries, vocabulary);
+        else
+            return render<D>(input, vocabulary);
+    }
+} // namespace detail
+
+/// An opaque output renders as a call to its operation, named as the
+/// operation names itself, selecting the output: `linear least squares(t(i),
+/// L(i)).slope` in plain text; in Markdown the same, each symbol in its own
+/// code span as a series marker writes it; and in LaTeX
+/// `\text{linear least squares}({t}_{i}, {L}_{i})_{\text{slope}}`.
+///
+/// The spellings are phase 15's spike's (step 9), measured under MathJax 3.2.2
+/// with the site's configuration, tectonic 0.17.0 with `[OT1]{fontenc}` and
+/// python-markdown 3.10.3. The names go in as written: an operation's name and
+/// output names hold only ASCII letters, digits and single spaces
+/// (`RequireOpaqueNameReadable`), which every dialect shows as they are. The
+/// operation's name is its own text, like `numeric(...)`, and no vocabulary
+/// renames it; its inputs' symbols follow the vocabulary.
+template <Dialect D, std::size_t I, typename Op, typename... Inputs, Vocabulary V>
+[[nodiscard]] std::string render_node(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& node, V const& vocabulary)
+{
+    std::string arguments;
+    std::apply(
+        [&](auto const&... inputs) {
+            ((arguments += (arguments.empty() ? "" : ", ") + detail::opaque_argument_text<D>(inputs, vocabulary)), ...);
+        },
+        node.call.inputs);
+    std::string const operationName { Op::name };
+    std::string const outputName { OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>::output };
+    if constexpr (D == Dialect::LaTeX)
+        return "\\text{" + operationName + "}(" + arguments + ")_{\\text{" + outputName + "}}";
+    else
+        return operationName + "(" + arguments + ")." + outputName;
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
