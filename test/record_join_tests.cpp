@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstddef>
 #include <string>
 #include <type_traits>
@@ -522,4 +523,76 @@ TEST_CASE("a curve read inside a read from another record is stamped with that r
     INFO(text);
     CHECK(text.find("m_r = 113 g; 197 g; 89 g; 263 g; 41 g, from record Reference (sample 23, test 3)\n")
           != std::string::npos);
+}
+
+namespace
+{
+/// The trace of @p read over a context whose reference, holding @p Env, has
+/// not been tested yet.
+template <typename Env, typename Read>
+std::string unbound_reference_trace(Read const& read)
+{
+    auto const notYetTested = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), screensHere),
+        formula::Record<Reference, Env>::unbound());
+    formula::Trace<> recorded {};
+    auto const evaluated =
+        formula::checked_evaluate_si<formula::Rational>(read, notYetTested, formula::RecordingSink { recorded });
+    CHECK(evaluated.has_value());
+    CHECK_FALSE(evaluated->has_value());
+    return formula::render_trace(recorded, { .maxSteps = 40 });
+}
+} // namespace
+
+TEST_CASE("a reference holding a series, typed in or not, or observations, can be not yet tested", "[record-join]")
+{
+    // A screen analysis not done yet is as ordinary as a strength not
+    // measured yet: the context's type is the same either way, and the read
+    // is absent, with the trace saying no record was bound -- never a key.
+    constexpr auto readSum = formula::from_record<Reference>(formula::sum(formula::series<Retained, 5>));
+    using MeasuredScreens = std::remove_cv_t<decltype(screensThere)>;
+    using TypedScreens = decltype(formula::environment(formula::entered(formula::measured_series<Retained>(
+        formula::Measured<Retained> { formula::Rational { 113 } }, formula::Measured<Retained> { formula::Rational { 197 } },
+        formula::Measured<Retained> { formula::Rational { 89 } }, formula::Measured<Retained> { formula::Rational { 263 } },
+        formula::Measured<Retained> { formula::Rational { 41 } }))));
+    for (std::string const& text: { unbound_reference_trace<MeasuredScreens>(readSum),
+                                    unbound_reference_trace<TypedScreens>(readSum),
+                                    unbound_reference_trace<std::remove_cv_t<decltype(particlesThere)>>(
+                                        formula::from_record<Reference>(formula::sum(
+                                            formula::binned<unit::Metre, sizeClasses>(formula::observations<Size, 7>)))) })
+    {
+        INFO(text);
+        CHECK(text.find("from record Reference (no record bound) = (not measured)\n") != std::string::npos);
+        CHECK(text.find("sample 23") == std::string::npos);
+    }
+}
+
+TEST_CASE("an unbound record holds every kind of entry, each absent", "[record-join]")
+{
+    // One environment of every entry kind the library has: a measured and a
+    // typed-in single value, a measured and a typed-in series, and raw
+    // observations. The unbound record keeps the type and invents no value.
+    constexpr auto everyKind = formula::environment(
+        formula::Measured<Force> { formula::Rational { 1'000 } },
+        formula::entered(formula::Measured<ShapeFactor> { formula::Rational { 1 } }),
+        formula::measured_series<Retained>(formula::Measured<Retained> { formula::Rational { 113 } },
+                                           formula::Measured<Retained> { formula::Rational { 197 } }),
+        formula::entered(formula::measured_series<Opening>(formula::Measured<Opening> { formula::Rational { 127 } },
+                                                           formula::Measured<Opening> { formula::Rational { 163 } })),
+        formula::MeasuredObservations<Size, 3>(formula::Rational { 103 }, formula::Rational { 241 }));
+    using EveryKind = std::remove_cv_t<decltype(everyKind)>;
+    constexpr auto notYetTested = formula::Record<Reference, EveryKind>::unbound();
+    STATIC_REQUIRE(std::is_same_v<std::remove_cvref_t<decltype(notYetTested.environment())>, EveryKind>);
+    STATIC_REQUIRE(!notYetTested.is_bound());
+    STATIC_REQUIRE(notYetTested.environment().get<Force>().is_absent());
+    STATIC_REQUIRE(notYetTested.environment().get<ShapeFactor>().is_absent());
+    STATIC_REQUIRE(notYetTested.environment().get_series<Retained, 2>()
+                   == formula::MeasuredSeries<Retained, 2> { std::array<formula::Measured<Retained>, 2> {} });
+    STATIC_REQUIRE(notYetTested.environment().get_series<Opening, 2>()
+                   == formula::MeasuredSeries<Opening, 2> { std::array<formula::Measured<Opening>, 2> {} });
+    STATIC_REQUIRE(notYetTested.environment().get_observations<Size, 3>() == formula::MeasuredObservations<Size, 3> {});
+    // The kinds a person typed in stay typed in: the type says so, as a bound
+    // record's does.
+    STATIC_REQUIRE(EveryKind::is_entered<ShapeFactor>);
+    STATIC_REQUIRE(EveryKind::is_entered_series<Opening>);
 }

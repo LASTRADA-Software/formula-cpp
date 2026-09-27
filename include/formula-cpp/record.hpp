@@ -455,12 +455,52 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// A single value measured, absent.
+    template <Described Q>
+    [[nodiscard]] constexpr Measured<Q> absent_entry(std::type_identity<Measured<Q>>) noexcept
+    {
+        return Measured<Q>::absent();
+    }
+
+    /// A single value typed in, absent. Still typed in: the entry's kind is
+    /// the environment's type, which an unbound record keeps.
+    template <Described Q>
+    [[nodiscard]] constexpr Entered<Q> absent_entry(std::type_identity<Entered<Q>>) noexcept
+    {
+        return Entered<Q> { Measured<Q>::absent() };
+    }
+
+    /// A measured series, every element absent. A series has no default: an
+    /// element count is part of what it states.
+    template <Described Q, std::size_t N>
+    [[nodiscard]] constexpr MeasuredSeries<Q, N> absent_entry(std::type_identity<MeasuredSeries<Q, N>>) noexcept
+    {
+        return MeasuredSeries<Q, N> { std::array<Measured<Q>, N> {} };
+    }
+
+    /// A typed-in series, every element absent.
+    template <Described Q, std::size_t N>
+    [[nodiscard]] constexpr EnteredSeries<Q, N> absent_entry(std::type_identity<EnteredSeries<Q, N>>) noexcept
+    {
+        return EnteredSeries<Q, N> { absent_entry(std::type_identity<MeasuredSeries<Q, N>> {}) };
+    }
+
+    /// Raw observations, none made.
+    template <Described Q, std::size_t Capacity>
+    [[nodiscard]] constexpr MeasuredObservations<Q, Capacity> absent_entry(
+        std::type_identity<MeasuredObservations<Q, Capacity>>) noexcept
+    {
+        return MeasuredObservations<Q, Capacity> {};
+    }
+
     /// @p Env with every entry absent: what an unbound record holds, so that
     /// it has an environment of its type without inventing a single value.
+    /// Each entry is built through `absent_entry` for its kind -- a single
+    /// value, a series or observations, measured or typed in.
     template <typename... Entries>
     [[nodiscard]] constexpr Environment<Entries...> absent_environment(std::type_identity<Environment<Entries...>>) noexcept
     {
-        return Environment<Entries...> { Entries {}... };
+        return Environment<Entries...> { absent_entry(std::type_identity<Entries> {})... };
     }
 
     /// An `AbsentEnvironment` is absent throughout already.
