@@ -209,9 +209,23 @@ namespace detail
     /// given, so no helper below can print author text unescaped by reading
     /// the wrong field. Neither copyable nor movable: the copy's views point
     /// into this object's own strings.
+    /// A step as its line shows it: the step, with what its trace's side
+    /// tables hold for it -- the record it was read from
+    /// (`Trace::origins`), and for a lineage attribute the comparison
+    /// (`Trace::lineageChecks`). Every helper below that prints either reads
+    /// it here, so none can look in the wrong trace.
+    struct ShownStep: Step<Rational>
+    {
+        /// The record the step was read from; empty for this record's.
+        std::optional<RecordOrigin> readFrom;
+        /// For a `LineageChecked` step, its comparison; empty otherwise.
+        std::optional<LineageCheck> comparison;
+    };
+
     struct EscapedStep
     {
-        explicit EscapedStep(Step<Rational> const& recorded):
+        EscapedStep(Step<Rational> const& recorded, std::optional<RecordOrigin> const& originRead,
+                    std::optional<LineageCheck> const& lineageCompared):
             symbol { escaped_author_text(recorded.symbol) },
             justification { escaped_author_text(recorded.justification) },
             variantTag { escaped_author_text(recorded.variantTag) },
@@ -220,7 +234,7 @@ namespace detail
             variantPrunedBy { recorded.variantPrunedBy },
             verdictLabel { recorded.outcome.verdict().has_value() ? escaped_author_text(recorded.outcome.verdict()->label)
                                                                   : std::string {} },
-            step { recorded }
+            step { recorded, originRead, lineageCompared }
         {
             step.symbol = symbol;
             step.justification = justification;
@@ -243,7 +257,7 @@ namespace detail
         EscapedCitation variantPrunedBy;
         std::string verdictLabel;
         /// The step to render.
-        Step<Rational> step;
+        ShownStep step;
     };
 
     /// `#3` -- how a step refers to one of its operands. Steps are numbered
@@ -754,11 +768,11 @@ namespace detail
     /// One lineage attribute's comparison: `same TestMethod as this record:
     /// 12 and 13` -- the compared record's key first, then the read
     /// record's, each `unknown` when it is. The verdict follows in the line.
-    [[nodiscard]] inline std::string lineage_expression(Step<Rational> const& recorded)
+    [[nodiscard]] inline std::string lineage_expression(ShownStep const& recorded)
     {
-        if (!recorded.lineage.has_value())
+        if (!recorded.comparison.has_value())
             return "same lineage";
-        LineageCheck const& compared = *recorded.lineage;
+        LineageCheck const& compared = *recorded.comparison;
         auto const keyText = [](std::optional<std::uint64_t> lineageKey) {
             return lineageKey.has_value() ? std::to_string(*lineageKey) : std::string { "unknown" };
         };
@@ -773,73 +787,74 @@ namespace detail
     /// A `Constant` is absent from this deliberately: a constant's expression
     /// *is* its value, so `render_trace` writes the value alone rather than
     /// the tautology `0 = 0`.
-    template <typename Rep>
-    [[nodiscard]] std::string step_expression(Step<Rep> const& step)
+    [[nodiscard]] inline std::string step_expression(ShownStep const& shownStep)
     {
-        switch (step.kind)
+        switch (shownStep.kind)
         {
             // An overridden constant reads as its quantity, as it does in
             // `render()`; that the overlay fixed it goes in the suffix -- see
             // `overridden_constant_suffix`.
             case StepKind::Variable:
             case StepKind::OverriddenConstant:
-                return std::string { step.symbol };
+                return std::string { shownStep.symbol };
             // The quantity, equal to the step its definition produced:
             // `k_s = #3`, so that the line reads `k_s = #3 = 863/1000`. That it
             // is a jurisdiction's definition goes in the suffix -- see
             // `derived_quantity_suffix`. With no step to name -- an untraced
             // consumer node as the whole definition -- the quantity alone.
             case StepKind::DerivedQuantity:
-                return step.operands.empty() ? std::string { step.symbol }
-                                             : std::string { step.symbol } + " = " + sole_operand(step);
+                return shownStep.operands.empty() ? std::string { shownStep.symbol }
+                                                  : std::string { shownStep.symbol } + " = " + sole_operand(shownStep);
             // Its operand, as `Documented`'s is: the replacement computed the
             // value; the step says only whose formula it was.
             case StepKind::ReplacedVariant:
-                return sole_operand(step);
+                return sole_operand(shownStep);
             case StepKind::Constant:
                 return {};
             case StepKind::PiConstant:
                 return "pi";
             case StepKind::Negate:
-                return "-" + sole_operand(step);
+                return "-" + sole_operand(shownStep);
             case StepKind::Add:
-                return binary_expression(step, "+");
+                return binary_expression(shownStep, "+");
             case StepKind::Subtract:
-                return binary_expression(step, "-");
+                return binary_expression(shownStep, "-");
             case StepKind::Multiply:
-                return binary_expression(step, "*");
+                return binary_expression(shownStep, "*");
             case StepKind::Divide:
-                return binary_expression(step, "/");
+                return binary_expression(shownStep, "/");
             case StepKind::Power:
-                return sole_operand(step) + "^" + std::to_string(step.exponent);
+                return sole_operand(shownStep) + "^" + std::to_string(shownStep.exponent);
             case StepKind::Root:
-                return step.exponent == 2 ? "sqrt(" + sole_operand(step) + ")"
-                                          : "root" + std::to_string(step.exponent) + "(" + sole_operand(step) + ")";
+                return shownStep.exponent == 2
+                           ? "sqrt(" + sole_operand(shownStep) + ")"
+                           : "root" + std::to_string(shownStep.exponent) + "(" + sole_operand(shownStep) + ")";
             case StepKind::Documented:
-                return sole_operand(step);
+                return sole_operand(shownStep);
             // Its operand, exactly as `Documented`'s is: the selection chose
             // which formula ran, and computed nothing of its own. What it
             // chose goes in the suffix -- see `variant_suffix`.
             case StepKind::VariantSelected:
-                return sole_operand(step);
+                return sole_operand(shownStep);
             case StepKind::Round:
-                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
+                return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
             case StepKind::RoundSignificant:
-                return "round(" + sole_operand(step) + ", to " + std::to_string(step.granularity) + " sf"
-                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
+                return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " sf"
+                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
             // The unit only: the granularity belongs with whose rule it is,
             // in the suffix -- see `rounding_rule_suffix`.
             case StepKind::RoundingRuleApplied:
-                return "round(" + sole_operand(step) + unit_clause(", in ", unit_symbol_text(step.unit)) + ")";
+                return "round(" + sole_operand(shownStep) + unit_clause(", in ", unit_symbol_text(shownStep.unit)) + ")";
             case StepKind::NumericValue:
-                return "numeric(" + sole_operand(step) + unit_clause(", in ", unit_symbol_text(step.sourceUnit)) + ")";
+                return "numeric(" + sole_operand(shownStep) + unit_clause(", in ", unit_symbol_text(shownStep.sourceUnit))
+                       + ")";
             case StepKind::Conditional:
-                return conditional_expression(step);
+                return conditional_expression(shownStep);
             case StepKind::Constraint:
-                return constraint_expression(step);
+                return constraint_expression(shownStep);
             case StepKind::AcceptanceChecked:
-                return acceptance_expression(step);
+                return acceptance_expression(shownStep);
             // The head names are `render()`'s own, and the split between them
             // is the one `render.hpp` makes deliberately: the two *selecting*
             // kinds share `lookup`, and the one that *computes* a number
@@ -847,65 +862,66 @@ namespace detail
             // checking a derivation against the formula it derives must meet
             // one name per kind, not two.
             case StepKind::BandedLookup:
-                return "lookup(" + sole_operand(step) + ")";
+                return "lookup(" + sole_operand(shownStep) + ")";
             // The key sits where the other two kinds' operand sits, because
             // it plays that part: it is what is being looked up. It is data
             // and not a sub-expression -- an exact lookup has no operand at
             // all -- which is exactly why this step has to carry it.
             case StepKind::ExactLookup:
-                return "lookup(" + lookup_key_text(step) + ")";
+                return "lookup(" + lookup_key_text(shownStep) + ")";
             case StepKind::InterpolatingLookup:
-                return "interpolate(" + sole_operand(step) + ")";
+                return "interpolate(" + sole_operand(shownStep) + ")";
             // The quantity, unmarked: the marker belongs to the formula
             // (`render()`), and a derivation line names what it read. That it
             // is a series shows in the list of elements after the `=`.
             case StepKind::SeriesVariable:
-                return std::string { step.symbol };
+                return std::string { shownStep.symbol };
             // A per-element constant's expression is its values, as a scalar
             // constant's is -- see `series_step_line`.
             case StepKind::SeriesConstant:
                 return {};
             case StepKind::ElementwiseNegate:
-                return "-" + sole_operand(step);
+                return "-" + sole_operand(shownStep);
             case StepKind::ElementwiseAdd:
-                return binary_expression(step, "+");
+                return binary_expression(shownStep, "+");
             case StepKind::ElementwiseSubtract:
-                return binary_expression(step, "-");
+                return binary_expression(shownStep, "-");
             case StepKind::ElementwiseMultiply:
-                return binary_expression(step, "*");
+                return binary_expression(shownStep, "*");
             case StepKind::ElementwiseDivide:
-                return binary_expression(step, "/");
+                return binary_expression(shownStep, "/");
             // The end is written, as `render()` writes it: a running total
             // without it is half a derivation.
             case StepKind::CumulativeSum:
-                return "cumulative(" + sole_operand(step) + ", " + std::string { describe(step.cumulativeDirection) } + ")";
+                return "cumulative(" + sole_operand(shownStep) + ", "
+                       + std::string { describe(shownStep.cumulativeDirection) } + ")";
             case StepKind::SeriesSum:
-                return "sum(" + sole_operand(step) + ")";
+                return "sum(" + sole_operand(shownStep) + ")";
             // The subject; each element's outcome follows, in the bracket --
             // see `conformity_line`.
             case StepKind::ConformityChecked:
-                return "conform(" + sole_operand(step) + ")";
+                return "conform(" + sole_operand(shownStep) + ")";
             // The set is `render()`'s to print; the step names where the
             // value landed in its suffix -- see `snap_suffix`.
             case StepKind::SnappedToPermitted:
-                return "snap(" + sole_operand(step) + ")";
+                return "snap(" + sole_operand(shownStep) + ")";
 
-            // `render()`'s head names; the sample's own step, with every
+            // `render()`'s head names; the sample's own shownStep, with every
             // element, is the operand.
             case StepKind::SampleCount:
-                return "sample_count(" + sole_operand(step) + ")";
+                return "sample_count(" + sole_operand(shownStep) + ")";
             case StepKind::SampleMean:
-                return "sample_mean(" + sole_operand(step) + ")";
+                return "sample_mean(" + sole_operand(shownStep) + ")";
             case StepKind::SampleVariance:
-                return "sample_variance(" + sole_operand(step) + ")";
+                return "sample_variance(" + sole_operand(shownStep) + ")";
             case StepKind::SampleRange:
-                return "sample_range(" + sole_operand(step) + ")";
+                return "sample_range(" + sole_operand(shownStep) + ")";
             // Every granularity, in the series' order, in the unit rounded
             // in, as `render()` writes it; the mode goes in the suffix, as
             // for `Round`.
             case StepKind::ElementwiseRound:
-                return "round(" + sole_operand(step) + ", to " + granularities_text(step.elementGranularities) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
+                return "round(" + sole_operand(shownStep) + ", to " + granularities_text(shownStep.elementGranularities)
+                       + " dp" + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
             // A declared domain's line is its points, as a per-element
             // constant's is its values -- see `series_step_line`.
             case StepKind::SeriesDomain:
@@ -913,37 +929,37 @@ namespace detail
             // The two series paired, in order; the pairs follow the `=` --
             // see `curve_step_line`.
             case StepKind::CurvePairing:
-                return "curve(" + operands_text(step) + ")";
+                return "curve(" + operands_text(shownStep) + ")";
             // The curve, and where it was read; the segment goes in the
             // suffix -- see `curve_interpolation_suffix`.
             case StepKind::CurveInterpolation:
-                return step.operands.size() >= 2 ? "interpolate(" + operand_reference(step.operands[0]) + ", at "
-                                                       + operand_reference(step.operands[1]) + ")"
-                                                 : "interpolate(" + sole_operand(step) + ")";
+                return shownStep.operands.size() >= 2 ? "interpolate(" + operand_reference(shownStep.operands[0]) + ", at "
+                                                            + operand_reference(shownStep.operands[1]) + ")"
+                                                      : "interpolate(" + sole_operand(shownStep) + ")";
             // The direction is always written, as `render()` writes it.
             case StepKind::CurveSplice:
-                return "splice(" + operands_text(step) + ", " + std::string { describe(step.monotone) } + ")";
+                return "splice(" + operands_text(shownStep) + ", " + std::string { describe(shownStep.monotone) } + ")";
             // The quantity, unmarked, as a series variable's is; the
             // observations follow the `=`.
             case StepKind::ObservationsVariable:
-                return std::string { step.symbol };
+                return std::string { shownStep.symbol };
             // The classes are `render()`'s to print, as a lookup's bands are;
             // the counts follow the `=`.
             case StepKind::Binning:
-                return "bin(" + sole_operand(step) + ")";
-            // `render()`'s spelling, `round(sqrt(...), to ...)`: one step, and
+                return "bin(" + sole_operand(shownStep) + ")";
+            // `render()`'s spelling, `round(sqrt(...), to ...)`: one shownStep, and
             // the root inside it, because the root itself was never a value.
             case StepKind::RoundedRoot:
-                return "round(sqrt(" + sole_operand(step) + "), to " + std::to_string(step.granularity) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(step.unit)) + ")";
+                return "round(sqrt(" + sole_operand(shownStep) + "), to " + std::to_string(shownStep.granularity) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
             // `render()`'s head name. The count is the subject, as a banded
             // lookup's operand is; which row it selected goes in the suffix.
             case StepKind::SampleSizeLookup:
-                return "critical(" + sole_operand(step) + ")";
+                return "critical(" + sole_operand(shownStep) + ")";
             // `render()`'s spelling: `abs(...)`, never bars, which a Markdown
             // table cell would read as its own delimiter.
             case StepKind::AbsoluteValue:
-                return "abs(" + sole_operand(step) + ")";
+                return "abs(" + sole_operand(shownStep) + ")";
             // Both read their side-table record, which only `step_line` can
             // reach; see `precision_expression`. Spelled here without it, for
             // a caller that has the step alone.
@@ -973,16 +989,16 @@ namespace detail
                 return "rejection undecided";
             // One lineage attribute compared: the attribute and both keys.
             case StepKind::LineageChecked:
-                return lineage_expression(step);
+                return lineage_expression(shownStep);
             // The derivation over the other record, then whose record it is.
             // With no record bound there is no operand to name: nothing was
             // read, and the line says so by origin alone.
             case StepKind::RecordScope:
-                if (!step.record.has_value())
-                    return step.operands.empty() ? std::string { "from another record" }
-                                                 : sole_operand(step) + " from another record";
-                return step.operands.empty() ? record_origin_text(*step.record)
-                                             : sole_operand(step) + " " + record_origin_text(*step.record);
+                if (!shownStep.readFrom.has_value())
+                    return shownStep.operands.empty() ? std::string { "from another record" }
+                                                      : sole_operand(shownStep) + " from another record";
+                return shownStep.operands.empty() ? record_origin_text(*shownStep.readFrom)
+                                                  : sole_operand(shownStep) + " " + record_origin_text(*shownStep.readFrom);
         }
         return "unknown step kind";
     }
@@ -1368,7 +1384,7 @@ namespace detail
     /// Reads `Step::elements` and never `Step::value`, which a series step
     /// leaves empty: consulting it would print `(not measured)` for a series
     /// every element of which was measured.
-    [[nodiscard]] inline std::string series_step_line(Step<Rational> const& recorded, std::size_t& budget)
+    [[nodiscard]] inline std::string series_step_line(ShownStep const& recorded, std::size_t& budget)
     {
         // A per-element constant's line is its values alone, as a scalar
         // constant's is its value alone: `1 kg; 2 kg`, not the tautology
@@ -1381,7 +1397,7 @@ namespace detail
         bool const namesQuantity =
             recorded.kind == StepKind::SeriesVariable || recorded.kind == StepKind::ObservationsVariable;
         std::string originText =
-            namesQuantity && recorded.record.has_value() ? ", " + record_origin_text(*recorded.record) : std::string {};
+            namesQuantity && recorded.readFrom.has_value() ? ", " + record_origin_text(*recorded.readFrom) : std::string {};
         // A typed-in series says so after its origin, as a single value does:
         // the record qualifies the values, and the source is said of them.
         if (recorded.kind == StepKind::SeriesVariable && recorded.inputSource == ValueSource::ManuallyEntered)
@@ -1451,7 +1467,7 @@ namespace detail
     /// A failed curve shows its error and, when it belongs to one element,
     /// that element counted from one, then the rule it broke there and the
     /// point (`curve_break_suffix`).
-    [[nodiscard]] inline std::string curve_step_line(Step<Rational> const& recorded, std::size_t& budget)
+    [[nodiscard]] inline std::string curve_step_line(ShownStep const& recorded, std::size_t& budget)
     {
         std::string lineText = step_expression(recorded) + " = ";
         if (recorded.error.has_value())
@@ -1637,7 +1653,7 @@ namespace detail
     /// The rows are master data read at run time, so a derivation that
     /// omitted them would not say what was judged; a hand-built trace with
     /// no row for an element prints the outcome alone.
-    [[nodiscard]] inline std::string conformity_line(Step<Rational> const& recorded,
+    [[nodiscard]] inline std::string conformity_line(ShownStep const& recorded,
                                                      std::span<LimitRow const> limits,
                                                      std::size_t& budget)
     {
@@ -1850,7 +1866,7 @@ namespace detail
     /// step's own.
     [[nodiscard]] inline std::string rejection_line(Trace<Rational> const& trace,
                                                     std::size_t stepIndex,
-                                                    Step<Rational> const& recorded)
+                                                    ShownStep const& recorded)
     {
         detail::RejectionRecord<Rational> const* const rejectionRecord = record_for_step(trace.rejectionRecords, stepIndex);
         if (rejectionRecord == nullptr)
@@ -2011,7 +2027,7 @@ namespace detail
     /// `step_line`, which makes it.
     [[nodiscard]] inline std::string escaped_step_line(Trace<Rational> const& trace,
                                                        std::size_t stepIndex,
-                                                       Step<Rational> const& recorded,
+                                                       ShownStep const& recorded,
                                                        std::size_t& budget,
                                                        std::span<LimitRow const> limits)
     {
@@ -2115,8 +2131,8 @@ namespace detail
         // scope's own step says it in its expression instead.
         bool const namesQuantity = recorded.kind == StepKind::Variable || recorded.kind == StepKind::OverriddenConstant
                                    || recorded.kind == StepKind::DerivedQuantity;
-        if (namesQuantity && recorded.record.has_value())
-            annotation = ", " + record_origin_text(*recorded.record) + annotation;
+        if (namesQuantity && recorded.readFrom.has_value())
+            annotation = ", " + record_origin_text(*recorded.readFrom) + annotation;
 
         if (recorded.kind == StepKind::Constant)
             return valueText + annotation;
@@ -2151,7 +2167,10 @@ namespace detail
     /// reads it, and the line is rendered from that copy.
     ///
     /// @p limits are the rows a `ConformityChecked` step judged against
-    /// (`Trace::conformityLimits`), and empty for every other kind.
+    /// (`Trace::conformityLimits`), and empty for every other kind. The
+    /// record the step was read from and its lineage comparison are read
+    /// from @p trace's own side tables (`Trace::origins`,
+    /// `Trace::lineageChecks`) into the copy -- see `ShownStep`.
     [[nodiscard]] inline std::string step_line(Trace<Rational> const& trace,
                                                std::size_t stepIndex,
                                                std::size_t& budget,
@@ -2159,7 +2178,8 @@ namespace detail
     {
         Step<Rational> const& recorded = trace.steps[stepIndex];
         std::optional<Step<Rational>> const asShown = as_rendered(recorded, trace.steps);
-        EscapedStep const escaped { asShown.has_value() ? *asShown : recorded };
+        EscapedStep const escaped { asShown.has_value() ? *asShown : recorded, origin_of(trace, recorded),
+                                    lineage_of(trace, stepIndex) };
         return escaped_step_line(trace, stepIndex, escaped.step, budget, limits);
     }
 } // namespace detail

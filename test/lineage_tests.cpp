@@ -159,16 +159,16 @@ TEST_CASE("every attribute checked appears in the trace, in declared order", "[l
     CHECK(scope.operands == std::vector<std::size_t> { 0, 1, 2 });
     formula::Step<> const& method = trace.steps[1];
     CHECK(method.kind == formula::StepKind::LineageChecked);
-    REQUIRE(method.lineage.has_value());
-    CHECK(method.lineage->attribute() == "TestMethod");
-    CHECK(method.lineage->is_against_this_record());
-    CHECK(method.lineage->comparand_key() == std::uint64_t { 12 });
-    CHECK(method.lineage->subject_key() == std::uint64_t { 13 });
+    REQUIRE(formula::lineage_of(trace, 1).has_value());
+    CHECK(formula::lineage_of(trace, 1)->attribute() == "TestMethod");
+    CHECK(formula::lineage_of(trace, 1)->is_against_this_record());
+    CHECK(formula::lineage_of(trace, 1)->comparand_key() == std::uint64_t { 12 });
+    CHECK(formula::lineage_of(trace, 1)->subject_key() == std::uint64_t { 13 });
     CHECK(method.outcome.is_violated());
     CHECK(trace.steps[0].outcome.is_satisfied());
     CHECK(trace.steps[2].outcome.is_satisfied());
     // Each attribute step is inside the scope, and says so.
-    CHECK(method.record.has_value());
+    CHECK(formula::origin_of(trace, method).has_value());
 }
 
 TEST_CASE("every disagreeing attribute is shown, not only the first", "[lineage-trace]")
@@ -216,9 +216,9 @@ TEST_CASE("a requirement against another role compares with that record", "[line
     INFO(text);
     CHECK(text.find("1. same MaterialBatch as PriorTest: 4411 and 4411, satisfied\n") != std::string::npos);
     CHECK(text.find("= 60000 N\n") != std::string::npos);
-    REQUIRE(trace.steps[0].lineage.has_value());
-    CHECK(!trace.steps[0].lineage->is_against_this_record());
-    CHECK(trace.steps[0].lineage->comparand() == "PriorTest");
+    REQUIRE(formula::lineage_of(trace, 0).has_value());
+    CHECK(!formula::lineage_of(trace, 0)->is_against_this_record());
+    CHECK(formula::lineage_of(trace, 0)->comparand() == "PriorTest");
 }
 
 TEST_CASE("a scope over a record not yet made checks no lineage", "[lineage-trace]")

@@ -403,8 +403,8 @@ enum class StepKind : std::uint8_t
     RejectionUndecided,
     /// A read from another record (`RecordScopeNode`, `record.hpp`): its
     /// operand is the derivation over that record's values, and
-    /// `Step::record` says which record. With no record bound to the role
-    /// it has no operand, since nothing was read.
+    /// `Step::recordNumber` says which record (`origin_of`). With no record
+    /// bound to the role it has no operand, since nothing was read.
     ///
     /// Nothing in namespace `formula` is spelt `RecordScope` -- the node is
     /// `RecordScopeNode` and the factory `from_record` -- so GCC's
@@ -413,10 +413,10 @@ enum class StepKind : std::uint8_t
     RecordScope,
     /// One attribute a lineage requirement compared before a scope read
     /// (`lineage.hpp`): which attribute, against which record, and both keys,
-    /// in `Step::lineage`; the verdict in `Step::outcome` -- satisfied,
-    /// violated, or not checked when a key is unknown. Recorded as the
-    /// scope's first operands, in the order the requirement names them, and
-    /// without operands of its own.
+    /// in `Trace::lineageChecks` (`lineage_of`); the verdict in
+    /// `Step::outcome` -- satisfied, violated, or not checked when a key is
+    /// unknown. Recorded as the scope's first operands, in the order the
+    /// requirement names them, and without operands of its own.
     ///
     /// Recorded by `RecordingSink::lineage_checked`, not through
     /// `detail::StepKindOf`: an attribute is not a `Node`. Nothing in
@@ -1130,25 +1130,27 @@ struct Step
     /// other kind, and when the environment has no entry for the quantity.
     bool replacedEntryEmpty {};
 
-    /// Which record this step's value was read from: set on **every** step
-    /// recorded inside a `from_record` scope -- a constant, a lookup or a
-    /// conditional there as much as a variable -- and on the scope's own
-    /// step; empty for a step of the record being evaluated. A constant's
-    /// value is the formula's and not the record's, but it is part of the
-    /// computation over that record, and a consumer grouping steps by record
-    /// finds it there. Every step carries it,
-    /// so that a consumer reading one step alone need not walk up the
-    /// operands to learn whose number it is. `render_trace` prints it on the
-    /// scope and on the steps that name a quantity.
+    /// Which record this step's value was read from, counted from one in its
+    /// trace's `Trace::origins`, and zero for a step of the record being
+    /// evaluated: set on **every** step recorded inside a `from_record` scope
+    /// -- a constant, a lookup or a conditional there as much as a variable
+    /// -- and on the scope's own step. A constant's value is the formula's
+    /// and not the record's, but it is part of the computation over that
+    /// record, and a consumer grouping steps by record finds it there. Every
+    /// step carries it, so that a consumer reading one step need not walk up
+    /// the operands to learn whose number it is; `origin_of(trace, step)`
+    /// answers the origin itself. `render_trace` prints it on the scope and
+    /// on the steps that name a quantity.
     ///
-    /// Only the library builds a `RecordOrigin` -- see `record.hpp`.
-    std::optional<RecordOrigin> record {};
-
-    /// For `LineageChecked`: the attribute compared, the record compared
-    /// with, and both keys. Its verdict is `outcome`. Empty otherwise.
-    ///
-    /// Only the library builds a `LineageCheck` -- see `lineage.hpp`.
-    std::optional<LineageCheck> lineage {};
+    /// A number rather than the origin, so that a step read from no other
+    /// record -- nearly every step of every trace -- pays four bytes, which
+    /// fit in padding `Step` had already, rather than an origin's
+    /// forty-eight; and a plain number with zero for none, rather than an
+    /// optional one, for the same four bytes. It means nothing without its
+    /// trace: a step copied out of one trace into another names whatever
+    /// that trace's table holds at the number. Only the library builds a
+    /// `RecordOrigin` -- see `record.hpp`.
+    std::uint32_t recordNumber {};
 
     /// Indices of the steps this one consumed, in evaluation order.
     ///
@@ -1253,6 +1255,18 @@ struct ConformityLimits
     std::vector<LimitRow> rows;
 };
 
+/// The comparison one `LineageChecked` step recorded -- see
+/// `Trace::lineageChecks`.
+struct LineageRow
+{
+    /// The index, in `Trace::steps`, of the `LineageChecked` step.
+    std::size_t step;
+    /// The attribute compared, the record compared with, and both keys. Its
+    /// verdict is the step's `outcome`. Only the library builds a
+    /// `LineageCheck` -- see `record.hpp`.
+    LineageCheck check;
+};
+
 /// A recorded derivation: a flat arena of steps.
 template <typename Rep = Rational>
 struct Trace
@@ -1325,6 +1339,19 @@ struct Trace
     /// The rejections in progress, innermost last. Bookkeeping, as `marks` is.
     std::vector<detail::RejectionInProgress> rejectionsInProgress {};
 
+    /// Every record a `from_record` scope in this trace read from, one entry
+    /// per scope entered, in the order they were entered. `Step::recordNumber`
+    /// counts into it from one; `origin_of` reads it. Not bookkeeping: it is part of the
+    /// derivation, and a new walk over the same trace keeps it, as it keeps
+    /// the steps.
+    std::vector<RecordOrigin> origins {};
+
+    /// The comparison each `LineageChecked` step recorded -- the attribute,
+    /// the record compared with, and both keys -- keyed by its index in
+    /// `steps`, as `conformityLimits` is; `lineage_of` reads it. A side table
+    /// rather than a member of `Step`, for the same reason.
+    std::vector<LineageRow> lineageChecks {};
+
     /// Where the variable being recorded read its value from, between its
     /// `entered` and its `produced`: `RecordingSink::input_source` writes it
     /// and `produced` moves it onto the `Variable` step. A series variable's
@@ -1350,13 +1377,14 @@ struct Trace
     /// Bookkeeping, as `marks` is, and for the same reason.
     bool pendingReplacedEntryEmpty {};
 
-    /// The origin of each `from_record` scope still open: `record_entered`
+    /// The number, counted from one in `origins`, of each `from_record`
+    /// scope still open: `record_entered`
     /// pushes one, and `produced` pops it with the scope's own step. A stack
     /// by the shape `branchStack` has, though a scope cannot be nested in a
     /// scope today (`record.hpp` refuses it).
     ///
     /// Bookkeeping, as `marks` is, and for the same reason.
-    std::vector<RecordOrigin> recordStack {};
+    std::vector<std::uint32_t> recordStack {};
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
@@ -2364,7 +2392,8 @@ class RecordingSink
     /// comment states.
     void record_entered(RecordOrigin const& openedFrom)
     {
-        _trace->recordStack.push_back(openedFrom);
+        _trace->origins.push_back(openedFrom);
+        _trace->recordStack.push_back(static_cast<std::uint32_t>(_trace->origins.size()));
     }
 
     /// Told, by a scope's evaluator, of one attribute its lineage requirement
@@ -2381,9 +2410,9 @@ class RecordingSink
     {
         Step<Rep> checkStep {};
         checkStep.kind = StepKind::LineageChecked;
-        checkStep.lineage = attributeCheck;
         checkStep.outcome = attributeOutcome;
         stamp_origin(checkStep);
+        _trace->lineageChecks.push_back(LineageRow { _trace->steps.size(), attributeCheck });
         _trace->steps.push_back(std::move(checkStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3364,10 +3393,14 @@ class RecordingSink
     /// variant selection's and an acceptance check's -- so that a recording
     /// path added later, as phase 12's series paths were, has one rule to
     /// follow rather than one to forget. Outside every scope it sets nothing.
+    ///
+    /// **The rule for every recording path, present and future:** a path
+    /// that appends to `Trace::steps` calls this on its step first. A path
+    /// that does not traces a value read inside a scope as this record's.
     void stamp_origin(Step<Rep>& recorded) const noexcept
     {
         if (!_trace->recordStack.empty())
-            recorded.record = _trace->recordStack.back();
+            recorded.recordNumber = _trace->recordStack.back();
     }
 
     Trace<Rep>* _trace;
@@ -3377,6 +3410,28 @@ class RecordingSink
 /// `RecordingSink { trace, vocabulary }` records in @p vocabulary's terms.
 template <typename Rep, Vocabulary V>
 RecordingSink(Trace<Rep>&, V) -> RecordingSink<Rep, V>;
+
+/// The record @p recorded, a step of @p trace, was read from; empty for a
+/// step of the record being evaluated, and for a number @p trace does not
+/// hold.
+template <typename Rep>
+[[nodiscard]] constexpr std::optional<RecordOrigin> origin_of(Trace<Rep> const& trace, Step<Rep> const& recorded) noexcept
+{
+    if (recorded.recordNumber == 0 || recorded.recordNumber > trace.origins.size())
+        return std::nullopt;
+    return trace.origins[recorded.recordNumber - 1];
+}
+
+/// The comparison the `LineageChecked` step at @p stepIndex of @p trace
+/// recorded; empty for any other step.
+template <typename Rep>
+[[nodiscard]] constexpr std::optional<LineageCheck> lineage_of(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (LineageRow const& kept: trace.lineageChecks)
+        if (kept.step == stepIndex)
+            return kept.check;
+    return std::nullopt;
+}
 
 /// An outcome together with the derivation that produced it.
 template <Described Result, typename Rep = Rational>

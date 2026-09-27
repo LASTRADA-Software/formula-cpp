@@ -143,10 +143,11 @@ reads it.
 ### What the trace says
 
 **Every step inside a scope carries the record it was read from**, as a
-structured field of the step (`Step::record`), with both keys -- two tests of
-one sample share the sample key, so a sample alone could name either. The
-rendered line names the record on each value read from it and on the scope's
-own line. A step computed inside the scope carries the record too, but its
+structured field of the step (`Step::recordNumber`, which counts into the
+trace's `Trace::origins`; `origin_of(trace, step)` reads it), with both keys
+-- two tests of one sample share the sample key, so a sample alone could name
+either. The rendered line names the record on each value read from it and on
+the scope's own line. A step computed inside the scope carries the record too, but its
 line names only its operands (`#3 * #4`), whose own lines say where their
 values came from. The reference's strength was typed in by a person, and its
 line says that too:
@@ -238,9 +239,9 @@ What no library can prevent, stated plainly:
   `EnumeratorName`, `Describe`, `RepTraits` and the vocabulary; a
   specialisation of anything else can make a trace say anything.
 
-The structured fields of each step -- its kind, its origin, its lineage
-comparison -- are what is authoritative; the rendered line is their
-description. A role displayed as `this record`, in any case, is refused, since
+The structured fields of each step -- its kind, and its origin and lineage
+comparison as its trace holds them (`origin_of`, `lineage_of`) -- are what is
+authoritative; the rendered line is their description. A role displayed as `this record`, in any case, is refused, since
 every value read from it would be traced as read from the record being
 evaluated.
 

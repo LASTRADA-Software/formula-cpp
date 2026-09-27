@@ -47,8 +47,8 @@ TEST_CASE("the joined trace names the variant, the lineage, the fixed constant's
             sawCube = step.variantTag == "Cube";
         if (step.kind == formula::StepKind::OverriddenConstant)
         {
-            REQUIRE(step.record.has_value());
-            sawFixedInside = step.record->role() == "Reference" && step.inputSource == formula::ValueSource::ManuallyEntered;
+            REQUIRE(formula::origin_of(recorded, step).has_value());
+            sawFixedInside = formula::origin_of(recorded, step)->role() == "Reference" && step.inputSource == formula::ValueSource::ManuallyEntered;
         }
     }
     CHECK(lineageSteps == 1);
@@ -105,7 +105,7 @@ TEST_CASE("check_method through a context reads the constraint's value from the 
         {
             formula::Step<> const& firstOperand = recorded.steps[step.operands[0]];
             constraintOperandIsForeign = firstOperand.kind == formula::StepKind::RecordScope
-                                         && firstOperand.record.has_value() && firstOperand.record->role() == "Reference";
+                                         && formula::origin_of(recorded, firstOperand).has_value() && formula::origin_of(recorded, firstOperand)->role() == "Reference";
         }
     CHECK(constraintOperandIsForeign);
 }
@@ -240,9 +240,9 @@ TEST_CASE("one constant fixed here and inside a scope traces each step with its 
         if (step.kind != formula::StepKind::OverriddenConstant)
             continue;
         ++fixedSteps;
-        if (step.record.has_value())
+        if (formula::origin_of(recorded, step).has_value())
         {
-            CHECK(step.record->role() == "Reference");
+            CHECK(formula::origin_of(recorded, step)->role() == "Reference");
             CHECK(step.inputSource == formula::ValueSource::ManuallyEntered);
         }
         else
@@ -345,11 +345,11 @@ TEST_CASE("a series read from another record is stamped with its origin", "[reco
             bool const isReferences = step.elements.size() == 5 && step.elements[0] == formula::Rational { 113, 1000 };
             if (isReferences)
             {
-                REQUIRE(step.record.has_value());
-                CHECK(step.record->role() == "Reference");
+                REQUIRE(formula::origin_of(recorded, step).has_value());
+                CHECK(formula::origin_of(recorded, step)->role() == "Reference");
             }
             else
-                CHECK_FALSE(step.record.has_value());
+                CHECK_FALSE(formula::origin_of(recorded, step).has_value());
         }
     CHECK(seriesSteps == 2);
 
@@ -398,8 +398,8 @@ TEST_CASE("raw observations read from another record are stamped with its origin
         if (step.kind == formula::StepKind::ObservationsVariable)
         {
             ++observationSteps;
-            REQUIRE(step.record.has_value());
-            CHECK(step.record->role() == "Reference");
+            REQUIRE(formula::origin_of(recorded, step).has_value());
+            CHECK(formula::origin_of(recorded, step)->role() == "Reference");
         }
     CHECK(observationSteps == 1);
     std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
@@ -432,7 +432,7 @@ TEST_CASE("a series typed in on another record says where it was read from, and 
         {
             ++seriesSteps;
             formula::ValueSource const expected =
-                step.record.has_value() ? formula::ValueSource::ManuallyEntered : formula::ValueSource::Measured;
+                formula::origin_of(recorded, step).has_value() ? formula::ValueSource::ManuallyEntered : formula::ValueSource::Measured;
             CHECK(step.inputSource == expected);
         }
     CHECK(seriesSteps == 2);
@@ -515,8 +515,8 @@ TEST_CASE("a curve read inside a read from another record is stamped with that r
         if (step.kind == formula::StepKind::CurvePairing || step.kind == formula::StepKind::CurveSplice)
         {
             ++curveSteps;
-            REQUIRE(step.record.has_value());
-            CHECK(step.record->role() == "Reference");
+            REQUIRE(formula::origin_of(recorded, step).has_value());
+            CHECK(formula::origin_of(recorded, step)->role() == "Reference");
         }
     CHECK(curveSteps == 1);
     std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });

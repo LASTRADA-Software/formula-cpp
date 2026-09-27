@@ -48,8 +48,9 @@
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
 // unbound record, untraced and traced into `render_trace`, gated on
-// `same_lineage` through `checked_explain`, rendered and documented, and
-// under an overlay's constant and derived quantity, traced. A
+// `same_lineage` through `checked_explain`, rendered and documented, with
+// `lineage_of` and `origin_of` reading the trace's side tables, and under an
+// overlay's constant and derived quantity, traced. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -748,6 +749,15 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                   != std::string::npos
                            && agreedRead.has_value() && **agreedRead == formula::Rational { 60'000 }
                            && lineageRecords.record<Reference>().lineage_of<MaterialBatch>() == std::uint64_t { 4411 });
+    // The trace's side tables, through their accessors: the comparison the
+    // refusing attribute recorded, and the record its step was read from.
+    probe.checks.push_back(!refusedRead.has_value() && refusedRead.error().trace.steps.size() > 1
+                           && formula::lineage_of(refusedRead.error().trace, 1).has_value()
+                           && formula::lineage_of(refusedRead.error().trace, 1)->attribute() == "TestMethod"
+                           && formula::origin_of(refusedRead.error().trace, refusedRead.error().trace.steps[1])
+                                      .has_value()
+                           && formula::origin_of(refusedRead.error().trace, refusedRead.error().trace.steps[1])->role()
+                                  == "Reference");
 
     // The page of a formula that reads from another record, in every dialect:
     // its words, and a row per (record, quantity).

@@ -190,10 +190,10 @@ TEST_CASE("a scope over a record not yet made says no record is bound", "[record
     formula::Step<> const& scope = trace.steps[1];
     CHECK(scope.kind == formula::StepKind::RecordScope);
     CHECK(scope.operands.empty());
-    REQUIRE(scope.record.has_value());
-    CHECK(!scope.record->is_bound());
-    CHECK(!scope.record->key().has_value());
-    CHECK(scope.record->role() == "Reference");
+    REQUIRE(formula::origin_of(trace, scope).has_value());
+    CHECK(!formula::origin_of(trace, scope)->is_bound());
+    CHECK(!formula::origin_of(trace, scope)->key().has_value());
+    CHECK(formula::origin_of(trace, scope)->role() == "Reference");
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
     INFO(text);
     CHECK(text.find("2. from record Reference (no record bound) = (not measured)\n") != std::string::npos);
@@ -219,16 +219,16 @@ TEST_CASE("every step inside a scope carries its origin, and none outside it doe
     for (std::size_t inside = 1; inside <= 6; ++inside)
     {
         INFO("step " << inside);
-        REQUIRE(trace.steps[inside].record.has_value());
-        CHECK(trace.steps[inside].record->role() == "Reference");
-        CHECK(trace.steps[inside].record->key()
+        REQUIRE(formula::origin_of(trace, trace.steps[inside]).has_value());
+        CHECK(formula::origin_of(trace, trace.steps[inside])->role() == "Reference");
+        CHECK(formula::origin_of(trace, trace.steps[inside])->key()
               == formula::record_key(formula::sample_id(23), formula::test_id(3)));
     }
     CHECK(trace.steps[6].kind == formula::StepKind::RecordScope);
     for (std::size_t outside: { std::size_t { 0 }, std::size_t { 7 }, std::size_t { 8 }, std::size_t { 9 } })
     {
         INFO("step " << outside);
-        CHECK(!trace.steps[outside].record.has_value());
+        CHECK(!formula::origin_of(trace, trace.steps[outside]).has_value());
     }
     CHECK(trace.recordStack.empty());
 }
@@ -295,8 +295,8 @@ TEST_CASE("a constant, a lookup and a conditional inside a scope are stamped too
     for (formula::Step<> const& recorded: trace.steps)
     {
         INFO("step kind " << static_cast<int>(recorded.kind));
-        REQUIRE(recorded.record.has_value());
-        CHECK(recorded.record->role() == "Reference");
+        REQUIRE(formula::origin_of(trace, recorded).has_value());
+        CHECK(formula::origin_of(trace, recorded)->role() == "Reference");
         sawConstant = sawConstant || recorded.kind == formula::StepKind::Constant;
         sawLookup = sawLookup || recorded.kind == formula::StepKind::BandedLookup;
         sawConditional = sawConditional || recorded.kind == formula::StepKind::Conditional;
@@ -324,9 +324,25 @@ TEST_CASE("a scope reported without its origin records none, and says so", "[rec
 
     REQUIRE(trace.steps.size() == 2);
     CHECK(trace.steps[1].kind == formula::StepKind::RecordScope);
-    CHECK(!trace.steps[1].record.has_value());
+    CHECK(!formula::origin_of(trace, trace.steps[1]).has_value());
     CHECK(trace.recordStack.empty());
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
     INFO(text);
     CHECK(text.find("2. #1 from another record = ") != std::string::npos);
+}
+
+TEST_CASE("a step costs what it cost before records were traced", "[record-trace]")
+{
+    // 1008 bytes on master, measured on cl, g++ 13 and 14, and clang++ with
+    // libstdc++ and libc++, all 64-bit. This phase's per-step facts -- the
+    // source, whether a replaced entry was empty, and the record's number --
+    // fit in padding `Step` already had; each origin and each lineage
+    // comparison lives once, in the trace's side tables. A checked standard
+    // library's containers are larger, and so is every step there, on master
+    // as here, so only an unchecked 64-bit build pins the number.
+#if (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0) || defined(_GLIBCXX_DEBUG)
+    SUCCEED("a checked standard library's containers change every step's size, so nothing is pinned here");
+#else
+    STATIC_REQUIRE((sizeof(void*) != 8 || sizeof(formula::Step<formula::Rational>) == 1008));
+#endif
 }
