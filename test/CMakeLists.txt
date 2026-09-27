@@ -1691,15 +1691,15 @@ formula_add_negative_test(overlay_derived_after_its_variant_is_pruned
 
 formula_add_negative_test(overlay_derived_dimension_mismatch
     "formula: this overlay derives a quantity from an expression of a different dimension"
-    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_self_reference
     "formula: this overlay derives a quantity from an expression that reads the quantity itself"
-    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_definition_unknown_node
     "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
-    REJECT "formula: this overlay derives a quantity from an expression that reads the quantity itself" "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+    REJECT "formula: this overlay derives a quantity from an expression that reads the quantity itself" "formula: this method reads a quantity both where an overlay fixed or derived it" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_method_unknown_node
     "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
@@ -1710,7 +1710,7 @@ formula_add_negative_test(overlay_derived_method_unknown_node
 # The first definition's node is still there beside that plain use, so the
 # REJECT pins that this is not also reported as bypassed.
 formula_add_negative_test(overlay_derived_cycle
-    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "formula: this overlay derives a quantity, and an operation listed after the definition removed")
 
 # A refused replacement leaves the method without it, so the substitution
@@ -1740,11 +1740,11 @@ formula_add_negative_test(overlay_replacement_pruned_then_dimension
     REJECT "formula: this overlay replaces a variant that the method it produces does not hold")
 
 formula_add_negative_test(overlay_stacked_cycle
-    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_stacked_constant_read_again
-    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_constant_reintroduced
@@ -2181,6 +2181,24 @@ formula_add_negative_test(opaque_curve_dimensions_declared
 formula_add_negative_test(opaque_forged_output_position
     "formula: this opaque output's position names no output of its operation"
     REJECT "subscript")
+# Overlays over opaque calls (task 5 review): a refused call is never rebuilt,
+# and a substitution inside a call is seen by every rule over the method.
+formula_add_negative_test(overlay_constant_inside_refused_opaque
+    "formula: this opaque operation does not accept inputs of these dimensions"
+    REJECT "no matching overloaded function" "no matching function" "cannot see inside")
+formula_add_negative_test(overlay_derivation_of_refused_opaque
+    "formula: this opaque operation does not accept inputs of these dimensions"
+    REJECT "no matching overloaded function" "no matching function" "cannot see inside")
+formula_add_negative_test(overlay_substitution_inside_opaque_across_overlays
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
+    REJECT "cannot see inside")
+formula_add_negative_test(overlay_constant_bypassed_inside_opaque
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
+    REJECT "cannot see inside")
+formula_add_negative_test(overlay_constant_before_derivation_inside_opaque
+    "formula: this overlay fixes a quantity that nothing read where the constant is listed"
+    REJECT "cannot see inside")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

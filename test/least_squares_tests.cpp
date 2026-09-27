@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/least_squares.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
@@ -15,8 +16,10 @@
 #include <expected>
 #include <span>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 namespace
 {
@@ -370,30 +373,124 @@ TEST_CASE("a constant read outside the fit is rewritten and the call is left as 
     STATIC_REQUIRE(formula::evaluate_method<Fitted>(corrected, fitPoints)->value() == rat(362, 600'000));
 }
 
-TEST_CASE("a constant read inside the fit's input is fixed for the whole call, in either order", "[least-squares][overlay]")
+TEST_CASE("a constant read inside the fit's input is fixed for the whole call", "[least-squares][overlay]")
 {
     // The environment has no scale and no correction at all, so a use of
     // either left reading it would not compile. 285/7 * 1.03 inside, * 1.03
     // and * 0.89 outside: 285/7 * 0.944201 = 38.44... mm/min, 38.4.
-    constexpr auto scaleFirst = formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex),
-                                                                formula::with_constant<Correction>(rat(89, 100), annex)),
-                                               scaledMethod);
-    constexpr auto correctionFirst = formula::apply(formula::overlay(formula::with_constant<Correction>(rat(89, 100), annex),
-                                                                     formula::with_constant<Scale>(rat(103, 100), annex)),
-                                                    scaledMethod);
-    STATIC_REQUIRE(formula::evaluate_method<Fitted>(scaleFirst, fitPoints)->value() == rat(384, 600'000));
-    STATIC_REQUIRE(formula::evaluate_method<Fitted>(correctionFirst, fitPoints)->value() == rat(384, 600'000));
+    constexpr auto scaled = formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex),
+                                                            formula::with_constant<Correction>(rat(89, 100), annex)),
+                                           scaledMethod);
+    STATIC_REQUIRE(formula::evaluate_method<Fitted>(scaled, fitPoints)->value() == rat(384, 600'000));
+    // The rewrite knows the call all the way down: every result check of the
+    // overlay runs over it (a call it did not know would silence them).
+    STATIC_REQUIRE(formula::detail::ConstantRewriteOf<
+                   formula::ConstantOverride<Scale>,
+                   std::remove_cvref_t<decltype(formula::opaque_output<"slope">(scaledFit))>>::known);
 
     // The fixed scale inside the call is a step of the call's input, with the
     // overlay's citation.
     formula::Trace<> recorded {};
-    (void) formula::evaluate_method<Fitted>(scaleFirst, fitPoints, formula::RecordingSink { recorded });
+    (void) formula::evaluate_method<Fitted>(scaled, fitPoints, formula::RecordingSink { recorded });
     std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
     CHECK(text.find("s = 103/100 [fixed by jurisdiction overlay") != std::string::npos);
     // The rebuilt call keeps the call's own citation.
     CHECK(text.find("[inside not shown] [Example Standard 12, 5.2]") != std::string::npos);
 }
 
+namespace
+{
+// The scale read only inside the fit, and nowhere else.
+constexpr auto insideOnlyMethod =
+    formula::method(formula::variants(formula::variant<Fitted>(formula::opaque_output<"slope">(scaledFit)),
+                                      formula::variant<Nominal>(formula::constant<unit::MillimetrePerMinute>(rat(401, 10)))),
+                    TenthOfMillimetrePerMinute {},
+                    formula::constraints());
+} // namespace
+
+TEST_CASE("a derivation puts a use inside the fit that a later constant then fixes", "[least-squares][overlay]")
+{
+    // The scale is derived as twice the correction, which puts a use of the
+    // correction inside the call's input; the constant listed after it fixes
+    // that use: 0.515 * 2 = 1.03, and 285/7 * 1.03 = 41.93... mm/min, 41.9.
+    // Listed the other way round, the constant fixes a correction nothing
+    // reads yet, and is refused (negative overlay_constant_before_derivation_inside_opaque).
+    constexpr auto derivedThenFixed =
+        formula::apply(formula::overlay(formula::add_derived<Scale>(formula::var<Correction> * rat(2), annex),
+                                        formula::with_constant<Correction>(rat(515, 1000), annex)),
+                       insideOnlyMethod);
+    STATIC_REQUIRE(formula::evaluate_method<Fitted>(derivedThenFixed, fitPoints)->value() == rat(419, 600'000));
+
+    formula::Trace<> recorded {};
+    (void) formula::evaluate_method<Fitted>(derivedThenFixed, fitPoints, formula::RecordingSink { recorded });
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
+    CHECK(text.find("c = 103/200 [fixed by jurisdiction overlay") != std::string::npos);
+    CHECK(text.find("[derived by jurisdiction overlay") != std::string::npos);
+    // The derivation is inside the call's input: the call's line comes after it.
+    CHECK(text.find("[derived by jurisdiction overlay") < text.find("linear least squares("));
+}
+
+TEST_CASE("a quantity defined by a fit is derived, and a constant inside that fit fixes it", "[least-squares][overlay]")
+{
+    // Rate defined as the slope of the scaled fit -- a definition that is a
+    // fit's output -- and the scale inside it fixed at 1.03 after it: the
+    // method reads Rate plainly, and 285/7 * 1.03 = 41.93... mm/min, 41.9.
+    constexpr auto readsRate = formula::method(formula::variants(formula::variant<Fitted>(formula::var<Rate>)),
+                                               TenthOfMillimetrePerMinute {},
+                                               formula::constraints());
+    constexpr auto defined =
+        formula::apply(formula::overlay(formula::add_derived<Rate>(formula::opaque_output<"slope">(scaledFit), annex),
+                                        formula::with_constant<Scale>(rat(103, 100), annex)),
+                       readsRate);
+    STATIC_REQUIRE(formula::evaluate_method<Fitted>(defined, fitPoints)->value() == rat(419, 600'000));
+}
+
+TEST_CASE("two outputs of one rewritten call are each rewritten, and each keeps its citation", "[least-squares][overlay]")
+{
+    // intercept / 1 min + slope, over the scaled fit with the scale fixed at
+    // 1.03: 9.785 mm/min + 41.936 mm/min = 51.72, 51.7.
+    constexpr auto both =
+        formula::method(formula::variants(formula::variant<Fitted>(formula::opaque_output<"intercept">(scaledFit)
+                                                                       / formula::constant<unit::Minute>(rat(1))
+                                                                   + formula::opaque_output<"slope">(scaledFit))),
+                        TenthOfMillimetrePerMinute {},
+                        formula::constraints());
+    constexpr auto fixed = formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex)), both);
+    STATIC_REQUIRE(formula::evaluate_method<Fitted>(fixed, fitPoints)->value() == rat(517, 600'000));
+
+    formula::Trace<> recorded {};
+    (void) formula::evaluate_method<Fitted>(fixed, fitPoints, formula::RecordingSink { recorded });
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 60 });
+    std::size_t cited = 0;
+    for (std::size_t at = text.find("[inside not shown] [Example Standard 12, 5.2]"); at != std::string::npos;
+         at = text.find("[inside not shown] [Example Standard 12, 5.2]", at + 1))
+        ++cited;
+    CHECK(cited == 2);
+}
+
+TEST_CASE("a pinned or pruned variant holding a fit keeps the constant fixed inside it", "[least-squares][overlay]")
+{
+    // Pinned, in either order: 41.9. A pin that kept Nominal would give 40.1,
+    // and a constant that missed the fit would not compile (no scale in the
+    // environment).
+    constexpr auto pinFirst = formula::apply(
+        formula::overlay(formula::pin_variant<Fitted>(annex), formula::with_constant<Scale>(rat(103, 100), annex)),
+        insideOnlyMethod);
+    constexpr auto constantFirst = formula::apply(
+        formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex), formula::pin_variant<Fitted>(annex)),
+        insideOnlyMethod);
+    STATIC_REQUIRE(std::tuple_size_v<decltype(pinFirst.variantSet.cases)> == 1);
+    STATIC_REQUIRE(std::tuple_size_v<decltype(constantFirst.variantSet.cases)> == 1);
+    STATIC_REQUIRE(formula::evaluate_method<Fitted>(pinFirst, fitPoints)->value() == rat(419, 600'000));
+    STATIC_REQUIRE(formula::evaluate_method<Fitted>(constantFirst, fitPoints)->value() == rat(419, 600'000));
+
+    // Nominal pruned: the fit is left, with the scale fixed inside it.
+    constexpr auto pruned = formula::apply(
+        formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex), formula::prune_variant<Nominal>(annex)),
+        insideOnlyMethod);
+    STATIC_REQUIRE(std::tuple_size_v<decltype(pruned.variantSet.cases)> == 1);
+    STATIC_REQUIRE(formula::evaluate_method<Fitted>(pruned, fitPoints)->value() == rat(419, 600'000));
+}
 TEST_CASE("a constant read only inside the fit's input is still a use of it", "[least-squares][overlay]")
 {
     constexpr auto insideOnly =
@@ -412,4 +509,27 @@ TEST_CASE("a scoped vocabulary renames a fit's input in the trace, the render an
     (void) formula::evaluate_method<Fitted>(fitMethod, fitPoints, formula::RecordingSink { recorded, north });
     CHECK(formula::render_trace(recorded, { .maxSteps = 30 }).find("2. l = 51/5 mm") != std::string::npos);
     CHECK(formula::render(formula::opaque_output<"slope">(fit), north) == "linear least squares(t(i), l(i)).slope");
+}
+
+TEST_CASE("a scoped vocabulary reaches a constant fixed inside a rewritten fit", "[least-squares][vocabulary][overlay]")
+{
+    // Length and Scale renamed; the scale fixed inside the call and outside
+    // it, the correction too. The rewritten variant renders and documents in
+    // the vocabulary, the fixed scale inside the call included.
+    constexpr auto north = formula::vocabulary(formula::renames<Length>("l"), formula::renames<Scale>("k"));
+    constexpr auto fixed = formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex),
+                                                           formula::with_constant<Correction>(rat(89, 100), annex)),
+                                          scaledMethod);
+    auto const& rewritten = std::get<0>(fixed.variantSet.cases).expression;
+    CHECK(formula::render(rewritten, north) == "linear least squares(t(i), l(i) * k).slope * k * c");
+    formula::Documentation const page = formula::document(rewritten, north);
+    std::vector<std::string_view> symbols;
+    for (auto const& row: page.symbols)
+        symbols.push_back(row.symbol);
+    CHECK(symbols == std::vector<std::string_view> { "t", "l", "k", "c" });
+
+    formula::Trace<> recorded {};
+    (void) formula::evaluate_method<Fitted>(fixed, fitPoints, formula::RecordingSink { recorded, north });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 40 }).find("k = 103/100 [fixed by jurisdiction overlay")
+          != std::string::npos);
 }
