@@ -42,7 +42,8 @@
 // a sample's count, mean, variance and range, and a rounded root of the
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
 // and under a mean, on the same surfaces, and one by gap to range; a mean
-// and a rejection of raw observations, on the same surfaces; and the four
+// and a rejection of raw observations, on the same surfaces; a consumer's
+// opaque operation's output, evaluated exactly and in double; and the four
 // table validators; and `record_key`, `sample_id`, `test_id`,
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
@@ -93,7 +94,11 @@
 
 #include <array>
 #include <cstdint>
+#include <expected>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 // clang-format off
@@ -143,6 +148,7 @@ int index;
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
@@ -239,6 +245,39 @@ inline constexpr auto everything = formula::documented(
             formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))),
     formula::Citation { .title = "Everything", .reference = "Example Standard 1:2020", .section = "1" });
 
+/// A consumer's opaque operation: the span of a series, its highest element
+/// less its lowest.
+struct EdgeSpan
+{
+    static constexpr std::string_view name = "edge span";
+    static constexpr std::array shapes { formula::InputShape::Series };
+    static constexpr std::array<std::string_view, 1> outputs { "span" };
+
+    static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
+        std::array<formula::Dimension, 1> declared) noexcept
+    {
+        return std::array { declared[0] };
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(
+        std::span<Rep const> edges) noexcept
+    {
+        Rep least = edges[0];
+        Rep most = edges[0];
+        for (Rep const& each: edges)
+        {
+            if (each < least)
+                least = each;
+            if (most < each)
+                most = each;
+        }
+        std::expected<Rep, formula::ArithmeticError> const edgeSpread = formula::RepTraits<Rep>::subtract(most, least);
+        if (!edgeSpread.has_value())
+            return std::unexpected { edgeSpread.error() };
+        return std::array { *edgeSpread };
+    }
+};
 inline constexpr auto forceLimit = formula::constraint(
     var<Force> >= formula::constant<unit::Newton>(formula::Rational { 1 }), formula::Verdict { "no load" });
 
@@ -689,6 +728,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::render(observedMean, north) == "sample_mean(x_m(i))"
         && formula::document(observedMean, north).symbols.front().shape == formula::ValueShape::Observations
         && formula::render_trace(observedTrace, { .maxSteps = 20 }).find("sample_mean(#1) = 169 mm") != std::string::npos);
+    // An opaque operation's output, evaluated exactly and in double: the span
+    // of 150 and 103 mm is 47 mm.
+    auto const edgeSpan = formula::opaque_output<"span">(
+        formula::opaque<EdgeSpan>({ .reference = "Example Standard 3" }, formula::series<EdgeX, 2>));
+    auto const spanValue = formula::checked_evaluate<EdgeX>(edgeSpan, bothScreens);
+    auto const spanInDouble = formula::checked_evaluate_si<double>(edgeSpan, bothScreens);
+    probe.checks.push_back(spanValue.has_value() && spanValue->measurement().value() == formula::Rational { 47 }
+                           && spanInDouble.has_value() && spanInDouble->has_value());
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

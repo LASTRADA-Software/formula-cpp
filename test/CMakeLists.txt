@@ -84,6 +84,8 @@ add_executable(formula-cpp-tests
     record_join_tests.cpp
     record_statistics_tests.cpp
     record_cross_tu_b.cpp
+    opaque_tests.cpp
+    opaque_cross_tu_b.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -2062,6 +2064,47 @@ formula_add_negative_test(record_context_over_context
     "formula: a record holds its values in an environment(...), and this is not one"
     REJECT "RequireProvided" "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
 
+# Opaque operations (`opaque.hpp`). Each refusal is gated on the ones before
+# it, so one mistake draws one message; every REJECT names the message the
+# next check down would add.
+formula_add_negative_test(opaque_blank_name
+    "formula: an opaque operation's name must say something; one that is empty or blank leaves the trace unable to say what ran"
+    REJECT "may hold only ASCII letters, digits and single spaces")
+formula_add_negative_test(opaque_unreadable_name
+    "formula: an opaque operation's name and output names may hold only ASCII letters, digits and single spaces, so that every dialect shows them as written"
+    REJECT "declares two outputs with the same name")
+formula_add_negative_test(opaque_duplicate_output
+    "formula: an opaque operation declares two outputs with the same name; opaque_output could not tell them apart"
+    REJECT "may hold only ASCII letters, digits and single spaces")
+formula_add_negative_test(opaque_no_outputs
+    "formula: an opaque operation declares no outputs; a call with nothing to use has nothing to trace"
+    REJECT "declares two outputs with the same name")
+formula_add_negative_test(opaque_unknown_output
+    "formula: this opaque operation has no output of that name; the operation and the name asked for appear in this diagnostic as the template arguments of RequireOpaqueOutputNamed"
+    REJECT "this result quantity does not measure the dimension")
+# g++ 14.2 followed the noexcept refusal with seven errors of its own when the
+# evaluator's body was not gated (phase 15's spike, step 7): the REJECTs.
+formula_add_negative_test(opaque_throwing_compute
+    "formula: an opaque operation's compute must be noexcept; evaluation cannot throw, and an exception escaping it would end the program"
+    REJECT "~expected" "flows off the end")
+formula_add_negative_test(opaque_wrong_arity
+    "formula: this opaque call passes a different number of inputs than the operation declares"
+    REJECT "passes an input of another shape" "does not accept inputs of these dimensions")
+formula_add_negative_test(opaque_wrong_shape
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "does not accept inputs of these dimensions" "compute cannot be called")
+formula_add_negative_test(opaque_series_lengths_differ
+    "formula: this opaque operation's series inputs differ in length"
+    REJECT "does not accept inputs of these dimensions")
+formula_add_negative_test(opaque_dimensions_refused
+    "formula: this opaque operation does not accept inputs of these dimensions"
+    REJECT "compute cannot be called" "must be noexcept")
+formula_add_negative_test(opaque_compute_signature
+    "formula: this opaque operation's compute cannot be called with the values its declared inputs give"
+    REJECT "must be noexcept")
+formula_add_negative_test(opaque_output_as_series
+    "formula: an opaque call is not a value, since an operation may have several outputs; choose one with opaque_output<\"name\">(call)"
+    REJECT "this expression is a series, not a single value")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

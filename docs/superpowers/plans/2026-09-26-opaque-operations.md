@@ -90,6 +90,8 @@ The plan was written against phase 12 *as planned*. The branch starts from maste
 
 The least-squares fixture's lengths (10.2, 10.9, 12.1, 14.3 mm) already follow the rule and are kept. Its times (1, 2, 4, 7 s) are not size-like and are kept, because every hand-computed coefficient below depends on them.
 
+**C15. Task 2 accepts the `Curve` shape already.** The curve seam (`detail::dispatch_curve`) is on master, so `RequireCurveInputsAvailable` and its negative are not built, and task 4 deletes nothing. Task 2 also adds two refusals the plan did not list, each with its negative: an operation with no outputs (`opaque_no_outputs`), and a `compute` that cannot be called with what the declared inputs give (`opaque_compute_signature`), which would otherwise be refused in the compiler's words.
+
 **C14. Phase 13's overflow census** (`FORMULA_OVERFLOW_CENSUS`) has not merged. The owner-requested least-squares census case before task 9 is deferred until both phases are on master, and is not part of this branch.
 
 ---
