@@ -430,9 +430,7 @@ template <typename Rep = Rational,
     Evaluated<Rep> const evaluatedCount = detail::dispatch<Rep>(node.count, environment, sink);
     if (!evaluatedCount.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { evaluatedCount.error() };
-        sink.produced(node, failed);
-        return failed;
+        return detail::report_failure<Rep>(node, sink, evaluatedCount.error());
     }
     if (!evaluatedCount->has_value())
     {
@@ -462,9 +460,7 @@ template <typename Rep = Rational,
         {
             // A miss is not a value: no nearest row, no interpolation, no
             // clamping to either end. See the file comment.
-            Evaluated<Rep> const missed = std::unexpected { ArithmeticError::DomainError };
-            sink.produced(node, missed);
-            return missed;
+            return detail::report_failure<Rep>(node, sink, ArithmeticError::DomainError);
         }
 
         Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.corrections[*matchedRow], ResultUnit);

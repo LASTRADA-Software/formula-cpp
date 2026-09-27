@@ -351,9 +351,7 @@ template <typename Rep = Rational,
     Evaluated<Rep> const evaluatedRadicand = detail::dispatch<Rep>(node.radicand, environment, sink);
     if (!evaluatedRadicand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { evaluatedRadicand.error() };
-        sink.produced(node, failed);
-        return failed;
+        return detail::report_failure<Rep>(node, sink, evaluatedRadicand.error());
     }
     if (!evaluatedRadicand->has_value())
     {
