@@ -44,7 +44,7 @@
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
 // opaque operation's output, evaluated exactly and in double, traced,
-// rendered and documented; and the four
+// rendered and documented; a least-squares fit; and the four
 // table validators; and `record_key`, `sample_id`, `test_id`,
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
@@ -145,6 +145,7 @@ int index;
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/least_squares.hpp>
 #include <formula-cpp/lineage.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
@@ -746,7 +747,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::render<formula::Dialect::Markdown>(edgeSpan).find("edge span") != std::string::npos
         && formula::render<formula::Dialect::LaTeX>(edgeSpan).find("\\text{edge span}") != std::string::npos
         && formula::document(edgeSpan, north).opaqueOperations.size() == 1);
-    auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
+    // A straight line fitted through the declared curve points 139 and
+    // 161 mm, at 10 and 30 mm: a slope of 20/22 = 10/11.
+    auto const edgeFit = formula::linear_least_squares(
+        formula::curve(formula::domain<unit::Millimetre, EdgeCurvePoints>,
+                       formula::series_constant<unit::Millimetre>(formula::Rational { 10 }, formula::Rational { 30 })),
+        { .reference = "Example Standard 3" });
+    auto const fitSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeFit), specimen);
+    probe.checks.push_back(fitSlope.has_value() && fitSlope->measurement().value() == formula::Rational { 10, 11 });    auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });
     probe.checks.push_back(enteredEnvironment.source_of<Force>() == formula::ValueSource::ManuallyEntered);

@@ -86,6 +86,7 @@ add_executable(formula-cpp-tests
     record_cross_tu_b.cpp
     opaque_tests.cpp
     opaque_cross_tu_b.cpp
+    least_squares_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -2105,6 +2106,15 @@ formula_add_negative_test(opaque_compute_signature
 formula_add_negative_test(opaque_output_as_series
     "formula: an opaque call is not a value, since an operation may have several outputs; choose one with opaque_output<\"name\">(call)"
     REJECT "this expression is a series, not a single value")
+# Least squares (`least_squares.hpp`): two loose series are refused in this
+# library's words, not the compiler's; a fit in double is refused once, in the
+# curve's words.
+formula_add_negative_test(least_squares_not_a_curve
+    "formula: linear_least_squares fits a curve; pair the domain and the values with curve(domain, values)"
+    REJECT "no matching overloaded function" "no matching function")
+formula_add_negative_test(least_squares_in_double
+    "formula: a curve can only be evaluated with Rep = Rational"
+    REJECT "must be noexcept" "compute cannot be called")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

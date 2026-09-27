@@ -26,6 +26,7 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/least_squares.hpp>
 #include <formula-cpp/lineage.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
