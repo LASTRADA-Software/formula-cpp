@@ -237,9 +237,10 @@ the recorder, not the renderer, has to be the one holding that unit:
 /// for a variable, the constant's own unit for a constant, the unit of
 /// the step it wraps for a `Documented`, `ReplacedVariant` or
 /// `VariantSelected` step -- each passes its operand's value through
-/// unchanged, so it states it as that operand's line does -- and the
-/// coherent SI unit of `dimension` for anything else computed, which has
-/// no declared unit of its own.
+/// unchanged, so it states it as that operand's line does, whenever that
+/// line is the wrapped node's own and not the operands of a consumer's
+/// node -- and the coherent SI unit of `dimension` for anything else
+/// computed, which has no declared unit of its own.
 ///
 /// `value` is always in the coherent SI unit, so that steps are
 /// comparable; this is what a renderer converts back to before showing a
@@ -292,7 +293,10 @@ a sample mass declared in grams:
 
 (`test/trace_render_tests.cpp`, `"a documented step shows its value as the step
 it documents does"`.) A jurisdiction's replaced variant is the same: its line
-reads as the replacement's own.
+reads as the replacement's own. Over a consumer's node that hands the sink on
+to its operands (see below), there is no line of the node's own to read as --
+only its operands', none of which holds its value -- so the documented step
+states its value in coherent SI, as any computed step does.
 
 A step that failed shows why instead of a value, and a step with no value at
 all -- an absent measurement, which is not an error -- says so rather than

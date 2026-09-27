@@ -5,6 +5,8 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
+#include "forwarding_nodes.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <concepts>
@@ -42,6 +44,12 @@ struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", unit::
 {
 };
 struct Ratio: formula::Quantity<Ratio, "r", "a dimensionless ratio", unit::One>
+{
+};
+struct StartTemperature: formula::Quantity<StartTemperature, "T_0", "start temperature", unit::Celsius>
+{
+};
+struct EndTemperature: formula::Quantity<EndTemperature, "T_1", "end temperature", unit::Celsius>
 {
 };
 
@@ -849,6 +857,38 @@ TEST_CASE("a replacement's step shows its value as the replacement's own step do
 
     CHECK(rendered.find(" = 4 MPa [nearest, ties away from zero]\n") != std::string::npos);
     CHECK(rendered.find(" = 4 MPa [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("a replacement by a consumer node that forwards the sink keeps the coherent SI unit", "[overlay][trace]")
+{
+    // The consumer's node records no step of its own, so the replaced-variant
+    // step claims the node's operands, and none of them is the value it
+    // passes on. Here the last is the area, a different dimension from the
+    // stress the step holds: the step states the stress in coherent SI.
+    constexpr auto byConsumer =
+        formula::apply(formula::overlay(formula::replace_variant<Cylinder>(
+                           forwarding::quotient(var<Force>, var<EdgeX> * var<EdgeX>), replacementAnnex)),
+                       threeVariants);
+    CHECK(traceOfVariant<Cylinder>(byConsumer, roundSpecimen)
+              .find(" = 4000000 [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
+          != std::string::npos);
+
+    // And over two Celsius readings, whose difference is a rise in kelvins
+    // and not a reading: the last operand is a reading, of the right
+    // dimension, and its unit would still state 57/5 K as a Celsius reading.
+    constexpr auto baseRise = formula::method(
+        formula::variants(formula::variant<Cube>(var<EndTemperature> - var<StartTemperature>)),
+        formula::RoundingRule<unit::Kelvin, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero> {},
+        formula::constraints());
+    constexpr auto consumerRise =
+        formula::apply(formula::overlay(formula::replace_variant<Cube>(
+                           forwarding::difference(var<EndTemperature>, var<StartTemperature>), replacementAnnex)),
+                       baseRise);
+    auto const temperatures = formula::environment(formula::Measured<StartTemperature> { formula::Rational { 163, 10 } },
+                                                   formula::Measured<EndTemperature> { formula::Rational { 277, 10 } });
+    CHECK(traceOfVariant<Cube>(consumerRise, temperatures)
+              .find(" = 57/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
           != std::string::npos);
 }
 
