@@ -11,7 +11,7 @@
 /// handing one where a number or a series is expected is a compile error.
 /// `interpolate_at` is the bridge back to one value, and is a `Node`.
 ///
-/// `domain<KeyUnit, Points>()` is a series whose elements come from a
+/// `domain<KeyUnit, Points>` is a series whose elements come from a
 /// `BreakpointTable` in the type, validated as every breakpoint table is
 /// (`RequireValidBreakpointTable`): it is how a method declares its points
 /// once and pairs them with what it measured at each.
@@ -122,13 +122,12 @@ struct DomainNode: SeriesNodeBase
     static constexpr bool refused = Points.size() == 0 || !breakpoint_table_is_well_formed(Points);
 };
 
-/// A method's points, declared once: `domain<unit::Millimetre, Screens>()`.
-/// `U` and `Points` are never deduced: they are the method's declared intent.
+/// A method's points, declared once: `domain<unit::Millimetre, Screens>`. A
+/// variable template, as `series<Q, N>` and `observations<Q, Capacity>` are,
+/// since like theirs its whole shape is in the type. `U` and `Points` are the
+/// method's declared intent, never deduced.
 template <Unit U, BreakpointTable Points>
-[[nodiscard]] constexpr DomainNode<U, Points> domain() noexcept
-{
-    return DomainNode<U, Points> {};
-}
+inline constexpr DomainNode<U, Points> domain {};
 
 /// The empty base every curve node derives from, and what `CurveExpression`
 /// recognises. Not `NodeBase` and not `SeriesNodeBase`: a curve is neither
@@ -188,7 +187,7 @@ struct CurveNode: CurveNodeBase
 };
 
 /// Pairs @p domainSeries with @p valueSeries: `curve(domain<unit::Millimetre,
-/// Screens>(), passing)`.
+/// Screens>, passing)`.
 template <SeriesNode D, SeriesNode V>
 [[nodiscard]] constexpr CurveNode<D, V> curve(D domainSeries, V valueSeries) noexcept
 {
@@ -206,7 +205,7 @@ namespace detail
                       "formula: a curve pairs a series of points with a series of values, and this is a single "
                       "value, not a series; the operand appears in this diagnostic as the template argument of "
                       "RequireCurveOfSeries -- read a quantity measured at every point with series<Q, N>, or declare "
-                      "the points with domain<U, Points>()");
+                      "the points with domain<U, Points>");
 
         static constexpr bool value = true;
     };

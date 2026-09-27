@@ -2288,7 +2288,7 @@ TEST_CASE("a series and a curve escape their symbols and units, as a scalar step
         formula::Measured<ForgingLoad> { formula::Rational { 4 } }, formula::Measured<ForgingLoad> { formula::Rational { 5 } }));
     formula::Trace<> curveTrace {};
     (void) formula::checked_evaluate<ForgingLoad>(
-        formula::interpolate_at(formula::curve(formula::domain<unit::Metre, points>(), formula::series<ForgingLoad, 2>),
+        formula::interpolate_at(formula::curve(formula::domain<unit::Metre, points>, formula::series<ForgingLoad, 2>),
                                 formula::constant<unit::Metre>(formula::Rational { 113 })),
         loads,
         formula::RecordingSink<> { curveTrace });

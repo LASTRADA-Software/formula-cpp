@@ -388,7 +388,7 @@ constexpr auto passingEachScreen =
     formula::constant<unit::Percent>(formula::Rational { 100 })
     - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<RetainedMass, 5>) / var<DryMass>;
 
-constexpr auto passingAtOpening = formula::interpolate_at(formula::curve(formula::domain<unit::Metre, galleryScreens>(), passingEachScreen),
+constexpr auto passingAtOpening = formula::interpolate_at(formula::curve(formula::domain<unit::Metre, galleryScreens>, passingEachScreen),
                                                           formula::constant<unit::Metre>(formula::Rational { 173 }));
 
 inline constexpr formula::BandTable<3> gallerySizeClasses { formula::band(0, 1, 127, 1), formula::band(127, 1, 197, 1),

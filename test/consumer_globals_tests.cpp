@@ -482,9 +482,9 @@ ConsumerGlobalsProbe probe_consumer_globals()
     // Curves: two declared domains spliced, and read at the specimen's 150 mm,
     // halfway from 139 mm (10 mm) to 161 mm (30 mm).
     auto const edgeCurve = formula::splice<formula::Monotone::NonDecreasing>(
-        formula::curve(formula::domain<unit::Millimetre, EdgeCurvePoints>(),
+        formula::curve(formula::domain<unit::Millimetre, EdgeCurvePoints>,
                        formula::series_constant<unit::Millimetre>(formula::Rational { 10 }, formula::Rational { 30 })),
-        formula::curve(formula::domain<unit::Millimetre, EdgeCurveTail>(),
+        formula::curve(formula::domain<unit::Millimetre, EdgeCurveTail>,
                        formula::series_constant<unit::Millimetre>(formula::Rational { 40 })));
     auto const readEdge = formula::interpolate_at(edgeCurve, var<EdgeX>);
     formula::Trace<> curveTrace {};

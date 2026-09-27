@@ -193,7 +193,7 @@ TEST_CASE("an operation over the counts relays a binning's failure without its o
                        .error()
                    == noElement);
     STATIC_REQUIRE(formula::checked_evaluate_curve<Size, Count>(
-                       formula::curve(formula::domain<unit::Metre, classMidpoints>(), counted), missed)
+                       formula::curve(formula::domain<unit::Metre, classMidpoints>, counted), missed)
                        .error()
                    == noElement);
     // On the right of a binary operation, and as a curve's domain.

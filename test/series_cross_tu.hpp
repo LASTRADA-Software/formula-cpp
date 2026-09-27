@@ -59,9 +59,9 @@ inline constexpr formula::BreakpointTable<1> beyond { formula::breakpoint(197) }
 /// A curve expression whose type nests the curve node templates, taken as a
 /// parameter by the other unit's function below.
 inline constexpr auto spliced = formula::splice<formula::Monotone::NonDecreasing>(
-    formula::curve(formula::domain<formula::unit::Metre, openings>(),
+    formula::curve(formula::domain<formula::unit::Metre, openings>,
                    formula::cumulative<formula::CumulativeDirection::FromFirst>(retained)),
-    formula::curve(formula::domain<formula::unit::Metre, beyond>(), formula::series_constant<formula::unit::Gram>(formula::Rational { 100 })));
+    formula::curve(formula::domain<formula::unit::Metre, beyond>, formula::series_constant<formula::unit::Gram>(formula::Rational { 100 })));
 
 using CurveRead = std::expected<formula::CurveOutcome<Opening, Retained, 4>, formula::SeriesFailure>;
 } // namespace series_cross_tu

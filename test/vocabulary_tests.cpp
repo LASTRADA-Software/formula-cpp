@@ -651,8 +651,8 @@ inline constexpr formula::BreakpointTable<2> everyCurveSnapSet { formula::breakp
     constexpr auto s = formula::series<EveryRetained, 3>;
     return formula::snapped<unit::One, everyCurveSnapSet, formula::SnapTie::TowardLower>(formula::interpolate_at(
         formula::splice<formula::Monotone::NonDecreasing>(
-            formula::curve(formula::domain<unit::One, everyCurvePoints>(), s / var<EveryTotal>),
-            formula::curve(formula::domain<unit::One, everyCurveTail>(), formula::series_constant<unit::One>(rat(1, 20)))),
+            formula::curve(formula::domain<unit::One, everyCurvePoints>, s / var<EveryTotal>),
+            formula::curve(formula::domain<unit::One, everyCurveTail>, formula::series_constant<unit::One>(rat(1, 20)))),
         var<EveryFixed>));
 }
 

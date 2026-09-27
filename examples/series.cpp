@@ -98,7 +98,7 @@ inline constexpr auto retainedInAll = formula::sum(formula::series<Retained, 5>)
 
 // The grading curve: the percentage passing at each screen, and read at a
 // point between two of them.
-inline constexpr auto grading = formula::curve(formula::domain<unit::Metre, screens>(), passing);
+inline constexpr auto grading = formula::curve(formula::domain<unit::Metre, screens>, passing);
 inline constexpr auto passingAt173 = formula::interpolate_at(grading, formula::constant<unit::Metre>(rat(173)));
 
 // ---- 3. Absence: the operations of the table --------------------------------
@@ -133,7 +133,7 @@ inline constexpr auto gradingCheck =
 // The opening at which half the sample passes, read off the curve turned
 // round, and snapped to the nearest declared screen.
 inline constexpr auto halfPassing = formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(
-    formula::interpolate_at(formula::curve(passing, formula::domain<unit::Metre, screens>()),
+    formula::interpolate_at(formula::curve(passing, formula::domain<unit::Metre, screens>),
                             formula::constant<unit::Percent>(rat(50))));
 
 // A coarse analysis and a fine one, at invented openings of their own.
@@ -142,12 +142,12 @@ inline constexpr formula::BreakpointTable<3> coarseScreens { formula::breakpoint
 inline constexpr formula::BreakpointTable<3> fineScreens { formula::breakpoint(103, 10), formula::breakpoint(137, 10),
                                                            formula::breakpoint(163, 10) };
 inline constexpr auto coarse =
-    formula::curve(formula::domain<unit::Metre, coarseScreens>(),
+    formula::curve(formula::domain<unit::Metre, coarseScreens>,
                    formula::series_constant<unit::Percent>(rat(894, 25), rat(1154, 25), rat(1574, 25)));
-inline constexpr auto fine = formula::curve(formula::domain<unit::Metre, fineScreens>(),
+inline constexpr auto fine = formula::curve(formula::domain<unit::Metre, fineScreens>,
                                             formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(142, 10)));
 // The fine analysis as measured, for the absence table.
-inline constexpr auto fineMeasured = formula::curve(formula::domain<unit::Metre, fineScreens>(), formula::series<Passing, 3>);
+inline constexpr auto fineMeasured = formula::curve(formula::domain<unit::Metre, fineScreens>, formula::series<Passing, 3>);
 
 // ---- 7. Binning ------------------------------------------------------------------
 //
@@ -352,7 +352,7 @@ int main()
 
     // The fine analysis's last point raised to 40 %: each curve rises, the
     // union does not.
-    auto const raised = formula::curve(formula::domain<unit::Metre, fineScreens>(),
+    auto const raised = formula::curve(formula::domain<unit::Metre, fineScreens>,
                                        formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(40)));
     std::string const brokenLine =
         last_line(curve_trace<Opening, Passing>(formula::splice<formula::Monotone::NonDecreasing>(coarse, raised), analysis));

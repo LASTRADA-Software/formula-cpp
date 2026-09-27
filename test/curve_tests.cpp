@@ -60,7 +60,7 @@ constexpr auto passingMeasured = formula::measured_series<Passing>(
 constexpr auto screened = formula::environment(passingMeasured);
 
 constexpr auto passing = formula::series<Passing, 5>;
-constexpr auto grading = formula::curve(formula::domain<unit::Metre, screens>(), passing);
+constexpr auto grading = formula::curve(formula::domain<unit::Metre, screens>, passing);
 
 // The value along @p along at @p at, in `Result`'s unit, or nothing on any
 // failure or absence.
@@ -115,7 +115,7 @@ TEST_CASE("the inverse curve answers exactly, off its segment's midpoint", "[cur
 {
     // 50 % is 3.84 of the 16.8 points from 46.16 to 62.96 %: 127 + 3.84/16.8 *
     // 36 = 4733/35 m, exactly.
-    constexpr auto inverse = formula::curve(passing, formula::domain<unit::Metre, screens>());
+    constexpr auto inverse = formula::curve(passing, formula::domain<unit::Metre, screens>);
     STATIC_REQUIRE(along<Opening>(inverse, formula::constant<unit::Percent>(rat(50)), screened) == rat(4733, 35));
 }
 
@@ -220,7 +220,7 @@ TEST_CASE("an interpolation along an absent curve states no segment and no range
 TEST_CASE("a one-point curve answers at its point and misses everywhere else", "[curve]")
 {
     constexpr formula::BreakpointTable<1> onePoint { breakpoint(163) };
-    constexpr auto single = formula::curve(formula::domain<unit::Metre, onePoint>(),
+    constexpr auto single = formula::curve(formula::domain<unit::Metre, onePoint>,
                                            formula::series_constant<unit::Percent>(rat(1574, 25)));
     constexpr auto none = formula::environment();
     STATIC_REQUIRE(along<Passing>(single, metres(163), none) == rat(1574, 25));
@@ -237,7 +237,7 @@ TEST_CASE("a curve evaluates to its domain and values, each in its own quantity'
     STATIC_REQUIRE(decltype(grading)::length == 5);
     STATIC_REQUIRE(decltype(grading)::domainDimension == unit::Metre.dimension);
     STATIC_REQUIRE(decltype(grading)::dimension == unit::Percent.dimension);
-    STATIC_REQUIRE(formula::SeriesNode<decltype(formula::domain<unit::Metre, screens>())>);
+    STATIC_REQUIRE(formula::SeriesNode<decltype(formula::domain<unit::Metre, screens>)>);
     STATIC_REQUIRE(formula::CurveExpression<decltype(grading)>);
     STATIC_REQUIRE(formula::Node<decltype(formula::interpolate_at(grading, metres(179)))>);
 }
@@ -252,9 +252,9 @@ constexpr formula::BreakpointTable<3> fine { breakpoint(103, 10), breakpoint(137
 // A: 103, 127 and 163 m at 35.76, 46.16 and 62.96 %. B: 10.3, 13.7 and 16.3 m at
 // 3.1, 8.4 and 14.2 %. Invented, as the screens are.
 constexpr auto curveA =
-    formula::curve(formula::domain<unit::Metre, coarse>(),
+    formula::curve(formula::domain<unit::Metre, coarse>,
                    formula::series_constant<unit::Percent>(rat(894, 25), rat(1154, 25), rat(1574, 25)));
-constexpr auto curveB = formula::curve(formula::domain<unit::Metre, fine>(),
+constexpr auto curveB = formula::curve(formula::domain<unit::Metre, fine>,
                                        formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(142, 10)));
 constexpr auto noInputs = formula::environment();
 
@@ -284,7 +284,7 @@ TEST_CASE("the direction is judged on the spliced curve, not on each operand", "
     // B's last value raised to 40 %: B alone still ascends, and so does A, but
     // the union falls from 40 % at 16.3 m to 35.76 % at 103 m -- element 3,
     // zero-based, the first that breaks the direction.
-    constexpr auto raised = formula::curve(formula::domain<unit::Metre, fine>(),
+    constexpr auto raised = formula::curve(formula::domain<unit::Metre, fine>,
                                            formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(40)));
     constexpr formula::SeriesFailure breaks { formula::ArithmeticError::DomainError, 3 };
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, raised),
@@ -307,9 +307,9 @@ TEST_CASE("a falling curve splices under NonIncreasing, and not under NonDecreas
 {
     // Retained above each screen, the complement of A and B: falling.
     constexpr auto fallingA = formula::curve(
-        formula::domain<unit::Metre, coarse>(),
+        formula::domain<unit::Metre, coarse>,
         formula::series_constant<unit::Percent>(rat(1606, 25), rat(1346, 25), rat(926, 25)));
-    constexpr auto fallingB = formula::curve(formula::domain<unit::Metre, fine>(),
+    constexpr auto fallingB = formula::curve(formula::domain<unit::Metre, fine>,
                                              formula::series_constant<unit::Percent>(rat(969, 10), rat(916, 10), rat(858, 10)));
     constexpr auto falling =
         formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonIncreasing>(fallingA, fallingB), noInputs);
@@ -326,7 +326,7 @@ TEST_CASE("two curves sharing a domain point miss where they meet", "[curve][spl
 {
     // B ends at 103 m, where A begins: sorted, the second 103 m is element 3.
     constexpr formula::BreakpointTable<3> meeting { breakpoint(103, 10), breakpoint(137, 10), breakpoint(103) };
-    constexpr auto meets = formula::curve(formula::domain<unit::Metre, meeting>(),
+    constexpr auto meets = formula::curve(formula::domain<unit::Metre, meeting>,
                                           formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(142, 10)));
     constexpr formula::SeriesFailure where { formula::ArithmeticError::DomainError, 3 };
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, meets),
@@ -344,9 +344,9 @@ TEST_CASE("two one-point curves splice to a two-point curve", "[curve][splice]")
     constexpr formula::BreakpointTable<1> low { breakpoint(163, 10) };
     constexpr formula::BreakpointTable<1> high { breakpoint(127) };
     constexpr auto lowPoint =
-        formula::curve(formula::domain<unit::Metre, low>(), formula::series_constant<unit::Percent>(rat(142, 10)));
+        formula::curve(formula::domain<unit::Metre, low>, formula::series_constant<unit::Percent>(rat(142, 10)));
     constexpr auto highPoint =
-        formula::curve(formula::domain<unit::Metre, high>(), formula::series_constant<unit::Percent>(rat(1154, 25)));
+        formula::curve(formula::domain<unit::Metre, high>, formula::series_constant<unit::Percent>(rat(1154, 25)));
     constexpr auto spliced =
         formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(highPoint, lowPoint), noInputs);
     STATIC_REQUIRE(spliced.has_value());
@@ -362,9 +362,9 @@ namespace
 constexpr formula::BreakpointTable<2> xPoints { breakpoint(103), breakpoint(163) };
 constexpr formula::BreakpointTable<2> yPoints { breakpoint(163), breakpoint(241) };
 constexpr auto curveX =
-    formula::curve(formula::domain<unit::Metre, xPoints>(), formula::series_constant<unit::Percent>(rat(20), rat(10)));
+    formula::curve(formula::domain<unit::Metre, xPoints>, formula::series_constant<unit::Percent>(rat(20), rat(10)));
 constexpr auto curveY =
-    formula::curve(formula::domain<unit::Metre, yPoints>(), formula::series_constant<unit::Percent>(rat(30), rat(40)));
+    formula::curve(formula::domain<unit::Metre, yPoints>, formula::series_constant<unit::Percent>(rat(30), rat(40)));
 } // namespace
 
 TEST_CASE("a duplicate point beside a direction break fails at the duplicate, in either order", "[curve][splice]")
@@ -388,7 +388,7 @@ TEST_CASE("a duplicate point beside a direction break fails at the duplicate, in
 TEST_CASE("a plateau splices in either direction: equal values do not break it", "[curve][splice]")
 {
     // A reaching 100 % on its two largest screens, as a passing curve does.
-    constexpr auto levelling = formula::curve(formula::domain<unit::Metre, coarse>(),
+    constexpr auto levelling = formula::curve(formula::domain<unit::Metre, coarse>,
                                               formula::series_constant<unit::Percent>(rat(894, 25), rat(100), rat(100)));
     constexpr auto risingAB = formula::checked_evaluate_curve<Opening, Passing>(
         formula::splice<Monotone::NonDecreasing>(levelling, curveB), noInputs);
@@ -401,9 +401,9 @@ TEST_CASE("a plateau splices in either direction: equal values do not break it",
     // Falling, with the plateau across the join: B ends at 1606/25 %, where
     // A begins.
     constexpr auto fallingA = formula::curve(
-        formula::domain<unit::Metre, coarse>(),
+        formula::domain<unit::Metre, coarse>,
         formula::series_constant<unit::Percent>(rat(1606, 25), rat(1346, 25), rat(926, 25)));
-    constexpr auto fallingToA = formula::curve(formula::domain<unit::Metre, fine>(),
+    constexpr auto fallingToA = formula::curve(formula::domain<unit::Metre, fine>,
                                                formula::series_constant<unit::Percent>(rat(100), rat(916, 10), rat(1606, 25)));
     constexpr auto fallingAB = formula::checked_evaluate_curve<Opening, Passing>(
         formula::splice<Monotone::NonIncreasing>(fallingA, fallingToA), noInputs);
@@ -454,7 +454,7 @@ TEST_CASE("an absent element in either curve makes the whole splice absent", "[c
 {
     constexpr auto withAbsent = formula::environment(
         formula::measured_series<Passing>(m<Passing>(31, 10), formula::Measured<Passing>::absent(), m<Passing>(142, 10)));
-    constexpr auto measuredB = formula::curve(formula::domain<unit::Metre, fine>(), formula::series<Passing, 3>);
+    constexpr auto measuredB = formula::curve(formula::domain<unit::Metre, fine>, formula::series<Passing, 3>);
     constexpr auto spliced =
         formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, measuredB), withAbsent);
     STATIC_REQUIRE(spliced.has_value());
@@ -573,7 +573,7 @@ TEST_CASE("a splice step shows the union, and a failure names its element counte
     CHECK(trace.steps.back().kind == formula::StepKind::CurveSplice);
     CHECK(trace.steps.back().monotone == Monotone::NonDecreasing);
 
-    constexpr auto raised = formula::curve(formula::domain<unit::Metre, fine>(),
+    constexpr auto raised = formula::curve(formula::domain<unit::Metre, fine>,
                                            formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(40)));
     formula::Trace<> failed {};
     (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, raised), noInputs,
@@ -683,7 +683,7 @@ namespace
 // A share passing, read off the inverse curve at 50 %, snapped to the nearest
 // declared opening: 4733/35 m lies between 127 and 163 m, nearer 127.
 constexpr auto snappedOpening = formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(
-    formula::interpolate_at(formula::curve(passing, formula::domain<unit::Metre, screens>()),
+    formula::interpolate_at(formula::curve(passing, formula::domain<unit::Metre, screens>),
                             formula::constant<unit::Percent>(rat(50))));
 } // namespace
 

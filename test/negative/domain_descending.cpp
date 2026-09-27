@@ -16,7 +16,7 @@ inline constexpr formula::BreakpointTable<3> disordered { formula::breakpoint(10
                                                           formula::breakpoint(127) };
 
 inline constexpr auto paired =
-    formula::curve(formula::domain<formula::unit::Metre, disordered>(), formula::series<Passing, 2>);
+    formula::curve(formula::domain<formula::unit::Metre, disordered>, formula::series<Passing, 2>);
 
 int main()
 {
