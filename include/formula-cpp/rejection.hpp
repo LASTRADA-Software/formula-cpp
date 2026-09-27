@@ -675,6 +675,9 @@ namespace detail
         Mean,
         /// The pass's sample variance (`deviation_in_stddevs`).
         Variance,
+        /// Fewer than three determinations left for `deviation_in_stddevs`,
+        /// which refuses to judge them: no failure of any arithmetic.
+        TooFewForStddevs,
         /// The limit expression.
         Limit,
         /// The limit was negative: no rule.
@@ -683,6 +686,10 @@ namespace detail
         Threshold,
         /// One determination's deviation, or its square.
         Statistic,
+        /// The range, max - min (`gap_to_range`): no determination's own.
+        Range,
+        /// An extreme's gap over the range (`gap_to_range`).
+        GapRatio,
     };
 
     /// What one pass told the sink: its number, the sample size and mean it
@@ -691,6 +698,8 @@ namespace detail
     {
         std::size_t pass;
         std::size_t sampleSize;
+        /// The determinations the sample was read with.
+        std::size_t originalSize;
         std::optional<Rational> passMean;
         Evaluated<Rational> limit;
         std::optional<ArithmeticError> error;
@@ -1044,13 +1053,17 @@ namespace detail
                     sink.rejection_pass_produced(RejectionPassEvent {
                         .pass = passNumber,
                         .sampleSize = passSize,
+                        .originalSize = originalSize,
                         .passMean = passMean.has_value() ? std::optional<Rational> { *passMean } : std::nullopt,
                         .limit = Evaluated<Rational> { std::unexpected { *passError } },
                         .error = passMean.has_value() ? std::nullopt : passError });
                 }
-                return fail(*passError,
-                            failedAt,
-                            passMean.has_value() ? RejectionFailurePoint::Variance : RejectionFailurePoint::Mean);
+                RejectionFailurePoint const failedPart =
+                    !passMean.has_value() ? RejectionFailurePoint::Mean
+                    : Criterion::kind == CriterionKind::DeviationInStddevs && passSize < 3
+                        ? RejectionFailurePoint::TooFewForStddevs
+                        : RejectionFailurePoint::Variance;
+                return fail(*passError, failedAt, failedPart);
             }
 
             // The limit, once per pass, with the pass bound.
@@ -1062,6 +1075,7 @@ namespace detail
             if constexpr (hears)
                 sink.rejection_pass_produced(RejectionPassEvent { .pass = passNumber,
                                                                   .sampleSize = passSize,
+                                                                  .originalSize = originalSize,
                                                                   .passMean = *passMean,
                                                                   .limit = evaluatedLimit,
                                                                   .error = std::nullopt });
@@ -1127,6 +1141,18 @@ namespace detail
                 }
             }
 
+            // The range, once per pass: it belongs to no determination, so a
+            // failure of it names none.
+            Rational spread = Rational { 0 };
+            if constexpr (Criterion::kind == CriterionKind::GapToRange)
+            {
+                std::expected<Rational, ArithmeticError> const measuredRange =
+                    RepTraits<Rational>::subtract(highest, lowest);
+                if (!measuredRange.has_value())
+                    return fail(measuredRange.error(), std::nullopt, RejectionFailurePoint::Range);
+                spread = *measuredRange;
+            }
+
             // Each determination's statistics, and whether it is a candidate.
             std::array<Rational, sampleCapacity> statistics;
             std::array<bool, sampleCapacity> candidate;
@@ -1144,13 +1170,10 @@ namespace detail
                     std::expected<Rational, ArithmeticError> const gap =
                         isHighest ? RepTraits<Rational>::subtract(highest, *nextHighest)
                                   : RepTraits<Rational>::subtract(*nextLowest, lowest);
-                    std::expected<Rational, ArithmeticError> const spread = RepTraits<Rational>::subtract(highest, lowest);
                     std::expected<Rational, ArithmeticError> const gapRatio =
-                        !gap.has_value()      ? gap
-                        : !spread.has_value() ? spread
-                                              : RepTraits<Rational>::divide(*gap, *spread);
+                        gap.has_value() ? RepTraits<Rational>::divide(*gap, spread) : gap;
                     if (!gapRatio.has_value())
-                        return fail(gapRatio.error(), working.positions[taken], RejectionFailurePoint::Statistic);
+                        return fail(gapRatio.error(), working.positions[taken], RejectionFailurePoint::GapRatio);
                     statistics[taken] = *gapRatio;
                     candidate[taken] = L == OnLimit::Keep ? compareAgainst < *gapRatio : !(*gapRatio < compareAgainst);
                     if (candidate[taken] && (!mostExtreme.has_value() || *mostExtreme < *gapRatio))

@@ -1664,6 +1664,8 @@ namespace detail
                 return "the mean";
             case detail::RejectionFailurePoint::Variance:
                 return "the variance";
+            case detail::RejectionFailurePoint::TooFewForStddevs:
+                return "fewer than the 3 a deviation in standard deviations needs";
             case detail::RejectionFailurePoint::Limit:
                 return "the limit";
             case detail::RejectionFailurePoint::NegativeLimit:
@@ -1672,6 +1674,10 @@ namespace detail
                 return "limit^2 * s^2";
             case detail::RejectionFailurePoint::Statistic:
                 return "the deviation";
+            case detail::RejectionFailurePoint::Range:
+                return "the range";
+            case detail::RejectionFailurePoint::GapRatio:
+                return "the gap / range";
         }
         return "an unknown part of the pass";
     }
@@ -1726,14 +1732,19 @@ namespace detail
     ///    the determinations and repeat the test [Example Standard, 7.4]` --
     ///    naming both bounds when the rejection would pass both;
     ///  - failed: `failed in pass 1: the variance: overflow in exact
-    ///    arithmetic at element 1 of 6`;
+    ///    arithmetic at element 1 of 6`, or `failed in pass 1: the range:
+    ///    overflow in exact arithmetic`, or, for a deviation in standard
+    ///    deviations with too few left, `failed in pass 5: 1 value remains,
+    ///    fewer than the 3 a deviation in standard deviations needs`;
     ///  - undecided: `no decision in pass 2: the limit is not measured`.
     ///
     /// A step with no record says so rather than guess, and so does one whose
     /// record contradicts itself -- a position past the sample, an abort
-    /// naming nobody, a count that would wrap: `Trace` and its records are
-    /// public aggregates, and a line built from such a record would print a
-    /// number no evaluation produced.
+    /// naming nobody or passing neither bound, a count that would wrap, a
+    /// pass numbered 0 or beyond the sample's size, counts that do not add
+    /// up to the sample, a range failure placed at an element: `Trace` and
+    /// its records are public aggregates, and a line built from such a
+    /// record would print a number no evaluation produced.
     ///
     /// @p recorded is the step's escaped copy (`EscapedStep`). The record is
     /// read from @p trace at @p stepIndex, and its author text -- the verdict
@@ -1746,16 +1757,23 @@ namespace detail
         detail::RejectionRecord<Rational> const* const rejectionRecord = record_for_step(trace.rejectionRecords, stepIndex);
         if (rejectionRecord == nullptr)
             return step_expression(recorded) + " (its record is missing)";
+        // Every pass but the last removes a determination, so no rejection of
+        // n runs more than n passes (one, for an empty sample), and none runs
+        // pass 0.
+        bool const passOutOfRange =
+            rejectionRecord->pass == 0 || rejectionRecord->pass > std::max<std::size_t>(rejectionRecord->originalSize, 1);
         switch (recorded.kind)
         {
             case StepKind::RejectionPass:
+                if (passOutOfRange || rejectionRecord->sampleSize > rejectionRecord->originalSize)
+                    return "pass (its record is invalid)";
                 return "pass " + std::to_string(rejectionRecord->pass) + ": " + std::to_string(rejectionRecord->sampleSize)
-                       + " values, mean " + step_value_text(recorded);
+                       + (rejectionRecord->sampleSize == 1 ? " value" : " values") + ", mean " + step_value_text(recorded);
             case StepKind::OutlierRejected: {
                 if (!rejectionRecord->position.has_value() || !rejectionRecord->rejectedValue.has_value()
                     || !rejectionRecord->statistic.has_value() || !rejectionRecord->limit.has_value())
                     return "rejected element (its record is incomplete)";
-                if (*rejectionRecord->position >= rejectionRecord->originalSize)
+                if (*rejectionRecord->position >= rejectionRecord->originalSize || passOutOfRange)
                     return "rejected element (its record is invalid)";
                 std::string const comparison = rejectionRecord->onLimit == OnLimit::Keep ? " > " : " >= ";
                 std::string const decided =
@@ -1774,6 +1792,9 @@ namespace detail
                        + std::to_string(rejectionRecord->pass) + ": " + decided;
             }
             case StepKind::RejectionSettled:
+                if (passOutOfRange
+                    || rejectionRecord->rejectedCount + rejectionRecord->remaining != rejectionRecord->originalSize)
+                    return "rejection settled (its record is invalid)";
                 return "settled: " + std::to_string(rejectionRecord->rejectedCount) + " rejected, "
                        + std::to_string(rejectionRecord->remaining) + " remain";
             case StepKind::RejectionAborted: {
@@ -1783,7 +1804,8 @@ namespace detail
                 for (std::size_t const wouldGo: rejectionRecord->wouldReject)
                     if (wouldGo >= rejectionRecord->originalSize)
                         positionPastSample = true;
-                if (namesNobody || leavesFewerThanNone || positionPastSample
+                if (namesNobody || leavesFewerThanNone || positionPastSample || passOutOfRange
+                    || rejectionRecord->rejectedCount + rejectionRecord->remaining != rejectionRecord->originalSize
                     || (!rejectionRecord->pastAtMost && !rejectionRecord->belowKeepAtLeast))
                     return "rejection aborted (its record is invalid)";
                 std::string reason;
@@ -1809,7 +1831,12 @@ namespace detail
             case StepKind::RejectionFailed: {
                 if (!rejectionRecord->failurePoint.has_value() || !recorded.error.has_value())
                     return "rejection failed (its record is incomplete)";
-                if (rejectionRecord->position.has_value() && *rejectionRecord->position >= rejectionRecord->originalSize)
+                // A range is no determination's: a record naming one for it
+                // contradicts itself.
+                if (passOutOfRange
+                    || (rejectionRecord->position.has_value()
+                        && (*rejectionRecord->position >= rejectionRecord->originalSize
+                            || *rejectionRecord->failurePoint == detail::RejectionFailurePoint::Range)))
                     return "rejection failed (its record is invalid)";
                 std::string const atElement = rejectionRecord->position.has_value()
                                                   ? " at element " + std::to_string(*rejectionRecord->position + 1) + " of "
@@ -1818,11 +1845,18 @@ namespace detail
                 if (*rejectionRecord->failurePoint == detail::RejectionFailurePoint::NegativeLimit)
                     return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
                            + rejection_failure_subject(*rejectionRecord->failurePoint);
+                if (*rejectionRecord->failurePoint == detail::RejectionFailurePoint::TooFewForStddevs)
+                    return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
+                           + std::to_string(rejectionRecord->remaining)
+                           + (rejectionRecord->remaining == 1 ? " value remains, " : " values remain, ")
+                           + rejection_failure_subject(*rejectionRecord->failurePoint);
                 return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
                        + rejection_failure_subject(*rejectionRecord->failurePoint) + ": "
                        + std::string { describe(*recorded.error) } + atElement;
             }
             case StepKind::RejectionUndecided:
+                if (passOutOfRange)
+                    return "rejection undecided (its record is invalid)";
                 return "no decision in pass " + std::to_string(rejectionRecord->pass) + ": the limit is not measured";
             default:
                 break;

@@ -2627,6 +2627,7 @@ class RecordingSink
         detail::RejectionRecord<Rep> rejectionRecord {};
         rejectionRecord.pass = event.pass;
         rejectionRecord.sampleSize = event.sampleSize;
+        rejectionRecord.originalSize = event.originalSize;
         push_rejection_step(std::move(passStep), std::move(rejectionRecord));
     }
 

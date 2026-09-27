@@ -838,6 +838,103 @@ TEST_CASE("a rejection record that contradicts itself is refused, not printed", 
     outlierPast.rejectionRecords[outlierRecord].position = 8;
     CHECK(formula::render_trace(outlierPast, { .maxSteps = 20 }).find("rejected element (its record is invalid)\n")
           != std::string::npos);
+
+    // An abort that passes neither bound.
+    formula::Trace<> neitherBound = aborted;
+    neitherBound.rejectionRecords[abortRecord].pastAtMost = false;
+    neitherBound.rejectionRecords[abortRecord].belowKeepAtLeast = false;
+    CHECK(formula::render_trace(neitherBound, { .maxSteps = 20 }).ends_with("rejection aborted (its record is invalid)\n"));
+
+    // A pass that never ran, or more passes than determinations.
+    formula::Trace<> passZero = aborted;
+    passZero.rejectionRecords[outlierRecord].pass = 0;
+    CHECK(formula::render_trace(passZero, { .maxSteps = 20 }).find("rejected element (its record is invalid)\n")
+          != std::string::npos);
+    formula::Trace<> passBeyond = aborted;
+    passBeyond.rejectionRecords[0].pass = 99;
+    CHECK(formula::render_trace(passBeyond, { .maxSteps = 20 }).find("pass (its record is invalid)\n") != std::string::npos);
+    formula::Trace<> passLarger = aborted;
+    passLarger.rejectionRecords[0].sampleSize = 7;
+    CHECK(formula::render_trace(passLarger, { .maxSteps = 20 }).find("pass (its record is invalid)\n") != std::string::npos);
+    formula::Trace<> abortCounts = aborted;
+    abortCounts.rejectionRecords[abortRecord].rejectedCount = 2;
+    CHECK(formula::render_trace(abortCounts, { .maxSteps = 20 }).ends_with("rejection aborted (its record is invalid)\n"));
+
+    // A settled rejection whose counts do not add up to the sample, or that
+    // ended in pass 0.
+    formula::Trace<> settled {};
+    (void) formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA, formula::RecordingSink<> { settled });
+    REQUIRE(settled.steps.back().kind == formula::StepKind::RejectionSettled);
+    CHECK(formula::render_trace(settled, { .maxSteps = 40 }).ends_with("settled: 2 rejected, 4 remain\n"));
+    formula::Trace<> settledCounts = settled;
+    settledCounts.rejectionRecords.back().remaining = 40;
+    CHECK(formula::render_trace(settledCounts, { .maxSteps = 40 }).ends_with("rejection settled (its record is invalid)\n"));
+    formula::Trace<> settledPassZero = settled;
+    settledPassZero.rejectionRecords.back().pass = 0;
+    CHECK(
+        formula::render_trace(settledPassZero, { .maxSteps = 40 }).ends_with("rejection settled (its record is invalid)\n"));
+
+    // A failed pass whose position is past the sample, or that names an
+    // element for the range, which no element owns, or in pass 0.
+    formula::Trace<> failed {};
+    constexpr auto heavyMean = formula::environment(
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { std::numeric_limits<std::int64_t>::max() } },
+                                        formula::Measured<Heavy> { rat(1) },
+                                        formula::Measured<Heavy> { rat(2) }));
+    (void) formula::checked_evaluate_rejection<Heavy>(
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            formula::series<Heavy, 3>, formula::deviation_from_mean(formula::constant<unit::Kilogram>(rat(1))), repeatTest),
+        heavyMean,
+        formula::RecordingSink<> { failed });
+    REQUIRE(failed.steps.back().kind == formula::StepKind::RejectionFailed);
+    CHECK(formula::render_trace(failed, { .maxSteps = 20 })
+              .ends_with("failed in pass 1: the mean: overflow in exact arithmetic at element 2 of 3\n"));
+    formula::Trace<> failedPast = failed;
+    failedPast.rejectionRecords.back().position = 3;
+    CHECK(formula::render_trace(failedPast, { .maxSteps = 20 }).ends_with("rejection failed (its record is invalid)\n"));
+    formula::Trace<> rangeAtElement = failed;
+    rangeAtElement.rejectionRecords.back().failurePoint = formula::detail::RejectionFailurePoint::Range;
+    CHECK(formula::render_trace(rangeAtElement, { .maxSteps = 20 }).ends_with("rejection failed (its record is invalid)\n"));
+    formula::Trace<> failedPassZero = failed;
+    failedPassZero.rejectionRecords.back().pass = 0;
+    CHECK(formula::render_trace(failedPassZero, { .maxSteps = 20 }).ends_with("rejection failed (its record is invalid)\n"));
+}
+
+TEST_CASE("a gap_to_range overflow is the range's, at no element; too few for standard deviations says so",
+          "[rejection][trace-render]")
+{
+    // 5e18, 0 and -5e18 kg: the mean fits (0), the range, 1e19, does not.
+    // It is the range's failure, and the range belongs to no element.
+    constexpr auto wide = formula::environment(
+        formula::measured_series<Heavy>(formula::Measured<Heavy> { Rational { 5'000'000'000'000'000'000 } },
+                                        formula::Measured<Heavy> { rat(0) },
+                                        formula::Measured<Heavy> { Rational { -5'000'000'000'000'000'000 } }));
+    constexpr auto gapped = formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+        formula::series<Heavy, 3>, formula::gap_to_range(formula::number(rat(1, 10))), repeatTest);
+    constexpr auto overflowed = formula::checked_evaluate_rejection<Heavy>(gapped, wide);
+    STATIC_REQUIRE(overflowed.error().error == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(!overflowed.error().element.has_value());
+    formula::Trace<> rangeTrace {};
+    (void) formula::checked_evaluate_rejection<Heavy>(gapped, wide, formula::RecordingSink<> { rangeTrace });
+    CHECK(formula::render_trace(rangeTrace, { .maxSteps = 20 })
+              .ends_with("failed in pass 1: the range: overflow in exact arithmetic\n"));
+
+    // Fixture B at 1/10 standard deviations, keeping at least one: every
+    // pass rejects -- pass 4 a tie of two, 201/5 and 199/5 g around 40 g --
+    // until one remains, which a deviation in standard deviations refuses to
+    // judge. No arithmetic failed, and no variance is to blame.
+    constexpr auto tenth = formula::deviation_in_stddevs(formula::number(rat(1, 10)));
+    constexpr auto refused =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 5, 1, 6>(tenth), fixtureB);
+    STATIC_REQUIRE(refused.error().error == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(!refused.error().element.has_value());
+    formula::Trace<> fewTrace {};
+    (void) formula::checked_evaluate_rejection<Mass>(
+        rejectionOf<MostExtreme, Keep, 5, 1, 6>(tenth), fixtureB, formula::RecordingSink<> { fewTrace });
+    CHECK(formula::render_trace(fewTrace, { .maxSteps = 60 })
+              .ends_with("15. pass 5: 1 value, mean 40 g\n"
+                         "16. failed in pass 5: 1 value remains, fewer than the 3 a deviation in standard deviations "
+                         "needs\n"));
 }
 
 TEST_CASE("a critical value is read at each pass's own sample size (fixture B, the deviation table)", "[rejection]")
@@ -888,6 +985,46 @@ TEST_CASE("gap to range examines the two extremes, pass by pass (fixture B, the 
         formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 5>(quarter), fixtureC);
     STATIC_REQUIRE(tied->rejected().size() == 2);
     STATIC_REQUIRE(tied->outcome().measurement().value() == rat(40));
+
+    // A duplicated extreme is its own neighbour: 36, 36, 44, 45 and 46 g at
+    // 1/4 have a low gap of 0 and a high gap of 1/10, so nothing goes and
+    // it settles at 207/5 g in one pass. A gap to the next distinct value
+    // (8/10 for 36 g) would reject both 36 g values.
+    constexpr auto duplicated = formula::checked_evaluate_rejection<Mass>(
+        rejectionOf<MostExtreme, Keep, 2, 2, 5>(quarter), sampleOf(rat(36), rat(36), rat(44), rat(45), rat(46)));
+    STATIC_REQUIRE(duplicated->outcome().measurement().value() == rat(207, 5));
+    STATIC_REQUIRE(duplicated->rejected().empty());
+    STATIC_REQUIRE(duplicated->passes() == 1);
+
+    // On the limit, kept: fixture C's gaps are 4/8 each, exactly 1/2, so
+    // Keep rejects neither and it settles at 40 g in one pass. Treated as
+    // Reject, or with the range measured as max - mean (4 g, ratios of 1),
+    // both would go.
+    constexpr auto half = formula::gap_to_range(formula::number(rat(1, 2)));
+    constexpr auto onLimit =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 5>(half), fixtureC);
+    STATIC_REQUIRE(onLimit->outcome().measurement().value() == rat(40));
+    STATIC_REQUIRE(onLimit->rejected().empty());
+    STATIC_REQUIRE(onLimit->passes() == 1);
+
+    // Fixture H, "masked pair": 30, 31, 40, 40, 40 and 41 g under the gap
+    // table. Each extreme is 1 g from its neighbour, 1/11 of the 11 g range,
+    // under 9/20: nothing goes, 37 g in one pass, under AtMost<1> as under
+    // AtMost<2>. Measured to the mean (37 g), 30 g's gap would be 7/11 >
+    // 9/20, then 31 g's 37/50 > 3/10 at n = 5, settling at 161/4 g -- and
+    // AtMost<1> would abort. Two low outliers mask each other, which is what
+    // the neighbour gap is for.
+    constexpr auto fixtureH = sampleOf(rat(30), rat(31), rat(40), rat(40), rat(40), rat(41));
+    constexpr auto masked =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 6>(gapTable), fixtureH);
+    STATIC_REQUIRE(masked->outcome().measurement().value() == rat(37));
+    STATIC_REQUIRE(masked->rejected().empty());
+    STATIC_REQUIRE(masked->passes() == 1);
+    STATIC_REQUIRE(formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 1, 3, 6>(gapTable), fixtureH)
+                       ->outcome()
+                       .measurement()
+                       .value()
+                   == rat(37));
 
     // All equal: the range is zero, and no candidate -- never a division by
     // zero.
