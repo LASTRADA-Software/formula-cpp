@@ -66,10 +66,10 @@ int main()
                                formula::DecimalPlaces { 1 },
                                formula::RoundingMode::HalfAwayFromZero>(),
         formula::constraints());
-    constexpr auto fixed =
-        formula::apply(formula::overlay(formula::with_constant<ShapeFactor>(
-                           formula::Rational { 97, 100 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
-                       both);
+    constexpr auto fixed = formula::apply(
+        formula::overlay(formula::with_constant<ShapeFactor>(
+            formula::Rational { 863, 1000 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+        both);
     constexpr auto replaced = formula::apply(
         formula::overlay(formula::replace_variant<Cube>(var<ShapeFactor> * var<Force> / (var<EdgeY> * var<EdgeY>),
                                                         formula::Citation { .reference = "Example Standard 12:2021 NA" })),

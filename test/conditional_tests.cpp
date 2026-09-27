@@ -21,8 +21,8 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
 
 TEST_CASE("a threshold selects between two formulas", "[conditional]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto chosen = formula::when(overFifty,
+    constexpr auto overLimit = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+    constexpr auto chosen = formula::when(overLimit,
                                           var<Strength> * formula::number(formula::Rational { 2 }),
                                           var<Strength> * formula::number(formula::Rational { 4 }));
 
@@ -75,9 +75,9 @@ TEST_CASE("the branch not taken is never evaluated", "[conditional]")
 
 TEST_CASE("an absent predicate makes the result absent, not the else branch", "[conditional]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto overLimit = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
     constexpr auto chosen =
-        formula::when(overFifty, var<Strength>, formula::constant<unit::Megapascal>(formula::Rational { 0 }));
+        formula::when(overLimit, var<Strength>, formula::constant<unit::Megapascal>(formula::Rational { 0 }));
     constexpr auto environment = formula::environment(formula::Measured<Strength>::absent());
 
     constexpr auto result = formula::checked_evaluate<Strength>(chosen, environment);

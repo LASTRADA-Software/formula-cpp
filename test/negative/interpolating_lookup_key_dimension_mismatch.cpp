@@ -18,12 +18,12 @@ namespace
 
     inline constexpr formula::BreakpointTable<2> Points {
         formula::breakpoint(0),
-        formula::breakpoint(10),
+        formula::breakpoint(103),
     };
 
     inline constexpr auto broken =
         formula::interpolating_lookup<formula::unit::Kilogram, Points, formula::unit::One>(
-            formula::var<Diameter>, { formula::Rational { 1 }, formula::Rational { 1 } });
+            formula::var<Diameter>, { formula::Rational { 1127, 1000 }, formula::Rational { 853, 1000 } });
 } // namespace
 
 int main()

@@ -57,6 +57,12 @@ generated documentation, and an overlay that would silently do nothing is refuse
 the later one holding. A vocabulary renders a formula and its trace in a jurisdiction's own symbols,
 and `TagName` spells a variant's tag.
 
+### Changed
+
+- Invented example numbers replaced so none resembles a published table: the band edges, lookup
+  corrections, shape and national factors, test ages and code-like thresholds in the guides,
+  examples, gallery, tests and header comments are now uneven invented values.
+
 ### Fixed
 
 - A local in `evaluate.hpp` made GCC 13.3 report `-Wmaybe-uninitialized` at `-O2`, a false

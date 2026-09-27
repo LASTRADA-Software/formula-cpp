@@ -6,7 +6,7 @@
 ///
 /// A standard routinely states a relationship in the same symbols as its
 /// computing formulas but existing only to check a result -- "the two
-/// replicates shall agree within 5%", "reject the specimen below 30 MPa".
+/// replicates shall agree within 4.7%", "reject the specimen below 27.3 MPa".
 /// `PredicateNode` (`predicate.hpp`) already compares two expressions;
 /// `Constraint` is the small addition that pairs one with what to do when it
 /// does not hold.

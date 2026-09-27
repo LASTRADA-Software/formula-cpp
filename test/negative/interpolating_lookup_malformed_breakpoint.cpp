@@ -35,12 +35,12 @@ namespace
     };
 
     inline constexpr formula::BreakpointTable<1> MalformedPoint {
-        formula::breakpoint(10, 0), // a zero denominator names no number
+        formula::breakpoint(103, 0), // a zero denominator names no number
     };
 
     inline constexpr auto broken =
         formula::interpolating_lookup<formula::unit::Millimetre, MalformedPoint, formula::unit::One>(
-            formula::var<Diameter>, { formula::Rational { 1 } });
+            formula::var<Diameter>, { formula::Rational { 1127, 1000 } });
 } // namespace
 
 int main()

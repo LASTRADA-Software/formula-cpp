@@ -18,14 +18,14 @@ namespace
 
     inline constexpr formula::BreakpointTable<3> Points {
         formula::breakpoint(0),
-        formula::breakpoint(10),
-        formula::breakpoint(20),
+        formula::breakpoint(103),
+        formula::breakpoint(197),
     };
 
     // Only TWO values for THREE breakpoints.
     inline constexpr auto broken =
         formula::interpolating_lookup<formula::unit::Millimetre, Points, formula::unit::One>(
-            formula::var<Diameter>, { formula::Rational { 95, 100 }, formula::Rational { 1 } });
+            formula::var<Diameter>, { formula::Rational { 863, 1000 }, formula::Rational { 1127, 1000 } });
 } // namespace
 
 int main()

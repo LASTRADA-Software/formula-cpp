@@ -41,11 +41,11 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
                                 formula::Measured<Volume> { formula::Rational { volume } });
 }
 
-// The predicate every phase-8 conditional test below shares: strength over 50
-// MPa. Kept at namespace scope so the mutation test (further down) can name
-// its exact type.
-constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+// The predicate every phase-8 conditional test below shares: strength over an
+// invented 473/10 MPa. Kept at namespace scope so the mutation test (further
+// down) can name its exact type.
+constexpr auto overThreshold = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+constexpr auto chosen = formula::when(overThreshold, var<Strength>, var<Strength> * formula::Rational { 2 });
 
 [[nodiscard]] auto strengthOf(formula::Rational value)
 {
@@ -53,10 +53,11 @@ constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * 
 }
 
 // The constraint every Constraint-step test below shares: strength at least
-// 30 MPa, phrased the way a standard's rejection rule reads. Kept at
-// namespace scope for the same reason `overFifty`/`chosen` above are.
-constexpr auto atLeastThirty =
-    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+// an invented 273/10 MPa, phrased the way a standard's rejection rule reads.
+// Kept at namespace scope for the same reason `overThreshold`/`chosen` above
+// are.
+constexpr auto atLeastMinimum =
+    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
                         formula::Verdict { "reject the specimen" });
 
 // The one-operand arity: the predicate's left side divides by a measured
@@ -77,8 +78,8 @@ constexpr auto rightSideErrors =
 // A second constraint over the independent Diameter quantity, so a set of
 // two checked together can fail differently on each -- the only way to tell
 // which Constraint step swallowed which operands.
-constexpr auto diameterAtMost100 =
-    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 100 }),
+constexpr auto diameterAtMostLimit =
+    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 139 }),
                         formula::Verdict { "specimen exceeds diameter tolerance" });
 } // namespace
 
@@ -432,7 +433,7 @@ TEST_CASE("a Conditional step records the then branch it took, and every operand
 
     // Post-order: the predicate's two sides, then the branch it selected.
     CHECK(trace.steps[0].kind == formula::StepKind::Variable);   // predicate lhs: f
-    CHECK(trace.steps[1].kind == formula::StepKind::Constant);   // predicate rhs: 50 MPa
+    CHECK(trace.steps[1].kind == formula::StepKind::Constant);   // predicate rhs: 473/10 MPa
     CHECK(trace.steps[2].kind == formula::StepKind::Variable);   // thenBranch: f
 
     auto const& root = trace.steps[trace.root()];
@@ -538,7 +539,7 @@ TEST_CASE("a Constraint step records a satisfied verdict and both predicate oper
 {
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    auto const outcome = formula::check(atLeastThirty, strengthOf(formula::Rational { 45 }), sink);
+    auto const outcome = formula::check(atLeastMinimum, strengthOf(formula::Rational { 45 }), sink);
 
     CHECK(outcome.is_satisfied());
     REQUIRE(trace.steps.size() == 3);
@@ -548,7 +549,7 @@ TEST_CASE("a Constraint step records a satisfied verdict and both predicate oper
     CHECK(root.comparison == formula::Comparison::GreaterOrEqual);
     CHECK(root.outcome.is_satisfied());
     CHECK_FALSE(root.outcome.verdict().has_value());
-    // The predicate's own two sides -- f, then 30 MPa -- exactly as a
+    // The predicate's own two sides -- f, then 273/10 MPa -- exactly as a
     // Conditional step claims its predicate's two sides.
     REQUIRE(root.operands.size() == 2);
     CHECK(root.operands[0] == 0);
@@ -559,7 +560,7 @@ TEST_CASE("a Constraint step records a violated verdict, carrying it", "[trace]"
 {
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    auto const outcome = formula::check(atLeastThirty, strengthOf(formula::Rational { 20 }), sink);
+    auto const outcome = formula::check(atLeastMinimum, strengthOf(formula::Rational { 20 }), sink);
 
     CHECK(outcome.is_violated());
 
@@ -580,7 +581,7 @@ TEST_CASE("a Constraint step records not-checked when the predicate is absent --
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
     auto const outcome =
-        formula::check(atLeastThirty, formula::environment(formula::Measured<Strength>::absent()), sink);
+        formula::check(atLeastMinimum, formula::environment(formula::Measured<Strength>::absent()), sink);
 
     CHECK(outcome.is_not_checked());
 
@@ -661,11 +662,11 @@ TEST_CASE("a trace records one Constraint step per constraint checked via check_
         formula::Trace<> trace {};
         formula::RecordingSink<> sink { trace };
         auto const outcomes =
-            formula::check_all(formula::constraints(atLeastThirty, diameterAtMost100), environment, sink);
+            formula::check_all(formula::constraints(atLeastMinimum, diameterAtMostLimit), environment, sink);
 
         REQUIRE(outcomes[0].is_violated());
         REQUIRE(outcomes[1].is_violated());
-        // f, 30 MPa, Constraint; d, 100 mm, Constraint.
+        // f, 273/10 MPa, Constraint; d, 139 mm, Constraint.
         REQUIRE(trace.steps.size() == 6);
         CHECK(trace.steps[2].kind == formula::StepKind::Constraint);
         REQUIRE(trace.steps[2].operands.size() == 2);
@@ -681,11 +682,11 @@ TEST_CASE("a trace records one Constraint step per constraint checked via check_
         formula::Trace<> trace {};
         formula::RecordingSink<> sink { trace };
         auto const outcomes =
-            formula::check_all(formula::constraints(diameterAtMost100, atLeastThirty), environment, sink);
+            formula::check_all(formula::constraints(diameterAtMostLimit, atLeastMinimum), environment, sink);
 
         REQUIRE(outcomes[0].is_violated());
         REQUIRE(outcomes[1].is_violated());
-        // Same shape, reversed: d, 100 mm, Constraint; f, 30 MPa, Constraint.
+        // Same shape, reversed: d, 139 mm, Constraint; f, 273/10 MPa, Constraint.
         REQUIRE(trace.steps.size() == 6);
         CHECK(trace.steps[2].kind == formula::StepKind::Constraint);
         REQUIRE(trace.steps[2].operands.size() == 2);
@@ -733,25 +734,25 @@ using formula::KeyTable;
 /// survives whenever *any* axis of a fixture is degenerate and not only the
 /// one that caught the last defect:
 ///
-///  - the widths are 3/2, 5/2 and 4 cm -- unequal, so a recorder taking a
-///    width from the first row is visible on the others;
+///  - the widths are 57/50, 58/25 and 101/25 cm -- unequal, so a recorder
+///    taking a width from the first row is visible on the others;
 ///  - no bound equals its own row's index, so a bound cannot be confused with
 ///    an index;
-///  - the two shared boundaries (5/2 and 5) differ from each other, so
+///  - the two shared boundaries (241/100 and 473/100) differ from each other, so
 ///    "always report the first band" is visible on every row;
 ///  - three bounds are declared **unreduced**, so that reducing them is a
 ///    decision a reader can see being made rather than one no fixture can
-///    tell was taken -- and crucially the table's **outer** bounds (`2/2` and
-///    `18/2`) are among them, because those are the only two a covered-range
+///    tell was taken -- and crucially the table's **outer** bounds (`254/200`
+///    and `1754/200`) are among them, because those are the only two a covered-range
 ///    rendering ever reads. A first revision of this fixture left the outer
 ///    bounds in lowest terms and put the unreduced ones in the middle, and
 ///    with that fixture `closed_range_text` could stop reducing altogether
 ///    and the whole suite still passed;
 ///  - the three corrections are distinct and equal to no index and no bound.
 inline constexpr BandTable<3> SizeBands {
-    band(2, 2, 5, 2),  // 1 to under 5/2 cm -- 2/2 declared, and it is the table's low end
-    band(5, 2, 10, 2), // 5/2 to under 5 cm -- 10/2 declared, so reduction shows
-    band(5, 1, 18, 2), // 5 to under 9 cm -- 18/2 declared, and it is the table's high end
+    band(254, 200, 241, 100),  // 127/100 to under 241/100 cm -- 254/200 declared, and it is the table's low end
+    band(241, 100, 946, 200),  // 241/100 to under 473/100 cm -- 946/200 declared, so reduction shows
+    band(473, 100, 1754, 200), // 473/100 to under 877/100 cm -- 1754/200 declared, and it is the table's high end
 };
 
 /// The corrections are stated in **percent**, again not the coherent SI unit
@@ -759,7 +760,8 @@ inline constexpr BandTable<3> SizeBands {
 /// rather than passed through.
 [[nodiscard]] constexpr auto sizeLookup()
 {
-    return banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(var<Diameter>, { rat(95), rat(112), rat(105) });
+    return banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(var<Diameter>,
+                                                                     { rat(863, 10), rat(1127, 10), rat(1043, 10) });
 }
 
 /// Underlying type `std::int16_t` with a **negative** enumerator, both
@@ -786,7 +788,7 @@ inline constexpr KeyTable<SpecimenShape, 3> ShapeKeys {
 
 [[nodiscard]] constexpr auto shapeLookup(SpecimenShape shape)
 {
-    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4), rat(13, 10) });
+    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(2791, 1000), rat(43), rat(1373, 1000) });
 }
 
 /// The unsigned half of the same question: an underlying type whose top half
@@ -799,20 +801,20 @@ enum class ApparatusVariant : unsigned long long
 
 inline constexpr KeyTable<ApparatusVariant, 2> ApparatusKeys { ApparatusVariant::Modern, ApparatusVariant::Legacy };
 
-/// Three breakpoints in centimetres, unequally spaced (5/2 then 9/2), none of
+/// Three breakpoints in centimetres, unequally spaced (48/25 then 231/50), none of
 /// them reduced -- every reason `SizeBands` above gives, unchanged, including
 /// that the **outer** rows are unreduced because they are the only two a
 /// covered-range rendering ever reads.
 inline constexpr BreakpointTable<3> CurvePoints {
-    breakpoint(4, 4),  // 1 cm -- the curve's low end, declared unreduced
-    breakpoint(14, 4), // 7/2 cm -- declared unreduced, and in the middle
-    breakpoint(24, 3), // 8 cm -- the curve's high end, declared unreduced
+    breakpoint(278, 200),  // 139/100 cm -- the curve's low end, declared unreduced
+    breakpoint(662, 200),  // 331/100 cm -- declared unreduced, and in the middle
+    breakpoint(2379, 300), // 793/100 cm -- the curve's high end, declared unreduced
 };
 
 [[nodiscard]] constexpr auto curveLookup()
 {
-    return interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(var<Diameter>,
-                                                                              { rat(90), rat(-115), rat(120) });
+    return interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
+        var<Diameter>, { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
 }
 
 /// `2^62`, an ordinary representable `Rational` used where the scale rather
@@ -831,15 +833,15 @@ inline constexpr BreakpointTable<2> UnrepresentableAnswer { breakpoint(0), break
 /// perfectly representable `Rational` that does not survive being multiplied
 /// by 1000 on the way to metres. The band was found, so this is emphatically
 /// not a miss.
-inline constexpr BandTable<1> WideBand { band(0, 1, 100, 1) };
+inline constexpr BandTable<1> WideBand { band(0, 1, 103, 1) };
 
 /// An inner table whose corrections are **lengths**, so that it can stand
 /// where the outer table's operand stands and a lookup can be nested inside a
 /// lookup -- the one arrangement in which two steps of a derivation carry the
 /// identical `DomainError` for entirely different reasons.
 inline constexpr BandTable<2> InnerBands {
-    band(2, 2, 3, 1),  // 1 to under 3 cm
-    band(3, 1, 12, 2), // 3 to under 6 cm
+    band(218, 200, 307, 100),  // 109/100 to under 307/100 cm
+    band(307, 100, 1226, 200), // 307/100 to under 613/100 cm
 };
 
 /// An exact table whose corrections are stated in **kilometres**, so that a
@@ -855,7 +857,7 @@ inline constexpr KeyTable<SpecimenShape, 2> FarKeys { SpecimenShape::Cube, Speci
 /// at all and cannot overflow -- and the row's own 2^62 km then does not
 /// survive the conversion into metres. The one table that separates "the
 /// interpolation overflowed" from "the conversion after it did".
-inline constexpr BreakpointTable<2> FarValues { breakpoint(0), breakpoint(5) };
+inline constexpr BreakpointTable<2> FarValues { breakpoint(0), breakpoint(437, 100) };
 
 /// A consumer's own node kind, written against the two-parameter extension
 /// point (`sink.hpp`) exactly as `sink_tests.cpp`'s `LegacyNode` is. The
@@ -899,7 +901,7 @@ TEST_CASE("a banded lookup step records the band its value fell in", "[trace][lo
 {
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    // 30 mm == 3 cm, inside the MIDDLE band [5/2, 5) cm -- the position a
+    // 30 mm == 3 cm, inside the MIDDLE band [241/100, 473/100) cm -- the position a
     // defect is hardest to see from either end.
     auto const result = formula::checked_evaluate_si<formula::Rational>(sizeLookup(), diameterOf(30), sink);
 
@@ -911,11 +913,11 @@ TEST_CASE("a banded lookup step records the band its value fell in", "[trace][lo
     CHECK(step.kind == formula::StepKind::BandedLookup);
     CHECK(step.lookupFailure == formula::LookupFailure::None);
 
-    // The band the value fell in, exactly as the table declared it -- 10/2 and
-    // not 5, because reducing it is the renderer's decision and not this
+    // The band the value fell in, exactly as the table declared it -- 946/200
+    // and not 473/100, because reducing it is the renderer's decision and not this
     // recorder's to take on its behalf.
     REQUIRE(step.selectedBand.has_value());
-    CHECK(*step.selectedBand == band(5, 2, 10, 2));
+    CHECK(*step.selectedBand == band(241, 100, 946, 200));
     // Nothing about the table's extent is claimed on a hit.
     CHECK(!step.coveredRange.has_value());
     // A banded lookup selects a band and not a segment.
@@ -927,7 +929,7 @@ TEST_CASE("a banded lookup step records the band its value fell in", "[trace][lo
     // the band bounds it was compared against are in centimetres.
     CHECK(step.unit == unit::Percent);
     CHECK(step.sourceUnit == unit::Centimetre);
-    CHECK(step.value == rat(112, 100));
+    CHECK(step.value == rat(1127, 1000));
 
     REQUIRE(step.operands.size() == 1);
     CHECK(step.operands[0] == 0);
@@ -951,15 +953,15 @@ TEST_CASE("a banded lookup step records the band its value fell in", "[trace][lo
         return probe.steps[1].selectedBand;
     };
 
-    CHECK(bandAt(15) == std::optional { band(2, 2, 5, 2) });  // 1.5 cm, the first band
-    CHECK(bandAt(70) == std::optional { band(5, 1, 18, 2) }); // 7 cm, the last band
+    CHECK(bandAt(15) == std::optional { band(254, 200, 241, 100) });  // 3/2 cm, the first band
+    CHECK(bandAt(70) == std::optional { band(473, 100, 1754, 200) }); // 7 cm, the last band
 }
 
 TEST_CASE("a banded lookup step that missed records the miss and what its bands cover", "[trace][lookup]")
 {
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    // 95 mm == 9.5 cm, past the last band, which ends at 9 cm.
+    // 95 mm == 19/2 cm, past the last band, which ends at 877/100 cm.
     auto const result = formula::checked_evaluate_si<formula::Rational>(sizeLookup(), diameterOf(95), sink);
 
     REQUIRE(!result.has_value());
@@ -974,11 +976,11 @@ TEST_CASE("a banded lookup step that missed records the miss and what its bands 
     // `RequireValidBandTable` has already refused a gap and an overlap -- and
     // which is neither the first band nor the last, so a recorder reporting
     // either of those instead is visible here.
-    // Repeated back as the table declared them (2/2 and 18/2), not reduced --
+    // Repeated back as the table declared them (254/200 and 1754/200), not reduced --
     // reducing is the renderer's decision, made in the one place that already
     // reduces every other declared bound.
     REQUIRE(step.coveredRange.has_value());
-    CHECK(*step.coveredRange == formula::LookupRange { 2, 2, 18, 2 });
+    CHECK(*step.coveredRange == formula::LookupRange { 254, 200, 1754, 200 });
     CHECK(step.sourceUnit == unit::Centimetre);
 }
 
@@ -991,12 +993,13 @@ TEST_CASE("a banded lookup step tells its own miss apart from an operand's", "[t
     // and a derivation would then claim a table did not reach a specimen in a
     // case where that table was never consulted at all.
     constexpr auto inner =
-        banded_lookup<unit::Centimetre, InnerBands, unit::Millimetre>(var<Diameter>, { rat(950), rat(35) });
+        banded_lookup<unit::Centimetre, InnerBands, unit::Millimetre>(var<Diameter>, { rat(947), rat(373, 10) });
     constexpr auto nested =
-        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(inner, { rat(95), rat(112), rat(105) });
+        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(inner, { rat(863, 10), rat(1127, 10), rat(1043, 10) });
 
-    // 15 mm == 1.5 cm: the inner table HITS its first band and answers
-    // 950 mm == 95 cm, which the outer table -- covering 1 to under 9 cm --
+    // 15 mm == 3/2 cm: the inner table HITS its first band and answers
+    // 947 mm == 947/10 cm, which the outer table -- covering 127/100 to under
+    // 877/100 cm --
     // does not reach. So the outer step missed on its own.
     formula::Trace<> ownMiss {};
     {
@@ -1009,7 +1012,7 @@ TEST_CASE("a banded lookup step tells its own miss apart from an operand's", "[t
     CHECK(ownMiss.steps[2].lookupFailure == formula::LookupFailure::Missed);
     CHECK(ownMiss.steps[2].coveredRange.has_value());
 
-    // 95 mm == 9.5 cm: the INNER table misses, and the outer one relays its
+    // 95 mm == 19/2 cm: the INNER table misses, and the outer one relays its
     // error untouched. Same enumerator on the outer step, and nothing about
     // the outer table went wrong at all -- so it claims nothing about it.
     formula::Trace<> relayed {};
@@ -1049,7 +1052,7 @@ TEST_CASE("an exact lookup step records the key it selected with, which no other
     CHECK(hit.steps[0].lookupKeyName == "Undercut");
     CHECK(hit.steps[0].lookupFailure == formula::LookupFailure::None);
     CHECK(hit.steps[0].unit == unit::Megapascal);
-    CHECK(hit.steps[0].value == rat(4000000)); // 4 MPa, in pascals
+    CHECK(hit.steps[0].value == rat(43000000)); // 43 MPa, in pascals
     // No key unit: a category key is a discriminator, not a quantity.
     CHECK(hit.steps[0].sourceUnit == formula::Unit {});
 
@@ -1080,7 +1083,8 @@ TEST_CASE("an exact lookup step records an unsigned key that no signed type coul
     // `render.hpp` spells its two casts separately because an enumeration's
     // underlying type may be `unsigned long long`; a step that stored the key
     // as a signed integer would report -1 for this one.
-    constexpr auto node = exact_lookup<ApparatusKeys, unit::One>(ApparatusVariant::Legacy, { rat(3), rat(2) });
+    constexpr auto node =
+        exact_lookup<ApparatusKeys, unit::One>(ApparatusVariant::Legacy, { rat(1127, 1000), rat(863, 1000) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1109,7 +1113,8 @@ TEST_CASE("an exact lookup step that hits a row whose key names no enumerator re
     // second row, whose key has no name to record. `lookupFailure` is what
     // says whether it missed. Kills a reading of "empty name" as "missed", and
     // a recorder that invents a name for the row.
-    constexpr auto node = exact_lookup<UnnamedRowKeys, unit::One>(static_cast<SpecimenShape>(9), { rat(1), rat(2) });
+    constexpr auto node =
+        exact_lookup<UnnamedRowKeys, unit::One>(static_cast<SpecimenShape>(9), { rat(1127, 1000), rat(863, 1000) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1117,7 +1122,7 @@ TEST_CASE("an exact lookup step that hits a row whose key names no enumerator re
 
     REQUIRE(trace.steps.size() == 1);
     CHECK(trace.steps[0].lookupFailure == formula::LookupFailure::None);
-    CHECK(trace.steps[0].value == rat(2));
+    CHECK(trace.steps[0].value == rat(863, 1000));
     CHECK(trace.steps[0].lookupKeyName.empty());
     CHECK(static_cast<long long>(trace.steps[0].lookupKey) == 9);
 }
@@ -1161,7 +1166,7 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
 {
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    // 100 mm == 10 cm, past the curve's last row at 8 cm. No extrapolation and
+    // 100 mm == 10 cm, past the curve's last row at 793/100 cm. No extrapolation and
     // no clamp -- a miss, exactly as a banded lookup's is.
     (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(100), sink);
 
@@ -1169,7 +1174,7 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     CHECK(trace.steps[1].error == formula::ArithmeticError::DomainError);
     CHECK(trace.steps[1].lookupFailure == formula::LookupFailure::Missed);
     REQUIRE(trace.steps[1].coveredRange.has_value());
-    CHECK(*trace.steps[1].coveredRange == formula::LookupRange { 4, 4, 24, 3 });
+    CHECK(*trace.steps[1].coveredRange == formula::LookupRange { 278, 200, 2379, 300 });
     CHECK(trace.steps[1].sourceUnit == unit::Centimetre);
 
     // A value inside the curve is not a miss, and an interpolating lookup
@@ -1188,7 +1193,7 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     // pair -- the first, or the one whose index matches -- is visible. The
     // keys come back as the table declared them, unreduced.
     REQUIRE(inside.steps[1].selectedSegment.has_value());
-    CHECK(*inside.steps[1].selectedSegment == formula::Segment { breakpoint(14, 4), breakpoint(24, 3) });
+    CHECK(*inside.steps[1].selectedSegment == formula::Segment { breakpoint(662, 200), breakpoint(2379, 300) });
 
     // And 2 cm sits in the FIRST segment. Both ends of that axis, because
     // "reports the first pair" and "reports the last pair" are two mutations
@@ -1202,21 +1207,21 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     }
     REQUIRE(firstSegment.steps.size() == 2);
     REQUIRE(firstSegment.steps[1].selectedSegment.has_value());
-    CHECK(*firstSegment.steps[1].selectedSegment == formula::Segment { breakpoint(4, 4), breakpoint(14, 4) });
+    CHECK(*firstSegment.steps[1].selectedSegment == formula::Segment { breakpoint(278, 200), breakpoint(662, 200) });
 
     // A value sitting exactly ON a row reports that row twice, which is this
     // type's spelling for "the table stated this number directly".
     formula::Trace<> onRow {};
     {
         formula::RecordingSink<> rowSink { onRow };
-        (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(35), rowSink);
+        (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(331, 10), rowSink);
     }
     REQUIRE(onRow.steps.size() == 2);
     REQUIRE(onRow.steps[1].selectedSegment.has_value());
-    CHECK(*onRow.steps[1].selectedSegment == formula::Segment { breakpoint(14, 4), breakpoint(14, 4) });
+    CHECK(*onRow.steps[1].selectedSegment == formula::Segment { breakpoint(662, 200), breakpoint(662, 200) });
 
     // And on the curve's LAST row, which is the behaviour `lookup.hpp` pins
-    // at 30 mm -- a breakpoint is a row and not a boundary, so the last one is
+    // on its own curve -- a breakpoint is a row and not a boundary, so the last one is
     // reached, and interpolating to it is not merely equivalent but
     // impossible because it begins no segment. The same mirror as above: the
     // row hits in this file all landed on row index 1, so "report row 1"
@@ -1224,13 +1229,13 @@ TEST_CASE("an interpolating lookup step that missed records the closed range its
     formula::Trace<> lastRow {};
     {
         formula::RecordingSink<> lastSink { lastRow };
-        (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(80), lastSink);
+        (void) formula::checked_evaluate_si<formula::Rational>(curveLookup(), diameterOf(793, 10), lastSink);
     }
     REQUIRE(lastRow.steps.size() == 2);
     CHECK(lastRow.steps[1].lookupFailure == formula::LookupFailure::None);
-    CHECK(lastRow.steps[1].value == rat(120, 100));
+    CHECK(lastRow.steps[1].value == rat(1217, 1000));
     REQUIRE(lastRow.steps[1].selectedSegment.has_value());
-    CHECK(*lastRow.steps[1].selectedSegment == formula::Segment { breakpoint(24, 3), breakpoint(24, 3) });
+    CHECK(*lastRow.steps[1].selectedSegment == formula::Segment { breakpoint(2379, 300), breakpoint(2379, 300) });
 }
 
 TEST_CASE("an exact lookup that found its row can still fail converting it out", "[trace][lookup]")
@@ -1239,7 +1244,8 @@ TEST_CASE("an exact lookup that found its row can still fail converting it out",
     // is where that confusion is hardest to catch -- an exact lookup cannot
     // interpolate, so there is no `Computation` state to mix it up with, and
     // nothing else here would notice the recorder leaving the field alone.
-    constexpr auto node = exact_lookup<FarKeys, unit::Kilometre>(SpecimenShape::Cylinder, { rat(1), rat(Huge) });
+    constexpr auto node =
+        exact_lookup<FarKeys, unit::Kilometre>(SpecimenShape::Cylinder, { rat(1127, 1000), rat(Huge) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1263,7 +1269,7 @@ TEST_CASE("an interpolating lookup separates its own overflow from the conversio
     // whole field exists to refuse, one enumerator to the left of where it was
     // refused.
     constexpr auto node =
-        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1) });
+        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1127, 1000) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1286,7 +1292,7 @@ TEST_CASE("an interpolating lookup whose key conversion failed never consulted i
     // at. Reporting it as a miss would print "the curve declares no rows"
     // about a three-row curve.
     constexpr auto node = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
-        formula::constant<unit::Metre>(rat(Huge)), { rat(90), rat(-115), rat(120) });
+        formula::constant<unit::Metre>(rat(Huge)), { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1305,7 +1311,7 @@ TEST_CASE("a lookup whose own unit conversion failed is not recorded as a miss",
     // every error of its own would be as wrong as one answering it for every
     // relayed error.
 
-    // The result side: 30 mm is comfortably inside [0, 100) mm, so the band IS
+    // The result side: 30 mm is comfortably inside [0, 103) mm, so the band IS
     // found -- and the correction it selects, 2^62 km, then does not survive
     // the conversion into metres.
     constexpr auto wide = banded_lookup<unit::Millimetre, WideBand, unit::Kilometre>(var<Diameter>, { rat(Huge) });
@@ -1323,7 +1329,7 @@ TEST_CASE("a lookup whose own unit conversion failed is not recorded as a miss",
     // The key side: the operand succeeds, and converting its 2^62 metres into
     // the table's own centimetres overflows before any band is looked at.
     constexpr auto farTooLong = banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(
-        formula::constant<unit::Metre>(rat(Huge)), { rat(95), rat(112), rat(105) });
+        formula::constant<unit::Metre>(rat(Huge)), { rat(863, 10), rat(1127, 10), rat(1043, 10) });
     formula::Trace<> keySide {};
     {
         formula::RecordingSink<> sink { keySide };
@@ -1345,7 +1351,8 @@ TEST_CASE("a lookup whose operand recorded no step cannot say whose failure it i
     // the recorder cannot answer, which is the defect this field exists to
     // close.
     constexpr auto node =
-        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(UntracedLength {}, { rat(95), rat(112), rat(105) });
+        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(UntracedLength {},
+                                                                  { rat(863, 10), rat(1127, 10), rat(1043, 10) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1360,7 +1367,7 @@ TEST_CASE("a lookup whose operand recorded no step cannot say whose failure it i
     // is a separate block of code rather than a shared one -- so asserting it
     // only for the banded kind would leave a copy nothing enters.
     constexpr auto curve = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
-        UntracedLength {}, { rat(90), rat(-115), rat(120) });
+        UntracedLength {}, { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
 
     formula::Trace<> curveTrace {};
     formula::RecordingSink<> curveSink { curveTrace };
@@ -1378,8 +1385,8 @@ TEST_CASE("a lookup whose operand recorded no step names no band even when it hi
     // value to locate it with, because the operand contributed no step. The
     // answer is silence, not the first band and not whichever one a scan with
     // nothing to scan for would land on.
-    constexpr auto node = banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(UntracedThreeCentimetres {},
-                                                                                    { rat(95), rat(112), rat(105) });
+    constexpr auto node = banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(
+        UntracedThreeCentimetres {}, { rat(863, 10), rat(1127, 10), rat(1043, 10) });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
@@ -1389,7 +1396,7 @@ TEST_CASE("a lookup whose operand recorded no step names no band even when it hi
     REQUIRE(result->has_value());
     // 3 cm really is inside the middle band, so this is a hit and not a
     // degenerate case dressed up as one.
-    CHECK(**result == rat(112, 100));
+    CHECK(**result == rat(1127, 1000));
 
     REQUIRE(trace.steps.size() == 1);
     CHECK(trace.steps[0].operands.empty());
@@ -1447,7 +1454,7 @@ struct Core;
 template <>
 struct formula::TagName<Core>
 {
-    static constexpr std::string_view of() noexcept { return "core drilled 100 mm"; }
+    static constexpr std::string_view of() noexcept { return "core drilled 103 mm"; }
 };
 
 namespace
@@ -1531,7 +1538,7 @@ TEST_CASE("a selection records the tag's name, or the author's spelling of it", 
 
     formula::Trace<> customized {};
     (void) formula::evaluate_method<Core>(cored, loadOn(100, 50), formula::RecordingSink<> { customized });
-    CHECK(customized.steps[customized.root()].variantTag == "core drilled 100 mm");
+    CHECK(customized.steps[customized.root()].variantTag == "core drilled 103 mm");
 
     // And a tag nobody customized, by its own name: unqualified, with the
     // anonymous namespace it is declared in nowhere in sight.
@@ -1621,7 +1628,7 @@ TEST_CASE("an overlaid method's selection is counted in the method as published"
     // that moved them: the positions survive the rewrite too.
     constexpr auto rewritten = formula::apply(
         formula::overlay(formula::prune_variant<Plate>(formula::Citation { .reference = "Example Standard 12:2021 NA" }),
-                         formula::with_constant<Side>(formula::Rational { 50 },
+                         formula::with_constant<Side>(formula::Rational { 473, 10 },
                                                       formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         bearing);
     formula::Trace<> afterRewrite {};
@@ -1710,8 +1717,9 @@ TEST_CASE("a result told without its entry is dropped, never read off an empty s
     auto const value = formula::Evaluated<formula::Rational> { std::optional { formula::Rational { 1 } } };
 
     sink.produced(var<Mass>, value);
-    constexpr auto limit = formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 1 }),
-                                               formula::Verdict { "too light" });
+    constexpr auto limit =
+        formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 973, 1000 }),
+                            formula::Verdict { "too light" });
     sink.constraint_produced(limit, formula::ConstraintOutcome::satisfied());
     sink.variant_produced(formula::VariantSelection { "Cube", 0, 1 }, value);
     sink.acceptance_produced(formula::ConstraintOrigin {});

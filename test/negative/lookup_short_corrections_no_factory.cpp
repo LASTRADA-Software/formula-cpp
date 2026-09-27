@@ -23,9 +23,9 @@ namespace
     };
 
     inline constexpr formula::BandTable<3> SizeBands {
-        formula::band(0, 1, 10, 1),
-        formula::band(10, 1, 20, 1),
-        formula::band(20, 1, 30, 1),
+        formula::band(0, 1, 103, 1),
+        formula::band(103, 1, 197, 1),
+        formula::band(197, 1, 293, 1),
     };
 
     // Only ONE correction for THREE bands, handed straight to the aggregate.
@@ -33,7 +33,7 @@ namespace
                                                SizeBands,
                                                formula::unit::One,
                                                formula::VarNode<Diameter>>
-        broken { {}, { formula::Rational { 95, 100 } }, formula::var<Diameter> };
+        broken { {}, { formula::Rational { 863, 1000 } }, formula::var<Diameter> };
 } // namespace
 
 int main()

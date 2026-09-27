@@ -461,7 +461,7 @@ namespace detail
     }
 
     /// A half-open interval a lookup step reports about -- a selected band,
-    /// or the extent a whole band table covers: `2 to under 61/2 mm`.
+    /// or the extent a whole band table covers: `211/100 to under 307/10 mm`.
     ///
     /// Delegates to `render.hpp`'s `band_text`, which is **the** spelling of a
     /// half-open interval in this library, so that a derivation and the
@@ -476,22 +476,22 @@ namespace detail
                          keySymbol);
     }
 
-    /// A **closed** range an interpolating curve runs over: `2 to 19 mm`.
+    /// A **closed** range an interpolating curve runs over: `209/10 to 293/10 mm`.
     ///
     /// One word shorter than `half_open_range_text` above, and that word is
     /// the whole point. A band's top is excluded and `to under` says so; a
     /// breakpoint is a row the table states a value *at*, the last one
     /// included, so the curve's top end is reached and nothing may say
-    /// otherwise. `lookup.hpp` pins the two behaviours against each other at
-    /// 30 mm and `render_tests.cpp` pins the two spellings; the trace is the
-    /// third surface, and it is pinned in `trace_render_tests.cpp` on the same
-    /// number, so that "harmonising" the two in either direction fails here as
-    /// well as there.
+    /// otherwise. `lookup_tests.cpp` pins the two behaviours against each other
+    /// and `render_tests.cpp` the two spellings; the trace is the third surface,
+    /// pinned in `trace_render_tests.cpp`. Each pins them on one shared number
+    /// of its own, so that "harmonising" the two in either direction fails here
+    /// as well as there.
     ///
     /// The bounds are reduced through `declared_number_text`, the same helper
     /// every other declared bound in this library is printed with, so a curve
-    /// whose first row was typed `30/4` reads `15/2` here exactly as it does
-    /// in `render()`.
+    /// whose first row was typed `1474/200` reads `737/100` here exactly as it
+    /// does in `render()`.
     [[nodiscard]] inline std::string closed_range_text(LookupRange const& lookupRange, std::string_view keySymbol)
     {
         return number_with_unit(declared_number_text(lookupRange.lowNumerator, lookupRange.lowDenominator) + " to "
@@ -499,8 +499,9 @@ namespace detail
                                 keySymbol);
     }
 
-    /// The two rows an interpolating answer came from: `between 7/2 and 8 cm`,
-    /// or `on the row at 30 mm` when the value sat exactly on one.
+    /// The two rows an interpolating answer came from: `between 331/100 and
+    /// 793/100 cm`, or `on the row at 293/10 mm` when the value sat exactly on
+    /// one.
     ///
     /// Two clauses rather than one with a degenerate arm, because the two say
     /// genuinely different things. Between two rows the answer appears in
@@ -639,7 +640,7 @@ namespace detail
             case StepKind::OverriddenConstant:
                 return std::string { step.symbol };
             // The quantity, equal to the step its definition produced:
-            // `k_s = #3`, so that the line reads `k_s = #3 = 97/100`. That it
+            // `k_s = #3`, so that the line reads `k_s = #3 = 863/1000`. That it
             // is a jurisdiction's definition goes in the suffix -- see
             // `derived_quantity_suffix`. With no step to name -- an untraced
             // consumer node as the whole definition -- the quantity alone.
@@ -778,7 +779,7 @@ namespace detail
     /// Example Standard 12:2021 NA, NA.2.3]`.
     ///
     /// Present whether or not the overlay cited anything. The body of the line
-    /// -- `k_s = 97/100` -- reads exactly as a variable the specimen supplied,
+    /// -- `k_s = 863/1000` -- reads exactly as a variable the specimen supplied,
     /// and this clause is the only thing on it that says otherwise.
     [[nodiscard]] inline std::string overridden_constant_suffix(Citation const& cited)
     {

@@ -453,14 +453,14 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
 
 TEST_CASE("a predicate compares two expressions of the same dimension", "[predicate]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto overLimit = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 47 });
 
-    constexpr auto high = formula::checked_evaluate_predicate(overFifty, strengthOf(60));
+    constexpr auto high = formula::checked_evaluate_predicate(overLimit, strengthOf(60));
     REQUIRE(high.has_value());
     REQUIRE(high->has_value());
     CHECK(**high == true);
 
-    constexpr auto low = formula::checked_evaluate_predicate(overFifty, strengthOf(40));
+    constexpr auto low = formula::checked_evaluate_predicate(overLimit, strengthOf(40));
     REQUIRE(low.has_value());
     REQUIRE(low->has_value());
     CHECK(**low == false);
@@ -468,31 +468,31 @@ TEST_CASE("a predicate compares two expressions of the same dimension", "[predic
 
 TEST_CASE("a boundary value is not over the threshold", "[predicate]")
 {
-    // Exactly 50 is not greater than 50. Worth its own case: an off-by-one
+    // Exactly 47 is not greater than 47. Worth its own case: an off-by-one
     // here silently selects the wrong formula for every specimen that lands
     // exactly on a threshold, which in a test method is not a rare input --
     // thresholds are chosen to fall on round numbers people aim at.
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto atFifty = formula::checked_evaluate_predicate(overFifty, strengthOf(50));
-    REQUIRE(atFifty.has_value());
-    REQUIRE(atFifty->has_value());
-    CHECK(**atFifty == false);
+    constexpr auto overLimit = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 47 });
+    constexpr auto atLimit = formula::checked_evaluate_predicate(overLimit, strengthOf(47));
+    REQUIRE(atLimit.has_value());
+    REQUIRE(atLimit->has_value());
+    CHECK(**atLimit == false);
 
-    constexpr auto atMost = var<Strength> <= formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto atFiftyInclusive = formula::checked_evaluate_predicate(atMost, strengthOf(50));
-    REQUIRE(atFiftyInclusive.has_value());
-    REQUIRE(atFiftyInclusive->has_value());
-    CHECK(**atFiftyInclusive == true);
+    constexpr auto atMost = var<Strength> <= formula::constant<unit::Megapascal>(formula::Rational { 47 });
+    constexpr auto atLimitInclusive = formula::checked_evaluate_predicate(atMost, strengthOf(47));
+    REQUIRE(atLimitInclusive.has_value());
+    REQUIRE(atLimitInclusive->has_value());
+    CHECK(**atLimitInclusive == true);
 }
 
 TEST_CASE("an absent operand makes the predicate absent, not false", "[predicate]")
 {
     // Answering `false` would silently pick a branch on the strength of a
     // measurement nobody took.
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto overLimit = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 47 });
     constexpr auto environment = formula::environment(formula::Measured<Strength>::absent());
 
-    constexpr auto unknown = formula::checked_evaluate_predicate(overFifty, environment);
+    constexpr auto unknown = formula::checked_evaluate_predicate(overLimit, environment);
     REQUIRE(unknown.has_value());
     CHECK_FALSE(unknown->has_value());
 }
@@ -587,8 +587,8 @@ git commit -m "feat(predicate): compare two expressions, and stay absent when th
 ```cpp
 TEST_CASE("a threshold selects between two formulas", "[conditional]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto chosen = formula::when(overFifty,
+    constexpr auto overLimit = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+    constexpr auto chosen = formula::when(overLimit,
                                           var<Strength> * formula::number(formula::Rational { 2 }),
                                           var<Strength> * formula::number(formula::Rational { 3 }));
 
@@ -619,8 +619,8 @@ TEST_CASE("the branch not taken is never evaluated", "[conditional]")
 
 TEST_CASE("an absent predicate makes the result absent, not the else branch", "[conditional]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto chosen = formula::when(overFifty, var<Strength>, formula::constant<unit::Megapascal>(formula::Rational { 0 }));
+    constexpr auto overLimit = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+    constexpr auto chosen = formula::when(overLimit, var<Strength>, formula::constant<unit::Megapascal>(formula::Rational { 0 }));
     constexpr auto environment = formula::environment(formula::Measured<Strength>::absent());
 
     constexpr auto result = formula::checked_evaluate<Strength>(chosen, environment);
@@ -779,8 +779,8 @@ is written in task 8:
 |---|---|---|
 | `RoundNode` | `round(d to 1 dp of mm)` | `\operatorname{round}_{1\,\mathrm{mm}}(d)` |
 | `RoundSignificantNode` | `round(d to 2 sf of mm)` | `\operatorname{round}_{2\mathrm{sf},\,\mathrm{mm}}(d)` |
-| `PredicateNode` | `f > 50 MPa` | `f > 50\,\mathrm{MPa}` |
-| `WhenNode` | `if f > 50 MPa then A else B` | a `\begin{cases}` block |
+| `PredicateNode` | `f > 473/10 MPa` | `f > 473/10\,\mathrm{MPa}` |
+| `WhenNode` | `if f > 473/10 MPa then A else B` | a `\begin{cases}` block |
 | `NumericValueNode` | `numeric(f in MPa)` | `\{f/\mathrm{MPa}\}` |
 
 `PredicateNode` needs rendering even though it is not a `Node`, because a

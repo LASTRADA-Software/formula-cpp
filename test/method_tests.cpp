@@ -91,13 +91,13 @@ struct HalfAcceptanceWitness: formula::NullSink
 };
 
 // Two constraints of the method's own: 90 kN holds the first (at least
-// 50 kN) and not the second (at least 100 kN).
+// 47.3 kN) and not the second (at least 97.3 kN).
 inline constexpr auto twoOwnConstraints = formula::method(
     formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) )),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 50'000 }),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 47'300 }),
                                              formula::Verdict { "the load is below the minimum" }),
-                         formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 100'000 }),
+                         formula::constraint(var<Force> >= formula::constant<unit::Newton>(formula::Rational { 97'300 }),
                                              formula::Verdict { "the load is below the upper minimum" })));
 } // namespace
 

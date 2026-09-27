@@ -46,15 +46,13 @@ struct Diameter: formula::Quantity<Diameter, "d", "measured diameter", unit::Mil
                                 formula::Measured<Diameter> {});
 }
 
-inline constexpr auto minimumStrength =
-    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
-                        formula::Verdict { "reject the specimen" },
-                        formula::Citation { .title = "Minimum compressive strength",
-                                            .reference = "Example Standard 7:2020",
-                                            .section = "5.1" });
+inline constexpr auto minimumStrength = formula::constraint(
+    var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
+    formula::Verdict { "reject the specimen" },
+    formula::Citation { .title = "Minimum compressive strength", .reference = "Example Standard 7:2020", .section = "5.1" });
 
 inline constexpr auto maximumDiameter =
-    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 100 }),
+    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 139 }),
                         formula::Verdict { "specimen exceeds diameter tolerance" });
 
 // Same shape predicate_tests.cpp's own arithmetic-failure case uses: a
@@ -102,10 +100,10 @@ TEST_CASE("constraint: arithmetic that breaks while checking is invalid, not sat
 
 TEST_CASE("constraint set: two violated constraints are both reported, in declaration order", "[constraint]")
 {
-    // strength 20 violates minimumStrength (20 >= 30 is false); diameter 150
-    // violates maximumDiameter (150 <= 100 is false). Both are violated at
+    // strength 20 violates minimumStrength (20 >= 27.3 is false); diameter 163
+    // violates maximumDiameter (163 <= 139 is false). Both are violated at
     // once -- the case a short-circuiting checker would get wrong.
-    constexpr auto environment = strengthAndDiameter(20, 150);
+    constexpr auto environment = strengthAndDiameter(20, 163);
 
     {
         constexpr auto outcomes = formula::check_all(formula::constraints(minimumStrength, maximumDiameter),
@@ -136,11 +134,11 @@ TEST_CASE("constraint set: two violated constraints are both reported, in declar
 TEST_CASE("constraint set: a satisfied constraint and a violated one are both reported, in either position",
           "[constraint]")
 {
-    // strength 45 satisfies minimumStrength; diameter 150 still violates
+    // strength 45 satisfies minimumStrength; diameter 163 still violates
     // maximumDiameter.
     {
-        constexpr auto outcomes = formula::check_all(formula::constraints(minimumStrength, maximumDiameter),
-                                                      strengthAndDiameter(45, 150));
+        constexpr auto outcomes =
+            formula::check_all(formula::constraints(minimumStrength, maximumDiameter), strengthAndDiameter(45, 163));
         STATIC_REQUIRE(outcomes[0].is_satisfied());
         STATIC_REQUIRE(outcomes[1].is_violated());
         CHECK_FALSE(outcomes[0].verdict().has_value());
@@ -157,8 +155,8 @@ TEST_CASE("constraint set: a satisfied constraint and a violated one are both re
     // Satisfied never happens (it comes second), so both sections together
     // prove the property regardless of which position it lands in.
     {
-        constexpr auto outcomes = formula::check_all(formula::constraints(maximumDiameter, minimumStrength),
-                                                      strengthAndDiameter(45, 150));
+        constexpr auto outcomes =
+            formula::check_all(formula::constraints(maximumDiameter, minimumStrength), strengthAndDiameter(45, 163));
         STATIC_REQUIRE(outcomes[0].is_violated());
         STATIC_REQUIRE(outcomes[1].is_satisfied());
         REQUIRE(outcomes[0].verdict().has_value());
@@ -170,7 +168,7 @@ TEST_CASE("constraint set: a satisfied constraint and a violated one are both re
 TEST_CASE("constraint set: a violated constraint and an invalid one are both reported, in either position",
           "[constraint]")
 {
-    // strength 0 violates minimumStrength (0 >= 30 is false) and makes
+    // strength 0 violates minimumStrength (0 >= 27.3 is false) and makes
     // dividesByZero's predicate divide by zero, so checking it comes back
     // invalid -- rather than either being dropped by a checker that stops at
     // the first Invalid it meets.

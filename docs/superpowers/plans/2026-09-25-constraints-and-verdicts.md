@@ -102,7 +102,7 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
 }
 
 inline constexpr auto minimumStrength =
-    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
                         formula::Verdict { "reject the specimen" },
                         formula::Citation { .title = "Minimum compressive strength",
                                             .reference = "Example Standard 7:2020",

@@ -15,12 +15,12 @@ namespace
     // ---- well-formed tables, of the shapes Step 1 asks for ----
 
     inline constexpr BandTable<3> WellFormedThreeBands {
-        band(0, 1, 10, 1),
-        band(10, 1, 20, 1),
-        band(20, 1, 30, 1),
+        band(0, 1, 103, 1),
+        band(103, 1, 197, 1),
+        band(197, 1, 293, 1),
     };
 
-    inline constexpr BandTable<1> SingleBand { band(0, 1, 10, 1) };
+    inline constexpr BandTable<1> SingleBand { band(0, 1, 103, 1) };
 
     inline constexpr BandTable<0> EmptyTable {};
 
@@ -32,17 +32,17 @@ namespace
     // adjacency would pass either of these tables outright.
 
     inline constexpr BandTable<4> GapInMiddle {
-        band(0, 1, 10, 1),
-        band(10, 1, 20, 1),
-        band(25, 1, 35, 1), // gap: band[1]'s high (20) != band[2]'s low (25)
-        band(35, 1, 45, 1),
+        band(0, 1, 103, 1),
+        band(103, 1, 197, 1),
+        band(241, 1, 331, 1), // gap: band[1]'s high (197) != band[2]'s low (241)
+        band(331, 1, 421, 1),
     };
 
     inline constexpr BandTable<4> OverlapInMiddle {
-        band(0, 1, 10, 1),
-        band(10, 1, 20, 1),
-        band(18, 1, 28, 1), // overlap: band[2]'s low (18) < band[1]'s high (20)
-        band(28, 1, 38, 1),
+        band(0, 1, 103, 1),
+        band(103, 1, 197, 1),
+        band(173, 1, 277, 1), // overlap: band[2]'s low (173) < band[1]'s high (197)
+        band(277, 1, 383, 1),
     };
 
     // ---- a gap or an overlap between the last two bands, for the same reason
@@ -51,15 +51,15 @@ namespace
     // either.
 
     inline constexpr BandTable<3> GapAtEnd {
-        band(0, 1, 10, 1),
-        band(10, 1, 20, 1),
-        band(25, 1, 35, 1), // gap: band[1]'s high (20) != band[2]'s low (25)
+        band(0, 1, 103, 1),
+        band(103, 1, 197, 1),
+        band(241, 1, 331, 1), // gap: band[1]'s high (197) != band[2]'s low (241)
     };
 
     inline constexpr BandTable<3> OverlapAtEnd {
-        band(0, 1, 10, 1),
-        band(10, 1, 20, 1),
-        band(18, 1, 28, 1), // overlap: band[2]'s low (18) < band[1]'s high (20)
+        band(0, 1, 103, 1),
+        band(103, 1, 197, 1),
+        band(173, 1, 277, 1), // overlap: band[2]'s low (173) < band[1]'s high (197)
     };
 
     // ---- an inverted band (its own low is not below its own high) -- fix
@@ -72,21 +72,21 @@ namespace
     // there.
 
     inline constexpr BandTable<3> InvertedFirstBand {
-        band(10, 1, 0, 1), // inverted: low (10) is not below high (0)
-        band(0, 1, 20, 1),
-        band(20, 1, 30, 1),
+        band(103, 1, 0, 1), // inverted: low (103) is not below high (0)
+        band(0, 1, 197, 1),
+        band(197, 1, 293, 1),
     };
 
     inline constexpr BandTable<3> InvertedMiddleBand {
-        band(0, 1, 10, 1),
-        band(10, 1, 5, 1), // inverted: low (10) is not below high (5)
-        band(5, 1, 15, 1),
+        band(0, 1, 103, 1),
+        band(103, 1, 59, 1), // inverted: low (103) is not below high (59)
+        band(59, 1, 163, 1),
     };
 
     inline constexpr BandTable<3> InvertedLastBand {
-        band(0, 1, 10, 1),
-        band(10, 1, 20, 1),
-        band(20, 1, 15, 1), // inverted: low (20) is not below high (15)
+        band(0, 1, 103, 1),
+        band(103, 1, 197, 1),
+        band(197, 1, 163, 1), // inverted: low (197) is not below high (163)
     };
 
     // ---- bands declared out of order, each individually well-formed --
@@ -94,9 +94,9 @@ namespace
     // check needed (see band_table_is_well_formed's comment for the proof).
 
     inline constexpr BandTable<3> DeclaredOutOfOrder {
-        band(20, 1, 30, 1), // well-formed on its own, but declared before band 0's range
-        band(10, 1, 20, 1),
-        band(0, 1, 10, 1),
+        band(197, 1, 293, 1), // well-formed on its own, but declared before band 0's range
+        band(103, 1, 197, 1),
+        band(0, 1, 103, 1),
     };
 } // namespace
 
@@ -104,31 +104,31 @@ namespace
 
 TEST_CASE("bands_are_adjacent is true exactly when the boundary is shared", "[band]")
 {
-    STATIC_REQUIRE(bands_are_adjacent(band(0, 1, 10, 1), band(10, 1, 20, 1)));
-    // The same boundary, stated in different terms -- 10/1 and 20/2 are the
+    STATIC_REQUIRE(bands_are_adjacent(band(0, 1, 103, 1), band(103, 1, 197, 1)));
+    // The same boundary, stated in different terms -- 103/1 and 206/2 are the
     // same rational -- must still compare adjacent.
-    STATIC_REQUIRE(bands_are_adjacent(band(0, 1, 10, 1), band(20, 2, 20, 1)));
-    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 10, 1), band(25, 1, 35, 1))); // gap
-    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 20, 1), band(18, 1, 28, 1))); // overlap
+    STATIC_REQUIRE(bands_are_adjacent(band(0, 1, 103, 1), band(206, 2, 197, 1)));
+    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 103, 1), band(241, 1, 331, 1))); // gap
+    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 197, 1), band(173, 1, 277, 1))); // overlap
 
     // A malformed bound (zero denominator) is not adjacent to anything --
     // waved through silently is exactly what this predicate must not do.
-    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 10, 0), band(10, 1, 20, 1)));
-    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 10, 1), band(10, 0, 20, 1)));
+    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 103, 0), band(103, 1, 197, 1)));
+    STATIC_REQUIRE(!bands_are_adjacent(band(0, 1, 103, 1), band(103, 0, 197, 1)));
 }
 
 TEST_CASE("band_is_well_formed is true exactly when low is strictly below high", "[band]")
 {
-    STATIC_REQUIRE(band_is_well_formed(band(0, 1, 10, 1)));
+    STATIC_REQUIRE(band_is_well_formed(band(0, 1, 103, 1)));
     // The same value stated in different terms -- 0/1 and 0/5 are both zero.
-    STATIC_REQUIRE(band_is_well_formed(band(0, 5, 10, 1)));
-    STATIC_REQUIRE(!band_is_well_formed(band(10, 1, 0, 1))); // inverted
-    STATIC_REQUIRE(!band_is_well_formed(band(10, 1, 10, 1))); // low == high: empty, not a band
+    STATIC_REQUIRE(band_is_well_formed(band(0, 5, 103, 1)));
+    STATIC_REQUIRE(!band_is_well_formed(band(103, 1, 0, 1))); // inverted
+    STATIC_REQUIRE(!band_is_well_formed(band(103, 1, 103, 1))); // low == high: empty, not a band
 
     // A malformed bound (zero denominator) is not well-formed either --
     // waved through silently is exactly what this predicate must not do.
-    STATIC_REQUIRE(!band_is_well_formed(band(0, 0, 10, 1)));
-    STATIC_REQUIRE(!band_is_well_formed(band(0, 1, 10, 0)));
+    STATIC_REQUIRE(!band_is_well_formed(band(0, 0, 103, 1)));
+    STATIC_REQUIRE(!band_is_well_formed(band(0, 1, 103, 0)));
 }
 
 // ---- whole-table validation ----
@@ -151,7 +151,7 @@ TEST_CASE("an empty table validates -- it is always missing, not malformed", "[b
 
 TEST_CASE("adjacent bands sharing an endpoint validate -- the half-open case working", "[band]")
 {
-    // WellFormedThreeBands' own boundaries (10 and 20) are exactly this case:
+    // WellFormedThreeBands' own boundaries (103 and 197) are exactly this case:
     // band[0]'s high is band[1]'s low, and band[1]'s high is band[2]'s low.
     STATIC_REQUIRE(bands_are_adjacent(WellFormedThreeBands[0], WellFormedThreeBands[1]));
     STATIC_REQUIRE(bands_are_adjacent(WellFormedThreeBands[1], WellFormedThreeBands[2]));
@@ -264,5 +264,5 @@ TEST_CASE("RequireValidBandTable accepts a well-formed table", "[band]")
 
 TEST_CASE("RequireBandWellFormed accepts a well-formed band", "[band]")
 {
-    STATIC_REQUIRE(formula::RequireBandWellFormed<band(0, 1, 10, 1)>::value);
+    STATIC_REQUIRE(formula::RequireBandWellFormed<band(0, 1, 103, 1)>::value);
 }

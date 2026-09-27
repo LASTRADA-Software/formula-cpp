@@ -271,8 +271,8 @@ enum class LookupFailure : std::uint8_t
 /// at **both** ends -- the one difference between the two table kinds that
 /// `lookup.hpp` and `render.hpp` both go out of their way not to blur. Which
 /// one a given value is, is `Step::kind`'s to say, and `trace_render.hpp`
-/// spells the two differently on purpose: `2 to under 19 mm` against
-/// `2 to 19 mm`.
+/// spells the two differently on purpose: `209/10 to under 293/10 mm` against
+/// `209/10 to 293/10 mm`.
 struct LookupRange
 {
     /// Numerator of the low end.
@@ -509,8 +509,8 @@ struct Step
 
     /// For `BandedLookup`: the band the value fell in, exactly as the table
     /// declared it -- the one fact a banded lookup's derivation is for. A
-    /// step reading only `= 19/20` explains nothing; what a reader checking a
-    /// number needs is that 19/20 came from the band containing the input.
+    /// step reading only `= 863/1000` explains nothing; what a reader checking a
+    /// number needs is that 863/1000 came from the band containing the input.
     ///
     /// Empty when no band was selected -- a miss, a failure of any kind, an
     /// absent operand -- and also when the operand contributed no step for

@@ -102,7 +102,7 @@ constexpr auto circularArea =
 // tested at all, so the method rejects it outright rather than reporting an
 // area for it.
 constexpr auto maximumDiameter =
-    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 150 }),
+    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 139 }),
                         formula::Verdict { "specimen exceeds diameter tolerance" },
                         { .title = "Maximum specimen diameter",
                           .reference = "Example Standard 6:2020",
@@ -168,8 +168,8 @@ struct AdjustedBulkDensity:
 // is corrected upward by a fixed factor, and one at or above it is reported
 // exactly as measured.
 constexpr auto compactionAdjustedDensity = formula::documented(
-    formula::when(var<MeasuredDensity> < formula::constant<KilogramPerCubicMetre>(formula::Rational { 1800 }),
-                  var<MeasuredDensity>* formula::Rational { 11, 10 },
+    formula::when(var<MeasuredDensity> < formula::constant<KilogramPerCubicMetre>(formula::Rational { 1737 }),
+                  var<MeasuredDensity>* formula::Rational { 1127, 1000 },
                   var<MeasuredDensity>),
     { .title = "Compaction-adjusted bulk density",
       .reference = "Example Standard 5:2020",
@@ -209,9 +209,9 @@ struct CorrectedStrength: formula::Quantity<CorrectedStrength, "f_c", "size- and
 // bound. A gap or an overlap anywhere here is a compile error naming both
 // offending bands, so this table cannot reach the page mis-bucketing anything.
 inline constexpr formula::BandTable<3> GallerySizeBands {
-    formula::band(0, 1, 100, 1),   // 0 to under 100 mm
-    formula::band(100, 1, 150, 1), // 100 to under 150 mm
-    formula::band(150, 1, 200, 1), // 150 to under 200 mm -- 200 mm itself is in NO band
+    formula::band(0, 1, 103, 1),   // 0 to under 103 mm
+    formula::band(103, 1, 163, 1), // 103 to under 163 mm
+    formula::band(163, 1, 197, 1), // 163 to under 197 mm -- 197 mm itself is in NO band
 };
 
 // A key enumeration wants a name of its own per translation unit: two files
@@ -240,25 +240,26 @@ inline constexpr formula::KeyTable<GalleryMould, 3> GalleryMouldKeys {
 
 // Breakpoints, not bands: each is one key the curve states a value AT, and the
 // value between two of them is computed rather than stored. The domain is
-// closed at both ends -- 24 h and 168 h are both hits -- because a breakpoint
+// closed at both ends -- 31 h and 197 h are both hits -- because a breakpoint
 // is a row and not a boundary between rows.
 inline constexpr formula::BreakpointTable<3> GalleryAgeCurve {
-    formula::breakpoint(24),
-    formula::breakpoint(72),
-    formula::breakpoint(168),
+    formula::breakpoint(31),
+    formula::breakpoint(83),
+    formula::breakpoint(197),
 };
 
 // The structure (the bands, the keys, the breakpoints, and the two units) is
 // the method and lives in each node's type; the contents -- the number each row
 // gives -- are a registered table's data and arrive at runtime.
 constexpr auto sizeAllowanceTable = formula::banded_lookup<unit::Millimetre, GallerySizeBands, unit::Megapascal>(
-    var<Diameter>, { formula::Rational { 2 }, formula::Rational { 1 }, formula::Rational { 0 } });
+    var<Diameter>, { formula::Rational { 237, 100 }, formula::Rational { 113, 100 }, formula::Rational { 41, 100 } });
 
 constexpr auto mouldFactorTable = formula::exact_lookup<GalleryMouldKeys, unit::One>(
-    GalleryMould::Cylinder, { formula::Rational { 1 }, formula::Rational { 19, 20 }, formula::Rational { 9, 10 } });
+    GalleryMould::Cylinder,
+    { formula::Rational { 1061, 1000 }, formula::Rational { 863, 1000 }, formula::Rational { 781, 1000 } });
 
 constexpr auto maturityFactorTable = formula::interpolating_lookup<unit::Hour, GalleryAgeCurve, unit::One>(
-    var<CuringAge>, { formula::Rational { 3, 5 }, formula::Rational { 17, 20 }, formula::Rational { 1 } });
+    var<CuringAge>, { formula::Rational { 613, 1000 }, formula::Rational { 857, 1000 }, formula::Rational { 1031, 1000 } });
 
 constexpr auto sizeAllowance =
     formula::documented(sizeAllowanceTable,
@@ -333,8 +334,8 @@ constexpr auto cubeStrengthMethod = formula::method(
                                           / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints(
-        formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 150 }),
-                            formula::Verdict { "the load at failure is below 150 kN" })));
+        formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 163 }),
+                            formula::Verdict { "the load at failure is below 163 kN" })));
 
 constexpr formula::Citation galleryAcceptanceAnnex { .title = "Acceptance",
                                                      .reference = "Example Standard 7:2020 NA",
@@ -347,12 +348,12 @@ constexpr formula::Citation galleryRoundingAnnex { .reference = "Example Standar
 constexpr auto galleryOverlay = formula::overlay(
     formula::with_constraints(
         formula::constraints(
-            formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 250 }),
-                                formula::Verdict { "the load at failure is below 250 kN" }),
-            formula::constraint(var<ShapeFactor> <= formula::number(formula::Rational { 1 }),
-                                formula::Verdict { "the shape factor exceeds one" })),
+            formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 277 }),
+                                formula::Verdict { "the load at failure is below 277 kN" }),
+            formula::constraint(var<ShapeFactor> <= formula::number(formula::Rational { 913, 1000 }),
+                                formula::Verdict { "the shape factor exceeds 913/1000" })),
         galleryAcceptanceAnnex),
-    formula::with_constant<ShapeFactor>(formula::Rational { 19, 20 }, galleryAnnex),
+    formula::with_constant<ShapeFactor>(formula::Rational { 887, 1000 }, galleryAnnex),
     formula::with_rounding<unit::NewtonPerSquareMillimetre,
                            formula::DecimalPlaces { 2 },
                            formula::RoundingMode::HalfAwayFromZero>(galleryRoundingAnnex));
@@ -614,12 +615,12 @@ int main(int argc, char** argv)
     // ---- A worked conditional, so the page shows a when() naming the branch it took ----
 
     out << "## Worked derivation: compaction-adjusted bulk density\n\n";
-    out << "`rho_m` = 1500 kg/m3 -- below the 1800 kg/m3 reference density, so the predicate holds "
+    out << "`rho_m` = 1523 kg/m3 -- below the 1737 kg/m3 reference density, so the predicate holds "
            "and the correction factor is applied:\n\n";
 
     write_worked_formula(out, compactionAdjustedDensity);
 
-    auto const compactionInputs = formula::environment(formula::Measured<MeasuredDensity> { formula::Rational { 1500 } });
+    auto const compactionInputs = formula::environment(formula::Measured<MeasuredDensity> { formula::Rational { 1523 } });
     formula::Explained<AdjustedBulkDensity> const explainedCompaction =
         formula::explain<AdjustedBulkDensity>(compactionAdjustedDensity, compactionInputs);
     if (!explainedCompaction.outcome.is_value())
@@ -635,7 +636,7 @@ int main(int argc, char** argv)
     // ---- A worked constraint, so the page shows a verdict as its own trace step ----
 
     out << "## Worked derivation: maximum specimen diameter, alongside the circular area it validates\n\n";
-    out << "`d` = 200 mm -- above the 150 mm tolerance, so the constraint is violated and its verdict "
+    out << "`d` = 173 mm -- above the 139 mm tolerance, so the constraint is violated and its verdict "
            "appears in the trace, `formula::check()` and `formula::render_trace()`:\n\n";
 
     // Both, because the heading promises both: the constraint that was
@@ -643,7 +644,7 @@ int main(int argc, char** argv)
     write_worked_formula(out, maximumDiameter);
     write_worked_formula(out, circularArea);
 
-    auto const oversizedSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 200 } });
+    auto const oversizedSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 173 } });
     formula::Trace<> constraintTrace {};
     formula::RecordingSink<> constraintSink { constraintTrace };
     formula::ConstraintOutcome const diameterOutcome = formula::check(maximumDiameter, oversizedSpecimen, constraintSink);
@@ -663,16 +664,16 @@ int main(int argc, char** argv)
     // The key is written out of the enumerator rather than typed, so this
     // sentence cannot drift from the row the lookup below actually selects,
     // nor from the spelling render() and the trace give it.
-    out << "`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key " << formula::enumerator_name<GalleryMould::Cylinder>()
+    out << "`f` = 33 MPa, `d` = 127 mm, `t` = 57 h, mould `key " << formula::enumerator_name<GalleryMould::Cylinder>()
         << "`. Each table names the row it answered "
            "from: the banded one its interval, the interpolating one the two rows it drew on. The exact "
            "lookup adds nothing there -- its key is already the subject of its own line.\n\n";
 
     write_worked_formula(out, correctedStrength);
 
-    auto const correctedInputs = formula::environment(formula::Measured<CrushingStrength> { formula::Rational { 32 } },
-                                                      formula::Measured<Diameter> { formula::Rational { 120 } },
-                                                      formula::Measured<CuringAge> { formula::Rational { 48 } });
+    auto const correctedInputs = formula::environment(formula::Measured<CrushingStrength> { formula::Rational { 33 } },
+                                                      formula::Measured<Diameter> { formula::Rational { 127 } },
+                                                      formula::Measured<CuringAge> { formula::Rational { 57 } });
     formula::Explained<CorrectedStrength> const explainedCorrected =
         formula::explain<CorrectedStrength>(correctedStrength, correctedInputs);
     if (!explainedCorrected.outcome.is_value())
@@ -693,14 +694,14 @@ int main(int argc, char** argv)
     // derivation that says why it missed.
 
     out << "## Worked derivation: a lookup that found nothing\n\n";
-    out << "The same size-allowance table at `d` = 250 mm. The table's last band stops below 200 mm, so "
-           "250 mm falls in no band -- and a miss is not a value: not zero, not the nearest band, not the "
+    out << "The same size-allowance table at `d` = 241 mm. The table's last band stops below 197 mm, so "
+           "241 mm falls in no band -- and a miss is not a value: not zero, not the nearest band, not the "
            "last one. The bracketed clause is what keeps the line from being read as a failure relayed up "
            "from somewhere below it.\n\n";
 
     write_worked_formula(out, sizeAllowance);
 
-    auto const uncoveredSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 250 } });
+    auto const uncoveredSpecimen = formula::environment(formula::Measured<Diameter> { formula::Rational { 241 } });
     formula::Trace<> missTrace {};
     formula::RecordingSink<> missSink { missTrace };
     std::expected<formula::Outcome<SizeAllowance>, formula::ArithmeticError> const missed =
@@ -722,15 +723,15 @@ int main(int argc, char** argv)
     // the variant it selected and whose rounding rule it applied.
 
     out << "## Worked derivation: a method's selected variant, and the same method overlaid\n\n";
-    out << "`F` = 226 kN, `a` = 150 mm, `k_s` = 1, the cube variant selected by tag. The method rounds by "
+    out << "`F` = 226 kN, `a` = 150 mm, `k_s` = 1043/1000, the cube variant selected by tag. The method rounds by "
            "its own rule, and the trace says which variant ran and whose rule rounded it:\n\n";
 
     write_worked_formula(out, std::get<0>(cubeStrengthMethod.variantSet.cases).expression);
 
     auto const cubeSpecimen = formula::environment(formula::Measured<FailureLoad> { formula::Rational { 226'000 } },
                                                    formula::Measured<LoadedEdge> { formula::Rational { 150 } },
-                                                   formula::Measured<Diameter> { formula::Rational { 150 } },
-                                                   formula::Measured<ShapeFactor> { formula::Rational { 1 } });
+                                                   formula::Measured<Diameter> { formula::Rational { 127 } },
+                                                   formula::Measured<ShapeFactor> { formula::Rational { 1043, 1000 } });
     formula::Trace<> methodTrace {};
     auto const baseStrength =
         formula::evaluate_method<Cube>(cubeStrengthMethod, cubeSpecimen, formula::RecordingSink<> { methodTrace });

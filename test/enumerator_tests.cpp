@@ -61,7 +61,7 @@ enum class NamingFlag : bool
 
 enum class NamingDigits
 {
-    C150 = 150,
+    C163 = 163,
     X2Y3,
 };
 
@@ -160,11 +160,11 @@ struct formula::EnumeratorName<NamingCustomized>
         switch (shape)
         {
             case NamingCustomized::Cube:
-                return "cube 150 mm";
+                return "cube 139 mm";
             case NamingCustomized::Cylinder:
-                return "cylinder 150/300 mm";
+                return "cylinder 139/277 mm";
             case NamingCustomized::Prism:
-                return "prism 100 mm";
+                return "prism 103 mm";
         }
         return {};
     }
@@ -257,13 +257,13 @@ TEST_CASE("an unscoped enumerator, an alias and a Unicode name are named as the 
 TEST_CASE("a customized enumerator is spelled the author's way, at compile time", "[enumerator]")
 {
     // Every enumerator customized, including the middle one.
-    STATIC_REQUIRE(enumerator_name<NamingCustomized::Cube>() == "cube 150 mm");
-    STATIC_REQUIRE(enumerator_name<NamingCustomized::Cylinder>() == "cylinder 150/300 mm");
-    STATIC_REQUIRE(enumerator_name<NamingCustomized::Prism>() == "prism 100 mm");
+    STATIC_REQUIRE(enumerator_name<NamingCustomized::Cube>() == "cube 139 mm");
+    STATIC_REQUIRE(enumerator_name<NamingCustomized::Cylinder>() == "cylinder 139/277 mm");
+    STATIC_REQUIRE(enumerator_name<NamingCustomized::Prism>() == "prism 103 mm");
 
     // And usable in a plain static_assert, not only through Catch's macro: the
     // requirement is that a customized name is a constant expression.
-    static_assert(enumerator_name<NamingCustomized::Cube>() == "cube 150 mm");
+    static_assert(enumerator_name<NamingCustomized::Cube>() == "cube 139 mm");
 }
 
 TEST_CASE("a customization that leaves an enumerator empty falls back to its own name", "[enumerator]")
@@ -286,7 +286,7 @@ TEST_CASE("an enumerator with digits inside its name keeps them", "[enumerator]"
 {
     // Digits are identifier bytes; only a LEADING digit marks a number. Kills
     // a scan that treats a digit as the end of a name, which would leave both empty.
-    STATIC_REQUIRE(enumerator_name<NamingDigits::C150>() == "C150");
+    STATIC_REQUIRE(enumerator_name<NamingDigits::C163>() == "C163");
     STATIC_REQUIRE(enumerator_name<NamingDigits::X2Y3>() == "X2Y3");
 }
 

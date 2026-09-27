@@ -1,8 +1,8 @@
 # Constraints and verdicts
 
 A standard routinely states a relationship purely to validate a result, not
-to compute one -- "the specimen shall be rejected below 30 MPa", "the two
-replicates shall agree within 5%". `formula::constraint()` pairs a predicate
+to compute one -- "the specimen shall be rejected below 27.3 MPa", "the two
+replicates shall agree within 4.7%". `formula::constraint()` pairs a predicate
 (`predicate.hpp`, also covered in [Rounding and conditionals](rounding-and-conditionals.md))
 with what to do when it does not hold, and `formula::check()` reports what
 happened as one of **four** outcomes, not two. This page explains why there
@@ -35,7 +35,7 @@ standard reads:
 
 ```cpp
 constexpr auto minimumStrength =
-    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
                         formula::Verdict { "reject the specimen" },
                         formula::Citation { .title = "Minimum compressive strength",
                                             .reference = "Example Standard 7:2020",
@@ -91,15 +91,15 @@ no strength measured: not checked
 ```
 
 The third line is the one this whole phase exists for. Nobody measured the
-strength, so the predicate `f >= 30 MPa` never resolved -- it is not true and
-it is not false, because there is no `f` to compare against 30 MPa at all.
+strength, so the predicate `f >= 273/10 MPa` never resolved -- it is not true and
+it is not false, because there is no `f` to compare against 27.3 MPa at all.
 `check()` reports `NotChecked`, never `Satisfied`.
 
 **Consider what a library that reported `Satisfied` there would be
 producing.** This library's intended use is a laboratory or a compliance
 report: a constraint like `minimumStrength` exists so that someone, reading
 the generated report, can trust that "satisfied" means a measured specimen
-was checked against 30 MPa and passed. If an unmeasured input silently
+was checked against 27.3 MPa and passed. If an unmeasured input silently
 reported `Satisfied`, that trust would be misplaced every time a
 measurement was skipped, forgotten, or arrived late -- the report would read
 identically whether the specimen was tested and passed, or never tested at
@@ -155,8 +155,8 @@ std::printf("rendered (LaTeX): %s\n", formula::render<formula::Dialect::LaTeX>(m
 ```
 
 ```
-rendered: require f >= 30 MPa
-rendered (LaTeX): \text{require } f \geq 30\,\mathrm{MPa}
+rendered: require f >= 273/10 MPa
+rendered (LaTeX): \text{require } f \geq 273/10\,\mathrm{MPa}
 ```
 
 `require` names no public function -- `constraint(predicate, verdict,
@@ -196,12 +196,12 @@ for (formula::SymbolEntry const& entry: documentation.symbols)
 ```
 
 ```
-documented: require f >= 30 MPa
+documented: require f >= 273/10 MPa
 cited: Minimum compressive strength, Example Standard 7:2020, 5.1
 symbol: f = measured compressive strength [MPa]
 ```
 
-`documentation.formula` is the same `require f >= 30 MPa` the plain
+`documentation.formula` is the same `require f >= 273/10 MPa` the plain
 rendering above already showed -- `document()` reaches it by calling the
 identical `render<D>()` this page has already used, not a second renderer --
 and the citation and the one-row symbol table come from walking the
@@ -231,19 +231,19 @@ Called once per outcome above, this prints:
 
 ```
 1. f = 45 MPa
-2. 30 MPa
+2. 273/10 MPa
 3. require #1 >= #2 [satisfied]
 ```
 
 ```
 1. f = 20 MPa
-2. 30 MPa
+2. 273/10 MPa
 3. require #1 >= #2 [reject the specimen]
 ```
 
 ```
 1. f = (not measured)
-2. 30 MPa
+2. 273/10 MPa
 3. require #1 >= #2 [not checked]
 ```
 
@@ -281,7 +281,7 @@ different quantity:
 
 ```cpp
 constexpr auto maximumDiameter =
-    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 100 }),
+    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 139 }),
                         formula::Verdict { "specimen exceeds diameter tolerance" });
 ```
 

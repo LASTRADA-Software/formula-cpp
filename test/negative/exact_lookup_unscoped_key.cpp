@@ -24,13 +24,13 @@ namespace
 {
     enum SpecimenShape
     {
-        Cube100,
+        CubeSmall,
     };
 
-    inline constexpr formula::KeyTable<SpecimenShape, 1> ShapeKeys { Cube100 };
+    inline constexpr formula::KeyTable<SpecimenShape, 1> ShapeKeys { CubeSmall };
 
     inline constexpr auto broken =
-        formula::exact_lookup<ShapeKeys, formula::unit::One>(Cube100, { formula::Rational { 1 } });
+        formula::exact_lookup<ShapeKeys, formula::unit::One>(CubeSmall, { formula::Rational { 1127, 1000 } });
 } // namespace
 
 int main()

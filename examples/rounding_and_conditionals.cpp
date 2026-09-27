@@ -70,7 +70,7 @@ constexpr auto toTwoSignificantDigits =
 // small one to one decimal place: the threshold is itself part of the
 // formula, not an if/else the caller has to remember to apply consistently.
 constexpr auto sizeAdjustedDiameter =
-    formula::when(var<Diameter> > formula::constant<unit::Millimetre>(formula::Rational { 20 }),
+    formula::when(var<Diameter> > formula::constant<unit::Millimetre>(formula::Rational { 173, 10 }),
                   formula::rounded<unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(var<Diameter>),
                   formula::rounded<unit::Millimetre, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero>(var<Diameter>));
 
@@ -84,8 +84,8 @@ constexpr auto empiricalCorrection =
     formula::numeric_value_of<unit::Megapascal,
                               "Example Standard 9:2020 states this empirical coefficient over the numeric "
                               "value of strength in MPa">(var<Strength>)
-        * formula::Rational { 2, 100 }
-    - formula::Rational { 1 };
+        * formula::Rational { 213, 10000 }
+    - formula::Rational { 1043, 1000 };
 
 [[nodiscard]] constexpr auto millimetres(long long hundredths)
 {
@@ -120,7 +120,7 @@ int main()
     std::printf("%-36s= %f mm\n", "25.40 mm, size-adjusted rounding", largeResult->measurement().value().to_double());
 
     // The trace names which branch a when() took -- here, the "then" branch,
-    // because 25.40 mm is above the 20 mm threshold.
+    // because 25.40 mm is above the 17.3 mm threshold.
     formula::Explained<Diameter> const explainedLarge = formula::explain<Diameter>(sizeAdjustedDiameter, largeSpecimen);
     std::string const conditionalTrace = formula::render_trace(explainedLarge.trace, { .maxSteps = 10 });
     std::printf("%s", conditionalTrace.c_str());
@@ -151,7 +151,7 @@ int main()
                                                  && smallResult->measurement().value() == formula::Rational { 123, 10 }
                                                  && largeResult->measurement().value() == formula::Rational { 25 };
     bool const escapeHatchCorrect =
-        correction.has_value() && correction->is_value() && correction->measurement().value() == formula::Rational { 2, 5 };
+        correction.has_value() && correction->is_value() && correction->measurement().value() == formula::Rational { 56, 125 };
 
     bool const allChecksPassed = intermediateAndFinalRoundingDiffer && significantDigitsCorrect
                                  && conditionalPickedTheRightBranch && escapeHatchCorrect;

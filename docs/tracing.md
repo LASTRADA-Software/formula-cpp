@@ -316,10 +316,10 @@ std::printf("%s", formula::render_trace(trace, { .maxSteps = 20 }).c_str());
 
 ```
 1. F = 562 kN
-2. 22500 mm2
-3. #1 / #2 = 224800000/9
-4. round(#3, in MPa) = 25 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
-5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]
+2. 19321 mm2
+3. #1 / #2 = 562000000000/19321
+4. round(#3, in MPa) = 291/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+5. #4 = 291/10 MPa [variant Cube (1st of 3), selected by tag]
 ```
 
 (`test/trace_render_tests.cpp`, `"a variant step reads as its operand, with the
@@ -361,7 +361,7 @@ and it is the name as written, unqualified: `Cube`, whichever namespace or
 class declares it, and never with an anonymous namespace in front of it --
 which the four compilers this library is measured on would otherwise spell
 in three different ways, and cl alone in two. A class template specialization keeps its arguments,
-`Sized<150>`, with their qualification stripped the same way. One difference
+`Sized<163>`, with their qualification stripped the same way. One difference
 cannot be evened out: cl prints a `bool`, `char` or enumeration argument as a
 number, `Flag<1>` where the others print `Flag<true>`, and it prints a
 defaulted argument the others leave out, `Opt<Cube, void>` for `Opt<Cube>`.
@@ -383,7 +383,7 @@ and the refusals of `EnumeratorName`:
 template <>
 struct formula::TagName<Cylinder>
 {
-    static constexpr std::string_view of() noexcept { return "cylinder 150 x 300 mm"; }
+    static constexpr std::string_view of() noexcept { return "cylinder 135 x 271 mm"; }
 };
 ```
 
@@ -422,7 +422,7 @@ A constant an overlay fixed with `with_constant` is traced the same way, as
 quantity, but it says the value was not the specimen's:
 
 ```
-1. k_s = 97/100 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.3]
+1. k_s = 863/1000 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.3]
 ```
 
 (`test/overlay_tests.cpp`, `"an overridden constant is traced as fixed by the
@@ -463,7 +463,7 @@ was:
 
 ```
 1. F = 90000 N
-2. 50000 N
+2. 47300 N
 3. require #1 >= #2 [satisfied; the method's own constraint]
 4. acceptance(#3) [the method's own constraints]
 ```

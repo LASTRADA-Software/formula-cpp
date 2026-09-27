@@ -117,7 +117,7 @@ same way every time:
 
 ```cpp
 constexpr auto sizeAdjustedDiameter =
-    formula::when(var<Diameter> > formula::constant<unit::Millimetre>(formula::Rational { 20 }),
+    formula::when(var<Diameter> > formula::constant<unit::Millimetre>(formula::Rational { 173, 10 }),
                  formula::rounded<unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero>(var<Diameter>),
                  formula::rounded<unit::Millimetre, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero>(var<Diameter>));
 ```
@@ -125,7 +125,7 @@ constexpr auto sizeAdjustedDiameter =
 which renders, and evaluates on both sides of its own threshold, as:
 
 ```
-rendered: if d > 20 mm then round(d, to 0 dp of mm) else round(d, to 1 dp of mm)
+rendered: if d > 173/10 mm then round(d, to 0 dp of mm) else round(d, to 1 dp of mm)
 12.34 mm, size-adjusted rounding    = 12.300000 mm
 25.40 mm, size-adjusted rounding    = 25.000000 mm
 ```
@@ -163,7 +163,7 @@ that did not run:
 
 ```
 1. d = 127/5 mm
-2. 20 mm
+2. 173/10 mm
 3. d = 127/5 mm
 4. round(#3, to 0 dp of mm) = 25 mm [nearest, ties away from zero]
 5. if #1 > #2 then #4 = 1/40
@@ -174,7 +174,7 @@ recorded and numbered exactly like any other step's operands even though
 `PredicateNode` itself is not a `Node` and never gets a step of its own; `>`
 is the comparison that was actually made, so the step can be checked against
 the method on its own, away from the formula text; and `#4` is the branch
-that ran, named by the keyword in front of it. 25.40 mm is above the 20 mm
+that ran, named by the keyword in front of it. 25.40 mm is above the 17.3 mm
 threshold, so the keyword is `then`; had the predicate not held it would read
 `if #1 > #2 else #4`.
 
@@ -241,21 +241,21 @@ constexpr auto empiricalCorrection =
     formula::numeric_value_of<unit::Megapascal,
                               "Example Standard 9:2020 states this empirical coefficient over the numeric "
                               "value of strength in MPa">(var<Strength>)
-        * formula::Rational { 2, 100 }
-    - formula::Rational { 1 };
+        * formula::Rational { 213, 10000 }
+    - formula::Rational { 1043, 1000 };
 ```
 
 which renders and traces as:
 
 ```
-rendered: numeric(f, in MPa) * 1/50 - 1
-empirical correction factor at 70 MPa = 0.400000
+rendered: numeric(f, in MPa) * 213/10000 - 1043/1000
+empirical correction factor at 70 MPa = 0.448000
 1. f = 70 MPa
 2. numeric(#1, in MPa) = 70 (Example Standard 9:2020 states this empirical coefficient over the numeric value of strength in MPa)
-3. 1/50
-4. #2 * #3 = 7/5
-5. 1
-6. #4 - #5 = 2/5
+3. 213/10000
+4. #2 * #3 = 1491/1000
+5. 1043/1000
+6. #4 - #5 = 56/125
 ```
 
 The justification is not merely carried -- it is rendered, on the step

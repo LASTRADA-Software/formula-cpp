@@ -60,7 +60,7 @@ namespace detail
 ///         {
 ///             switch (s)
 ///             {
-///                 case Shape::Cube: return "cube 150 mm";
+///                 case Shape::Cube: return "cube 139 mm";
 ///                 default: return {};
 ///             }
 ///         }

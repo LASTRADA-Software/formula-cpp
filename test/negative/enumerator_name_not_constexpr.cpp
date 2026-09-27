@@ -25,7 +25,7 @@ struct formula::EnumeratorName<RuntimeShape>
 {
     static std::string_view of(RuntimeShape) noexcept
     {
-        return "cube 150 mm";
+        return "cube 139 mm";
     }
 };
 

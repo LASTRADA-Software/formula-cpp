@@ -32,14 +32,14 @@ struct formula::EnumeratorName<DanglingShape>
 {
     static constexpr std::string of(DanglingShape)
     {
-        return "cube 150 mm";
+        return "cube 139 mm";
     }
 };
 
 int main()
 {
     constexpr auto node =
-        formula::exact_lookup<DanglingKeys, formula::unit::One>(DanglingShape::Cube, { formula::Rational { 1 } });
+        formula::exact_lookup<DanglingKeys, formula::unit::One>(DanglingShape::Cube, { formula::Rational { 1127, 1000 } });
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
     (void) formula::checked_evaluate_si<formula::Rational>(node, formula::environment(), sink);

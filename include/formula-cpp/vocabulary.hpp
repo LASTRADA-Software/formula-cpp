@@ -107,7 +107,7 @@ class Renames;
 ///    `detail::renames_symbol_must_not_hold_a_bracket_or_a_control_character`.
 ///
 /// The last is refused because of what a trace line is: a numbered line
-/// whose provenance is a bracketed clause at its end, `1. k_s = 97/100 [fixed
+/// whose provenance is a bracketed clause at its end, `1. k_s = 863/1000 [fixed
 /// by jurisdiction overlay]`. A symbol holding `[` or `]` could write such a
 /// clause itself, and one holding a newline could write a whole line, so a
 /// vocabulary could make a trace claim an overlay fixed, derived or replaced

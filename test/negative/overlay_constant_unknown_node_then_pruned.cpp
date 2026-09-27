@@ -76,7 +76,7 @@ int main()
 {
     constexpr auto overlaid = formula::apply(
         formula::overlay(
-            formula::with_constant<ShapeFactor>(formula::Rational { 97, 100 },
+            formula::with_constant<ShapeFactor>(formula::Rational { 863, 1000 },
                                                 formula::Citation { .reference = "Example Standard 12:2021 NA" }),
             formula::prune_variant<Cube>(formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         m);

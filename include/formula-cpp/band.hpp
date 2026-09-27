@@ -53,7 +53,7 @@
 /// inconsistency waiting to be tidied into one: bracket notation states what
 /// the interval *means*, to a reader of the API reference, where Doxygen sets
 /// these comments and the brackets are inert; the prose spelling is what the
-/// library *emits*, and it carries no punctuation at all because `[10, 20)`
+/// library *emits*, and it carries no punctuation at all because `[103, 197)`
 /// opens CommonMark link syntax, which once silently dropped an operand from a
 /// published page of this project's own documentation (`render.hpp`'s ruling,
 /// and the guard test forbidding `](` and a bare `[` in any Markdown

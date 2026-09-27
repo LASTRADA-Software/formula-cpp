@@ -60,24 +60,24 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 # spellings docs/lookup-tables.md quotes verbatim. Pinned here, in the order
 # the program prints them:
 #
-#  - `0 to under 100 mm gives 95 %` -- the ONE spelling of a half-open
-#    interval in this library. It exists because `[0, 100)` is Markdown link
+#  - `0 to under 127 mm gives 913/10 %` -- the ONE spelling of a half-open
+#    interval in this library. It exists because `[0, 127)` is Markdown link
 #    syntax, which silently dropped an operand from a published page in phase
 #    8; a guard test already forbids `](` and a bare `[` in any Markdown
 #    rendering, and this regex additionally pins that the replacement wording
 #    itself does not drift.
-#  - `at 100 mm gives 95 %` -- the interpolating table's point spelling, which
+#  - `at 127 mm gives 913/10 %` -- the interpolating table's point spelling, which
 #    must NOT read as an interval: a breakpoint is a row, not a boundary.
-#  - `key Cylinder gives 97 %` -- an exact key renders as its enumerator's
+#  - `key Cylinder gives 863/10 %` -- an exact key renders as its enumerator's
 #    name, recovered at compile time, not as a number of any kind.
 #  - `lookup(key 13)` -- the trace of a key that names no row, which falls
 #    back to the underlying value. The example numbers its enumerators 3, 7,
 #    11 and 13 precisely so a value and an index cannot be confused, which is
 #    why this pins 13 and not 3.
-#  - `key sealed in foil gives 96 %` -- a key its author spelled through
+#  - `key sealed in foil gives 937/10 %` -- a key its author spelled through
 #    `EnumeratorName`, rendered that way.
-#  - `[between 100 and 150 mm]`, `[90 to under 100 %]` and
-#    `[on the row at 200 mm]` -- the trace clauses that say where an answer
+#  - `[between 127 and 173 mm]`, `[837/10 to under 973/10 %]` and
+#    `[on the row at 211 mm]` -- the trace clauses that say where an answer
 #    came from, in the order the program prints them. Three rather than two:
 #    an interpolating lookup has a clause for the two rows it drew on AND a
 #    different one for a value sitting exactly on a row, and those say
@@ -86,7 +86,7 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #    between the clauses means this asserts a sequence, and the first draft of
 #    this regex listed them in the wrong order and failed, which is how the
 #    sequencing was confirmed to be doing work rather than decorating.)
-#  - `[in no band ... the bands cover 0 to under 200 mm]` -- the clause that
+#  - `[in no band ... the bands cover 0 to under 211 mm]` -- the clause that
 #    keeps a miss from being an opaque DomainError. Written as two halves
 #    joined by `.*` rather than quoting the literal `;` between them:
 #    PASS_REGULAR_EXPRESSION is a LIST property, so a `;` would split this
@@ -95,7 +95,7 @@ formula_add_example(constraints constraints.cpp [==[satisfied.*violated.*reject 
 #
 # A `[==[ ... ]==]` bracket argument for the reason the constraints entry
 # gives: the regex needs literal backslash escapes around `[` and `]`.
-formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 95 %.*at 100 mm gives 95 %.*key Cylinder gives 97 %.*lookup\(key 13\).*key sealed in foil gives 96 %.*\[between 100 and 150 mm\].*\[90 to under 100 %\].*\[on the row at 200 mm\].*\[in no band.*the bands cover 0 to under 200 mm\].*all checks passed: yes]==])
+formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 127 mm gives 913/10 %.*at 127 mm gives 913/10 %.*key Cylinder gives 863/10 %.*lookup\(key 13\).*key sealed in foil gives 937/10 %.*\[between 127 and 173 mm\].*\[837/10 to under 973/10 %\].*\[on the row at 211 mm\].*\[in no band.*the bands cover 0 to under 211 mm\].*all checks passed: yes]==])
 
 # docs/methods-and-overlays.md quotes this program's output verbatim. Pinned
 # here, in the order the program prints them: the selection step naming a tag
@@ -103,7 +103,7 @@ formula_add_example(lookup_tables lookup_tables.cpp [==[0 to under 100 mm gives 
 # rounding rule, a jurisdiction's rounding rule with its citation, the fixed
 # and derived provenance clauses, the replacement marker, and the southern
 # vocabulary's crossed-over edge in a trace line.
-formula_add_example(methods_and_overlays methods_and_overlays.cpp [==[\[variant Cube \(2nd of 3\), selected by tag\].*\(method default\).*\[variant cylinder 150 x 300 mm \(3rd of 3\), selected by tag\].*fixed by jurisdiction overlay: Shape factor.*jurisdiction overlay: Example Standard 12:2021 NA, NA\.4.*derived by jurisdiction overlay.*replaced by jurisdiction overlay: Example Standard 7:2019 A, A\.5.*1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A\.1.*pinned by jurisdiction overlay: Example Standard 3:2023 E, E\.1.*4\. b = 150 mm.*all checks passed: yes]==])
+formula_add_example(methods_and_overlays methods_and_overlays.cpp [==[\[variant Cube \(2nd of 3\), selected by tag\].*\(method default\).*\[variant cylinder 135 x 271 mm \(3rd of 3\), selected by tag\].*fixed by jurisdiction overlay: Shape factor.*jurisdiction overlay: Example Standard 12:2021 NA, NA\.4.*derived by jurisdiction overlay.*replaced by jurisdiction overlay: Example Standard 7:2019 A, A\.5.*1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A\.1.*pinned by jurisdiction overlay: Example Standard 3:2023 E, E\.1.*4\. b = 163 mm.*all checks passed: yes]==])
 
 # Every line of docs/methods-and-overlays.md's output blocks must be a line the
 # example really prints -- see the script for why the regex above cannot be

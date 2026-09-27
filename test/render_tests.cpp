@@ -94,7 +94,7 @@ TEST_CASE("render: negation brackets a sum but not a variable", "[render]")
 
 TEST_CASE("render: a constant renders with its unit", "[render]")
 {
-    CHECK(formula::render(formula::constant<formula::unit::Millimetre>(rat(150))) == "150 mm");
+    CHECK(formula::render(formula::constant<formula::unit::Millimetre>(rat(139))) == "139 mm");
 }
 
 TEST_CASE("render: a dimensionless constant renders bare", "[render]")
@@ -159,8 +159,8 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     constexpr auto citedDiameter = formula::documented(var<Diameter>, { .title = "Diameter, cited" });
 
     CHECK(formula::render<Dialect::Markdown>(var<Diameter>) == "`d`"); // VarNode
-    CHECK(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(150)))
-          == "150 mm");                                                                                 // ConstantNode
+    CHECK(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(139)))
+          == "139 mm");                                                                                 // ConstantNode
     CHECK(formula::render<Dialect::Markdown>(-var<Diameter>) == "-`d`");                                // UnaryNode
     CHECK(formula::render<Dialect::Markdown>(var<WaterVolume> + var<CementVolume>) == "`V_w` + `V_c`"); // BinaryNode
     CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(var<Diameter>)) == "`d`^2");               // PowerNode
@@ -236,25 +236,25 @@ TEST_CASE("render: a negative constant as a factor stays unbracketed", "[render]
 
 TEST_CASE("render: a unit-bearing constant as the base of a power keeps its bracket", "[render]")
 {
-    // A constant with a unit symbol renders as two tokens ("150 mm"), not
-    // one, so without a bracket "150 mm^2" would read as "150 * mm^2" =
-    // 150 mm^2, while the tree means (150 mm)^2 = 22500 mm^2 -- the same
+    // A constant with a unit symbol renders as two tokens ("139 mm"), not
+    // one, so without a bracket "139 mm^2" would read as "139 * mm^2" =
+    // 139 mm^2, while the tree means (139 mm)^2 = 19321 mm^2 -- the same
     // class of defect as a negative constant's leading "-", for the other
     // piece of runtime data the type does not carry.
-    CHECK(formula::render(formula::pow<2>(formula::constant<formula::unit::Millimetre>(rat(150)))) == "(150 mm)^2");
+    CHECK(formula::render(formula::pow<2>(formula::constant<formula::unit::Millimetre>(rat(139)))) == "(139 mm)^2");
 }
 
 TEST_CASE("render: a unit-bearing constant as a term or factor stays unbracketed", "[render]")
 {
-    // Neither an additive nor a multiplicative context can misread "150 mm"
+    // Neither an additive nor a multiplicative context can misread "139 mm"
     // the way a power's base can, so a unit-bearing constant here is left
     // exactly as before. Addition requires both sides to share a dimension,
     // so the addend is also stated in millimetres rather than as a bare
     // dimensionless rational.
-    CHECK(formula::render(formula::constant<formula::unit::Millimetre>(rat(150))
+    CHECK(formula::render(formula::constant<formula::unit::Millimetre>(rat(139))
                           + formula::constant<formula::unit::Millimetre>(rat(3)))
-          == "150 mm + 3 mm");
-    CHECK(formula::render(formula::constant<formula::unit::Millimetre>(rat(150)) * rat(2)) == "150 mm * 2");
+          == "139 mm + 3 mm");
+    CHECK(formula::render(formula::constant<formula::unit::Millimetre>(rat(139)) * rat(2)) == "139 mm * 2");
 }
 
 TEST_CASE("render: a dimensionless constant as the base of a power needs no bracket", "[render]")
@@ -338,13 +338,13 @@ TEST_CASE("render: a significant-digits rounding node inside a power and inside 
 
 TEST_CASE("render: a predicate renders as lhs comparison rhs", "[render][predicate]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
 
-    CHECK(formula::render<Dialect::Plain>(overFifty) == "f > 50 MPa");
-    CHECK(formula::render<Dialect::Markdown>(overFifty) == "`f` > 50 MPa");
-    CHECK(formula::render<Dialect::LaTeX>(overFifty) == "f > 50\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::Plain>(overThreshold) == "f > 473/10 MPa");
+    CHECK(formula::render<Dialect::Markdown>(overThreshold) == "`f` > 473/10 MPa");
+    CHECK(formula::render<Dialect::LaTeX>(overThreshold) == "f > 473/10\\,\\mathrm{MPa}");
     // The default dialect for a Predicate is plain, exactly as for a Node.
-    CHECK(formula::render(overFifty) == "f > 50 MPa");
+    CHECK(formula::render(overThreshold) == "f > 473/10 MPa");
 }
 
 TEST_CASE("render: every comparison spells correctly, and three of them get a LaTeX-specific symbol", "[render][predicate]")
@@ -352,57 +352,57 @@ TEST_CASE("render: every comparison spells correctly, and three of them get a La
     // <, > and == read the same in every dialect; <=, >= and != get the
     // mathematical spelling in LaTeX, the same way BinaryNode's "*" becomes
     // "\cdot" there.
-    constexpr auto threshold = formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto threshold = formula::constant<formula::unit::Megapascal>(rat(473, 10));
 
-    CHECK(formula::render(var<Strength> < threshold) == "f < 50 MPa");
-    CHECK(formula::render(var<Strength> <= threshold) == "f <= 50 MPa");
-    CHECK(formula::render(var<Strength> > threshold) == "f > 50 MPa");
-    CHECK(formula::render(var<Strength> >= threshold) == "f >= 50 MPa");
-    CHECK(formula::render(var<Strength> == threshold) == "f == 50 MPa");
-    CHECK(formula::render(var<Strength> != threshold) == "f != 50 MPa");
+    CHECK(formula::render(var<Strength> < threshold) == "f < 473/10 MPa");
+    CHECK(formula::render(var<Strength> <= threshold) == "f <= 473/10 MPa");
+    CHECK(formula::render(var<Strength> > threshold) == "f > 473/10 MPa");
+    CHECK(formula::render(var<Strength> >= threshold) == "f >= 473/10 MPa");
+    CHECK(formula::render(var<Strength> == threshold) == "f == 473/10 MPa");
+    CHECK(formula::render(var<Strength> != threshold) == "f != 473/10 MPa");
 
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> < threshold) == "f < 50\\,\\mathrm{MPa}");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> <= threshold) == "f \\leq 50\\,\\mathrm{MPa}");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> > threshold) == "f > 50\\,\\mathrm{MPa}");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> >= threshold) == "f \\geq 50\\,\\mathrm{MPa}");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> == threshold) == "f = 50\\,\\mathrm{MPa}");
-    CHECK(formula::render<Dialect::LaTeX>(var<Strength> != threshold) == "f \\neq 50\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> < threshold) == "f < 473/10\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> <= threshold) == "f \\leq 473/10\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> > threshold) == "f > 473/10\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> >= threshold) == "f \\geq 473/10\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> == threshold) == "f = 473/10\\,\\mathrm{MPa}");
+    CHECK(formula::render<Dialect::LaTeX>(var<Strength> != threshold) == "f \\neq 473/10\\,\\mathrm{MPa}");
 
     // Markdown only backtick-quotes the variable; the comparison symbol
     // itself is unaffected, the same way it is unaffected for BinaryNode.
-    CHECK(formula::render<Dialect::Markdown>(var<Strength> < threshold) == "`f` < 50 MPa");
-    CHECK(formula::render<Dialect::Markdown>(var<Strength> <= threshold) == "`f` <= 50 MPa");
-    CHECK(formula::render<Dialect::Markdown>(var<Strength> > threshold) == "`f` > 50 MPa");
-    CHECK(formula::render<Dialect::Markdown>(var<Strength> >= threshold) == "`f` >= 50 MPa");
-    CHECK(formula::render<Dialect::Markdown>(var<Strength> == threshold) == "`f` == 50 MPa");
-    CHECK(formula::render<Dialect::Markdown>(var<Strength> != threshold) == "`f` != 50 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> < threshold) == "`f` < 473/10 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> <= threshold) == "`f` <= 473/10 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> > threshold) == "`f` > 473/10 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> >= threshold) == "`f` >= 473/10 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> == threshold) == "`f` == 473/10 MPa");
+    CHECK(formula::render<Dialect::Markdown>(var<Strength> != threshold) == "`f` != 473/10 MPa");
 }
 
 TEST_CASE("render: a conditional nested as a predicate's operand keeps its bracket", "[render][predicate]")
 {
     // A PredicateNode's own operands are ordinary Node expressions, and a
     // WhenNode is one of those -- so the same hazard a power or a product
-    // operand has applies here too: rendered without a bracket, "if f > 50
-    // MPa then f else f * 2 > 10 MPa" would read as the comparison applying
+    // operand has applies here too: rendered without a bracket, "if f > 473/10
+    // MPa then f else f * 2 > 137/10 MPa" would read as the comparison applying
     // to the else branch alone, not to the whole conditional.
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * rat(2));
-    constexpr auto guarded = chosen > formula::constant<formula::unit::Megapascal>(rat(10));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto chosen = formula::when(overThreshold, var<Strength>, var<Strength> * rat(2));
+    constexpr auto guarded = chosen > formula::constant<formula::unit::Megapascal>(rat(137, 10));
 
-    CHECK(formula::render(guarded) == "(if f > 50 MPa then f else f * 2) > 10 MPa");
+    CHECK(formula::render(guarded) == "(if f > 473/10 MPa then f else f * 2) > 137/10 MPa");
 }
 
 // --------------------------------------------------- phase 8: conditionals
 
 TEST_CASE("render: a conditional renders as if/then/else, and as a LaTeX cases block", "[render][conditional]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));
 
-    CHECK(formula::render<Dialect::Plain>(chosen) == "if f > 50 MPa then f * 2 else f * 4");
-    CHECK(formula::render<Dialect::Markdown>(chosen) == "if `f` > 50 MPa then `f` * 2 else `f` * 4");
+    CHECK(formula::render<Dialect::Plain>(chosen) == "if f > 473/10 MPa then f * 2 else f * 4");
+    CHECK(formula::render<Dialect::Markdown>(chosen) == "if `f` > 473/10 MPa then `f` * 2 else `f` * 4");
     CHECK(formula::render<Dialect::LaTeX>(chosen)
-          == "\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
+          == "\\begin{cases} f \\cdot 2 & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
              "\\end{cases}");
     // RoundingMode is not the only thing this phase deliberately keeps out of
     // the rendered text -- WhenNode has no state to omit, but note that its
@@ -416,13 +416,14 @@ TEST_CASE("render: a conditional inside a power keeps its bracket", "[render][co
     // This is the case phase 6's two rendering bugs generalise to: a node
     // whose *text* binds looser than arithmetic must bracket as the base of
     // a power, exactly as a negative or unit-bearing constant does.
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));
 
-    CHECK(formula::render(formula::pow<2>(chosen)) == "(if f > 50 MPa then f * 2 else f * 4)^2");
-    CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(chosen)) == "(if `f` > 50 MPa then `f` * 2 else `f` * 4)^2");
+    CHECK(formula::render(formula::pow<2>(chosen)) == "(if f > 473/10 MPa then f * 2 else f * 4)^2");
+    CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(chosen))
+          == "(if `f` > 473/10 MPa then `f` * 2 else `f` * 4)^2");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(chosen))
-          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
+          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
              "\\end{cases})^{2}");
 }
 
@@ -430,13 +431,13 @@ TEST_CASE("render: a conditional inside a product keeps its bracket", "[render][
 {
     // The exact scenario named in the task: when(p, a, b) * 2 must not read
     // as when(p, a, b * 2), which is a different formula.
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));
 
-    CHECK(formula::render(chosen * rat(2)) == "(if f > 50 MPa then f * 2 else f * 4) * 2");
-    CHECK(formula::render<Dialect::Markdown>(chosen * rat(2)) == "(if `f` > 50 MPa then `f` * 2 else `f` * 4) * 2");
+    CHECK(formula::render(chosen * rat(2)) == "(if f > 473/10 MPa then f * 2 else f * 4) * 2");
+    CHECK(formula::render<Dialect::Markdown>(chosen * rat(2)) == "(if `f` > 473/10 MPa then `f` * 2 else `f` * 4) * 2");
     CHECK(formula::render<Dialect::LaTeX>(chosen * rat(2))
-          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
+          == "(\\begin{cases} f \\cdot 2 & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
              "\\end{cases}) "
              "\\cdot 2");
 }
@@ -488,22 +489,24 @@ TEST_CASE("render: a numeric-value escape hatch inside a power and inside a prod
 TEST_CASE("render: a rounding node wrapping a conditional keeps the granularity from misattaching to a branch",
           "[render][rounding][conditional]")
 {
-    // Before review round 1's fix, this rendered in Plain as "round(if f > 50
+    // Before review round 1's fix, this rendered in Plain as "round(if f > 473/10
     // MPa then d * 2 else d * 3 to 1 dp of mm)" -- a reader parses "d * 3 to
     // 1 dp of mm" as one phrase, rounding the else branch alone. The
     // granularity is now a comma-separated second argument, so nothing can
     // trail into the operand from a branch with no closing delimiter of its
     // own to misattach.
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto chosenLength = formula::when(overFifty, var<Diameter> * rat(2), var<Diameter> * rat(3));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto chosenLength = formula::when(overThreshold, var<Diameter> * rat(2), var<Diameter> * rat(3));
     constexpr auto rounded =
         formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
             chosenLength);
 
-    CHECK(formula::render<Dialect::Plain>(rounded) == "round(if f > 50 MPa then d * 2 else d * 3, to 1 dp of mm)");
-    CHECK(formula::render<Dialect::Markdown>(rounded) == "round(if `f` > 50 MPa then `d` * 2 else `d` * 3, to 1 dp of mm)");
+    CHECK(formula::render<Dialect::Plain>(rounded) == "round(if f > 473/10 MPa then d * 2 else d * 3, to 1 dp of mm)");
+    CHECK(formula::render<Dialect::Markdown>(rounded)
+          == "round(if `f` > 473/10 MPa then `d` * 2 else `d` * 3, to 1 dp of mm)");
     CHECK(formula::render<Dialect::LaTeX>(rounded)
-          == "\\operatorname{round}_{1\\,\\mathrm{mm}}(\\begin{cases} d \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ "
+          == "\\operatorname{round}_{1\\,\\mathrm{mm}}(\\begin{cases} d \\cdot 2 & \\text{if } f > 473/10\\,\\mathrm{MPa} "
+             "\\\\ "
              "d \\cdot 3 & "
              "\\text{otherwise} \\end{cases})");
 }
@@ -512,17 +515,17 @@ TEST_CASE("render: a numeric-value escape hatch wrapping a conditional keeps the
           "[render][escape][conditional]")
 {
     // The exact shape of must-fix finding 2 in review round 1: before the
-    // fix, this rendered in Plain as "numeric(if f > 50 MPa then f * 2 else f
+    // fix, this rendered in Plain as "numeric(if f > 473/10 MPa then f * 2 else f
     // * 4 in MPa)", reading as if "in MPa" (and therefore the whole escape
     // hatch) applied to the else branch alone.
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));
     constexpr auto numeric = formula::numeric_value_of<formula::unit::Megapascal, "nested-conditional coverage">(chosen);
 
-    CHECK(formula::render<Dialect::Plain>(numeric) == "numeric(if f > 50 MPa then f * 2 else f * 4, in MPa)");
-    CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(if `f` > 50 MPa then `f` * 2 else `f` * 4, in MPa)");
+    CHECK(formula::render<Dialect::Plain>(numeric) == "numeric(if f > 473/10 MPa then f * 2 else f * 4, in MPa)");
+    CHECK(formula::render<Dialect::Markdown>(numeric) == "numeric(if `f` > 473/10 MPa then `f` * 2 else `f` * 4, in MPa)");
     CHECK(formula::render<Dialect::LaTeX>(numeric)
-          == "\\{\\begin{cases} f \\cdot 2 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
+          == "\\{\\begin{cases} f \\cdot 2 & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 4 & \\text{otherwise} "
              "\\end{cases}/\\mathrm{MPa}\\}");
 }
 
@@ -544,11 +547,12 @@ TEST_CASE("render: a predicate comparing two rounded operands needs no extra bra
     constexpr auto rounded =
         formula::rounded<formula::unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Diameter>);
-    constexpr auto guarded = rounded > formula::constant<formula::unit::Millimetre>(rat(5));
+    constexpr auto guarded = rounded > formula::constant<formula::unit::Millimetre>(rat(537, 100));
 
-    CHECK(formula::render<Dialect::Plain>(guarded) == "round(d, to 1 dp of mm) > 5 mm");
-    CHECK(formula::render<Dialect::Markdown>(guarded) == "round(`d`, to 1 dp of mm) > 5 mm");
-    CHECK(formula::render<Dialect::LaTeX>(guarded) == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d) > 5\\,\\mathrm{mm}");
+    CHECK(formula::render<Dialect::Plain>(guarded) == "round(d, to 1 dp of mm) > 537/100 mm");
+    CHECK(formula::render<Dialect::Markdown>(guarded) == "round(`d`, to 1 dp of mm) > 537/100 mm");
+    CHECK(formula::render<Dialect::LaTeX>(guarded)
+          == "\\operatorname{round}_{1\\,\\mathrm{mm}}(d) > 537/100\\,\\mathrm{mm}");
 }
 
 TEST_CASE("render: a conditional nested inside another conditional's branches is unambiguous without brackets",
@@ -567,38 +571,41 @@ TEST_CASE("render: a conditional nested inside another conditional's branches is
     // conditional in the *then* position stops; the *else* position needs no
     // such help, because "if a then x else if b then y else z" is the
     // ordinary else-if chain and already reads fine unbracketed.
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto inner = formula::when(overFifty, var<Strength>, var<Strength> * rat(3));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto inner = formula::when(overThreshold, var<Strength>, var<Strength> * rat(3));
 
-    constexpr auto nestedInThen = formula::when(overFifty, inner, var<Strength> * rat(5));
-    constexpr auto nestedInElse = formula::when(overFifty, var<Strength> * rat(5), inner);
-    constexpr auto nestedInBoth = formula::when(overFifty, inner, inner);
+    constexpr auto nestedInThen = formula::when(overThreshold, inner, var<Strength> * rat(5));
+    constexpr auto nestedInElse = formula::when(overThreshold, var<Strength> * rat(5), inner);
+    constexpr auto nestedInBoth = formula::when(overThreshold, inner, inner);
 
     CHECK(formula::render<Dialect::Plain>(nestedInThen)
-          == "if f > 50 MPa then (if f > 50 MPa then f else f * 3) else f * 5");
-    CHECK(formula::render<Dialect::Plain>(nestedInElse) == "if f > 50 MPa then f * 5 else if f > 50 MPa then f else f * 3");
+          == "if f > 473/10 MPa then (if f > 473/10 MPa then f else f * 3) else f * 5");
+    CHECK(formula::render<Dialect::Plain>(nestedInElse)
+          == "if f > 473/10 MPa then f * 5 else if f > 473/10 MPa then f else f * 3");
     CHECK(formula::render<Dialect::Plain>(nestedInBoth)
-          == "if f > 50 MPa then (if f > 50 MPa then f else f * 3) else if f > 50 MPa then f else f * 3");
+          == "if f > 473/10 MPa then (if f > 473/10 MPa then f else f * 3) else if f > 473/10 MPa then f else f * 3");
 
     CHECK(formula::render<Dialect::Markdown>(nestedInThen)
-          == "if `f` > 50 MPa then (if `f` > 50 MPa then `f` else `f` * 3) else `f` * 5");
+          == "if `f` > 473/10 MPa then (if `f` > 473/10 MPa then `f` else `f` * 3) else `f` * 5");
     CHECK(formula::render<Dialect::Markdown>(nestedInElse)
-          == "if `f` > 50 MPa then `f` * 5 else if `f` > 50 MPa then `f` else `f` * 3");
+          == "if `f` > 473/10 MPa then `f` * 5 else if `f` > 473/10 MPa then `f` else `f` * 3");
     CHECK(formula::render<Dialect::Markdown>(nestedInBoth)
-          == "if `f` > 50 MPa then (if `f` > 50 MPa then `f` else `f` * 3) else if `f` > 50 MPa then `f` else `f` * 3");
+          == "if `f` > 473/10 MPa then (if `f` > 473/10 MPa then `f` else `f` * 3) else if `f` > 473/10 MPa then `f` else "
+             "`f` * 3");
 
     CHECK(formula::render<Dialect::LaTeX>(nestedInThen)
-          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 3 & \\text{otherwise} "
+          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 3 & \\text{otherwise} "
              "\\end{cases} & "
-             "\\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 5 & \\text{otherwise} \\end{cases}");
+             "\\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 5 & \\text{otherwise} \\end{cases}");
     CHECK(formula::render<Dialect::LaTeX>(nestedInElse)
-          == "\\begin{cases} f \\cdot 5 & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ \\begin{cases} f & \\text{if } f > "
-             "50\\,\\mathrm{MPa} \\\\ f "
+          == "\\begin{cases} f \\cdot 5 & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ \\begin{cases} f & \\text{if } f > "
+             "473/10\\,\\mathrm{MPa} \\\\ f "
              "\\cdot 3 & \\text{otherwise} \\end{cases} & \\text{otherwise} \\end{cases}");
     CHECK(formula::render<Dialect::LaTeX>(nestedInBoth)
-          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 3 & \\text{otherwise} "
+          == "\\begin{cases} \\begin{cases} f & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f \\cdot 3 & \\text{otherwise} "
              "\\end{cases} & "
-             "\\text{if } f > 50\\,\\mathrm{MPa} \\\\ \\begin{cases} f & \\text{if } f > 50\\,\\mathrm{MPa} \\\\ f \\cdot 3 "
+             "\\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ \\begin{cases} f & \\text{if } f > 473/10\\,\\mathrm{MPa} \\\\ f "
+             "\\cdot 3 "
              "& \\text{otherwise} "
              "\\end{cases} & \\text{otherwise} \\end{cases}");
 }
@@ -652,13 +659,13 @@ TEST_CASE("render: a constraint's predicate brackets a nested conditional exactl
     // conditional nested as a predicate's operand keeps its bracket" above)
     // -- this is not re-derived, only confirmed still true through the new
     // entry point.
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
-    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * rat(2));
-    constexpr auto guarded = chosen > formula::constant<formula::unit::Megapascal>(rat(10));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
+    constexpr auto chosen = formula::when(overThreshold, var<Strength>, var<Strength> * rat(2));
+    constexpr auto guarded = chosen > formula::constant<formula::unit::Megapascal>(rat(137, 10));
     constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
     constexpr auto rule = formula::constraint(guarded, rejectSpecimen);
 
-    CHECK(formula::render(rule) == "require (if f > 50 MPa then f else f * 2) > 10 MPa");
+    CHECK(formula::render(rule) == "require (if f > 473/10 MPa then f else f * 2) > 137/10 MPa");
 }
 
 // ------------------------------------------------------- phase 10: lookups
@@ -679,28 +686,29 @@ namespace unit = formula::unit;
 /// mutation survives whenever *any* axis of a fixture is degenerate and not
 /// only the one that caught the last defect:
 ///
-///  - the widths are 1/2, 13/2 and 43/2 -- unequal, so a renderer computing a
-///    band's extent from the first pair rather than per band is visible;
+///  - the widths are 33/50, 174/25 and 2097/100 -- unequal, so a renderer
+///    computing a band's extent from the first pair rather than per band is
+///    visible;
 ///  - no bound equals its own row's index, so a bound cannot be confused with
 ///    an index;
 ///  - no bound repeats across rows other than where two bands genuinely share
-///    a boundary, and the shared boundaries (5/2 and 9) differ from each other,
+///    a boundary, and the shared boundaries (277/100 and 973/100) differ from each other,
 ///    so "always print the first band's bounds" is visible on every row;
-///  - the corrections are 19/20, 7/5 and 21/20: three distinct values, none of
+///  - the corrections are 863/1000, 1381/1000 and 1043/1000: three distinct values, none of
 ///    them equal to any index, any bound or any other correction;
-///  - **not every bound has denominator 1.** A first revision of this fixture
+///  - **no bound has denominator 1.** A first revision of this fixture
 ///    declared every bound as a whole number, and with that fixture
 ///    `declared_number_text` could be cut down to `return
 ///    std::to_string(numerator);` -- throwing the denominator away outright --
-///    and the entire suite still passed. A published table states bounds like
-///    2.5 mm as readily as 5 mm, so the fixture now does too.
-///  - and one bound is declared **unreduced** (`10/4`), because reducing
+///    and the entire suite still passed. A table states a bound like 2.77 mm
+///    as readily as a whole number, so the fixture now does too.
+///  - and one bound is declared **unreduced** (`554/200`), because reducing
 ///    through `Rational::make` is a decision this renderer makes and a bound
 ///    already in lowest terms cannot tell whether it was made.
 inline constexpr BandTable<3> SizeBands {
-    band(2, 1, 10, 4), // 2 to under 5/2 mm -- 10/4 declared, so reduction shows
-    band(5, 2, 9, 1),  // 5/2 to under 9 mm
-    band(9, 1, 61, 2), // 9 to under 61/2 mm
+    band(211, 100, 554, 200), // 211/100 to under 277/100 mm -- 554/200 declared, so reduction shows
+    band(277, 100, 973, 100), // 277/100 to under 973/100 mm
+    band(973, 100, 307, 10),  // 973/100 to under 307/10 mm
 };
 
 /// The underlying type is fixed and the enumerators are numbered by hand, both
@@ -734,15 +742,15 @@ inline constexpr KeyTable<MouldShape, 3> ShapeKeys {
     MouldShape::Prism,    // key 5
 };
 
-/// Three breakpoints, spaced unequally (11/2 then 23/2), with no key equal to
+/// Three breakpoints, spaced unequally (249/50 then 1193/100), with no key equal to
 /// its own index, with the middle key **not** a whole number and declared
 /// **unreduced** -- every reason `SizeBands` gives, and the last two for the
 /// same measured reason: a curve whose every key was an integer could not tell
 /// a renderer that keeps the denominator from one that discards it.
 inline constexpr BreakpointTable<3> CurvePoints {
-    breakpoint(2),
-    breakpoint(30, 4), // 15/2 -- declared unreduced, and in the middle
-    breakpoint(19),
+    breakpoint(239, 100),
+    breakpoint(1474, 200), // 737/100 -- declared unreduced, and in the middle
+    breakpoint(193, 10),
 };
 
 inline constexpr BandTable<0> NoBands {};
@@ -751,16 +759,16 @@ inline constexpr BreakpointTable<0> NoPoints {};
 
 /// The other degenerate shape: a table whose only row is simultaneously its
 /// first and its last, and which needs no separator between rows at all.
-inline constexpr BandTable<1> OneBand { band(2, 1, 10, 4) };
+inline constexpr BandTable<1> OneBand { band(211, 100, 554, 200) };
 inline constexpr KeyTable<MouldShape, 1> OneShape { MouldShape::Cylinder };
-inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) };
+inline constexpr BreakpointTable<1> OnePoint { breakpoint(1474, 200) };
 
 /// Key unit `mm` (a symbol), result unit `One` (no symbol) -- so this fixture
 /// exercises the unit-bearing side of a row and the bare-number side at once.
 [[nodiscard]] constexpr auto bandedLookup()
 {
     return banded_lookup<unit::Millimetre, SizeBands, unit::One>(var<Diameter>,
-                                                                 { rat(19, 20), rat(7, 5), rat(21, 20) });
+                                                                 { rat(863, 1000), rat(1381, 1000), rat(1043, 1000) });
 }
 
 /// No key unit at all (an exact lookup has none) and a result unit that does
@@ -771,8 +779,8 @@ inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) };
 {
     // The middle correction is a whole number, so that `number_text`'s
     // whole-number branch is reached through a lookup and not only through a
-    // constant -- and 4 is not the middle row's index, its key, or any bound.
-    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4), rat(13, 10) });
+    // constant -- and 43 is not the middle row's index, its key, or any bound.
+    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(2791, 1000), rat(43), rat(1373, 1000) });
 }
 
 /// Both units bear a symbol here, which neither fixture above does.
@@ -782,7 +790,7 @@ inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) };
     // subtract -- so a renderer that took a magnitude anywhere is visible, and
     // `number_text`'s sign handling is reached through a lookup.
     return interpolating_lookup<unit::Millimetre, CurvePoints, unit::Megapascal>(
-        var<Diameter>, { rat(9, 10), rat(-23, 20), rat(6, 5) });
+        var<Diameter>, { rat(873, 1000), rat(-1139, 1000), rat(1217, 1000) });
 }
 
 /// The fields of a rendered call's argument list, split on @p separator.
@@ -838,39 +846,42 @@ TEST_CASE("render: all three lookup kinds are Nodes, so they need no entry point
 TEST_CASE("render: a banded lookup renders its operand and one field per band", "[render][lookup]")
 {
     CHECK(formula::render<Dialect::Plain>(bandedLookup())
-          == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
+          == "lookup(d, 211/100 to under 277/100 mm gives 863/1000, 277/100 to under 973/100 mm gives 1381/1000, 973/100 to "
+             "under 307/10 mm gives 1043/1000)");
     // Markdown differs from plain in exactly one thing -- the backticks the
     // variable already had. The bands are words and numbers, so nothing in
     // them is Markdown's business.
     CHECK(formula::render<Dialect::Markdown>(bandedLookup())
-          == "lookup(`d`, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
+          == "lookup(`d`, 211/100 to under 277/100 mm gives 863/1000, 277/100 to under 973/100 mm gives 1381/1000, 973/100 "
+             "to under 307/10 mm gives 1043/1000)");
     CHECK(formula::render<Dialect::LaTeX>(bandedLookup())
-          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{2\\ to\\ under\\ 5/2\\ mm\\ gives\\ 19/20},\\allowbreak "
-             "\\mathrm{5/2\\ to\\ under\\ 9\\ mm\\ gives\\ 7/5},\\allowbreak \\mathrm{9\\ to\\ under\\ 61/2\\ mm\\ gives\\ "
-             "21/20})");
+          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{211/100\\ to\\ under\\ 277/100\\ mm\\ gives\\ 863/1000},"
+             "\\allowbreak \\mathrm{277/100\\ to\\ under\\ 973/100\\ mm\\ gives\\ 1381/1000},\\allowbreak "
+             "\\mathrm{973/100\\ to\\ under\\ 307/10\\ mm\\ gives\\ 1043/1000})");
     // The default dialect is plain, exactly as for every other node kind.
     CHECK(formula::render(bandedLookup())
-          == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
+          == "lookup(d, 211/100 to under 277/100 mm gives 863/1000, 277/100 to under 973/100 mm gives 1381/1000, 973/100 to "
+             "under 307/10 mm gives 1043/1000)");
 }
 
 TEST_CASE("render: an exact lookup renders the key it selects with and one field per row", "[render][lookup]")
 {
     CHECK(formula::render<Dialect::Plain>(shapeLookup())
-          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+          == "lookup(key Cylinder, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 MPa)");
     // Nothing here is a variable, so Markdown has nothing to backtick and the
     // two dialects coincide. That is a fact about this node kind, not an
     // accident: an exact lookup has no operand.
     CHECK(formula::render<Dialect::Markdown>(shapeLookup())
-          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+          == "lookup(key Cylinder, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 MPa)");
     // `key Cylinder` is words, not mathematics, so LaTeX sets the subject
     // upright as the rows are -- unlike the other two kinds, whose subject is
     // a real sub-expression.
     CHECK(formula::render<Dialect::LaTeX>(shapeLookup())
-          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak \\mathrm{key\\ Cube\\ gives\\ 31/25\\ MPa},"
-             "\\allowbreak \\mathrm{key\\ Cylinder\\ gives\\ 4\\ MPa},\\allowbreak \\mathrm{key\\ Prism\\ gives\\ 13/10\\ "
-             "MPa})");
+          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak \\mathrm{key\\ Cube\\ gives\\ 2791/1000\\ MPa},"
+             "\\allowbreak \\mathrm{key\\ Cylinder\\ gives\\ 43\\ MPa},\\allowbreak \\mathrm{key\\ Prism\\ gives\\ "
+             "1373/1000\\ MPa})");
     CHECK(formula::render(shapeLookup())
-          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+          == "lookup(key Cylinder, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 MPa)");
 }
 
 TEST_CASE("render: an exact lookup's subject is the key it holds, not a row of its table", "[render][lookup]")
@@ -880,54 +891,60 @@ TEST_CASE("render: an exact lookup's subject is the key it holds, not a row of i
     // fixture's own default selects, so that mistake would pass the test above
     // -- is caught here and nowhere else.
     CHECK(formula::render(shapeLookup(MouldShape::Cube))
-          == "lookup(key Cube, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+          == "lookup(key Cube, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 MPa)");
     CHECK(formula::render(shapeLookup(MouldShape::Prism))
-          == "lookup(key Prism, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+          == "lookup(key Prism, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 MPa)");
 }
 
 TEST_CASE("render: an interpolating lookup renders its operand and one field per breakpoint", "[render][lookup]")
 {
     CHECK(formula::render<Dialect::Plain>(curveLookup())
-          == "interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "interpolate(d, at 239/100 mm gives 873/1000 MPa, at 737/100 mm gives -1139/1000 MPa, at 193/10 mm gives "
+             "1217/1000 MPa)");
     CHECK(formula::render<Dialect::Markdown>(curveLookup())
-          == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "interpolate(`d`, at 239/100 mm gives 873/1000 MPa, at 737/100 mm gives -1139/1000 MPa, at 193/10 mm gives "
+             "1217/1000 MPa)");
     CHECK(formula::render<Dialect::LaTeX>(curveLookup())
-          == "\\operatorname{interpolate}(d,\\allowbreak \\mathrm{at\\ 2\\ mm\\ gives\\ 9/10\\ MPa},\\allowbreak "
-             "\\mathrm{at\\ 15/2\\ mm\\ gives\\ -23/20\\ MPa},\\allowbreak \\mathrm{at\\ 19\\ mm\\ gives\\ 6/5\\ MPa})");
+          == "\\operatorname{interpolate}(d,\\allowbreak \\mathrm{at\\ 239/100\\ mm\\ gives\\ 873/1000\\ MPa},"
+             "\\allowbreak \\mathrm{at\\ 737/100\\ mm\\ gives\\ -1139/1000\\ MPa},\\allowbreak "
+             "\\mathrm{at\\ 193/10\\ mm\\ gives\\ 1217/1000\\ MPa})");
     CHECK(formula::render(curveLookup())
-          == "interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "interpolate(d, at 239/100 mm gives 873/1000 MPa, at 737/100 mm gives -1139/1000 MPa, at 193/10 mm gives "
+             "1217/1000 MPa)");
 }
 
 TEST_CASE("render: a band's excluded top and a breakpoint's included one are spelled differently", "[render][lookup]")
 {
-    // `lookup.hpp` pins the two *behaviours* against each other at 30 mm: a
-    // band's high bound is exclusive, so 30 falls off the top of a table
-    // ending there, while a breakpoint IS a row, so 30 hits it exactly. This
-    // pins the two *spellings* against each other on the same number, so that
+    // `lookup.hpp` pins the two *behaviours* against each other on one shared
+    // number: a band's high bound is exclusive, so that number falls off the
+    // top of a table ending there, while a breakpoint IS a row, so it hits it
+    // exactly. This pins the two *spellings* against each other on one shared
+    // number -- 293/10 mm here -- so that
     // harmonising them in either direction fails here rather than in a
     // consumer reading a published page.
     //
     // Both tables are built over the same bounds so that nothing but the
     // spelling can differ.
-    static constexpr BandTable<2> topBands { band(9, 1, 20, 1), band(20, 1, 30, 1) };
-    static constexpr BreakpointTable<2> topPoints { breakpoint(20), breakpoint(30) };
+    static constexpr BandTable<2> topBands { band(973, 100, 209, 10), band(209, 10, 293, 10) };
+    static constexpr BreakpointTable<2> topPoints { breakpoint(209, 10), breakpoint(293, 10) };
 
     std::string const banded =
-        formula::render(banded_lookup<unit::Millimetre, topBands, unit::One>(var<Diameter>, { rat(1), rat(2) }));
-    std::string const curve = formula::render(
-        interpolating_lookup<unit::Millimetre, topPoints, unit::One>(var<Diameter>, { rat(1), rat(2) }));
+        formula::render(banded_lookup<unit::Millimetre, topBands, unit::One>(var<Diameter>,
+                                                                             { rat(1127, 1000), rat(863, 1000) }));
+    std::string const curve = formula::render(interpolating_lookup<unit::Millimetre, topPoints, unit::One>(
+        var<Diameter>, { rat(1127, 1000), rat(863, 1000) }));
 
-    // The band says, in words, that 30 is not in it.
-    CHECK(banded.find("20 to under 30 mm") != std::string::npos);
-    // The breakpoint says the table states a value AT 30 -- a point, not an
-    // interval, so there is nothing for it to exclude.
-    CHECK(curve.find("at 30 mm") != std::string::npos);
+    // The band says, in words, that 293/10 is not in it.
+    CHECK(banded.find("209/10 to under 293/10 mm") != std::string::npos);
+    // The breakpoint says the table states a value AT 293/10 -- a point, not
+    // an interval, so there is nothing for it to exclude.
+    CHECK(curve.find("at 293/10 mm") != std::string::npos);
 
     // And neither borrows the other's spelling. A curve that excluded anything
     // would be claiming its own last row is unreachable; a band rendered as a
     // point would drop the exclusion the whole table is built on.
     CHECK(curve.find("under") == std::string::npos);
-    CHECK(banded.find("at 30 mm") == std::string::npos);
+    CHECK(banded.find("at 293/10 mm") == std::string::npos);
 }
 
 TEST_CASE("render: a declared bound keeps its denominator and is reduced, in every kind", "[render][lookup]")
@@ -938,25 +955,25 @@ TEST_CASE("render: a declared bound keeps its denominator and is reduced, in eve
     // the denominator outright -- and the whole suite still passed. The code
     // was right; the fixture was degenerate on an axis nobody had looked at.
     //
-    // So: a bound that is not whole (5/2), one declared unreduced (10/4, which
-    // must come back as 5/2 and not as 10/4), and the same on the breakpoint
-    // side (30/4 -> 15/2). Asserted here as its own case as well as inside the
+    // So: a bound that is not whole (277/100), one declared unreduced (554/200,
+    // which must come back as 277/100 and not as 554/200), and the same on the
+    // breakpoint side (1474/200 -> 737/100). Asserted here as its own case as well as inside the
     // full-text cases above, because a reader of a failure should be told
     // which property broke.
     std::string const banded = formula::render(bandedLookup());
-    CHECK(banded.find("2 to under 5/2 mm") != std::string::npos);
-    CHECK(banded.find("5/2 to under 9 mm") != std::string::npos);
-    CHECK(banded.find("10/4") == std::string::npos);
+    CHECK(banded.find("211/100 to under 277/100 mm") != std::string::npos);
+    CHECK(banded.find("277/100 to under 973/100 mm") != std::string::npos);
+    CHECK(banded.find("554/200") == std::string::npos);
 
     std::string const curve = formula::render(curveLookup());
-    CHECK(curve.find("at 15/2 mm") != std::string::npos);
-    CHECK(curve.find("30/4") == std::string::npos);
+    CHECK(curve.find("at 737/100 mm") != std::string::npos);
+    CHECK(curve.find("1474/200") == std::string::npos);
 
     // And the two branches of `number_text` a lookup can reach: a whole-number
     // correction and a negative one, neither of which the first revision of
     // these fixtures had either.
-    CHECK(formula::render(shapeLookup()).find("gives 4 MPa") != std::string::npos);
-    CHECK(curve.find("gives -23/20 MPa") != std::string::npos);
+    CHECK(formula::render(shapeLookup()).find("gives 43 MPa") != std::string::npos);
+    CHECK(curve.find("gives -1139/1000 MPa") != std::string::npos);
 }
 
 TEST_CASE("render: every lookup kind nests inside a product and a power without a bracket of its own",
@@ -967,29 +984,36 @@ TEST_CASE("render: every lookup kind nests inside a product and a power without 
     // answer and no override is needed, exactly as for `round`. What that
     // claim is worth is what these cases measure.
     CHECK(formula::render(var<Strength> * bandedLookup())
-          == "f * lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)");
+          == "f * lookup(d, 211/100 to under 277/100 mm gives 863/1000, 277/100 to under 973/100 mm gives 1381/1000, "
+             "973/100 to under 307/10 mm gives 1043/1000)");
     CHECK(formula::render(formula::pow<2>(bandedLookup()))
-          == "lookup(d, 2 to under 5/2 mm gives 19/20, 5/2 to under 9 mm gives 7/5, 9 to under 61/2 mm gives 21/20)^2");
+          == "lookup(d, 211/100 to under 277/100 mm gives 863/1000, 277/100 to under 973/100 mm gives 1381/1000, 973/100 to "
+             "under 307/10 mm gives 1043/1000)^2");
 
     CHECK(formula::render(var<Strength> * shapeLookup())
-          == "f * lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+          == "f * lookup(key Cylinder, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 "
+             "MPa)");
     CHECK(formula::render(formula::pow<2>(shapeLookup()))
-          == "lookup(key Cylinder, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)^2");
+          == "lookup(key Cylinder, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 "
+             "MPa)^2");
 
     CHECK(formula::render(var<Strength> * curveLookup())
-          == "f * interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)");
+          == "f * interpolate(d, at 239/100 mm gives 873/1000 MPa, at 737/100 mm gives -1139/1000 MPa, at 193/10 mm gives "
+             "1217/1000 MPa)");
     CHECK(formula::render(formula::pow<2>(curveLookup()))
-          == "interpolate(d, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)^2");
+          == "interpolate(d, at 239/100 mm gives 873/1000 MPa, at 737/100 mm gives -1139/1000 MPa, at 193/10 mm gives "
+             "1217/1000 MPa)^2");
 
     // Markdown and LaTeX too, since the bracketing decision is dialect-wide
     // and a power is the one context where a two-token atom went wrong before
     // (see `precedence_of(ConstantNode)`).
     CHECK(formula::render<Dialect::Markdown>(formula::pow<2>(curveLookup()))
-          == "interpolate(`d`, at 2 mm gives 9/10 MPa, at 15/2 mm gives -23/20 MPa, at 19 mm gives 6/5 MPa)^2");
+          == "interpolate(`d`, at 239/100 mm gives 873/1000 MPa, at 737/100 mm gives -1139/1000 MPa, at 193/10 mm gives "
+             "1217/1000 MPa)^2");
     CHECK(formula::render<Dialect::LaTeX>(formula::pow<2>(shapeLookup()))
-          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak \\mathrm{key\\ Cube\\ gives\\ 31/25\\ MPa},"
-             "\\allowbreak \\mathrm{key\\ Cylinder\\ gives\\ 4\\ MPa},\\allowbreak \\mathrm{key\\ Prism\\ gives\\ 13/10\\ "
-             "MPa})^{2}");
+          == "\\operatorname{lookup}(\\mathrm{key\\ Cylinder},\\allowbreak \\mathrm{key\\ Cube\\ gives\\ 2791/1000\\ MPa},"
+             "\\allowbreak \\mathrm{key\\ Cylinder\\ gives\\ 43\\ MPa},\\allowbreak \\mathrm{key\\ Prism\\ gives\\ "
+             "1373/1000\\ MPa})^{2}");
 }
 
 TEST_CASE("render: a table with no rows says so, and a table with one row renders it", "[render][lookup]")
@@ -1012,12 +1036,12 @@ TEST_CASE("render: a table with no rows says so, and a table with one row render
     // the first and the last, and there is no separator between rows for a
     // renderer to get wrong -- so a table of one is the case that tells a
     // "say so when empty" branch from a "say so when fewer than two" one.
-    CHECK(formula::render(banded_lookup<unit::Millimetre, OneBand, unit::One>(var<Diameter>, { rat(19, 20) }))
-          == "lookup(d, 2 to under 5/2 mm gives 19/20)");
-    CHECK(formula::render(exact_lookup<OneShape, unit::One>(MouldShape::Cylinder, { rat(19, 20) }))
-          == "lookup(key Cylinder, key Cylinder gives 19/20)");
-    CHECK(formula::render(interpolating_lookup<unit::Millimetre, OnePoint, unit::One>(var<Diameter>, { rat(19, 20) }))
-          == "interpolate(d, at 15/2 mm gives 19/20)");
+    CHECK(formula::render(banded_lookup<unit::Millimetre, OneBand, unit::One>(var<Diameter>, { rat(863, 1000) }))
+          == "lookup(d, 211/100 to under 277/100 mm gives 863/1000)");
+    CHECK(formula::render(exact_lookup<OneShape, unit::One>(MouldShape::Cylinder, { rat(863, 1000) }))
+          == "lookup(key Cylinder, key Cylinder gives 863/1000)");
+    CHECK(formula::render(interpolating_lookup<unit::Millimetre, OnePoint, unit::One>(var<Diameter>, { rat(863, 1000) }))
+          == "interpolate(d, at 737/100 mm gives 863/1000)");
 }
 
 TEST_CASE("render: a lookup states the expression, never that the expression found something", "[render][lookup]")
@@ -1034,7 +1058,7 @@ TEST_CASE("render: a lookup states the expression, never that the expression fou
     // enumeration nor any row's index. Kills a renderer that names the key
     // from anywhere but the table, and one that falls back to an index.
     CHECK(formula::render(shapeLookup(MouldShape::Beam))
-          == "lookup(key 11, key Cube gives 31/25 MPa, key Cylinder gives 4 MPa, key Prism gives 13/10 MPa)");
+          == "lookup(key 11, key Cube gives 2791/1000 MPa, key Cylinder gives 43 MPa, key Prism gives 1373/1000 MPa)");
 }
 
 TEST_CASE("render: a row declared under a value that names no enumerator shows that value", "[render][lookup]")
@@ -1046,8 +1070,9 @@ TEST_CASE("render: a row declared under a value that names no enumerator shows t
     // (`key `) or a fragment of the compiler's cast spelling (`key 9` would
     // survive that, `key 0x9` or `key true` would not).
     static constexpr KeyTable<MouldShape, 2> unnamedRow { MouldShape::Cube, static_cast<MouldShape>(9) };
-    CHECK(formula::render(exact_lookup<unnamedRow, unit::One>(static_cast<MouldShape>(9), { rat(1), rat(2) }))
-          == "lookup(key 9, key Cube gives 1, key 9 gives 2)");
+    CHECK(formula::render(
+              exact_lookup<unnamedRow, unit::One>(static_cast<MouldShape>(9), { rat(1127, 1000), rat(863, 1000) }))
+          == "lookup(key 9, key Cube gives 1127/1000, key 9 gives 863/1000)");
 }
 
 namespace
@@ -1067,7 +1092,7 @@ inline constexpr KeyTable<MouldFinish, 2> FinishKeys { MouldFinish::Polished, Mo
 
 [[nodiscard]] constexpr auto finishLookup(MouldFinish finish)
 {
-    return exact_lookup<FinishKeys, unit::One>(finish, { rat(1), rat(2) });
+    return exact_lookup<FinishKeys, unit::One>(finish, { rat(1127, 1000), rat(863, 1000) });
 }
 } // namespace
 
@@ -1087,7 +1112,8 @@ TEST_CASE("render: an exact lookup shows the author's own spelling of a key when
     // renderer that ignores `EnumeratorName`, and one that applies it to the
     // subject but not to the rows or the other way round.
     CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Polished))
-          == "lookup(key polished *A* 100% & oiled, key polished *A* 100% & oiled gives 1, key Hollow_Core gives 2)");
+          == "lookup(key polished *A* 100% & oiled, key polished *A* 100% & oiled gives 1127/1000, key Hollow_Core gives "
+             "863/1000)");
 }
 
 TEST_CASE("render: a key's name is shown literally in every dialect, whatever characters it holds",
@@ -1108,13 +1134,14 @@ TEST_CASE("render: a key's name is shown literally in every dialect, whatever ch
     // both; the Markdown string does the same through python-markdown and
     // pandoc's CommonMark and GFM readers.
     CHECK(formula::render<Dialect::Markdown>(finishLookup(MouldFinish::Hollow_Core))
-          == "lookup(key Hollow\\_Core, key polished \\*A\\* 100% &amp; oiled gives 1, key Hollow\\_Core gives 2)");
+          == "lookup(key Hollow\\_Core, key polished \\*A\\* 100% &amp; oiled gives 1127/1000, key Hollow\\_Core gives "
+             "863/1000)");
     CHECK(formula::render<Dialect::LaTeX>(finishLookup(MouldFinish::Hollow_Core))
           == "\\operatorname{lookup}(\\mathrm{key\\ Hollow\\_Core},\\allowbreak \\mathrm{key\\ polished\\ *A*\\ 100\\%\\ "
-             "\\&\\ oiled\\ gives\\ 1},\\allowbreak \\mathrm{key\\ Hollow\\_Core\\ gives\\ 2})");
+             "\\&\\ oiled\\ gives\\ 1127/1000},\\allowbreak \\mathrm{key\\ Hollow\\_Core\\ gives\\ 863/1000})");
     // Plain is for a terminal, where nothing is markup, so nothing is escaped.
     CHECK(formula::render<Dialect::Plain>(finishLookup(MouldFinish::Hollow_Core))
-          == "lookup(key Hollow_Core, key polished *A* 100% & oiled gives 1, key Hollow_Core gives 2)");
+          == "lookup(key Hollow_Core, key polished *A* 100% & oiled gives 1127/1000, key Hollow_Core gives 863/1000)");
 }
 
 namespace
@@ -1147,21 +1174,22 @@ TEST_CASE("render: every character either dialect escapes in a key's name is esc
     // `case` from either switch fails this test, and it is the only test that
     // fails for most of them. The escaped forms were each measured -- see
     // those functions' comments.
-    constexpr auto node = exact_lookup<MarkingKeys, unit::One>(MouldMarking::Stamped, { rat(1) });
+    constexpr auto node = exact_lookup<MarkingKeys, unit::One>(MouldMarking::Stamped, { rat(1127, 1000) });
 
     // Markdown has no ligatures to break: the pairs pass through unchanged.
     std::string const markdown = "a\\\\b\\`c\\*d\\_efg&lt;h&gt;i&amp;j&#124;k&#126;l&#36;m^n{o}p#q%r\"s--t---u''v,,w";
-    CHECK(formula::render<Dialect::Markdown>(node) == "lookup(key " + markdown + ", key " + markdown + " gives 1)");
+    CHECK(formula::render<Dialect::Markdown>(node) == "lookup(key " + markdown + ", key " + markdown + " gives 1127/1000)");
 
     // Math mode has no ligatures, so the pairs need no empty group -- but
     // `'` is a prime there, so each one is set as text.
     std::string const latex = "a\\backslash{}b\\grave{}c*d\\_efg<h>i\\&j|k\\tilde{}l\\$m\\hat{}n\\{o\\}p\\#q\\%r"
                               "\\mathtt{\"}s--t---u\\text{'}\\text{'}v,,w";
     CHECK(formula::render<Dialect::LaTeX>(node)
-          == "\\operatorname{lookup}(\\mathrm{key\\ " + latex + "},\\allowbreak \\mathrm{key\\ " + latex + "\\ gives\\ 1})");
+          == "\\operatorname{lookup}(\\mathrm{key\\ " + latex + "},\\allowbreak \\mathrm{key\\ " + latex
+                 + "\\ gives\\ 1127/1000})");
 
     std::string const plain = "a\\b`c*d_efg<h>i&j|k~l$m^n{o}p#q%r\"s--t---u''v,,w";
-    CHECK(formula::render<Dialect::Plain>(node) == "lookup(key " + plain + ", key " + plain + " gives 1)");
+    CHECK(formula::render<Dialect::Plain>(node) == "lookup(key " + plain + ", key " + plain + " gives 1127/1000)");
 
     // A spelling can no longer hold a square bracket -- `EnumeratorName`
     // refuses one, since it could forge a trace's provenance clause -- so
@@ -1384,7 +1412,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         }
     };
 
-    constexpr auto overFifty = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50));
+    constexpr auto overThreshold = var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10));
     constexpr auto rounded = formula::rounded<formula::unit::Millimetre,
                                               formula::DecimalPlaces { 1 },
                                               formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
@@ -1392,14 +1420,14 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
                                                            formula::SignificantDigits { 2 },
                                                            formula::RoundingMode::HalfAwayFromZero>(var<Diameter>);
     constexpr auto numeric = formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(var<Strength>);
-    constexpr auto chosen = formula::when(overFifty, var<Strength> * rat(2), var<Strength> * rat(4));
+    constexpr auto chosen = formula::when(overThreshold, var<Strength> * rat(2), var<Strength> * rat(4));
     constexpr auto citedDiameter = formula::documented(var<Diameter>, { .title = "Diameter, cited" });
     constexpr formula::Verdict rejectSpecimen { .label = "reject the specimen" };
     constexpr auto rule = formula::constraint(var<WaterVolume> <= var<CementVolume>, rejectSpecimen);
 
     isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength>));                         // VarNode
     // ConstantNode
-    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(150))));
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::constant<formula::unit::Millimetre>(rat(139))));
     isInertInMarkdown(formula::render<Dialect::Markdown>(-var<Strength>));                        // UnaryNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(var<Strength> + var<Strength>));         // BinaryNode, +
     // BinaryNode, * -- the one node kind that legitimately emits an asterisk,
@@ -1413,13 +1441,13 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSig));                            // RoundSignificantNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(numeric));                               // NumericValueNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
-    isInertInMarkdown(formula::render<Dialect::Markdown>(overFifty));                             // PredicateNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint
 
-    // Phase 10's three lookup kinds. A band is naturally written `[10, 20)`,
+    // Phase 10's three lookup kinds. A band is naturally written `[103, 197)`,
     // which is the exact character sequence this guard forbids -- so these
     // three lines are the reason `render.hpp` rules that a half-open interval
-    // is spelled `10 to under 20` instead, and the thing that fails if anyone
+    // is spelled `103 to under 197` instead, and the thing that fails if anyone
     // ever "fixes" that back to the mathematician's spelling.
     isInertInMarkdown(formula::render<Dialect::Markdown>(bandedLookup()));                        // BandedLookupNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(shapeLookup()));                         // ExactLookupNode
@@ -1430,7 +1458,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     // because the name is escaped, which is what these two lines guard.
     isInertInMarkdown(formula::render<Dialect::Markdown>(finishLookup(MouldFinish::Polished)));
     isInertInMarkdown(formula::render<Dialect::Markdown>(
-        exact_lookup<MarkingKeys, formula::unit::One>(MouldMarking::Stamped, { rat(1) })));
+        exact_lookup<MarkingKeys, formula::unit::One>(MouldMarking::Stamped, { rat(1127, 1000) })));
 
     // And a formula nesting several of the above, since a guard that only
     // ever sees one node kind in isolation could still miss an interaction
@@ -1441,7 +1469,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     // character sequence rather than the string as a whole.
     constexpr auto deep =
         formula::numeric_value_of<formula::unit::Megapascal, "guard test coverage">(formula::when(
-            overFifty, var<Strength> * rat(2), var<Strength> * rat(4)));
+            overThreshold, var<Strength> * rat(2), var<Strength> * rat(4)));
     isInertInMarkdown(formula::render<Dialect::Markdown>(deep));
 
     // And the same for a lookup, which nests two ways at once: a conditional
@@ -1449,8 +1477,8 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     // form exists for) inside a rounding node inside a power.
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::pow<2>(
         banded_lookup<formula::unit::Millimetre, SizeBands, formula::unit::One>(
-            formula::when(overFifty, var<Diameter>, var<Diameter> * rat(2)),
-            { rat(19, 20), rat(7, 5), rat(21, 20) }))));
+            formula::when(overThreshold, var<Diameter>, var<Diameter> * rat(2)),
+            { rat(863, 1000), rat(1381, 1000), rat(1043, 1000) }))));
 }
 
 TEST_CASE("render: a rounding or a numeric value in a unit with no symbol adds no unit clause", "[render][rounding]")
@@ -1499,7 +1527,7 @@ struct Special: formula::Quantity<Special, "q", "a quantity in the author's unit
 {
 };
 
-inline constexpr BandTable<2> ShareBands { band(0, 1, 100, 1), band(100, 1, 150, 1) };
+inline constexpr BandTable<2> ShareBands { band(0, 1, 413, 10), band(413, 10, 879, 10) };
 
 /// A reflected name holding an underscore, the way an identifier does.
 enum class LatexFit : std::uint8_t
@@ -1533,13 +1561,14 @@ TEST_CASE("render: a percent sign is escaped wherever a unit's symbol enters LaT
           == "\\{s/\\mathrm{\\%}\\}");
     // A lookup's result unit, and its key unit.
     CHECK(formula::render<Dialect::LaTeX>(banded_lookup<formula::unit::Millimetre, ShareBands, formula::unit::Percent>(
-              var<Diameter>, { rat(95), rat(100) }))
-          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{0\\ to\\ under\\ 100\\ mm\\ gives\\ 95\\ \\%},\\allowbreak "
-             "\\mathrm{100\\ to\\ under\\ 150\\ mm\\ gives\\ 100\\ \\%})");
+              var<Diameter>, { rat(863, 10), rat(1127, 10) }))
+          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{0\\ to\\ under\\ 413/10\\ mm\\ gives\\ 863/10\\ \\%},"
+             "\\allowbreak \\mathrm{413/10\\ to\\ under\\ 879/10\\ mm\\ gives\\ 1127/10\\ \\%})");
     CHECK(formula::render<Dialect::LaTeX>(
-              banded_lookup<formula::unit::Percent, ShareBands, formula::unit::One>(var<Share>, { rat(1), rat(2) }))
-          == "\\operatorname{lookup}(s,\\allowbreak \\mathrm{0\\ to\\ under\\ 100\\ \\%\\ gives\\ 1},\\allowbreak "
-             "\\mathrm{100\\ to\\ under\\ 150\\ \\%\\ gives\\ 2})");
+              banded_lookup<formula::unit::Percent, ShareBands, formula::unit::One>(var<Share>,
+                                                                                    { rat(1127, 1000), rat(863, 1000) }))
+          == "\\operatorname{lookup}(s,\\allowbreak \\mathrm{0\\ to\\ under\\ 413/10\\ \\%\\ gives\\ 1127/1000},"
+             "\\allowbreak \\mathrm{413/10\\ to\\ under\\ 879/10\\ \\%\\ gives\\ 863/1000})");
     // Plain and Markdown are for a terminal and a web page, where `%` is
     // nothing special: untouched there.
     CHECK(formula::render(formula::constant<formula::unit::Percent>(rat(5))) == "5 %");
@@ -1555,7 +1584,7 @@ TEST_CASE("render: every TeX special in an author's unit symbol is escaped in La
                   var<Special>))
           == "\\operatorname{round}_{1\\,\\mathrm{a\\#b\\&c\\_d\\$e\\{f\\}g}}(q)");
     // A named unit is only wrapped, and a unit with no symbol adds nothing.
-    CHECK(formula::render<Dialect::LaTeX>(formula::constant<formula::unit::Millimetre>(rat(150))) == "150\\,\\mathrm{mm}");
+    CHECK(formula::render<Dialect::LaTeX>(formula::constant<formula::unit::Millimetre>(rat(139))) == "139\\,\\mathrm{mm}");
     CHECK(formula::render<Dialect::LaTeX>(formula::constant<formula::unit::One>(rat(3))) == "3");
 }
 
@@ -1566,8 +1595,9 @@ TEST_CASE("render: a lookup key's name is set in math mode, where the site's Mat
     // it reads `\text{...}` literally. In `\mathrm{...}` both read `\_` and
     // `\ ` the same way.
     CHECK(
-        formula::render<Dialect::LaTeX>(exact_lookup<LatexFitKeys, formula::unit::One>(LatexFit::fit_2, { rat(1), rat(2) }))
-        == "\\operatorname{lookup}(\\mathrm{key\\ fit\\_2},\\allowbreak \\mathrm{key\\ fit\\_2\\ gives\\ 1},\\allowbreak "
-           "\\mathrm{key\\ loose\\ gives\\ 2})");
+        formula::render<Dialect::LaTeX>(
+            exact_lookup<LatexFitKeys, formula::unit::One>(LatexFit::fit_2, { rat(1127, 1000), rat(863, 1000) }))
+        == "\\operatorname{lookup}(\\mathrm{key\\ fit\\_2},\\allowbreak \\mathrm{key\\ fit\\_2\\ gives\\ 1127/1000},"
+           "\\allowbreak \\mathrm{key\\ loose\\ gives\\ 863/1000})");
     CHECK(formula::detail::latex_math_words("key fit_2") == "key\\ fit\\_2");
 }

@@ -156,8 +156,8 @@ struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit
 };
 
 inline constexpr formula::KeyTable<SpecimenForm, 2> SpecimenFormKeys { SpecimenForm::Square, SpecimenForm::Round };
-inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 2, 1), formula::band(2, 1, 6, 1) };
-inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), formula::breakpoint(8) };
+inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 277, 100), formula::band(277, 100, 613, 100) };
+inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), formula::breakpoint(831, 100) };
 
 /// A formula touching every node kind the evaluator, renderer and trace know:
 /// arithmetic, a power and a root, a documented citation, rounding both
@@ -168,12 +168,12 @@ inline constexpr auto everything = formula::documented(
         * formula::when(
             var<Factor> > formula::number(formula::Rational { 0 }), var<Factor>, formula::number(formula::Rational { 1 }))
         * formula::sqrt(formula::pow<2>(var<Factor>))
-        * formula::exact_lookup<SpecimenFormKeys, unit::One>(SpecimenForm::Round,
-                                                             { formula::Rational { 1 }, formula::Rational { 1 } })
-        * formula::banded_lookup<unit::One, Bands, unit::One>(var<Factor>,
-                                                              { formula::Rational { 1 }, formula::Rational { 1 } })
-        * formula::interpolating_lookup<unit::One, Points, unit::One>(var<Factor>,
-                                                                      { formula::Rational { 1 }, formula::Rational { 1 } })
+        * formula::exact_lookup<SpecimenFormKeys, unit::One>(
+            SpecimenForm::Round, { formula::Rational { 1'087, 1'000 }, formula::Rational { 1'249, 1'000 } })
+        * formula::banded_lookup<unit::One, Bands, unit::One>(
+            var<Factor>, { formula::Rational { 1'127, 1'000 }, formula::Rational { 1'973, 1'000 } })
+        * formula::interpolating_lookup<unit::One, Points, unit::One>(
+            var<Factor>, { formula::Rational { 1'043, 1'000 }, formula::Rational { 2'917, 1'000 } })
         * formula::rounded_to_digits<unit::One, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfAwayFromZero>(
             formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))),
     formula::Citation { .title = "Everything", .reference = "Example Standard 1:2020", .section = "1" });
@@ -193,7 +193,7 @@ inline constexpr auto everyOperation = formula::overlay(
     formula::with_constraints(formula::constraints(forceLimit), formula::Citation { .reference = "Example Standard 2" }),
     formula::replace_variant<Cylinder>(formula::number(formula::Rational { 2 }) * var<Force> / (var<EdgeX> * var<EdgeX>),
                                        formula::Citation { .reference = "Example Standard 12:2021 NA" }),
-    formula::with_constant<Factor>(formula::Rational { 1 },
+    formula::with_constant<Factor>(formula::Rational { 1'043, 1'000 },
                                    formula::Citation { .reference = "Example Standard 12:2021 NA" }),
     formula::with_rounding<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
         formula::Citation { .reference = "Example Standard 12:2021 NA" }));

@@ -39,8 +39,8 @@ table's data, so they are an ordinary runtime member, handed to the factory:
 ```cpp
 [[nodiscard]] constexpr auto sizeFactor()
 {
-    return formula::banded_lookup<unit::Millimetre, SizeBands, unit::Percent>(var<Diameter>,
-                                                                              { rat(95), rat(100), rat(105) });
+    return formula::banded_lookup<unit::Millimetre, SizeBands, unit::Percent>(
+        var<Diameter>, { rat(913, 10), rat(1051, 10), rat(1127, 10) });
 }
 ```
 
@@ -66,9 +66,9 @@ pairs:
 
 ```cpp
 inline constexpr formula::BandTable<3> SizeBands {
-    formula::band(0, 1, 100, 1),   // 0 to under 100 mm
-    formula::band(100, 1, 150, 1), // 100 to under 150 mm
-    formula::band(150, 1, 200, 1), // 150 to under 200 mm -- 200 mm itself is NOT in it
+    formula::band(0, 1, 127, 1),   // 0 to under 127 mm
+    formula::band(127, 1, 173, 1), // 127 to under 173 mm
+    formula::band(173, 1, 211, 1), // 173 to under 211 mm -- 211 mm itself is NOT in it
 };
 ```
 
@@ -83,18 +83,18 @@ it happens to be loaded at run time.
 The node renders as one field per row, in the table's own declared order:
 
 ```
-banded:        lookup(d, 0 to under 100 mm gives 95 %, 100 to under 150 mm gives 100 %, 150 to under 200 mm gives 105 %)
+banded:        lookup(d, 0 to under 127 mm gives 913/10 %, 127 to under 173 mm gives 1051/10 %, 173 to under 211 mm gives 1127/10 %)
 ```
 
 and looking a diameter up in it gives back that row's correction:
 
 ```
-d = 120 mm:    1
+d = 139 mm:    1051/1000
 ```
 
-`1`, exactly: 120 mm falls in the middle band, whose correction the table
-states as `100 %`, converted into the dimensionless unit the result quantity
-declares. Both sides of a table are converted — the key into the unit the bands
+`1051/1000`, exactly: 139 mm falls in the middle band, whose correction the
+table states as `1051/10 %` (105.1 %), converted into the dimensionless unit the
+result quantity declares. Both sides of a table are converted — the key into the unit the bands
 are stated in, and the value out of the unit the rows are stated in — so a
 table may be written in whatever units the published document uses.
 
@@ -105,11 +105,11 @@ value sitting exactly on a boundary belongs to the band whose *low* bound it
 is, never the band whose high bound it is:
 
 ```
-d = 100 mm:    1 (the band above the boundary, never the one below)
+d = 127 mm:    1051/1000 (the band above the boundary, never the one below)
 ```
 
-A published table that writes one row as "30 to 40" and the next as "40 to 50"
-leaves the value 40 ambiguous *on the page*. This library resolves it one way,
+A published table that writes one row as "31.7 to 43.9" and the next as "43.9
+to 52.3" leaves the value 43.9 ambiguous *on the page*. This library resolves it one way,
 uniformly, rather than guessing which the author of a given table meant — and
 it says so here rather than leaving you to find out from a mis-bucketed
 specimen.
@@ -118,24 +118,24 @@ specimen.
 must be written with its high bound at the next tick past that maximum.** Not
 approximately past it: a real, exact number. A physical measurement is always
 read to some declared decimal precision — `Unit::decimals` — so "the next tick"
-always exists. `unit::Millimetre` declares one decimal, so a row meaning "150 mm
-to 200 mm inclusive" is written with its high bound at 200.1 mm:
+always exists. `unit::Millimetre` declares one decimal, so a row meaning "173 mm
+to 211 mm inclusive" is written with its high bound at 211.1 mm:
 
 ```cpp
 inline constexpr formula::BandTable<1> TopRowInclusive {
-    formula::band(150, 1, 2001, 10), // 150 to under 200.1 mm -- 200 mm IS in it
+    formula::band(173, 1, 2111, 10), // 173 to under 211.1 mm -- 211 mm IS in it
 };
 ```
 
-Both spellings, evaluated at exactly 200 mm, side by side:
+Both spellings, evaluated at exactly 211 mm, side by side:
 
 ```
-d = 200 mm:    argument outside the domain of the operation
-inclusive top: lookup(d, 150 to under 2001/10 mm gives 105 %)
-d = 200 mm:    21/20
+d = 211 mm:    argument outside the domain of the operation
+inclusive top: lookup(d, 173 to under 2111/10 mm gives 1127/10 %)
+d = 211 mm:    1127/1000
 ```
 
-The first table's last row stops under 200 mm, so 200 mm is in no band and
+The first table's last row stops under 211 mm, so 211 mm is in no band and
 there is no answer. The second reaches it.
 
 There is deliberately **no closed-upper-bound flag** on `Band` to spare you
@@ -157,16 +157,19 @@ that it fails to build and that it fails for the stated reason:
 
 ```cpp
     inline constexpr formula::BandTable<4> GappedTable {
-        formula::band(0, 1, 10, 1),
-        formula::band(10, 1, 20, 1),
-        formula::band(25, 1, 35, 1), // gap: band[1]'s high (20) != band[2]'s low (25)
-        formula::band(35, 1, 45, 1),
+        formula::band(0, 1, 103, 1),
+        formula::band(103, 1, 197, 1),
+        formula::band(241, 1, 331, 1), // gap: band[1]'s high (197) != band[2]'s low (241)
+        formula::band(331, 1, 421, 1),
     };
 
     inline constexpr auto broken =
         formula::banded_lookup<formula::unit::Millimetre, GappedTable, formula::unit::One>(
             formula::var<Diameter>,
-            { formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 } });
+            { formula::Rational { 1127, 1000 },
+              formula::Rational { 853, 1000 },
+              formula::Rational { 917, 1000 },
+              formula::Rational { 1043, 1000 } });
 ```
 
 Compiling it says, verbatim, on clang-cl 22.1.3 (the `clangcl-debug` preset's
@@ -174,20 +177,20 @@ compiler), with the rest of the instantiation backtrace below these lines:
 
 ```
 In file included from test\negative\lookup_band_gap.cpp:9:
-In file included from include\formula-cpp/lookup.hpp:469:
-include\formula-cpp/band.hpp(219,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{10, 1, 20, 1}, formula::Band{25, 1, 35, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
+In file included from include\formula-cpp/lookup.hpp:474:
+include\formula-cpp/band.hpp(219,19): error: static assertion failed due to requirement 'bands_are_adjacent(formula::Band{103, 1, 197, 1}, formula::Band{241, 1, 331, 1})': formula: this band table has a gap or overlap between two adjacent bands; the earlier band's declared high bound and the later band's declared low bound do not match exactly, and the two offending Band values appear in this diagnostic as the template arguments First and Second of RequireBandsAdjacent
   219 |     static_assert(bands_are_adjacent(First, Second),
       |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-include\formula-cpp/band.hpp(265,17): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{10, 1, 20, 1}, Band{25, 1, 35, 1}>' requested here
+include\formula-cpp/band.hpp(265,17): note: in instantiation of template class 'formula::RequireBandsAdjacent<Band{103, 1, 197, 1}, Band{241, 1, 331, 1}>' requested here
 ```
 
 The message names **both offending rows**, as the values you typed: the one
-ending at 20 and the one starting at 25. You are not told "a table is invalid"
+ending at 197 and the one starting at 241. You are not told "a table is invalid"
 and left to find which row; you are told which two.
 
 **Consider what a library that accepted this table would produce.** It would
 compile, link, run, and answer for every diameter — including the ones from
-20 mm up to 25 mm, where the method defines nothing at all. Whatever it
+197 mm up to 241 mm, where the method defines nothing at all. Whatever it
 returned there would be invented: the band below, the band above, zero, the
 first row. A number for an input the method never defined is worse than no
 number, because nothing downstream can tell it apart from one the method did
@@ -230,9 +233,9 @@ all three cases the lookup **found nothing**, and this library says so — three
 separate lines of the example's output, one per kind, gathered here:
 
 ```
-d = 200 mm:    argument outside the domain of the operation
+d = 211 mm:    argument outside the domain of the operation
 DrilledCore:   argument outside the domain of the operation (a key no row of the table names)
-d = 220 mm:    argument outside the domain of the operation (no extrapolation past the last row)
+d = 233 mm:    argument outside the domain of the operation (no extrapolation past the last row)
 ```
 
 That is `ArithmeticError::DomainError`, arriving through the same channel every
@@ -310,7 +313,7 @@ entered is silently never selected.
 ### The key renders as its enumerator's name
 
 ```
-exact:         lookup(key Cylinder, key Cube gives 100 %, key Cylinder gives 97 %, key Prism gives 92 %)
+exact:         lookup(key Cylinder, key Cube gives 1013/10 %, key Cylinder gives 863/10 %, key Prism gives 931/10 %)
 ```
 
 `Cylinder` is the enumerator's name exactly as your source spells it, without
@@ -327,7 +330,7 @@ Only a key that names **no row of the table** falls back to a number — and a
 miss is exactly such a key:
 
 ```
-exact miss:    lookup(key 13, key Cube gives 100 %, key Cylinder gives 97 %, key Prism gives 92 %)
+exact miss:    lookup(key 13, key Cube gives 1013/10 %, key Cylinder gives 863/10 %, key Prism gives 931/10 %)
 1. lookup(key 13) = argument outside the domain of the operation [no row has this key]
 ```
 
@@ -338,7 +341,7 @@ theirs `{ Cube = 3, Cylinder = 7, Prism = 11, DrilledCore = 13 }` — as the
 example above does, for exactly this reason — sees 13, a number that appears in
 their own source and nowhere in a row count. A reflected name is an identifier
 and cannot begin with a digit, so the two spellings cannot be confused — unless
-you customize a name into a number yourself (a row spelled `"150"`, below, reads
+you customize a name into a number yourself (a row spelled `"163"`, below, reads
 exactly like a value).
 
 A table may also declare a row under a value that names no enumerator —
@@ -398,8 +401,8 @@ inline constexpr formula::KeyTable<LookupExampleCuring, 3> CuringKeys {
 ```
 
 ```
-customized:    lookup(key sealed in foil, key water bath gives 100 %, key sealed in foil gives 96 %, key Air gives 90 %)
-1. lookup(key sealed in foil) = 96 %
+customized:    lookup(key sealed in foil, key water bath gives 1043/10 %, key sealed in foil gives 937/10 %, key Air gives 881/10 %)
+1. lookup(key sealed in foil) = 937/10 %
 ```
 
 The rules are few, and each is enforced:
@@ -482,7 +485,7 @@ key varies per specimen is a *function of the key*:
 ```cpp
 [[nodiscard]] constexpr auto shapeFactor(LookupExampleShape shape)
 {
-    return formula::exact_lookup<ShapeKeys, unit::Percent>(shape, { rat(100), rat(97), rat(92) });
+    return formula::exact_lookup<ShapeKeys, unit::Percent>(shape, { rat(1013, 10), rat(863, 10), rat(931, 10) });
 }
 ```
 
@@ -501,22 +504,22 @@ between two rows is implied by the rows rather than declared:
 
 ```cpp
 inline constexpr formula::BreakpointTable<3> SizeCurve {
-    formula::breakpoint(100),
-    formula::breakpoint(150),
-    formula::breakpoint(200),
+    formula::breakpoint(127),
+    formula::breakpoint(173),
+    formula::breakpoint(211),
 };
 ```
 
 so it renders as the points it is, with `at` rather than any interval wording:
 
 ```
-interpolating: interpolate(d, at 100 mm gives 95 %, at 150 mm gives 100 %, at 200 mm gives 105 %)
+interpolating: interpolate(d, at 127 mm gives 913/10 %, at 173 mm gives 1051/10 %, at 211 mm gives 1127/10 %)
 ```
 
 and between two rows it produces a number that appears in neither:
 
 ```
-d = 120 mm:    97/100 (between two rows -- in neither of them)
+d = 139 mm:    949/1000 (between two rows -- in neither of them)
 ```
 
 Every step of that is `Rational`'s own checked arithmetic — `y0 + (x - x0)(y1 -
@@ -533,13 +536,13 @@ rule, one diagnostic, refused at compile time and naming both offending rows.
 ### The two domains deliberately disagree at the top, and nobody should harmonise them
 
 **A band table's top bound is excluded. An interpolating table's last
-breakpoint is included.** Evaluated at the very same 200 mm:
+breakpoint is included.** Evaluated at the very same 211 mm:
 
 ```
-d = 200 mm:    argument outside the domain of the operation
+d = 211 mm:    argument outside the domain of the operation
 ```
 ```
-d = 200 mm:    21/20 (the last row, reached -- where the band table missed)
+d = 211 mm:    1127/1000 (the last row, reached -- where the band table missed)
 ```
 
 This is not an inconsistency and it is not an oversight. A band's high bound is
@@ -561,7 +564,7 @@ value anyway, at weight zero.
 ### There is no extrapolation
 
 ```
-d = 220 mm:    argument outside the domain of the operation (no extrapolation past the last row)
+d = 233 mm:    argument outside the domain of the operation (no extrapolation past the last row)
 ```
 
 Interpolation between two rows yields a value the table's author *implied*.
@@ -586,7 +589,7 @@ method actually applies.
 [[nodiscard]] constexpr auto classFactor()
 {
     return formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(sizeCurveFactor(),
-                                                                            { rat(95), rat(100), rat(105) });
+                                                                            { rat(919, 10), rat(1013, 10), rat(1087, 10) });
 }
 ```
 
@@ -594,13 +597,13 @@ It composes on every surface at once. It renders, nesting the inner call where
 the operand goes:
 
 ```
-nested:        lookup(interpolate(d, at 100 mm gives 95 %, at 150 mm gives 100 %, at 200 mm gives 105 %), 90 to under 100 % gives 95 %, 100 to under 110 % gives 100 %, 110 to under 120 % gives 105 %)
+nested:        lookup(interpolate(d, at 127 mm gives 913/10 %, at 173 mm gives 1051/10 %, at 211 mm gives 1127/10 %), 837/10 to under 973/10 % gives 919/10 %, 973/10 to under 1041/10 % gives 1013/10 %, 1041/10 to under 1179/10 % gives 1087/10 %)
 ```
 
 it evaluates, the inner answer becoming the outer key:
 
 ```
-d = 120 mm:    19/20 (curve gives 97 %, which falls in the 90-to-under-100 % band)
+d = 139 mm:    919/1000 (curve gives 94.9 %, which falls in the 83.7-to-under-97.3 % band)
 ```
 
 it documents, the symbol table reaching through both tables to the one quantity
@@ -613,9 +616,9 @@ nested symbols: 1
 and it traces, each kind naming the row it answered from:
 
 ```
-1. d = 120 mm
-2. interpolate(#1) = 97 % [between 100 and 150 mm]
-3. lookup(#2) = 95 % [90 to under 100 %]
+1. d = 139 mm
+2. interpolate(#1) = 949/10 % [between 127 and 173 mm]
+3. lookup(#2) = 919/10 % [837/10 to under 973/10 %]
 ```
 
 ## How a lookup renders
@@ -633,7 +636,7 @@ is exactly the character sequence that would defeat it. The wording chosen
 carries no punctuation at all, so it survives every Markdown flavour untouched:
 
 ```
-banded (md):   lookup(`d`, 0 to under 100 mm gives 95 %, 100 to under 150 mm gives 100 %, 150 to under 200 mm gives 105 %)
+banded (md):   lookup(`d`, 0 to under 127 mm gives 913/10 %, 127 to under 173 mm gives 1051/10 %, 173 to under 211 mm gives 1127/10 %)
 ```
 
 (The backticks around `d` are Markdown's, marking the symbol as code; the rows
@@ -679,7 +682,7 @@ an interpolating one — collecting the citation and the symbol table. Here it i
 over a banded and an exact lookup inside one formula:
 
 ```
-method:        f_m * lookup(d, 0 to under 100 mm gives 95 %, 100 to under 150 mm gives 100 %, 150 to under 200 mm gives 105 %) * lookup(key Cylinder, key Cube gives 100 %, key Cylinder gives 97 %, key Prism gives 92 %)
+method:        f_m * lookup(d, 0 to under 127 mm gives 913/10 %, 127 to under 173 mm gives 1051/10 %, 173 to under 211 mm gives 1127/10 %) * lookup(key Cylinder, key Cube gives 1013/10 %, key Cylinder gives 863/10 %, key Prism gives 931/10 %)
 cited:         Corrected compressive strength, Example Standard 8:2020, 7.3 (5)
 symbol:        f_m = measured compressive strength [MPa]
 symbol:        d = specimen diameter [mm]
@@ -698,12 +701,12 @@ interpolation drew on:
 
 ```
 1. f_m = 40 MPa
-2. d = 120 mm
-3. lookup(#2) = 100 % [100 to under 150 mm]
-4. #1 * #3 = 40000000
-5. lookup(key Cylinder) = 97 %
-6. #4 * #5 = 38800000
-7. #6 = 38800000 [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
+2. d = 139 mm
+3. lookup(#2) = 1051/10 % [127 to under 173 mm]
+4. #1 * #3 = 42040000
+5. lookup(key Cylinder) = 863/10 %
+6. #4 * #5 = 36280520
+7. #6 = 36280520 [Corrected compressive strength, Example Standard 8:2020, 7.3, (5)]
 ```
 
 The exact lookup on line 5 adds no such clause, and that is right: its key is
@@ -713,26 +716,26 @@ An interpolating lookup has **two** such clauses rather than one, and they say
 genuinely different things. Between two rows:
 
 ```
-1. d = 120 mm
-2. interpolate(#1) = 97 % [between 100 and 150 mm]
+1. d = 139 mm
+2. interpolate(#1) = 949/10 % [between 127 and 173 mm]
 ```
 
 and on a row:
 
 ```
-1. d = 200 mm
-2. interpolate(#1) = 105 % [on the row at 200 mm]
+1. d = 211 mm
+2. interpolate(#1) = 1127/10 % [on the row at 211 mm]
 ```
 
 The first tells a reader there is an interpolation to check and that the answer
 appears in neither named row; the second tells them the table stated that
 number directly and there is nothing to check. Neither spelling is an interval:
-`between 100 and 150 mm` names two rows and claims nothing about either end
+`between 127 and 173 mm` names two rows and claims nothing about either end
 being included or excluded, so it needs neither a band's `to under` nor a
 curve's closed `to`.
 
-Both lookup steps report in the unit their own table is stated in — `100 %`,
-`97 %` — while lines 4 and 6 report the products in coherent SI, because an
+Both lookup steps report in the unit their own table is stated in — `1051/10 %`,
+`863/10 %` — while lines 4 and 6 report the products in coherent SI, because an
 intermediate that no quantity declares a unit for has none to be shown in. That
 is ordinary trace behaviour rather than anything to do with tables; see
 [Tracing and audit trails](tracing.md).
@@ -740,8 +743,8 @@ is ordinary trace behaviour rather than anything to do with tables; see
 **On a miss, that clause is what keeps the line from lying:**
 
 ```
-1. d = 200 mm
-2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 200 mm]
+1. d = 211 mm
+2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 211 mm]
 ```
 
 All three kinds report every failure through one error channel, so a lookup step

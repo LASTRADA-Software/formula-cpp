@@ -18,16 +18,19 @@ namespace
     };
 
     inline constexpr formula::BandTable<4> GappedTable {
-        formula::band(0, 1, 10, 1),
-        formula::band(10, 1, 20, 1),
-        formula::band(25, 1, 35, 1), // gap: band[1]'s high (20) != band[2]'s low (25)
-        formula::band(35, 1, 45, 1),
+        formula::band(0, 1, 103, 1),
+        formula::band(103, 1, 197, 1),
+        formula::band(241, 1, 331, 1), // gap: band[1]'s high (197) != band[2]'s low (241)
+        formula::band(331, 1, 421, 1),
     };
 
     inline constexpr auto broken =
         formula::banded_lookup<formula::unit::Millimetre, GappedTable, formula::unit::One>(
             formula::var<Diameter>,
-            { formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 } });
+            { formula::Rational { 1127, 1000 },
+              formula::Rational { 853, 1000 },
+              formula::Rational { 917, 1000 },
+              formula::Rational { 1043, 1000 } });
 } // namespace
 
 int main()

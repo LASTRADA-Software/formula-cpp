@@ -15,23 +15,23 @@ namespace
 {
     enum class SpecimenShape
     {
-        Cube100,
-        Cube150,
+        CubeSmall,
+        CubeLarge,
         CylinderShort,
         CylinderTall,
     };
 
     inline constexpr formula::KeyTable<SpecimenShape, 4> ShapeKeys {
-        SpecimenShape::Cube100,
-        SpecimenShape::Cube150,
+        SpecimenShape::CubeSmall,
+        SpecimenShape::CubeLarge,
         SpecimenShape::CylinderShort,
         SpecimenShape::CylinderTall,
     };
 
     // Only THREE corrections for FOUR keys.
     inline constexpr auto broken = formula::exact_lookup<ShapeKeys, formula::unit::One>(
-        SpecimenShape::Cube100,
-        { formula::Rational { 106, 100 }, formula::Rational { 1 }, formula::Rational { 97, 100 } });
+        SpecimenShape::CubeSmall,
+        { formula::Rational { 1093, 1000 }, formula::Rational { 1127, 1000 }, formula::Rational { 917, 1000 } });
 } // namespace
 
 int main()

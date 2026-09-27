@@ -28,6 +28,6 @@ using formula::var;
 
 int main()
 {
-    constexpr auto operation = formula::add_derived<Factor>(var<Other> * formula::number(formula::Rational { 2 }));
+    constexpr auto operation = formula::add_derived<Factor>(var<Other> * formula::number(formula::Rational { 217, 100 }));
     return sizeof(operation) > 0 ? 0 : 1;
 }
