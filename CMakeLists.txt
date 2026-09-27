@@ -160,6 +160,52 @@ if(FORMULA_TOOLS)
     add_subdirectory(tools/gallery)
 endif()
 
+# docs/numeric-headroom.md's census tables, regenerated from the census
+# programs and compared (docs.numeric-headroom), or rewritten
+# (formula-cpp-census-page) -- see cmake/CheckCensusPage.cmake.
+if(FORMULA_BUILD_TESTS AND FORMULA_BUILD_EXAMPLES AND FORMULA_TOOLS)
+    get_property(censusExamples GLOBAL PROPERTY FORMULA_CENSUS_EXAMPLES)
+    set(censusPrograms "")
+    set(censusTargets formula-cpp-census-tests formula-cpp-census-gallery)
+    foreach(name IN LISTS censusExamples)
+        list(APPEND censusPrograms "${name}=$<TARGET_FILE:formula-cpp-census-example-${name}>")
+        list(APPEND censusTargets "formula-cpp-census-example-${name}")
+    endforeach()
+    list(JOIN censusPrograms "|" censusProgramsJoined)
+    set(censusPageArguments
+        -D "CENSUS_EXE=$<TARGET_FILE:formula-cpp-census-tests>"
+        -D "CENSUS_PROGRAMS=${censusProgramsJoined}"
+        -D "GALLERY_EXE=$<TARGET_FILE:formula-cpp-census-gallery>"
+        -D "PAGE=${PROJECT_SOURCE_DIR}/docs/numeric-headroom.md"
+        -D "BINARY_DIR=${PROJECT_BINARY_DIR}"
+        -D "CENSUS_COMPILER=${CMAKE_CXX_COMPILER_ID}")
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        list(APPEND censusPageArguments
+            -D "PYTHON=${Python3_EXECUTABLE}"
+            -D "EXACT_SCRIPT=${PROJECT_SOURCE_DIR}/tools/census/exact_sizes.py")
+        # The exact companion's own pins: its generator and fixture against
+        # the literals the census test holds the library to, and its headline
+        # figures. A PASS_REGULAR_EXPRESSION list passes on any one match, so
+        # each is one expression, with `.` for the `;` a list would split on.
+        add_test(NAME census.exact-sizes-self-check
+            COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/census/exact_sizes.py" --self-check)
+        set_tests_properties(census.exact-sizes-self-check PROPERTIES PASS_REGULAR_EXPRESSION
+            "first draws at 6 dp, g: 4035209/100000, 20006919/500000, 40234577/1000000, 20376907/500000, 3931329/100000, 39674913/1000000[\r\n]+first draws at 4 dp, g: 48943/1250, 195969/5000, 393317/10000, 102131/2500, 198753/5000, 97743/2500[\r\n]+their sample variance, g2: 454295463/1000000000[\r\n]")
+        add_test(NAME census.exact-sizes
+            COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tools/census/exact_sizes.py")
+        set_tests_properties(census.exact-sizes PROPERTIES PASS_REGULAR_EXPRESSION
+            "at 6 dp: the exact variance does not fit 64 bits in 374 of 1000 in kg2 \\(SI\\), in 0 of 1000 in g2 \\(declared. widest 45 bits\\)[\r\n]+[^\r\n]*at d = 101 \\(64 bits\\), 103 \\(64 bits\\), 107 \\(64 bits\\), 109 \\(64 bits\\), 113 \\(64 bits\\), 119 \\(64 bits\\), 121 \\(64 bits\\), 127 \\(64 bits\\), 131 \\(64 bits\\), 137 \\(64 bits\\), 139 \\(64 bits\\), 143 \\(64 bits\\), 149 \\(64 bits\\), 151 \\(64 bits\\), 157 \\(64 bits\\), 161 \\(64 bits\\), 163 \\(64 bits\\)[\r\n]+[^\r\n]*in MPa \\(declared\\) it does not fit at 0 of 63 \\(widest 44 bits\\)")
+    endif()
+    add_test(NAME docs.numeric-headroom
+        COMMAND "${CMAKE_COMMAND}" ${censusPageArguments} -P "${PROJECT_SOURCE_DIR}/cmake/CheckCensusPage.cmake")
+    add_custom_target(formula-cpp-census-page
+        COMMAND "${CMAKE_COMMAND}" ${censusPageArguments} -D UPDATE=ON
+                -P "${PROJECT_SOURCE_DIR}/cmake/CheckCensusPage.cmake"
+        DEPENDS ${censusTargets}
+        VERBATIM)
+endif()
+
 if(FORMULA_BUILD_DOCS)
     # QUIET: Doxygen is not installed on every machine that configures this
     # project, and its absence must not fail configuration -- only whoever

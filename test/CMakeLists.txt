@@ -82,6 +82,20 @@ formula_apply_warnings(formula-cpp-tests)
 
 catch_discover_tests(formula-cpp-tests)
 
+# The overflow census (docs/numeric-headroom.md) is its own program: it is
+# built with FORMULA_OVERFLOW_CENSUS, which changes what the library's inline
+# arithmetic does, so no translation unit of formula-cpp-tests may share it.
+add_executable(formula-cpp-census-tests
+    overflow_census_tests.cpp
+    "${PROJECT_SOURCE_DIR}/support/census_tally.cpp"
+    "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
+target_link_libraries(formula-cpp-census-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
+target_compile_definitions(formula-cpp-census-tests PRIVATE FORMULA_OVERFLOW_CENSUS)
+target_include_directories(formula-cpp-census-tests PRIVATE "${PROJECT_SOURCE_DIR}/support")
+formula_apply_warnings(formula-cpp-census-tests)
+
+catch_discover_tests(formula-cpp-census-tests TEST_PREFIX "census.")
+
 # Each negative case is its own EXCLUDE_FROM_ALL target, so a normal build stays
 # green while `ctest` drives the failing compile deliberately.
 #

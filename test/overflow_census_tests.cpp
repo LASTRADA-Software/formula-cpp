@@ -1,0 +1,621 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// The overflow census: how many of the 63 bits of `Rational`'s std::int64_t
+// numerator and denominator real formulas use. Built as its own program, with
+// FORMULA_OVERFLOW_CENSUS defined, so that every integer the library's
+// arithmetic forms at run time is told to the tally (`census_tally.hpp`).
+//
+// docs/numeric-headroom.md's tables are what this program prints on its
+// `@census:<table>:` lines, never typed: cmake/CheckCensusPage.cmake
+// rebuilds them, with the census twins' lines, and `docs.numeric-headroom`
+// fails when the page differs.
+//
+// Every evaluation here runs at run time, on purpose: a constant evaluation
+// tells the census nothing.
+#include "census_tally.hpp"
+
+#include <formula-cpp/formula.hpp>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <limits>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+namespace
+{
+namespace unit = formula::unit;
+using formula::Rational;
+using formula::detail::CensusRole;
+
+[[nodiscard]] Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
+{
+    return Rational { numerator, denominator };
+}
+
+/// What one evaluation used: each role's largest magnitude, in bits, and the
+/// headroom left of 63 by the largest signed one.
+struct Used
+{
+    int numeratorBits;
+    int denominatorBits;
+    int intermediateBits;
+    int unsignedBits;
+
+    [[nodiscard]] int headroom() const noexcept
+    {
+        return 63 - std::min(63, std::max({ numeratorBits, denominatorBits, intermediateBits }));
+    }
+};
+
+/// Runs @p evaluation with the tally reset, and reads what it used.
+template <typename Evaluation>
+[[nodiscard]] Used census_of(Evaluation&& evaluation)
+{
+    formula_census::reset();
+    std::forward<Evaluation>(evaluation)();
+    return Used { formula_census::bits_used(CensusRole::Numerator),
+                  formula_census::bits_used(CensusRole::Denominator),
+                  formula_census::bits_used(CensusRole::Intermediate),
+                  formula_census::bits_used(CensusRole::Unsigned) };
+}
+
+/// Prints one line of the page's table @p table, for
+/// cmake/CheckCensusPage.cmake to collect.
+void emit(char const* table, std::string const& line)
+{
+    std::printf("@census:%s:%s\n", table, line.c_str());
+}
+
+/// Prints one row of the statistics table, in the page's shape.
+void print_row(char const* label, Used const& used)
+{
+    emit("statistics",
+         "| " + std::string { label } + " | " + std::to_string(used.numeratorBits) + " | "
+             + std::to_string(used.denominatorBits) + " | " + std::to_string(used.intermediateBits) + " | "
+             + std::to_string(used.unsignedBits) + " | " + std::to_string(used.headroom()) + " |");
+}
+
+/// A deterministic source of invented determinations: splitmix64, seeded.
+class Draws
+{
+  public:
+    explicit Draws(std::uint64_t seed):
+        _state { seed }
+    {
+    }
+
+    /// A value in [low, high], as an integer count of 10^-places.
+    [[nodiscard]] Rational between(std::int64_t low, std::int64_t high, int places)
+    {
+        std::int64_t scale = 1;
+        for (int step = 0; step < places; ++step)
+            scale *= 10;
+        auto const span = static_cast<std::uint64_t>((high - low) * scale) + 1U;
+        auto const drawn = static_cast<std::int64_t>(next() % span);
+        return rat(low * scale + drawn, scale);
+    }
+
+  private:
+    [[nodiscard]] std::uint64_t next() noexcept
+    {
+        _state += 0x9E3779B97F4A7C15ULL;
+        std::uint64_t mixed = _state;
+        mixed = (mixed ^ (mixed >> 30U)) * 0xBF58476D1CE4E5B9ULL;
+        mixed = (mixed ^ (mixed >> 27U)) * 0x94D049BB133111EBULL;
+        return mixed ^ (mixed >> 31U);
+    }
+
+    std::uint64_t _state;
+};
+
+// ---- Quantities, invented ------------------------------------------------------
+
+struct Mass: formula::Quantity<Mass, "m", "mass of a determination", unit::Gram>
+{
+};
+struct Spread: formula::Quantity<Spread, "s", "spread of the determinations", unit::Gram>
+{
+};
+struct Determinations: formula::Quantity<Determinations, "n", "number of determinations", unit::One>
+{
+};
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
+struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+{
+};
+struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", unit::Percent>
+{
+};
+struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
+{
+};
+struct Area: formula::Quantity<Area, "A", "cross-sectional area", unit::SquareMetre>
+{
+};
+
+struct FailureLoad: formula::Quantity<FailureLoad, "F", "maximum load at failure", unit::Newton>
+{
+};
+struct Strength: formula::Quantity<Strength, "f", "compressive strength", unit::Megapascal>
+{
+};
+
+/// A cylinder's compressive strength, as the methods example's cylinder
+/// variant states it.
+inline constexpr auto cylinderStrength = formula::constant<unit::One>(Rational { 4 }) * formula::var<FailureLoad>
+                                         / (formula::pi * formula::pow<2>(formula::var<Diameter>));
+
+/// examples/expressions.cpp's circular area, as written there.
+inline constexpr auto circularArea = formula::pi * formula::pow<2>(formula::var<Diameter>) / formula::Rational { 4 };
+
+template <typename Q, std::size_t N, std::size_t... At>
+[[nodiscard]] auto measured_of(std::array<Rational, N> const& values, std::index_sequence<At...>)
+{
+    return formula::measured_series<Q>(formula::Measured<Q> { values[At] }...);
+}
+
+/// @p values as a series environment of @p Q.
+template <typename Q, std::size_t N>
+[[nodiscard]] auto series_environment(std::array<Rational, N> const& values)
+{
+    return formula::environment(measured_of<Q>(values, std::make_index_sequence<N> {}));
+}
+
+inline constexpr formula::Verdict repeatTest { "discard the determinations and repeat the test" };
+
+template <std::size_t N, typename Criterion>
+[[nodiscard]] constexpr auto rejection_of(Criterion criterion)
+{
+    return formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<3>>(
+            formula::series<Mass, N>, criterion, repeatTest);
+}
+
+inline constexpr auto sixPercent = formula::deviation_from_mean(Rational { 6, 100 } * formula::pass_mean<Mass>);
+inline constexpr auto sevenQuarters = formula::deviation_in_stddevs(formula::number(Rational { 7, 4 }));
+
+// The phase 13 fixtures (rejection_tests.cpp's shared fixtures), in grams.
+std::array<Rational, 6> const fixtureA { rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10) };
+std::array<Rational, 6> const fixtureB { rat(402, 10), rat(398, 10), rat(405, 10), rat(452, 10), rat(40), rat(372, 10) };
+std::array<Rational, 5> const fixtureC { rat(40), rat(40), rat(44), rat(40), rat(36) };
+std::array<Rational, 5> const fixtureD { rat(40), rat(40), rat(40), rat(40), rat(425, 10) };
+std::array<Rational, 5> const fixtureE { rat(40), rat(40), rat(40), rat(40), rat(40) };
+std::array<Rational, 3> const fixtureF { rat(1), rat(25, 10), rat(4) };
+
+/// The mean, variance and range of @p values, and whether all three are
+/// values.
+template <std::size_t N>
+[[nodiscard]] bool dispersion_of(std::array<Rational, N> const& values)
+{
+    auto const inputs = series_environment<Mass>(values);
+    auto const mean = formula::checked_evaluate<Mass>(formula::sample_mean(formula::series<Mass, N>), inputs);
+    auto const variance =
+        formula::checked_evaluate<MassVariance>(formula::sample_variance(formula::series<Mass, N>), inputs);
+    auto const range = formula::checked_evaluate<Spread>(formula::sample_range(formula::series<Mass, N>), inputs);
+    return mean.has_value() && variance.has_value() && range.has_value();
+}
+
+/// @p values' spread reported exactly at @p Places decimal places of g.
+template <int Places, std::size_t N>
+[[nodiscard]] bool spread_of(std::array<Rational, N> const& values)
+{
+    auto const spread =
+        formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { Places }, formula::RoundingMode::HalfAwayFromZero>(
+            formula::sample_variance(formula::series<Mass, N>));
+    return formula::checked_evaluate<Spread>(spread, series_environment<Mass>(values)).has_value();
+}
+
+// ---- The norm-shaped cases, written for this task, numbers invented -------------
+
+// Twenty masses at 3 decimal places of g, near 40 g.
+std::array<Rational, 20> const twentyMasses {
+    rat(40217, 1000), rat(39883, 1000), rat(40061, 1000), rat(40349, 1000), rat(39707, 1000),
+    rat(40113, 1000), rat(39951, 1000), rat(40287, 1000), rat(39829, 1000), rat(40193, 1000),
+    rat(40031, 1000), rat(39769, 1000), rat(40401, 1000), rat(39917, 1000), rat(40157, 1000),
+    rat(39853, 1000), rat(40239, 1000), rat(39991, 1000), rat(40073, 1000), rat(39811, 1000),
+};
+
+// The task 6 review's six masses at 6 decimal places of g -- microgram
+// resolution. Their variance overflows.
+std::array<Rational, 6> const sixAtMicrograms { rat(40053270, 1000000), rat(39475922, 1000000), rat(39025798, 1000000),
+                                                rat(40615904, 1000000), rat(39418416, 1000000), rat(40131659, 1000000) };
+
+// Screen openings for the 64-point grading curve, in millimetres: invented,
+// strictly increasing, unevenly spaced, three significant digits each, and
+// none a Renard R40 value or a sieve size (the three-digit primes from 101).
+inline constexpr std::array<std::int64_t, 64> openingPrimes {
+    101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211,
+    223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347,
+    349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461,
+};
+
+template <std::size_t... At>
+[[nodiscard]] constexpr formula::BreakpointTable<64> openings_of(std::index_sequence<At...>)
+{
+    return formula::BreakpointTable<64> { formula::breakpoint(openingPrimes[At])... };
+}
+
+inline constexpr formula::BreakpointTable<64> openings = openings_of(std::make_index_sequence<64> {});
+
+/// The mass retained on each of the 64 screens, at 3 decimal places of g:
+/// drawn, from a fixed seed, between 1 and 99 g.
+[[nodiscard]] std::array<Rational, 64> retained_on_each()
+{
+    Draws draws { 64 };
+    std::array<Rational, 64> retained {};
+    for (Rational& onScreen: retained)
+        onScreen = draws.between(1, 99, 3);
+    return retained;
+}
+
+/// The percentage passing each screen, from the cumulative retained, and one
+/// reading between two screens.
+[[nodiscard]] bool grading_curve_read()
+{
+    auto const inputs = series_environment<Retained>(retained_on_each());
+    constexpr auto retained = formula::series<Retained, 64>;
+    constexpr auto passing =
+        formula::constant<unit::Percent>(Rational { 100 })
+        - formula::cumulative<formula::CumulativeDirection::FromLast>(retained) / formula::sum(retained);
+    constexpr auto grading = formula::curve(formula::domain<unit::Millimetre, openings>, passing);
+    // 177 mm, between the 173 and 179 mm screens: three significant digits,
+    // and no R40 value.
+    auto const read = formula::checked_evaluate<Passing>(
+        formula::interpolate_at(grading, formula::constant<unit::Millimetre>(Rational { 177 })), inputs);
+    return read.has_value() && !read->measurement().is_absent();
+}
+
+/// Across @p samples six-element samples near 40 g at @p Places decimal
+/// places: how many @p evaluate refused with Overflow, and the least headroom
+/// any other left.
+struct Survey
+{
+    int overflowed;
+    int leastHeadroom;
+};
+
+template <int Places, typename Evaluate>
+[[nodiscard]] Survey survey(int samples, Evaluate&& evaluate)
+{
+    Draws draws { 20260926 };
+    Survey found { 0, 63 };
+    for (int drawn = 0; drawn < samples; ++drawn)
+    {
+        std::array<Rational, 6> sample {};
+        for (Rational& determination: sample)
+            determination = draws.between(39, 41, Places);
+        bool overflowed = false;
+        Used const used = census_of([&] { overflowed = !evaluate(series_environment<Mass>(sample)); });
+        if (overflowed)
+            ++found.overflowed;
+        else
+            found.leastHeadroom = std::min(found.leastHeadroom, used.headroom());
+    }
+    return found;
+}
+
+/// The variance of a six-element sample, and whether it is a value.
+[[nodiscard]] bool variance_is_value(auto const& inputs)
+{
+    return formula::checked_evaluate<MassVariance>(formula::sample_variance(formula::series<Mass, 6>), inputs).has_value();
+}
+
+/// A rejection of a six-element sample by @p criterion, and whether it did
+/// not overflow.
+template <typename Criterion>
+[[nodiscard]] bool rejection_is_not_overflow(Criterion criterion, auto const& inputs)
+{
+    auto const outcome = formula::checked_evaluate_rejection<Mass>(rejection_of<6>(criterion), inputs);
+    return outcome.has_value() || outcome.error().error != formula::ArithmeticError::Overflow;
+}
+} // namespace
+
+// ---- The instrument's own control -------------------------------------------------
+
+TEST_CASE("the census reports 0 bits of headroom for INT64_MAX, and Overflow one step further", "[census]")
+{
+    constexpr std::int64_t largest = std::numeric_limits<std::int64_t>::max();
+    // (2^62 - 1) + 2^62 = 2^63 - 1 from two 62- and 63-bit operands, built
+    // outside the count: the sum's 63 bits are the addition's own
+    // intermediate, which only add_checked_or_none's hook reports.
+    Rational const lowHalf = rat((std::int64_t { 1 } << 62) - 1);
+    Rational const highHalf = rat(std::int64_t { 1 } << 62);
+    Used const atTheLimit = census_of([&] { REQUIRE(formula::checked_add(lowHalf, highHalf).value() == rat(largest)); });
+    CHECK(atTheLimit.headroom() == 0);
+    CHECK(atTheLimit.intermediateBits == 63);
+    // 2^31 * 2^30 = 2^61, one bit short of using all 63: the product is
+    // mul_checked_or_none's intermediate, from operands of 32 and 31 bits.
+    Rational const factorA = rat(std::int64_t { 1 } << 31);
+    Rational const factorB = rat(std::int64_t { 1 } << 30);
+    Used const oneShort =
+        census_of([&] { REQUIRE(formula::checked_mul(factorA, factorB).value() == rat(std::int64_t { 1 } << 61)); });
+    CHECK(oneShort.headroom() == 1);
+    CHECK(oneShort.intermediateBits == 62);
+    // One step further is the library's Overflow, never a figure: a product
+    // that overflows leaves the count with its operands' 33 bits at most.
+    CHECK(formula::checked_add(rat(largest), rat(1)).error() == formula::ArithmeticError::Overflow);
+    Rational const tooWideA = rat(std::int64_t { 1 } << 32);
+    Rational const tooWideB = rat(std::int64_t { 1 } << 31);
+    Used const overflowed =
+        census_of([&] { REQUIRE(formula::checked_mul(tooWideA, tooWideB).error() == formula::ArithmeticError::Overflow); });
+    CHECK(overflowed.intermediateBits <= 33);
+    CHECK(overflowed.numeratorBits <= 33);
+    // A constant evaluation tells the census nothing.
+    Used const constant = census_of([] {
+        constexpr auto sum = formula::checked_add(Rational { 1 << 20 }, Rational { 1 << 20 });
+        static_assert(sum.has_value());
+    });
+    CHECK(constant.headroom() == 63);
+}
+
+// ---- The census set -----------------------------------------------------------------
+
+TEST_CASE("census: phase 13's fixtures", "[census]")
+{
+    emit("statistics", "| formula | numerator bits | denominator bits | intermediate bits | unsigned bits | headroom |");
+    emit("statistics", "|---|---|---|---|---|---|");
+    print_row("fixture A: mean, variance, range", census_of([] { REQUIRE(dispersion_of(fixtureA)); }));
+    print_row("fixture B: mean, variance, range", census_of([] { REQUIRE(dispersion_of(fixtureB)); }));
+    print_row("fixture C: mean, variance, range", census_of([] { REQUIRE(dispersion_of(fixtureC)); }));
+    print_row("fixture D: mean, variance, range", census_of([] { REQUIRE(dispersion_of(fixtureD)); }));
+    print_row("fixture E: mean, variance, range", census_of([] { REQUIRE(dispersion_of(fixtureE)); }));
+    print_row("fixture F: mean, variance, range", census_of([] { REQUIRE(dispersion_of(fixtureF)); }));
+    print_row("fixture A: rejection, 6 % of the mean", census_of([] {
+                  REQUIRE(formula::checked_evaluate_rejection<Mass>(rejection_of<6>(sixPercent),
+                                                                    series_environment<Mass>(fixtureA))
+                              .has_value());
+              }));
+    print_row("fixture B: rejection, 7/4 standard deviations", census_of([] {
+                  REQUIRE(formula::checked_evaluate_rejection<Mass>(rejection_of<6>(sevenQuarters),
+                                                                    series_environment<Mass>(fixtureB))
+                              .has_value());
+              }));
+    print_row("fixture B: rejection, gap to range 9/20", census_of([] {
+                  REQUIRE(formula::checked_evaluate_rejection<Mass>(
+                              rejection_of<6>(formula::gap_to_range(formula::number(Rational { 9, 20 }))),
+                              series_environment<Mass>(fixtureB))
+                              .has_value());
+              }));
+    print_row("fixture A: spread at 2 dp", census_of([] { REQUIRE(spread_of<2>(fixtureA)); }));
+    print_row("fixture A: spread at 3 dp", census_of([] { REQUIRE(spread_of<3>(fixtureA)); }));
+    print_row("fixture A: spread at 4 dp", census_of([] { REQUIRE(spread_of<4>(fixtureA)); }));
+    print_row("fixture A: spread at 6 dp", census_of([] { REQUIRE(spread_of<6>(fixtureA)); }));
+    print_row("fixture F: exact root at 0 dp", census_of([] { REQUIRE(spread_of<0>(fixtureF)); }));
+}
+
+TEST_CASE("census: phase 12's cumulative sums and interpolation", "[census]")
+{
+    std::array<Rational, 5> const screens { rat(130), rat(210), rat(95), rat(340), rat(28) };
+    print_row("passing from the cumulative retained, 5 screens", census_of([&] {
+                  constexpr auto passing =
+                      formula::constant<unit::Percent>(Rational { 100 })
+                      - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>)
+                            / formula::sum(formula::series<Retained, 5>);
+                  REQUIRE(
+                      formula::checked_evaluate_series<Passing>(passing, series_environment<Retained>(screens)).has_value());
+              }));
+    std::array<Rational, 5> const passingAt { rat(894, 25), rat(1154, 25), rat(1574, 25), rat(1764, 25), rat(2444, 25) };
+    print_row("interpolation along a 5-point grading curve", census_of([&] {
+                  constexpr formula::BreakpointTable<5> fivePrimes { formula::breakpoint(11),
+                                                                     formula::breakpoint(29),
+                                                                     formula::breakpoint(41),
+                                                                     formula::breakpoint(59),
+                                                                     formula::breakpoint(83) };
+                  constexpr auto grading =
+                      formula::curve(formula::domain<unit::Metre, fivePrimes>, formula::series<Passing, 5>);
+                  REQUIRE(formula::checked_evaluate<Passing>(
+                              formula::interpolate_at(grading, formula::constant<unit::Metre>(Rational { 47 })),
+                              series_environment<Passing>(passingAt))
+                              .has_value());
+              }));
+}
+
+TEST_CASE("census: the norm-shaped cases", "[census]")
+{
+    Used const twenty = census_of([] { REQUIRE(dispersion_of(twentyMasses)); });
+    print_row("20 masses at 3 dp: mean, variance, range", twenty);
+    Used const curve = census_of([] { REQUIRE(grading_curve_read()); });
+    print_row("64-point grading curve: cumulative percentages, one reading", curve);
+    Used const spreadAtThree = census_of([] { REQUIRE(spread_of<3>(twentyMasses)); });
+    print_row("20 masses at 3 dp: spread at 3 dp", spreadAtThree);
+
+    // The named realistic case: the six masses at micrograms overflow.
+    auto const named = formula::checked_evaluate<MassVariance>(formula::sample_variance(formula::series<Mass, 6>),
+                                                               series_environment<Mass>(sixAtMicrograms));
+    CHECK(named.error() == formula::ArithmeticError::Overflow);
+    auto const namedRejection =
+        formula::checked_evaluate_rejection<Mass>(rejection_of<6>(sevenQuarters), series_environment<Mass>(sixAtMicrograms));
+    CHECK(namedRejection.error().error == formula::ArithmeticError::Overflow);
+
+    emit("resolution", "| formula | resolution | overflowed | least headroom |");
+    emit("resolution", "|---|---|---|---|");
+    for (auto const& [label, places, found]: {
+             std::tuple { "variance", 4, survey<4>(1000, [](auto const& inputs) { return variance_is_value(inputs); }) },
+             std::tuple { "variance", 5, survey<5>(1000, [](auto const& inputs) { return variance_is_value(inputs); }) },
+             std::tuple { "variance", 6, survey<6>(1000, [](auto const& inputs) { return variance_is_value(inputs); }) },
+             std::tuple {
+                 "rejection by 7/4 standard deviations",
+                 4,
+                 survey<4>(1000, [](auto const& inputs) { return rejection_is_not_overflow(sevenQuarters, inputs); }) },
+             std::tuple {
+                 "rejection by 7/4 standard deviations",
+                 5,
+                 survey<5>(1000, [](auto const& inputs) { return rejection_is_not_overflow(sevenQuarters, inputs); }) },
+             std::tuple {
+                 "rejection by 7/4 standard deviations",
+                 6,
+                 survey<6>(1000, [](auto const& inputs) { return rejection_is_not_overflow(sevenQuarters, inputs); }) },
+             std::tuple {
+                 "rejection by 6 % of the mean",
+                 4,
+                 survey<4>(1000, [](auto const& inputs) { return rejection_is_not_overflow(sixPercent, inputs); }) },
+             std::tuple {
+                 "rejection by 6 % of the mean",
+                 5,
+                 survey<5>(1000, [](auto const& inputs) { return rejection_is_not_overflow(sixPercent, inputs); }) },
+             std::tuple {
+                 "rejection by 6 % of the mean",
+                 6,
+                 survey<6>(1000, [](auto const& inputs) { return rejection_is_not_overflow(sixPercent, inputs); }) },
+         })
+        emit("resolution",
+             "| " + std::string { label } + " | " + std::to_string(places) + " dp | " + std::to_string(found.overflowed)
+                 + " of 1000 | " + std::to_string(found.leastHeadroom) + " |");
+}
+
+// ---- Regression pins ------------------------------------------------------------------
+
+TEST_CASE("the norm-shaped cases keep the headroom they were measured with, less 4 bits", "[census]")
+{
+    // Measured on cl 19.51 at the commit that added these pins: 18, 37 and 36
+    // bits of headroom, and fixture A's 3 dp spread forming 20-bit numerators
+    // and 26 of rounded_sqrt's 64 unsigned bits. A change that quietly spends
+    // more fails here, not in a user's formula. Measured at that commit:
+    // without checked_mul's cross-reduction the 64-point curve falls to 23
+    // bits, the 3 dp spread's numerators grow to 29 bits, and the control
+    // below reads 42; with checked_add scaling a sum by the product of the
+    // denominators rather than their least common multiple, the twenty
+    // masses' variance fails to evaluate.
+    Used const twenty = census_of([] { REQUIRE(dispersion_of(twentyMasses)); });
+    CHECK(twenty.headroom() >= 18 - 4);
+    Used const curve = census_of([] { REQUIRE(grading_curve_read()); });
+    CHECK(curve.headroom() >= 37 - 4);
+    Used const spreadAtThree = census_of([] { REQUIRE(spread_of<3>(fixtureA)); });
+    CHECK(spreadAtThree.headroom() >= 36 - 4);
+    CHECK(spreadAtThree.numeratorBits <= 20 + 4);
+    CHECK(spreadAtThree.unsignedBits <= 26 + 4);
+}
+
+TEST_CASE("checked_mul's cross-reduction keeps a product's intermediates small (a stress control)", "[census]")
+{
+    // (2^40 / 3) * (3 / 2^20) is 2^20. Cross-reduced first, no intermediate
+    // passes 21 bits; multiplied first, the numerator is 3 * 2^40, 42 bits.
+    Used const product = census_of([] {
+        REQUIRE(formula::checked_mul(rat(std::int64_t { 1 } << 40, 3), rat(3, std::int64_t { 1 } << 20)).value()
+                == rat(std::int64_t { 1 } << 20));
+    });
+    CHECK(product.intermediateBits <= 21);
+}
+
+TEST_CASE("census: a cylinder's cross-section and its strength, for d from 101 to 163 mm", "[census]")
+{
+    // The library's pi is 245850922/78256779: 28 and 27 bits. The area,
+    // pi * d^2 / 4, is examples/expressions.cpp's; the strength,
+    // 4 * F / (pi * d^2) at F = 89.3 kN, is a cylinder variant's, as the
+    // methods example states it. Each diameter is evaluated at run time; a
+    // failure is re-done by hand in the evaluator's order to name the step
+    // the arithmetic refused.
+    struct Found
+    {
+        std::vector<std::int64_t> overflowing;
+        std::vector<std::string> refusedAt;
+        int leastHeadroom = 63;
+
+        void add(std::int64_t millimetres, std::string const& step)
+        {
+            overflowing.push_back(millimetres);
+            if (std::find(refusedAt.begin(), refusedAt.end(), step) == refusedAt.end())
+                refusedAt.push_back(step);
+        }
+
+        [[nodiscard]] std::string row(char const* label) const
+        {
+            std::string diameters;
+            for (std::int64_t const millimetres: overflowing)
+                diameters += (diameters.empty() ? "" : ", ") + std::to_string(millimetres);
+            std::string steps;
+            for (std::string const& step: refusedAt)
+                steps += (steps.empty() ? "" : ", ") + step;
+            return "| " + std::string { label } + " | " + (diameters.empty() ? "none" : diameters + " mm") + " | "
+                   + (steps.empty() ? "--" : steps) + " | " + std::to_string(leastHeadroom) + " |";
+        }
+    };
+    Found area;
+    Found strength;
+    Rational const fourTimesLoad = rat(4 * 89'300);
+    for (std::int64_t millimetres = 101; millimetres <= 163; ++millimetres)
+    {
+        auto const inputs = formula::environment(formula::Measured<Diameter> { rat(millimetres) },
+                                                 formula::Measured<FailureLoad> { rat(89'300) });
+        Rational const inMetres = rat(millimetres, 1000);
+        auto const squared = formula::checked_mul(inMetres, inMetres);
+        auto const timesPi = squared.has_value() ? formula::checked_mul(formula::Pi, *squared) : squared;
+        std::string const productRefused = !squared.has_value() ? "d^2" : !timesPi.has_value() ? "pi * d^2" : "";
+
+        bool areaFailed = false;
+        Used const areaUsed =
+            census_of([&] { areaFailed = !formula::checked_evaluate<Area>(circularArea, inputs).has_value(); });
+        if (areaFailed)
+            area.add(millimetres, productRefused.empty() ? std::string { "/ 4" } : productRefused);
+        else
+            area.leastHeadroom = std::min(area.leastHeadroom, areaUsed.headroom());
+
+        bool strengthFailed = false;
+        Used const strengthUsed =
+            census_of([&] { strengthFailed = !formula::checked_evaluate<Strength>(cylinderStrength, inputs).has_value(); });
+        if (strengthFailed)
+        {
+            auto const divided = timesPi.has_value() ? formula::checked_div(fourTimesLoad, *timesPi) : timesPi;
+            strength.add(millimetres,
+                         !productRefused.empty() ? productRefused
+                         : !divided.has_value()  ? std::string { "4F / (pi * d^2)" }
+                                                 : std::string { "the conversion to MPa" });
+        }
+        else
+            strength.leastHeadroom = std::min(strength.leastHeadroom, strengthUsed.headroom());
+    }
+    emit("cylinder", "| formula | overflows at d = | refused at | least headroom otherwise |");
+    emit("cylinder", "|---|---|---|---|");
+    emit("cylinder", area.row("area, pi * d^2 / 4 (the expressions example)"));
+    emit("cylinder", strength.row("strength, 4F / (pi * d^2), F = 89.3 kN, in MPa (the methods example's cylinder)"));
+    // What the page says, pinned: the area never overflows and keeps its
+    // measured 15 bits less the census's usual 4; the strength overflows at
+    // exactly these diameters, 139 mm among them and 135 mm not, and always
+    // at the division.
+    CHECK(area.overflowing.empty());
+    CHECK(area.leastHeadroom >= 15 - 4);
+    CHECK(strength.overflowing
+          == std::vector<std::int64_t> { 101, 103, 107, 109, 113, 119, 121, 127, 131, 137, 139, 143, 149, 151, 157, 161, 163 });
+    CHECK(strength.refusedAt == std::vector<std::string> { "4F / (pi * d^2)" });
+}
+
+TEST_CASE("the census draws the samples tools/census/exact_sizes.py draws", "[census]")
+{
+    // The exact companion mirrors this generator and fixture to size the
+    // exact results of the same samples. `exact_sizes.py --self-check`
+    // prints the literals below, and CTest's census.exact-sizes-self-check
+    // pins its output to them: an edit to either side's generator, or to the
+    // variance's definition, fails one or the other.
+    Draws sixPlaces { 20260926 };
+    std::array<Rational, 6> const atSix { rat(4035209, 100000),  rat(20006919, 500000), rat(40234577, 1000000),
+                                          rat(20376907, 500000), rat(3931329, 100000),  rat(39674913, 1000000) };
+    for (Rational const& each: atSix)
+        CHECK(sixPlaces.between(39, 41, 6) == each);
+
+    Draws fourPlaces { 20260926 };
+    std::array<Rational, 6> const atFour { rat(48943, 1250),  rat(195969, 5000), rat(393317, 10000),
+                                           rat(102131, 2500), rat(198753, 5000), rat(97743, 2500) };
+    std::array<Rational, 6> sample {};
+    for (Rational& determination: sample)
+        determination = fourPlaces.between(39, 41, 4);
+    CHECK(sample == atFour);
+    auto const variance =
+        formula::checked_evaluate<MassVariance>(formula::sample_variance(formula::series<Mass, 6>), series_environment<Mass>(sample));
+    REQUIRE(variance.has_value());
+    CHECK(variance->measurement().value() == rat(454295463, 1000000000));
+}

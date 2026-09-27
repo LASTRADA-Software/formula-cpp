@@ -96,6 +96,8 @@ class Rational
     {
         if (divisor == 0)
             return std::unexpected { ArithmeticError::DivisionByZero };
+        FORMULA_CENSUS_NOTE(Numerator, detail::magnitude(dividend));
+        FORMULA_CENSUS_NOTE(Denominator, detail::magnitude(divisor));
         if (dividend == 0)
             return Rational {};
 

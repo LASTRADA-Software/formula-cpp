@@ -19,6 +19,25 @@ function(formula_add_example name source expectedOutput)
 
     add_test(NAME "example.${name}" COMMAND ${target})
     set_tests_properties("example.${name}" PROPERTIES PASS_REGULAR_EXPRESSION "${expectedOutput}")
+
+    # Its overflow-census twin (docs/numeric-headroom.md): the same program,
+    # built with FORMULA_OVERFLOW_CENSUS, which prints how many of the 63 bits
+    # its run-time evaluations used when it exits. Its own output must not
+    # change, so the twin is held to the same expected output as well.
+    set(censusTarget "formula-cpp-census-example-${name}")
+    add_executable(${censusTarget}
+        "${source}"
+        "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp"
+        "${PROJECT_SOURCE_DIR}/support/census_tally.cpp"
+        "${PROJECT_SOURCE_DIR}/support/census_report.cpp")
+    target_link_libraries(${censusTarget} PRIVATE formula-cpp::formula-cpp)
+    target_compile_definitions(${censusTarget} PRIVATE FORMULA_OVERFLOW_CENSUS)
+    target_include_directories(${censusTarget} PRIVATE "${PROJECT_SOURCE_DIR}/support")
+    formula_apply_warnings(${censusTarget})
+    add_test(NAME "census.example.${name}" COMMAND ${censusTarget})
+    set_property(GLOBAL APPEND PROPERTY FORMULA_CENSUS_EXAMPLES "${name}")
+    set_tests_properties("census.example.${name}" PROPERTIES
+        PASS_REGULAR_EXPRESSION "${expectedOutput}.*overflow census: ")
 endfunction()
 
 formula_add_example(simple simple.cpp "w/c = 0.600000 \\(computed\\)")

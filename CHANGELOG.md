@@ -94,6 +94,9 @@ into the author's verdict. Every pass and every rejected value is its own step i
 A sample is a series or raw observations, `observations<Q, Capacity>`, whose count is known only
 at run time: `Capacity` is a bound, and every statistic, rejection and critical value reads the
 observations actually made. None made count 0 and have no mean.
+`docs/numeric-headroom.md` measures how many of `Rational`'s 64 bits real formulas use: most
+leave 30 bits or more, but a sample variance of masses read to 0.01 mg leaves 4, and read to
+1 µg it overflows on 423 of 1,000 samples -- which recommends 128-bit intermediates.
 
 ### Changed
 

@@ -31,6 +31,7 @@ extra_javascript:
 nav:
   - Home: index.md
   - Numbers: numbers.md
+  - Numeric headroom: numeric-headroom.md
   - Dimensions and units: dimensions.md
   - Quantities and measurements: quantities.md
   - Expressions and evaluation: expressions.md

@@ -478,7 +478,8 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 /// (`statistics_tests.cpp`). At fine *resolution* it is the other way round:
 /// dividing by n before squaring puts n^2 into every deviation's
 /// denominator, and at 6 dp in g near 40 g with n = 6 this form overflows on
-/// 460 of 1,000 random samples, where the one-pass form holds more often.
+/// 423 of 1000 samples (the overflow census's draw, docs/numeric-headroom.md),
+/// where task 6 found the one-pass form holding more often.
 /// Every such failure is `Overflow`, naming the determination it arose at --
 /// never a wrong value.
 template <typename Rep = Rational, SampleSource S, typename Env, typename Sink = NullSink>

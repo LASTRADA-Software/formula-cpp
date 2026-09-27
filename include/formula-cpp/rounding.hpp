@@ -218,6 +218,7 @@ namespace detail
             // exceeds any possible numerator, so the quotient is below 10^exponent.
             if (magnitudeDenominator > Limit / powerOfTen)
                 return false;
+            FORMULA_CENSUS_NOTE(Intermediate, magnitudeDenominator * powerOfTen);
             return magnitudeNumerator >= magnitudeDenominator * powerOfTen;
         }
         if (-exponent > 18)
@@ -225,6 +226,7 @@ namespace detail
         std::uint64_t const powerOfTen = static_cast<std::uint64_t>(*pow10(-exponent));
         if (magnitudeNumerator > Limit / powerOfTen)
             return true;
+        FORMULA_CENSUS_NOTE(Intermediate, magnitudeNumerator * powerOfTen);
         return magnitudeNumerator * powerOfTen >= magnitudeDenominator;
     }
 } // namespace detail

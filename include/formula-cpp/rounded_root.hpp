@@ -94,6 +94,7 @@ namespace detail
     {
         if (leftFactor != 0 && rightFactor > std::numeric_limits<std::uint64_t>::max() / leftFactor)
             return std::nullopt;
+        FORMULA_CENSUS_NOTE(Unsigned, leftFactor * rightFactor);
         return leftFactor * rightFactor;
     }
 
@@ -210,6 +211,7 @@ namespace detail
             wholePart = *scaledWhole + *scaledPart / wholeDenominator;
             if (wholePart < *scaledWhole)
                 return std::unexpected { ArithmeticError::Overflow };
+            FORMULA_CENSUS_NOTE(Unsigned, wholePart);
             leftover = *scaledPart % wholeDenominator;
         }
         else
