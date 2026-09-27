@@ -605,7 +605,7 @@ f / ((F / (a * a)) of ReferenceSpecimen)
 
 ```
 1. f = 36 MPa
-2. same CuringBatch as this record: 4411 and 4412, violated
+2. same CuringBatch as this record: 4411 for this record, 4412 for ReferenceSpecimen, violated
 3. from record ReferenceSpecimen (sample 23, test 3) = argument outside the domain of the operation
 4. #1 / #3 = argument outside the domain of the operation
 ```

@@ -148,9 +148,9 @@ TEST_CASE("every attribute checked appears in the trace, in declared order", "[l
     std::string const text = traced(gated, contextWith(4411, 13, 7), trace);
     INFO(text);
     CHECK(text
-          == "1. same MaterialBatch as this record: 4411 and 4411, satisfied\n"
-             "2. same TestMethod as this record: 12 and 13, violated\n"
-             "3. same CuringRegime as this record: 7 and 7, satisfied\n"
+          == "1. same MaterialBatch as this record: 4411 for this record, 4411 for Reference, satisfied\n"
+             "2. same TestMethod as this record: 12 for this record, 13 for Reference, violated\n"
+             "3. same CuringRegime as this record: 7 for this record, 7 for Reference, satisfied\n"
              "4. from record Reference (sample 23, test 3) = argument outside the domain of the operation\n");
 
     REQUIRE(trace.steps.size() == 4);
@@ -180,9 +180,9 @@ TEST_CASE("every disagreeing attribute is shown, not only the first", "[lineage-
     formula::Trace<> trace {};
     std::string const text = traced(gated, contextWith(4412, 13, 7), trace);
     INFO(text);
-    CHECK(text.find("same MaterialBatch as this record: 4411 and 4412, violated") != std::string::npos);
-    CHECK(text.find("same TestMethod as this record: 12 and 13, violated") != std::string::npos);
-    CHECK(text.find("same CuringRegime as this record: 7 and 7, satisfied") != std::string::npos);
+    CHECK(text.find("same MaterialBatch as this record: 4411 for this record, 4412 for Reference, violated") != std::string::npos);
+    CHECK(text.find("same TestMethod as this record: 12 for this record, 13 for Reference, violated") != std::string::npos);
+    CHECK(text.find("same CuringRegime as this record: 7 for this record, 7 for Reference, satisfied") != std::string::npos);
 }
 
 TEST_CASE("an unknown lineage key is shown as unknown and not checked", "[lineage-trace]")
@@ -192,7 +192,7 @@ TEST_CASE("an unknown lineage key is shown as unknown and not checked", "[lineag
     formula::Trace<> trace {};
     std::string const text = traced(gated, contextWithUnknownBatch(), trace);
     INFO(text);
-    CHECK(text.find("1. same MaterialBatch as this record: 4411 and unknown, not checked\n") != std::string::npos);
+    CHECK(text.find("1. same MaterialBatch as this record: 4411 for this record, unknown for Reference, not checked\n") != std::string::npos);
     CHECK(text.find("4. from record Reference (sample 23, test 3) = (not measured)\n") != std::string::npos);
 }
 
@@ -214,11 +214,47 @@ TEST_CASE("a requirement against another role compares with that record", "[line
     formula::Trace<> trace {};
     std::string const text = traced(gated, context, trace);
     INFO(text);
-    CHECK(text.find("1. same MaterialBatch as PriorTest: 4411 and 4411, satisfied\n") != std::string::npos);
+    CHECK(text.find("1. same MaterialBatch as PriorTest (sample 17, test 3): 4411 for PriorTest, 4411 for Reference, "
+                    "satisfied\n")
+          != std::string::npos);
     CHECK(text.find("= 60000 N\n") != std::string::npos);
     REQUIRE(formula::lineage_of(trace, 0).has_value());
     CHECK(!formula::lineage_of(trace, 0)->is_against_this_record());
     CHECK(formula::lineage_of(trace, 0)->comparand() == "PriorTest");
+}
+
+TEST_CASE("a comparison with another role names the record that played it, and whose key is whose", "[lineage-trace]")
+{
+    // The final review's M1: the prior test's batch, 4412, is a value read
+    // from the record playing PriorTest -- sample 17, test 3 -- and the line
+    // says so, with each key named by whose it is rather than by its place.
+    // The attribute step is inside the reference's scope and stamped with
+    // it; the comparison names the other record itself.
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
+                                             formula::lineage<MaterialBatch>(4411)),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there,
+                                   formula::lineage<MaterialBatch>(4411)),
+        formula::record<PriorTest>(formula::record_key(formula::sample_id(17), formula::test_id(3)), there,
+                                   formula::lineage<MaterialBatch>(4412)));
+    constexpr auto gated = formula::from_record<Reference>(
+        var<Force>, formula::same_lineage<MaterialBatch>(formula::against<PriorTest>));
+    formula::Trace<> trace {};
+    std::string const text = traced(gated, context, trace);
+    INFO(text);
+    CHECK(text.find("1. same MaterialBatch as PriorTest (sample 17, test 3): 4412 for PriorTest, 4411 for Reference, "
+                    "violated\n")
+          != std::string::npos);
+    REQUIRE(formula::lineage_of(trace, 0).has_value());
+    formula::LineageCheck const compared = *formula::lineage_of(trace, 0);
+    CHECK(compared.subject() == "Reference");
+    CHECK(compared.comparand_record().role() == "PriorTest");
+    CHECK(compared.comparand_record().key()
+          == formula::record_key(formula::sample_id(17), formula::test_id(3)));
+    CHECK(compared.comparand_key() == std::uint64_t { 4412 });
+    CHECK(compared.subject_key() == std::uint64_t { 4411 });
+    REQUIRE(formula::origin_of(trace, trace.steps[0]).has_value());
+    CHECK(formula::origin_of(trace, trace.steps[0])->role() == "Reference");
 }
 
 TEST_CASE("a scope over a record not yet made checks no lineage", "[lineage-trace]")
@@ -249,7 +285,7 @@ TEST_CASE("checked_explain returns a refused read together with its trace", "[li
     CHECK(refused.error().error == formula::ArithmeticError::DomainError);
     std::string const text = formula::render_trace(refused.error().trace, { .maxSteps = 20 });
     INFO(text);
-    CHECK(text.find("same TestMethod as this record: 12 and 13, violated") != std::string::npos);
+    CHECK(text.find("same TestMethod as this record: 12 for this record, 13 for Reference, violated") != std::string::npos);
 
     auto const agreed = formula::checked_explain<Force>(gated, contextWith(4411, 12, 7));
     REQUIRE(agreed.has_value());
@@ -277,7 +313,13 @@ TEST_CASE("a comparison with a record not yet made is not checked, and reads not
     CHECK(!evaluated->has_value());
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
     INFO(text);
-    CHECK(text.find("1. same MaterialBatch as PriorTest: unknown and 4411, not checked\n") != std::string::npos);
+    // No record played PriorTest, and the line says so: its `unknown` is not
+    // a record that states no batch.
+    CHECK(text.find("1. same MaterialBatch as PriorTest (no record bound): unknown for PriorTest, 4411 for Reference, "
+                    "not checked\n")
+          != std::string::npos);
+    REQUIRE(formula::lineage_of(trace, 0).has_value());
+    CHECK(!formula::lineage_of(trace, 0)->comparand_record().is_bound());
     CHECK(text.find("F =") == std::string::npos); // the operand was never read
 }
 
@@ -321,6 +363,6 @@ TEST_CASE("a lineage attribute's name is escaped in the trace, as other author t
     std::string const text =
         traced(formula::from_record<Reference>(var<Force>, formula::same_lineage<PunctuatedLot>()), punctuated, trace);
     INFO(text);
-    CHECK(text.find("1. same lot\\; sealed\\\\B as this record: 5 and 5, satisfied\n") != std::string::npos);
+    CHECK(text.find("1. same lot\\; sealed\\\\B as this record: 5 for this record, 5 for Reference, satisfied\n") != std::string::npos);
     CHECK(text.find("lot; sealed") == std::string::npos);
 }

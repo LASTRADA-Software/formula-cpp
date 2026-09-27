@@ -269,8 +269,8 @@ them. The rule is:
 **Every attribute agrees:** the value is read.
 
 ```text
-1. same MaterialBatch as this record: 4411 and 4411, satisfied
-2. same TestMethod as this record: 12 and 12, satisfied
+1. same MaterialBatch as this record: 4411 for this record, 4411 for Reference, satisfied
+2. same TestMethod as this record: 12 for this record, 12 for Reference, satisfied
 3. f_c = 20 MPa, from record Reference (sample 23, test 3), entered by hand
 4. #3 from record Reference (sample 23, test 3) = 20 MPa
 ```
@@ -284,8 +284,8 @@ trace names the attribute that refused it, with both keys. `checked_explain`
 traces it without throwing, and hands back the trace with the error:
 
 ```text
-1. same MaterialBatch as this record: 4411 and 4411, satisfied
-2. same TestMethod as this record: 12 and 13, violated
+1. same MaterialBatch as this record: 4411 for this record, 4411 for Reference, satisfied
+2. same TestMethod as this record: 12 for this record, 13 for Reference, violated
 3. from record Reference (sample 23, test 3) = argument outside the domain of the operation
 ```
 
@@ -298,8 +298,8 @@ absent, as any formula with a missing input is. The trace shows an absent value
 as `(not measured)`, the library's one word for absent:
 
 ```text
-1. same MaterialBatch as this record: 4411 and unknown, not checked
-2. same TestMethod as this record: 12 and 12, satisfied
+1. same MaterialBatch as this record: 4411 for this record, unknown for Reference, not checked
+2. same TestMethod as this record: 12 for this record, 12 for Reference, satisfied
 3. from record Reference (sample 23, test 3) = (not measured)
 ```
 
@@ -307,14 +307,19 @@ as `(not measured)`, the library's one word for absent:
 disagreement is evidence, and an unknown key does not outweigh it:
 
 ```text
-1. same MaterialBatch as this record: 4411 and unknown, not checked
-2. same TestMethod as this record: 12 and 13, violated
+1. same MaterialBatch as this record: 4411 for this record, unknown for Reference, not checked
+2. same TestMethod as this record: 12 for this record, 13 for Reference, violated
 3. from record Reference (sample 23, test 3) = argument outside the domain of the operation
 ```
 
 `same_lineage<...>()` compares with this record. To compare two other records
 -- neither of them this specimen -- name the other one:
-`same_lineage<MaterialBatch>(formula::against<PriorTest>)`.
+`same_lineage<MaterialBatch>(formula::against<PriorTest>)`. Its line then names
+the record that played that role as well, `same MaterialBatch as PriorTest
+(sample 17, test 3): 4412 for PriorTest, 4411 for Reference`, or `as PriorTest
+(no record bound)` when none did, so that a key unknown because no record was
+there is not taken for a record that states none. Each key is named by whose
+it is.
 
 **What the gate is not.** It refuses a read; it does not produce a verdict. A
 method whose acceptance logic wants to accept a result *and* flag a batch

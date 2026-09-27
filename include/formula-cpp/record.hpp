@@ -739,6 +739,7 @@ namespace detail
     };
 
     struct RecordOriginAccess;
+    struct LineageCheckAccess;
 } // namespace detail
 
 /// Which record a value was read from, as a trace step records it: the role's
@@ -793,14 +794,107 @@ namespace detail
     /// are read from. Called only by the scope's evaluator.
     struct RecordOriginAccess
     {
-        /// The origin of every value read from @p readFrom.
+        /// The origin of every value read from @p readFrom. `ThisRecord` is
+        /// declared and never defined, so its name is written here rather
+        /// than reflected; it is an origin only as a lineage comparand.
         template <typename Role, typename Env, typename... Lineage>
         [[nodiscard]] static constexpr RecordOrigin of(Record<Role, Env, Lineage...> const& readFrom) noexcept
         {
-            return RecordOrigin { ReadFromRecord {}, tag_name<Role>(), readFrom.key() };
+            if constexpr (std::is_same_v<Role, ThisRecord>)
+                return RecordOrigin { ReadFromRecord {}, "ThisRecord", readFrom.key() };
+            else
+                return RecordOrigin { ReadFromRecord {}, tag_name<Role>(), readFrom.key() };
         }
     };
 
+} // namespace detail
+
+/// One attribute compared by a lineage requirement, as a trace step records
+/// it: which attribute, the record read and the record compared with, and
+/// each one's key for the attribute. The verdict is the step's `outcome`.
+///
+/// **Built only by the library**, from the two records the check compares --
+/// see `detail::LineageCheckAccess`. Its only constructor is private, and it
+/// has no aggregate spelling. A copy of one the library built travels freely,
+/// and, as a trivially copyable type, it can be produced by `std::bit_cast`
+/// from a struct of the same layout: neither is prevented, as for
+/// `RecordOrigin`.
+class LineageCheck
+{
+  public:
+    /// The attribute compared, as `tag_name<Attr>()` spells it. Static storage.
+    [[nodiscard]] constexpr std::string_view attribute() const noexcept { return _attribute; }
+
+    /// The role of the record read, whose key is `subject_key()`.
+    [[nodiscard]] constexpr std::string_view subject() const noexcept { return _subject; }
+
+    /// The role of the record compared with, as `tag_name` spells it.
+    [[nodiscard]] constexpr std::string_view comparand() const noexcept { return _comparandRecord.role(); }
+
+    /// Which record played the role compared with, and whether one did: an
+    /// unbound comparand's key reads `unknown` because no record was there,
+    /// and a bound one's because its record states none.
+    [[nodiscard]] constexpr RecordOrigin comparand_record() const noexcept { return _comparandRecord; }
+
+    /// Whether the record compared with is the one being evaluated.
+    [[nodiscard]] constexpr bool is_against_this_record() const noexcept { return _againstThisRecord; }
+
+    /// The read record's key for the attribute; empty when unknown.
+    [[nodiscard]] constexpr std::optional<std::uint64_t> subject_key() const noexcept { return _subjectKey; }
+
+    /// The compared record's key for the attribute; empty when unknown.
+    [[nodiscard]] constexpr std::optional<std::uint64_t> comparand_key() const noexcept { return _comparandKey; }
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(LineageCheck const&) const noexcept = default;
+
+  private:
+    friend struct detail::LineageCheckAccess;
+
+    constexpr LineageCheck(std::string_view attributeName, std::string_view subjectName, RecordOrigin comparandRecord,
+                           bool againstThisRecord, std::optional<std::uint64_t> subjectKey,
+                           std::optional<std::uint64_t> comparandKey) noexcept:
+        _attribute { attributeName },
+        _subject { subjectName },
+        _comparandRecord { comparandRecord },
+        _againstThisRecord { againstThisRecord },
+        _subjectKey { subjectKey },
+        _comparandKey { comparandKey }
+    {
+    }
+
+    std::string_view _attribute;
+    std::string_view _subject;
+    RecordOrigin _comparandRecord;
+    bool _againstThisRecord;
+    std::optional<std::uint64_t> _subjectKey;
+    std::optional<std::uint64_t> _comparandKey;
+};
+
+namespace detail
+{
+    /// The one way to build a `LineageCheck`: from the two records it
+    /// compares, never from their keys, so that its only inputs are the
+    /// records the scope reads and compares with. Called only by the scope's
+    /// evaluator.
+    struct LineageCheckAccess
+    {
+        /// Attribute @p Attr of @p subject, compared with @p comparandRecord's.
+        template <typename Attr, typename Subject, typename Comparand>
+        [[nodiscard]] static constexpr LineageCheck of(Subject const& subject, Comparand const& comparandRecord) noexcept
+        {
+            return LineageCheck { tag_name<Attr>(),
+                                  tag_name<typename Subject::role>(),
+                                  RecordOriginAccess::of(comparandRecord),
+                                  std::is_same_v<typename Comparand::role, ThisRecord>,
+                                  subject.template lineage_of<Attr>(),
+                                  comparandRecord.template lineage_of<Attr>() };
+        }
+    };
+} // namespace detail
+
+namespace detail
+{
     /// Whether @p T is a `Record`.
     template <typename T>
     inline constexpr bool isRecord = false;

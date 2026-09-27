@@ -226,7 +226,7 @@ int main()
 
     std::string const agreed = traceOf(gated, records);
     std::printf("%s\n", agreed.c_str());
-    check(agreed.find("same TestMethod as this record: 12 and 12, satisfied") != std::string::npos,
+    check(agreed.find("same TestMethod as this record: 12 for this record, 12 for Reference, satisfied") != std::string::npos,
           "both attributes agree, and the value is read");
 
     auto const otherMethod = recordsWith(formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(13));

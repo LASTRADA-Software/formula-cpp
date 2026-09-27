@@ -745,7 +745,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
         formula::from_record<Reference>(var<Force>, formula::same_lineage<MaterialBatch>()), lineageRecords);
     probe.checks.push_back(!refusedRead.has_value()
                            && formula::render_trace(refusedRead.error().trace, { .maxSteps = 20 }).find(
-                                  "same TestMethod as this record: 12 and 13, violated")
+                                  "same TestMethod as this record: 12 for this record, 13 for Reference, violated")
                                   != std::string::npos
                            && agreedRead.has_value() && **agreedRead == formula::Rational { 60'000 }
                            && lineageRecords.record<Reference>().lineage_of<MaterialBatch>() == std::uint64_t { 4411 });

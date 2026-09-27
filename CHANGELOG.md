@@ -106,10 +106,10 @@ a sample and test key, an environment and lineage keys -- held by role in a `rec
 which is this record's environment and so goes wherever an environment goes. Every step inside
 a read from another record carries which record it was read from, with both keys, and each value
 read from it names the record in its trace line; every input, a series included, says whether it
-was measured or typed in, and an entry typed in empty says so. `same_lineage<Attrs...>()` gates a read on the two
-records sharing the author's lineage attributes: the value; a refusal (`DomainError`) when any
-attribute differs, with the trace naming it and both keys; or no answer when a key is unknown and
-none differs. A record not yet made gives no answer, never zero. `checked_explain` traces a
+was measured or typed in, and an entry typed in empty says so. `same_lineage<Attrs...>()` gates a
+read on the two records sharing the author's lineage attributes: the value; a refusal
+(`DomainError`) when any attribute differs, with the trace naming it, the record compared with,
+and whose key is whose; or no answer when a key is unknown and none differs. A record not yet made gives no answer, never zero. `checked_explain` traces a
 refused read without throwing. On the page a read reads `f_c of Reference`, and `(F / A) of
 Reference` for a computation, with a row per record in the symbol table. A role's name must be
 identifier-like -- starting with a letter, and never `this record` -- and `TagName` spells it

@@ -57,7 +57,7 @@ TEST_CASE("the joined trace names the variant, the lineage, the fixed constant's
 
     std::string const text = trace();
     INFO(text);
-    CHECK(text.find("same MaterialBatch as this record: 4411 and 4411, satisfied") != std::string::npos);
+    CHECK(text.find("same MaterialBatch as this record: 4411 for this record, 4411 for Reference, satisfied") != std::string::npos);
     CHECK(text.find("P = 57268 N, from record Reference (sample 23, test 3)") != std::string::npos);
     // The overlay's constant replaced the reference's typed-in shape factor,
     // and the line says so (the task 4 review's L3).

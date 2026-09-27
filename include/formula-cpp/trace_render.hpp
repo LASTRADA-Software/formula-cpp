@@ -750,6 +750,18 @@ namespace detail
         return escaped_author_text(tagName);
     }
 
+    /// A role and which record played it: `Reference (sample 23, test 3)`,
+    /// or `Reference (no record bound)`.
+    [[nodiscard]] inline std::string role_and_record_text(RecordOrigin const& played)
+    {
+        std::string roleText = tag_words(played.role());
+        std::optional<RecordKey> const recordKey = played.key();
+        if (!recordKey.has_value())
+            return roleText + " (no record bound)";
+        return roleText + " (sample " + std::to_string(recordKey->sample().value()) + ", test "
+               + std::to_string(recordKey->test().value()) + ")";
+    }
+
     /// Which record a value was read from, in words: `from record Reference
     /// (sample 23, test 3)`, or `from record Reference (no record bound)`.
     /// Both keys, always: two tests of one sample share the sample key, so a
@@ -757,17 +769,16 @@ namespace detail
     /// into Markdown stays plain text.
     [[nodiscard]] inline std::string record_origin_text(RecordOrigin const& readFrom)
     {
-        std::string originText = "from record " + tag_words(readFrom.role());
-        std::optional<RecordKey> const recordKey = readFrom.key();
-        if (!recordKey.has_value())
-            return originText + " (no record bound)";
-        return originText + " (sample " + std::to_string(recordKey->sample().value()) + ", test "
-               + std::to_string(recordKey->test().value()) + ")";
+        return "from record " + role_and_record_text(readFrom);
     }
 
-    /// One lineage attribute's comparison: `same TestMethod as this record:
-    /// 12 and 13` -- the compared record's key first, then the read
-    /// record's, each `unknown` when it is. The verdict follows in the line.
+    /// One lineage attribute's comparison, each key named by whose it is:
+    /// `same TestMethod as this record: 12 for this record, 13 for
+    /// Reference`, and against another role, which record played it --
+    /// `same MaterialBatch as PriorTest (sample 17, test 3): 4412 for
+    /// PriorTest, 4411 for Reference`, or `as PriorTest (no record bound)`,
+    /// so that an unbound comparand's `unknown` is not taken for a record
+    /// that states no key. The verdict follows in the line.
     [[nodiscard]] inline std::string lineage_expression(ShownStep const& recorded)
     {
         if (!recorded.comparison.has_value())
@@ -776,10 +787,14 @@ namespace detail
         auto const keyText = [](std::optional<std::uint64_t> lineageKey) {
             return lineageKey.has_value() ? std::to_string(*lineageKey) : std::string { "unknown" };
         };
+        bool const againstThisRecord = compared.is_against_this_record();
+        std::string const comparandName =
+            againstThisRecord ? std::string { "this record" } : tag_words(compared.comparand());
         std::string const comparandText =
-            compared.is_against_this_record() ? std::string { "this record" } : tag_words(compared.comparand());
+            againstThisRecord ? comparandName : role_and_record_text(compared.comparand_record());
         return "same " + tag_words(compared.attribute()) + " as " + comparandText + ": "
-               + keyText(compared.comparand_key()) + " and " + keyText(compared.subject_key());
+               + keyText(compared.comparand_key()) + " for " + comparandName + ", " + keyText(compared.subject_key())
+               + " for " + tag_words(compared.subject());
     }
 
     /// What a step computed, written in terms of the steps it consumed.
