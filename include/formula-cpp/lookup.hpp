@@ -841,9 +841,7 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
     Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
     if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
-        sink.produced(node, failed);
-        return failed;
+        return detail::report_failure<Rep>(node, sink, evaluatedOperand.error());
     }
     if (!evaluatedOperand->has_value())
     {
@@ -876,9 +874,7 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
             checked_convert(**evaluatedOperand, coherent(KeyUnit.dimension), KeyUnit);
         if (!valueInKey.has_value())
         {
-            Evaluated<Rep> const failed = std::unexpected { valueInKey.error() };
-            sink.produced(node, failed);
-            return failed;
+            return detail::report_failure<Rep>(node, sink, valueInKey.error());
         }
 
         std::optional<std::size_t> const matchedBand = detail::find_band<Bands>(*valueInKey);
@@ -887,9 +883,7 @@ template <typename Rep = Rational, Unit KeyUnit, BandTable Bands, Unit ResultUni
             // A miss is not a value: no default, no nearest-band, no
             // first-band fallback. `DomainError` is literally true here, not
             // a euphemism -- see the file comment.
-            Evaluated<Rep> const missed = std::unexpected { ArithmeticError::DomainError };
-            sink.produced(node, missed);
-            return missed;
+            return detail::report_failure<Rep>(node, sink, ArithmeticError::DomainError);
         }
 
         Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.corrections[*matchedBand], ResultUnit);
@@ -1303,9 +1297,7 @@ template <typename Rep = Rational, KeyTable Keys, Unit ResultUnit, typename Env,
             // A miss is not a value: no default, no first-row fallback.
             // `DomainError` is literally true here -- an exact table's domain
             // is its set of keys -- not a euphemism. See the file comment.
-            Evaluated<Rep> const missed = std::unexpected { ArithmeticError::DomainError };
-            sink.produced(node, missed);
-            return missed;
+            return detail::report_failure<Rep>(node, sink, ArithmeticError::DomainError);
         }
 
         Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.corrections[*matchedRow], ResultUnit);
@@ -1808,9 +1800,7 @@ template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Points, Unit Re
     Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
     if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
-        sink.produced(node, failed);
-        return failed;
+        return detail::report_failure<Rep>(node, sink, evaluatedOperand.error());
     }
     if (!evaluatedOperand->has_value())
     {
@@ -1844,9 +1834,7 @@ template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Points, Unit Re
             checked_convert(**evaluatedOperand, coherent(KeyUnit.dimension), KeyUnit);
         if (!valueInKey.has_value())
         {
-            Evaluated<Rep> const failed = std::unexpected { valueInKey.error() };
-            sink.produced(node, failed);
-            return failed;
+            return detail::report_failure<Rep>(node, sink, valueInKey.error());
         }
 
         std::expected<Rational, ArithmeticError> const interpolated =
@@ -1857,9 +1845,7 @@ template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Points, Unit Re
             // extrapolation) or an interpolation whose exact answer is not
             // representable (`Overflow` -- reported, never rounded). Both are
             // already the right enumerator; nothing is rewritten here.
-            Evaluated<Rep> const failed = std::unexpected { interpolated.error() };
-            sink.produced(node, failed);
-            return failed;
+            return detail::report_failure<Rep>(node, sink, interpolated.error());
         }
 
         Evaluated<Rep> const evaluated = detail::in_si<Rep>(*interpolated, ResultUnit);
