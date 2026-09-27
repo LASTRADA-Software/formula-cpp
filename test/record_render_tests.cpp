@@ -294,3 +294,36 @@ TEST_CASE("an overlay's constant used here and inside a scope has one row, of no
     CHECK(factorRows == 1);
     CHECK(edgeRows == 2);
 }
+
+namespace
+{
+struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+{
+};
+
+constexpr auto retainedRatio =
+    formula::sum(formula::series<Retained, 5>) / formula::from_record<Reference>(formula::sum(formula::series<Retained, 5>));
+} // namespace
+
+TEST_CASE("a series read from another record has its own row, marked as a series, on the page", "[record-render]")
+{
+    // Task 10 step 6: the series marker and the scope's words combine, and
+    // the symbol table keeps a row per record, each with the series' shape
+    // and length. The LaTeX typesets clean under MathJax 3.2.2, with the
+    // site's configuration and strictly (task 10's run).
+    CHECK(formula::render(retainedRatio) == "sum(m_r(i)) / (sum(m_r(i)) of Reference)");
+    CHECK(formula::render<formula::Dialect::Markdown>(retainedRatio) == "sum(`m_r(i)`) / (sum(`m_r(i)`) of Reference)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(retainedRatio)
+          == "\\frac{\\sum {m_r}_{i}}{\\sum {m_r}_{i}\\ \\text{of }\\mathrm{Reference}}");
+
+    auto const page = formula::document(retainedRatio);
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].record.empty());
+    CHECK(page.symbols[1].record == "Reference");
+    for (formula::SymbolEntry const& row: page.symbols)
+    {
+        CHECK(row.symbol == "m_r");
+        CHECK(row.shape == formula::ValueShape::Series);
+        CHECK(row.length == 5);
+    }
+}

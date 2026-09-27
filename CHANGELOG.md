@@ -114,7 +114,9 @@ refused read without throwing. On the page a read reads `f_c of Reference`, and 
 Reference` for a computation, with a row per record in the symbol table. A role's name must be
 identifier-like -- starting with a letter, and never `this record` -- and `TagName` spells it
 otherwise. An overlay's constant or derived quantity reaches inside a read from another record,
-as it reaches the rest of the method.
+as it reaches the rest of the method. A series or raw observations read inside a read from another
+record are traced with that record, and have their own row on the page; a read whose value would
+be a whole series is refused, and reduced inside instead: `from_record<Role>(sum(series<Q, N>))`.
 
 ### Changed
 

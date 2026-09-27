@@ -1995,6 +1995,18 @@ formula_add_negative_test(record_environment_is_context
 # quantities evaluated through a context over that record. One message: the
 # refused record holds detail::AbsentEnvironment, which answers every
 # quantity as absent without a RequireProvided of its own.
+# A read from another record over a series itself (F3): refused with one
+# message, the refused scope answered as absent so the formula it is used in
+# draws nothing more; and a series read through a record whose values were
+# refused, which AbsentEnvironment answers without a get_series error.
+formula_add_negative_test(record_scope_of_series
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1)
+formula_add_negative_test(record_series_through_refused_record
+    "formula: a record holds its values in an environment(...), and this is not one"
+    EXPECT_COUNT 1
+    REJECT "get_series")
+
 formula_add_negative_test(record_values_not_environment
     "formula: a record holds its values in an environment(...), and this is not one"
     REJECT "RequireProvided" "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")

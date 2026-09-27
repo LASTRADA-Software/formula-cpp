@@ -2379,8 +2379,7 @@ class RecordingSink
         checkStep.kind = StepKind::LineageChecked;
         checkStep.lineage = attributeCheck;
         checkStep.outcome = attributeOutcome;
-        if (!_trace->recordStack.empty())
-            checkStep.record = _trace->recordStack.back();
+        stamp_origin(checkStep);
         _trace->steps.push_back(std::move(checkStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -2653,8 +2652,7 @@ class RecordingSink
         // without `record_entered` leaves nothing to pop, and popping an
         // empty vector would be undefined behaviour -- an abort under a
         // checked standard library.
-        if (!_trace->recordStack.empty())
-            nodeStep.record = _trace->recordStack.back();
+        stamp_origin(nodeStep);
         if constexpr (detail::StepKindOf<N>::value == StepKind::RecordScope)
             if (!_trace->recordStack.empty())
                 _trace->recordStack.pop_back();
@@ -2717,6 +2715,7 @@ class RecordingSink
         constraintStep.operands.assign(firstClaimed, _trace->unclaimed.end());
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
+        stamp_origin(constraintStep);
         _trace->steps.push_back(std::move(constraintStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -2790,6 +2789,7 @@ class RecordingSink
         else if (produced->has_value() && !selectionStep.operands.empty())
             selectionStep.value = **produced;
 
+        stamp_origin(selectionStep);
         _trace->steps.push_back(std::move(selectionStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3046,6 +3046,7 @@ class RecordingSink
             _trace->steps[verdictStep].citation = constraintOrigin.source();
         }
 
+        stamp_origin(acceptanceStep);
         _trace->steps.push_back(std::move(acceptanceStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3137,6 +3138,7 @@ class RecordingSink
         else
             seriesStep.elements.assign(result->elements.begin(), result->elements.end());
 
+        stamp_origin(seriesStep);
         _trace->steps.push_back(std::move(seriesStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3164,6 +3166,7 @@ class RecordingSink
             for (std::size_t at = 0; at < result->count; ++at)
                 observationsStep.elements.push_back(result->elements[at]);
 
+        stamp_origin(observationsStep);
         _trace->steps.push_back(std::move(observationsStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3240,6 +3243,7 @@ class RecordingSink
             curveStep.elements.assign(result->values.begin(), result->values.end());
         }
 
+        stamp_origin(curveStep);
         _trace->steps.push_back(std::move(curveStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3281,6 +3285,7 @@ class RecordingSink
         if (!conformityStep.operands.empty())
             conformityStep.elements = _trace->steps[conformityStep.operands.back()].elements;
 
+        stamp_origin(conformityStep);
         _trace->steps.push_back(std::move(conformityStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
         _trace->conformityLimits.push_back(ConformityLimits {
@@ -3325,6 +3330,20 @@ class RecordingSink
         _trace->rejectionRecords.push_back(std::move(rejectionRecord));
         _trace->steps.push_back(std::move(rejectionStep));
         _trace->unclaimed.push_back(stepIndex);
+    }
+
+    /// Stamps @p recorded with the origin of the scope still open, if one is:
+    /// every step recorded between a scope's `record_entered` and its own
+    /// step says which record it was read from. Called by every path that
+    /// records a step -- a node's, a lineage attribute's, a series', a
+    /// curve's, raw observations', a constraint's, a conformity check's, a
+    /// variant selection's and an acceptance check's -- so that a recording
+    /// path added later, as phase 12's series paths were, has one rule to
+    /// follow rather than one to forget. Outside every scope it sets nothing.
+    void stamp_origin(Step<Rep>& recorded) const noexcept
+    {
+        if (!_trace->recordStack.empty())
+            recorded.record = _trace->recordStack.back();
     }
 
     Trace<Rep>* _trace;

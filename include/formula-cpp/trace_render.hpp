@@ -1374,12 +1374,20 @@ namespace detail
         // constant's is its value alone: `1 kg; 2 kg`, not the tautology
         // `values = 1 kg; 2 kg`.
         bool const listsItself = recorded.kind == StepKind::SeriesConstant || recorded.kind == StepKind::SeriesDomain;
+        // A series or observations read from another record says which, after
+        // its elements, as a single value read from one does after its value
+        // -- see `record_origin_text`. The steps computed from it name it
+        // through their operands.
+        bool const namesQuantity =
+            recorded.kind == StepKind::SeriesVariable || recorded.kind == StepKind::ObservationsVariable;
+        std::string const originText =
+            namesQuantity && recorded.record.has_value() ? ", " + record_origin_text(*recorded.record) : std::string {};
         std::string lineText = listsItself ? std::string {} : step_expression(recorded) + " = ";
         if (recorded.error.has_value())
-            return lineText + std::string { describe(*recorded.error) } + failed_position_text(recorded);
+            return lineText + std::string { describe(*recorded.error) } + failed_position_text(recorded) + originText;
         std::size_t const elementCount = recorded.elements.size();
         if (elementCount == 0)
-            return lineText + "(no elements)";
+            return lineText + "(no elements)" + originText;
 
         std::size_t const listed = budget < elementCount ? budget : elementCount;
         budget -= listed;
@@ -1391,7 +1399,7 @@ namespace detail
         }
         if (listed < elementCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(elementCount - listed) + " more";
-        return lineText;
+        return lineText + originText;
     }
 
     /// A curve step's line, without its number: the expression, an `=`, and

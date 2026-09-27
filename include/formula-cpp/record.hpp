@@ -97,7 +97,9 @@
 /// `RecordKey { .sample = 17 }` either, because such an aggregate would
 /// value-initialize the missing test key to 0, and 0 is a real key.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/environment.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
@@ -107,6 +109,7 @@
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/tag.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -390,6 +393,25 @@ namespace detail
         [[nodiscard]] constexpr ValueSource source_of() const noexcept
         {
             return ValueSource::Measured;
+        }
+
+        /// No series of any quantity was typed in.
+        template <Described Q>
+        static constexpr bool is_entered_series = false;
+
+        /// Every series is answered -- every element absent -- so that a
+        /// series read through a refused record draws no message of its own.
+        template <Described Q, std::size_t N>
+        [[nodiscard]] constexpr MeasuredSeries<Q, N> get_series() const noexcept
+        {
+            return MeasuredSeries<Q, N> { std::array<Measured<Q>, N> {} };
+        }
+
+        /// Every set of raw observations is answered -- none made.
+        template <Described Q, std::size_t Capacity>
+        [[nodiscard]] constexpr MeasuredObservations<Q, Capacity> get_observations() const noexcept
+        {
+            return MeasuredObservations<Q, Capacity> {};
         }
     };
 
@@ -1136,6 +1158,69 @@ struct RecordScopeNode: NodeBase
     /// (`lookup.hpp`).
     Operand operand;
 };
+
+namespace detail
+{
+    /// Whether @p Operand is series-valued: a series, raw observations or a
+    /// curve -- none of them a `Node`, and none of them one value.
+    template <typename Operand>
+    inline constexpr bool isSeriesValued = SeriesNode<Operand> || ObservationsNode<Operand> || CurveExpression<Operand>;
+
+    /// Fails to compile when `from_record` is given a series, raw
+    /// observations or a curve. A read from another record holds one value
+    /// (F3): its trace line says which record that value came from, and a
+    /// series-valued scope has no single value for a formula to use. Reduce
+    /// it inside the scope instead -- `from_record<Reference>(sum(series<Q,
+    /// N>))` -- where every element's step is stamped with the record.
+    template <typename Operand>
+    struct RequireSingleValueScopeOperand
+    {
+        static_assert(!isSeriesValued<Operand>,
+                      "formula: from_record was given a series, raw observations or a curve, and a read from another "
+                      "record holds one value -- reduce it inside the scope, from_record<Role>(sum(series<Q, N>)), "
+                      "and every element read is still traced with its record; the operand appears in this "
+                      "diagnostic as the template argument of RequireSingleValueScopeOperand");
+        static constexpr bool value = true;
+    };
+
+    /// What a refused series-valued `from_record` returns: a node of the
+    /// operand's dimension, answered as absent without telling any sink, so
+    /// that a formula built on the refusal draws no message of its own.
+    template <typename Operand>
+    struct RefusedSeriesScope: NodeBase
+    {
+        static constexpr Dimension dimension = std::remove_cvref_t<Operand>::dimension;
+    };
+} // namespace detail
+
+/// Refused: a read from another record holds one value -- see
+/// `detail::RequireSingleValueScopeOperand`.
+template <typename Role, typename Operand>
+    requires detail::isSeriesValued<Operand>
+[[nodiscard]] constexpr detail::RefusedSeriesScope<Operand> from_record(Operand) noexcept
+{
+    static_assert(detail::RequireSingleValueScopeOperand<Operand>::value);
+    return {};
+}
+
+/// Refused, with or without a lineage requirement -- see
+/// `detail::RequireSingleValueScopeOperand`.
+template <typename Role, typename Operand, typename Comparand, typename... Attrs>
+    requires detail::isSeriesValued<Operand>
+[[nodiscard]] constexpr detail::RefusedSeriesScope<Operand> from_record(Operand,
+                                                                        LineageRequirement<Comparand, Attrs...>) noexcept
+{
+    static_assert(detail::RequireSingleValueScopeOperand<Operand>::value);
+    return {};
+}
+
+/// A refused series-valued scope: absent, and nothing recorded.
+template <typename Rep = Rational, typename Operand, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(detail::RefusedSeriesScope<Operand> const&, Env const&,
+                                                           Sink = {}) noexcept
+{
+    return detail::nothing<Rep>();
+}
 
 /// Reads @p operand from the record the context binds to @p Role:
 /// `from_record<Reference>(var<Strength>)`, or a whole computation,

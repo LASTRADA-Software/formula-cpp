@@ -770,5 +770,19 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                   != std::string::npos);
     auto const derivedAcrossValue = formula::evaluate_method<Cube>(derivedAcross, boundRecords);
     probe.checks.push_back(derivedAcrossValue.has_value() && **derivedAcrossValue == formula::Rational { 3, 2 });
+
+    // A series read from another record, reduced inside the scope: 150 mm
+    // and 103 mm there, 253 mm, and the series' own line names the record.
+    auto const seriesRecords = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), bothScreens),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), bothScreens));
+    formula::Trace<> seriesAcrossTrace {};
+    auto const seriesAcross = formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(formula::sum(formula::series<EdgeX, 2>)), seriesRecords,
+        formula::RecordingSink { seriesAcrossTrace, north });
+    probe.checks.push_back(seriesAcross.has_value() && **seriesAcross == formula::Rational { 253, 1000 }
+                           && formula::render_trace(seriesAcrossTrace, { .maxSteps = 20 })
+                                      .find("103 mm, from record Reference (sample 23, test 3)")
+                                  != std::string::npos);
     return probe;
 }

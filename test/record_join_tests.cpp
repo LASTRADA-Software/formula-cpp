@@ -290,3 +290,141 @@ TEST_CASE("an overlay's constant that replaced an entry typed in empty says so, 
     CHECK_FALSE(overFilled.replacedEntryEmpty);
     CHECK(filledText.find("as empty") == std::string::npos);
 }
+
+namespace
+{
+struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+{
+};
+
+/// This record's five retained masses total 806 g; the reference's 703 g.
+/// The ratio, 806/703, is neither 1 nor its own inverse, so a sum read from
+/// the wrong record -- or the two swapped -- gives another value.
+inline constexpr auto screensHere = formula::environment(formula::measured_series<Retained>(
+    formula::Measured<Retained> { formula::Rational { 130 } }, formula::Measured<Retained> { formula::Rational { 210 } },
+    formula::Measured<Retained> { formula::Rational { 97 } }, formula::Measured<Retained> { formula::Rational { 340 } },
+    formula::Measured<Retained> { formula::Rational { 29 } }));
+inline constexpr auto screensThere = formula::environment(formula::measured_series<Retained>(
+    formula::Measured<Retained> { formula::Rational { 113 } }, formula::Measured<Retained> { formula::Rational { 197 } },
+    formula::Measured<Retained> { formula::Rational { 89 } }, formula::Measured<Retained> { formula::Rational { 263 } },
+    formula::Measured<Retained> { formula::Rational { 41 } }));
+inline constexpr auto screensContext = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), screensHere),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), screensThere));
+
+inline constexpr auto retainedRatio =
+    formula::sum(formula::series<Retained, 5>) / formula::from_record<Reference>(formula::sum(formula::series<Retained, 5>));
+} // namespace
+
+TEST_CASE("a series formula through a context reads as through this record's environment", "[record-join]")
+{
+    // Task 1 step 2's inheritance probe, over phase 12's accessors: the
+    // context is this record's environment, `get_series` included.
+    constexpr auto viaContext =
+        formula::checked_evaluate_si<formula::Rational>(formula::sum(formula::series<Retained, 5>), screensContext);
+    constexpr auto viaEnvironment =
+        formula::checked_evaluate_si<formula::Rational>(formula::sum(formula::series<Retained, 5>), screensHere);
+    STATIC_REQUIRE(viaContext == viaEnvironment);
+    STATIC_REQUIRE(**viaContext == formula::Rational { 806, 1000 }); // 806 g, in kilograms
+}
+
+TEST_CASE("a series read from another record is stamped with its origin", "[record-join]")
+{
+    constexpr auto ratio = formula::checked_evaluate_si<formula::Rational>(retainedRatio, screensContext);
+    STATIC_REQUIRE(**ratio == formula::Rational { 806, 703 });
+
+    formula::Trace<> recorded {};
+    (void) formula::checked_evaluate_si<formula::Rational>(retainedRatio, screensContext,
+                                                           formula::RecordingSink { recorded });
+    std::size_t seriesSteps = 0;
+    for (formula::Step<> const& step: recorded.steps)
+        if (step.kind == formula::StepKind::SeriesVariable)
+        {
+            ++seriesSteps;
+            bool const isReferences = step.elements.size() == 5 && step.elements[0] == formula::Rational { 113, 1000 };
+            if (isReferences)
+            {
+                REQUIRE(step.record.has_value());
+                CHECK(step.record->role() == "Reference");
+            }
+            else
+                CHECK_FALSE(step.record.has_value());
+        }
+    CHECK(seriesSteps == 2);
+
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
+    INFO(text);
+    CHECK(text.find("m_r = 113 g; 197 g; 89 g; 263 g; 41 g, from record Reference (sample 23, test 3)")
+          != std::string::npos);
+    CHECK(text.find("m_r = 130 g; 210 g; 97 g; 340 g; 29 g\n") != std::string::npos);
+}
+
+namespace
+{
+struct Size: formula::Quantity<Size, "d", "particle size", unit::Metre>
+{
+};
+struct Count: formula::Quantity<Count, "n", "particles in a class", unit::One>
+{
+};
+
+// Phase 12's invented classes and sizes: three significant digits, none a
+// preferred number or a sieve size.
+inline constexpr formula::BandTable<3> sizeClasses { formula::band(0, 1, 127, 1), formula::band(127, 1, 197, 1),
+                                                     formula::band(197, 1, 331, 1) };
+inline constexpr auto particlesThere = formula::environment(formula::MeasuredObservations<Size, 7>(
+    formula::Rational { 103 }, formula::Rational { 127 }, formula::Rational { 163 }, formula::Rational { 277 },
+    formula::Rational { 113 }, formula::Rational { 197 }, formula::Rational { 241 }));
+inline constexpr auto particlesContext = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), screensHere),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), particlesThere));
+} // namespace
+
+TEST_CASE("raw observations read from another record are stamped with its origin", "[record-join]")
+{
+    // The observations path phase 12 added records its own step; read inside
+    // a scope, that step carries the record and its line names it.
+    constexpr auto countedThere = formula::from_record<Reference>(
+        formula::sum(formula::binned<unit::Metre, sizeClasses>(formula::observations<Size, 7>)));
+    constexpr auto total = formula::checked_evaluate_si<formula::Rational>(countedThere, particlesContext);
+    STATIC_REQUIRE(**total == formula::Rational { 7 });
+
+    formula::Trace<> recorded {};
+    (void) formula::checked_evaluate_si<formula::Rational>(countedThere, particlesContext,
+                                                           formula::RecordingSink { recorded });
+    std::size_t observationSteps = 0;
+    for (formula::Step<> const& step: recorded.steps)
+        if (step.kind == formula::StepKind::ObservationsVariable)
+        {
+            ++observationSteps;
+            REQUIRE(step.record.has_value());
+            CHECK(step.record->role() == "Reference");
+        }
+    CHECK(observationSteps == 1);
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
+    INFO(text);
+    CHECK(text.find("d = 103 m; 127 m; 163 m; 277 m; 113 m; 197 m; 241 m, from record Reference (sample 23, test 3)")
+          != std::string::npos);
+}
+
+TEST_CASE("a series typed in on another record says where it was read from, and no more", "[record-join]")
+{
+    // Task 10 step 5. Phase 12 records no source for a series -- its
+    // evaluator reports none -- so the line names the record and does not
+    // invent "entered by hand" for it.
+    constexpr auto typedThere = formula::environment(formula::entered(formula::measured_series<Retained>(
+        formula::Measured<Retained> { formula::Rational { 113 } }, formula::Measured<Retained> { formula::Rational { 197 } },
+        formula::Measured<Retained> { formula::Rational { 89 } }, formula::Measured<Retained> { formula::Rational { 263 } },
+        formula::Measured<Retained> { formula::Rational { 41 } })));
+    STATIC_REQUIRE(decltype(typedThere)::is_entered_series<Retained>);
+    constexpr auto typedContext = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), screensHere),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), typedThere));
+
+    formula::Trace<> recorded {};
+    (void) formula::checked_evaluate_si<formula::Rational>(retainedRatio, typedContext, formula::RecordingSink { recorded });
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
+    INFO(text);
+    CHECK(text.find("m_r = 113 g; 197 g; 89 g; 263 g; 41 g, from record Reference (sample 23, test 3)\n")
+          != std::string::npos);
+}
