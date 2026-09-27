@@ -117,6 +117,27 @@ enum class BinaryOperator : std::uint8_t
 
 namespace detail
 {
+    /// Whether @p T is a node that has already been refused, or holds one: its
+    /// `refused`, where it declares one, and false for every other operand (a
+    /// leaf, or a node kind that cannot be refused). A node over a refused
+    /// operand asks no question of its own -- the operand's length and
+    /// dimension are stand-ins taken after the refusal, and asking about them
+    /// would report the one mistake a second time (defect class 2).
+    ///
+    /// Declared here, beside `Node`, because every check that reads a node's
+    /// dimension asks it: a series refused already (`series.hpp`), a curve
+    /// (`curve.hpp`), an opaque call refused already or an output its
+    /// operation does not declare (`opaque.hpp`), and every node built over
+    /// one of those, which carries its operands' `refused` on.
+    template <typename T>
+    [[nodiscard]] consteval bool refused_already() noexcept
+    {
+        if constexpr (requires { T::refused; })
+            return T::refused;
+        else
+            return false;
+    }
+
     /// Fails to compile when the two sides of an addition or subtraction measure
     /// different dimensions.
     ///
@@ -132,7 +153,7 @@ namespace detail
     template <typename Left, typename Right>
     struct RequireAddendsAgree
     {
-        static_assert(Left::dimension == Right::dimension,
+        static_assert(refused_already<Left>() || refused_already<Right>() || Left::dimension == Right::dimension,
                       "formula: the two sides of this addition or subtraction measure different "
                       "dimensions; the offending operands appear in this diagnostic as the "
                       "template arguments of RequireAddendsAgree");
@@ -182,6 +203,8 @@ struct UnaryNode: NodeBase
     static constexpr UnaryOperator op = Op;
     /// A unary operator never changes the dimension of its operand.
     static constexpr Dimension dimension = Operand::dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Operand>();
 };
 
 /// A node built by applying one `BinaryOperator` to two children.
@@ -200,6 +223,8 @@ struct BinaryNode: NodeBase
     /// Add and subtract keep the (already agreeing) dimension; multiply and
     /// divide combine the two operands' dimensions.
     static constexpr Dimension dimension = detail::combined_dimension<Op, Left::dimension, Right::dimension>();
+    /// Whether either operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Left>() || detail::refused_already<Right>();
 };
 
 // ---------------------------------------------------------------- operators

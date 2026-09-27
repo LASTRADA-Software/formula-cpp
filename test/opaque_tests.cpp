@@ -317,16 +317,16 @@ TEST_CASE("an absent single input makes the call absent, and compute is never ca
     CHECK(outcome->is_empty());
     CHECK(ShiftedLowest::calls == 0);
 
-    // With the shift present: 103 + 17 = 120 g. The inputs arrive in the
+    // With the shift present: 103 + 163 = 266 g. The inputs arrive in the
     // declared order, series then value.
     auto const shifted = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(127) },
                                                                                 formula::Measured<Reading> { rat(103) },
                                                                                 formula::Measured<Reading> { rat(191) },
                                                                                 formula::Measured<Reading> { rat(139) }),
-                                              formula::Measured<Shift> { rat(17) });
+                                              formula::Measured<Shift> { rat(163) });
     auto const raised = formula::checked_evaluate<Lowest>(formula::opaque_output<"shifted">(shiftedCall), shifted);
     REQUIRE(raised.has_value());
-    CHECK(raised->measurement().value() == rat(120));
+    CHECK(raised->measurement().value() == rat(266));
     CHECK(ShiftedLowest::calls == 1);
 }
 
@@ -438,10 +438,10 @@ TEST_CASE("a result entered by a person replaces an opaque output, which is not 
                                                                                 formula::Measured<Reading> { rat(103) },
                                                                                 formula::Measured<Reading> { rat(191) },
                                                                                 formula::Measured<Reading> { rat(139) }),
-                                              formula::entered(formula::Measured<Spread> { rat(97) }));
+                                              formula::entered(formula::Measured<Spread> { rat(197) }));
     auto const outcome = formula::checked_evaluate<Spread>(formula::opaque_output<"span">(span_call), typedIn);
     REQUIRE(outcome.has_value());
-    CHECK(outcome->measurement().value() == rat(97));
+    CHECK(outcome->measurement().value() == rat(197));
     CHECK(outcome->is_overridden());
     CHECK(SeriesSpan::calls == 0);
 }
@@ -688,4 +688,140 @@ TEST_CASE("opaque trace data lives in side tables, and a Step is no larger for i
     // added to Step for an opaque step, or later a retry's, fails this. Not
     // measured on libc++.
     STATIC_REQUIRE(sizeof(formula::Step<formula::Rational>) - 5 * sizeof(std::vector<std::size_t>) == 888);
+}
+namespace
+{
+// Two outputs of two dimensions: the total of a series, a mass, and the ratio
+// of its highest element to its lowest, a pure number. An output that took
+// another's dimension -- or the first output's -- is told apart by both the
+// type and the value.
+struct TotalAndRatio
+{
+    static constexpr std::string_view name = "total and ratio";
+    static constexpr std::array shapes { formula::InputShape::Series };
+    static constexpr std::array<std::string_view, 2> outputs { "total", "ratio" };
+
+    static consteval std::optional<std::array<formula::Dimension, 2>> output_dimensions(
+        std::array<formula::Dimension, 1> declared) noexcept
+    {
+        return std::array { declared[0], formula::dim::Scalar };
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 2>, formula::ArithmeticError> compute(
+        std::span<Rep const> values) noexcept
+    {
+        Rep total = values[0];
+        Rep least = values[0];
+        Rep most = values[0];
+        for (std::size_t at = 1; at < values.size(); ++at)
+        {
+            std::expected<Rep, formula::ArithmeticError> const added = formula::RepTraits<Rep>::add(total, values[at]);
+            if (!added.has_value())
+                return std::unexpected { added.error() };
+            total = *added;
+            if (values[at] < least)
+                least = values[at];
+            if (most < values[at])
+                most = values[at];
+        }
+        std::expected<Rep, formula::ArithmeticError> const ratio = formula::RepTraits<Rep>::divide(most, least);
+        if (!ratio.has_value())
+            return std::unexpected { ratio.error() };
+        return std::array { total, *ratio };
+    }
+};
+
+constexpr auto totalAndRatio =
+    formula::opaque<TotalAndRatio>({ .reference = "Example Standard 12", .section = "4.6" }, formula::series<Reading, 4>);
+
+struct Spot: formula::Quantity<Spot, "d_s", "an invented measured opening", unit::Millimetre>
+{
+};
+
+struct EndPoint
+{
+    static constexpr std::string_view name = "end point";
+    static constexpr std::array shapes { formula::InputShape::Curve };
+    static constexpr std::array<std::string_view, 1> outputs { "last" };
+
+    static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
+        std::array<formula::Dimension, 2> declared) noexcept
+    {
+        return std::array { declared[1] };
+    }
+
+    static inline int calls = 0;
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(
+        std::span<Rep const> points, std::span<Rep const> pointValues) noexcept
+    {
+        if !consteval
+        {
+            ++calls;
+        }
+        (void) points;
+        return std::array { pointValues.back() };
+    }
+};
+} // namespace
+
+TEST_CASE("each output has its own declared dimension, not the first output's", "[opaque]")
+{
+    using Total = decltype(formula::opaque_output<"total">(totalAndRatio));
+    using Ratio = decltype(formula::opaque_output<"ratio">(totalAndRatio));
+    STATIC_REQUIRE(Total::dimension == formula::dim::Mass);
+    STATIC_REQUIRE(Ratio::dimension == formula::dim::Scalar);
+    // 127 + 103 + 191 + 139 = 560 g; 191/103.
+    constexpr auto total = formula::checked_evaluate<Lowest>(formula::opaque_output<"total">(totalAndRatio), readings);
+    STATIC_REQUIRE(total->measurement().value() == rat(560));
+    constexpr auto ratio = formula::checked_evaluate<Level>(formula::opaque_output<"ratio">(totalAndRatio), readings);
+    STATIC_REQUIRE(ratio->measurement().value() == rat(191, 103));
+}
+
+TEST_CASE("an absent curve point makes the call absent, and compute is never called", "[opaque]")
+{
+    // A domain that is itself measured: point 2 of 3 absent. The curve keeps
+    // it absent (a gap does not stop the other points ascending), and the call
+    // is then absent -- compute never sees a point that is not there.
+    EndPoint::calls = 0;
+    constexpr auto lastCall = formula::opaque<EndPoint>({ .reference = "Example Standard 12" },
+                                                        formula::curve(formula::series<Spot, 3>, formula::series<Load, 3>));
+    auto const gap = formula::environment(formula::measured_series<Spot>(formula::Measured<Spot> { rat(103) },
+                                                                         formula::Measured<Spot>::absent(),
+                                                                         formula::Measured<Spot> { rat(163) }),
+                                          formula::measured_series<Load>(formula::Measured<Load> { rat(139) },
+                                                                         formula::Measured<Load> { rat(163) },
+                                                                         formula::Measured<Load> { rat(241) }));
+    auto const called = formula::detail::evaluate_call<formula::Rational>(lastCall, gap, formula::NullSink {});
+    REQUIRE(called.has_value());
+    CHECK(!called->has_value());
+    CHECK(EndPoint::calls == 0);
+
+    // The control: every point present, and compute is called.
+    auto const whole = formula::environment(formula::measured_series<Spot>(formula::Measured<Spot> { rat(103) },
+                                                                           formula::Measured<Spot> { rat(127) },
+                                                                           formula::Measured<Spot> { rat(163) }),
+                                            formula::measured_series<Load>(formula::Measured<Load> { rat(139) },
+                                                                           formula::Measured<Load> { rat(163) },
+                                                                           formula::Measured<Load> { rat(241) }));
+    auto const answered = formula::detail::evaluate_call<formula::Rational>(lastCall, whole, formula::NullSink {});
+    REQUIRE(answered.has_value());
+    REQUIRE(answered->has_value());
+    CHECK((**answered)[0] == rat(241));
+    CHECK(EndPoint::calls == 1);
+}
+
+TEST_CASE("an output built by hand past every position is refused at run time, never read past the end", "[opaque]")
+{
+    // The one position a hand-built output can hold that is not refused where
+    // it is built: the sentinel opaque_output uses for a name it did not find.
+    // Such a node is refused, and evaluating it is an error, not a read.
+    using Past = formula::OpaqueOutputNode<static_cast<std::size_t>(-1), std::remove_cv_t<decltype(span_call)>>;
+    STATIC_REQUIRE(Past::refused);
+    Past const past { {}, span_call };
+    auto const evaluated = formula::checked_evaluate_si(past, readings);
+    REQUIRE(!evaluated.has_value());
+    CHECK(evaluated.error() == formula::ArithmeticError::DomainError);
 }

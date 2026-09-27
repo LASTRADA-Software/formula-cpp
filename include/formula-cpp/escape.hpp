@@ -67,7 +67,7 @@ namespace detail
     template <Unit U, typename Operand>
     struct RequireEscapeUnitMatches
     {
-        static_assert(U.dimension == Operand::dimension,
+        static_assert(refused_already<Operand>() || U.dimension == Operand::dimension,
                       "formula: this numeric_value_of names a unit that does not measure the dimension "
                       "of the expression it reads a number from; the unit's dimension and the operand "
                       "appear in this diagnostic as the template arguments of RequireEscapeUnitMatches");
@@ -109,6 +109,8 @@ struct NumericValueNode: NodeBase
     /// is a bare number, and the type system now says so honestly rather than
     /// carrying a dimension that the rule downstream will contradict.
     static constexpr Dimension dimension = dim::Scalar;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Operand>();
 };
 
 /// `numeric_value_of<unit::Megapascal, "...">(var<Strength>)`: the numeric

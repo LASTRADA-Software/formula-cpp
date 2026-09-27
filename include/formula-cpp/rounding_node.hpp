@@ -35,7 +35,7 @@ namespace detail
     template <Unit U, typename Operand>
     struct RequireRoundingUnitMatches
     {
-        static_assert(U.dimension == Operand::dimension,
+        static_assert(refused_already<Operand>() || U.dimension == Operand::dimension,
                       "formula: this rounding node names a unit that does not measure the dimension of the "
                       "expression it rounds; the unit's dimension and the operand appear in this diagnostic as "
                       "the template arguments of RequireRoundingUnitMatches");
@@ -66,6 +66,8 @@ struct RoundNode: NodeBase
     static constexpr RoundingMode mode = Mode;
     /// Rounding changes a number, never its dimension.
     static constexpr Dimension dimension = Operand::dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Operand>();
 };
 
 /// @p Operand rounded to @p Digits significant digits of @p U, under @p Mode.
@@ -90,6 +92,8 @@ struct RoundSignificantNode: NodeBase
     static constexpr RoundingMode mode = Mode;
     /// Rounding changes a number, never its dimension.
     static constexpr Dimension dimension = Operand::dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Operand>();
 };
 
 /// `operand` rounded to `Places` decimal places of `U`:

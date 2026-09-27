@@ -275,20 +275,6 @@ namespace detail
     inline constexpr bool elementwise_dimensions_agree =
         (Op != BinaryOperator::Add && Op != BinaryOperator::Subtract) || Left::dimension == Right::dimension;
 
-    /// Whether @p T is a series node that has already been refused, or holds
-    /// one: its `refused`, where it declares one, and false for every other
-    /// operand (a scalar, or a leaf). A node over a refused operand asks no
-    /// question of its own -- the operand's length and dimension are
-    /// stand-ins taken after the refusal, and asking about them would report
-    /// the one mistake a second time (defect class 2).
-    template <typename T>
-    [[nodiscard]] consteval bool refused_already() noexcept
-    {
-        if constexpr (requires { T::refused; })
-            return T::refused;
-        else
-            return false;
-    }
 } // namespace detail
 
 /// A `UnaryOperator` applied to every element of a series: `-m_r(i)`.

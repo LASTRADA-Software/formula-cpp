@@ -59,7 +59,7 @@ namespace detail
     template <Node Then, Node Else>
     struct RequireBranchesAgree
     {
-        static_assert(Then::dimension == Else::dimension,
+        static_assert(refused_already<Then>() || refused_already<Else>() || Then::dimension == Else::dimension,
                       "formula: the two branches of this when() measure different dimensions; the "
                       "offending branches appear in this diagnostic as the template arguments of "
                       "RequireBranchesAgree");
@@ -89,6 +89,10 @@ struct WhenNode: NodeBase
 
     /// The two branches already agree; this is that (shared) dimension.
     static constexpr Dimension dimension = Then::dimension;
+    /// Whether the condition or either branch was refused -- see
+    /// `detail::refused_already`.
+    static constexpr bool refused =
+        detail::refused_already<P>() || detail::refused_already<Then>() || detail::refused_already<Else>();
 };
 
 /// `when(predicate, thenBranch, elseBranch)`: `thenBranch` where `predicate`

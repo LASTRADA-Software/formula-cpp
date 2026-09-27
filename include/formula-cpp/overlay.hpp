@@ -2810,7 +2810,7 @@ namespace detail
     template <typename Q, typename Expr>
     struct RequireDerivationMeasuresQuantity
     {
-        static_assert(Expr::dimension == Describe<Q>::dimension,
+        static_assert(refused_already<Expr>() || Expr::dimension == Describe<Q>::dimension,
                       "formula: this overlay derives a quantity from an expression of a different dimension; "
                       "every use of the quantity would evaluate to something it does not measure -- the "
                       "quantity and the expression appear in this diagnostic as the template arguments Q and "
@@ -3379,7 +3379,7 @@ namespace detail
                                          std::true_type>::value);
         static_assert(
             std::conditional_t<
-                declared,
+                declared && !refused_already<Expr>(),
                 RequireReplacementKeepsDimension<Tag, MethodDimensionIs<Input, Expr::dimension>::reported, Expr::dimension>,
                 std::true_type>::value);
         static_assert(

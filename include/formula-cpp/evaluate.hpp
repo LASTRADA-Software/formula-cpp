@@ -164,7 +164,7 @@ namespace detail
     template <typename Result, typename Expression>
     struct RequireResultDimension
     {
-        static_assert(Describe<Result>::dimension == Expression::dimension,
+        static_assert(refused_already<Expression>() || Describe<Result>::dimension == Expression::dimension,
                       "formula: this result quantity does not measure the dimension this expression "
                       "computes; the quantity and the expression appear in this diagnostic as the "
                       "template arguments of RequireResultDimension");

@@ -2095,7 +2095,7 @@ formula_add_negative_test(opaque_wrong_shape
     "formula: this opaque call passes an input of another shape than the operation declares"
     REJECT "does not accept inputs of these dimensions" "compute cannot be called")
 formula_add_negative_test(opaque_series_lengths_differ
-    "formula: this opaque operation's series inputs differ in length"
+    "formula: this opaque operation's series and curve inputs differ in length"
     REJECT "does not accept inputs of these dimensions")
 formula_add_negative_test(opaque_dimensions_refused
     "formula: this opaque operation does not accept inputs of these dimensions"
@@ -2121,6 +2121,58 @@ formula_add_negative_test(least_squares_in_double
 formula_add_negative_test(overlay_constant_inside_opaque_series
     "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
     REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
+# A refused opaque call's output stands in with a dimensionless dimension;
+# every check over it is silent (`detail::refused_already`), so the one
+# mistake draws one message. Each REJECT names the check that would repeat it.
+formula_add_negative_test(opaque_refused_result_dimension
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this result quantity does not measure the dimension")
+formula_add_negative_test(opaque_refused_added
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "the two sides of this addition or subtraction measure different" "this result quantity does not measure the dimension")
+formula_add_negative_test(opaque_refused_compared
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "the two sides of this comparison measure different dimensions")
+formula_add_negative_test(opaque_refused_branch
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "the two branches of this when() measure different dimensions")
+formula_add_negative_test(opaque_refused_escape
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this numeric_value_of names a unit that does not measure")
+formula_add_negative_test(opaque_refused_lookup
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this lookup table's key unit does not measure")
+formula_add_negative_test(opaque_refused_rounded
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this rounding node names a unit that does not measure")
+formula_add_negative_test(opaque_refused_snapped
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this snap's key unit does not measure")
+formula_add_negative_test(opaque_refused_interpolation_point
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this curve is read at a point that does not measure")
+formula_add_negative_test(opaque_refused_variants
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "two variants of this method measure different dimensions")
+formula_add_negative_test(opaque_refused_rounding_rule
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this method's rounding rule rounds in a unit that does not measure")
+formula_add_negative_test(opaque_refused_replacement
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this overlay replaces a variant with a formula of a different dimension")
+formula_add_negative_test(opaque_refused_derivation
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this overlay derives a quantity from an expression of a different dimension")
+
+# A curve operation whose output_dimensions takes one dimension, not two: refused
+# once in the library's words, not in the compiler's "no matching function".
+formula_add_negative_test(opaque_curve_dimensions_declared
+    "formula: this opaque operation's output_dimensions must be a static function taking std::array<Dimension, D>"
+    REJECT "no matching overloaded function" "no matching function" "may hold only ASCII letters")
+# An output node built by hand at a position its operation does not declare.
+formula_add_negative_test(opaque_forged_output_position
+    "formula: this opaque output's position names no output of its operation"
+    REJECT "subscript")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

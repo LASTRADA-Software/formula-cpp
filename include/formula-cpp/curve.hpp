@@ -436,7 +436,7 @@ namespace detail
 template <CurveExpression C, Node At>
 struct InterpolateAlongNode: NodeBase
 {
-    static_assert(std::conditional_t<!detail::refused_already<C>(),
+    static_assert(std::conditional_t<!detail::refused_already<C>() && !detail::refused_already<At>(),
                                      detail::RequireInterpolationPointMatches<C, At>,
                                      std::true_type>::value);
 
@@ -448,7 +448,8 @@ struct InterpolateAlongNode: NodeBase
     /// The dimension of the curve's values.
     static constexpr Dimension dimension = C::dimension;
     /// Whether this interpolation was refused, or reads a refused curve.
-    static constexpr bool refused = detail::refused_already<C>() || !(C::domainDimension == At::dimension);
+    static constexpr bool refused =
+        detail::refused_already<C>() || detail::refused_already<At>() || !(C::domainDimension == At::dimension);
 };
 
 /// The value of @p curveExpression at @p at: `interpolate_at(curve(screens,

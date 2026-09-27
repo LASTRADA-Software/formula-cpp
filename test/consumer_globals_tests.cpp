@@ -731,16 +731,18 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::document(observedMean, north).symbols.front().shape == formula::ValueShape::Observations
         && formula::render_trace(observedTrace, { .maxSteps = 20 }).find("sample_mean(#1) = 169 mm") != std::string::npos);
     // An opaque operation's output, evaluated exactly and in double: the span
-    // of 150 and 103 mm is 47 mm.
+    // of 163 and 127 mm is 36 mm.
     auto const edgeSpan = formula::opaque_output<"span">(
         formula::opaque<EdgeSpan>({ .reference = "Example Standard 3" }, formula::series<EdgeX, 2>));
-    auto const spanValue = formula::checked_evaluate<EdgeX>(edgeSpan, bothScreens);
-    auto const spanInDouble = formula::checked_evaluate_si<double>(edgeSpan, bothScreens);
-    probe.checks.push_back(spanValue.has_value() && spanValue->measurement().value() == formula::Rational { 47 }
+    auto const spanEdges = formula::environment(formula::measured_series<EdgeX>(
+        formula::Measured<EdgeX> { formula::Rational { 163 } }, formula::Measured<EdgeX> { formula::Rational { 127 } }));
+    auto const spanValue = formula::checked_evaluate<EdgeX>(edgeSpan, spanEdges);
+    auto const spanInDouble = formula::checked_evaluate_si<double>(edgeSpan, spanEdges);
+    probe.checks.push_back(spanValue.has_value() && spanValue->measurement().value() == formula::Rational { 36 }
                            && spanInDouble.has_value() && spanInDouble->has_value());
     // ... and on every surface: traced, rendered in the three dialects and
     // documented.
-    auto const explainedSpan = formula::explain<EdgeX>(edgeSpan, bothScreens, north);
+    auto const explainedSpan = formula::explain<EdgeX>(edgeSpan, spanEdges, north);
     probe.checks.push_back(
         formula::render_trace(explainedSpan.trace, { .maxSteps = 20 }).find("[inside not shown]") != std::string::npos
         && formula::render(edgeSpan, north) == "edge span(x_m(i)).span"

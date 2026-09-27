@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this opaque operation's series inputs differ in length
+// EXPECT: formula: this opaque operation's series and curve inputs differ in length
 // REJECT: does not accept inputs of these dimensions
 //
 // Two series of three and four readings for an operation over both. Refused

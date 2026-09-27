@@ -78,7 +78,7 @@ namespace detail
     template <Unit KeyUnit, typename Operand>
     struct RequireSnapKeyMatches
     {
-        static_assert(KeyUnit.dimension == Operand::dimension,
+        static_assert(refused_already<Operand>() || KeyUnit.dimension == Operand::dimension,
                       "formula: this snap's key unit does not measure the dimension of the expression it snaps; the "
                       "unit's dimension and the operand appear in this diagnostic as the template arguments of "
                       "RequireSnapKeyMatches");
@@ -179,6 +179,8 @@ struct SnapNode: NodeBase
     static constexpr SnapTie tie = Tie;
     /// A snapped value keeps its dimension: the key unit's.
     static constexpr Dimension dimension = KeyUnit.dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Operand>();
 };
 
 /// `snapped<KeyUnit, Permitted, Tie>(operand)`: @p operand snapped to the

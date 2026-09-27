@@ -31,7 +31,7 @@
 
 ## Corrections since the plan (2026-09-27, against master `d09657e`)
 
-The plan was written against phase 12 *as planned*. The branch starts from master `d09657e`, the phase 12 merge, and every name the plan quotes was checked against those headers. Where a later section still reads otherwise, **this section wins**.
+The plan was written against phase 12 *as planned*. The branch starts from master `d09657e`, the phase 12 merge, and every name the plan quotes was checked against those headers. Where a later section still reads otherwise, **this section wins**. The file:line references outside this section -- the "Interfaces that already exist" table above all -- predate phase 12 and were not refreshed; find a name with `git grep -n`, not by its line.
 
 **C1. Branch point and baseline.** `phase-15-opaque-operations` starts at `d09657e`. `ctest --preset cl-debug` runs **1037** tests there, all passing. A task reporting fewer has lost tests.
 
@@ -80,7 +80,7 @@ The plan was written against phase 12 *as planned*. The branch starts from maste
 
 **C11. The lookup-key LaTeX note in the ledger is resolved.** Master sets a lookup row's words in `\mathrm{…}` escaped by `detail::latex_math_words` (`detail/latex_math.hpp:59`, `render.hpp:532`), so `\text{fit\_2}` no longer occurs. The opaque LaTeX spelling stays spike step 9's `\text{<name>}(…)_{\text{<output>}}`: a restricted name needs no escaping, and `render.hpp` already sets fixed words in `\text{…}` (`cumulative`'s direction, `when`'s `\text{if }`).
 
-**C12. O1 amendment 3 is still open.** Master's `detail::refused_already<T>()` (`series.hpp:285`), which reads a node's `static constexpr bool refused`, is exactly the marker option (a) describes, and the series, curve and conformity nodes already gate their checks on it. `RequireResultDimension` and `RequireAddendsAgree` do not consult it. Until the lead rules, task 2's `opaque_dimensions_refused` negative builds the output without evaluating it, as planned.
+**C12. O1 amendment 3 was open (ruled since: C16).** Master's `detail::refused_already<T>()` (`series.hpp:285`), which reads a node's `static constexpr bool refused`, is exactly the marker option (a) describes, and the series, curve and conformity nodes already gate their checks on it. `RequireResultDimension` and `RequireAddendsAgree` do not consult it. Until the lead rules, task 2's `opaque_dimensions_refused` negative builds the output without evaluating it, as planned.
 
 **C13. The numbers rule.** Every size-like fixture value has three significant digits, is not a Renard R40 preferred number in any decade and is not a sieve designation. The fixtures below were changed to follow it:
 - the opaque core's readings are now **127, 103, 191, 139 g** (were 12, 7, 19, 9 g; 12 and 7 are sieve designations);
@@ -90,9 +90,12 @@ The plan was written against phase 12 *as planned*. The branch starts from maste
 
 The least-squares fixture's lengths (10.2, 10.9, 12.1, 14.3 mm) already follow the rule and are kept. Its times (1, 2, 4, 7 s) are not size-like and are kept, because every hand-computed coefficient below depends on them.
 
-**C15. Task 2 accepts the `Curve` shape already.** The curve seam (`detail::dispatch_curve`) is on master, so `RequireCurveInputsAvailable` and its negative are not built, and task 4 deletes nothing. Task 2 also adds two refusals the plan did not list, each with its negative: an operation with no outputs (`opaque_no_outputs`), and a `compute` that cannot be called with what the declared inputs give (`opaque_compute_signature`), which would otherwise be refused in the compiler's words.
-
 **C14. Phase 13's overflow census** (`FORMULA_OVERFLOW_CENSUS`) has not merged. The owner-requested least-squares census case before task 9 is deferred until both phases are on master, and is not part of this branch.
+
+
+**C15. Task 2 accepts the `Curve` shape already.** The curve seam (`detail::dispatch_curve`) is on master, so `RequireCurveInputsAvailable` and its negative are not built, and task 4 deletes nothing. Task 2 also adds two refusals the plan did not list, each with its negative: an operation with no outputs (`opaque_no_outputs`), and a `compute` that cannot be called with what the declared inputs give (`opaque_compute_signature`), which would otherwise be refused in the compiler's words. Every check of the operation and of the call is made in `OpaqueCall`'s class body, not in `opaque<Op>()`, so that a call built as an aggregate is checked too.
+
+**C16. O1 amendment 3 is ruled: option (a).** A refused call's outputs, an output `opaque_output` found no name for, and every node built over one of those carry `refused` (`detail::refused_already`, now in `expression.hpp`), and every check that reads a node's dimension is silent over one: `RequireResultDimension`, `RequireAddendsAgree`, `RequireComparandsAgree`, `RequireBranchesAgree`, `RequireEscapeUnitMatches`, `RequireLookupKeyMatches`, `RequireRoundingUnitMatches`, `RequireSnapKeyMatches`, `RequireInterpolationPointMatches`, `RequireVariantsAgree`, `RequireRoundingRuleMeasuresVariants`, `RequireReplacementKeepsDimension` and `RequireDerivationMeasuresQuantity`, each pinned by an `opaque_refused_*` negative.
 
 ---
 
@@ -507,7 +510,7 @@ Every number here is invented. Each has been computed by hand, and each is chose
 - Correct: lowest 103 g, highest 191 g, span 88 g (11/125 kg).
 - First/last instead of min/max: 127 and 139, span 12.
 - Reversed input: the same min/max, so a test with a *different* order is added for the `Series` span-passing check.
-- Grams passed as if coherent: 7000 times too large after conversion back.
+- Grams passed as if coherent: 1000 times too large after conversion back.
 
 **Least squares (task 4).** `Elapsed` (`"t"`, seconds) and `Length` (`"L"`, millimetres), 4 points:
 

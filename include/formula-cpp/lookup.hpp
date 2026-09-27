@@ -512,7 +512,7 @@ namespace detail
     template <Unit KeyUnit, typename Operand>
     struct RequireLookupKeyMatches
     {
-        static_assert(KeyUnit.dimension == Operand::dimension,
+        static_assert(refused_already<Operand>() || KeyUnit.dimension == Operand::dimension,
                       "formula: this lookup table's key unit does not measure the dimension of the "
                       "expression whose value selects a row; the unit's dimension and the operand "
                       "appear in this diagnostic as the template arguments of RequireLookupKeyMatches");
@@ -802,6 +802,8 @@ struct BandedLookupNode: NodeBase
     /// pressure correction from a measured length, say -- a banded lookup
     /// node stands where a number of *this* dimension stands.
     static constexpr Dimension dimension = ResultUnit.dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Operand>();
 };
 
 
@@ -1767,6 +1769,8 @@ struct InterpolatingLookupNode: NodeBase
     /// The dimension of `unit`: what this node itself produces. Independent of
     /// `keyUnit`'s dimension on purpose, exactly as a banded lookup's is.
     static constexpr Dimension dimension = ResultUnit.dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr bool refused = detail::refused_already<Operand>();
 };
 
 /// Declares an interpolating lookup: `interpolating_lookup<unit::Millimetre,

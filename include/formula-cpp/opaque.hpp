@@ -216,10 +216,19 @@ namespace detail
 ///    `Rep`, a series as `std::span<Rep const>` and a curve as two spans,
 ///    points first -- every value in the coherent SI unit.
 ///
-/// This concept checks the shape of those declarations. What they say -- a
-/// name that says something, readable and distinct output names, a `compute`
-/// that is `noexcept` and callable with the declared inputs -- is checked
-/// where a call is built, in this library's words.
+/// **`compute` must be a function of its arguments alone.** Nothing in its
+/// signature lets it read the environment, but nothing in C++ stops it
+/// reading a global, a static member or a clock. A value it read that way
+/// would be an input the trace does not show and an overlay cannot reach --
+/// exactly what an opaque operation exists to rule out -- so an operation
+/// that needs a value takes it as an input.
+///
+/// This concept checks only that the three data members exist in their
+/// declared types. Everything else -- `output_dimensions` declared with the
+/// right parameter and return, a name that says something, readable and
+/// distinct output names, a `compute` that is `noexcept` and callable with
+/// the declared inputs -- is checked where a call is built, in this
+/// library's words, one message per mistake.
 ///
 /// **This is the traced way for a consumer to add a computation.** A
 /// consumer's own `Node` kind cannot appear in a recorded trace
@@ -231,13 +240,35 @@ concept OpaqueOperation = requires {
     { Op::name } -> std::convertible_to<std::string_view>;
     requires std::same_as<std::remove_cvref_t<decltype(Op::shapes)>, std::array<InputShape, Op::shapes.size()>>;
     requires std::same_as<std::remove_cvref_t<decltype(Op::outputs)>, std::array<std::string_view, Op::outputs.size()>>;
-    {
-        Op::output_dimensions(std::array<Dimension, detail::input_dimension_count(Op::shapes)> {})
-    } -> std::same_as<std::optional<std::array<Dimension, Op::outputs.size()>>>;
 };
 
 namespace detail
 {
+    /// Whether @p Op declares `output_dimensions` as `OpaqueOperation`
+    /// describes it: taking one `Dimension` per single value or series and
+    /// two per curve, and answering one per output.
+    template <typename Op>
+    inline constexpr bool opaque_dimensions_declared = requires {
+        {
+            Op::output_dimensions(std::array<Dimension, input_dimension_count(Op::shapes)> {})
+        } -> std::same_as<std::optional<std::array<Dimension, Op::outputs.size()>>>;
+    };
+
+    /// Fails to compile when `output_dimensions` is missing, or takes or
+    /// answers the wrong number of dimensions.
+    template <typename Op>
+    struct RequireOpaqueOutputDimensionsDeclared
+    {
+        static_assert(opaque_dimensions_declared<Op>,
+                      "formula: this opaque operation's output_dimensions must be a static function taking "
+                      "std::array<Dimension, D> -- one Dimension per single value or series input and two per curve, "
+                      "its points then its values -- and returning std::optional<std::array<Dimension, M>>, with M "
+                      "the number of outputs; the operation appears in this diagnostic as the template argument of "
+                      "RequireOpaqueOutputDimensionsDeclared");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when an opaque operation's name is empty or blank.
     template <typename Op>
     struct RequireOpaqueNameSaysSomething
@@ -286,7 +317,8 @@ namespace detail
     /// Whether @p Op's own declaration passes every check above, asserting
     /// nothing.
     template <typename Op>
-    inline constexpr bool opaque_operation_well_formed = saysSomething(std::string_view { Op::name })
+    inline constexpr bool opaque_operation_well_formed = opaque_dimensions_declared<Op>
+                                                         && saysSomething(std::string_view { Op::name })
                                                          && readable_name(std::string_view { Op::name })
                                                          && all_readable(Op::outputs) && Op::outputs.size() > 0
                                                          && all_distinct(Op::outputs);
@@ -297,8 +329,10 @@ namespace detail
     template <typename Op>
     struct RequireValidOpaqueOperation
     {
-        static constexpr bool saysSomethingOk = saysSomething(std::string_view { Op::name });
-        static_assert(RequireOpaqueNameSaysSomething<Op>::value);
+        static constexpr bool declaredOk = opaque_dimensions_declared<Op>;
+        static_assert(RequireOpaqueOutputDimensionsDeclared<Op>::value);
+        static constexpr bool saysSomethingOk = declaredOk && saysSomething(std::string_view { Op::name });
+        static_assert(std::conditional_t<declaredOk, RequireOpaqueNameSaysSomething<Op>, std::true_type>::value);
         static_assert(std::conditional_t<saysSomethingOk, RequireOpaqueNameReadable<Op>, std::true_type>::value);
         static constexpr bool readableOk =
             saysSomethingOk && readable_name(std::string_view { Op::name }) && all_readable(Op::outputs);
@@ -475,7 +509,8 @@ namespace detail
     template <typename Op, typename... Inputs>
     struct RequireOpaqueLengthsAgree
     {
-        static_assert(opaque_lengths_agree<Inputs...>(), "formula: this opaque operation's series inputs differ in length");
+        static_assert(opaque_lengths_agree<Inputs...>(),
+                      "formula: this opaque operation's series and curve inputs differ in length");
 
         static constexpr bool value = true;
     };
@@ -531,10 +566,10 @@ namespace detail
         static_assert(std::conditional_t<operationOk, RequireOpaqueArity<Op, Inputs...>, std::true_type>::value);
 
         // Each stage is asked in an `if constexpr` of its own, never behind a
-        // `&&`: a call of a `consteval` function is an immediate invocation,
-        // evaluated even where `&&` has already short-circuited, and g++ 13.3
-        // then evaluates the shape check of a call with too many inputs, past
-        // the end of the operation's shapes.
+        // `&&`: g++ 13.3 evaluates a `consteval` call in the right operand of
+        // a `&&` whose left operand is already false, and so ran the shape
+        // check of a call with too many inputs past the end of the
+        // operation's shapes (6 errors). clang++ 20.1.8 did not (1 error).
         [[nodiscard]] static consteval bool shapes_match() noexcept
         {
             if constexpr (operationOk && arityOk)
@@ -631,8 +666,9 @@ struct OpaqueCall
     // `sizeof` of each check makes it a complete type, which is what fires
     // its assertions -- in the class body, where they are made whether or
     // not anything reads a member. A static data member's initialiser is
-    // instantiated only when it is used, and g++ 13.3 then never made the
-    // operation's own checks at all.
+    // instantiated only when it is used, so with the checks named from one,
+    // the operation's own were never made at all: measured on g++ 13.3 and
+    // clang++ 20.1.8, where four negatives then compiled.
     static_assert(sizeof(detail::RequireValidOpaqueOperation<Op>) > 0);
     static_assert(sizeof(detail::RequireOpaqueCallValid<Op, Rational, Inputs...>) > 0);
 
@@ -646,6 +682,12 @@ struct OpaqueCall
 
     /// Why the method uses the operation here: required by `opaque()`, and
     /// shown as `(no citation given)` when it names nothing.
+    ///
+    /// **Author text, as `DocumentedNode::citation` is.** A call built as an
+    /// aggregate may leave it out, and one call's citation may be copied onto
+    /// another's; neither can be prevented, and neither changes what the
+    /// trace states about the operation, whose name is its type's. An empty
+    /// citation is never hidden: every surface says `(no citation given)`.
     Citation citation;
 
     /// How many inputs the call passes.
@@ -700,6 +742,23 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// The position an `OpaqueOutputNode` has when `opaque_output` found no
+    /// output of the name asked for: past every real position, so that the
+    /// node is refused and asks nothing more.
+    inline constexpr std::size_t unknownOutput = static_cast<std::size_t>(-1);
+
+    /// Fails to compile when an opaque output's position names none of its
+    /// operation's outputs -- reachable only by building the node by hand.
+    template <std::size_t I, typename Call>
+    struct RequireOpaqueOutputPosition
+    {
+        static_assert(I == unknownOutput || I < Call::operation::outputs.size(),
+                      "formula: this opaque output's position names no output of its operation; build an output with "
+                      "opaque_output<\"name\">(call), which finds its position by name");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when a whole opaque call is used where one value is
     /// expected.
     template <typename Call>
@@ -719,6 +778,8 @@ namespace detail
 template <std::size_t I, typename Call>
 struct OpaqueOutputNode: NodeBase
 {
+    static_assert(detail::RequireOpaqueOutputPosition<I, Call>::value);
+
     /// The call whose output this is. Evaluating this node evaluates it whole.
     Call call;
 
@@ -729,14 +790,16 @@ struct OpaqueOutputNode: NodeBase
     /// The output's name, as the operation declares it.
     static constexpr std::string_view output =
         I < Call::operation::outputs.size() ? Call::operation::outputs[I] : std::string_view {};
-    /// Whether the call was refused -- see `OpaqueCall::refused`.
-    static constexpr bool refused = Call::refused;
+    /// Whether the call was refused (`OpaqueCall::refused`), or this position
+    /// names no output: then every check over this node is silent
+    /// (`detail::refused_already`), and it is never evaluated.
+    static constexpr bool refused = Call::refused || !(I < Call::operation::outputs.size());
 };
 
 /// The output named @p Name of @p call: `opaque_output<"slope">(fit)`. An
 /// output the operation does not declare is refused once, in this library's
-/// words; the node then stands for the first output, and nothing asks about
-/// it again.
+/// words; the node is then refused (`OpaqueOutputNode::refused`), and nothing
+/// over it asks about its dimension again.
 template <detail::FixedString Name, OpaqueOperation Op, typename... Inputs>
 [[nodiscard]] constexpr auto opaque_output(OpaqueCall<Op, Inputs...> call) noexcept
 {
@@ -745,7 +808,7 @@ template <detail::FixedString Name, OpaqueOperation Op, typename... Inputs>
     static_assert(std::conditional_t<detail::opaque_operation_well_formed<Op>,
                                      detail::RequireOpaqueOutputNamed<Op, Name>,
                                      std::true_type>::value);
-    constexpr std::size_t chosen = namedAt < Op::outputs.size() ? namedAt : 0;
+    constexpr std::size_t chosen = namedAt < Op::outputs.size() ? namedAt : detail::unknownOutput;
     return OpaqueOutputNode<chosen, Call> { {}, call };
 }
 
@@ -978,7 +1041,7 @@ template <typename Rep = Rational, std::size_t I, typename Op, typename... Input
                                                            Env const& environment,
                                                            Sink sink = {}) noexcept
 {
-    if constexpr (OpaqueCall<Op, Inputs...>::refused)
+    if constexpr (OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>::refused)
         return std::unexpected { ArithmeticError::DomainError };
     else if constexpr (!detail::opaque_sound_for<Rep, Op, Inputs...>())
         return std::unexpected { ArithmeticError::DomainError };

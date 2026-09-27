@@ -26,7 +26,7 @@ struct Reading: formula::Quantity<Reading, "r", "an invented reading", formula::
 {
 };
 
-/// A consumer's operation: the lowest, highest and span of a series.
+/// A consumer's operation: the lowest and the highest element of a series.
 struct SeriesExtent
 {
     static constexpr std::string_view name = "series extent";

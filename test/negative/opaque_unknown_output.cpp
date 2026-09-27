@@ -3,8 +3,9 @@
 // REJECT: this result quantity does not measure the dimension
 //
 // "fist" for "first": refused once, naming the operation and the name asked
-// for. The node then stands for the first output, which measures what the
-// result quantity measures, so nothing downstream refuses again.
+// for. The two outputs differ in dimension -- a mass and a ratio -- so a node
+// standing in for either would disagree with some result quantity. The node is
+// refused instead, and the result's dimension check over it stays silent.
 #include <formula-cpp/opaque.hpp>
 
 #include <array>
@@ -21,12 +22,12 @@ struct FirstReading
 {
     static constexpr std::string_view name = "first reading";
     static constexpr std::array shapes { formula::InputShape::Series };
-    static constexpr std::array<std::string_view, 2> outputs { "first", "second" };
+    static constexpr std::array<std::string_view, 2> outputs { "first", "ratio" };
 
     static consteval std::optional<std::array<formula::Dimension, 2>> output_dimensions(
         std::array<formula::Dimension, 1> declared) noexcept
     {
-        return std::array { declared[0], declared[0] };
+        return std::array { declared[0], formula::dim::Scalar };
     }
 
     template <typename Rep>
