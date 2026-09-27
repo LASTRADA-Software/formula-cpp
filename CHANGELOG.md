@@ -105,18 +105,22 @@ other specimen's own measurements. A role is a type the author declares and a re
 a sample and test key, an environment and lineage keys -- held by role in a `record_context`,
 which is this record's environment and so goes wherever an environment goes. Every step inside
 a read from another record carries which record it was read from, with both keys, and each value
-read from it names the record in its trace line; every input, a series included, says whether it
-was measured or typed in, and an entry typed in empty says so. `same_lineage<Attrs...>()` gates a
-read on the two records sharing the author's lineage attributes: the value; a refusal
-(`DomainError`) when any attribute differs, with the trace naming it, the record compared with,
-and whose key is whose; or no answer when a key is unknown and none differs. A record not yet made gives no answer, never zero. `checked_explain` traces a
-refused read without throwing. On the page a read reads `f_c of Reference`, and `(F / A) of
-Reference` for a computation, with a row per record in the symbol table. A role's name must be
-identifier-like -- starting with a letter, and never `this record` -- and `TagName` spells it
-otherwise. An overlay's constant or derived quantity reaches inside a read from another record,
-as it reaches the rest of the method. A series or raw observations read inside a read from another
-record are traced with that record, and have their own row on the page; a read whose value would
-be a whole series is refused, and reduced inside instead: `from_record<Role>(sum(series<Q, N>))`.
+read from it names the record in its trace line; the record is kept once in the trace
+(`Trace::origins`, read by `origin_of`), so a step costs what it did. Every input, a series
+included, says whether it was measured or typed in, and an entry typed in empty says so.
+`same_lineage<Attrs...>()` gates a read on the two records sharing the author's lineage
+attributes: the value; a refusal (`DomainError`) when any attribute differs, with the trace
+naming it, the record compared with, and whose key is whose (`lineage_of`); or no answer when a
+key is unknown and none differs. A record not yet made gives no answer, never zero, whatever its
+environment holds. `checked_explain` traces a refused read without throwing. On the page a read
+reads `f_c of Reference`, and `(F / A) of Reference` for a computation, with a row per record in
+the symbol table. A role's name must be identifier-like -- starting with a letter, never read as
+`this record`, and never as another bound role's -- and `TagName` spells it otherwise. An
+overlay's constant or derived quantity reaches inside a read from another record, as it reaches
+the rest of the method, and says when it replaced a value a person typed in. A series or raw
+observations read inside a read from another record are traced with that record, and have their
+own row on the page; a read whose value would be a whole series is refused, and reduced inside
+instead: `from_record<Role>(sum(series<Q, N>))`.
 
 ### Changed
 

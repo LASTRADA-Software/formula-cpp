@@ -306,30 +306,37 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// Whether @p displayed is `this record`, in any mix of case.
+    /// Whether @p displayed reads as `this record`: in any mix of case, and
+    /// with or without the space, or with an underscore for it -- `This
+    /// Record`, `ThisRecord` and `this_record` alike. The library's own
+    /// `ThisRecord` is spelt that way in a `LineageCheck`, and a role spelt
+    /// like it would be told apart from it there by nothing.
     [[nodiscard]] constexpr bool reads_as_this_record(std::string_view displayed) noexcept
     {
-        constexpr std::string_view thisRecordWords = "this record";
-        if (displayed.size() != thisRecordWords.size())
-            return false;
-        for (std::size_t at = 0; at < displayed.size(); ++at)
+        constexpr std::string_view thisRecordLetters = "thisrecord";
+        std::size_t matched = 0;
+        for (char const shown: displayed)
         {
-            char const lowered = displayed[at] >= 'A' && displayed[at] <= 'Z'
-                                     ? static_cast<char>(displayed[at] - 'A' + 'a')
-                                     : displayed[at];
-            if (lowered != thisRecordWords[at])
+            if (shown == ' ' || shown == '_')
+                continue;
+            char const lowered = shown >= 'A' && shown <= 'Z' ? static_cast<char>(shown - 'A' + 'a') : shown;
+            if (matched == thisRecordLetters.size() || lowered != thisRecordLetters[matched])
                 return false;
+            ++matched;
         }
-        return true;
+        return matched == thisRecordLetters.size();
     }
 
-    /// Whether @p Role's displayed name is not `this record`; true for a role
-    /// whose name is not identifier-like or that is not a plain class type,
-    /// each refused on its own, so that one mistake draws one message.
+    /// Whether @p Role's displayed name is not `this record`; true for
+    /// `ThisRecord` itself, and for a role whose name is not identifier-like
+    /// or that is not a plain class type, each refused on its own, so that
+    /// one mistake draws one message.
     template <typename Role>
     [[nodiscard]] consteval bool role_name_is_not_this_record() noexcept
     {
-        if constexpr (isPlainClassTag<Role>)
+        if constexpr (std::is_same_v<Role, ThisRecord>)
+            return true;
+        else if constexpr (isPlainClassTag<Role>)
         {
             if constexpr (role_name_is_identifier_like<Role>())
                 return !reads_as_this_record(tag_name<Role>());
@@ -341,7 +348,8 @@ namespace detail
     }
 
     /// Fails to compile when a role other than `ThisRecord` is displayed as
-    /// `this record`, in any case. Every value read from it would be traced
+    /// `this record` -- see `reads_as_this_record`. Every value read from it
+    /// would be traced
     /// `from record this record (sample 23, test 3)`, and a lineage check
     /// against it `same MaterialBatch as this record` -- which is how the
     /// trace names the record being evaluated.
@@ -350,9 +358,10 @@ namespace detail
     {
         static_assert(role_name_is_not_this_record<Role>(),
                       "formula: this record role is displayed as 'this record', which is how a trace names the "
-                      "record being evaluated; a value read from it would be traced as read from this record -- the "
-                      "role appears in this diagnostic as the template argument of RequireRoleNameNotThisRecord -- "
-                      "specialise formula::TagName for it to spell another name");
+                      "record being evaluated -- in any case, and with or without the space or with an underscore "
+                      "for it, so ThisRecord and this_record too; a value read from it would be traced as read from "
+                      "this record -- the role appears in this diagnostic as the template argument of "
+                      "RequireRoleNameNotThisRecord -- specialise formula::TagName for it to spell another name");
         static constexpr bool value = true;
     };
 
@@ -947,6 +956,54 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// @p Role's displayed name, when it has one the other checks accept; empty
+    /// for `ThisRecord`, for a role that is not a plain class tag and for one
+    /// whose name is not identifier-like, each refused on its own.
+    template <typename Role>
+    [[nodiscard]] consteval std::string_view checked_role_name() noexcept
+    {
+        if constexpr (std::is_same_v<Role, ThisRecord> || !isPlainClassTag<Role>)
+            return {};
+        else if constexpr (!role_name_is_identifier_like<Role>())
+            return {};
+        else
+            return tag_name<Role>();
+    }
+
+    /// Whether no two of @p Roles are displayed alike. True when a role is
+    /// bound twice, which `RequireDistinctRoles` refuses on its own.
+    template <typename... Roles>
+    [[nodiscard]] consteval bool role_names_distinct() noexcept
+    {
+        if constexpr (!(... && (RequireDistinctRoles<Roles...>::template occurrences<Roles> == 1)))
+            return true;
+        else
+        {
+            std::array<std::string_view, sizeof...(Roles)> const names { checked_role_name<Roles>()... };
+            for (std::size_t earlier = 0; earlier < names.size(); ++earlier)
+                for (std::size_t later = earlier + 1; later < names.size(); ++later)
+                    if (!names[earlier].empty() && names[earlier] == names[later])
+                        return false;
+            return true;
+        }
+    }
+
+    /// Fails to compile when a context binds two roles displayed alike. A
+    /// trace and a page name a record by its role's name: two records whose
+    /// roles read the same would be told apart there by their keys alone,
+    /// and on the page not at all.
+    template <typename... Roles>
+    struct RequireDistinctRoleNames
+    {
+        static_assert(role_names_distinct<Roles...>(),
+                      "formula: this record_context binds two roles whose names are displayed alike; a trace and "
+                      "a page name a record by its role's name, so each role must read differently -- the roles "
+                      "appear in this diagnostic as the template arguments of RequireDistinctRoleNames -- "
+                      "specialise formula::TagName for one of them to spell another name");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when a context is asked for a role it binds no record
     /// to -- by `record<Role>()`, or by a `from_record<Role>` scope evaluated
     /// against it.
@@ -988,6 +1045,7 @@ class RecordContext: public ThisRec::environment_type
 {
     static_assert(detail::RequireThisRecordFirst<ThisRec>::value);
     static_assert(detail::RequireDistinctRoles<typename ThisRec::role, typename Others::role...>::value);
+    static_assert(detail::RequireDistinctRoleNames<typename ThisRec::role, typename Others::role...>::value);
 
   public:
     /// The context of @p own, reading from @p others by their roles.
@@ -1052,10 +1110,14 @@ namespace detail
     /// A scope's evaluator recognises a context only through this trait, and
     /// never by looking for a `record<Role>()` member: a type of the
     /// consumer's own that merely has one must not be able to supply the
-    /// record a foreign value is read from. A type that wraps a context --
-    /// the environment a retry evaluates against, say -- specializes this to
-    /// reach the context it wraps; until one does, a scope evaluated against
-    /// it is refused, which is safe.
+    /// record a foreign value is read from.
+    ///
+    /// **Not a customisation point.** It is in `detail::`, and the header's
+    /// contract excludes specialising anything there: a specialisation could
+    /// hand a scope any record as the one it reads. Only the library's own
+    /// wrappers of a context specialise it -- the environment phase 15's
+    /// retry evaluates against, when it lands -- and until a wrapper does, a
+    /// scope evaluated against it is refused, which is safe.
     template <typename Env>
     struct RecordContextOf
     {
@@ -1076,14 +1138,22 @@ namespace detail
     inline constexpr bool reachesRecordContext = requires { typename RecordContextOf<Env>::type; };
 
     /// Fails to compile when a formula that reads from another record is
-    /// evaluated against an environment that holds only one.
+    /// evaluated against an environment that holds only one -- the caller's
+    /// own, or, inside a read from another record, that record's values,
+    /// when a `from_record` sits inside another. Nesting is refused here, at
+    /// evaluation, and not where the node is built, because an overlay's
+    /// `add_derived` can build it too: `apply()`, `render` and `document`
+    /// accept the nested form, and the words name both causes.
     template <typename Env>
     struct RequireRecordContext
     {
         static_assert(!std::is_same_v<Env, Env>,
                       "formula: this formula reads from another record, but was evaluated against an environment "
-                      "that holds only one; evaluate it against a record_context(...) that binds the role -- the "
-                      "environment appears in this diagnostic as the template argument of RequireRecordContext");
+                      "that holds only one; evaluate it against a record_context(...) that binds the role -- or, "
+                      "if it was evaluated against one, a from_record sits inside another from_record, perhaps put "
+                      "there by an overlay's add_derived, and a record's values hold no records of their own: read "
+                      "each from the context at the top level instead -- the environment appears in this "
+                      "diagnostic as the template argument of RequireRecordContext");
 
         static constexpr bool value = true;
     };

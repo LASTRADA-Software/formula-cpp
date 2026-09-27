@@ -2080,8 +2080,16 @@ namespace detail
         bool const enteredButEmpty = recorded.kind == StepKind::Variable
                                      && recorded.inputSource == ValueSource::ManuallyEntered
                                      && !recorded.value.has_value() && !recorded.error.has_value();
-        std::string const valueText =
-            enteredButEmpty ? std::string { "(entered by hand as empty)" } : step_value_text(recorded);
+        // A read from a record that was bound, withheld because a lineage key
+        // was unknown: nothing was read, so "(not measured)" would be false of
+        // a record whose values may well have been measured. Its line holds no
+        // operand but its attribute steps, which `as_rendered` leaves out.
+        bool const withheld = recorded.kind == StepKind::RecordScope && recorded.readFrom.has_value()
+                              && recorded.readFrom->is_bound() && recorded.operands.empty()
+                              && !recorded.value.has_value() && !recorded.error.has_value();
+        std::string const valueText = enteredButEmpty ? std::string { "(entered by hand as empty)" }
+                                      : withheld      ? std::string { "(not read: lineage not checked)" }
+                                                      : step_value_text(recorded);
         std::string annotation;
         if (recorded.kind == StepKind::Documented)
             annotation = citation_suffix(recorded.citation);

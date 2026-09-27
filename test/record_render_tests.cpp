@@ -128,13 +128,19 @@ TEST_CASE("a role's name must be identifier-like", "[record-render]")
 TEST_CASE("a role may not be displayed as this record", "[record-render]")
 {
     // The task 9 review's M2, ruled: "from record this record" would name
-    // the record being evaluated. Any mix of case; nothing else.
+    // the record being evaluated. Any mix of case -- and, by the final
+    // review's L4, with or without the space or with an underscore for it:
+    // `ThisRecord` is how a lineage check names the record being evaluated.
     STATIC_REQUIRE(formula::detail::reads_as_this_record("this record"));
     STATIC_REQUIRE(formula::detail::reads_as_this_record("This Record"));
     STATIC_REQUIRE(formula::detail::reads_as_this_record("THIS RECORD"));
+    STATIC_REQUIRE(formula::detail::reads_as_this_record("ThisRecord"));
+    STATIC_REQUIRE(formula::detail::reads_as_this_record("this_record"));
     STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("this record 2"));
+    STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("ThisRecords"));
     STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("this"));
-    STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("ThisRecord"));
+    STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record("Reference"));
+    STATIC_REQUIRE_FALSE(formula::detail::reads_as_this_record(""));
 }
 
 TEST_CASE("a quantity read here and from the reference has two rows", "[record-render]")

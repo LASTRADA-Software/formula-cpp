@@ -193,7 +193,10 @@ TEST_CASE("an unknown lineage key is shown as unknown and not checked", "[lineag
     std::string const text = traced(gated, contextWithUnknownBatch(), trace);
     INFO(text);
     CHECK(text.find("1. same MaterialBatch as this record: 4411 for this record, unknown for Reference, not checked\n") != std::string::npos);
-    CHECK(text.find("4. from record Reference (sample 23, test 3) = (not measured)\n") != std::string::npos);
+    // Nothing was read, so the scope does not say "(not measured)" of a
+    // record whose values may well have been measured.
+    CHECK(text.find("4. from record Reference (sample 23, test 3) = (not read: lineage not checked)\n")
+          != std::string::npos);
 }
 
 TEST_CASE("a requirement against another role compares with that record", "[lineage-trace]")

@@ -1453,6 +1453,16 @@ formula_add_negative_test(record_role_name_this_record
     "formula: this record role is displayed as 'this record'"
     EXPECT_COUNT 1
     REJECT "formula: this record role's displayed name is not identifier-like")
+# The same, spelt as an identifier, and two roles displayed alike (the final
+# review's L4).
+formula_add_negative_test(record_role_name_this_record_identifier
+    "formula: this record role is displayed as 'this record'"
+    EXPECT_COUNT 1
+    REJECT "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_context_roles_named_alike
+    "formula: this record_context binds two roles whose names are displayed alike"
+    EXPECT_COUNT 1
+    REJECT "formula: this record_context binds the same role to more than one record")
 
 formula_add_negative_test(overlay_constant_unknown_node
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
@@ -1975,6 +1985,13 @@ formula_add_negative_test(record_scope_sink_one_hook
 
 formula_add_negative_test(record_scope_nested
     "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
+    REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")
+# The same nesting, put there by an overlay's add_derived: the refusal's words
+# name it, since the author did evaluate against a context (the final
+# review's L2).
+formula_add_negative_test(record_scope_nested_by_overlay
+    "a from_record sits inside another from_record, perhaps put there by an overlay's add_derived"
+    EXPECT_COUNT 1
     REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")
 
 formula_add_negative_test(record_unbound_this_record

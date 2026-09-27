@@ -295,13 +295,14 @@ return no trace at all; use `checked_explain` wherever a read can be refused.
 
 **A key is unknown, and nothing differs:** there is no answer. An unknown batch
 is a missing input, not evidence that two batches differ, so the read is
-absent, as any formula with a missing input is. The trace shows an absent value
-as `(not measured)`, the library's one word for absent:
+absent, as any formula with a missing input is. Nothing was read, and the
+scope's line says so rather than `(not measured)`, which would be false of a
+record whose values may well have been measured:
 
 ```text
 1. same MaterialBatch as this record: 4411 for this record, unknown for Reference, not checked
 2. same TestMethod as this record: 12 for this record, 12 for Reference, satisfied
-3. from record Reference (sample 23, test 3) = (not measured)
+3. from record Reference (sample 23, test 3) = (not read: lineage not checked)
 ```
 
 **A key is unknown, and another differs:** the read is refused. A known
@@ -381,6 +382,10 @@ and it reads as what it is:
 3. #2 from record Reference (sample 23, test 3) = (not measured)
 4. #1 / #3 = (not measured)
 ```
+
+The line that read the input says why it is absent. Every line computed from
+it -- the scope's included -- shows the absence in the library's one word,
+`(not measured)`, whatever caused it, as a division over a missing input does.
 
 ## A role's name reads as a name
 
