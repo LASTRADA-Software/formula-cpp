@@ -776,6 +776,12 @@ formula_add_negative_test(rejection_result_dimension
 formula_add_negative_test(rejection_under_double
     "formula: a rejection of outliers can only be evaluated with Rep = Rational"
     REJECT "no matching")
+formula_add_negative_test(gap_to_range_every_exceeding
+    "formula: gap_to_range examines only the lowest and the highest value; declare PerPass::MostExtreme"
+    REJECT "does not measure what its criterion compares")
+formula_add_negative_test(gap_to_range_limit_not_scalar
+    "formula: this rejection's limit does not measure what its criterion compares"
+    REJECT "gap_to_range examines only")
 formula_add_negative_test(pass_mean_outside_rejection
     "formula: pass_mean and pass_count are meaningful only inside the limit expression of without_outliers"
     REJECT "provides no value for this quantity")

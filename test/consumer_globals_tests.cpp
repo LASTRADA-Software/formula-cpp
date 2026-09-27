@@ -41,8 +41,8 @@
 // divided by their sum, on the same surfaces;
 // a sample's count, mean, variance and range, and a rounded root of the
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
-// and under a mean, on the same surfaces; and the four table
-// validators. A template it does not reach is not
+// and under a mean, on the same surfaces, and one by gap to range; and the
+// four table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -601,6 +601,21 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render<formula::Dialect::LaTeX>(trimmed).find("\\bar{x}") != std::string::npos
                            && formula::document(formula::sample_mean(trimmed), north).rejections.size() == 1
                            && formula::render_trace(trimmedTrace, { .maxSteps = 20 }).find("settled: 0 rejected, 2 remain")
+                                  != std::string::npos);
+    // Gap to range at 3/4: 150 and 103 mm are each other's neighbour, a gap
+    // of the whole range, so both are past it -- and rejecting both would
+    // leave none of at least 1, so it aborts with the verdict.
+    auto const gapped = formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<1>>(
+            formula::series<EdgeX, 2>,
+            formula::gap_to_range(formula::number(formula::Rational { 3, 4 })),
+            formula::Verdict { "repeat the test" });
+    formula::Trace<> gappedTrace {};
+    auto const gappedOutcome =
+        formula::checked_evaluate_rejection<EdgeX>(gapped, bothScreens, formula::RecordingSink { gappedTrace, north });
+    probe.checks.push_back(gappedOutcome.has_value() && gappedOutcome->outcome().is_verdict()
+                           && formula::render(gapped, north).find("gap to range > 3/4") != std::string::npos
+                           && formula::render_trace(gappedTrace, { .maxSteps = 20 }).find("would leave 0 of at least 1")
                                   != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);

@@ -1956,6 +1956,12 @@ namespace detail
         using type = DeviationInStddevs<NewLimit>;
     };
 
+    template <Node Limit, typename NewLimit>
+    struct RebindCriterion<GapToRange<Limit>, NewLimit>
+    {
+        using type = GapToRange<NewLimit>;
+    };
+
     /// A rejection, rebuilt around its rewritten sample and limit, with its
     /// own bounds, verdict and citation: a jurisdiction's tolerance reaches
     /// the limit (`with_constant<Tolerance>`, §16.7), and a substitution for

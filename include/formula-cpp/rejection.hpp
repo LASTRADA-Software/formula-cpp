@@ -132,6 +132,9 @@ enum class CriterionKind : std::uint8_t
     DeviationFromMean,
     /// abs(x - mean) / s, against a bare-number limit, decided by squares.
     DeviationInStddevs,
+    /// For the lowest and the highest determination only: the gap to its
+    /// neighbour over the range, against a bare-number limit.
+    GapToRange,
 };
 
 // ------------------------------------------------------------ placeholders
@@ -195,6 +198,22 @@ struct DeviationInStddevs
     static constexpr CriterionKind kind = CriterionKind::DeviationInStddevs;
 };
 
+/// The gap from the lowest or the highest determination to its neighbour,
+/// over the range (max - min), against the bare number @p Limit. Only the
+/// two extremes are examined, so a rejection by it is `PerPass::MostExtreme`
+/// only: it rejects the extreme with the larger ratio, or both when tied. A
+/// pass whose range is zero has every determination equal, and settles.
+template <Node Limit>
+struct GapToRange
+{
+    /// The limit expression, evaluated once per pass. No `{}` initialiser:
+    /// see `Corrections` (`lookup.hpp`).
+    Limit limit;
+
+    /// Which statistic this is.
+    static constexpr CriterionKind kind = CriterionKind::GapToRange;
+};
+
 /// abs(x - pass mean) against @p limitExpression: `deviation_from_mean(rat(6, 100) * pass_mean<Mass>)`.
 template <Node Limit>
 [[nodiscard]] constexpr DeviationFromMean<Limit> deviation_from_mean(Limit limitExpression) noexcept
@@ -209,6 +228,14 @@ template <Node Limit>
     return DeviationInStddevs<Limit> { limitExpression };
 }
 
+/// gap / range for the two extremes against @p limitExpression:
+/// `gap_to_range(critical_value<Sizes, unit::One>(pass_count, {...}) * rat(1, 100))`.
+template <Node Limit>
+[[nodiscard]] constexpr GapToRange<Limit> gap_to_range(Limit limitExpression) noexcept
+{
+    return GapToRange<Limit> { limitExpression };
+}
+
 namespace detail
 {
     /// Whether @p T is one of this header's criteria.
@@ -220,6 +247,9 @@ namespace detail
 
     template <Node Limit>
     inline constexpr bool is_criterion<DeviationInStddevs<Limit>> = true;
+
+    template <Node Limit>
+    inline constexpr bool is_criterion<GapToRange<Limit>> = true;
 
     /// Whether @p T is `AtMost<k>`, and whether it is `KeepAtLeast<m>`.
     template <typename T>
@@ -286,6 +316,20 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when `gap_to_range` is paired with
+    /// `PerPass::EveryExceeding`: it examines two determinations, and "every
+    /// exceeding" would read as though it examined more. Asked once the
+    /// bounds are in order (@p Asked).
+    template <PerPass P, typename Criterion, bool Asked>
+    struct RequireGapToRangeMostExtreme
+    {
+        static_assert(!Asked || Criterion::kind != CriterionKind::GapToRange || P == PerPass::MostExtreme,
+                      "formula: gap_to_range examines only the lowest and the highest value; declare "
+                      "PerPass::MostExtreme");
+
+        static constexpr bool value = true;
+    };
+
     /// Whether @p Criterion's limit measures what it must: the
     /// determinations' dimension @p D for `deviation_from_mean`, a bare
     /// number for `deviation_in_stddevs`.
@@ -301,14 +345,15 @@ namespace detail
 
     /// Fails to compile when a criterion's limit measures the wrong thing:
     /// a mass compared with a length, or a count of standard deviations
-    /// given in grams. Gated behind the bounds (@p Asked).
+    /// given in grams. Gated behind the bounds and the policy (@p Asked).
     template <typename Criterion, Dimension D, bool Asked>
     struct RequireCriterionLimitDimension
     {
         static_assert(!Asked || criterion_limit_dimension_matches<Criterion, D>(),
                       "formula: this rejection's limit does not measure what its criterion compares -- "
                       "deviation_from_mean needs a limit in the determinations' dimension, deviation_in_stddevs "
-                      "a bare number of standard deviations; the criterion appears in this diagnostic as the "
+                      "a bare number of standard deviations, gap_to_range a bare-number ratio; the criterion "
+                      "appears in this diagnostic as the "
                       "template argument of RequireCriterionLimitDimension");
 
         static constexpr bool value = true;
@@ -424,12 +469,20 @@ struct RejectionNode
 
     static_assert(detail::RequireAtMostPositive<detail::bound_value<AtMostT>, boundsInOrder>::value);
     static_assert(detail::RequireKeepAtLeastPositive<detail::bound_value<KeepAtLeastT>, boundsInOrder>::value);
-    static_assert(detail::RequireCriterionLimitDimension<Criterion, S::dimension, boundsInOrder>::value);
-    static_assert(detail::RequireSampleWithoutPassPlaceholder<S, boundsInOrder>::value);
+    static_assert(detail::RequireGapToRangeMostExtreme<P, Criterion, boundsInOrder>::value);
+
+    /// Whether the policy is one the criterion allows: the checks below are
+    /// asked only then, so `gap_to_range` with `EveryExceeding` draws that
+    /// one message.
+    static constexpr bool policyAllowed =
+        boundsInOrder && (Criterion::kind != CriterionKind::GapToRange || P == PerPass::MostExtreme);
+
+    static_assert(detail::RequireCriterionLimitDimension<Criterion, S::dimension, policyAllowed>::value);
+    static_assert(detail::RequireSampleWithoutPassPlaceholder<S, policyAllowed>::value);
     static_assert(detail::RequirePassMeanDimension<
                   decltype(std::declval<Criterion>().limit),
                   S::dimension,
-                  boundsInOrder && detail::criterion_limit_dimension_matches<Criterion, S::dimension>()>::value);
+                  policyAllowed && detail::criterion_limit_dimension_matches<Criterion, S::dimension>()>::value);
 
     /// The sample outliers are rejected from. No `{}` initialiser: see
     /// `Corrections` (`lookup.hpp`).
@@ -1040,6 +1093,36 @@ namespace detail
                 compareAgainst = *scaledLimit;
             }
 
+            // For gap_to_range: the lowest and the highest determination, the
+            // values next to them, and the range. Not all equal (settled
+            // above), so the range is positive; a value shared by two
+            // determinations is its own neighbour, with a gap of zero.
+            Rational lowest = working.values[0];
+            Rational highest = working.values[0];
+            std::optional<Rational> nextLowest;
+            std::optional<Rational> nextHighest;
+            if constexpr (Criterion::kind == CriterionKind::GapToRange)
+            {
+                for (std::size_t taken = 1; taken < passSize; ++taken)
+                {
+                    Rational const determination = working.values[taken];
+                    if (determination < lowest)
+                    {
+                        nextLowest = lowest;
+                        lowest = determination;
+                    }
+                    else if (!nextLowest.has_value() || determination < *nextLowest)
+                        nextLowest = determination;
+                    if (highest < determination)
+                    {
+                        nextHighest = highest;
+                        highest = determination;
+                    }
+                    else if (!nextHighest.has_value() || *nextHighest < determination)
+                        nextHighest = determination;
+                }
+            }
+
             // Each determination's statistics, and whether it is a candidate.
             std::array<Rational, sampleCapacity> statistics;
             std::array<bool, sampleCapacity> candidate;
@@ -1048,21 +1131,45 @@ namespace detail
             std::optional<Rational> mostExtreme;
             for (std::size_t taken = 0; taken < passSize; ++taken)
             {
-                std::expected<Rational, ArithmeticError> const deviation =
-                    RepTraits<Rational>::subtract(working.values[taken], *passMean);
-                if (!deviation.has_value())
-                    return fail(deviation.error(), working.positions[taken], RejectionFailurePoint::Statistic);
-                std::expected<Rational, ArithmeticError> measured =
-                    *deviation < Rational { 0 } ? RepTraits<Rational>::negate(*deviation)
-                                                : std::expected<Rational, ArithmeticError> { *deviation };
-                if constexpr (Criterion::kind == CriterionKind::DeviationInStddevs)
-                    measured = measured.has_value() ? RepTraits<Rational>::multiply(*deviation, *deviation) : measured;
-                if (!measured.has_value())
-                    return fail(measured.error(), working.positions[taken], RejectionFailurePoint::Statistic);
-                statistics[taken] = *measured;
-                candidate[taken] = L == OnLimit::Keep ? compareAgainst < *measured : !(*measured < compareAgainst);
-                if (candidate[taken] && (!mostExtreme.has_value() || *mostExtreme < *measured))
-                    mostExtreme = *measured;
+                if constexpr (Criterion::kind == CriterionKind::GapToRange)
+                {
+                    bool const isLowest = working.values[taken] == lowest;
+                    bool const isHighest = working.values[taken] == highest;
+                    if (!isLowest && !isHighest)
+                        continue;
+                    std::expected<Rational, ArithmeticError> const gap =
+                        isHighest ? RepTraits<Rational>::subtract(highest, *nextHighest)
+                                  : RepTraits<Rational>::subtract(*nextLowest, lowest);
+                    std::expected<Rational, ArithmeticError> const spread = RepTraits<Rational>::subtract(highest, lowest);
+                    std::expected<Rational, ArithmeticError> const gapRatio =
+                        !gap.has_value()      ? gap
+                        : !spread.has_value() ? spread
+                                              : RepTraits<Rational>::divide(*gap, *spread);
+                    if (!gapRatio.has_value())
+                        return fail(gapRatio.error(), working.positions[taken], RejectionFailurePoint::Statistic);
+                    statistics[taken] = *gapRatio;
+                    candidate[taken] = L == OnLimit::Keep ? compareAgainst < *gapRatio : !(*gapRatio < compareAgainst);
+                    if (candidate[taken] && (!mostExtreme.has_value() || *mostExtreme < *gapRatio))
+                        mostExtreme = *gapRatio;
+                }
+                else
+                {
+                    std::expected<Rational, ArithmeticError> const deviation =
+                        RepTraits<Rational>::subtract(working.values[taken], *passMean);
+                    if (!deviation.has_value())
+                        return fail(deviation.error(), working.positions[taken], RejectionFailurePoint::Statistic);
+                    std::expected<Rational, ArithmeticError> measured =
+                        *deviation < Rational { 0 } ? RepTraits<Rational>::negate(*deviation)
+                                                    : std::expected<Rational, ArithmeticError> { *deviation };
+                    if constexpr (Criterion::kind == CriterionKind::DeviationInStddevs)
+                        measured = measured.has_value() ? RepTraits<Rational>::multiply(*deviation, *deviation) : measured;
+                    if (!measured.has_value())
+                        return fail(measured.error(), working.positions[taken], RejectionFailurePoint::Statistic);
+                    statistics[taken] = *measured;
+                    candidate[taken] = L == OnLimit::Keep ? compareAgainst < *measured : !(*measured < compareAgainst);
+                    if (candidate[taken] && (!mostExtreme.has_value() || *mostExtreme < *measured))
+                        mostExtreme = *measured;
+                }
             }
             if (!mostExtreme.has_value())
                 return finish(RejectionEnd::Settled);

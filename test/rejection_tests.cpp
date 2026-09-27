@@ -95,6 +95,20 @@ constexpr auto Keep = formula::OnLimit::Keep;
 constexpr auto Reject = formula::OnLimit::Reject;
 
 inline constexpr auto rejectionA = rejectionOf<MostExtreme, Keep, 2, 4, 6>(sixPercent);
+
+// The plan's invented critical-value tables (its "do not adjust" list):
+// sizes 3, 4, 5, 6 and 8 -- no 7, so a seven-element pass misses.
+inline constexpr formula::SampleSizeTable<5> Sizes { 3, 4, 5, 6, 8 };
+/// The deviation table, read at each pass's n and scaled by 1/10: limits 9,
+/// 1, 2, 3/2 and 6 standard deviations.
+inline constexpr auto deviationTable = formula::deviation_in_stddevs(
+    formula::critical_value<Sizes, unit::One>(formula::pass_count, { rat(90), rat(10), rat(20), rat(15), rat(60) })
+    * rat(1, 10));
+/// The gap table, read at each pass's n and scaled by 1/100: limits 9, 7,
+/// 3/10, 9/20 and 1/20 -- the first two beyond any gap ratio.
+inline constexpr auto gapTable = formula::gap_to_range(
+    formula::critical_value<Sizes, unit::One>(formula::pass_count, { rat(900), rat(700), rat(30), rat(45), rat(5) })
+    * rat(1, 100));
 inline constexpr auto rejectionA1 = rejectionOf<MostExtreme, Keep, 1, 4, 6>(sixPercent);
 } // namespace
 
@@ -824,4 +838,122 @@ TEST_CASE("a rejection record that contradicts itself is refused, not printed", 
     outlierPast.rejectionRecords[outlierRecord].position = 8;
     CHECK(formula::render_trace(outlierPast, { .maxSteps = 20 }).find("rejected element (its record is invalid)\n")
           != std::string::npos);
+}
+
+TEST_CASE("a critical value is read at each pass's own sample size (fixture B, the deviation table)", "[rejection]")
+{
+    // Current n (correct):
+    //  - pass 1, n = 6: limit 3/2, limit^2 9/4; element 3's z^2 = 80089/24342
+    //    = 3.290 > 2.25, rejected.
+    //  - pass 2, n = 5: limit 2, limit^2 4; element 5's z^2 = 13689/4445 =
+    //    3.0796 < 4: settles at 1977/50 g with {3}, under AtMost<1> as
+    //    under AtMost<2>.
+    // Read at the original n = 6 in every pass, pass 2's limit^2 would stay
+    // 9/4 and reject element 5; pass 3 (n = 4, max z^2 675/428 = 1.577)
+    // would settle at 321/8 g -- and AtMost<1> would abort in pass 2.
+    constexpr auto two =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 6>(deviationTable), fixtureB);
+    STATIC_REQUIRE(two->outcome().measurement().value() == rat(1977, 50));
+    STATIC_REQUIRE(two->rejected().size() == 1);
+    STATIC_REQUIRE(two->rejected()[0] == formula::RejectedElement { 3, 1 });
+    STATIC_REQUIRE(two->passes() == 2);
+    constexpr auto one =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 1, 3, 6>(deviationTable), fixtureB);
+    STATIC_REQUIRE(one->outcome().measurement().value() == rat(1977, 50));
+}
+
+TEST_CASE("gap to range examines the two extremes, pass by pass (fixture B, the gap table)", "[rejection]")
+{
+    // Pass 1 (n = 6, limit 9/20): the high gap, 45.2 - 40.5 = 4.7 g over a
+    // range of 8 g, is 47/80 = 0.5875 > 9/20: element 3 goes. Pass 2 (n = 5,
+    // limit 3/10): the low gap, 39.8 - 37.2 = 2.6 g over 3.3 g, is 26/33 >
+    // 3/10: element 5 goes. Pass 3 (n = 4, limit 7): the largest ratio is
+    // 3/7 < 7, and it settles at 321/8 g. Under AtMost<1>, pass 2 aborts.
+    constexpr auto three =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 6>(gapTable), fixtureB);
+    STATIC_REQUIRE(three->outcome().measurement().value() == rat(321, 8));
+    STATIC_REQUIRE(three->rejected().size() == 2);
+    STATIC_REQUIRE(three->rejected()[0] == formula::RejectedElement { 3, 1 });
+    STATIC_REQUIRE(three->rejected()[1] == formula::RejectedElement { 5, 2 });
+    STATIC_REQUIRE(three->passes() == 3);
+    constexpr auto aborted =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 1, 3, 6>(gapTable), fixtureB);
+    STATIC_REQUIRE(aborted->outcome().is_verdict());
+    STATIC_REQUIRE(aborted->passes() == 2);
+
+    // A tie between the two extremes rejects both: 36 and 44 g around three
+    // 40 g are 4/8 each, past a 1/4 limit.
+    constexpr auto quarter = formula::gap_to_range(formula::number(rat(1, 4)));
+    constexpr auto tied =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 5>(quarter), fixtureC);
+    STATIC_REQUIRE(tied->rejected().size() == 2);
+    STATIC_REQUIRE(tied->outcome().measurement().value() == rat(40));
+
+    // All equal: the range is zero, and no candidate -- never a division by
+    // zero.
+    constexpr auto equal =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 5>(gapTable), fixtureE);
+    STATIC_REQUIRE(equal->outcome().measurement().value() == rat(40));
+    STATIC_REQUIRE(equal->passes() == 1);
+
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_rejection<Mass>(
+        rejectionOf<MostExtreme, Keep, 2, 3, 6>(gapTable), fixtureB, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 226/5 g; 40 g; 186/5 g\n"
+             "2. pass n = 6\n"
+             "3. critical(#2) = 45 [critical value at n = 6]\n"
+             "4. 1/100\n"
+             "5. #3 * #4 = 9/20\n"
+             "6. pass 1: 6 values, mean 2429/60 g\n"
+             "7. rejected element 4 of 6 (226/5 g) in pass 1: gap / range = 47/80 > 9/20 (gap to range)\n"
+             "8. pass n = 5\n"
+             "9. critical(#8) = 30 [critical value at n = 5]\n"
+             "10. 1/100\n"
+             "11. #9 * #10 = 3/10\n"
+             "12. pass 2: 5 values, mean 1977/50 g\n"
+             "13. rejected element 6 of 6 (186/5 g) in pass 2: gap / range = 26/33 > 3/10 (gap to range)\n"
+             "14. pass n = 4\n"
+             "15. critical(#14) = 700 [critical value at n = 4]\n"
+             "16. 1/100\n"
+             "17. #15 * #16 = 7\n"
+             "18. pass 3: 4 values, mean 321/8 g\n"
+             "19. settled: 2 rejected, 4 remain\n");
+    CHECK(formula::render(rejectionOf<MostExtreme, Keep, 2, 3, 6>(gapTable))
+          == "without outliers(m(i); gap to range > critical(pass n, at 3, 4, 5, 6, 8) * 1/100; most extreme per pass; keep "
+             "on limit; at most 2; keep at least 3)");
+    CHECK(formula::render<formula::Dialect::LaTeX>(rejectionOf<MostExtreme, Keep, 2, 3, 6>(gapTable))
+          == "\\operatorname{without\\ outliers}({m}_{i};\\allowbreak \\text{gap to range} > "
+             "\\operatorname{critical}(n_{\\text{pass}},\\allowbreak \\mathrm{at\\ }3,\\allowbreak 4,\\allowbreak "
+             "5,\\allowbreak 6,\\allowbreak 8) \\cdot 1/100;\\allowbreak \\text{most extreme per pass};\\allowbreak "
+             "\\text{keep on limit};\\allowbreak \\text{at most }2;\\allowbreak \\text{keep at least }3)");
+    formula::Documentation const page =
+        formula::document(formula::sample_mean(rejectionOf<MostExtreme, Keep, 2, 3, 6>(gapTable)));
+    REQUIRE(page.rejections.size() == 1);
+    CHECK(page.rejections[0].criterion == formula::CriterionKind::GapToRange);
+    CHECK(page.rejections[0].limit == "critical(pass n, at 3, 4, 5, 6, 8) * 1/100");
+}
+
+TEST_CASE("a pass whose size the table does not declare is a miss, never a default (fixture G)", "[rejection]")
+{
+    // Seven determinations: n = 7 is no declared size, so pass 1's limit
+    // misses. The failure is the limit's, and no element's.
+    constexpr auto fixtureG = sampleOf(rat(40), rat(41), rat(39), rat(40), rat(42), rat(38), rat(40));
+    constexpr auto missed =
+        formula::checked_evaluate_rejection<Mass>(rejectionOf<MostExtreme, Keep, 2, 3, 7>(gapTable), fixtureG);
+    STATIC_REQUIRE(!missed.has_value());
+    STATIC_REQUIRE(missed.error().error == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(!missed.error().element.has_value());
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Mass>(formula::sample_mean(rejectionOf<MostExtreme, Keep, 2, 3, 7>(gapTable)),
+                                           fixtureG,
+                                           formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. m = 40 g; 41 g; 39 g; 40 g; 42 g; 38 g; 40 g\n"
+             "2. pass n = 7\n"
+             "3. critical(#2) = argument outside the domain of the operation [no row for n = 7 (declared: 3, 4, 5, 6, 8)]\n"
+             "4. * #3 = argument outside the domain of the operation\n"
+             "5. pass 1: 7 values, mean 40 g\n"
+             "6. failed in pass 1: the limit: argument outside the domain of the operation\n"
+             "7. sample_mean(#6) = argument outside the domain of the operation\n");
 }

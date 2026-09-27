@@ -1533,7 +1533,8 @@ template <Dialect D, Vocabulary V>
 /// A rejection renders with every parameter that shapes its result stated:
 /// `without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most
 /// extreme per pass; keep on limit; at most 2; keep at least 4)`. A rendering
-/// that left one out would state half the rule. The deviation is `abs(...)`,
+/// that left one out would state half the rule. A gap criterion reads `gap to
+/// range > critical(pass n, at 3, 4, 5, 6, 8) * 1/100`. The deviation is `abs(...)`,
 /// never bars, outside LaTeX: a bar inside a Markdown table cell ends the cell
 /// (T11); the Markdown guard checks it. In LaTeX the parentheses are plain,
 /// not `\left(`...`\right)`: TeX never breaks a line inside that pair, and
@@ -1553,7 +1554,11 @@ template <Dialect D,
     constexpr bool inStddevs = Criterion::kind == CriterionKind::DeviationInStddevs;
     std::string const deviation =
         latex ? std::string { "\\left|x - \\bar{x}_{\\text{pass}}\\right|" } : std::string { "abs(x - pass mean)" };
-    std::string const statistic = inStddevs ? (latex ? "\\frac{" + deviation + "}{s}" : deviation + " / s") : deviation;
+    constexpr bool gapToRange = Criterion::kind == CriterionKind::GapToRange;
+    std::string const statistic = gapToRange
+                                      ? (latex ? std::string { "\\text{gap to range}" } : std::string { "gap to range" })
+                                  : inStddevs ? (latex ? "\\frac{" + deviation + "}{s}" : deviation + " / s")
+                                              : deviation;
     std::string const comparison = L == OnLimit::Keep ? " > " : (latex ? " \\geq " : " >= ");
     std::string const between = latex ? ";\\allowbreak " : "; ";
     auto const inWords = [](std::string_view phrase) {

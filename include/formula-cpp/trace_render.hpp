@@ -1759,7 +1759,10 @@ namespace detail
                     return "rejected element (its record is invalid)";
                 std::string const comparison = rejectionRecord->onLimit == OnLimit::Keep ? " > " : " >= ";
                 std::string const decided =
-                    rejectionRecord->squared
+                    rejectionRecord->criterion == CriterionKind::GapToRange
+                        ? "gap / range = " + number_text(*rejectionRecord->statistic) + comparison
+                              + number_text(*rejectionRecord->limit) + " (gap to range)"
+                    : rejectionRecord->squared
                         ? "(x - mean)^2 = " + rejection_value_text(recorded, *rejectionRecord->statistic, true) + comparison
                               + "limit^2 * s^2 = " + rejection_value_text(recorded, *rejectionRecord->limit, true)
                               + " (deviation in standard deviations)"

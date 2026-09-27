@@ -87,8 +87,9 @@ decimal and never a rounded floating-point one. `critical_value` reads an author
 size and misses rather than guessing a neighbouring row. `precision_limit` evaluates a
 repeatability or reproducibility limit at the level of the results it checks, in two declared
 passes, with `precision_level` read only inside it. `without_outliers` rejects outliers from a
-sample by a criterion (a deviation from the mean or in standard deviations), re-running the mean
-until nothing more is rejected; a declared bound turns one rejection too many, or too few left,
+sample by a criterion (a deviation from the mean or in standard deviations, or the gap from an
+extreme to its neighbour over the range), whose limit may read a critical value at each pass's
+sample size, re-running the mean until nothing more is rejected; a declared bound turns one rejection too many, or too few left,
 into the author's verdict. Every pass and every rejected value is its own step in the trace.
 
 ### Changed
