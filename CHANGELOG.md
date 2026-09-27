@@ -65,6 +65,9 @@ and `TagName` spells a variant's tag.
 
 ### Fixed
 
+- A `documented()` step, and a jurisdiction's replaced-variant step, printed its value in coherent
+  SI with no unit: a citation over `16 g` read `#2 = 2/125`. Each now states its value in the unit
+  of the step it wraps, as that step does: `#2 = 16 g`.
 - A local in `evaluate.hpp` made GCC 13.3 report `-Wmaybe-uninitialized` at `-O2`, a false
   positive, in a consumer's own build: under `-Werror` a program including the header failed to
   build. CI's GCC 14 does not report it.
