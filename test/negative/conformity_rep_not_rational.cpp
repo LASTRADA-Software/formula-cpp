@@ -11,8 +11,8 @@ struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", f
 {
 };
 
-inline constexpr auto measured = formula::environment(
-    formula::measured_series<Passing>(formula::Measured<Passing> { formula::Rational { 1574, 25 } }));
+inline constexpr auto measured =
+    formula::environment(formula::measured_series<Passing>(formula::Measured<Passing> { formula::Rational { 1574, 25 } }));
 
 inline constexpr auto onItsLimit = formula::conformity<formula::unit::Percent>(
     formula::series<Passing, 1>,

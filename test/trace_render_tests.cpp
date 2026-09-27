@@ -2139,9 +2139,8 @@ TEST_CASE("a running total is one step naming its end, in the operand's unit", "
 
 TEST_CASE("a sum is a single-value step whose operand is the series step", "[series][trace]")
 {
-    auto const explained =
-        formula::explain<series_trace::TotalMass>(formula::sum(formula::series<series_trace::Retained, 5>),
-                                                  series_trace::allPresent);
+    auto const explained = formula::explain<series_trace::TotalMass>(
+        formula::sum(formula::series<series_trace::Retained, 5>), series_trace::allPresent);
     CHECK(explained.outcome.measurement().value() == formula::Rational { 803 });
     CHECK(formula::render_trace(explained.trace, { .maxSteps = 30 })
           == "1. m_r = 130 g; 210 g; 95 g; 340 g; 28 g\n"
@@ -2157,13 +2156,16 @@ TEST_CASE("a series with nothing measured traces as absence at every element, an
 {
     // Review Focus 1: a running total or a sum that started from zero would
     // print 0 g somewhere. Nothing here may.
-    constexpr auto noneMeasured = formula::environment(formula::measured_series<series_trace::Retained>(
-        formula::Measured<series_trace::Retained>::absent(), formula::Measured<series_trace::Retained>::absent(),
-        formula::Measured<series_trace::Retained>::absent(), formula::Measured<series_trace::Retained>::absent(),
-        formula::Measured<series_trace::Retained>::absent()));
-    auto const explained = formula::explain<series_trace::TotalMass>(
-        formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<series_trace::Retained, 5>)),
-        noneMeasured);
+    constexpr auto noneMeasured = formula::environment(
+        formula::measured_series<series_trace::Retained>(formula::Measured<series_trace::Retained>::absent(),
+                                                         formula::Measured<series_trace::Retained>::absent(),
+                                                         formula::Measured<series_trace::Retained>::absent(),
+                                                         formula::Measured<series_trace::Retained>::absent(),
+                                                         formula::Measured<series_trace::Retained>::absent()));
+    auto const explained =
+        formula::explain<series_trace::TotalMass>(formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(
+                                                      formula::series<series_trace::Retained, 5>)),
+                                                  noneMeasured);
     CHECK(explained.outcome.measurement().is_absent());
     std::string const text = formula::render_trace(explained.trace, { .maxSteps = 40 });
     CHECK(text
@@ -2195,8 +2197,8 @@ TEST_CASE("a running total that overflowed names its element, counted from one",
         formula::RecordingSink<> { trace });
     REQUIRE(trace.steps.size() == 2);
     CHECK(trace.steps[1].failedElement == std::optional<std::size_t> { 2 });
-    CHECK(formula::render_trace(trace, { .maxSteps = 30 }).find(
-              "2. cumulative(#1, from first) = overflow in exact arithmetic at element 3\n")
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 })
+              .find("2. cumulative(#1, from first) = overflow in exact arithmetic at element 3\n")
           != std::string::npos);
 
     formula::Trace<> fromLast {};
@@ -2206,8 +2208,8 @@ TEST_CASE("a running total that overflowed names its element, counted from one",
         formula::RecordingSink<> { fromLast });
     REQUIRE(fromLast.steps.size() == 2);
     CHECK(fromLast.steps[1].failedElement == std::optional<std::size_t> { 1 });
-    CHECK(formula::render_trace(fromLast, { .maxSteps = 30 }).find(
-              "2. cumulative(#1, from last) = overflow in exact arithmetic at element 2\n")
+    CHECK(formula::render_trace(fromLast, { .maxSteps = 30 })
+              .find("2. cumulative(#1, from last) = overflow in exact arithmetic at element 2\n")
           != std::string::npos);
 }
 
@@ -2256,13 +2258,14 @@ TEST_CASE("a per-element rounding records each element's granularity and its mod
     {
     };
     static constexpr formula::PlacesTable<2> sharePlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 } };
-    constexpr auto shares = formula::environment(
-        formula::measured_series<Share>(formula::Measured<Share> { formula::Rational { 7, 8 } },
-                                        formula::Measured<Share> { formula::Rational { 3, 8 } }));
+    constexpr auto shares = formula::environment(formula::measured_series<Share>(
+        formula::Measured<Share> { formula::Rational { 7, 8 } }, formula::Measured<Share> { formula::Rational { 3, 8 } }));
     constexpr auto roundedShares =
-        formula::rounded_elementwise<unit::One, sharePlaces, formula::RoundingMode::HalfAwayFromZero>(formula::series<Share, 2>);
+        formula::rounded_elementwise<unit::One, sharePlaces, formula::RoundingMode::HalfAwayFromZero>(
+            formula::series<Share, 2>);
     formula::Trace<> shareTrace {};
-    (void) formula::detail::dispatch_series<formula::Rational>(roundedShares, shares, formula::RecordingSink<> { shareTrace });
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        roundedShares, shares, formula::RecordingSink<> { shareTrace });
     CHECK(formula::render_trace(shareTrace, { .maxSteps = 30 })
           == "1. s = 7/8; 3/8\n"
              "2. round(#1, to 0/1 dp) = 1; 2/5 [nearest, ties away from zero]\n");
@@ -2275,17 +2278,19 @@ TEST_CASE("a series and a curve escape their symbols and units, as a scalar step
     // one entry point: the declared symbol that spells a jurisdiction's
     // clause, and the author's unit that closes the value's clause, are
     // escaped on every element, every pair and an interpolation's value.
-    auto const factors = formula::environment(formula::measured_series<ForgingFactor>(
-        formula::Measured<ForgingFactor> { formula::Rational { 1 } }, formula::Measured<ForgingFactor> { formula::Rational { 2 } }));
+    auto const factors = formula::environment(
+        formula::measured_series<ForgingFactor>(formula::Measured<ForgingFactor> { formula::Rational { 1 } },
+                                                formula::Measured<ForgingFactor> { formula::Rational { 2 } }));
     formula::Trace<> factorTrace {};
-    (void) formula::checked_evaluate_series<ForgingFactor>(formula::series<ForgingFactor, 2>, factors,
-                                                           formula::RecordingSink<> { factorTrace });
+    (void) formula::checked_evaluate_series<ForgingFactor>(
+        formula::series<ForgingFactor, 2>, factors, formula::RecordingSink<> { factorTrace });
     CHECK(formula::render_trace(factorTrace, { .maxSteps = 10 })
           == "1. k\\] \\[fixed by jurisdiction overlay: Example Standard 9:2022 NA = 1; 2\n");
 
     constexpr formula::BreakpointTable<2> points { formula::breakpoint(103), formula::breakpoint(127) };
-    auto const loads = formula::environment(formula::measured_series<ForgingLoad>(
-        formula::Measured<ForgingLoad> { formula::Rational { 4 } }, formula::Measured<ForgingLoad> { formula::Rational { 5 } }));
+    auto const loads = formula::environment(
+        formula::measured_series<ForgingLoad>(formula::Measured<ForgingLoad> { formula::Rational { 4 } },
+                                              formula::Measured<ForgingLoad> { formula::Rational { 5 } }));
     formula::Trace<> curveTrace {};
     (void) formula::checked_evaluate<ForgingLoad>(
         formula::interpolate_at(formula::curve(formula::domain<unit::Metre, points>, formula::series<ForgingLoad, 2>),
@@ -2304,9 +2309,10 @@ TEST_CASE("a series and a curve escape their symbols and units, as a scalar step
     auto const observedLoads = formula::environment(
         formula::MeasuredObservations<ForgingLoad, 2>(formula::Rational { 4 }, formula::Rational { 12 }));
     formula::Trace<> binningTrace {};
-    (void) formula::checked_evaluate_series_si(formula::binned<ForgingNewton, ForgingLoadBands>(formula::observations<ForgingLoad, 2>),
-                                               observedLoads,
-                                               formula::RecordingSink<> { binningTrace });
+    (void) formula::checked_evaluate_series_si(
+        formula::binned<ForgingNewton, ForgingLoadBands>(formula::observations<ForgingLoad, 2>),
+        observedLoads,
+        formula::RecordingSink<> { binningTrace });
     CHECK(formula::render_trace(binningTrace, { .maxSteps = 20 })
           == "1. P = 4 N\\] \\[x; 12 N\\] \\[x\n"
              "2. bin(#1) = argument outside the domain of the operation at observation 2 "

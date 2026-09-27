@@ -19,5 +19,5 @@ series_cross_tu::Read totals_read_in_other_tu(decltype(series_cross_tu::totals) 
 series_cross_tu::CurveRead spliced_read_in_other_tu(decltype(series_cross_tu::spliced) const& splicedExpression) noexcept
 {
     return formula::checked_evaluate_curve<series_cross_tu::Opening, series_cross_tu::Retained>(splicedExpression,
-                                                                                               series_cross_tu::inputs);
+                                                                                                series_cross_tu::inputs);
 }

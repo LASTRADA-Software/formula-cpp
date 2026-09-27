@@ -329,7 +329,8 @@ template <typename Rep = Rational,
                     return std::unexpected { SeriesFailure { inKey.error(), at, FailureSite::InputObservation } };
                 std::optional<std::size_t> const holding = detail::find_band<Classes>(*inKey);
                 if (!holding.has_value())
-                    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, at, FailureSite::InputObservation } };
+                    return std::unexpected { SeriesFailure {
+                        ArithmeticError::DomainError, at, FailureSite::InputObservation } };
                 ++tally[*holding];
             }
             SeriesValue<Rep, classCount> counts;

@@ -78,8 +78,10 @@ template <typename Q>
 // ---- 1. A series, and the reductions that bring it back to one value ----------
 //
 // The screens, declared once, in metres, ascending.
-inline constexpr formula::BreakpointTable<5> screens { formula::breakpoint(103), formula::breakpoint(127),
-                                                       formula::breakpoint(163), formula::breakpoint(197),
+inline constexpr formula::BreakpointTable<5> screens { formula::breakpoint(103),
+                                                       formula::breakpoint(127),
+                                                       formula::breakpoint(163),
+                                                       formula::breakpoint(197),
                                                        formula::breakpoint(241) };
 
 // The percentage passing each screen: everything not retained on it or on a
@@ -89,9 +91,10 @@ inline constexpr auto passing =
     - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>) / var<TotalMass>;
 
 // 130, 210, 95, 340 and 28 g retained of 1250 g.
-inline constexpr auto analysis = formula::environment(
-    formula::measured_series<Retained>(m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)),
-    m<TotalMass>(1250));
+inline constexpr auto analysis =
+    formula::environment(formula::measured_series<Retained>(
+                             m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)),
+                         m<TotalMass>(1250));
 
 // A series reduced to one value: what the screens held in all.
 inline constexpr auto retainedInAll = formula::sum(formula::series<Retained, 5>);
@@ -106,11 +109,14 @@ inline constexpr auto passingAt173 = formula::interpolate_at(grading, formula::c
 // Each element's share of the total, a plain fraction, and each mass rounded
 // to a whole gram in grams.
 inline constexpr auto shareOfTotal = formula::series<Retained, 5> / var<TotalMass>;
-inline constexpr formula::PlacesTable<5> wholeGrams { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 },
-                                                      formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 },
+inline constexpr formula::PlacesTable<5> wholeGrams { formula::DecimalPlaces { 0 },
+                                                      formula::DecimalPlaces { 0 },
+                                                      formula::DecimalPlaces { 0 },
+                                                      formula::DecimalPlaces { 0 },
                                                       formula::DecimalPlaces { 0 } };
 inline constexpr auto roundedMasses =
-    formula::rounded_elementwise<unit::Gram, wholeGrams, formula::RoundingMode::HalfAwayFromZero>(formula::series<Retained, 5>);
+    formula::rounded_elementwise<unit::Gram, wholeGrams, formula::RoundingMode::HalfAwayFromZero>(
+        formula::series<Retained, 5>);
 
 // ---- 5. Conformity: each element against its own row --------------------------
 //
@@ -132,14 +138,16 @@ inline constexpr auto gradingCheck =
 //
 // The opening at which half the sample passes, read off the curve turned
 // round, and snapped to the nearest declared screen.
-inline constexpr auto halfPassing = formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(
-    formula::interpolate_at(formula::curve(passing, formula::domain<unit::Metre, screens>),
-                            formula::constant<unit::Percent>(rat(50))));
+inline constexpr auto halfPassing =
+    formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(formula::interpolate_at(
+        formula::curve(passing, formula::domain<unit::Metre, screens>), formula::constant<unit::Percent>(rat(50))));
 
 // A coarse analysis and a fine one, at invented openings of their own.
-inline constexpr formula::BreakpointTable<3> coarseScreens { formula::breakpoint(103), formula::breakpoint(127),
+inline constexpr formula::BreakpointTable<3> coarseScreens { formula::breakpoint(103),
+                                                             formula::breakpoint(127),
                                                              formula::breakpoint(163) };
-inline constexpr formula::BreakpointTable<3> fineScreens { formula::breakpoint(103, 10), formula::breakpoint(137, 10),
+inline constexpr formula::BreakpointTable<3> fineScreens { formula::breakpoint(103, 10),
+                                                           formula::breakpoint(137, 10),
                                                            formula::breakpoint(163, 10) };
 inline constexpr auto coarse =
     formula::curve(formula::domain<unit::Metre, coarseScreens>,
@@ -153,7 +161,8 @@ inline constexpr auto fineMeasured = formula::curve(formula::domain<unit::Metre,
 //
 // Invented classes, half-open: 0 to under 127, 127 to under 197, 197 to under
 // 331 m.
-inline constexpr formula::BandTable<3> sizeClasses { formula::band(0, 1, 127, 1), formula::band(127, 1, 197, 1),
+inline constexpr formula::BandTable<3> sizeClasses { formula::band(0, 1, 127, 1),
+                                                     formula::band(127, 1, 197, 1),
                                                      formula::band(197, 1, 331, 1) };
 inline constexpr auto counted = formula::binned<unit::Metre, sizeClasses>(formula::observations<ParticleSize, 8>);
 inline constexpr auto shares = counted / formula::sum(counted);
@@ -234,8 +243,11 @@ int main()
 
     formula::Documentation const page = formula::document(passing);
     for (formula::SymbolEntry const& row: page.symbols)
-        std::printf("  %.*s: %s, %zu value(s)\n", static_cast<int>(row.symbol.size()), row.symbol.data(),
-                    row.shape == formula::ValueShape::Series ? "series" : "single value", row.length);
+        std::printf("  %.*s: %s, %zu value(s)\n",
+                    static_cast<int>(row.symbol.size()),
+                    row.symbol.data(),
+                    row.shape == formula::ValueShape::Series ? "series" : "single value",
+                    row.length);
     std::printf("\n");
 
     std::printf("== 2. Elementwise arithmetic: one step per operation ==\n\n");
@@ -252,12 +264,13 @@ int main()
     std::printf("== 3. Absence, decided at the size of what is produced ==\n\n");
     // The third screen's mass was not recorded; in the last row, the total.
     auto const oneUnrecorded = formula::environment(
-        formula::measured_series<Retained>(m<Retained>(130), m<Retained>(210), formula::Measured<Retained>::absent(),
-                                           m<Retained>(340), m<Retained>(28)),
+        formula::measured_series<Retained>(
+            m<Retained>(130), m<Retained>(210), formula::Measured<Retained>::absent(), m<Retained>(340), m<Retained>(28)),
         m<TotalMass>(1250));
-    auto const noTotal = formula::environment(
-        formula::measured_series<Retained>(m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)),
-        formula::Measured<TotalMass>::absent());
+    auto const noTotal =
+        formula::environment(formula::measured_series<Retained>(
+                                 m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(28)),
+                             formula::Measured<TotalMass>::absent());
     // The fine analysis with its second value unrecorded.
     auto const fineGap = formula::environment(
         formula::measured_series<Passing>(m<Passing>(31, 10), formula::Measured<Passing>::absent(), m<Passing>(142, 10)));
@@ -268,8 +281,8 @@ int main()
         formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>), oneUnrecorded));
     std::string const reduced = last_line(value_trace<Retained>(retainedInAll, oneUnrecorded));
     std::string const readOff = last_line(value_trace<Passing>(passingAt173, oneUnrecorded));
-    std::string const spliced =
-        last_line(curve_trace<Opening, Passing>(formula::splice<formula::Monotone::NonDecreasing>(coarse, fineMeasured), fineGap));
+    std::string const spliced = last_line(
+        curve_trace<Opening, Passing>(formula::splice<formula::Monotone::NonDecreasing>(coarse, fineMeasured), fineGap));
     auto const judgedWithGap = formula::check_conformity(gradingCheck, oneUnrecorded);
     std::string const broadcast = last_line(series_trace<Share>(shareOfTotal, noTotal));
     std::printf("m_r / m_t, third screen unrecorded: %s\n", elementwise.c_str());
@@ -298,9 +311,10 @@ int main()
 
     std::printf("== 4. A failed element fails the series, and names itself ==\n\n");
     // The coarsest screen held nothing: dividing the total by it fails there.
-    auto const emptyScreen = formula::environment(
-        formula::measured_series<Retained>(m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(0)),
-        m<TotalMass>(1250));
+    auto const emptyScreen =
+        formula::environment(formula::measured_series<Retained>(
+                                 m<Retained>(130), m<Retained>(210), m<Retained>(95), m<Retained>(340), m<Retained>(0)),
+                             m<TotalMass>(1250));
     std::string const failedTrace = series_trace<Count>(var<TotalMass> / formula::series<Retained, 5>, emptyScreen);
     std::printf("%s\n", failedTrace.c_str());
     check(failedTrace.ends_with("3. #1 / #2 = division by zero at element 5\n"), "the fifth element, counted from one");
@@ -308,7 +322,8 @@ int main()
     check(!failed.has_value() && failed.error().element == std::optional<std::size_t> { 4 }, "zero-based 4 in the API");
     if (!failed.has_value() && failed.error().element.has_value())
         std::printf("SeriesFailure: division by zero, element %zu, counted from zero, a result element: %s\n\n",
-                    *failed.error().element, failed.error().site == formula::FailureSite::ResultElement ? "yes" : "no");
+                    *failed.error().element,
+                    failed.error().site == formula::FailureSite::ResultElement ? "yes" : "no");
 
     std::printf("== 5. Conformity: each element against its own row ==\n\n");
     std::printf("%s\n\n", formula::render(gradingCheck).c_str());
@@ -329,10 +344,10 @@ int main()
     check(snapTrace.find("[127 m to 163 m; nearer 127 m]") != std::string::npos, "4733/35 m snaps to 127 m, the nearer");
 
     auto const midway = formula::constant<unit::Metre>(rat(145));
-    std::string const towardLower = last_line(value_trace<Opening>(
-        formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(midway), analysis));
-    std::string const towardHigher = last_line(value_trace<Opening>(
-        formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(midway), analysis));
+    std::string const towardLower = last_line(
+        value_trace<Opening>(formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(midway), analysis));
+    std::string const towardHigher = last_line(
+        value_trace<Opening>(formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(midway), analysis));
     std::string const beyond = last_line(value_trace<Opening>(
         formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(formula::constant<unit::Metre>(rat(251))),
         analysis));
@@ -354,8 +369,8 @@ int main()
     // union does not.
     auto const raised = formula::curve(formula::domain<unit::Metre, fineScreens>,
                                        formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(40)));
-    std::string const brokenLine =
-        last_line(curve_trace<Opening, Passing>(formula::splice<formula::Monotone::NonDecreasing>(coarse, raised), analysis));
+    std::string const brokenLine = last_line(
+        curve_trace<Opening, Passing>(formula::splice<formula::Monotone::NonDecreasing>(coarse, raised), analysis));
     std::printf("%s\n\n", brokenLine.c_str());
     check(brokenLine.ends_with("at element 4 [breaks non-decreasing at 103 m]"), "the union breaks where the curves join");
 

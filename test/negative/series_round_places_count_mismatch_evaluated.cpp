@@ -24,28 +24,28 @@ struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen",
 {
 };
 
-inline constexpr auto inputs = formula::environment(formula::measured_series<Retained>(
-    formula::Measured<Retained> { formula::Rational { 130 } }, formula::Measured<Retained> { formula::Rational { 210 } },
-    formula::Measured<Retained> { formula::Rational { 95 } }, formula::Measured<Retained> { formula::Rational { 340 } },
-    formula::Measured<Retained> { formula::Rational { 28 } }));
+inline constexpr auto inputs =
+    formula::environment(formula::measured_series<Retained>(formula::Measured<Retained> { formula::Rational { 130 } },
+                                                            formula::Measured<Retained> { formula::Rational { 210 } },
+                                                            formula::Measured<Retained> { formula::Rational { 95 } },
+                                                            formula::Measured<Retained> { formula::Rational { 340 } },
+                                                            formula::Measured<Retained> { formula::Rational { 28 } }));
 
-inline constexpr formula::PlacesTable<4> places { formula::DecimalPlaces { 0 },
-                                                  formula::DecimalPlaces { 0 },
-                                                  formula::DecimalPlaces { 1 },
-                                                  formula::DecimalPlaces { 1 } };
+inline constexpr formula::PlacesTable<4> places {
+    formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 }, formula::DecimalPlaces { 1 }
+};
 
-inline constexpr auto rounded = formula::rounded_elementwise<formula::unit::Gram, places, formula::RoundingMode::HalfEven>(
-    formula::series<Retained, 5>);
+inline constexpr auto rounded =
+    formula::rounded_elementwise<formula::unit::Gram, places, formula::RoundingMode::HalfEven>(formula::series<Retained, 5>);
 
 int main()
 {
     // Evaluated in a constant expression, as this library's tests do, then
     // rendered, documented and traced: none of it may add a message.
     constexpr auto evaluated = formula::checked_evaluate_series<Retained>(rounded, inputs);
-    std::string const text = formula::render(rounded) + formula::render<formula::Dialect::LaTeX>(rounded)
-                             + formula::document(rounded).formula;
+    std::string const text =
+        formula::render(rounded) + formula::render<formula::Dialect::LaTeX>(rounded) + formula::document(rounded).formula;
     auto const explained = formula::explain_series<Retained>(rounded, inputs);
-    return evaluated.has_value() && !text.empty() && !formula::render_trace(explained.trace, { .maxSteps = 9 }).empty()
-               ? 0
-               : 1;
+    return evaluated.has_value() && !text.empty() && !formula::render_trace(explained.trace, { .maxSteps = 9 }).empty() ? 0
+                                                                                                                        : 1;
 }

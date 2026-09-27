@@ -37,18 +37,15 @@ struct OpeningInCm: formula::Quantity<OpeningInCm, "d_c", "screen opening", unit
 // any unit. The midpoints of their gaps -- 115, 145, 180 and 219 -- are all
 // different, so a tie in one gap is no tie in another; the ties tested are at
 // 115, 145 and 219, none a preferred number.
-constexpr formula::BreakpointTable<5> permitted { breakpoint(103),
-                                                  breakpoint(127),
-                                                  breakpoint(163),
-                                                  breakpoint(197),
-                                                  breakpoint(241) };
+constexpr formula::BreakpointTable<5> permitted {
+    breakpoint(103), breakpoint(127), breakpoint(163), breakpoint(197), breakpoint(241)
+};
 
 template <SnapTie Tie>
 constexpr auto snappedOpening(formula::Rational metres)
 {
-    return formula::checked_evaluate<Opening>(
-        formula::snapped<unit::Metre, permitted, Tie>(formula::var<Opening>),
-        formula::environment(formula::Measured<Opening> { metres }));
+    return formula::checked_evaluate<Opening>(formula::snapped<unit::Metre, permitted, Tie>(formula::var<Opening>),
+                                              formula::environment(formula::Measured<Opening> { metres }));
 }
 
 // The snapped value in metres, or nothing when the snap missed.
@@ -116,8 +113,8 @@ TEST_CASE("a value in another unit is converted into the key unit before it is c
 {
     // 14500 cm is 145 m, the midpoint of 127 and 163 m.
     constexpr auto inCm = formula::environment(formula::Measured<OpeningInCm> { rat(14500) });
-    constexpr auto towardLower = formula::checked_evaluate<Opening>(
-        formula::snapped<unit::Metre, permitted, lower>(formula::var<OpeningInCm>), inCm);
+    constexpr auto towardLower =
+        formula::checked_evaluate<Opening>(formula::snapped<unit::Metre, permitted, lower>(formula::var<OpeningInCm>), inCm);
     constexpr auto towardHigher = formula::checked_evaluate<Opening>(
         formula::snapped<unit::Metre, permitted, higher>(formula::var<OpeningInCm>), inCm);
     STATIC_REQUIRE(towardLower->measurement().value() == rat(127));
@@ -132,10 +129,12 @@ TEST_CASE("distances are taken in the key unit, where a form in SI would overflo
     // snaps to 103 mm; a snap that compared in SI would have to convert that
     // value and could only fail. Equivalent wherever both forms can be
     // represented; told apart here.
-    constexpr formula::BreakpointTable<3> atTheLimit { breakpoint(1, 10'000'000'000'000'000), breakpoint(103), breakpoint(127) };
-    constexpr auto snapped = formula::checked_evaluate<Opening>(
-        formula::snapped<unit::Millimetre, atTheLimit, lower>(formula::var<Opening>),
-        formula::environment(formula::Measured<Opening> { rat(113, 1000) }));
+    constexpr formula::BreakpointTable<3> atTheLimit { breakpoint(1, 10'000'000'000'000'000),
+                                                       breakpoint(103),
+                                                       breakpoint(127) };
+    constexpr auto snapped =
+        formula::checked_evaluate<Opening>(formula::snapped<unit::Millimetre, atTheLimit, lower>(formula::var<Opening>),
+                                           formula::environment(formula::Measured<Opening> { rat(113, 1000) }));
     STATIC_REQUIRE(snapped.has_value());
     STATIC_REQUIRE(snapped->measurement().value() == rat(103, 1000));
 }
@@ -171,16 +170,16 @@ TEST_CASE("negative keys in an affine unit snap by signed distance", "[snap]")
 
 TEST_CASE("absence and a failed operand pass through a snap", "[snap]")
 {
-    constexpr auto absent = formula::checked_evaluate<Opening>(
-        formula::snapped<unit::Metre, permitted, lower>(formula::var<Opening>),
-        formula::environment(formula::Measured<Opening>::absent()));
+    constexpr auto absent =
+        formula::checked_evaluate<Opening>(formula::snapped<unit::Metre, permitted, lower>(formula::var<Opening>),
+                                           formula::environment(formula::Measured<Opening>::absent()));
     STATIC_REQUIRE(absent.has_value());
     STATIC_REQUIRE(absent->measurement().is_absent());
 
     constexpr auto d = formula::var<Opening>;
-    constexpr auto failed = formula::checked_evaluate<Opening>(
-        formula::snapped<unit::Metre, permitted, lower>(d * (d / (d - d))),
-        formula::environment(formula::Measured<Opening> { rat(103) }));
+    constexpr auto failed =
+        formula::checked_evaluate<Opening>(formula::snapped<unit::Metre, permitted, lower>(d * (d / (d - d))),
+                                           formula::environment(formula::Measured<Opening> { rat(103) }));
     STATIC_REQUIRE(!failed.has_value());
     STATIC_REQUIRE(failed.error() == formula::ArithmeticError::DivisionByZero);
 }

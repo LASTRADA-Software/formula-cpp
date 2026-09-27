@@ -1073,7 +1073,13 @@ template <typename Rep = Rational, Dimension D, typename Env, typename Sink = Nu
 /// An absent element stays absent; a failed operand is relayed; a rounding
 /// that fails -- an overflow converting into `U`, say -- fails the whole
 /// series at that element.
-template <typename Rep = Rational, Unit U, auto Places, RoundingMode Mode, SeriesNode S, typename Env, typename Sink = NullSink>
+template <typename Rep = Rational,
+          Unit U,
+          auto Places,
+          RoundingMode Mode,
+          SeriesNode S,
+          typename Env,
+          typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedSeries<Rep, S::length> checked_evaluate_series_si(
     ElementwiseRoundNode<U, Places, Mode, S> const& node, Env const& environment, Sink sink = {}) noexcept
 {

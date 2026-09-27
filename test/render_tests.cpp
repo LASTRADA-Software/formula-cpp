@@ -1721,8 +1721,7 @@ TEST_CASE("a running total renders with its direction, and a sum as a call on th
     CHECK(formula::render(fromLast) == "cumulative(m_r(i), from last)");
     CHECK(formula::render(fromFirst) == "cumulative(m_r(i), from first)");
     CHECK(formula::render<formula::Dialect::Markdown>(fromLast) == "cumulative(`m_r(i)`, from last)");
-    CHECK(formula::render<formula::Dialect::LaTeX>(fromLast)
-          == "\\operatorname{cumulative}_{\\text{from last}}({m_r}_{i})");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fromLast) == "\\operatorname{cumulative}_{\\text{from last}}({m_r}_{i})");
     CHECK(formula::render<formula::Dialect::LaTeX>(fromFirst)
           == "\\operatorname{cumulative}_{\\text{from first}}({m_r}_{i})");
 
@@ -1742,7 +1741,8 @@ TEST_CASE("a running total renders with its direction, and a sum as a call on th
     constexpr auto scaled = formula::sum(s) * formula::var<series_render::Total>;
     CHECK(formula::render(scaled) == "sum(m_r(i)) * m_t");
     CHECK(formula::render<formula::Dialect::LaTeX>(scaled) == "(\\sum {m_r}_{i}) \\cdot m_t");
-    constexpr auto passing = formula::constant<formula::unit::Percent>(rat(100)) - fromLast / formula::var<series_render::Total>;
+    constexpr auto passing =
+        formula::constant<formula::unit::Percent>(rat(100)) - fromLast / formula::var<series_render::Total>;
     CHECK(formula::render(passing) == "100 % - cumulative(m_r(i), from last) / m_t");
     CHECK(formula::render<formula::Dialect::Markdown>(passing) == "100 % - cumulative(`m_r(i)`, from last) / `m_t`");
     // Under a jurisdiction's symbol, in every dialect.
@@ -1821,12 +1821,15 @@ TEST_CASE("a documented or replaced sum brackets in LaTeX as the bare one does",
     struct Whole
     {
     };
-    constexpr auto m = formula::method(
-        formula::variants(formula::variant<Whole>(formula::sum(s) / formula::var<Total>)),
-        formula::rounding_rule<formula::unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-        formula::constraints());
-    constexpr auto replaced = formula::apply(formula::overlay(formula::replace_variant<Whole>(formula::sum(s / formula::var<Total>), formula::Citation { .reference = "Example Standard 4" })),
-                                             m);
+    constexpr auto m = formula::method(formula::variants(formula::variant<Whole>(formula::sum(s) / formula::var<Total>)),
+                                       formula::rounding_rule<formula::unit::Percent,
+                                                              formula::DecimalPlaces { 1 },
+                                                              formula::RoundingMode::HalfAwayFromZero>(),
+                                       formula::constraints());
+    constexpr auto replaced =
+        formula::apply(formula::overlay(formula::replace_variant<Whole>(
+                           formula::sum(s / formula::var<Total>), formula::Citation { .reference = "Example Standard 4" })),
+                       m);
     constexpr auto replacement = std::get<0>(replaced.variantSet.cases).expression;
     CHECK(formula::render<formula::Dialect::LaTeX>(replacement * rat(2)) == "(\\sum \\frac{{m_r}_{i}}{m_t}) \\cdot 2");
 }

@@ -11,10 +11,15 @@ struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", f
 {
 };
 
-inline constexpr formula::PlacesTable<5> places { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 }, formula::DecimalPlaces { 1 } };
+inline constexpr formula::PlacesTable<5> places { formula::DecimalPlaces { 0 },
+                                                  formula::DecimalPlaces { 0 },
+                                                  formula::DecimalPlaces { 0 },
+                                                  formula::DecimalPlaces { 1 },
+                                                  formula::DecimalPlaces { 1 } };
 
 inline constexpr auto rounded =
-    formula::rounded_elementwise<formula::unit::Millimetre, places, formula::RoundingMode::HalfEven>(formula::series<Passing, 5>);
+    formula::rounded_elementwise<formula::unit::Millimetre, places, formula::RoundingMode::HalfEven>(
+        formula::series<Passing, 5>);
 
 int main()
 {

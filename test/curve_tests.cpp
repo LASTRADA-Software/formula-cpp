@@ -42,11 +42,9 @@ struct Share: formula::Quantity<Share, "s", "share passing a screen", unit::One>
 {
 };
 
-constexpr formula::BreakpointTable<5> screens { breakpoint(103),
-                                                breakpoint(127),
-                                                breakpoint(163),
-                                                breakpoint(197),
-                                                breakpoint(241) };
+constexpr formula::BreakpointTable<5> screens {
+    breakpoint(103), breakpoint(127), breakpoint(163), breakpoint(197), breakpoint(241)
+};
 
 template <typename Q>
 constexpr formula::Measured<Q> m(std::int64_t numerator, std::int64_t denominator = 1)
@@ -74,7 +72,9 @@ constexpr std::optional<formula::Rational> along(Along const& curveExpression, A
 }
 
 template <typename Result, typename Along, typename At, typename Env>
-constexpr std::optional<formula::ArithmeticError> failure_along(Along const& curveExpression, At const& at, Env const& inputs)
+constexpr std::optional<formula::ArithmeticError> failure_along(Along const& curveExpression,
+                                                                At const& at,
+                                                                Env const& inputs)
 {
     auto const out = formula::checked_evaluate<Result>(formula::interpolate_at(curveExpression, at), inputs);
     if (out.has_value())
@@ -88,7 +88,8 @@ constexpr auto metres(std::int64_t numerator, std::int64_t denominator = 1)
 }
 
 template <typename Q, std::size_t N>
-constexpr bool reads(std::array<formula::Measured<Q>, N> const& measurements, std::array<formula::Rational, N> const& expected)
+constexpr bool reads(std::array<formula::Measured<Q>, N> const& measurements,
+                     std::array<formula::Rational, N> const& expected)
 {
     for (std::size_t at = 0; at < N; ++at)
         if (measurements[at].stored() != std::optional<formula::Rational> { expected[at] })
@@ -128,10 +129,10 @@ TEST_CASE("outside its domain a curve misses, at both ends", "[curve]")
 TEST_CASE("a computed domain that does not strictly ascend fails at its first offending element", "[curve]")
 {
     // 113 m after 127 m, and 163 m after 197 m: the first is reported.
-    constexpr auto disordered = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), m<Opening>(127), m<Opening>(113), m<Opening>(197),
-                                          m<Opening>(163)),
-        passingMeasured);
+    constexpr auto disordered =
+        formula::environment(formula::measured_series<Opening>(
+                                 m<Opening>(103), m<Opening>(127), m<Opening>(113), m<Opening>(197), m<Opening>(163)),
+                             passingMeasured);
     constexpr auto computed = formula::curve(formula::series<Opening, 5>, passing);
     constexpr auto evaluated = formula::checked_evaluate_curve<Opening, Passing>(computed, disordered);
     STATIC_REQUIRE(!evaluated.has_value());
@@ -140,10 +141,10 @@ TEST_CASE("a computed domain that does not strictly ascend fails at its first of
     STATIC_REQUIRE(failure_along<Passing>(computed, metres(179), disordered) == formula::ArithmeticError::DomainError);
 
     // A point stated twice is not ascending either.
-    constexpr auto repeated = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), m<Opening>(127), m<Opening>(127), m<Opening>(197),
-                                          m<Opening>(241)),
-        passingMeasured);
+    constexpr auto repeated =
+        formula::environment(formula::measured_series<Opening>(
+                                 m<Opening>(103), m<Opening>(127), m<Opening>(127), m<Opening>(197), m<Opening>(241)),
+                             passingMeasured);
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(computed, repeated).error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 2 });
 
@@ -153,21 +154,21 @@ TEST_CASE("a computed domain that does not strictly ascend fails at its first of
     // that does not ascend. A point equal to one before the gap is a
     // duplicate likewise.
     constexpr auto gapped = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(197),
-                                          m<Opening>(163), m<Opening>(241)),
+        formula::measured_series<Opening>(
+            m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(197), m<Opening>(163), m<Opening>(241)),
         passingMeasured);
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(computed, gapped).error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 3 });
     constexpr auto gappedTwice = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), m<Opening>(127), formula::Measured<Opening>::absent(),
-                                          m<Opening>(127), m<Opening>(241)),
+        formula::measured_series<Opening>(
+            m<Opening>(103), m<Opening>(127), formula::Measured<Opening>::absent(), m<Opening>(127), m<Opening>(241)),
         passingMeasured);
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(computed, gappedTwice).error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 3 });
     // A gapped domain that ascends is a curve, its point absent.
     constexpr auto gappedAscending = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(163),
-                                          m<Opening>(197), m<Opening>(241)),
+        formula::measured_series<Opening>(
+            m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(163), m<Opening>(197), m<Opening>(241)),
         passingMeasured);
     constexpr auto withGap = formula::checked_evaluate_curve<Opening, Passing>(computed, gappedAscending);
     STATIC_REQUIRE(withGap.has_value());
@@ -177,16 +178,20 @@ TEST_CASE("a computed domain that does not strictly ascend fails at its first of
 TEST_CASE("an absent element anywhere makes the interpolation absent", "[curve]")
 {
     // Element 5, far from 173 m, is absent: still no answer (S7, strict).
-    constexpr auto lastAbsent = formula::environment(formula::measured_series<Passing>(
-        m<Passing>(894, 25), m<Passing>(1154, 25), m<Passing>(1574, 25), m<Passing>(1764, 25), formula::Measured<Passing>::absent()));
+    constexpr auto lastAbsent =
+        formula::environment(formula::measured_series<Passing>(m<Passing>(894, 25),
+                                                               m<Passing>(1154, 25),
+                                                               m<Passing>(1574, 25),
+                                                               m<Passing>(1764, 25),
+                                                               formula::Measured<Passing>::absent()));
     constexpr auto out = formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(173)), lastAbsent);
     STATIC_REQUIRE(out.has_value());
     STATIC_REQUIRE(out->measurement().is_absent());
 
     // An absent point in a computed domain, likewise.
     constexpr auto domainAbsent = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(163),
-                                          m<Opening>(197), m<Opening>(241)),
+        formula::measured_series<Opening>(
+            m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(163), m<Opening>(197), m<Opening>(241)),
         passingMeasured);
     constexpr auto fromDomain = formula::checked_evaluate<Passing>(
         formula::interpolate_at(formula::curve(formula::series<Opening, 5>, passing), metres(173)), domainAbsent);
@@ -198,21 +203,26 @@ TEST_CASE("an interpolation along an absent curve states no segment and no range
 {
     // Read inside the curve's extent: a range clause would say it was read
     // outside, which is false; a segment clause would say it was located.
-    constexpr auto noneMeasured = formula::environment(formula::measured_series<Passing>(
-        formula::Measured<Passing>::absent(), formula::Measured<Passing>::absent(), formula::Measured<Passing>::absent(),
-        formula::Measured<Passing>::absent(), formula::Measured<Passing>::absent()));
+    constexpr auto noneMeasured =
+        formula::environment(formula::measured_series<Passing>(formula::Measured<Passing>::absent(),
+                                                               formula::Measured<Passing>::absent(),
+                                                               formula::Measured<Passing>::absent(),
+                                                               formula::Measured<Passing>::absent(),
+                                                               formula::Measured<Passing>::absent()));
     formula::Trace<> none {};
-    (void) formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(173)), noneMeasured,
-                                              formula::RecordingSink<> { none });
+    (void) formula::checked_evaluate<Passing>(
+        formula::interpolate_at(grading, metres(173)), noneMeasured, formula::RecordingSink<> { none });
     CHECK(formula::render_trace(none, { .maxSteps = 30 }).ends_with("5. interpolate(#3, at #4) = (not measured)\n"));
     CHECK(!none.steps.back().coveredRange.has_value());
 
-    constexpr auto firstAbsent = formula::environment(formula::measured_series<Passing>(
-        formula::Measured<Passing>::absent(), m<Passing>(1154, 25), m<Passing>(1574, 25), m<Passing>(1764, 25),
-        m<Passing>(2444, 25)));
+    constexpr auto firstAbsent = formula::environment(formula::measured_series<Passing>(formula::Measured<Passing>::absent(),
+                                                                                        m<Passing>(1154, 25),
+                                                                                        m<Passing>(1574, 25),
+                                                                                        m<Passing>(1764, 25),
+                                                                                        m<Passing>(2444, 25)));
     formula::Trace<> first {};
-    (void) formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(173)), firstAbsent,
-                                              formula::RecordingSink<> { first });
+    (void) formula::checked_evaluate<Passing>(
+        formula::interpolate_at(grading, metres(173)), firstAbsent, formula::RecordingSink<> { first });
     CHECK(formula::render_trace(first, { .maxSteps = 30 }).ends_with("5. interpolate(#3, at #4) = (not measured)\n"));
     CHECK(!first.steps.back().selectedSegment.has_value());
 }
@@ -220,8 +230,8 @@ TEST_CASE("an interpolation along an absent curve states no segment and no range
 TEST_CASE("a one-point curve answers at its point and misses everywhere else", "[curve]")
 {
     constexpr formula::BreakpointTable<1> onePoint { breakpoint(163) };
-    constexpr auto single = formula::curve(formula::domain<unit::Metre, onePoint>,
-                                           formula::series_constant<unit::Percent>(rat(1574, 25)));
+    constexpr auto single =
+        formula::curve(formula::domain<unit::Metre, onePoint>, formula::series_constant<unit::Percent>(rat(1574, 25)));
     constexpr auto none = formula::environment();
     STATIC_REQUIRE(along<Passing>(single, metres(163), none) == rat(1574, 25));
     STATIC_REQUIRE(failure_along<Passing>(single, metres(162), none) == formula::ArithmeticError::DomainError);
@@ -251,24 +261,24 @@ constexpr formula::BreakpointTable<3> fine { breakpoint(103, 10), breakpoint(137
 
 // A: 103, 127 and 163 m at 35.76, 46.16 and 62.96 %. B: 10.3, 13.7 and 16.3 m at
 // 3.1, 8.4 and 14.2 %. Invented, as the screens are.
-constexpr auto curveA =
-    formula::curve(formula::domain<unit::Metre, coarse>,
-                   formula::series_constant<unit::Percent>(rat(894, 25), rat(1154, 25), rat(1574, 25)));
+constexpr auto curveA = formula::curve(formula::domain<unit::Metre, coarse>,
+                                       formula::series_constant<unit::Percent>(rat(894, 25), rat(1154, 25), rat(1574, 25)));
 constexpr auto curveB = formula::curve(formula::domain<unit::Metre, fine>,
                                        formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(142, 10)));
 constexpr auto noInputs = formula::environment();
 
-constexpr std::array<formula::Rational, 6> splicedDomain { rat(103, 10), rat(137, 10), rat(163, 10), rat(103), rat(127), rat(163) };
+constexpr std::array<formula::Rational, 6> splicedDomain { rat(103, 10), rat(137, 10), rat(163, 10),
+                                                           rat(103),     rat(127),     rat(163) };
 constexpr std::array<formula::Rational, 6> splicedValues { rat(31, 10),  rat(84, 10),   rat(142, 10),
                                                            rat(894, 25), rat(1154, 25), rat(1574, 25) };
 } // namespace
 
 TEST_CASE("a splice is the sorted union by domain, whichever curve comes first", "[curve][splice]")
 {
-    constexpr auto ab = formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, curveB),
-                                                                          noInputs);
-    constexpr auto ba = formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveB, curveA),
-                                                                          noInputs);
+    constexpr auto ab = formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonDecreasing>(curveA, curveB), noInputs);
+    constexpr auto ba = formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonDecreasing>(curveB, curveA), noInputs);
     STATIC_REQUIRE(ab.has_value());
     STATIC_REQUIRE(ba.has_value());
     // Kept in argument order, (A, B) would start at 103 m.
@@ -287,37 +297,38 @@ TEST_CASE("the direction is judged on the spliced curve, not on each operand", "
     constexpr auto raised = formula::curve(formula::domain<unit::Metre, fine>,
                                            formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(40)));
     constexpr formula::SeriesFailure breaks { formula::ArithmeticError::DomainError, 3 };
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, raised),
-                                                                     noInputs)
-                       .error()
-                   == breaks);
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(raised, curveA),
-                                                                     noInputs)
-                       .error()
-                   == breaks);
+    STATIC_REQUIRE(
+        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, raised), noInputs)
+            .error()
+        == breaks);
+    STATIC_REQUIRE(
+        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(raised, curveA), noInputs)
+            .error()
+        == breaks);
 
     // The direction is the author's: the same two curves do not fall.
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonIncreasing>(curveA, curveB),
-                                                                     noInputs)
-                       .error()
-                   == formula::SeriesFailure { formula::ArithmeticError::DomainError, 1 });
+    STATIC_REQUIRE(
+        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonIncreasing>(curveA, curveB), noInputs)
+            .error()
+        == formula::SeriesFailure { formula::ArithmeticError::DomainError, 1 });
 }
 
 TEST_CASE("a falling curve splices under NonIncreasing, and not under NonDecreasing", "[curve][splice]")
 {
     // Retained above each screen, the complement of A and B: falling.
-    constexpr auto fallingA = formula::curve(
-        formula::domain<unit::Metre, coarse>,
-        formula::series_constant<unit::Percent>(rat(1606, 25), rat(1346, 25), rat(926, 25)));
-    constexpr auto fallingB = formula::curve(formula::domain<unit::Metre, fine>,
-                                             formula::series_constant<unit::Percent>(rat(969, 10), rat(916, 10), rat(858, 10)));
-    constexpr auto falling =
-        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonIncreasing>(fallingA, fallingB), noInputs);
+    constexpr auto fallingA =
+        formula::curve(formula::domain<unit::Metre, coarse>,
+                       formula::series_constant<unit::Percent>(rat(1606, 25), rat(1346, 25), rat(926, 25)));
+    constexpr auto fallingB =
+        formula::curve(formula::domain<unit::Metre, fine>,
+                       formula::series_constant<unit::Percent>(rat(969, 10), rat(916, 10), rat(858, 10)));
+    constexpr auto falling = formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonIncreasing>(fallingA, fallingB), noInputs);
     STATIC_REQUIRE(falling.has_value());
-    STATIC_REQUIRE(reads(falling->values(),
-                         { rat(969, 10), rat(916, 10), rat(858, 10), rat(1606, 25), rat(1346, 25), rat(926, 25) }));
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(fallingB, fallingA),
-                                                                     noInputs)
+    STATIC_REQUIRE(
+        reads(falling->values(), { rat(969, 10), rat(916, 10), rat(858, 10), rat(1606, 25), rat(1346, 25), rat(926, 25) }));
+    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(
+                       formula::splice<Monotone::NonDecreasing>(fallingB, fallingA), noInputs)
                        .error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 1 });
 }
@@ -329,14 +340,14 @@ TEST_CASE("two curves sharing a domain point miss where they meet", "[curve][spl
     constexpr auto meets = formula::curve(formula::domain<unit::Metre, meeting>,
                                           formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(142, 10)));
     constexpr formula::SeriesFailure where { formula::ArithmeticError::DomainError, 3 };
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, meets),
-                                                                     noInputs)
-                       .error()
-                   == where);
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(meets, curveA),
-                                                                     noInputs)
-                       .error()
-                   == where);
+    STATIC_REQUIRE(
+        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, meets), noInputs)
+            .error()
+        == where);
+    STATIC_REQUIRE(
+        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(meets, curveA), noInputs)
+            .error()
+        == where);
 }
 
 TEST_CASE("two one-point curves splice to a two-point curve", "[curve][splice]")
@@ -347,8 +358,8 @@ TEST_CASE("two one-point curves splice to a two-point curve", "[curve][splice]")
         formula::curve(formula::domain<unit::Metre, low>, formula::series_constant<unit::Percent>(rat(142, 10)));
     constexpr auto highPoint =
         formula::curve(formula::domain<unit::Metre, high>, formula::series_constant<unit::Percent>(rat(1154, 25)));
-    constexpr auto spliced =
-        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(highPoint, lowPoint), noInputs);
+    constexpr auto spliced = formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonDecreasing>(highPoint, lowPoint), noInputs);
     STATIC_REQUIRE(spliced.has_value());
     STATIC_REQUIRE(reads(spliced->domain(), { rat(163, 10), rat(127) }));
     STATIC_REQUIRE(reads(spliced->values(), { rat(142, 10), rat(1154, 25) }));
@@ -375,14 +386,14 @@ TEST_CASE("a duplicate point beside a direction break fails at the duplicate, in
     // at 2; duplicates are judged over the whole union first, so both fail at
     // the second 163 m.
     constexpr formula::SeriesFailure duplicate { formula::ArithmeticError::DomainError, 2 };
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveX, curveY),
-                                                                     noInputs)
-                       .error()
-                   == duplicate);
-    STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveY, curveX),
-                                                                     noInputs)
-                       .error()
-                   == duplicate);
+    STATIC_REQUIRE(
+        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveX, curveY), noInputs)
+            .error()
+        == duplicate);
+    STATIC_REQUIRE(
+        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveY, curveX), noInputs)
+            .error()
+        == duplicate);
 }
 
 TEST_CASE("a plateau splices in either direction: equal values do not break it", "[curve][splice]")
@@ -400,11 +411,11 @@ TEST_CASE("a plateau splices in either direction: equal values do not break it",
 
     // Falling, with the plateau across the join: B ends at 1606/25 %, where
     // A begins.
-    constexpr auto fallingA = formula::curve(
-        formula::domain<unit::Metre, coarse>,
-        formula::series_constant<unit::Percent>(rat(1606, 25), rat(1346, 25), rat(926, 25)));
-    constexpr auto fallingToA = formula::curve(formula::domain<unit::Metre, fine>,
-                                               formula::series_constant<unit::Percent>(rat(100), rat(916, 10), rat(1606, 25)));
+    constexpr auto fallingA =
+        formula::curve(formula::domain<unit::Metre, coarse>,
+                       formula::series_constant<unit::Percent>(rat(1606, 25), rat(1346, 25), rat(926, 25)));
+    constexpr auto fallingToA = formula::curve(
+        formula::domain<unit::Metre, fine>, formula::series_constant<unit::Percent>(rat(100), rat(916, 10), rat(1606, 25)));
     constexpr auto fallingAB = formula::checked_evaluate_curve<Opening, Passing>(
         formula::splice<Monotone::NonIncreasing>(fallingA, fallingToA), noInputs);
     constexpr auto fallingBA = formula::checked_evaluate_curve<Opening, Passing>(
@@ -419,9 +430,9 @@ namespace
 {
 // A computed curve whose domain falls from 127 to 103 m: it fails at its own
 // element 1, zero-based.
-constexpr auto fallingDomain = formula::environment(
-    formula::measured_series<Opening>(m<Opening>(127), m<Opening>(103), m<Opening>(163)),
-    formula::measured_series<Passing>(m<Passing>(894, 25), m<Passing>(1154, 25), m<Passing>(1574, 25)));
+constexpr auto fallingDomain =
+    formula::environment(formula::measured_series<Opening>(m<Opening>(127), m<Opening>(103), m<Opening>(163)),
+                         formula::measured_series<Passing>(m<Passing>(894, 25), m<Passing>(1154, 25), m<Passing>(1574, 25)));
 constexpr auto computedCurve = formula::curve(formula::series<Opening, 3>, formula::series<Passing, 3>);
 } // namespace
 
@@ -455,8 +466,8 @@ TEST_CASE("an absent element in either curve makes the whole splice absent", "[c
     constexpr auto withAbsent = formula::environment(
         formula::measured_series<Passing>(m<Passing>(31, 10), formula::Measured<Passing>::absent(), m<Passing>(142, 10)));
     constexpr auto measuredB = formula::curve(formula::domain<unit::Metre, fine>, formula::series<Passing, 3>);
-    constexpr auto spliced =
-        formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, measuredB), withAbsent);
+    constexpr auto spliced = formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonDecreasing>(curveA, measuredB), withAbsent);
     STATIC_REQUIRE(spliced.has_value());
     for (std::size_t at = 0; at < 6; ++at)
     {
@@ -473,9 +484,10 @@ TEST_CASE("an interpolation along a curve renders with every series marked", "[c
     CHECK(formula::render(formula::interpolate_at(computed, metres(173))) == "interpolate(curve(d(i), p(i)), at 173 m)");
     CHECK(formula::render<formula::Dialect::Markdown>(formula::interpolate_at(computed, metres(173)))
           == "interpolate(curve(`d(i)`, `p(i)`), at 173 m)");
-    CHECK(formula::render<formula::Dialect::LaTeX>(
-              formula::interpolate_at(formula::curve(formula::series<Opening, 5>, formula::series<Share, 5>), metres(173)))
-          == "\\operatorname{interpolate}(\\operatorname{curve}({d}_{i},\\allowbreak {s}_{i}),\\allowbreak \\mathrm{at\\ }173\\,\\mathrm{m})");
+    CHECK(
+        formula::render<formula::Dialect::LaTeX>(
+            formula::interpolate_at(formula::curve(formula::series<Opening, 5>, formula::series<Share, 5>), metres(173)))
+        == "\\operatorname{interpolate}(\\operatorname{curve}({d}_{i},\\allowbreak {s}_{i}),\\allowbreak \\mathrm{at\\ }173\\,\\mathrm{m})");
     // A declared domain renders as its points, one unit for them all.
     CHECK(formula::render(formula::interpolate_at(grading, metres(173)))
           == "interpolate(curve(domain(103, 127, 163, 197, 241 m), p(i)), at 173 m)");
@@ -491,7 +503,8 @@ TEST_CASE("a splice renders both curves and always states its direction", "[curv
           == "splice(curve(domain(103, 127, 163 m), values(894/25 %, 1154/25 %, 1574/25 %)), "
              "curve(domain(103/10, 137/10, 163/10 m), values(31/10 %, 42/5 %, 71/5 %)), non-decreasing)");
     constexpr auto shares = formula::curve(formula::series<Opening, 5>, formula::series<Share, 5>);
-    CHECK(formula::render(formula::splice<Monotone::NonIncreasing>(shares, shares)) == "splice(curve(d(i), s(i)), curve(d(i), s(i)), non-increasing)");
+    CHECK(formula::render(formula::splice<Monotone::NonIncreasing>(shares, shares))
+          == "splice(curve(d(i), s(i)), curve(d(i), s(i)), non-increasing)");
     CHECK(formula::render<formula::Dialect::Markdown>(formula::splice<Monotone::NonIncreasing>(shares, shares))
           == "splice(curve(`d(i)`, `s(i)`), curve(`d(i)`, `s(i)`), non-increasing)");
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::splice<Monotone::NonIncreasing>(shares, shares))
@@ -503,8 +516,8 @@ TEST_CASE("a splice renders both curves and always states its direction", "[curv
 
 TEST_CASE("an interpolation along a curve documents its series, once each", "[curve][document]")
 {
-    formula::Documentation const page = formula::document(
-        formula::interpolate_at(formula::curve(formula::series<Opening, 5>, passing), metres(173)));
+    formula::Documentation const page =
+        formula::document(formula::interpolate_at(formula::curve(formula::series<Opening, 5>, passing), metres(173)));
     CHECK(page.formula == "interpolate(curve(d(i), p(i)), at 173 m)");
     REQUIRE(page.symbols.size() == 2);
     CHECK(page.symbols[0].symbol == "d");
@@ -522,8 +535,8 @@ TEST_CASE("an interpolation along a curve documents its series, once each", "[cu
 TEST_CASE("a curve step shows its pairs, and an interpolation names its segment", "[curve][trace]")
 {
     formula::Trace<> trace {};
-    (void) formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(173)), screened,
-                                              formula::RecordingSink<> { trace });
+    (void) formula::checked_evaluate<Passing>(
+        formula::interpolate_at(grading, metres(173)), screened, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
           == "1. 103 m; 127 m; 163 m; 197 m; 241 m\n"
              "2. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
@@ -549,13 +562,14 @@ TEST_CASE("a curve step shows its pairs, and an interpolation names its segment"
 TEST_CASE("an interpolation on a point, and a miss, say so in the trace", "[curve][trace]")
 {
     formula::Trace<> onPoint {};
-    (void) formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(163)), screened,
-                                              formula::RecordingSink<> { onPoint });
-    CHECK(formula::render_trace(onPoint, { .maxSteps = 30 }).ends_with("5. interpolate(#3, at #4) = 1574/25 % [on the row at 163 m]\n"));
+    (void) formula::checked_evaluate<Passing>(
+        formula::interpolate_at(grading, metres(163)), screened, formula::RecordingSink<> { onPoint });
+    CHECK(formula::render_trace(onPoint, { .maxSteps = 30 })
+              .ends_with("5. interpolate(#3, at #4) = 1574/25 % [on the row at 163 m]\n"));
 
     formula::Trace<> missed {};
-    (void) formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(251)), screened,
-                                              formula::RecordingSink<> { missed });
+    (void) formula::checked_evaluate<Passing>(
+        formula::interpolate_at(grading, metres(251)), screened, formula::RecordingSink<> { missed });
     CHECK(formula::render_trace(missed, { .maxSteps = 30 })
               .ends_with("5. interpolate(#3, at #4) = argument outside the domain of the operation "
                          "[outside the curve, which runs 103 to 241 m]\n"));
@@ -565,8 +579,8 @@ TEST_CASE("an interpolation on a point, and a miss, say so in the trace", "[curv
 TEST_CASE("a splice step shows the union, and a failure names its element counted from one", "[curve][trace]")
 {
     formula::Trace<> trace {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, curveB), noInputs,
-                                                             formula::RecordingSink<> { trace });
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonDecreasing>(curveA, curveB), noInputs, formula::RecordingSink<> { trace });
     std::string const rendered = formula::render_trace(trace, { .maxSteps = 40 });
     CHECK(rendered.ends_with("7. splice(#3, #6, non-decreasing) = 103/10 m: 31/10 %; 137/10 m: 42/5 %; 163/10 m: 71/5 %; "
                              "103 m: 894/25 %; 127 m: 1154/25 %; 163 m: 1574/25 %\n"));
@@ -576,8 +590,8 @@ TEST_CASE("a splice step shows the union, and a failure names its element counte
     constexpr auto raised = formula::curve(formula::domain<unit::Metre, fine>,
                                            formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(40)));
     formula::Trace<> failed {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveA, raised), noInputs,
-                                                             formula::RecordingSink<> { failed });
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonDecreasing>(curveA, raised), noInputs, formula::RecordingSink<> { failed });
     CHECK(formula::render_trace(failed, { .maxSteps = 40 })
               .ends_with("7. splice(#3, #6, non-decreasing) = argument outside the domain of the operation at element 4 "
                          "[breaks non-decreasing at 103 m]\n"));
@@ -591,11 +605,11 @@ TEST_CASE("a splice's failure line names the point and the rule, in either order
     {
         formula::Trace<> trace {};
         if (xFirst)
-            (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveX, curveY),
-                                                                     noInputs, formula::RecordingSink<> { trace });
+            (void) formula::checked_evaluate_curve<Opening, Passing>(
+                formula::splice<Monotone::NonDecreasing>(curveX, curveY), noInputs, formula::RecordingSink<> { trace });
         else
-            (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveY, curveX),
-                                                                     noInputs, formula::RecordingSink<> { trace });
+            (void) formula::checked_evaluate_curve<Opening, Passing>(
+                formula::splice<Monotone::NonDecreasing>(curveY, curveX), noInputs, formula::RecordingSink<> { trace });
         CHECK(formula::render_trace(trace, { .maxSteps = 40 })
                   .ends_with("7. splice(#3, #6, non-decreasing) = argument outside the domain of the operation at element 3 "
                              "[duplicate domain point 163 m]\n"));
@@ -605,8 +619,8 @@ TEST_CASE("a splice's failure line names the point and the rule, in either order
     // Falling under NonIncreasing: A and B rise, and the union breaks at
     // 13.7 m, zero-based 1.
     formula::Trace<> rising {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonIncreasing>(curveA, curveB), noInputs,
-                                                             formula::RecordingSink<> { rising });
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonIncreasing>(curveA, curveB), noInputs, formula::RecordingSink<> { rising });
     CHECK(formula::render_trace(rising, { .maxSteps = 40 })
               .ends_with("7. splice(#3, #6, non-increasing) = argument outside the domain of the operation at element 2 "
                          "[breaks non-increasing at 137/10 m]\n"));
@@ -615,8 +629,8 @@ TEST_CASE("a splice's failure line names the point and the rule, in either order
 TEST_CASE("a splice's step relays an operand's failure without an element", "[curve][trace]")
 {
     formula::Trace<> trace {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::splice<Monotone::NonDecreasing>(curveB, computedCurve),
-                                                             fallingDomain, formula::RecordingSink<> { trace });
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::splice<Monotone::NonDecreasing>(curveB, computedCurve), fallingDomain, formula::RecordingSink<> { trace });
     std::string const rendered = formula::render_trace(trace, { .maxSteps = 40 });
     CHECK(rendered.find("6. curve(#4, #5) = argument outside the domain of the operation at element 2 "
                         "[domain does not ascend at 103 m]\n")
@@ -628,25 +642,25 @@ TEST_CASE("a splice's step relays an operand's failure without an element", "[cu
 
 TEST_CASE("a curve whose domain does not ascend names the element in the trace", "[curve][trace]")
 {
-    constexpr auto disordered = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), m<Opening>(127), m<Opening>(113), m<Opening>(197),
-                                          m<Opening>(163)),
-        passingMeasured);
+    constexpr auto disordered =
+        formula::environment(formula::measured_series<Opening>(
+                                 m<Opening>(103), m<Opening>(127), m<Opening>(113), m<Opening>(197), m<Opening>(163)),
+                             passingMeasured);
     formula::Trace<> trace {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, passing), disordered,
-                                                             formula::RecordingSink<> { trace });
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::curve(formula::series<Opening, 5>, passing), disordered, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
               .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 3 "
                          "[domain does not ascend at 113 m]\n"));
     CHECK(trace.steps.back().curveBreak == formula::CurveBreak::NotAscending);
 
-    constexpr auto repeated = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), m<Opening>(127), m<Opening>(127), m<Opening>(197),
-                                          m<Opening>(241)),
-        passingMeasured);
+    constexpr auto repeated =
+        formula::environment(formula::measured_series<Opening>(
+                                 m<Opening>(103), m<Opening>(127), m<Opening>(127), m<Opening>(197), m<Opening>(241)),
+                             passingMeasured);
     formula::Trace<> twice {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, passing), repeated,
-                                                             formula::RecordingSink<> { twice });
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::curve(formula::series<Opening, 5>, passing), repeated, formula::RecordingSink<> { twice });
     CHECK(formula::render_trace(twice, { .maxSteps = 30 })
               .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 3 "
                          "[duplicate domain point 127 m]\n"));
@@ -654,12 +668,12 @@ TEST_CASE("a curve whose domain does not ascend names the element in the trace",
     // Past a gap, the rule the evaluation judged is named too: 163 m after
     // 197 m, one-based 4.
     constexpr auto gapped = formula::environment(
-        formula::measured_series<Opening>(m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(197),
-                                          m<Opening>(163), m<Opening>(241)),
+        formula::measured_series<Opening>(
+            m<Opening>(103), formula::Measured<Opening>::absent(), m<Opening>(197), m<Opening>(163), m<Opening>(241)),
         passingMeasured);
     formula::Trace<> pastGap {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, passing), gapped,
-                                                             formula::RecordingSink<> { pastGap });
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::curve(formula::series<Opening, 5>, passing), gapped, formula::RecordingSink<> { pastGap });
     CHECK(formula::render_trace(pastGap, { .maxSteps = 30 })
               .ends_with("3. curve(#1, #2) = argument outside the domain of the operation at element 4 "
                          "[domain does not ascend at 163 m]\n"));
@@ -667,12 +681,12 @@ TEST_CASE("a curve whose domain does not ascend names the element in the trace",
 
     // The values fail at element 3, where the domain also falls: the failure
     // is the values', and names no rule of the domain's.
-    constexpr auto dividedValues =
-        passing / formula::series_constant<unit::One>(rat(1), rat(1), rat(0), rat(1), rat(1));
+    constexpr auto dividedValues = passing / formula::series_constant<unit::One>(rat(1), rat(1), rat(0), rat(1), rat(1));
     formula::Trace<> valuesFailed {};
-    (void) formula::checked_evaluate_curve<Opening, Passing>(formula::curve(formula::series<Opening, 5>, dividedValues),
-                                                             disordered, formula::RecordingSink<> { valuesFailed });
-    CHECK(formula::render_trace(valuesFailed, { .maxSteps = 30 }).ends_with("5. curve(#1, #4) = division by zero at element 3\n"));
+    (void) formula::checked_evaluate_curve<Opening, Passing>(
+        formula::curve(formula::series<Opening, 5>, dividedValues), disordered, formula::RecordingSink<> { valuesFailed });
+    CHECK(formula::render_trace(valuesFailed, { .maxSteps = 30 })
+              .ends_with("5. curve(#1, #4) = division by zero at element 3\n"));
     CHECK(valuesFailed.steps.back().curveBreak == formula::CurveBreak::None);
 }
 
@@ -682,9 +696,9 @@ namespace
 {
 // A share passing, read off the inverse curve at 50 %, snapped to the nearest
 // declared opening: 4733/35 m lies between 127 and 163 m, nearer 127.
-constexpr auto snappedOpening = formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(
-    formula::interpolate_at(formula::curve(passing, formula::domain<unit::Metre, screens>),
-                            formula::constant<unit::Percent>(rat(50))));
+constexpr auto snappedOpening =
+    formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(formula::interpolate_at(
+        formula::curve(passing, formula::domain<unit::Metre, screens>), formula::constant<unit::Percent>(rat(50))));
 } // namespace
 
 TEST_CASE("a value read off a curve and snapped to a declared domain point", "[curve][snap]")

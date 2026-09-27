@@ -17,9 +17,9 @@ using formula::LimitRow;
 inline constexpr formula::Conformity<formula::unit::Percent, formula::SeriesVarNode<Passing, 5>> check {
     formula::series<Passing, 5>,
     { LimitRow { limit(formula::Rational { 30 }), limit(formula::Rational { 40 }) },
-    LimitRow { limit(formula::Rational { 50 }), limit(formula::Rational { 60 }) },
-    LimitRow { limit(formula::Rational { 60 }), formula::unbounded },
-    LimitRow { limit(formula::Rational { 0 }), limit(formula::Rational { 95 }) } },
+      LimitRow { limit(formula::Rational { 50 }), limit(formula::Rational { 60 }) },
+      LimitRow { limit(formula::Rational { 60 }), formula::unbounded },
+      LimitRow { limit(formula::Rational { 0 }), limit(formula::Rational { 95 }) } },
     formula::Verdict { "reject the specimen" }
 };
 

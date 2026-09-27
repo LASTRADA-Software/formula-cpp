@@ -1063,10 +1063,11 @@ namespace detail
     /// never `Step::value`. One place, for the reason `is_lookup` gives.
     [[nodiscard]] constexpr bool is_series(StepKind stepKind) noexcept
     {
-        return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant || stepKind == StepKind::ElementwiseNegate
-               || stepKind == StepKind::ElementwiseAdd || stepKind == StepKind::ElementwiseSubtract
-               || stepKind == StepKind::ElementwiseMultiply || stepKind == StepKind::ElementwiseDivide
-               || stepKind == StepKind::CumulativeSum || stepKind == StepKind::ElementwiseRound || stepKind == StepKind::SeriesDomain
+        return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant
+               || stepKind == StepKind::ElementwiseNegate || stepKind == StepKind::ElementwiseAdd
+               || stepKind == StepKind::ElementwiseSubtract || stepKind == StepKind::ElementwiseMultiply
+               || stepKind == StepKind::ElementwiseDivide || stepKind == StepKind::CumulativeSum
+               || stepKind == StepKind::ElementwiseRound || stepKind == StepKind::SeriesDomain
                || stepKind == StepKind::ObservationsVariable || stepKind == StepKind::Binning;
     }
 
@@ -1199,7 +1200,7 @@ namespace detail
             if (at > 0)
                 lineText += "; ";
             lineText += curve_point_text(recorded, recorded.domainElements[at]) + ": "
-                    + value_in_declared_unit(recorded, recorded.elements[at]);
+                        + value_in_declared_unit(recorded, recorded.elements[at]);
         }
         if (listed < pairCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(pairCount - listed) + " more";
@@ -1300,9 +1301,8 @@ namespace detail
                 return " [on " + lowText + "]";
             if (recorded.tieBroken)
                 return " [" + lowText + " to " + highText + "; tie, " + std::string { describe(recorded.snapTie) } + "]";
-            std::string const nearer = recorded.value.has_value()
-                                           ? value_in_declared_unit(recorded, recorded.value)
-                                           : std::string { "neither" };
+            std::string const nearer =
+                recorded.value.has_value() ? value_in_declared_unit(recorded, recorded.value) : std::string { "neither" };
             return " [" + lowText + " to " + highText + "; nearer " + nearer + "]";
         }
         if (recorded.coveredRange.has_value())
@@ -1316,8 +1316,7 @@ namespace detail
     }
 
     /// The rows @p trace kept for the step at @p stepIndex, or none.
-    [[nodiscard]] inline std::span<LimitRow const> conformity_limits_of(Trace<Rational> const& trace,
-                                                                        std::size_t stepIndex)
+    [[nodiscard]] inline std::span<LimitRow const> conformity_limits_of(Trace<Rational> const& trace, std::size_t stepIndex)
     {
         for (ConformityLimits const& kept: trace.conformityLimits)
             if (kept.step == stepIndex)
@@ -1348,7 +1347,8 @@ namespace detail
             case ConstraintOutcomeKind::NotChecked:
                 return ordinal + " not checked" + valueClause + rowClause;
             case ConstraintOutcomeKind::Invalid:
-                return ordinal + " invalid" + valueClause + rowClause + ": " + std::string { describe(*checkedOutcome.error()) };
+                return ordinal + " invalid" + valueClause + rowClause + ": "
+                       + std::string { describe(*checkedOutcome.error()) };
         }
         return ordinal + " unknown outcome" + rowClause;
     }
@@ -1377,8 +1377,9 @@ namespace detail
         {
             if (at > 0)
                 lineText += "; ";
-            std::string const rowClause =
-                at < limits.size() ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit)) + ")" : std::string {};
+            std::string const rowClause = at < limits.size()
+                                              ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit)) + ")"
+                                              : std::string {};
             std::string const valueClause = at < recorded.elements.size() && recorded.elements[at].has_value()
                                                 ? ", " + value_in_declared_unit(recorded, recorded.elements[at])
                                                 : std::string {};

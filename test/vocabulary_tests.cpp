@@ -641,7 +641,8 @@ inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 
 // domains spliced, read at the overlay's fixed factor, and the answer snapped
 // to a permitted value. The overlay's constant is the point the curve is read
 // at, so it reaches inside the interpolation or the method is refused.
-inline constexpr formula::BreakpointTable<3> everyCurvePoints { formula::breakpoint(1), formula::breakpoint(2),
+inline constexpr formula::BreakpointTable<3> everyCurvePoints { formula::breakpoint(1),
+                                                                formula::breakpoint(2),
                                                                 formula::breakpoint(4) };
 inline constexpr formula::BreakpointTable<1> everyCurveTail { formula::breakpoint(5) };
 inline constexpr formula::BreakpointTable<2> everyCurveSnapSet { formula::breakpoint(1, 200), formula::breakpoint(1, 100) };
@@ -697,15 +698,15 @@ inline constexpr auto everyOverlaid = formula::apply(everyOverlay, everyMethod);
 // to 233 g. No element sits on a tie, so this fixture does not tell
 // HalfAwayFromZero from the other nearest modes: the signed `Deviation`
 // fixture in `series_tests.cpp` separates all seven modes and pins that one.
-inline constexpr auto everyInputs = formula::environment(
-    formula::Measured<EveryStrength> { rat(30) },
-    formula::Measured<EveryModulus> { rat(12) },
-    formula::Measured<EveryDiameter> { rat(241) },
-    formula::measured_series<EveryRetained>(formula::Measured<EveryRetained> { rat(10) },
-                                            formula::Measured<EveryRetained> { rat(20) },
-                                            formula::Measured<EveryRetained> { rat(40) }),
-    formula::Measured<EveryTotal> { rat(2020) },
-    formula::MeasuredObservations<EveryParticle, 4>(rat(103), rat(163), rat(197), rat(127)));
+inline constexpr auto everyInputs =
+    formula::environment(formula::Measured<EveryStrength> { rat(30) },
+                         formula::Measured<EveryModulus> { rat(12) },
+                         formula::Measured<EveryDiameter> { rat(241) },
+                         formula::measured_series<EveryRetained>(formula::Measured<EveryRetained> { rat(10) },
+                                                                 formula::Measured<EveryRetained> { rat(20) },
+                                                                 formula::Measured<EveryRetained> { rat(40) }),
+                         formula::Measured<EveryTotal> { rat(2020) },
+                         formula::MeasuredObservations<EveryParticle, 4>(rat(103), rat(163), rat(197), rat(127)));
 
 template <typename Tag>
 [[nodiscard]] std::string everyTraceOf()
@@ -1074,16 +1075,17 @@ namespace series_join
     // share is 803/1606 = 1/2 where the overlay reached, and 803/1250 where
     // it did not.
     inline constexpr auto nationally =
-        formula::apply(formula::overlay(formula::with_constant<TotalMass>(rat(1606), formula::Citation { .reference = "Example Standard 5" })),
+        formula::apply(formula::overlay(formula::with_constant<TotalMass>(
+                           rat(1606), formula::Citation { .reference = "Example Standard 5" })),
                        shareMethod);
 
-    inline constexpr auto screens = formula::environment(
-        formula::measured_series<Retained>(formula::Measured<Retained> { rat(130) },
-                                           formula::Measured<Retained> { rat(210) },
-                                           formula::Measured<Retained> { rat(95) },
-                                           formula::Measured<Retained> { rat(340) },
-                                           formula::Measured<Retained> { rat(28) }),
-        formula::Measured<TotalMass> { rat(1250) });
+    inline constexpr auto screens =
+        formula::environment(formula::measured_series<Retained>(formula::Measured<Retained> { rat(130) },
+                                                                formula::Measured<Retained> { rat(210) },
+                                                                formula::Measured<Retained> { rat(95) },
+                                                                formula::Measured<Retained> { rat(340) },
+                                                                formula::Measured<Retained> { rat(28) }),
+                             formula::Measured<TotalMass> { rat(1250) });
 
     template <typename Tag>
     [[nodiscard]] std::string traceOf()
@@ -1121,8 +1123,7 @@ TEST_CASE("a sum of a series renders and documents inside an overlaid method, in
     CHECK(formula::render(ofEachElement, series_vocabulary::east) == "sum(R(i) / m_t)");
     CHECK(formula::render(ofTheSum, series_vocabulary::west) == "sum(S(i)) / m_t");
     CHECK(formula::render<formula::Dialect::LaTeX>(ofTheSum, series_vocabulary::east) == "\\frac{\\sum {R}_{i}}{m_t}");
-    CHECK(formula::render<formula::Dialect::LaTeX>(ofEachElement, series_vocabulary::east)
-          == "\\sum \\frac{{R}_{i}}{m_t}");
+    CHECK(formula::render<formula::Dialect::LaTeX>(ofEachElement, series_vocabulary::east) == "\\sum \\frac{{R}_{i}}{m_t}");
 
     formula::Documentation const page = formula::document(ofEachElement, series_vocabulary::east);
     CHECK(page.formula == "sum(R(i) / m_t)");

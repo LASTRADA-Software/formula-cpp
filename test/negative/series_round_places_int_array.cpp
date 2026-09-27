@@ -13,15 +13,17 @@ struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen",
 {
 };
 
-inline constexpr auto inputs = formula::environment(formula::measured_series<Retained>(
-    formula::Measured<Retained> { formula::Rational { 130 } }, formula::Measured<Retained> { formula::Rational { 210 } },
-    formula::Measured<Retained> { formula::Rational { 95 } }, formula::Measured<Retained> { formula::Rational { 340 } },
-    formula::Measured<Retained> { formula::Rational { 28 } }));
+inline constexpr auto inputs =
+    formula::environment(formula::measured_series<Retained>(formula::Measured<Retained> { formula::Rational { 130 } },
+                                                            formula::Measured<Retained> { formula::Rational { 210 } },
+                                                            formula::Measured<Retained> { formula::Rational { 95 } },
+                                                            formula::Measured<Retained> { formula::Rational { 340 } },
+                                                            formula::Measured<Retained> { formula::Rational { 28 } }));
 
 inline constexpr std::array<int, 5> places { 0, 0, 0, 1, 1 };
 
-inline constexpr auto rounded = formula::rounded_elementwise<formula::unit::Gram, places, formula::RoundingMode::HalfEven>(
-    formula::series<Retained, 5>);
+inline constexpr auto rounded =
+    formula::rounded_elementwise<formula::unit::Gram, places, formula::RoundingMode::HalfEven>(formula::series<Retained, 5>);
 
 int main()
 {

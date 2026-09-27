@@ -12,8 +12,8 @@ struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", f
 {
 };
 
-inline constexpr auto check = formula::conformity<formula::unit::Percent>(
-    formula::series<Passing, 5>, {}, formula::Verdict { "reject the specimen" });
+inline constexpr auto check =
+    formula::conformity<formula::unit::Percent>(formula::series<Passing, 5>, {}, formula::Verdict { "reject the specimen" });
 
 int main()
 {

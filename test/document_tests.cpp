@@ -893,8 +893,9 @@ TEST_CASE("a per-element rounding documents as its series, with every granularit
     static constexpr formula::PlacesTable<3> places { formula::DecimalPlaces { 0 },
                                                       formula::DecimalPlaces { 1 },
                                                       formula::DecimalPlaces { 2 } };
-    auto const page = formula::document(
-        formula::rounded_elementwise<formula::unit::Gram, places, formula::RoundingMode::Floor>(formula::series<Retained, 3>));
+    auto const page =
+        formula::document(formula::rounded_elementwise<formula::unit::Gram, places, formula::RoundingMode::Floor>(
+            formula::series<Retained, 3>));
     CHECK(page.formula == "round(m_r(i), to 0/1/2 dp of g)");
     REQUIRE(page.symbols.size() == 1);
     CHECK(page.symbols[0].shape == formula::ValueShape::Series);

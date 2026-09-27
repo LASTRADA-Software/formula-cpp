@@ -40,7 +40,8 @@ inline constexpr auto inputs =
 
 /// A series expression whose type nests several node templates, taken as a
 /// parameter by the other unit's function below.
-inline constexpr auto totals = formula::cumulative<formula::CumulativeDirection::FromLast>(retained * formula::Rational { 2 });
+inline constexpr auto totals =
+    formula::cumulative<formula::CumulativeDirection::FromLast>(retained * formula::Rational { 2 });
 
 using Read = std::expected<formula::SeriesOutcome<Retained, 3>, formula::SeriesFailure>;
 
@@ -61,7 +62,8 @@ inline constexpr formula::BreakpointTable<1> beyond { formula::breakpoint(197) }
 inline constexpr auto spliced = formula::splice<formula::Monotone::NonDecreasing>(
     formula::curve(formula::domain<formula::unit::Metre, openings>,
                    formula::cumulative<formula::CumulativeDirection::FromFirst>(retained)),
-    formula::curve(formula::domain<formula::unit::Metre, beyond>, formula::series_constant<formula::unit::Gram>(formula::Rational { 100 })));
+    formula::curve(formula::domain<formula::unit::Metre, beyond>,
+                   formula::series_constant<formula::unit::Gram>(formula::Rational { 100 })));
 
 using CurveRead = std::expected<formula::CurveOutcome<Opening, Retained, 4>, formula::SeriesFailure>;
 } // namespace series_cross_tu
@@ -80,8 +82,10 @@ using CurveRead = std::expected<formula::CurveOutcome<Opening, Retained, 4>, for
 /// formula whose type differs between the two units names a different
 /// function and fails the link -- where a return type alone would do so on
 /// cl only.
-[[nodiscard]] series_cross_tu::Read totals_read_in_other_tu(decltype(series_cross_tu::totals) const& totalsExpression) noexcept;
+[[nodiscard]] series_cross_tu::Read totals_read_in_other_tu(decltype(series_cross_tu::totals)
+                                                                const& totalsExpression) noexcept;
 
 /// Defined in `series_cross_tu_b.cpp`: @p splicedExpression evaluated there,
 /// passed as a parameter for the reason `totals_read_in_other_tu`'s is.
-[[nodiscard]] series_cross_tu::CurveRead spliced_read_in_other_tu(decltype(series_cross_tu::spliced) const& splicedExpression) noexcept;
+[[nodiscard]] series_cross_tu::CurveRead spliced_read_in_other_tu(decltype(series_cross_tu::spliced)
+                                                                      const& splicedExpression) noexcept;

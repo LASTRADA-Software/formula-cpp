@@ -19,7 +19,8 @@ struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", formula:
 {
 };
 
-inline constexpr auto combined = formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Sieved, 4> + formula::series<Retained, 5>)
+inline constexpr auto combined =
+    formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Sieved, 4> + formula::series<Retained, 5>)
     + formula::series<TotalMass, 5>;
 
 int main()

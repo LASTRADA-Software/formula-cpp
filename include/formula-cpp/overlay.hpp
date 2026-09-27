@@ -1561,7 +1561,9 @@ namespace detail
 
     template <typename Sub, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
     struct ConstantRewrite<Sub, SnapNode<KeyUnit, Permitted, Tie, Operand>>:
-        ConstantRewriteOperand<Sub, Operand, SnapNode<KeyUnit, Permitted, Tie, typename ConstantRewriteOf<Sub, Operand>::type>>
+        ConstantRewriteOperand<Sub,
+                               Operand,
+                               SnapNode<KeyUnit, Permitted, Tie, typename ConstantRewriteOf<Sub, Operand>::type>>
     {
     };
 
@@ -1672,7 +1674,11 @@ namespace detail
     /// around both rewritten -- a curve's two series, a splice's two curves,
     /// an interpolation's curve and point. @p Children reads the two back off
     /// a node, in the order `Rebuilt` is aggregate-initialised.
-    template <typename Sub, typename First, typename Second, template <typename, typename> typename Rebuilt, typename Children>
+    template <typename Sub,
+              typename First,
+              typename Second,
+              template <typename, typename> typename Rebuilt,
+              typename Children>
     struct ConstantRewriteTwo
     {
         /// How the first child is rewritten.
@@ -1789,7 +1795,8 @@ namespace detail
     };
 
     template <typename Sub, SeriesNode S>
-    struct ConstantRewrite<Sub, SumNode<S>>: ConstantRewriteOperand<Sub, S, SumNode<typename ConstantRewriteOf<Sub, S>::type>>
+    struct ConstantRewrite<Sub, SumNode<S>>:
+        ConstantRewriteOperand<Sub, S, SumNode<typename ConstantRewriteOf<Sub, S>::type>>
     {
     };
 
@@ -1844,7 +1851,8 @@ namespace detail
         using type = BinnedNode<KeyUnit, Classes, typename Inner::type>;
 
         /// The binning, around the rewritten observations.
-        [[nodiscard]] static constexpr type apply(BinnedNode<KeyUnit, Classes, Obs> const& original, Sub const& overriding) noexcept
+        [[nodiscard]] static constexpr type apply(BinnedNode<KeyUnit, Classes, Obs> const& original,
+                                                  Sub const& overriding) noexcept
         {
             return type { {}, Inner::apply(original.source, overriding) };
         }

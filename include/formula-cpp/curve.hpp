@@ -541,7 +541,8 @@ namespace detail
     ///
     /// Spans, as `interpolate_along`'s are, so that the evaluator and the
     /// trace judge with this one function.
-    [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_domain(std::span<std::optional<Rational> const> points) noexcept
+    [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_domain(
+        std::span<std::optional<Rational> const> points) noexcept
     {
         std::optional<Rational> previous;
         for (std::size_t at = 0; at < points.size(); ++at)
@@ -601,7 +602,9 @@ namespace detail
     /// Spans, so that the evaluator's arrays and a trace step's vectors are
     /// read by this one function.
     [[nodiscard]] constexpr std::expected<std::pair<Rational, KeyPosition>, ArithmeticError> interpolate_along(
-        std::span<std::optional<Rational> const> points, std::span<std::optional<Rational> const> curveValues, Rational atKey) noexcept
+        std::span<std::optional<Rational> const> points,
+        std::span<std::optional<Rational> const> curveValues,
+        Rational atKey) noexcept
     {
         auto const pointAt = [&](std::size_t at) -> std::expected<Rational, ArithmeticError> {
             if (!points[at].has_value())
@@ -660,8 +663,8 @@ template <typename Rep = Rational, Unit U, BreakpointTable Points, typename Env,
 /// and makes whatever reads the curve absent.
 template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedCurve<Rep, CurveNode<D, V>::length> checked_evaluate_curve_si(CurveNode<D, V> const& node,
-                                                                                              Env const& environment,
-                                                                                              Sink sink = {}) noexcept
+                                                                                               Env const& environment,
+                                                                                               Sink sink = {}) noexcept
 {
     constexpr std::size_t curveLength = CurveNode<D, V>::length;
     if constexpr (!std::is_same_v<Rep, Rational>)
@@ -677,10 +680,12 @@ template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typ
         if constexpr (detail::HearsCurve<Sink, CurveNode<D, V>, Rep>)
             sink.curve_entered(node);
         EvaluatedCurve<Rep, curveLength> const evaluated = [&]() -> EvaluatedCurve<Rep, curveLength> {
-            EvaluatedSeries<Rep, curveLength> const points = detail::dispatch_series<Rep>(node.domainSeries, environment, sink);
+            EvaluatedSeries<Rep, curveLength> const points =
+                detail::dispatch_series<Rep>(node.domainSeries, environment, sink);
             if (!points.has_value())
                 return std::unexpected { detail::relayed_failure(points) };
-            EvaluatedSeries<Rep, curveLength> const pairedValues = detail::dispatch_series<Rep>(node.valueSeries, environment, sink);
+            EvaluatedSeries<Rep, curveLength> const pairedValues =
+                detail::dispatch_series<Rep>(node.valueSeries, environment, sink);
             if (!pairedValues.has_value())
                 return std::unexpected { detail::relayed_failure(pairedValues) };
 
@@ -860,7 +865,8 @@ namespace detail
         {
             if (!elements[at].has_value())
                 continue;
-            std::expected<Rational, ArithmeticError> const inUnit = checked_convert(*elements[at], coherent(dimension), Describe<Q>::unit);
+            std::expected<Rational, ArithmeticError> const inUnit =
+                checked_convert(*elements[at], coherent(dimension), Describe<Q>::unit);
             if (!inUnit.has_value())
                 return std::unexpected { SeriesFailure { inUnit.error(), at } };
             inQuantityUnit[at] = Measured<Q> { *inUnit };
@@ -882,8 +888,8 @@ namespace detail
 /// the `SeriesFailure` does not say which of the two failed: a point and its
 /// value share one position.
 template <Described DomainResult, Described ValueResult, CurveExpression C, typename Env, typename Sink = NullSink>
-[[nodiscard]] constexpr std::expected<CurveOutcome<DomainResult, ValueResult, C::length>, SeriesFailure> checked_evaluate_curve(
-    C const& expression, Env const& environment, Sink sink = {}) noexcept
+[[nodiscard]] constexpr std::expected<CurveOutcome<DomainResult, ValueResult, C::length>, SeriesFailure>
+checked_evaluate_curve(C const& expression, Env const& environment, Sink sink = {}) noexcept
 {
     constexpr std::size_t curveLength = C::length;
     constexpr bool domainMatches = Describe<DomainResult>::dimension == C::domainDimension;
@@ -899,7 +905,8 @@ template <Described DomainResult, Described ValueResult, CurveExpression C, type
         return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
     else
     {
-        EvaluatedCurve<Rational, curveLength> const computed = detail::dispatch_curve<Rational>(expression, environment, sink);
+        EvaluatedCurve<Rational, curveLength> const computed =
+            detail::dispatch_curve<Rational>(expression, environment, sink);
         if (!computed.has_value())
             return std::unexpected { computed.error() };
         auto const points = detail::in_declared_unit<DomainResult>(computed->domain, C::domainDimension);

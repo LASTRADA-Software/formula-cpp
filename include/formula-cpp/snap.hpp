@@ -163,8 +163,7 @@ struct SnapNode: NodeBase
     static constexpr bool setIsValid = Permitted.size() > 0 && breakpoint_table_is_well_formed(Permitted);
 
     static_assert(detail::RequirePermittedSetNotEmpty<Permitted>::value);
-    static_assert(
-        std::conditional_t<(Permitted.size() > 0), RequireValidBreakpointTable<Permitted>, std::true_type>::value);
+    static_assert(std::conditional_t<(Permitted.size() > 0), RequireValidBreakpointTable<Permitted>, std::true_type>::value);
     static_assert(std::conditional_t<setIsValid, detail::RequireSnapKeyMatches<KeyUnit, Operand>, std::true_type>::value);
 
     /// The expression whose value is snapped. No `{}` initialiser,
@@ -194,7 +193,12 @@ template <Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand>
 /// (`detail::locate_and_snap`). Absence and a failed operand pass through; a
 /// value outside the set is `DomainError`. `Rational` only: deciding a tie
 /// needs exact comparison.
-template <typename Rep = Rational, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node Operand, typename Env,
+template <typename Rep = Rational,
+          Unit KeyUnit,
+          BreakpointTable Permitted,
+          SnapTie Tie,
+          Node Operand,
+          typename Env,
           typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(SnapNode<KeyUnit, Permitted, Tie, Operand> const& node,
                                                            Env const& environment,

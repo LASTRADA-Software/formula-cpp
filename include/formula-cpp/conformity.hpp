@@ -227,7 +227,8 @@ struct Envelope
     /// words instead of the compiler's -- see the rule above.
     constexpr Envelope() noexcept
         requires(N != 0)
-        : rows { detail::unbounded_rows<N>() }
+        :
+        rows { detail::unbounded_rows<N>() }
     {
         static_assert(detail::RequireEnvelopeRowCountMatches<0, N>::value);
     }
@@ -454,8 +455,8 @@ namespace detail
 /// off is violated where it is satisfied.
 template <typename Rep = Rational, Unit U, SeriesNode S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr std::array<ConstraintOutcome, S::length> check_conformity(Conformity<U, S> const& conformityCheck,
-                                                                                 Env const& environment,
-                                                                                 Sink sink = {}) noexcept
+                                                                                  Env const& environment,
+                                                                                  Sink sink = {}) noexcept
 {
     if constexpr (!std::is_same_v<Rep, Rational>)
     {
@@ -474,7 +475,8 @@ template <typename Rep = Rational, Unit U, SeriesNode S, typename Env, typename 
         if constexpr (detail::HearsConformity<Sink, Conformity<U, S>>)
             sink.conformity_entered(conformityCheck);
 
-        EvaluatedSeries<Rep, S::length> const evaluated = detail::dispatch_series<Rep>(conformityCheck.subject, environment, sink);
+        EvaluatedSeries<Rep, S::length> const evaluated =
+            detail::dispatch_series<Rep>(conformityCheck.subject, environment, sink);
         // Default-initialised, not `{}`: see `SeriesValue` for cl's reason.
         std::array<ConstraintOutcome, S::length> elementOutcomes;
         for (std::size_t at = 0; at < S::length; ++at)
@@ -482,8 +484,8 @@ template <typename Rep = Rational, Unit U, SeriesNode S, typename Env, typename 
             if (!evaluated.has_value())
                 elementOutcomes[at] = ConstraintOutcome::invalid(evaluated.error().error);
             else
-                elementOutcomes[at] = detail::judge_element<Rep>(evaluated->elements[at], conformityCheck.envelope[at], U,
-                                                          conformityCheck.verdict);
+                elementOutcomes[at] = detail::judge_element<Rep>(
+                    evaluated->elements[at], conformityCheck.envelope[at], U, conformityCheck.verdict);
         }
 
         if constexpr (detail::HearsConformity<Sink, Conformity<U, S>>)

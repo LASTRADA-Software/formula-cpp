@@ -10,15 +10,15 @@
 
 namespace
 {
-    struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", formula::unit::Percent>
-    {
-    };
+struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", formula::unit::Percent>
+{
+};
 
-    inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(103), formula::breakpoint(127) };
+inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(103), formula::breakpoint(127) };
 
-    inline constexpr auto node = formula::interpolate_at(
-        formula::curve(formula::domain<formula::unit::Metre, Points>, formula::series<Passing, 2>),
-        formula::constant<formula::unit::Metre>(formula::Rational { 113 }));
+inline constexpr auto node =
+    formula::interpolate_at(formula::curve(formula::domain<formula::unit::Metre, Points>, formula::series<Passing, 2>),
+                            formula::constant<formula::unit::Metre>(formula::Rational { 113 }));
 } // namespace
 
 int main()

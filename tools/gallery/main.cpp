@@ -380,22 +380,25 @@ struct ClassShare: formula::Quantity<ClassShare, "n", "share of the particles in
 {
 };
 
-inline constexpr formula::BreakpointTable<5> galleryScreens { formula::breakpoint(103), formula::breakpoint(127),
-                                                              formula::breakpoint(163), formula::breakpoint(197),
+inline constexpr formula::BreakpointTable<5> galleryScreens { formula::breakpoint(103),
+                                                              formula::breakpoint(127),
+                                                              formula::breakpoint(163),
+                                                              formula::breakpoint(197),
                                                               formula::breakpoint(241) };
 
 constexpr auto passingEachScreen =
     formula::constant<unit::Percent>(formula::Rational { 100 })
     - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<RetainedMass, 5>) / var<DryMass>;
 
-constexpr auto passingAtOpening = formula::interpolate_at(formula::curve(formula::domain<unit::Metre, galleryScreens>, passingEachScreen),
-                                                          formula::constant<unit::Metre>(formula::Rational { 173 }));
+constexpr auto passingAtOpening =
+    formula::interpolate_at(formula::curve(formula::domain<unit::Metre, galleryScreens>, passingEachScreen),
+                            formula::constant<unit::Metre>(formula::Rational { 173 }));
 
-inline constexpr formula::BandTable<3> gallerySizeClasses { formula::band(0, 1, 127, 1), formula::band(127, 1, 197, 1),
+inline constexpr formula::BandTable<3> gallerySizeClasses { formula::band(0, 1, 127, 1),
+                                                            formula::band(127, 1, 197, 1),
                                                             formula::band(197, 1, 331, 1) };
 
-constexpr auto countedParticles =
-    formula::binned<unit::Metre, gallerySizeClasses>(formula::observations<ParticleSize, 8>);
+constexpr auto countedParticles = formula::binned<unit::Metre, gallerySizeClasses>(formula::observations<ParticleSize, 8>);
 constexpr auto classShares = countedParticles / formula::sum(countedParticles);
 
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
@@ -858,8 +861,8 @@ int main(int argc, char** argv)
                                                formula::Measured<RetainedMass> { formula::Rational { 28 } }),
         formula::Measured<DryMass> { formula::Rational { 1250 } });
     formula::Trace<> seriesTrace {};
-    auto const passingValues =
-        formula::checked_evaluate_series<PassingShare>(passingEachScreen, screenAnalysis, formula::RecordingSink<> { seriesTrace });
+    auto const passingValues = formula::checked_evaluate_series<PassingShare>(
+        passingEachScreen, screenAnalysis, formula::RecordingSink<> { seriesTrace });
     if (!passingValues.has_value())
     {
         std::fprintf(stderr, "formula-cpp-gallery: the worked series did not evaluate\n");
@@ -902,9 +905,13 @@ int main(int argc, char** argv)
 
     write_worked_formula(out, classShares);
 
-    auto const sieved = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(
-        formula::Rational { 103 }, formula::Rational { 127 }, formula::Rational { 163 }, formula::Rational { 277 },
-        formula::Rational { 113 }, formula::Rational { 197 }, formula::Rational { 241 }));
+    auto const sieved = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(formula::Rational { 103 },
+                                                                                            formula::Rational { 127 },
+                                                                                            formula::Rational { 163 },
+                                                                                            formula::Rational { 277 },
+                                                                                            formula::Rational { 113 },
+                                                                                            formula::Rational { 197 },
+                                                                                            formula::Rational { 241 }));
     formula::Trace<> binningTrace {};
     auto const shared =
         formula::checked_evaluate_series<ClassShare>(classShares, sieved, formula::RecordingSink<> { binningTrace });
@@ -923,9 +930,13 @@ int main(int argc, char** argv)
            "position, and names only the operand it evaluated: its divisor was never reached, so the line "
            "reads `/ #2`:\n\n";
 
-    auto const oversized = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(
-        formula::Rational { 103 }, formula::Rational { 127 }, formula::Rational { 163 }, formula::Rational { 331 },
-        formula::Rational { 113 }, formula::Rational { 197 }, formula::Rational { 241 }));
+    auto const oversized = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(formula::Rational { 103 },
+                                                                                               formula::Rational { 127 },
+                                                                                               formula::Rational { 163 },
+                                                                                               formula::Rational { 331 },
+                                                                                               formula::Rational { 113 },
+                                                                                               formula::Rational { 197 },
+                                                                                               formula::Rational { 241 }));
     formula::Trace<> binningMissTrace {};
     auto const missedShares =
         formula::checked_evaluate_series<ClassShare>(classShares, oversized, formula::RecordingSink<> { binningMissTrace });

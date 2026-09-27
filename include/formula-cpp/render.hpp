@@ -1258,7 +1258,8 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
         listed += detail::declared_number_text(Permitted[pointIndex].numerator, Permitted[pointIndex].denominator);
     }
     std::string const permittedField =
-        detail::lookup_separator<D>() + detail::lookup_words_in_dialect<D>(detail::number_with_unit("to " + listed, view(keyUnit.symbolText)));
+        detail::lookup_separator<D>()
+        + detail::lookup_words_in_dialect<D>(detail::number_with_unit("to " + listed, view(keyUnit.symbolText)));
     return detail::lookup_call<D>("snap", render<D>(node.operand, vocabulary), permittedField);
 }
 
@@ -1277,7 +1278,8 @@ template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
             listed += ", ";
         listed += detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator);
     }
-    std::string const points = detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
+    std::string const points =
+        detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
     if constexpr (D == Dialect::LaTeX)
         return "\\operatorname{domain}(" + points + ")";
     else
@@ -1729,8 +1731,8 @@ template <Dialect D, Unit U, SeriesNode S, Vocabulary V>
     std::string rowFields;
     for (std::size_t at = 0; at < S::length; ++at)
         rowFields += detail::lookup_separator<D>()
-                + detail::lookup_words_in_dialect<D>(
-                    detail::limit_row_text(conformityCheck.envelope[at], view(limitsIn.symbolText)));
+                     + detail::lookup_words_in_dialect<D>(
+                         detail::limit_row_text(conformityCheck.envelope[at], view(limitsIn.symbolText)));
     return detail::lookup_call<D>("conform", render<D>(conformityCheck.subject, vocabulary), rowFields);
 }
 

@@ -9,17 +9,17 @@
 
 namespace
 {
-    struct Opening: formula::Quantity<Opening, "d", "screen opening", formula::unit::Metre>
-    {
-    };
+struct Opening: formula::Quantity<Opening, "d", "screen opening", formula::unit::Metre>
+{
+};
 
-    inline constexpr formula::BreakpointTable<2> Permitted {
-        formula::breakpoint(103),
-        formula::breakpoint(127),
-    };
+inline constexpr formula::BreakpointTable<2> Permitted {
+    formula::breakpoint(103),
+    formula::breakpoint(127),
+};
 
-    inline constexpr auto node =
-        formula::snapped<formula::unit::Metre, Permitted, formula::SnapTie::TowardLower>(formula::var<Opening>);
+inline constexpr auto node =
+    formula::snapped<formula::unit::Metre, Permitted, formula::SnapTie::TowardLower>(formula::var<Opening>);
 } // namespace
 
 int main()

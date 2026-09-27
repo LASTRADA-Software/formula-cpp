@@ -36,9 +36,9 @@ inline constexpr auto m = formula::method(
 
 int main()
 {
-    constexpr auto overlaid = formula::apply(
-        formula::overlay(formula::add_derived<Retained>(
-            formula::var<TotalMass> / formula::constant<formula::unit::One>(formula::Rational { 5 }))),
-        m);
+    constexpr auto overlaid =
+        formula::apply(formula::overlay(formula::add_derived<Retained>(
+                           formula::var<TotalMass> / formula::constant<formula::unit::One>(formula::Rational { 5 }))),
+                       m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 0 ? 1 : 0;
 }

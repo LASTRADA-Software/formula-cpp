@@ -255,8 +255,7 @@ TEST_CASE("a series reads into double as well as into Rational", "[series]")
 
 TEST_CASE("a series of length one is a series", "[series]")
 {
-    constexpr auto one =
-        formula::environment(formula::measured_series<Aperture>(formula::Measured<Aperture> { rat(127) }));
+    constexpr auto one = formula::environment(formula::measured_series<Aperture>(formula::Measured<Aperture> { rat(127) }));
     constexpr auto outcome = formula::checked_evaluate_series<Aperture>(formula::series<Aperture, 1>, one);
     STATIC_REQUIRE(decltype(outcome)::value_type::size() == 1);
     STATIC_REQUIRE(outcome->element(0).value() == rat(127));
@@ -653,9 +652,9 @@ TEST_CASE("passing percentages from the cumulative retained, run from the last s
     // 100 % - cumulative<FromLast>(m_r) / m_t with m_t = 1250 g: 35.76,
     // 46.16, 62.96, 70.56 and 97.76 %. Run from the first screen it would give
     // 89.6, 72.8, 65.2, 38 and 35.76 %.
-    constexpr auto passing =
-        formula::constant<formula::unit::Percent>(rat(100))
-        - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>) / formula::var<TotalMass>;
+    constexpr auto passing = formula::constant<formula::unit::Percent>(rat(100))
+                             - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>)
+                                   / formula::var<TotalMass>;
     constexpr auto out = formula::checked_evaluate_series<FractionRetained>(passing, elementwise::screenInputs);
     STATIC_REQUIRE(out.has_value());
     STATIC_REQUIRE(out->element(0).value() == rat(894, 25));
@@ -750,12 +749,11 @@ TEST_CASE("a running total that overflows fails at the element where it overflow
     // plays no part (final review, L1): absent with the gap after the two
     // elements whose addition overflows, and absent with it before them.
     using running::halfLimit;
-    constexpr auto gapAfter =
-        formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
-                                                            formula::Measured<Load> { rat(halfLimit) },
-                                                            formula::Measured<Load> { rat(halfLimit) },
-                                                            formula::Measured<Load> { rat(2) },
-                                                            formula::Measured<Load>::absent()));
+    constexpr auto gapAfter = formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
+                                                                                  formula::Measured<Load> { rat(halfLimit) },
+                                                                                  formula::Measured<Load> { rat(halfLimit) },
+                                                                                  formula::Measured<Load> { rat(2) },
+                                                                                  formula::Measured<Load>::absent()));
     constexpr auto gapBefore =
         formula::environment(formula::measured_series<Load>(formula::Measured<Load>::absent(),
                                                             formula::Measured<Load> { rat(halfLimit) },
@@ -794,26 +792,26 @@ TEST_CASE("an absent element at either end stops the totals past it, and the sum
 
     // First screen unmeasured. From the first: absent at all five. From the
     // last: 28, 368, 463, 673 g, with element 0 absent.
-    constexpr auto firstFromFirst =
-        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromFirst>(s), running::absentFirst);
+    constexpr auto firstFromFirst = formula::checked_evaluate_series<Retained>(
+        formula::cumulative<CumulativeDirection::FromFirst>(s), running::absentFirst);
     STATIC_REQUIRE(firstFromFirst->element(0).is_absent());
     STATIC_REQUIRE(firstFromFirst->element(1).is_absent());
     STATIC_REQUIRE(firstFromFirst->element(4).is_absent());
-    constexpr auto firstFromLast =
-        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromLast>(s), running::absentFirst);
+    constexpr auto firstFromLast = formula::checked_evaluate_series<Retained>(
+        formula::cumulative<CumulativeDirection::FromLast>(s), running::absentFirst);
     STATIC_REQUIRE(firstFromLast->element(0).is_absent());
     STATIC_REQUIRE(firstFromLast->element(1).value() == rat(673));
     STATIC_REQUIRE(firstFromLast->element(4).value() == rat(28));
 
     // Last screen unmeasured. From the first: 130, 340, 435, 775 g, then
     // absent. From the last: absent at all five.
-    constexpr auto lastFromFirst =
-        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromFirst>(s), running::absentLast);
+    constexpr auto lastFromFirst = formula::checked_evaluate_series<Retained>(
+        formula::cumulative<CumulativeDirection::FromFirst>(s), running::absentLast);
     STATIC_REQUIRE(lastFromFirst->element(0).value() == rat(130));
     STATIC_REQUIRE(lastFromFirst->element(3).value() == rat(775));
     STATIC_REQUIRE(lastFromFirst->element(4).is_absent());
-    constexpr auto lastFromLast =
-        formula::checked_evaluate_series<Retained>(formula::cumulative<CumulativeDirection::FromLast>(s), running::absentLast);
+    constexpr auto lastFromLast = formula::checked_evaluate_series<Retained>(
+        formula::cumulative<CumulativeDirection::FromLast>(s), running::absentLast);
     STATIC_REQUIRE(lastFromLast->element(4).is_absent());
     STATIC_REQUIRE(lastFromLast->element(3).is_absent());
     STATIC_REQUIRE(lastFromLast->element(0).is_absent());
@@ -891,22 +889,29 @@ TEST_CASE("each element is rounded to its own granularity, in the stated unit, u
     // tie below zero) splits away-from-zero from toward-zero, and floor from
     // ceiling; element 4 (-8.03) splits floor and away-from-zero from toward
     // zero and ceiling.
-    STATIC_REQUIRE(holds(roundedWith<RoundingMode::HalfAwayFromZero>(deviations), rat(63), rat(64), rat(98), rat(-413, 10), rat(-8)));
-    STATIC_REQUIRE(holds(roundedWith<RoundingMode::HalfTowardZero>(deviations), rat(62), rat(63), rat(98), rat(-206, 5), rat(-8)));
+    STATIC_REQUIRE(
+        holds(roundedWith<RoundingMode::HalfAwayFromZero>(deviations), rat(63), rat(64), rat(98), rat(-413, 10), rat(-8)));
+    STATIC_REQUIRE(
+        holds(roundedWith<RoundingMode::HalfTowardZero>(deviations), rat(62), rat(63), rat(98), rat(-206, 5), rat(-8)));
     STATIC_REQUIRE(holds(roundedWith<RoundingMode::HalfEven>(deviations), rat(62), rat(64), rat(98), rat(-206, 5), rat(-8)));
     STATIC_REQUIRE(holds(roundedWith<RoundingMode::Ceiling>(deviations), rat(63), rat(64), rat(98), rat(-206, 5), rat(-8)));
-    STATIC_REQUIRE(holds(roundedWith<RoundingMode::Floor>(deviations), rat(62), rat(63), rat(97), rat(-413, 10), rat(-81, 10)));
-    STATIC_REQUIRE(holds(roundedWith<RoundingMode::TowardZero>(deviations), rat(62), rat(63), rat(97), rat(-206, 5), rat(-8)));
-    STATIC_REQUIRE(holds(roundedWith<RoundingMode::AwayFromZero>(deviations), rat(63), rat(64), rat(98), rat(-413, 10), rat(-81, 10)));
+    STATIC_REQUIRE(
+        holds(roundedWith<RoundingMode::Floor>(deviations), rat(62), rat(63), rat(97), rat(-413, 10), rat(-81, 10)));
+    STATIC_REQUIRE(
+        holds(roundedWith<RoundingMode::TowardZero>(deviations), rat(62), rat(63), rat(97), rat(-206, 5), rat(-8)));
+    STATIC_REQUIRE(
+        holds(roundedWith<RoundingMode::AwayFromZero>(deviations), rat(63), rat(64), rat(98), rat(-413, 10), rat(-81, 10)));
 }
 
 TEST_CASE("a per-element rounding keeps absence, and names the element a failure arose at", "[series]")
 {
     using perElement::Deviation;
-    constexpr auto oneAbsent = formula::environment(formula::measured_series<Deviation>(
-        formula::Measured<Deviation> { rat(125, 2) }, formula::Measured<Deviation> { rat(127, 2) },
-        formula::Measured<Deviation>::absent(), formula::Measured<Deviation> { rat(-165, 4) },
-        formula::Measured<Deviation> { rat(-803, 100) }));
+    constexpr auto oneAbsent =
+        formula::environment(formula::measured_series<Deviation>(formula::Measured<Deviation> { rat(125, 2) },
+                                                                 formula::Measured<Deviation> { rat(127, 2) },
+                                                                 formula::Measured<Deviation>::absent(),
+                                                                 formula::Measured<Deviation> { rat(-165, 4) },
+                                                                 formula::Measured<Deviation> { rat(-803, 100) }));
     constexpr auto out = perElement::roundedWith<formula::RoundingMode::HalfAwayFromZero>(oneAbsent);
     STATIC_REQUIRE(out.has_value());
     STATIC_REQUIRE(out->element(1).value() == rat(64));
@@ -917,9 +922,13 @@ TEST_CASE("a per-element rounding keeps absence, and names the element a failure
     // overflows for an element near Rational's limit -- the middle one of
     // three, so neither end is where it fails.
     using running::Load;
-    constexpr auto heavy = formula::environment(formula::measured_series<Load>(
-        formula::Measured<Load> { rat(1) }, formula::Measured<Load> { rat(running::halfLimit) }, formula::Measured<Load> { rat(2) }));
-    constexpr formula::PlacesTable<3> wholeGrams { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 0 } };
+    constexpr auto heavy =
+        formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
+                                                            formula::Measured<Load> { rat(running::halfLimit) },
+                                                            formula::Measured<Load> { rat(2) }));
+    constexpr formula::PlacesTable<3> wholeGrams { formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 0 },
+                                                   formula::DecimalPlaces { 0 } };
     constexpr auto overflowed = formula::detail::dispatch_series<formula::Rational>(
         formula::rounded_elementwise<formula::unit::Gram, wholeGrams, formula::RoundingMode::HalfAwayFromZero>(
             formula::series<Load, 3>),
@@ -931,8 +940,9 @@ TEST_CASE("a per-element rounding keeps absence, and names the element a failure
 
 TEST_CASE("a per-element rounding is a series node carrying its unit, table and mode", "[series]")
 {
-    using Rounding = decltype(formula::rounded_elementwise<formula::unit::Percent, perElement::places, formula::RoundingMode::Floor>(
-        formula::series<perElement::Deviation, 5>));
+    using Rounding =
+        decltype(formula::rounded_elementwise<formula::unit::Percent, perElement::places, formula::RoundingMode::Floor>(
+            formula::series<perElement::Deviation, 5>));
     STATIC_REQUIRE(formula::SeriesNode<Rounding>);
     STATIC_REQUIRE_FALSE(formula::Node<Rounding>);
     STATIC_REQUIRE(Rounding::length == 5);

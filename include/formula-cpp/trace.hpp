@@ -1550,7 +1550,8 @@ namespace detail
     /// `Breakpoint` in @p pointUnit, or nothing when it cannot be stated there.
     [[nodiscard]] inline std::optional<Breakpoint> point_in(Rational point, Unit pointUnit) noexcept
     {
-        std::expected<Rational, ArithmeticError> const stated = checked_convert(point, coherent(pointUnit.dimension), pointUnit);
+        std::expected<Rational, ArithmeticError> const stated =
+            checked_convert(point, coherent(pointUnit.dimension), pointUnit);
         if (!stated.has_value())
             return std::nullopt;
         return Breakpoint { stated->numerator(), stated->denominator() };
@@ -1599,8 +1600,10 @@ namespace detail
                 interpolate_along(curveRecorded.domainElements, curveRecorded.elements, *steps[*pointStep].value);
             if (answered.has_value())
             {
-                std::optional<Breakpoint> const lowPoint = point_in(*curveRecorded.domainElements[answered->second.low], step.sourceUnit);
-                std::optional<Breakpoint> const highPoint = point_in(*curveRecorded.domainElements[answered->second.high], step.sourceUnit);
+                std::optional<Breakpoint> const lowPoint =
+                    point_in(*curveRecorded.domainElements[answered->second.low], step.sourceUnit);
+                std::optional<Breakpoint> const highPoint =
+                    point_in(*curveRecorded.domainElements[answered->second.high], step.sourceUnit);
                 if (lowPoint.has_value() && highPoint.has_value())
                     step.selectedSegment = Segment { *lowPoint, *highPoint };
                 return;
@@ -2236,7 +2239,8 @@ class RecordingSink
         // ran from.
         if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::CumulativeSum)
         {
-            seriesStep.unit = detail::operand_unit_or(_trace->steps, seriesStep.operands, seriesStep.dimension, seriesStep.unit);
+            seriesStep.unit =
+                detail::operand_unit_or(_trace->steps, seriesStep.operands, seriesStep.dimension, seriesStep.unit);
             seriesStep.cumulativeDirection = S::direction;
         }
         // A binning names its classes' unit and extent, and keeps the

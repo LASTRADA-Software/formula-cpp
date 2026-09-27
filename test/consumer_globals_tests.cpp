@@ -238,7 +238,8 @@ inline constexpr auto specimen = formula::environment(formula::Measured<Force> {
 
 inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"));
 
-inline constexpr formula::BreakpointTable<3> EdgeSnapSet { formula::breakpoint(137), formula::breakpoint(149),
+inline constexpr formula::BreakpointTable<3> EdgeSnapSet { formula::breakpoint(137),
+                                                           formula::breakpoint(149),
                                                            formula::breakpoint(151) };
 
 inline constexpr formula::BreakpointTable<2> EdgeCurvePoints { formula::breakpoint(139), formula::breakpoint(161) };
@@ -260,7 +261,8 @@ inline constexpr auto seriesMethod = formula::method(
     formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 inline constexpr auto seriesOverlaid =
-    formula::apply(formula::overlay(formula::with_constant<Factor>(formula::Rational { 3 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
+    formula::apply(formula::overlay(formula::with_constant<Factor>(
+                       formula::Rational { 3 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
                    seriesMethod);
 
 /// A sink that asks for both pairs of method hooks, and nothing else of its
@@ -443,14 +445,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
     auto const seriesShare =
         formula::evaluate_method<Cube>(seriesOverlaid, bothScreens, formula::RecordingSink { seriesMethodTrace, north });
     constexpr auto seriesVariant = std::get<0>(seriesOverlaid.variantSet.cases).expression;
-    probe.checks.push_back(seriesShare.has_value() && *seriesShare == formula::Rational { 53, 20 }
-                           && formula::render(seriesVariant, north).find("cumulative(x_m(i), from first)") != std::string::npos
-                           && formula::render(seriesVariant, north).find("to 0/1 dp of mm") != std::string::npos
-                           && formula::render<formula::Dialect::Markdown>(seriesVariant).find("sum(") != std::string::npos
-                           && formula::render<formula::Dialect::LaTeX>(seriesVariant).find("\\sum") != std::string::npos
-                           && formula::document(seriesVariant, north).symbols.size() == 2
-                           && formula::render_trace(seriesMethodTrace, { .maxSteps = 40 }).find("sum(#")
-                                  != std::string::npos);
+    probe.checks.push_back(
+        seriesShare.has_value() && *seriesShare == formula::Rational { 53, 20 }
+        && formula::render(seriesVariant, north).find("cumulative(x_m(i), from first)") != std::string::npos
+        && formula::render(seriesVariant, north).find("to 0/1 dp of mm") != std::string::npos
+        && formula::render<formula::Dialect::Markdown>(seriesVariant).find("sum(") != std::string::npos
+        && formula::render<formula::Dialect::LaTeX>(seriesVariant).find("\\sum") != std::string::npos
+        && formula::document(seriesVariant, north).symbols.size() == 2
+        && formula::render_trace(seriesMethodTrace, { .maxSteps = 40 }).find("sum(#") != std::string::npos);
     // A conformity check: 150 mm within 139 to 163 mm, 103 mm below its
     // least of 127 mm.
     auto const edgeCheck = formula::conformity<unit::Millimetre>(
@@ -460,25 +462,27 @@ ConsumerGlobalsProbe probe_consumer_globals()
         formula::Verdict { "reject the edge" },
         formula::Citation { .reference = "Example Standard 3" });
     formula::Trace<> conformityTrace {};
-    auto const edgeOutcomes = formula::check_conformity(edgeCheck, bothScreens, formula::RecordingSink { conformityTrace, north });
+    auto const edgeOutcomes =
+        formula::check_conformity(edgeCheck, bothScreens, formula::RecordingSink { conformityTrace, north });
     probe.checks.push_back(edgeOutcomes[0].is_satisfied() && edgeOutcomes[1].is_violated()
                            && formula::render(edgeCheck, north) == "conform(x_m(i), from 139 to 163 mm, at least 127 mm)"
                            && formula::render<formula::Dialect::LaTeX>(edgeCheck).find("conform") != std::string::npos
                            && formula::document(edgeCheck, north).citations.size() == 1
-                           && formula::render_trace(conformityTrace, { .maxSteps = 20 }).find(
-                                  "[1 satisfied, 150 mm (from 139 to 163 mm); "
-                                  "2 violated, 103 mm (at least 127 mm): reject the edge]")
+                           && formula::render_trace(conformityTrace, { .maxSteps = 20 })
+                                      .find("[1 satisfied, 150 mm (from 139 to 163 mm); "
+                                            "2 violated, 103 mm (at least 127 mm): reject the edge]")
                                   != std::string::npos);
     // A snap: 150 mm among 137, 149 and 151 mm is a tie, decided toward the
     // higher.
     auto const snappedEdge = formula::snapped<unit::Millimetre, EdgeSnapSet, formula::SnapTie::TowardHigher>(var<EdgeX>);
     formula::Trace<> snapTrace {};
-    auto const snappedValue = formula::checked_evaluate<EdgeX>(snappedEdge, specimen, formula::RecordingSink { snapTrace, north });
-    probe.checks.push_back(snappedValue.has_value() && snappedValue->measurement().value() == formula::Rational { 151 }
-                           && formula::render(snappedEdge, north) == "snap(x_m, to 137, 149, 151 mm)"
-                           && formula::document<formula::Dialect::LaTeX>(snappedEdge).formula.find("snap") != std::string::npos
-                           && formula::render_trace(snapTrace, { .maxSteps = 10 }).find("tie, toward higher")
-                                  != std::string::npos);
+    auto const snappedValue =
+        formula::checked_evaluate<EdgeX>(snappedEdge, specimen, formula::RecordingSink { snapTrace, north });
+    probe.checks.push_back(
+        snappedValue.has_value() && snappedValue->measurement().value() == formula::Rational { 151 }
+        && formula::render(snappedEdge, north) == "snap(x_m, to 137, 149, 151 mm)"
+        && formula::document<formula::Dialect::LaTeX>(snappedEdge).formula.find("snap") != std::string::npos
+        && formula::render_trace(snapTrace, { .maxSteps = 10 }).find("tie, toward higher") != std::string::npos);
     // Curves: two declared domains spliced, and read at the specimen's 150 mm,
     // halfway from 139 mm (10 mm) to 161 mm (30 mm).
     auto const edgeCurve = formula::splice<formula::Monotone::NonDecreasing>(
@@ -488,34 +492,38 @@ ConsumerGlobalsProbe probe_consumer_globals()
                        formula::series_constant<unit::Millimetre>(formula::Rational { 40 })));
     auto const readEdge = formula::interpolate_at(edgeCurve, var<EdgeX>);
     formula::Trace<> curveTrace {};
-    auto const readValue = formula::checked_evaluate<EdgeX>(readEdge, specimen, formula::RecordingSink { curveTrace, north });
+    auto const readValue =
+        formula::checked_evaluate<EdgeX>(readEdge, specimen, formula::RecordingSink { curveTrace, north });
     auto const splicedEdge = formula::checked_evaluate_curve<EdgeX, EdgeX>(edgeCurve, specimen);
-    probe.checks.push_back(readValue.has_value() && readValue->measurement().value() == formula::Rational { 20 }
-                           && splicedEdge.has_value() && splicedEdge->domain()[2].value() == formula::Rational { 307 }
-                           && formula::render(readEdge, north)
-                                  == "interpolate(splice(curve(domain(139, 161 mm), values(10 mm, 30 mm)), "
-                                     "curve(domain(307 mm), values(40 mm)), non-decreasing), at x_m)"
-                           && formula::render(edgeCurve, north).starts_with("splice(")
-                           && formula::document<formula::Dialect::LaTeX>(readEdge).formula.find("interpolate") != std::string::npos
-                           && formula::document(edgeCurve, north).symbols.empty()
-                           && formula::render_trace(curveTrace, { .maxSteps = 40 }).find("[between 139 and 161 mm]")
-                                  != std::string::npos);
+    probe.checks.push_back(
+        readValue.has_value() && readValue->measurement().value() == formula::Rational { 20 } && splicedEdge.has_value()
+        && splicedEdge->domain()[2].value() == formula::Rational { 307 }
+        && formula::render(readEdge, north)
+               == "interpolate(splice(curve(domain(139, 161 mm), values(10 mm, 30 mm)), "
+                  "curve(domain(307 mm), values(40 mm)), non-decreasing), at x_m)"
+        && formula::render(edgeCurve, north).starts_with("splice(")
+        && formula::document<formula::Dialect::LaTeX>(readEdge).formula.find("interpolate") != std::string::npos
+        && formula::document(edgeCurve, north).symbols.empty()
+        && formula::render_trace(curveTrace, { .maxSteps = 40 }).find("[between 139 and 161 mm]") != std::string::npos);
     // Raw observations, from a span, binned into two classes: 163 mm sits on
     // the boundary and is counted in the upper class.
-    std::array<formula::Rational, 3> const edgeReadings { formula::Rational { 103 }, formula::Rational { 163 },
+    std::array<formula::Rational, 3> const edgeReadings { formula::Rational { 103 },
+                                                          formula::Rational { 163 },
                                                           formula::Rational { 241 } };
     auto const edgeObserved = formula::MeasuredObservations<EdgeX, 4>::from(edgeReadings);
     auto const edgeSample = formula::environment(*edgeObserved);
     auto const binnedEdges = formula::binned<unit::Millimetre, EdgeClasses>(formula::observations<EdgeX, 4>);
     auto const edgeShares = binnedEdges / formula::sum(binnedEdges);
     formula::Trace<> binningTrace {};
-    auto const sharesValue = formula::checked_evaluate_series<Factor>(edgeShares, edgeSample, formula::RecordingSink { binningTrace, north });
-    probe.checks.push_back(edgeObserved.has_value() && edgeSample.get_observations<EdgeX, 4>().size() == 3
-                           && sharesValue.has_value() && sharesValue->elements()[1].value() == formula::Rational { 2, 3 }
-                           && formula::render(binnedEdges, north) == "bin(x_m(i), 0 to under 163 mm, 163 to under 331 mm)"
-                           && formula::document<formula::Dialect::LaTeX>(edgeShares).formula.find("bin") != std::string::npos
-                           && formula::document(binnedEdges, north).symbols.front().shape == formula::ValueShape::Observations
-                           && formula::render_trace(binningTrace, { .maxSteps = 20 }).find("bin(#1) = 1; 2") != std::string::npos);
+    auto const sharesValue =
+        formula::checked_evaluate_series<Factor>(edgeShares, edgeSample, formula::RecordingSink { binningTrace, north });
+    probe.checks.push_back(
+        edgeObserved.has_value() && edgeSample.get_observations<EdgeX, 4>().size() == 3 && sharesValue.has_value()
+        && sharesValue->elements()[1].value() == formula::Rational { 2, 3 }
+        && formula::render(binnedEdges, north) == "bin(x_m(i), 0 to under 163 mm, 163 to under 331 mm)"
+        && formula::document<formula::Dialect::LaTeX>(edgeShares).formula.find("bin") != std::string::npos
+        && formula::document(binnedEdges, north).symbols.front().shape == formula::ValueShape::Observations
+        && formula::render_trace(binningTrace, { .maxSteps = 20 }).find("bin(#1) = 1; 2") != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });
