@@ -39,6 +39,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <initializer_list>
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -433,15 +434,27 @@ enum class StepKind : std::uint8_t
     /// Its line always ends by saying that the operation's inside is not
     /// shown -- on this kind alone, which no field can switch off.
     ///
+    /// The step's `dimension`, `unit` and `value` mean nothing for a call --
+    /// they are placeholders, `dim::Scalar`, `One` and empty -- since a call
+    /// has several outputs: those are in `Trace::opaqueSteps`, and a reader
+    /// such as an exporter takes them from there.
+    ///
     /// Recorded by `RecordingSink::opaque_produced`: a call is not a `Node`.
-    /// Checked on GCC under `-Wshadow`: the factory is `opaque` and the type
-    /// `OpaqueCall`, so nothing in namespace `formula` is spelt
-    /// `OpaqueOperation`.
+    /// **Each output an expression uses records the whole call again**, its
+    /// inputs included, and `compute` runs once per output used: a call is
+    /// evaluated where its output is, as every other subexpression is. Nothing
+    /// is wrong in the second copy, and `document()` lists the operation once.
+    /// A later memoisation would rely on the side tables' step keys staying
+    /// unique, which they do: steps are only ever appended.
+    ///
+    /// The concept `OpaqueOperation` is at namespace scope and this
+    /// enumerator in `StepKind`'s, so the two do not clash and GCC's
+    /// `-Wshadow` has nothing to report (checked with g++ 13.3).
     OpaqueOperation,
     /// One output of an opaque call (`OpaqueOutputNode`): a single-value step
     /// whose operand is the call's step; which output, in
-    /// `Trace::opaqueOutputSteps`. Checked on GCC under `-Wshadow`: the node
-    /// is `OpaqueOutputNode` and its factory `opaque_output`.
+    /// `Trace::opaqueOutputSteps`. The node is `OpaqueOutputNode` and its
+    /// factory `opaque_output`, so no name here is spelt `OpaqueOutput` twice.
     OpaqueOutput,
 };
 
@@ -1480,10 +1493,16 @@ struct Trace
     /// and the returned index names no step.
     ///
     /// @pre `steps` is not empty.
-    [[nodiscard]] std::size_t root() const noexcept { return steps.size() - 1; }
+    [[nodiscard]] std::size_t root() const noexcept
+    {
+        return steps.size() - 1;
+    }
 
     /// Whether anything was recorded.
-    [[nodiscard]] bool empty() const noexcept { return steps.empty(); }
+    [[nodiscard]] bool empty() const noexcept
+    {
+        return steps.empty();
+    }
 };
 
 /// What @p trace recorded for the opaque call whose step is at @p stepIndex,
@@ -1961,10 +1980,9 @@ namespace detail
         if constexpr (Points.size() == 0)
             return std::nullopt;
         else
-            return LookupRange { Points.front().numerator,
-                                 Points.front().denominator,
-                                 Points.back().numerator,
-                                 Points.back().denominator };
+            return LookupRange {
+                Points.front().numerator, Points.front().denominator, Points.back().numerator, Points.back().denominator
+            };
     }
 
     /// Fills in a banded lookup step's `lookupFailure` and, on a hit, the
@@ -2044,9 +2062,7 @@ namespace detail
     /// is nothing below this step that could have failed, so every failure it
     /// reports is its own.
     template <typename Rep, KeyTable Keys, Unit ResultUnit>
-    void record_lookup(ExactLookupNode<Keys, ResultUnit> const& node,
-                       Step<Rep>& step,
-                       std::vector<Step<Rep>> const&)
+    void record_lookup(ExactLookupNode<Keys, ResultUnit> const& node, Step<Rep>& step, std::vector<Step<Rep>> const&)
     {
         using Underlying = std::underlying_type_t<KeyOf<Keys>>;
         step.lookupKeyName = key_name<Keys>(node.key);
@@ -2302,27 +2318,85 @@ namespace detail
         failedStep.elements = std::move(pointValues);
     }
 
-    /// The unit an opaque output of @p dimension is shown in: the declared
-    /// unit of the first input step of that dimension -- a curve's values, then
-    /// its points -- as a sum reads in its series' unit, and the coherent SI
-    /// unit otherwise.
+    /// The quotient of two units, `N/mm` from `N` and `mm`: its magnitude the
+    /// quotient of theirs and its symbol theirs joined by a slash. Empty when
+    /// either has an offset, has no symbol or already holds a slash (`m/s/s`
+    /// reads two ways), or when the symbol or the magnitude would not fit.
+    [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
+    {
+        if (over.offsetNumerator != 0 || under.offsetNumerator != 0)
+            return std::nullopt;
+        std::string_view const overSymbol = view(over.symbolText);
+        std::string_view const underSymbol = view(under.symbolText);
+        if (overSymbol.empty() || underSymbol.empty() || overSymbol.find('/') != std::string_view::npos
+            || underSymbol.find('/') != std::string_view::npos
+            || overSymbol.size() + 1 + underSymbol.size() + 1 > SymbolCapacity)
+            return std::nullopt;
+        std::expected<Rational, ArithmeticError> const magnitude =
+            RepTraits<Rational>::divide(Rational { over.magnitudeNumerator, over.magnitudeDenominator },
+                                        Rational { under.magnitudeNumerator, under.magnitudeDenominator });
+        if (!magnitude.has_value())
+            return std::nullopt;
+        Unit quotientUnit { .dimension = over.dimension / under.dimension,
+                            .magnitudeNumerator = magnitude->numerator(),
+                            .magnitudeDenominator = magnitude->denominator(),
+                            .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
+        std::size_t written = 0;
+        for (char const spelt: overSymbol)
+            quotientUnit.symbolText.characters[written++] = spelt;
+        quotientUnit.symbolText.characters[written++] = '/';
+        for (char const spelt: underSymbol)
+            quotientUnit.symbolText.characters[written++] = spelt;
+        return quotientUnit;
+    }
+
+    /// The unit an opaque output of @p dimension is shown in, from the units
+    /// its input steps are shown in -- a curve's values, then its points:
+    ///
+    ///  1. the first of those units of that dimension, as a sum reads in its
+    ///     series' unit;
+    ///  2. else the first quotient of two of them, either way up, of that
+    ///     dimension, so that a slope along a curve of millimetres over
+    ///     seconds reads `mm/s` (`unit_quotient`) -- at most one way up can
+    ///     match, since the output is not dimensionless;
+    ///  3. else the coherent SI unit, which the trace spells out
+    ///     (`coherent_unit_text`, `trace_render.hpp`).
+    ///
+    /// Two exceptions keep a borrowed unit honest. A unit with an offset is
+    /// never borrowed: an output of an input's dimension is not in general a
+    /// reading on its scale -- a span of Celsius readings is a difference, and
+    /// shown in degrees Celsius it would be off by the offset -- so it reads
+    /// in kelvin. And a dimensionless output borrows nothing: a ratio of two
+    /// masses is not a percentage because some input was one, and an
+    /// operation declares no unit for its outputs.
     template <typename Rep>
     [[nodiscard]] Unit opaque_output_unit(std::vector<Step<Rep>> const& steps,
                                           std::vector<std::size_t> const& operands,
                                           Dimension dimension)
     {
+        if (dimension == dim::Scalar)
+            return coherent(dimension);
+        std::vector<Unit> shownIn;
         for (std::size_t const operandIndex: operands)
         {
             Step<Rep> const& inputStep = steps[operandIndex];
-            if (inputStep.unit.dimension == dimension)
-                return inputStep.unit;
+            if (inputStep.unit.offsetNumerator == 0)
+                shownIn.push_back(inputStep.unit);
             if ((inputStep.kind == StepKind::CurvePairing || inputStep.kind == StepKind::CurveSplice)
-                && inputStep.sourceUnit.dimension == dimension)
-                return inputStep.sourceUnit;
+                && inputStep.sourceUnit.offsetNumerator == 0)
+                shownIn.push_back(inputStep.sourceUnit);
         }
+        for (Unit const& candidate: shownIn)
+            if (candidate.dimension == dimension)
+                return candidate;
+        for (std::size_t earlier = 0; earlier < shownIn.size(); ++earlier)
+            for (std::size_t later = earlier + 1; later < shownIn.size(); ++later)
+                for (auto const& [over, under]: { std::pair { earlier, later }, std::pair { later, earlier } })
+                    if (std::optional<Unit> const quotientUnit = unit_quotient(shownIn[over], shownIn[under]);
+                        quotientUnit.has_value() && quotientUnit->dimension == dimension)
+                        return *quotientUnit;
         return coherent(dimension);
     }
-
     /// Fills in a binning step: the classes' unit and extent, from the node's
     /// type, and the observations it binned, off its operand's step -- in
     /// the coherent SI unit, as that step holds them. Nothing of the
@@ -3555,8 +3629,8 @@ class RecordingSink
 
         OpaqueStepData<Rep> callRow {};
         callRow.operationName = callInfo.name;
-        for (std::size_t outputAt = 0; outputAt < M && outputAt < callInfo.outputs.size()
-                                       && outputAt < callInfo.dimensions.size();
+        for (std::size_t outputAt = 0;
+             outputAt < M && outputAt < callInfo.outputs.size() && outputAt < callInfo.dimensions.size();
              ++outputAt)
         {
             OpaqueOutputValue<Rep> recordedOutput {};

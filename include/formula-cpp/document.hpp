@@ -176,6 +176,9 @@ struct OpaqueOperationEntry
     Citation citation {};
     /// The operation's output names, in its declared order.
     std::vector<std::string_view> outputs {};
+    /// Each output's dimension, index for index with `outputs`, as the call's
+    /// inputs gave them: a page states what each output measures.
+    std::vector<Dimension> outputDimensions {};
 
     /// Memberwise equality.
     [[nodiscard]] bool operator==(OpaqueOperationEntry const&) const = default;
@@ -1082,7 +1085,9 @@ namespace detail
             walk.documentation.opaqueOperations.push_back(OpaqueOperationEntry {
                 .name = Op::name,
                 .citation = node.call.citation,
-                .outputs = std::vector<std::string_view>(Op::outputs.begin(), Op::outputs.end()) });
+                .outputs = std::vector<std::string_view>(Op::outputs.begin(), Op::outputs.end()),
+                .outputDimensions = std::vector<Dimension>(OpaqueCall<Op, Inputs...>::output_dimensions.begin(),
+                                                           OpaqueCall<Op, Inputs...>::output_dimensions.end()) });
             if (!(node.call.citation == Citation {}))
                 walk.documentation.citations.push_back(node.call.citation);
         }

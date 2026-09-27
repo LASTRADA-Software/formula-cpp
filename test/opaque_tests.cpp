@@ -19,6 +19,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace
@@ -679,15 +680,42 @@ TEST_CASE("a page lists each opaque call once, with its citation", "[opaque][doc
     CHECK(page.symbols[0].shape == formula::ValueShape::Series);
 }
 
-TEST_CASE("opaque trace data lives in side tables, and a Step is no larger for it", "[opaque][trace]")
+// Converts to any field type, so that brace-initialising an aggregate with N
+// of them compiles exactly when it has at least N fields. Outside the
+// anonymous namespace: its conversion is declared and never defined, which
+// clang's -Wundefined-internal refuses for an internal-linkage function.
+namespace field_probe
 {
-    // Measured at the branch point, d09657e: 1008 bytes on cl 19.51 (MSVC STL,
-    // release) and on g++ 13.3 and clang++ 20.1.8 (libstdc++), 1048 on cl 19.51
-    // debug, whose checked iterators make each of Step's five vectors 32 bytes
-    // rather than 24. Less those five vectors it is 888 in every one. A field
-    // added to Step for an opaque step, or later a retry's, fails this. Not
-    // measured on libc++.
-    STATIC_REQUIRE(sizeof(formula::Step<formula::Rational>) - 5 * sizeof(std::vector<std::size_t>) == 888);
+struct AnyField
+{
+    template <typename T>
+    operator T() const;
+};
+
+template <typename T, std::size_t... I>
+consteval bool brace_init_with(std::index_sequence<I...>)
+{
+    return requires { T { (void(I), AnyField {})... }; };
+}
+
+template <typename T, std::size_t N = 0>
+consteval std::size_t field_count()
+{
+    if constexpr (brace_init_with<T>(std::make_index_sequence<N + 1> {}))
+        return field_count<T, N + 1>();
+    else
+        return N;
+}
+} // namespace field_probe
+
+TEST_CASE("opaque trace data lives in side tables, and a Step has no more fields for it", "[opaque][trace]")
+{
+    // Counted, not measured: Step has 45 fields at the branch point, 9d3cdd4.
+    // A byte-sized field -- an enum or a flag, the likeliest slip for an
+    // opaque step's failure or a retry's -- can land in padding and leave
+    // sizeof unchanged (it did, on g++-14 and on libc++); it cannot leave the
+    // count unchanged. Any field added to Step, on any library, fails this.
+    STATIC_REQUIRE(field_probe::field_count<formula::Step<formula::Rational>>() == 45);
 }
 namespace
 {
@@ -824,4 +852,209 @@ TEST_CASE("an output built by hand past every position is refused at run time, n
     auto const evaluated = formula::checked_evaluate_si(past, readings);
     REQUIRE(!evaluated.has_value());
     CHECK(evaluated.error() == formula::ArithmeticError::DomainError);
+}
+
+namespace
+{
+struct Warmth: formula::Quantity<Warmth, "t_w", "an invented temperature", unit::Celsius>
+{
+};
+struct Share: formula::Quantity<Share, "s_r", "an invented share", unit::Percent>
+{
+};
+
+// Forwards every node and series hook to a RecordingSink, and nothing of an
+// opaque call: a sink written before opaque operations existed.
+struct WithoutOpaqueHooks
+{
+    formula::RecordingSink<formula::Rational> inner;
+
+    template <formula::Node N>
+    void entered(N const& node)
+    {
+        inner.entered(node);
+    }
+    template <formula::Node N, typename V>
+    void produced(N const& node, V const& value)
+    {
+        inner.produced(node, value);
+    }
+    template <typename S>
+    void series_entered(S const& node)
+    {
+        inner.series_entered(node);
+    }
+    template <typename S, typename E>
+    void series_produced(S const& node, E const& evaluated)
+    {
+        inner.series_produced(node, evaluated);
+    }
+};
+} // namespace
+
+TEST_CASE("an opaque output of a Celsius input reads in kelvin, not in the input's offset unit", "[opaque][trace]")
+{
+    // 19.7, 43.1 and 31.3 degC: the span is 23.4 K. Shown in degC it would read
+    // as a reading of 23.4 degC, 273.15 off; borrowed without its offset it
+    // would be a difference printed as a temperature.
+    constexpr auto warmSpan = formula::opaque_output<"span">(
+        formula::opaque<SeriesSpan>({ .reference = "Example Standard 12" }, formula::series<Warmth, 3>));
+    constexpr auto warm = formula::environment(formula::measured_series<Warmth>(formula::Measured<Warmth> { rat(197, 10) },
+                                                                                formula::Measured<Warmth> { rat(431, 10) },
+                                                                                formula::Measured<Warmth> { rat(313, 10) }));
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(warmSpan, warm, formula::RecordingSink { recorded });
+    REQUIRE(formula::opaque_data(recorded, 1) != nullptr);
+    CHECK(formula::opaque_data(recorded, 1)->outputs[2].unit.offsetNumerator == 0);
+    CHECK(recorded.steps[2].unit.offsetNumerator == 0);
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. t_w = 197/10 °C; 431/10 °C; 313/10 °C\n"
+             "2. series span(#1) = lowest = 5857/20 K; highest = 1265/4 K; span = 117/5 K [inside not shown] "
+             "[Example Standard 12]\n"
+             "3. span of #2 = 117/5 K\n");
+}
+
+TEST_CASE("a dimensionless opaque output does not borrow a dimensionless input's unit", "[opaque][trace]")
+{
+    // Shares of 12.7, 10.3, 19.1 and 13.9 %: their ratio, 191/103, is a pure
+    // number and no percentage.
+    constexpr auto shareRatio = formula::opaque_output<"ratio">(
+        formula::opaque<RelativeSpread>({ .reference = "Example Standard 12" }, formula::series<Share, 4>));
+    constexpr auto shares = formula::environment(formula::measured_series<Share>(formula::Measured<Share> { rat(127, 10) },
+                                                                                 formula::Measured<Share> { rat(103, 10) },
+                                                                                 formula::Measured<Share> { rat(191, 10) },
+                                                                                 formula::Measured<Share> { rat(139, 10) }));
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(shareRatio, shares, formula::RecordingSink { recorded });
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 20 });
+    CHECK(text
+          == "1. s_r = 127/10 %; 103/10 %; 191/10 %; 139/10 %\n"
+             "2. relative spread(#1) = ratio = 191/103 [inside not shown] [Example Standard 12]\n"
+             "3. ratio of #2 = 191/103\n");
+}
+
+TEST_CASE("an opaque call over a curve reads its output in the coherent unit, spelt out", "[opaque][trace]")
+{
+    constexpr formula::BreakpointTable<3> openings { formula::breakpoint(103),
+                                                     formula::breakpoint(127),
+                                                     formula::breakpoint(163) };
+    constexpr auto slopeOutput = formula::opaque_output<"slope">(formula::opaque<EndToEndSlope>(
+        { .reference = "Example Standard 12", .section = "4.5" },
+        formula::curve(formula::domain<unit::Millimetre, openings>, formula::series<Load, 3>)));
+    constexpr auto held = formula::environment(formula::measured_series<Load>(
+        formula::Measured<Load> { rat(139) }, formula::Measured<Load> { rat(163) }, formula::Measured<Load> { rat(241) }));
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(slopeOutput, held, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. 103 mm; 127 mm; 163 mm\n"
+             "2. F_h = 139 N; 163 N; 241 N\n"
+             "3. curve(#1, #2) = 103 mm: 139 N; 127 mm: 163 N; 163 mm: 241 N\n"
+             "4. end to end slope(#3) = slope = 17/10 N/mm [inside not shown] [Example Standard 12, 4.5]\n"
+             "5. slope of #4 = 17/10 N/mm\n");
+}
+
+TEST_CASE("an opaque output recorded without its call's step still says the inside is not shown", "[opaque][trace]")
+{
+    // The sink hears nothing of the call, so the output's step sits straight
+    // over the input's: without the marker it would read as the readings
+    // passed on unchanged.
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"span">(span_call), readings, WithoutOpaqueHooks { formula::RecordingSink { recorded } });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. r = 127 g; 103 g; 191 g; 139 g\n"
+             "2. output of #1 = 11/125 kg [inside not shown]\n");
+
+    // And a step built by hand, over nothing at all.
+    formula::Step<> bare {};
+    bare.kind = formula::StepKind::OpaqueOutput;
+    formula::Trace<> handBuilt {};
+    handBuilt.steps.push_back(bare);
+    CHECK(formula::render_trace(handBuilt, { .maxSteps = 5 })
+          == "1. an opaque output = (not measured) [inside not shown]\n");
+}
+
+TEST_CASE("a relayed failure names the one input that failed, not every input", "[opaque][trace]")
+{
+    constexpr auto shifted = formula::opaque_output<"shifted">(formula::opaque<ShiftedLowest>(
+        { .reference = "Example Standard 12" }, formula::series<Reading, 4>, formula::var<Shift> / formula::var<Divisor>));
+    auto const zero = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(127) },
+                                                                             formula::Measured<Reading> { rat(103) },
+                                                                             formula::Measured<Reading> { rat(191) },
+                                                                             formula::Measured<Reading> { rat(139) }),
+                                           formula::Measured<Shift> { rat(163) },
+                                           formula::Measured<Divisor> { rat(0) });
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(shifted, zero, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. r = 127 g; 103 g; 191 g; 139 g\n"
+             "2. r_0 = 163 g\n"
+             "3. q = 0\n"
+             "4. #2 / #3 = division by zero\n"
+             "5. shifted lowest(#1, #4) = division by zero [inside not shown] [carried up from #4] "
+             "[Example Standard 12]\n"
+             "6. shifted of #5 = division by zero\n");
+}
+
+TEST_CASE("an opaque call built as an aggregate, citing nothing, says so", "[opaque][trace]")
+{
+    using Readings = std::remove_cv_t<decltype(formula::series<Reading, 4>)>;
+    constexpr auto aggregateSpan = formula::opaque_output<"span">(
+        formula::OpaqueCall<SeriesSpan, Readings> { std::tuple<Readings> { formula::series<Reading, 4> }, {} });
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(aggregateSpan, readings, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. r = 127 g; 103 g; 191 g; 139 g\n"
+             "2. series span(#1) = lowest = 103 g; highest = 191 g; span = 88 g [inside not shown] "
+             "(no citation given)\n"
+             "3. span of #2 = 88 g\n");
+}
+
+TEST_CASE("a page lists one opaque operation twice when two calls cite different standards", "[opaque][document]")
+{
+    constexpr auto elsewhere =
+        formula::opaque<SeriesSpan>({ .reference = "Example Standard 3" }, formula::series<Reading, 4>);
+    constexpr auto both = formula::opaque_output<"span">(span_call) + formula::opaque_output<"lowest">(elsewhere);
+    formula::Documentation const page = formula::document(both);
+    REQUIRE(page.opaqueOperations.size() == 2);
+    CHECK(page.opaqueOperations[0].citation.reference == "Example Standard 12");
+    CHECK(page.opaqueOperations[1].citation.reference == "Example Standard 3");
+    CHECK(page.citations.size() == 2);
+    CHECK(page.opaqueOperations[0].outputDimensions
+          == std::vector<formula::Dimension> { formula::dim::Mass, formula::dim::Mass, formula::dim::Mass });
+}
+
+TEST_CASE("the coherent unit is spelt from its base units", "[opaque][trace]")
+{
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar).empty());
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Mass) == "kg");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Velocity) == "m/s");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Frequency) == "1/s");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Density) == "kg/m^3");
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Pressure) == "kg/(m s^2)");
+    CHECK(formula::detail::coherent_unit_text(formula::Dimension { .length = formula::exponent(1, 2) }) == "m^(1/2)");
+}
+
+TEST_CASE("an output's marker is judged by its operand step's kind, not by a row", "[opaque][trace]")
+{
+    // A call's step and its output's, built by hand with no side tables: the
+    // call's line says the inside is not shown, so the output's does not
+    // repeat it -- and says it again when its operand is some other step.
+    formula::Step<> call {};
+    call.kind = formula::StepKind::OpaqueOperation;
+    formula::Step<> output {};
+    output.kind = formula::StepKind::OpaqueOutput;
+    output.operands = { 0 };
+    formula::Trace<> overCall {};
+    overCall.steps = { call, output };
+    CHECK(formula::render_trace(overCall, { .maxSteps = 5 })
+          == "1. opaque() = (not measured) [inside not shown] (no citation given)\n"
+             "2. output of #1 = (not measured)\n");
+
+    formula::Step<> reading {};
+    reading.kind = formula::StepKind::Constant;
+    formula::Trace<> overReading {};
+    overReading.steps = { reading, output };
+    CHECK(formula::render_trace(overReading, { .maxSteps = 5 })
+              .ends_with("2. output of #1 = (not measured) [inside not shown]\n"));
 }

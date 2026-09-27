@@ -222,9 +222,9 @@ TEST_CASE("a fit is traced as an opaque call over its curve, and renders as one"
           == "1. t = 1 s; 2 s; 4 s; 7 s\n"
              "2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm\n"
              "3. curve(#1, #2) = 1 s: 51/5 mm; 2 s: 109/10 mm; 4 s: 121/10 mm; 7 s: 143/10 mm\n"
-             "4. linear least squares(#3) = intercept = 19/2 mm; slope = 19/28000 [inside not shown] "
+             "4. linear least squares(#3) = intercept = 19/2 mm; slope = 19/28 mm/s [inside not shown] "
              "[Rate of change, Example Standard 12, 5.1]\n"
-             "5. slope of #4 = 19/28000\n");
+             "5. slope of #4 = 19/28 mm/s\n");
     CHECK(formula::render(formula::opaque_output<"slope">(fit)) == "linear least squares(t(i), L(i)).slope");
     CHECK(formula::render<formula::Dialect::Markdown>(formula::opaque_output<"slope">(fit))
           == "linear least squares(`t(i)`, `L(i)`).slope");
@@ -300,7 +300,7 @@ TEST_CASE("a fit is a method variant, and the method's rule rounds it", "[least-
     formula::Trace<> recorded {};
     (void) formula::evaluate_method<Fitted>(fitMethod, fitPoints, formula::RecordingSink { recorded });
     std::string const text = formula::render_trace(recorded, { .maxSteps = 30 });
-    CHECK(text.find("linear least squares(#3) = intercept = 19/2 mm; slope = 19/28000 [inside not shown]")
+    CHECK(text.find("linear least squares(#3) = intercept = 19/2 mm; slope = 19/28 mm/s [inside not shown]")
           != std::string::npos);
     CHECK(text.find("round(#5, in mm/min) = 407/10 mm/min") != std::string::npos);
 }

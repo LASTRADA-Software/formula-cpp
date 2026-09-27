@@ -36,6 +36,7 @@
 #include <formula-cpp/unit.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -68,7 +69,10 @@ struct StepLimit
     /// because GCC's `-Wshadow`, which this project's Linux CI leg runs with
     /// warnings as errors, flags a constructor parameter sharing a member's
     /// name even when it is used only in its own member-initialiser list.
-    constexpr StepLimit(std::size_t steps) noexcept: value { steps } {}
+    constexpr StepLimit(std::size_t steps) noexcept:
+        value { steps }
+    {
+    }
 
     /// The count itself.
     std::size_t value {};
@@ -114,7 +118,9 @@ namespace detail
     /// **What it does not do.** It stops author text from breaking a line's
     /// structure, not from holding a clause's words: a `documented()` citation
     /// titled `replaced by jurisdiction overlay: ...` renders as a genuine
-    /// replacement's clause does. The structured fields of a `Step` -- `kind`,
+    /// replacement's clause does, and one titled `inside not shown` writes the
+    /// opaque marker onto a step that is not opaque. The structured fields of a
+    /// `Step` -- `kind`,
     /// the provenance enums, `variantPinned` and so on -- are what is
     /// authoritative, and the method's author is trusted. Nor does it touch
     /// anything but ASCII: a Unicode look-alike of a bracket (U+FF3B, U+FF3D)
@@ -1020,7 +1026,7 @@ namespace detail
             case StepKind::OpaqueOperation:
                 return "opaque(" + operands_text(shownStep) + ")";
             case StepKind::OpaqueOutput:
-                return "output of " + sole_operand(shownStep);
+                return shownStep.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(shownStep);
         }
         return "unknown step kind";
     }
@@ -2016,21 +2022,95 @@ namespace detail
         return step_expression(recorded);
     }
 
-    /// What `render_trace` found in a trace's side tables for an opaque step:
-    /// the call's row -- the step's own for an `OpaqueOperation` step, and the
-    /// row of the call it claimed for an `OpaqueOutput` step -- and, for the
-    /// latter, which output it selected. Null and empty for every other step,
-    /// and for a step built by hand without its rows.
+    /// What `render_trace` found in a trace for an opaque step: the call's
+    /// row -- the step's own for an `OpaqueOperation` step, and the row of the
+    /// call it claimed for an `OpaqueOutput` step -- and, for the latter,
+    /// which output it selected and whether its operand **is** a call's step.
+    /// For a failed call, which input's step carries the error. Null and
+    /// empty for every other step, and for a step built by hand.
     struct OpaqueLine
     {
         OpaqueStepData<Rational> const* call = nullptr;
         std::optional<std::size_t> outputIndex {};
+        /// For an `OpaqueOutput` step: whether its sole operand is an
+        /// `OpaqueOperation` step, judged by that step's kind -- the step that
+        /// says the operation's inside is not shown. False when a sink that
+        /// does not hear the opaque hooks recorded the output over the call's
+        /// inputs directly, and for a step built by hand.
+        bool overCall = false;
+        /// For an `OpaqueOperation` step that relayed a failure: the index of
+        /// the input step that carries it -- the last operand, since the call
+        /// stops at the first input that fails -- or empty when no operand
+        /// step carries an error.
+        std::optional<std::size_t> failedInput {};
     };
 
+    /// The coherent SI unit of @p dimension, spelt from its base units:
+    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
+    /// one. For an opaque output shown in no input's unit, so that a slope in
+    /// metres per second does not read as a pure number.
+    [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
+    {
+        struct BaseUnit
+        {
+            std::string_view symbol;
+            Exponent exponent;
+        };
+        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
+                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
+                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
+                                              BaseUnit { "cd", dimension.luminosity } };
+        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
+            std::string factorText { symbolText };
+            if (denominatorPart != 1)
+                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
+            else if (numeratorPart != 1)
+                factorText += "^" + std::to_string(numeratorPart);
+            return factorText;
+        };
+        std::string above;
+        std::string below;
+        std::size_t belowCount = 0;
+        for (BaseUnit const& base: bases)
+        {
+            if (base.exponent.numerator > 0)
+                above +=
+                    (above.empty() ? "" : " ") + unitPower(base.symbol, base.exponent.numerator, base.exponent.denominator);
+            else if (base.exponent.numerator < 0)
+            {
+                below +=
+                    (below.empty() ? "" : " ") + unitPower(base.symbol, -base.exponent.numerator, base.exponent.denominator);
+                ++belowCount;
+            }
+        }
+        if (below.empty())
+            return above;
+        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
+    }
+
+    /// @p storedValue in @p shownUnit, and -- when that unit has no symbol of
+    /// its own but a dimension -- followed by the coherent unit's spelling
+    /// (`coherent_unit_text`), for an opaque output.
+    [[nodiscard]] inline std::string opaque_value_text(Dimension dimension,
+                                                       Unit shownUnit,
+                                                       std::optional<Rational> const& storedValue)
+    {
+        Step<Rational> outputShape {};
+        outputShape.dimension = dimension;
+        outputShape.unit = shownUnit;
+        std::string valueText = value_in_declared_unit(outputShape, storedValue);
+        if (storedValue.has_value() && view(shownUnit.symbolText).empty() && !(dimension == dim::Scalar))
+            valueText += " " + coherent_unit_text(dimension);
+        return valueText;
+    }
+
     /// What an opaque call's line says of whose failure it carries, bracketed:
-    /// the operation's own, relayed from an input -- named, with its element
-    /// counted from one when the failure had one -- or undetermined.
-    [[nodiscard]] inline std::string opaque_failure_suffix(Step<Rational> const& recorded, OpaqueFailure carried)
+    /// the operation's own, relayed from the one input that failed -- named,
+    /// with its element counted from one when the failure had one -- or
+    /// undetermined.
+    [[nodiscard]] inline std::string opaque_failure_suffix(Step<Rational> const& recorded,
+                                                           OpaqueFailure carried,
+                                                           std::optional<std::size_t> failedInput)
     {
         switch (carried)
         {
@@ -2038,10 +2118,9 @@ namespace detail
                 return {};
             case OpaqueFailure::Own:
                 return " [the operation itself failed, not any input]";
-            case OpaqueFailure::Propagated:
-            {
+            case OpaqueFailure::Propagated: {
                 std::string relayed = " [carried up from ";
-                relayed += recorded.operands.empty() ? std::string { "an input" } : operands_text(recorded);
+                relayed += failedInput.has_value() ? operand_reference(*failedInput) : std::string { "an input" };
                 if (recorded.failedElement.has_value())
                     relayed += ", at element " + std::to_string(*recorded.failedElement + 1);
                 return relayed + "]";
@@ -2070,9 +2149,10 @@ namespace detail
     /// @p recorded has had its author text escaped already (`step_line`); the
     /// row's names are escaped here, with the same function.
     [[nodiscard]] inline std::string opaque_call_line(ShownStep const& recorded,
-                                                      OpaqueStepData<Rational> const* callRow,
+                                                      OpaqueLine const& opaqueLine,
                                                       std::size_t& budget)
     {
+        OpaqueStepData<Rational> const* const callRow = opaqueLine.call;
         std::string lineText = callRow == nullptr
                                    ? step_expression(recorded)
                                    : escaped_author_text(callRow->operationName) + "(" + operands_text(recorded) + ")";
@@ -2089,19 +2169,17 @@ namespace detail
             for (std::size_t at = 0; at < listed; ++at)
             {
                 OpaqueOutputValue<Rational> const& shownOutput = callRow->outputs[at];
-                Step<Rational> outputShape {};
-                outputShape.dimension = shownOutput.dimension;
-                outputShape.unit = shownOutput.unit;
                 if (at > 0)
                     lineText += "; ";
-                lineText += escaped_author_text(shownOutput.name) + " = " + value_in_declared_unit(outputShape, shownOutput.value);
+                lineText += escaped_author_text(shownOutput.name) + " = "
+                            + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value);
             }
             if (listed < outputCount)
                 lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outputCount - listed) + " more";
         }
         lineText += " [inside not shown]";
         if (callRow != nullptr)
-            lineText += opaque_failure_suffix(recorded, callRow->failure);
+            lineText += opaque_failure_suffix(recorded, callRow->failure, opaqueLine.failedInput);
         std::string const cited = citation_text(recorded.citation);
         lineText += cited.empty() ? " " + std::string { noCitationGiven } : " [" + cited + "]";
         return lineText;
@@ -2109,6 +2187,13 @@ namespace detail
 
     /// An opaque output's line, without its number: `span of #2 = 88 g`, the
     /// output named from its call's row; `output of #2` without one.
+    ///
+    /// Ends `[inside not shown]` unless its operand is the call's own step,
+    /// whose line says so: an output recorded by a sink that does not hear the
+    /// opaque hooks sits straight over the call's inputs, and without the
+    /// clause its line would read as though an input were passed on
+    /// unchanged. Judged by the operand step's kind (`OpaqueLine::overCall`),
+    /// never by the presence of a row.
     [[nodiscard]] inline std::string opaque_output_line(ShownStep const& recorded, OpaqueLine const& opaqueLine)
     {
         std::string outputText = step_expression(recorded);
@@ -2116,7 +2201,10 @@ namespace detail
             && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
             outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
                          + sole_operand(recorded);
-        return outputText + " = " + step_value_text(recorded);
+        std::string const valueText = recorded.error.has_value()
+                                          ? std::string { describe(*recorded.error) }
+                                          : opaque_value_text(recorded.dimension, recorded.unit, recorded.value);
+        return outputText + " = " + valueText + (opaqueLine.overCall ? "" : " [inside not shown]");
     }
 
     /// What @p trace's side tables hold for the opaque step at @p stepIndex:
@@ -2126,16 +2214,27 @@ namespace detail
     {
         Step<Rational> const& recorded = trace.steps[stepIndex];
         if (recorded.kind == StepKind::OpaqueOperation)
-            return OpaqueLine { .call = opaque_data(trace, stepIndex) };
+        {
+            OpaqueLine callLine { .call = opaque_data(trace, stepIndex) };
+            for (std::size_t const operandIndex: recorded.operands)
+                if (operandIndex < trace.steps.size() && trace.steps[operandIndex].error.has_value())
+                    callLine.failedInput = operandIndex;
+            return callLine;
+        }
         if (recorded.kind != StepKind::OpaqueOutput)
             return {};
         OpaqueLine outputLine {};
         if (OpaqueOutputStepData const* const chosenOutput = opaque_output_data(trace, stepIndex); chosenOutput != nullptr)
             outputLine.outputIndex = chosenOutput->outputIndex;
-        if (recorded.operands.size() == 1)
+        if (recorded.operands.size() == 1 && recorded.operands.front() < trace.steps.size()
+            && trace.steps[recorded.operands.front()].kind == StepKind::OpaqueOperation)
+        {
+            outputLine.overCall = true;
             outputLine.call = opaque_data(trace, recorded.operands.front());
+        }
         return outputLine;
     }
+
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the kinds that need one -- a citation for
     /// `Documented`, the variant and its discriminator for `VariantSelected`,
@@ -2177,7 +2276,7 @@ namespace detail
         // An opaque call's line is its outputs, and ends saying its inside is
         // not shown; an output's names the output.
         if (recorded.kind == StepKind::OpaqueOperation)
-            return opaque_call_line(recorded, opaqueLine.call, budget);
+            return opaque_call_line(recorded, opaqueLine, budget);
         if (recorded.kind == StepKind::OpaqueOutput)
             return opaque_output_line(recorded, opaqueLine);
         // A series first, before anything reads `value`: its values are its
