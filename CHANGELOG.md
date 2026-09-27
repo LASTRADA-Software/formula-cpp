@@ -65,14 +65,22 @@ and `TagName` spells a variant's tag.
 
 ### Fixed
 
+- A `documented()` step, and a jurisdiction's replaced-variant step, printed its value in coherent
+  SI with no unit: a citation over `16 g` read `#2 = 2/125`. Each now states its value in the unit
+  of the step it wraps, as that step does: `#2 = 16 g`. Over a consumer's node, which records no
+  step of its own, it stays in coherent SI.
 - A local in `evaluate.hpp` made GCC 13.3 report `-Wmaybe-uninitialized` at `-O2`, a false
   positive, in a consumer's own build: under `-Werror` a program including the header failed to
-  build. CI's GCC 14 does not report it.
+  build. CI's GCC 14 does not report it. `rounded()` and `rounded_to_digits()` had the same local,
+  reported under `documented()` at `-O3`. The same local relayed an operand's failure in a
+  conditional, `numeric_value_of()`, a unary operator, a power or root, and the three lookups, and
+  reported a lookup's miss, key conversion failure or interpolation failure. Each of those now goes
+  through one helper that holds no such local.
 - `check_all(constraints())`, over an empty set, made GCC 13 report
   `-Wunused-but-set-parameter` on the sink, in a consumer's own build under `-Werror`.
 - Locals and parameters in the public headers shared names with ordinary globals such as
   `result`, `value`, `index`, `here` and `origin`, so cl at `/W4 /WX` reported C4459 in a consumer
-  that declared one, and failed to build. They are renamed, and a test declares 258 such globals
+  that declared one, and failed to build. They are renamed, and a test declares 259 such globals
   before every header.
 - cl names an enumerator that is not one as a cast, `(enum Flag)true`; it was shown as a name, and
   is refused now.

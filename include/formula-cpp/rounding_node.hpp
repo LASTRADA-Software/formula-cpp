@@ -210,9 +210,7 @@ namespace detail
         Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
         if (!evaluatedOperand.has_value())
         {
-            Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
-            sink.produced(node, failed);
-            return failed;
+            return detail::report_failure<Rep>(node, sink, evaluatedOperand.error());
         }
         if (!evaluatedOperand->has_value())
         {
@@ -252,9 +250,7 @@ template <typename Rep = Rational, Unit U, SignificantDigits Digits, RoundingMod
     Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
     if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
-        sink.produced(node, failed);
-        return failed;
+        return detail::report_failure<Rep>(node, sink, evaluatedOperand.error());
     }
     if (!evaluatedOperand->has_value())
     {

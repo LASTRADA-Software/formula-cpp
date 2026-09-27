@@ -48,6 +48,11 @@
 // parameter pack named `items`; g++ 14.2 and clang++ 20.1.8 at -Wshadow
 // reported nothing.
 //
+// `applied` was added after it: cl 19.51 reported the parameter of that
+// name in the constructor `evaluate_method` builds a `RoundingRuleNode`
+// (`method.hpp`) with. The refused public constructor's parameter of the
+// same name, which nothing instantiates, was renamed with it.
+//
 // The globals come after the standard headers and this test's own, whose
 // names are theirs. `index` is declared for cl-compatible compilers only:
 // glibc's <cstring> declares a function of that name at global scope. Left
@@ -68,7 +73,7 @@
 // clang-format off
 int result, value, text, step, mark, first, last, count, size, name, key, left, right, lhs, rhs, operand, outcome,
     error, symbol, position, converted, selected, selectedTag, expression, selection, outcomes, entry, rendered, row,
-    band, keys, found, digits, scaled, numerator, denominator, quotient, sign, width, total, table, i, n, m,
+    band, keys, found, digits, scaled, numerator, denominator, quotient, sign, width, total, table, i, n, m, applied,
     environment, sink, a, acc, accumulator, amount, area, arg, args, array, average, b, begin, block, bound, bounds,
     buffer, c, capacity, cell, cells, character, chars, child, children, chunk, column, columns, comment, config,
     context, copy, counter, ctx, cur, current, d, data, date, deadline, delay, delimiter, depth, description, digit,

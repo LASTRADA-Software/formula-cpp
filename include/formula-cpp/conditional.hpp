@@ -116,9 +116,7 @@ template <typename Rep = Rational, Predicate P, Node Then, Node Else, typename E
         checked_evaluate_predicate<Rep>(node.predicate, environment, sink);
     if (!verdict.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { verdict.error() };
-        sink.produced(node, failed);
-        return failed;
+        return detail::report_failure<Rep>(node, sink, verdict.error());
     }
     if (!verdict->has_value())
     {

@@ -234,9 +234,13 @@ the recorder, not the renderer, has to be the one holding that unit:
 
 ```cpp
 /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
-/// for a variable, the constant's own unit for a constant, and the
-/// coherent SI unit of `dimension` for anything computed, which has no
-/// declared unit of its own.
+/// for a variable, the constant's own unit for a constant, the unit of
+/// the step it wraps for a `Documented`, `ReplacedVariant` or
+/// `VariantSelected` step -- each passes its operand's value through
+/// unchanged, so it states it as that operand's line does, whenever that
+/// line is the wrapped node's own and not the operands of a consumer's
+/// node -- and the coherent SI unit of `dimension` for anything else
+/// computed, which has no declared unit of its own.
 ///
 /// `value` is always in the coherent SI unit, so that steps are
 /// comparable; this is what a renderer converts back to before showing a
@@ -276,6 +280,23 @@ computed length its `m`. A compound dimension is simply the case where the
 absence is most obvious, since there is no everyday symbol to miss; the
 behaviour itself applies uniformly to anything the evaluator computed rather
 than declared.
+
+A citation computes nothing, so a documented step states its value exactly as
+the line it names does -- the same number, in the same unit and spelling. Over
+a sample mass declared in grams:
+
+```
+1. m_s = 163/10 g
+2. round(#1, to 0 dp of g) = 16 g [nearest, ties away from zero]
+3. #2 = 16 g [Sample mass, Example Standard 1:2020, 4.1]
+```
+
+(`test/trace_render_tests.cpp`, `"a documented step shows its value as the step
+it documents does"`.) A jurisdiction's replaced variant is the same: its line
+reads as the replacement's own. Over a consumer's node that hands the sink on
+to its operands (see below), there is no line of the node's own to read as --
+only its operands', none of which holds its value -- so the documented step
+states its value in coherent SI, as any computed step does.
 
 A step that failed shows why instead of a value, and a step with no value at
 all -- an absent measurement, which is not an error -- says so rather than

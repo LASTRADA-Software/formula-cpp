@@ -4,6 +4,8 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
+#include "forwarding_nodes.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -33,6 +35,15 @@ struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement volume", uni
 {
 };
 struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
+{
+};
+struct SampleMass: formula::Quantity<SampleMass, "m_s", "sample mass", unit::Gram>
+{
+};
+struct StartTemperature: formula::Quantity<StartTemperature, "T_0", "start temperature", unit::Celsius>
+{
+};
+struct EndTemperature: formula::Quantity<EndTemperature, "T_1", "end temperature", unit::Celsius>
 {
 };
 struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Megapascal>
@@ -1275,6 +1286,137 @@ TEST_CASE("a derivation says when it cannot tell whose failure a lookup is carry
     CHECK(derivationOf(node, formula::environment())
           == "1. lookup() = division by zero"
              " [this lookup or something below it: the operand recorded no step]\n");
+}
+
+TEST_CASE("a documented step shows its value as the step it documents does", "[trace-render][citation]")
+{
+    // The citation wraps a value declared in grams, and in millimetres below,
+    // neither of which is its dimension's coherent SI unit -- the case the
+    // water/cement ratio above cannot catch, since a ratio's declared unit and
+    // its SI unit coincide. The documented step adds a citation and nothing
+    // else: its value reads exactly as the line it names, never as the same
+    // number rescaled into kilograms or metres and stripped of its unit.
+    constexpr formula::Citation cited { .title = "Sample mass", .reference = "Example Standard 1:2020", .section = "4.1" };
+
+    constexpr auto documentedVariable = formula::documented(var<SampleMass>, cited);
+    CHECK(derivationOf(documentedVariable, formula::environment(formula::Measured<SampleMass> { formula::Rational { 139 } }))
+          == "1. m_s = 139 g\n"
+             "2. #1 = 139 g [Sample mass, Example Standard 1:2020, 4.1]\n");
+
+    // A rounding step declares the unit it rounds in; the citation over it
+    // states the rounded value in that unit.
+    constexpr auto documentedRounding = formula::documented(
+        formula::rounded<unit::Gram, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(var<SampleMass>),
+        cited);
+    CHECK(derivationOf(documentedRounding,
+                       formula::environment(formula::Measured<SampleMass> { formula::Rational { 163, 10 } }))
+          == "1. m_s = 163/10 g\n"
+             "2. round(#1, to 0 dp of g) = 16 g [nearest, ties away from zero]\n"
+             "3. #2 = 16 g [Sample mass, Example Standard 1:2020, 4.1]\n");
+
+    // A citation over a citation: each reads as the line below it, down to
+    // the variable's own millimetres.
+    constexpr formula::Citation measured { .title = "Specimen diameter",
+                                           .reference = "Example Standard 1:2020",
+                                           .section = "3.2" };
+    constexpr formula::Citation adopted { .title = "Diameter as adopted",
+                                          .reference = "Example Standard 2:2021",
+                                          .section = "1.4" };
+    constexpr auto twiceDocumented = formula::documented(formula::documented(var<Diameter>, measured), adopted);
+    CHECK(derivationOf(twiceDocumented, formula::environment(formula::Measured<Diameter> { formula::Rational { 277 } }))
+          == "1. d = 277 mm\n"
+             "2. #1 = 277 mm [Specimen diameter, Example Standard 1:2020, 3.2]\n"
+             "3. #2 = 277 mm [Diameter as adopted, Example Standard 2:2021, 1.4]\n");
+}
+
+TEST_CASE("a documented Celsius reading reads in Celsius, and a documented difference of two does not",
+          "[trace-render][citation]")
+{
+    // Celsius is affine: a reading converts with its offset and a difference
+    // of two readings must not. A citation over the reading states it as the
+    // reading's line does; a citation over the library's own subtraction
+    // states the difference in kelvins' coherent spelling, as the
+    // subtraction's line does, never as a Celsius reading.
+    constexpr formula::Citation cited { .title = "Temperature rise",
+                                        .reference = "Example Standard 1:2020",
+                                        .section = "6.3" };
+    auto const temperatures = formula::environment(formula::Measured<StartTemperature> { formula::Rational { 163, 10 } },
+                                                   formula::Measured<EndTemperature> { formula::Rational { 277, 10 } });
+
+    std::string const degreesCelsius = "\xc2\xb0" "C";
+    CHECK(derivationOf(formula::documented(var<EndTemperature>, cited), temperatures)
+          == "1. T_1 = 277/10 " + degreesCelsius + "\n"
+             + "2. #1 = 277/10 " + degreesCelsius + " [Temperature rise, Example Standard 1:2020, 6.3]\n");
+    CHECK(derivationOf(formula::documented(var<EndTemperature> - var<StartTemperature>, cited), temperatures)
+          == "1. T_1 = 277/10 " + degreesCelsius + "\n"
+             + "2. T_0 = 163/10 " + degreesCelsius + "\n"
+             + "3. #1 - #2 = 57/5\n"
+               "4. #3 = 57/5 [Temperature rise, Example Standard 1:2020, 6.3]\n");
+}
+
+TEST_CASE("a documented step over a node that recorded no step keeps the coherent SI unit", "[trace-render][citation]")
+{
+    // With no line below to take a unit from, the documented step says what
+    // any computed step says -- its value in coherent SI -- rather than
+    // guessing one.
+    constexpr auto node = formula::documented(UntracedLength {}, { .title = "Untraced length" });
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(node, formula::environment(), sink);
+    REQUIRE(trace.steps.size() == 1);
+    CHECK(trace.steps[0].unit == formula::coherent(formula::dim::Length));
+}
+
+TEST_CASE("a documented step over a consumer node that forwards the sink keeps the coherent SI unit",
+          "[trace-render][citation]")
+{
+    // The consumer's node records no step of its own, so the documented step
+    // claims the node's operands -- the two readings -- and neither of them
+    // is the value it documents. Taking a unit from one would state a 57/5 K
+    // rise as a Celsius reading of it, and a density in litres, which the
+    // renderer refuses. The documented step says what any computed step
+    // says instead: its value in coherent SI.
+    constexpr formula::Citation cited { .title = "Consumer formula",
+                                        .reference = "Example Standard 1:2020",
+                                        .section = "6.4" };
+    auto const temperatures = formula::environment(formula::Measured<StartTemperature> { formula::Rational { 163, 10 } },
+                                                   formula::Measured<EndTemperature> { formula::Rational { 277, 10 } });
+
+    std::string const rise = derivationOf(
+        formula::documented(forwarding::difference(var<EndTemperature>, var<StartTemperature>), cited), temperatures);
+    CHECK(rise.find(" = 57/5 [Consumer formula, Example Standard 1:2020, 6.4]\n") != std::string::npos);
+
+    constexpr auto density = formula::documented(forwarding::quotient(var<SampleMass>, var<WaterVolume>), cited);
+    auto const specimen = formula::environment(formula::Measured<SampleMass> { formula::Rational { 139 } },
+                                               formula::Measured<WaterVolume> { formula::Rational { 277 } });
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(density, specimen, sink);
+    REQUIRE(trace.steps.size() == 3);
+    CHECK(trace.steps.back().unit == formula::coherent(formula::dim::Mass / formula::dim::Volume));
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+              .find(" = 139/277 [Consumer formula, Example Standard 1:2020, 6.4]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("a documented step over a consumer node with one operand of its dimension keeps the coherent SI unit",
+          "[trace-render][citation]")
+{
+    // The consumer's node has a single operand, a Celsius reading, and
+    // returns its rise above 16.3 degrees C: the documented step claims
+    // exactly one step, of the right dimension, so nothing at run time tells
+    // it from the node's own. Only the node's kind does -- a consumer's node
+    // records no step -- and the rise stays in coherent SI rather than being
+    // stated as a Celsius reading of it.
+    constexpr formula::Citation cited { .title = "Rise above the reference",
+                                        .reference = "Example Standard 1:2020",
+                                        .section = "6.5" };
+    constexpr auto rise =
+        formula::documented(forwarding::rise_above(var<EndTemperature>, formula::Rational { 5789, 20 }), cited);
+    std::string const degreesCelsius = "\xc2\xb0" "C";
+    CHECK(derivationOf(rise, formula::environment(formula::Measured<EndTemperature> { formula::Rational { 277, 10 } }))
+          == "1. T_1 = 277/10 " + degreesCelsius + "\n"
+             + "2. #1 = 57/5 [Rise above the reference, Example Standard 1:2020, 6.5]\n");
 }
 
 TEST_CASE("a derivation renders a lookup's own conversion failure as neither a miss nor a relay",

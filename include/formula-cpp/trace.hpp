@@ -426,9 +426,13 @@ struct Step
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
     /// for a variable or an overridden constant, the constant's own unit for
     /// a constant, the node's own unit for a `Round`, `RoundSignificant` or
-    /// `RoundingRuleApplied` step, and the coherent SI unit
-    /// of `dimension` for anything else computed, which has no declared unit
-    /// of its own.
+    /// `RoundingRuleApplied` step, the unit of the step it wraps for a
+    /// `Documented`, `ReplacedVariant` or `VariantSelected` step -- each
+    /// passes its operand's value through unchanged, so it states it as that
+    /// operand's line does, whenever that line is the wrapped node's own and
+    /// not the operands of a consumer's node -- and the coherent SI unit of
+    /// `dimension` for anything else computed, which has no declared unit of
+    /// its own.
     ///
     /// `value` is always in the coherent SI unit, so that steps are
     /// comparable; this is what a renderer converts back to before showing a
@@ -893,6 +897,41 @@ namespace detail
     {
         static constexpr StepKind value = StepKind::ReplacedVariant;
     };
+
+    /// Whether `RecordingSink` records a step of its own for a node of type
+    /// @p N -- whether `StepKindOf` has an entry for it. False for a
+    /// consumer's node, which the primary template, left undefined, does not
+    /// describe: such a node records nothing itself, though a three-parameter
+    /// overload that hands the sink on to its operands has theirs recorded.
+    template <typename N>
+    concept RecordsStep = requires { StepKindOf<N>::value; };
+
+    /// The one node a pass-through kind -- `Documented`, `ReplacedVariant` --
+    /// wraps and whose value it passes on unchanged. Undefined for every
+    /// other kind.
+    template <typename N>
+    struct PassedThrough;
+
+    template <Node Inner>
+    struct PassedThrough<DocumentedNode<Inner>>
+    {
+        using type = Inner;
+    };
+
+    template <Node Expr>
+    struct PassedThrough<ReplacedVariantNode<Expr>>
+    {
+        using type = Expr;
+    };
+
+    /// Whether @p N passes on the value of a node the recorder records a step
+    /// for -- so that, after it has claimed its operands, a single claimed
+    /// step of its own dimension is that node's and no other. A consumer's
+    /// node that forwards the sink is not one: what the pass-through claims
+    /// then are that node's operands, and none of them holds its value.
+    template <typename N>
+    concept PassesThroughRecordedStep =
+        requires { typename PassedThrough<N>::type; } && RecordsStep<typename PassedThrough<N>::type>;
 
     /// Whether @p stepKind is one of the three lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
@@ -1388,6 +1427,27 @@ class RecordingSink
             ++firstClaimed;
         nodeStep.operands.assign(firstClaimed, _trace->unclaimed.end());
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        // A documented expression and a jurisdiction's replacement compute
+        // nothing of their own: the value is their operand's, so it is stated
+        // in the unit that operand's line states it in -- grams under a
+        // citation over grams, not the same number rescaled into kilograms
+        // and printed with no unit at all. Read off the operand's step rather
+        // than off `N`, for the reason `variant_produced` gives: that step
+        // already says what the number is, including for a variable, whose
+        // unit is not a member of its node.
+        //
+        // Only when that step is provably the wrapped node's own. The wrapped
+        // type must be a kind this sink records a step for: a consumer's node
+        // that forwards the sink records none, and what is claimed here is
+        // then its operands -- a Celsius reading under a temperature rise, or
+        // a volume under a density -- whose unit would state the value as
+        // something it is not. And, at run time, exactly one step was claimed
+        // and it is of this step's dimension. Otherwise the coherent SI unit
+        // set above stands, as for anything else computed.
+        if constexpr (detail::PassesThroughRecordedStep<N>)
+            if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
+                nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means
