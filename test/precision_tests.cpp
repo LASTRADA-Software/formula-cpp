@@ -462,8 +462,8 @@ TEST_CASE("a precision limit renders both its passes, in words a reader can chec
     CHECK(formula::render<formula::Dialect::Markdown>(agree)
           == "require abs(`x_A` - `x_B`) <= r(1/10 g + 1/50 * level; level = (`x_A` + `x_B`) / 2)");
     CHECK(formula::render<formula::Dialect::LaTeX>(agree)
-          == "\\text{require } \\left|x_A - x_B\\right| \\leq r\\left(1/10\\,\\mathrm{g} + 1/50 \\cdot "
-             "\\text{level}\\right)\\Big|_{\\text{level} = \\frac{x_A + x_B}{2}}");
+          == "\\text{require } \\left\\lvert x_A - x_B\\right\\rvert \\leq r\\left(1/10\\,\\mathrm{g} + 1/50 \\cdot "
+             "\\text{level}\\right)\\Big\\vert_{\\text{level} = \\frac{x_A + x_B}{2}}");
     CHECK(formula::render(formula::precision_limit<formula::PrecisionKind::Reproducibility>(meanOfPair, limitOfLevel))
           == "R(1/10 g + 1/50 * level; level = (x_A + x_B) / 2)");
     // The author's rounding of the level is on the page, where it can be read.

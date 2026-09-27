@@ -809,7 +809,7 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
           == "\\frac{\\frac{\\overline{{m_n}_{i} \\cdot x_n}}{M_n}}{n({m_n}_{i})} + \\frac{s^{2}({m_n}_{i} \\cdot x_n)}"
              "{\\operatorname{range}({m_n}_{i} \\cdot x_n) \\cdot \\operatorname{range}({m_n}_{i} \\cdot x_n)} "
              "+ n(\\operatorname{without\\ outliers}({m_n}_{i} \\cdot x_n;\\allowbreak "
-             "\\left|x - \\bar{x}_{\\text{pass}}\\right| > \\frac{x_n}{3} \\cdot \\bar{x}_{\\text{pass}};\\allowbreak "
+             "\\left\\lvert x - \\bar{x}_{\\text{pass}}\\right\\rvert > \\frac{x_n}{3} \\cdot \\bar{x}_{\\text{pass}};\\allowbreak "
              "\\text{most extreme per pass};\\allowbreak \\text{keep on limit};\\allowbreak "
              "\\text{at most }1;\\allowbreak \\text{keep at least }2)) - 2");
 

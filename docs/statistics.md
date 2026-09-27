@@ -284,7 +284,7 @@ inline constexpr auto agreement = formula::constraint(
 
 ```text
 require abs(x_A - x_B) <= r(1/10 g + 1/50 * level; level = (x_A + x_B) / 2)
-LaTeX: \text{require } \left|x_A - x_B\right| \leq r\left(1/10\,\mathrm{g} + 1/50 \cdot \text{level}\right)\Big|_{\text{level} = \frac{x_A + x_B}{2}}
+LaTeX: \text{require } \left\lvert x_A - x_B\right\rvert \leq r\left(1/10\,\mathrm{g} + 1/50 \cdot \text{level}\right)\Big\vert_{\text{level} = \frac{x_A + x_B}{2}}
 ```
 
 40.0 and 40.905 g are 0.905 g apart. At their mean, 40.4525 g, the limit is
@@ -318,12 +318,11 @@ the method's acceptance check: satisfied
 
 In plain text and Markdown, an absolute value is spelt `abs(...)` and a
 precision limit `r(...; level = ...)`, because a bare `|` is a Markdown
-table's cell delimiter. LaTeX uses bars -- `\left|x_A - x_B\right|`, and
-`\Big|_{\text{level} = ...}` for the level -- and so **a LaTeX rendering
-holding either cannot be set in a Markdown table cell** on this site,
-measured with `mkdocs build`: unescaped, the bar ends the cell mid-formula;
-escaped as `\|`, the cell survives but MathJax reads `\|` as a double bar.
-The gallery sets LaTeX in display blocks only, where the bars are safe.
+table's cell delimiter: measured with `mkdocs build`, it ends the cell
+mid-formula, and escaped as `\|` it survives but MathJax reads it as a
+double bar. LaTeX spells the same bars without one -- `\left\lvert x_A -
+x_B\right\rvert`, and `\Big\vert_{\text{level} = ...}` for the level -- so
+no rendering in any dialect holds a `|`.
 
 ## How much room exact arithmetic has
 

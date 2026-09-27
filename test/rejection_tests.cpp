@@ -481,14 +481,14 @@ TEST_CASE("a rejection renders with every parameter stated, and never a bar outs
     CHECK(markdown.find('|') == std::string::npos);
     CHECK(markdown.find('[') == std::string::npos);
     CHECK(formula::render<formula::Dialect::LaTeX>(rejectionA)
-          == "\\operatorname{without\\ outliers}({m}_{i};\\allowbreak \\left|x - \\bar{x}_{\\text{pass}}\\right| > "
+          == "\\operatorname{without\\ outliers}({m}_{i};\\allowbreak \\left\\lvert x - \\bar{x}_{\\text{pass}}\\right\\rvert > "
              "3/50 \\cdot \\bar{x}_{\\text{pass}};\\allowbreak \\text{most extreme per pass};\\allowbreak \\text{keep on "
              "limit};\\allowbreak \\text{at most }2;\\allowbreak \\text{keep at least }4)");
     CHECK(formula::render(rejectionOf<EveryExceeding, Reject, 1, 3, 6>(sevenQuarters))
           == "without outliers(m(i); abs(x - pass mean) / s >= 7/4; every exceeding per pass; reject on limit; at most 1; "
              "keep at least 3)");
     CHECK(formula::render<formula::Dialect::LaTeX>(rejectionOf<EveryExceeding, Reject, 1, 3, 6>(sevenQuarters))
-          == "\\operatorname{without\\ outliers}({m}_{i};\\allowbreak \\frac{\\left|x - \\bar{x}_{\\text{pass}}\\right|}"
+          == "\\operatorname{without\\ outliers}({m}_{i};\\allowbreak \\frac{\\left\\lvert x - \\bar{x}_{\\text{pass}}\\right\\rvert}"
              "{s} \\geq 7/4;\\allowbreak \\text{every exceeding per pass};\\allowbreak \\text{reject on limit};"
              "\\allowbreak \\text{at most }1;\\allowbreak \\text{keep at least }3)");
     // The pass placeholders, as a limit expression reads them.

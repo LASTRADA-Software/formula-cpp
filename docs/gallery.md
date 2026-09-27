@@ -224,7 +224,7 @@ sample_mean(without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most e
 ```
 
 $$
-\overline{\operatorname{without\ outliers}({m}_{i};\allowbreak \left|x - \bar{x}_{\text{pass}}\right| > 3/50 \cdot \bar{x}_{\text{pass}};\allowbreak \text{most extreme per pass};\allowbreak \text{keep on limit};\allowbreak \text{at most }2;\allowbreak \text{keep at least }4)}
+\overline{\operatorname{without\ outliers}({m}_{i};\allowbreak \left\lvert x - \bar{x}_{\text{pass}}\right\rvert > 3/50 \cdot \bar{x}_{\text{pass}};\allowbreak \text{most extreme per pass};\allowbreak \text{keep on limit};\allowbreak \text{at most }2;\allowbreak \text{keep at least }4)}
 $$
 
 | Symbol | Description | Unit |
@@ -243,7 +243,7 @@ require abs(x_A - x_B) <= r(1/10 g + 1/50 * level; level = (x_A + x_B) / 2)
 ```
 
 $$
-\text{require } \left|x_A - x_B\right| \leq r\left(1/10\,\mathrm{g} + 1/50 \cdot \text{level}\right)\Big|_{\text{level} = \frac{x_A + x_B}{2}}
+\text{require } \left\lvert x_A - x_B\right\rvert \leq r\left(1/10\,\mathrm{g} + 1/50 \cdot \text{level}\right)\Big\vert_{\text{level} = \frac{x_A + x_B}{2}}
 $$
 
 | Symbol | Description | Unit |

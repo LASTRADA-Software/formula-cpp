@@ -1479,14 +1479,16 @@ template <Dialect D, SampleSizeTable Sizes, Unit ResultUnit, Node Count, Vocabul
 }
 
 /// An absolute value renders as `abs(<operand>)` in plain text and Markdown,
-/// and as `\left|<operand>\right|` in LaTeX.
+/// and as `\left\lvert <operand>\right\rvert` in LaTeX.
 ///
-/// **Never bars outside LaTeX.** A bare vertical bar inside a Markdown table
+/// **Never a `|`, in any dialect.** A bare vertical bar inside a Markdown table
 /// cell ends the cell, silently: task 1 measured a row whose formula held an
 /// absolute value in bars render as a one-cell row holding only the text
 /// before the first bar (python-markdown 3.10.3, pymdown-extensions 12.1). A
 /// formula is quoted in exactly such tables -- a symbol table, a gallery row,
-/// a `document()` page -- so the plain and Markdown spellings are a call.
+/// a `document()` page -- so the plain and Markdown spellings are a call, and
+/// LaTeX spells its bars `\lvert` and `\rvert`: a LaTeX rendering set in a
+/// cell holds no `|` either.
 /// Either way the operand is grouped, so no `PrecedenceOf` override is
 /// needed: the primary template's `Atom` is right.
 template <Dialect D, Node Operand, Vocabulary V>
@@ -1494,7 +1496,7 @@ template <Dialect D, Node Operand, Vocabulary V>
 {
     std::string const inner = render<D>(node.operand, vocabulary);
     if constexpr (D == Dialect::LaTeX)
-        return "\\left|" + inner + "\\right|";
+        return "\\left\\lvert " + inner + "\\right\\rvert";
     else
         return "abs(" + inner + ")";
 }
@@ -1558,7 +1560,7 @@ template <Dialect D,
     constexpr bool latex = D == Dialect::LaTeX;
     constexpr bool inStddevs = Criterion::kind == CriterionKind::DeviationInStddevs;
     std::string const deviationText =
-        latex ? std::string { "\\left|x - \\bar{x}_{\\text{pass}}\\right|" } : std::string { "abs(x - pass mean)" };
+        latex ? std::string { "\\left\\lvert x - \\bar{x}_{\\text{pass}}\\right\\rvert" } : std::string { "abs(x - pass mean)" };
     constexpr bool gapToRange = Criterion::kind == CriterionKind::GapToRange;
     std::string const statisticText = gapToRange
                                           ? (latex ? std::string { "\\text{gap to range}" } : std::string { "gap to range" })
@@ -1588,8 +1590,10 @@ template <Dialect D,
 /// with the level it is evaluated at stated beside it:
 /// `r(0.1 g + 1/50 * level; level = (x_A + x_B) / 2)`, `R(...)` for
 /// reproducibility, and in LaTeX
-/// `r\left(... \right)\Big|_{\text{level} = ...}`, the evaluation bar
-/// typeset clean under MathJax 3.2.2 and tectonic by task 1.
+/// `r\left(... \right)\Big\vert_{\text{level} = ...}`, the evaluation bar
+/// typeset clean under MathJax 3.2.2 and tectonic by task 1 -- spelt
+/// `\vert`, not `|`, so that no `|` reaches a Markdown table cell (see the
+/// absolute value's `render_node`).
 ///
 /// **Both passes are on the page.** A reader must be able to see that the
 /// limit depends on the results it checks -- the level is written out, not
@@ -1604,7 +1608,7 @@ template <Dialect D, PrecisionKind K, Node Level, Node Limit, Vocabulary V>
     std::string const limitText = render<D>(node.limit, vocabulary);
     std::string const levelText = render<D>(node.level, vocabulary);
     if constexpr (D == Dialect::LaTeX)
-        return symbolText + "\\left(" + limitText + "\\right)\\Big|_{\\text{level} = " + levelText + "}";
+        return symbolText + "\\left(" + limitText + "\\right)\\Big\\vert_{\\text{level} = " + levelText + "}";
     else
         return symbolText + "(" + limitText + "; level = " + levelText + ")";
 }
