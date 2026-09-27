@@ -928,16 +928,34 @@ namespace detail
     /// would look cited to a reader who does not know it could have said more.
     inline constexpr std::string_view noCitationGiven = "(no citation given)";
 
-    /// ` at element k` for a failed sample statistic, counted from one -- or
-    /// ` at (no such element)` when the position is not one of its sample's
-    /// elements: `Step` is a public aggregate, and a position past the end
-    /// of the sample's own step would name a determination nobody made.
+    /// ` at element k` for a failed sample statistic, counted from one --
+    /// ` at observation k` when the sample is raw observations, as
+    /// `FailureSite::InputObservation` says of a series. Over a rejection, k
+    /// counts the sample the rejection was given, and its record says how
+    /// many that held and whether they were observations. ` at (no such
+    /// element)` when the position is not one of the sample's: `Step` is a
+    /// public aggregate, and a position past the end of the sample would
+    /// name a determination nobody made.
     [[nodiscard]] inline std::string sample_failure_suffix(Trace<Rational> const& trace, Step<Rational> const& recorded)
     {
         std::size_t const at = *recorded.failedElement;
-        bool const inSample = recorded.operands.size() == 1 && recorded.operands.front() < trace.steps.size()
-                              && at < trace.steps[recorded.operands.front()].elements.size();
-        return inSample ? " at element " + std::to_string(at + 1) : std::string { " at (no such element)" };
+        if (recorded.operands.size() != 1 || recorded.operands.front() >= trace.steps.size())
+            return " at (no such element)";
+        std::size_t const sampleStep = recorded.operands.front();
+        // A rejection's terminal step lists no elements: the position counts
+        // the sample the rejection was given, whose size and kind its record
+        // keeps.
+        if (detail::RejectionRecord<Rational> const* const rejectionRecord =
+                record_for_step(trace.rejectionRecords, sampleStep))
+        {
+            if (at >= rejectionRecord->originalSize)
+                return " at (no such element)";
+            return (rejectionRecord->ofObservations ? " at observation " : " at element ") + std::to_string(at + 1);
+        }
+        if (at >= trace.steps[sampleStep].elements.size())
+            return " at (no such element)";
+        bool const ofObservations = step_counts_observations(trace, sampleStep);
+        return (ofObservations ? " at observation " : " at element ") + std::to_string(at + 1);
     }
 
     /// `#k` for a step a side-table record names, or `(no such step)` when
@@ -1707,10 +1725,14 @@ namespace detail
     }
 
     /// `element 4 of 6`, or `elements 4 and 6 of 6`, or `elements 2, 4 and 6
-    /// of 6` -- positions counted from one, as every text shows them.
-    [[nodiscard]] inline std::string elements_text(std::vector<std::size_t> const& positions, std::size_t originalSize)
+    /// of 6` -- positions counted from one, as every text shows them; with
+    /// @p ofObservations, `observation 4 of 6` and the rest.
+    [[nodiscard]] inline std::string elements_text(std::vector<std::size_t> const& positions,
+                                                   std::size_t originalSize,
+                                                   bool ofObservations)
     {
-        std::string listed = positions.size() == 1 ? "element " : "elements ";
+        std::string listed = ofObservations ? (positions.size() == 1 ? "observation " : "observations ")
+                                            : (positions.size() == 1 ? "element " : "elements ");
         for (std::size_t at = 0; at < positions.size(); ++at)
         {
             if (at > 0)
@@ -1789,7 +1811,11 @@ namespace detail
                         : "abs(x - mean) = " + rejection_value_text(recorded, *rejectionRecord->statistic, false)
                               + comparison + rejection_value_text(recorded, *rejectionRecord->limit, false)
                               + " (deviation from mean)";
-                return "rejected " + elements_text({ *rejectionRecord->position }, rejectionRecord->originalSize) + " ("
+                return "rejected "
+                       + elements_text({ *rejectionRecord->position },
+                                       rejectionRecord->originalSize,
+                                       rejectionRecord->ofObservations)
+                       + " ("
                        + rejection_value_text(recorded, *rejectionRecord->rejectedValue, false) + ") in pass "
                        + std::to_string(rejectionRecord->pass) + ": " + decided;
             }
@@ -1840,7 +1866,9 @@ namespace detail
                               + std::to_string(rejectionRecord->remaining - rejectionRecord->wouldReject.size())
                               + " of at least " + std::to_string(rejectionRecord->keepAtLeast);
                 EscapedCitation const cited { rejectionRecord->citation };
-                return elements_text(rejectionRecord->wouldReject, rejectionRecord->originalSize) + reason + ": "
+                return elements_text(
+                           rejectionRecord->wouldReject, rejectionRecord->originalSize, rejectionRecord->ofObservations)
+                       + reason + ": "
                        + escaped_author_text(rejectionRecord->verdict.label) + citation_suffix(cited.cited());
             }
             case StepKind::RejectionFailed: {
@@ -1853,10 +1881,12 @@ namespace detail
                         && (*rejectionRecord->position >= rejectionRecord->originalSize
                             || *rejectionRecord->failurePoint == detail::RejectionFailurePoint::Range)))
                     return "rejection failed (its record is invalid)";
-                std::string const atElement = rejectionRecord->position.has_value()
-                                                  ? " at element " + std::to_string(*rejectionRecord->position + 1) + " of "
-                                                        + std::to_string(rejectionRecord->originalSize)
-                                                  : std::string {};
+                std::string const atElement =
+                    rejectionRecord->position.has_value()
+                        ? " at " + elements_text({ *rejectionRecord->position },
+                                                 rejectionRecord->originalSize,
+                                                 rejectionRecord->ofObservations)
+                        : std::string {};
                 if (*rejectionRecord->failurePoint == detail::RejectionFailurePoint::NegativeLimit)
                     return "failed in pass " + std::to_string(rejectionRecord->pass) + ": "
                            + rejection_failure_subject(*rejectionRecord->failurePoint);

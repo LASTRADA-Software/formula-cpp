@@ -45,6 +45,16 @@ struct Heavy: formula::Quantity<Heavy, "m_h", "heavy mass", unit::Kilogram>
 struct Band: formula::Quantity<Band, "b", "absolute band", unit::Gram>
 {
 };
+/// A gram squared, invented here: the library has no squared mass unit.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+/// A variance of the determinations.
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
 
 [[nodiscard]] constexpr formula::Measured<Mass> grams(Rational value)
 {
@@ -1191,19 +1201,128 @@ TEST_CASE("a rejection of observations reads a critical value at the count made,
              "4. 1/100\n"
              "5. #3 * #4 = 9/20\n"
              "6. pass 1: 6 values, mean 2429/60 g\n"
-             "7. rejected element 4 of 6 (226/5 g) in pass 1: gap / range = 47/80 > 9/20 (gap to range)\n"
+             "7. rejected observation 4 of 6 (226/5 g) in pass 1: gap / range = 47/80 > 9/20 (gap to range)\n"
              "8. pass n = 5\n"
              "9. critical(#8) = 30 [critical value at n = 5]\n"
              "10. 1/100\n"
              "11. #9 * #10 = 3/10\n"
              "12. pass 2: 5 values, mean 1977/50 g\n"
-             "13. rejected element 6 of 6 (186/5 g) in pass 2: gap / range = 26/33 > 3/10 (gap to range)\n"
+             "13. rejected observation 6 of 6 (186/5 g) in pass 2: gap / range = 26/33 > 3/10 (gap to range)\n"
              "14. pass n = 4\n"
              "15. critical(#14) = 700 [critical value at n = 4]\n"
              "16. 1/100\n"
              "17. #15 * #16 = 7\n"
              "18. pass 3: 4 values, mean 321/8 g\n"
              "19. settled: 2 rejected, 4 remain\n");
+}
+
+TEST_CASE("a rejection of observations names an observation where it fails, or would reject",
+          "[rejection][trace-render]")
+{
+    // 1 kg and 2^62 - 1 kg total 2^62 kg; the third, 2^62 + 9 kg, takes the
+    // total past 2^63 - 1: the mean fails at observation 3.
+    constexpr auto heavyObserved = formula::environment(formula::MeasuredObservations<Heavy, 3>(
+        rat(1), Rational { 4611686018427387903 }, Rational { 4611686018427387913 }));
+    constexpr auto heavyRejection =
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            formula::observations<Heavy, 3>,
+            formula::deviation_from_mean(formula::constant<unit::Kilogram>(rat(1))),
+            repeatTest);
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Heavy>(
+        formula::sample_mean(heavyRejection), heavyObserved, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. m_h = 1 kg; 4611686018427387903 kg; 4611686018427387913 kg\n"
+             "2. pass 1: 3 values, mean overflow in exact arithmetic\n"
+             "3. failed in pass 1: the mean: overflow in exact arithmetic at observation 3 of 3\n"
+             "4. sample_mean(#3) = overflow in exact arithmetic\n");
+
+    // An abort over observations names the observation it would reject --
+    // and, every exceeding one at once, the observations.
+    constexpr auto fixtureAObserved =
+        observedOf(rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10));
+    formula::Trace<> aborted {};
+    (void) formula::checked_evaluate_rejection<Mass>(
+        observedRejectionOf<MostExtreme, Keep, 1, 3>(sixPercent), fixtureAObserved, formula::RecordingSink<> { aborted });
+    CHECK(formula::render_trace(aborted, { .maxSteps = 40 })
+              .ends_with("11. observation 6 of 6 would be rejection 2 of at most 1: discard the determinations and "
+                         "repeat the test [Example Standard, 7.4]\n"));
+    formula::Trace<> both {};
+    (void) formula::checked_evaluate_rejection<Mass>(
+        observedRejectionOf<EveryExceeding, Keep, 1, 4>(sixPercent),
+        observedOf(rat(402, 10), rat(398, 10), rat(405, 10), rat(452, 10), rat(40), rat(372, 10)),
+        formula::RecordingSink<> { both });
+    CHECK(formula::render_trace(both, { .maxSteps = 40 })
+              .ends_with("6. observations 4 and 6 of 6 would be rejections 1 and 2 of at most 1: discard the "
+                         "determinations and repeat the test [Example Standard, 7.4]\n"));
+}
+
+TEST_CASE("a statistic of a rejection that fails names the determination the rejection was given", "[rejection][trace-render]")
+{
+    // The census's sample A at 6 dp, 40.053270 ... 40.131659 g. Nothing lies
+    // 2 g from the mean, so all six survive; their squared deviations then
+    // overflow. The rejection's step lists no elements: the position counts
+    // the sample the rejection was given -- elements of a series, and
+    // observations of observations.
+    constexpr auto withinTwoGrams = formula::deviation_from_mean(formula::constant<unit::Gram>(rat(2)));
+    constexpr auto kept = formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<4>>(
+        formula::series<Mass, 6>, withinTwoGrams, repeatTest);
+    formula::Trace<> overSeries {};
+    (void) formula::checked_evaluate<MassVariance>(formula::sample_variance(kept),
+                                                   sampleOf(rat(40053270, 1000000),
+                                                            rat(39475922, 1000000),
+                                                            rat(39025798, 1000000),
+                                                            rat(40615904, 1000000),
+                                                            rat(39418416, 1000000),
+                                                            rat(40131659, 1000000)),
+                                                   formula::RecordingSink<> { overSeries });
+    CHECK(formula::render_trace(overSeries, { .maxSteps = 20 }) == "1. m = 4005327/100000 g; 19737961/500000 g; 19512899/500000 g; 1269247/31250 g; 2463651/62500 g; 40131659/1000000 g\n"
+                                                                   "2. 2 g\n"
+                                                                   "3. pass 1: 6 values, mean 238720969/6000000 g\n"
+                                                                   "4. settled: 0 rejected, 6 remain\n"
+                                                                   "5. sample_variance(#4) = overflow in exact arithmetic at element 1\n");
+
+    constexpr auto keptObserved =
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<4>>(
+            observedMasses, withinTwoGrams, repeatTest);
+    formula::Trace<> overObservations {};
+    (void) formula::checked_evaluate<MassVariance>(formula::sample_variance(keptObserved),
+                                                   observedOf(rat(40053270, 1000000),
+                                                              rat(39475922, 1000000),
+                                                              rat(39025798, 1000000),
+                                                              rat(40615904, 1000000),
+                                                              rat(39418416, 1000000),
+                                                              rat(40131659, 1000000)),
+                                                   formula::RecordingSink<> { overObservations });
+    CHECK(formula::render_trace(overObservations, { .maxSteps = 20 }) == "1. m = 4005327/100000 g; 19737961/500000 g; 19512899/500000 g; 1269247/31250 g; 2463651/62500 g; 40131659/1000000 g\n"
+                                                                         "2. 2 g\n"
+                                                                         "3. pass 1: 6 values, mean 238720969/6000000 g\n"
+                                                                         "4. settled: 0 rejected, 6 remain\n"
+                                                                         "5. sample_variance(#4) = overflow in exact arithmetic at observation 1\n");
+
+    // With 30 g entered first, 30 g is rejected, and the overflow at the
+    // first survivor is at the second determination as entered -- not the
+    // survivors' first.
+    constexpr auto afterOne = formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<4>>(
+        formula::series<Mass, 7>, withinTwoGrams, repeatTest);
+    formula::Trace<> afterRejected {};
+    (void) formula::checked_evaluate<MassVariance>(formula::sample_variance(afterOne),
+                                                   sampleOf(rat(30),
+                                                            rat(40053270, 1000000),
+                                                            rat(39475922, 1000000),
+                                                            rat(39025798, 1000000),
+                                                            rat(40615904, 1000000),
+                                                            rat(39418416, 1000000),
+                                                            rat(40131659, 1000000)),
+                                                   formula::RecordingSink<> { afterRejected });
+    CHECK(formula::render_trace(afterRejected, { .maxSteps = 20 }) == "1. m = 30 g; 4005327/100000 g; 19737961/500000 g; 19512899/500000 g; 1269247/31250 g; 2463651/62500 g; 40131659/1000000 g\n"
+                                                                      "2. 2 g\n"
+                                                                      "3. pass 1: 7 values, mean 268720969/7000000 g\n"
+                                                                      "4. rejected element 1 of 7 (30 g) in pass 1: abs(x - mean) = 58720969/7000000 g > 2 g (deviation from mean)\n"
+                                                                      "5. 2 g\n"
+                                                                      "6. pass 2: 6 values, mean 238720969/6000000 g\n"
+                                                                      "7. settled: 1 rejected, 6 remain\n"
+                                                                      "8. sample_variance(#7) = overflow in exact arithmetic at element 2\n");
 }
 
 TEST_CASE("observations fewer than KeepAtLeast give the verdict before pass 1, outlier or none", "[rejection]")

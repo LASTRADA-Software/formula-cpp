@@ -69,7 +69,9 @@ Capacity>::from`, for a set known only at run time, returns an
 9 observations for 8 places: refused
 ```
 
-None made is an empty sample: its count is 0, and it has no mean.
+None made is an empty sample: its count is 0, and it has no mean. A trace
+counts their positions as observations, where a series' are elements: a mean
+that overflows `at observation 3`, a rejection's `rejected observation 4 of 6`.
 
 **Absence is strict.** One determination not made, and every statistic of the
 sample is absent -- the count included, which is then neither N nor N - 1 but

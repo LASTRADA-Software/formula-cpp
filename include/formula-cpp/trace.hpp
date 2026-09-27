@@ -633,6 +633,10 @@ namespace detail
         /// For an abort before pass 1: the sample started with fewer than
         /// `keepAtLeast`. `pass` is then 0.
         bool startedShort {};
+        /// Whether the sample is raw observations (`observations<Q,
+        /// Capacity>`): its positions are then observations', as
+        /// `FailureSite::InputObservation` counts them.
+        bool ofObservations {};
         /// For a failed pass: what failed. The determination it failed at,
         /// when there is one, is `position`; the error is the step's own.
         std::optional<RejectionFailurePoint> failurePoint {};
@@ -1282,6 +1286,17 @@ struct Trace
 
 namespace detail
 {
+    /// Whether the positions in @p trace's step @p stepIndex count raw
+    /// observations, as `FailureSite::InputObservation` does: the step is
+    /// the observations' own. False for any other step, and for an index
+    /// past the steps. (A rejection's sample is a series or observations,
+    /// never another rejection.)
+    template <typename Rep>
+    [[nodiscard]] bool step_counts_observations(Trace<Rep> const& trace, std::size_t stepIndex)
+    {
+        return stepIndex < trace.steps.size() && trace.steps[stepIndex].kind == StepKind::ObservationsVariable;
+    }
+
     /// The `StepKind` a node maps to, as a compile-time property of its type.
     template <typename N>
     struct StepKindOf;
@@ -3095,9 +3110,16 @@ class RecordingSink
         return rejectionStep;
     }
 
-    /// Appends @p rejectionStep, unclaimed, with @p rejectionRecord keyed to it.
+    /// Appends @p rejectionStep, unclaimed, with @p rejectionRecord keyed to it,
+    /// marked as over observations when the rejection's sample is.
     void push_rejection_step(Step<Rep> rejectionStep, detail::RejectionRecord<Rep> rejectionRecord)
     {
+        // Before pass 1 no sample step is noted; nor does a line that early
+        // name a position.
+        if (!_trace->rejectionsInProgress.empty())
+            if (std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
+                sampleStep.has_value())
+                rejectionRecord.ofObservations = detail::step_counts_observations(*_trace, *sampleStep);
         std::size_t const stepIndex = _trace->steps.size();
         rejectionRecord.step = stepIndex;
         _trace->rejectionRecords.push_back(std::move(rejectionRecord));

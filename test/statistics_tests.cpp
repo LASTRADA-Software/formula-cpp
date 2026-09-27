@@ -758,6 +758,23 @@ TEST_CASE("a statistic of observations is one step over the observations' own st
              "2. sample_count(#1) = 6\n");
 }
 
+TEST_CASE("a statistic of observations that fails names the observation, as a series' failure would",
+          "[statistics][trace-render]")
+{
+    // 1 kg and 2^62 - 1 kg total 2^62 kg; the third, 2^62 + 9 kg, takes the
+    // total past 2^63 - 1. The position counts observations, as
+    // FailureSite::InputObservation does -- not elements.
+    constexpr auto heavyObserved = formula::environment(formula::MeasuredObservations<Heavy, 3>(
+        rat(1), Rational { 4611686018427387903 }, Rational { 4611686018427387913 }));
+    constexpr auto mean = formula::sample_mean(formula::observations<Heavy, 3>);
+    STATIC_REQUIRE(formula::checked_evaluate<Heavy>(mean, heavyObserved).error() == formula::ArithmeticError::Overflow);
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Heavy>(mean, heavyObserved, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. m_h = 1 kg; 4611686018427387903 kg; 4611686018427387913 kg\n"
+             "2. sample_mean(#1) = overflow in exact arithmetic at observation 3\n");
+}
+
 TEST_CASE("a statistic of observations renders on them, and the page gives their capacity as a bound",
           "[statistics][render][document]")
 {
