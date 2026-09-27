@@ -242,9 +242,10 @@ TEST_CASE("a conformity check is one step with one outcome per element", "[confo
     CHECK(outcomes[1].is_violated());
     CHECK(formula::render_trace(trace, { .maxSteps = 20 })
           == "1. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
-             "2. conform(#1) [1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60 %): reject the specimen; "
-             "3 satisfied (at least 1574/25 %); 4 satisfied (from 1764/25 to 1764/25 %); "
-             "5 violated (from 0 to 95 %): reject the specimen]\n");
+             "2. conform(#1) [1 satisfied, 894/25 % (from 30 to 40 %); 2 violated, 1154/25 % (from 50 to 60 %): "
+             "reject the specimen; "
+             "3 satisfied, 1574/25 % (at least 1574/25 %); 4 satisfied, 1764/25 % (from 1764/25 to 1764/25 %); "
+             "5 violated, 2444/25 % (from 0 to 95 %): reject the specimen]\n");
     REQUIRE(trace.steps.size() == 2);
     CHECK(trace.steps[1].kind == formula::StepKind::ConformityChecked);
     CHECK(trace.steps[1].operands == std::vector<std::size_t> { 0 });
@@ -260,7 +261,8 @@ TEST_CASE("a conformity check is one step with one outcome per element", "[confo
           == formula::render_trace(trace, { .maxSteps = 20 }));
     CHECK(formula::render_trace(trace, { .maxSteps = 9 })
           == "1. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
-             "2. conform(#1) [1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60 %): reject the specimen; "
+             "2. conform(#1) [1 satisfied, 894/25 % (from 30 to 40 %); 2 violated, 1154/25 % (from 50 to 60 %): "
+             "reject the specimen; "
              "... 3 more]\n");
     CHECK(formula::render_trace(trace, { .maxSteps = 7 })
           == "1. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
@@ -279,9 +281,9 @@ TEST_CASE("an unmeasured element and an inverted row read as what they are in th
                                      middleUnmeasured,
                                      formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 20 }).ends_with(
-        "2. conform(#1) [1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60 %): reject the specimen; "
-        "3 not checked (at least 60 %); 4 invalid (from 80 to 70 %): argument outside the domain of the operation; "
-        "5 violated (from 0 to 95 %): reject the specimen]\n"));
+        "2. conform(#1) [1 satisfied, 894/25 % (from 30 to 40 %); 2 violated, 1154/25 % (from 50 to 60 %): "
+        "reject the specimen; 3 not checked (at least 60 %); 4 invalid, 1764/25 % (from 80 to 70 %): argument "
+        "outside the domain of the operation; 5 violated, 2444/25 % (from 0 to 95 %): reject the specimen]\n"));
 }
 
 TEST_CASE("the trace keeps the rows as judged, even if the check is changed afterwards", "[conformity][trace]")
@@ -292,7 +294,7 @@ TEST_CASE("the trace keeps the rows as judged, even if the check is changed afte
     formula::Trace<> trace {};
     (void) formula::check_conformity(check, measuredPassing, formula::RecordingSink<> { trace });
     check.envelope.rows[1] = LimitRow { limit(rat(40)), limit(rat(50)) };
-    CHECK(formula::render_trace(trace, { .maxSteps = 20 }).find("2 violated (from 50 to 60 %)") != std::string::npos);
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 }).find("2 violated, 1154/25 % (from 50 to 60 %)") != std::string::npos);
     REQUIRE(trace.conformityLimits.size() == 1);
     CHECK(trace.conformityLimits[0].step == 1);
     REQUIRE(trace.conformityLimits[0].rows.size() == 5);

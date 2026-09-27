@@ -61,7 +61,8 @@ and `TagName` spells a variant's tag.
 with each element absent or present on its own; elementwise arithmetic with a broadcast scalar,
 per-element constants, running totals from either end, `sum`, and per-element rounding. A failure
 names its element. Conformity judges each element against its own row of a limit envelope, closed
-at both ends and either side explicitly unbounded, and the trace records the rows judged against.
+at both ends and either side explicitly unbounded, and the trace records each element's value, in
+the check's unit, and the row it was judged against.
 `snapped` replaces a value with the nearest permitted one under a stated tie rule. Curves pair a
 domain with values, `interpolate_at` reads one between two points, and `splice` joins two curves
 into one whose values run in a required direction; a curve that fails names the point and the

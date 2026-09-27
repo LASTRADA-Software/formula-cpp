@@ -1326,32 +1326,38 @@ namespace detail
     }
 
     /// One element's outcome in a conformity step, counted from one, with
-    /// the row it was judged against when the trace kept it: `2 satisfied
-    /// (from 30 to 40 %)`, `2 violated (at least 60 %): reject the specimen`,
-    /// `2 not checked (...)`, or `2 invalid (...): <the arithmetic error>`.
+    /// the value judged in the check's unit and the row it was judged against
+    /// when the trace kept them: `2 satisfied, 36 % (from 30 to 40 %)`, `2
+    /// violated, 71 % (at least 60 %): reject the specimen`, `2 not checked
+    /// (...)`, or `2 invalid, 71 % (from 80 to 70 %): <the arithmetic
+    /// error>`. An element not measured states no value, and neither does
+    /// one whose subject failed.
     [[nodiscard]] inline std::string element_outcome_text(std::size_t at,
                                                           ConstraintOutcome const& checkedOutcome,
+                                                          std::string const& valueClause,
                                                           std::string const& rowClause)
     {
         std::string const ordinal = std::to_string(at + 1);
         switch (checkedOutcome.kind())
         {
             case ConstraintOutcomeKind::Satisfied:
-                return ordinal + " satisfied" + rowClause;
+                return ordinal + " satisfied" + valueClause + rowClause;
             case ConstraintOutcomeKind::Violated:
-                return ordinal + " violated" + rowClause + ": " + std::string { checkedOutcome.verdict()->label };
+                return ordinal + " violated" + valueClause + rowClause + ": "
+                       + std::string { checkedOutcome.verdict()->label };
             case ConstraintOutcomeKind::NotChecked:
-                return ordinal + " not checked" + rowClause;
+                return ordinal + " not checked" + valueClause + rowClause;
             case ConstraintOutcomeKind::Invalid:
-                return ordinal + " invalid" + rowClause + ": " + std::string { describe(*checkedOutcome.error()) };
+                return ordinal + " invalid" + valueClause + rowClause + ": " + std::string { describe(*checkedOutcome.error()) };
         }
         return ordinal + " unknown outcome" + rowClause;
     }
 
     /// A conformity step's line, without its number: `conform(#1)` and every
-    /// element's outcome in one bracket, each with the row it was judged
-    /// against -- `[1 satisfied (from 30 to 40 %); 2 violated (from 50 to 60
-    /// %): reject the specimen; ...]` -- as many as @p budget allows, one
+    /// element's outcome in one bracket, each with the value judged, in the
+    /// check's unit, and the row it was judged against -- `[1 satisfied, 36 %
+    /// (from 30 to 40 %); 2 violated, 55 % (from 50 to 60 %): reject the
+    /// specimen; ...]` -- as many as @p budget allows, one
     /// unit each, as a series step's elements are (`series_step_line`), and
     /// `... k more` where `k` is exactly the number left out.
     ///
@@ -1373,7 +1379,10 @@ namespace detail
                 lineText += "; ";
             std::string const rowClause =
                 at < limits.size() ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit)) + ")" : std::string {};
-            lineText += element_outcome_text(at, recorded.elementOutcomes[at], rowClause);
+            std::string const valueClause = at < recorded.elements.size() && recorded.elements[at].has_value()
+                                                ? ", " + value_in_declared_unit(recorded, recorded.elements[at])
+                                                : std::string {};
+            lineText += element_outcome_text(at, recorded.elementOutcomes[at], valueClause, rowClause);
         }
         if (listed < outcomeCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outcomeCount - listed) + " more";

@@ -231,11 +231,11 @@ inline constexpr formula::Envelope<5> gradingEnvelope {
 **A limit envelope is master data.** Its numbers are the product
 specification, registered per customer and free to change, not part of any
 formula. The library supplies the mechanism: `envelope_from` builds an
-envelope at run time, and the trace records the rows each element was judged
-against:
+envelope at run time, and the trace records each element's value, in the
+check's unit, and the row it was judged against:
 
 ```text
-7. conform(#6) [1 satisfied (from 31 to 43 %); 2 violated (from 47 to 59 %): outside the grading envelope; 3 satisfied (at least 1574/25 %); 4 satisfied (from 61 to 79 %); 5 satisfied (from 83 to 99 %)]
+7. conform(#6) [1 satisfied, 894/25 % (from 31 to 43 %); 2 violated, 1154/25 % (from 47 to 59 %): outside the grading envelope; 3 satisfied, 1574/25 % (at least 1574/25 %); 4 satisfied, 1764/25 % (from 61 to 79 %); 5 satisfied, 2444/25 % (from 83 to 99 %)]
 ```
 
 **A limit is closed at both ends, where a band is half-open.** A limit states

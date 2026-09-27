@@ -840,6 +840,10 @@ struct Step
     /// Empty when the series failed: there is no partial series, and the
     /// elements computed before the failure are not a result (`series.hpp`).
     /// Empty for every step that is not a series.
+    ///
+    /// For `ConformityChecked`: the subject's elements, the values judged,
+    /// likewise in SI, so that each outcome can state the value it judged in
+    /// the check's own unit. Empty when the subject failed.
     std::vector<std::optional<Rep>> elements {};
 
     /// For a series step that failed: the ZERO-BASED position of the element
@@ -2389,6 +2393,10 @@ class RecordingSink
             ++firstClaimed;
         conformityStep.operands.assign(firstClaimed, _trace->unclaimed.end());
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+        // The subject's step is the last one claimed: its elements are the
+        // values the check judged.
+        if (!conformityStep.operands.empty())
+            conformityStep.elements = _trace->steps[conformityStep.operands.back()].elements;
 
         _trace->steps.push_back(std::move(conformityStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
