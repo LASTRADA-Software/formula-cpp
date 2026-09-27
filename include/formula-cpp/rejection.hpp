@@ -1008,15 +1008,16 @@ namespace detail
             return finish(RejectionEnd::Failed);
         };
 
-        EvaluatedSample<Rational, sampleCapacity> const sampled = dispatch_rejected_sample(node.sample, environment, sink);
-        if (!sampled.has_value())
+        EvaluatedSample<Rational, sampleCapacity> const drawnSample =
+            dispatch_rejected_sample(node.sample, environment, sink);
+        if (!drawnSample.has_value())
         {
-            run.failure = sampled.error();
+            run.failure = drawnSample.error();
             return finish(RejectionEnd::Failed);
         }
-        if (!sampled->has_value())
+        if (!drawnSample->has_value())
             return finish(RejectionEnd::Absent);
-        run.survivors = **sampled;
+        run.survivors = **drawnSample;
         originalSize = run.survivors.count;
 
         // Fewer made than the fewest that may remain: the method's
@@ -1046,20 +1047,20 @@ namespace detail
             // n - 1, the candidate included. Fewer than three determinations
             // is refused: two are always equidistant from their mean, so every
             // such pass would be a tie that empties the sample.
-            std::expected<Rational, ArithmeticError> variance = Rational { 0 };
+            std::expected<Rational, ArithmeticError> passVariance = Rational { 0 };
             if constexpr (Criterion::kind == CriterionKind::DeviationInStddevs)
             {
                 if (passSize < 3)
-                    variance = std::unexpected { ArithmeticError::DomainError };
+                    passVariance = std::unexpected { ArithmeticError::DomainError };
                 else if (passMean.has_value())
                 {
                     std::optional<Rational> squaresTotal;
-                    for (std::size_t taken = 0; taken < passSize && variance.has_value(); ++taken)
+                    for (std::size_t taken = 0; taken < passSize && passVariance.has_value(); ++taken)
                     {
-                        std::expected<Rational, ArithmeticError> const deviation =
+                        std::expected<Rational, ArithmeticError> const fromMean =
                             RepTraits<Rational>::subtract(working.values[taken], *passMean);
                         std::expected<Rational, ArithmeticError> const squared =
-                            deviation.has_value() ? RepTraits<Rational>::multiply(*deviation, *deviation) : deviation;
+                            fromMean.has_value() ? RepTraits<Rational>::multiply(*fromMean, *fromMean) : fromMean;
                         std::expected<Rational, ArithmeticError> const added =
                             !squared.has_value() || !squaresTotal.has_value()
                                 ? squared
@@ -1067,21 +1068,21 @@ namespace detail
                         if (!added.has_value())
                         {
                             failedAt = working.positions[taken];
-                            variance = std::unexpected { added.error() };
+                            passVariance = std::unexpected { added.error() };
                         }
                         else
                             squaresTotal = *added;
                     }
-                    if (variance.has_value())
-                        variance =
+                    if (passVariance.has_value())
+                        passVariance =
                             RepTraits<Rational>::divide(*squaresTotal, Rational { static_cast<std::int64_t>(passSize - 1) });
                 }
             }
 
             std::optional<ArithmeticError> const passError =
-                !passMean.has_value()   ? std::optional<ArithmeticError> { passMean.error() }
-                : !variance.has_value() ? std::optional<ArithmeticError> { variance.error() }
-                                        : std::nullopt;
+                !passMean.has_value()       ? std::optional<ArithmeticError> { passMean.error() }
+                : !passVariance.has_value() ? std::optional<ArithmeticError> { passVariance.error() }
+                                            : std::nullopt;
             if (passError.has_value())
             {
                 // The pass line shows the mean when it was computed; the
@@ -1144,7 +1145,7 @@ namespace detail
                 std::expected<Rational, ArithmeticError> const limitSquared =
                     RepTraits<Rational>::multiply(**evaluatedLimit, **evaluatedLimit);
                 std::expected<Rational, ArithmeticError> const scaledLimit =
-                    limitSquared.has_value() ? RepTraits<Rational>::multiply(*limitSquared, *variance) : limitSquared;
+                    limitSquared.has_value() ? RepTraits<Rational>::multiply(*limitSquared, *passVariance) : limitSquared;
                 if (!scaledLimit.has_value())
                     return fail(scaledLimit.error(), std::nullopt, RejectionFailurePoint::Threshold);
                 compareAgainst = *scaledLimit;
@@ -1154,46 +1155,46 @@ namespace detail
             // values next to them, and the range. Not all equal (settled
             // above), so the range is positive; a value shared by two
             // determinations is its own neighbour, with a gap of zero.
-            Rational lowest = working.values[0];
-            Rational highest = working.values[0];
+            Rational lowestValue = working.values[0];
+            Rational highestValue = working.values[0];
             std::optional<Rational> nextLowest;
             std::optional<Rational> nextHighest;
             if constexpr (Criterion::kind == CriterionKind::GapToRange)
             {
                 for (std::size_t taken = 1; taken < passSize; ++taken)
                 {
-                    Rational const determination = working.values[taken];
-                    if (determination < lowest)
+                    Rational const candidateValue = working.values[taken];
+                    if (candidateValue < lowestValue)
                     {
-                        nextLowest = lowest;
-                        lowest = determination;
+                        nextLowest = lowestValue;
+                        lowestValue = candidateValue;
                     }
-                    else if (!nextLowest.has_value() || determination < *nextLowest)
-                        nextLowest = determination;
-                    if (highest < determination)
+                    else if (!nextLowest.has_value() || candidateValue < *nextLowest)
+                        nextLowest = candidateValue;
+                    if (highestValue < candidateValue)
                     {
-                        nextHighest = highest;
-                        highest = determination;
+                        nextHighest = highestValue;
+                        highestValue = candidateValue;
                     }
-                    else if (!nextHighest.has_value() || *nextHighest < determination)
-                        nextHighest = determination;
+                    else if (!nextHighest.has_value() || *nextHighest < candidateValue)
+                        nextHighest = candidateValue;
                 }
             }
 
             // The range, once per pass: it belongs to no determination, so a
             // failure of it names none.
-            Rational spread = Rational { 0 };
+            Rational passRange = Rational { 0 };
             if constexpr (Criterion::kind == CriterionKind::GapToRange)
             {
                 std::expected<Rational, ArithmeticError> const measuredRange =
-                    RepTraits<Rational>::subtract(highest, lowest);
+                    RepTraits<Rational>::subtract(highestValue, lowestValue);
                 if (!measuredRange.has_value())
                     return fail(measuredRange.error(), std::nullopt, RejectionFailurePoint::Range);
-                spread = *measuredRange;
+                passRange = *measuredRange;
             }
 
             // Each determination's statistics, and whether it is a candidate.
-            std::array<Rational, sampleCapacity> statistics;
+            std::array<Rational, sampleCapacity> passStatistics;
             std::array<bool, sampleCapacity> candidate;
             for (bool& each: candidate)
                 each = false;
@@ -1202,36 +1203,36 @@ namespace detail
             {
                 if constexpr (Criterion::kind == CriterionKind::GapToRange)
                 {
-                    bool const isLowest = working.values[taken] == lowest;
-                    bool const isHighest = working.values[taken] == highest;
+                    bool const isLowest = working.values[taken] == lowestValue;
+                    bool const isHighest = working.values[taken] == highestValue;
                     if (!isLowest && !isHighest)
                         continue;
-                    std::expected<Rational, ArithmeticError> const gap =
-                        isHighest ? RepTraits<Rational>::subtract(highest, *nextHighest)
-                                  : RepTraits<Rational>::subtract(*nextLowest, lowest);
+                    std::expected<Rational, ArithmeticError> const extremeGap =
+                        isHighest ? RepTraits<Rational>::subtract(highestValue, *nextHighest)
+                                  : RepTraits<Rational>::subtract(*nextLowest, lowestValue);
                     std::expected<Rational, ArithmeticError> const gapRatio =
-                        gap.has_value() ? RepTraits<Rational>::divide(*gap, spread) : gap;
+                        extremeGap.has_value() ? RepTraits<Rational>::divide(*extremeGap, passRange) : extremeGap;
                     if (!gapRatio.has_value())
                         return fail(gapRatio.error(), working.positions[taken], RejectionFailurePoint::GapRatio);
-                    statistics[taken] = *gapRatio;
+                    passStatistics[taken] = *gapRatio;
                     candidate[taken] = L == OnLimit::Keep ? compareAgainst < *gapRatio : !(*gapRatio < compareAgainst);
                     if (candidate[taken] && (!mostExtreme.has_value() || *mostExtreme < *gapRatio))
                         mostExtreme = *gapRatio;
                 }
                 else
                 {
-                    std::expected<Rational, ArithmeticError> const deviation =
+                    std::expected<Rational, ArithmeticError> const fromMean =
                         RepTraits<Rational>::subtract(working.values[taken], *passMean);
-                    if (!deviation.has_value())
-                        return fail(deviation.error(), working.positions[taken], RejectionFailurePoint::Statistic);
+                    if (!fromMean.has_value())
+                        return fail(fromMean.error(), working.positions[taken], RejectionFailurePoint::Statistic);
                     std::expected<Rational, ArithmeticError> measured =
-                        *deviation < Rational { 0 } ? RepTraits<Rational>::negate(*deviation)
-                                                    : std::expected<Rational, ArithmeticError> { *deviation };
+                        *fromMean < Rational { 0 } ? RepTraits<Rational>::negate(*fromMean)
+                                                   : std::expected<Rational, ArithmeticError> { *fromMean };
                     if constexpr (Criterion::kind == CriterionKind::DeviationInStddevs)
-                        measured = measured.has_value() ? RepTraits<Rational>::multiply(*deviation, *deviation) : measured;
+                        measured = measured.has_value() ? RepTraits<Rational>::multiply(*fromMean, *fromMean) : measured;
                     if (!measured.has_value())
                         return fail(measured.error(), working.positions[taken], RejectionFailurePoint::Statistic);
-                    statistics[taken] = *measured;
+                    passStatistics[taken] = *measured;
                     candidate[taken] = L == OnLimit::Keep ? compareAgainst < *measured : !(*measured < compareAgainst);
                     if (candidate[taken] && (!mostExtreme.has_value() || *mostExtreme < *measured))
                         mostExtreme = *measured;
@@ -1246,7 +1247,7 @@ namespace detail
             std::size_t chosen = 0;
             for (std::size_t taken = 0; taken < passSize; ++taken)
             {
-                if (P == PerPass::MostExtreme && candidate[taken] && !(statistics[taken] == *mostExtreme))
+                if (P == PerPass::MostExtreme && candidate[taken] && !(passStatistics[taken] == *mostExtreme))
                     candidate[taken] = false;
                 if (candidate[taken])
                     ++chosen;
@@ -1275,7 +1276,7 @@ namespace detail
                                                              .position = working.positions[taken],
                                                              .originalSize = originalSize,
                                                              .rejectedValue = working.values[taken],
-                                                             .statistic = statistics[taken],
+                                                             .statistic = passStatistics[taken],
                                                              .limit = compareAgainst,
                                                              .squared = Criterion::kind == CriterionKind::DeviationInStddevs,
                                                              .criterion = Criterion::kind,

@@ -131,17 +131,17 @@ namespace detail
         EvaluatedSeries<Rep, sampleCapacity> const evaluated = dispatch_series<Rep>(node, environment, sink);
         if (!evaluated.has_value())
             return std::unexpected { relayed_failure(evaluated) };
-        SampleValue<Rep, sampleCapacity> sampled;
-        sampled.count = 0;
+        SampleValue<Rep, sampleCapacity> drawnSample;
+        drawnSample.count = 0;
         for (std::size_t at = 0; at < sampleCapacity; ++at)
         {
             if (!evaluated->elements[at].has_value())
                 return std::optional<SampleValue<Rep, sampleCapacity>> {};
-            sampled.values[at] = *evaluated->elements[at];
-            sampled.positions[at] = at;
-            ++sampled.count;
+            drawnSample.values[at] = *evaluated->elements[at];
+            drawnSample.positions[at] = at;
+            ++drawnSample.count;
         }
-        return std::optional<SampleValue<Rep, sampleCapacity>> { sampled };
+        return std::optional<SampleValue<Rep, sampleCapacity>> { drawnSample };
     }
 
     /// `dispatch_sample` for raw observations: the ones made, in the order
@@ -158,14 +158,14 @@ namespace detail
         // Every place is copied -- `evaluate_observations` writes the unfilled
         // ones with zero -- each at its own position; `count` says which hold
         // a determination.
-        SampleValue<Rep, Capacity> sampled;
+        SampleValue<Rep, Capacity> drawnSample;
         for (std::size_t at = 0; at < Capacity; ++at)
         {
-            sampled.values[at] = evaluated->elements[at];
-            sampled.positions[at] = at;
+            drawnSample.values[at] = evaluated->elements[at];
+            drawnSample.positions[at] = at;
         }
-        sampled.count = evaluated->count;
-        return std::optional<SampleValue<Rep, Capacity>> { sampled };
+        drawnSample.count = evaluated->count;
+        return std::optional<SampleValue<Rep, Capacity>> { drawnSample };
     }
 
     /// Evaluates the sample @p node: a series through
@@ -371,17 +371,17 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 {
     sink.entered(node);
     Evaluated<Rep> const evaluated = [&]() -> Evaluated<Rep> {
-        EvaluatedSample<Rep, detail::sample_capacity<S>> const sampled =
+        EvaluatedSample<Rep, detail::sample_capacity<S>> const drawnSample =
             detail::dispatch_sample<Rep>(node.sample, environment, sink);
-        if (!sampled.has_value())
-            return std::unexpected { sampled.error().error };
-        if (!sampled->has_value())
+        if (!drawnSample.has_value())
+            return std::unexpected { drawnSample.error().error };
+        if (!drawnSample->has_value())
             return detail::nothing<Rep>();
-        std::expected<Rep, ArithmeticError> const counted =
-            RepTraits<Rep>::from(Rational { static_cast<std::int64_t>((*sampled)->count) });
-        if (!counted.has_value())
-            return std::unexpected { counted.error() };
-        return detail::present<Rep>(*counted);
+        std::expected<Rep, ArithmeticError> const countedValue =
+            RepTraits<Rep>::from(Rational { static_cast<std::int64_t>((*drawnSample)->count) });
+        if (!countedValue.has_value())
+            return std::unexpected { countedValue.error() };
+        return detail::present<Rep>(*countedValue);
     }();
     sink.produced(node, evaluated);
     return evaluated;
@@ -389,33 +389,33 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 
 namespace detail
 {
-    /// The mean of @p sampled's determinations, in the coherent SI unit: their
+    /// The mean of @p drawnSample's determinations, in the coherent SI unit: their
     /// total over their count. An empty sample is `DivisionByZero`. A total
     /// that overflows fails, and @p failedAt learns the position of the
     /// determination it overflowed at.
     template <typename Rep, std::size_t C>
-    [[nodiscard]] constexpr std::expected<Rep, ArithmeticError> mean_of(SampleValue<Rep, C> const& sampled,
+    [[nodiscard]] constexpr std::expected<Rep, ArithmeticError> mean_of(SampleValue<Rep, C> const& drawnSample,
                                                                         std::optional<std::size_t>& failedAt) noexcept
     {
-        if (sampled.count == 0)
+        if (drawnSample.count == 0)
             return std::unexpected { ArithmeticError::DivisionByZero };
 
-        Rep runningTotal = sampled.values[0];
-        for (std::size_t taken = 1; taken < sampled.count; ++taken)
+        Rep runningTotal = drawnSample.values[0];
+        for (std::size_t taken = 1; taken < drawnSample.count; ++taken)
         {
-            std::expected<Rep, ArithmeticError> const added = RepTraits<Rep>::add(runningTotal, sampled.values[taken]);
+            std::expected<Rep, ArithmeticError> const added = RepTraits<Rep>::add(runningTotal, drawnSample.values[taken]);
             if (!added.has_value())
             {
-                failedAt = sampled.positions[taken];
+                failedAt = drawnSample.positions[taken];
                 return std::unexpected { added.error() };
             }
             runningTotal = *added;
         }
-        std::expected<Rep, ArithmeticError> const counted =
-            RepTraits<Rep>::from(Rational { static_cast<std::int64_t>(sampled.count) });
-        if (!counted.has_value())
-            return std::unexpected { counted.error() };
-        return RepTraits<Rep>::divide(runningTotal, *counted);
+        std::expected<Rep, ArithmeticError> const countedValue =
+            RepTraits<Rep>::from(Rational { static_cast<std::int64_t>(drawnSample.count) });
+        if (!countedValue.has_value())
+            return std::unexpected { countedValue.error() };
+        return RepTraits<Rep>::divide(runningTotal, *countedValue);
     }
 
     /// The evaluation every sample statistic shares: the sample, then
@@ -430,12 +430,13 @@ namespace detail
         sink.entered(node);
         std::optional<std::size_t> failedAt;
         Evaluated<Rep> const evaluated = [&]() -> Evaluated<Rep> {
-            EvaluatedSample<Rep, sample_capacity<S>> const sampled = dispatch_sample<Rep>(sampleSource, environment, sink);
-            if (!sampled.has_value())
-                return std::unexpected { sampled.error().error };
-            if (!sampled->has_value())
+            EvaluatedSample<Rep, sample_capacity<S>> const drawnSample =
+                dispatch_sample<Rep>(sampleSource, environment, sink);
+            if (!drawnSample.has_value())
+                return std::unexpected { drawnSample.error().error };
+            if (!drawnSample->has_value())
                 return nothing<Rep>();
-            std::expected<Rep, ArithmeticError> const reduced = reduce(**sampled, failedAt);
+            std::expected<Rep, ArithmeticError> const reduced = reduce(**drawnSample, failedAt);
             if (!reduced.has_value())
                 return std::unexpected { reduced.error() };
             return present<Rep>(*reduced);
@@ -462,8 +463,8 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
         node.sample,
         environment,
         sink,
-        [](detail::SampleValue<Rep, detail::sample_capacity<S>> const& sampled, std::optional<std::size_t>& failedAt) {
-            return detail::mean_of(sampled, failedAt);
+        [](detail::SampleValue<Rep, detail::sample_capacity<S>> const& drawnSample, std::optional<std::size_t>& failedAt) {
+            return detail::mean_of(drawnSample, failedAt);
         });
 }
 
@@ -492,65 +493,65 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
         node.sample,
         environment,
         sink,
-        [](detail::SampleValue<Rep, detail::sample_capacity<S>> const& sampled,
+        [](detail::SampleValue<Rep, detail::sample_capacity<S>> const& drawnSample,
            std::optional<std::size_t>& failedAt) -> std::expected<Rep, ArithmeticError> {
-            if (sampled.count < 2)
+            if (drawnSample.count < 2)
                 return std::unexpected { ArithmeticError::DomainError };
-            std::expected<Rep, ArithmeticError> const sampleMean = detail::mean_of(sampled, failedAt);
+            std::expected<Rep, ArithmeticError> const sampleMean = detail::mean_of(drawnSample, failedAt);
             if (!sampleMean.has_value())
                 return sampleMean;
 
             std::optional<Rep> squaresTotal;
-            for (std::size_t taken = 0; taken < sampled.count; ++taken)
+            for (std::size_t taken = 0; taken < drawnSample.count; ++taken)
             {
-                std::expected<Rep, ArithmeticError> const deviation =
-                    RepTraits<Rep>::subtract(sampled.values[taken], *sampleMean);
+                std::expected<Rep, ArithmeticError> const fromMean =
+                    RepTraits<Rep>::subtract(drawnSample.values[taken], *sampleMean);
                 std::expected<Rep, ArithmeticError> const squared =
-                    deviation.has_value() ? RepTraits<Rep>::multiply(*deviation, *deviation) : deviation;
+                    fromMean.has_value() ? RepTraits<Rep>::multiply(*fromMean, *fromMean) : fromMean;
                 std::expected<Rep, ArithmeticError> const added = !squared.has_value() || !squaresTotal.has_value()
                                                                       ? squared
                                                                       : RepTraits<Rep>::add(*squaresTotal, *squared);
                 if (!added.has_value())
                 {
-                    failedAt = sampled.positions[taken];
+                    failedAt = drawnSample.positions[taken];
                     return added;
                 }
                 squaresTotal = *added;
             }
-            std::expected<Rep, ArithmeticError> const degrees =
-                RepTraits<Rep>::from(Rational { static_cast<std::int64_t>(sampled.count - 1) });
-            if (!degrees.has_value())
-                return degrees;
-            return RepTraits<Rep>::divide(*squaresTotal, *degrees);
+            std::expected<Rep, ArithmeticError> const freedom =
+                RepTraits<Rep>::from(Rational { static_cast<std::int64_t>(drawnSample.count - 1) });
+            if (!freedom.has_value())
+                return freedom;
+            return RepTraits<Rep>::divide(*squaresTotal, *freedom);
         });
 }
 
 namespace detail
 {
-    /// The largest of @p sampled's determinations less the smallest, found by
+    /// The largest of @p drawnSample's determinations less the smallest, found by
     /// comparing every one -- never the last less the first. **An unordered
     /// determination -- a NaN, under `Rep = double` -- is the range**, wherever
     /// it stands: comparisons with it are false, so a running minimum and
     /// maximum would skip it unless it came first, and the range would depend
     /// on the order the determinations were typed in. Never true of `Rational`.
     template <typename Rep, std::size_t C>
-    [[nodiscard]] constexpr std::expected<Rep, ArithmeticError> range_of(SampleValue<Rep, C> const& sampled) noexcept
+    [[nodiscard]] constexpr std::expected<Rep, ArithmeticError> range_of(SampleValue<Rep, C> const& drawnSample) noexcept
     {
-        if (sampled.count == 0)
+        if (drawnSample.count == 0)
             return std::unexpected { ArithmeticError::DomainError };
-        Rep smallest = sampled.values[0];
-        Rep largest = sampled.values[0];
-        for (std::size_t taken = 0; taken < sampled.count; ++taken)
+        Rep lowestSeen = drawnSample.values[0];
+        Rep highestSeen = drawnSample.values[0];
+        for (std::size_t taken = 0; taken < drawnSample.count; ++taken)
         {
-            Rep const determination = sampled.values[taken];
-            if (!(determination == determination))
-                return determination;
-            if (determination < smallest)
-                smallest = determination;
-            if (largest < determination)
-                largest = determination;
+            Rep const candidateValue = drawnSample.values[taken];
+            if (!(candidateValue == candidateValue))
+                return candidateValue;
+            if (candidateValue < lowestSeen)
+                lowestSeen = candidateValue;
+            if (highestSeen < candidateValue)
+                highestSeen = candidateValue;
         }
-        return RepTraits<Rep>::subtract(largest, smallest);
+        return RepTraits<Rep>::subtract(highestSeen, lowestSeen);
     }
 } // namespace detail
 
@@ -565,8 +566,8 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
                                            node.sample,
                                            environment,
                                            sink,
-                                           [](detail::SampleValue<Rep, detail::sample_capacity<S>> const& sampled,
-                                              std::optional<std::size_t>&) { return detail::range_of(sampled); });
+                                           [](detail::SampleValue<Rep, detail::sample_capacity<S>> const& drawnSample,
+                                              std::optional<std::size_t>&) { return detail::range_of(drawnSample); });
 }
 
 } // namespace formula

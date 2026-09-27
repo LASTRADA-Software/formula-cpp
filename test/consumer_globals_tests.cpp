@@ -105,7 +105,9 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     segment, separator, set, source, span, start, state, status, stop, str, stream, string, success, suffix, sum, t,
     tail, target, temp, temperature, temporary, threshold, timeout, title, tmp, token, tokens, tolerance, tree, tuple,
     type, types, u, unit, unitName, upper, v, valid, values, vector, view, volume, w, weight, what, when, where, who,
-    why, word, words, x, y, z;
+    why, word, words, x, y, z, variance, spread, deviation, deviations, gap, statistic, survivors, rejected, sampled,
+    counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
+    statistics;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -375,11 +377,11 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(rooted.is_value());
     probe.checks.push_back(mixed.is_value());
     // The irrational path of the rounded root: sqrt(2) to 0.01 is 1.41.
-    auto const spread = formula::evaluate<Factor>(
+    auto const spreadNode = formula::evaluate<Factor>(
         formula::rounded_sqrt<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Factor> * formula::Rational { 2 }),
         specimen);
-    probe.checks.push_back(spread.is_value() && spread.measurement().value() == formula::Rational { 141, 100 });
+    probe.checks.push_back(spreadNode.is_value() && spreadNode.measurement().value() == formula::Rational { 141, 100 });
     pages += formula::render(-var<Force>) + formula::render(formula::pi * var<Force>)
              + formula::render<formula::Dialect::LaTeX>(formula::cbrt(var<Force>));
 

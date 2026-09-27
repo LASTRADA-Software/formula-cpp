@@ -1557,13 +1557,13 @@ template <Dialect D,
 {
     constexpr bool latex = D == Dialect::LaTeX;
     constexpr bool inStddevs = Criterion::kind == CriterionKind::DeviationInStddevs;
-    std::string const deviation =
+    std::string const deviationText =
         latex ? std::string { "\\left|x - \\bar{x}_{\\text{pass}}\\right|" } : std::string { "abs(x - pass mean)" };
     constexpr bool gapToRange = Criterion::kind == CriterionKind::GapToRange;
-    std::string const statistic = gapToRange
-                                      ? (latex ? std::string { "\\text{gap to range}" } : std::string { "gap to range" })
-                                  : inStddevs ? (latex ? "\\frac{" + deviation + "}{s}" : deviation + " / s")
-                                              : deviation;
+    std::string const statisticText = gapToRange
+                                          ? (latex ? std::string { "\\text{gap to range}" } : std::string { "gap to range" })
+                                      : inStddevs ? (latex ? "\\frac{" + deviationText + "}{s}" : deviationText + " / s")
+                                                  : deviationText;
     std::string const comparison = L == OnLimit::Keep ? " > " : (latex ? " \\geq " : " >= ");
     std::string const between = latex ? ";\\allowbreak " : "; ";
     auto const inWords = [](std::string_view phrase) {
@@ -1575,7 +1575,7 @@ template <Dialect D,
                                      : "at most " + std::to_string(detail::bound_value<AtMostT>);
     std::string const keepAtLeast = latex ? "\\text{keep at least }" + std::to_string(detail::bound_value<KeepAtLeastT>)
                                           : "keep at least " + std::to_string(detail::bound_value<KeepAtLeastT>);
-    std::string const inside = render<D>(node.sample, vocabulary) + between + statistic + comparison
+    std::string const inside = render<D>(node.sample, vocabulary) + between + statisticText + comparison
                                + render<D>(node.criterion.limit, vocabulary) + between + perPass + between + onLimit
                                + between + atMost + between + keepAtLeast;
     if constexpr (latex)
