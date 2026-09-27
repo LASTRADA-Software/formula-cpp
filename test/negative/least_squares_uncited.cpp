@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: linear_least_squares fits a curve; pair the domain and the values with curve(domain, values)
+// EXPECT: formula: linear_least_squares needs a citation, the reason the method fits a line here; pass {} when it gives none
 // REJECT: no matching overloaded function
 // REJECT: no matching function
 // REJECT: RequireResultDimension
 //
-// Two loose series handed to the fit: a curve already pairs a domain with
-// values of one length, which two series would have to re-derive. Refused
-// once, in this library's words, and not in the compiler's -- also when the
-// fit's slope is taken and evaluated next, as anyone writing a fit does: the
-// refusal returns a fit of a refused curve, whose outputs ask nothing again.
+// A fit with no citation at all: refused in this library's words, which say
+// that {} is allowed, and not as a call that matches nothing. The slope is
+// taken and evaluated, and asks nothing again.
 #include <formula-cpp/least_squares.hpp>
 
 struct Elapsed: formula::Quantity<Elapsed, "t", "an invented elapsed time", formula::unit::Second>
@@ -26,8 +24,8 @@ inline constexpr auto fitPoints =
                                                            formula::Measured<Elapsed> { formula::Rational { 3 } }),
                          formula::measured_series<Length>(formula::Measured<Length> { formula::Rational { 103, 10 } },
                                                           formula::Measured<Length> { formula::Rational { 139, 10 } }));
-inline constexpr auto fit = formula::linear_least_squares(
-    formula::series<Elapsed, 2>, formula::series<Length, 2>, { .reference = "Example Standard 12" });
+inline constexpr auto fit =
+    formula::linear_least_squares(formula::curve(formula::series<Elapsed, 2>, formula::series<Length, 2>));
 
 int main()
 {

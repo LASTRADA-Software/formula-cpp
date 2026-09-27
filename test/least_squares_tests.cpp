@@ -123,6 +123,39 @@ TEST_CASE("a fit whose domain values are all equal, or which has one point, is t
     STATIC_REQUIRE(!flat.has_value());
     STATIC_REQUIRE(flat.error() == formula::ArithmeticError::DomainError);
 
+    // All equal in double, where the mean of three 0.1 s is not 0.1 and the
+    // spread is rounding noise, never zero: decided on the points themselves,
+    // it is the same DomainError and no slope of noise.
+    std::array<double, 3> const sameInDouble { 0.1, 0.1, 0.1 };
+    std::array<double, 3> const valuesInDouble { 0.0103, 0.0139, 0.0191 };
+    auto const flatInDouble = formula::LinearLeastSquares::compute<double>(std::span<double const> { sameInDouble },
+                                                                           std::span<double const> { valuesInDouble });
+    REQUIRE(!flatInDouble.has_value());
+    CHECK(flatInDouble.error() == formula::ArithmeticError::DomainError);
+
+    // No points at all: fewer than two, so the fit's DomainError, not a
+    // division by a count of zero.
+    auto const noPoints = formula::LinearLeastSquares::compute<formula::Rational>(std::span<formula::Rational const> {},
+                                                                                  std::span<formula::Rational const> {});
+    REQUIRE(!noPoints.has_value());
+    CHECK(noPoints.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("a fit handed spans of different lengths is a domain error, never a read past the shorter", "[least-squares]")
+{
+    // compute is public, and a consumer calling it with their own arrays can
+    // mismatch them; a curve never does. Three points and two values.
+    std::array<formula::Rational, 3> const threePoints { rat(1), rat(2), rat(4) };
+    std::array<formula::Rational, 2> const twoValues { rat(103, 10), rat(139, 10) };
+    auto const mismatched = formula::LinearLeastSquares::compute<formula::Rational>(
+        std::span<formula::Rational const> { threePoints }, std::span<formula::Rational const> { twoValues });
+    REQUIRE(!mismatched.has_value());
+    CHECK(mismatched.error() == formula::ArithmeticError::DomainError);
+    // And the other way round.
+    auto const reversed = formula::LinearLeastSquares::compute<formula::Rational>(
+        std::span<formula::Rational const> { threePoints }.first(2), std::span<formula::Rational const> { threePoints });
+    REQUIRE(!reversed.has_value());
+    CHECK(reversed.error() == formula::ArithmeticError::DomainError);
     // All equal, through a curve: the curve refuses its repeated point
     // itself, so the call relays that failure -- Propagated, not Own (C4).
     constexpr auto repeated =

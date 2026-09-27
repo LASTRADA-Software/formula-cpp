@@ -2111,7 +2111,15 @@ formula_add_negative_test(opaque_output_as_series
 # curve's words.
 formula_add_negative_test(least_squares_not_a_curve
     "formula: linear_least_squares fits a curve; pair the domain and the values with curve(domain, values)"
-    REJECT "no matching overloaded function" "no matching function")
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
+# A fit with no citation is refused in the library's words; a fit over a
+# refused curve says only the curve's.
+formula_add_negative_test(least_squares_uncited
+    "formula: linear_least_squares needs a citation, the reason the method fits a line here; pass {} when it gives none"
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
+formula_add_negative_test(least_squares_refused_curve
+    "formula: this curve pairs a domain and values of different lengths"
+    REJECT "RequireResultDimension" "output_dimensions" "compute cannot be called")
 formula_add_negative_test(least_squares_in_double
     "formula: a curve can only be evaluated with Rep = Rational"
     REJECT "must be noexcept" "compute cannot be called")

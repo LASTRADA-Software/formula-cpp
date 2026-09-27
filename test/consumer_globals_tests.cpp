@@ -262,8 +262,7 @@ struct EdgeSpan
     }
 
     template <typename Rep>
-    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(
-        std::span<Rep const> edges) noexcept
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(std::span<Rep const> edges) noexcept
     {
         Rep least = edges[0];
         Rep most = edges[0];
@@ -750,13 +749,15 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::render<formula::Dialect::LaTeX>(edgeSpan).find("\\text{edge span}") != std::string::npos
         && formula::document(edgeSpan, north).opaqueOperations.size() == 1);
     // A straight line fitted through the declared curve points 139 and
-    // 161 mm, at 10 and 30 mm: a slope of 20/22 = 10/11.
-    auto const edgeFit = formula::linear_least_squares(
-        formula::curve(formula::domain<unit::Millimetre, EdgeCurvePoints>,
-                       formula::series_constant<unit::Millimetre>(formula::Rational { 10 }, formula::Rational { 30 })),
-        { .reference = "Example Standard 3" });
+    // 161 mm, at 13.7 and 28.3 mm: a slope of 14.6/22 = 73/110.
+    auto const edgeFit =
+        formula::linear_least_squares(formula::curve(formula::domain<unit::Millimetre, EdgeCurvePoints>,
+                                                     formula::series_constant<unit::Millimetre>(
+                                                         formula::Rational { 137, 10 }, formula::Rational { 283, 10 })),
+                                      { .reference = "Example Standard 3" });
     auto const fitSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeFit), specimen);
-    probe.checks.push_back(fitSlope.has_value() && fitSlope->measurement().value() == formula::Rational { 10, 11 });    auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
+    probe.checks.push_back(fitSlope.has_value() && fitSlope->measurement().value() == formula::Rational { 73, 110 });
+    auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });
     probe.checks.push_back(enteredEnvironment.source_of<Force>() == formula::ValueSource::ManuallyEntered);

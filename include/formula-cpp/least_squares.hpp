@@ -17,16 +17,30 @@
 /// x)(y - mean y)`: phase 15's spike (step 3) measured them overflowing at
 /// the same first size as the uncentred sums on every data shape it tried,
 /// and at fewer sizes (60 against 63 of the 127 from 2 to 128 points, for
-/// three-decimal readings of a few thousand). **Overflow depends on the data
-/// far more than on the number of points**, and is not monotone in it: the
-/// same shape of readings passed at 64 points and failed at 34. An
-/// intermediate beyond `Rational`'s range returns `Overflow` -- never a wrong
-/// number -- and `double` is the representation to fall back to, through
-/// `compute` itself: a curve is evaluated only in `Rational` (`curve.hpp`).
+/// three-decimal readings of a few thousand) -- the same counts on cl 19.51,
+/// clang-cl and clang++ 22.1.3, g++ 13.3 and g++ 14.2. **Overflow depends on
+/// the data far more than on the number of points**, and is not monotone in
+/// it: the same shape of readings passed at 64 points and failed at 34. An
+/// intermediate beyond `Rational`'s range returns `Overflow`, never a wrong
+/// number.
 ///
-/// **A domain with fewer than two distinct points** -- one point, or points
-/// all equal -- has no line through it, and the fit returns its own
-/// `DomainError`, never a slope of zero. A curve already refuses equal points
+/// **In `double`, the fit is the consumer's own route, outside the
+/// library.** A curve is evaluated only in `Rational` (`curve.hpp`), so a fit
+/// is too, and `checked_evaluate_si<double>` on one is refused. What remains
+/// is calling `LinearLeastSquares::compute<double>` directly, and that costs
+/// everything the library otherwise does: it takes bare numbers, which the
+/// caller must have converted to coherent SI by hand, and returns bare
+/// coherent-SI coefficients -- a slope in metres per second, not in a
+/// quantity's declared unit. Nothing checks their dimensions, and nothing is
+/// traced, rendered or documented; the citation goes nowhere.
+///
+/// **Fewer than two distinct points** -- none, one, or points all equal --
+/// have no line through them, and the fit returns its own `DomainError`,
+/// never a slope of zero. That is decided before any sum, by comparing the
+/// points themselves, so it holds in every `Rep`: in `double`, three points
+/// of 0.1 have a mean of 0.10000000000000002 and a spread that is rounding
+/// noise, not zero. Spans of different lengths are a `DomainError` too, and
+/// never a read past the shorter. A curve already refuses equal points
 /// itself (`curve.hpp`), so through a curve that case is the curve's failure;
 /// one point is the fit's.
 ///
@@ -48,6 +62,7 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <tuple>
 
 namespace formula
 {
@@ -78,6 +93,17 @@ struct LinearLeastSquares
                                                                                 std::span<Rep const> pointValues) noexcept
     {
         using Traits = RepTraits<Rep>;
+        // Decided exactly, before any sum: see the file comment. No point, or
+        // one, has no second point distinct from the first either.
+        if (points.size() != pointValues.size())
+            return std::unexpected { ArithmeticError::DomainError };
+        bool anotherPoint = false;
+        for (Rep const& each: points)
+            if (!(each == points[0]))
+                anotherPoint = true;
+        if (!anotherPoint)
+            return std::unexpected { ArithmeticError::DomainError };
+
         std::expected<Rep, ArithmeticError> const zero = Traits::from(Rational { 0 });
         std::expected<Rep, ArithmeticError> const pointCount =
             Traits::from(Rational { static_cast<std::int64_t>(points.size()) });
@@ -132,7 +158,7 @@ struct LinearLeastSquares
             coSpread = *nextCoSpread;
         }
 
-        // Fewer than two distinct points: no line, and no slope of zero.
+        // A backstop only: distinct points were checked above.
         if (spreadOfPoints == *zero)
             return std::unexpected { ArithmeticError::DomainError };
 
@@ -153,6 +179,10 @@ struct LinearLeastSquares
 /// `linear_least_squares(curve(series<Elapsed, 4>, series<Length, 4>), { ...
 /// })`. Its outputs are `opaque_output<"intercept">` and
 /// `opaque_output<"slope">`.
+///
+/// The citation is required and has no default, as `opaque()`'s has not;
+/// `{}` states that the method gives none, and is shown as
+/// `(no citation given)`.
 template <CurveExpression C>
 [[nodiscard]] constexpr OpaqueCall<LinearLeastSquares, C> linear_least_squares(C fitted, Citation citation) noexcept
 {
@@ -173,31 +203,77 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// What a refused `linear_least_squares` returns: nothing anything can
-    /// use, so nothing downstream refuses again.
-    struct RefusedFit
+    /// Fails to compile when `linear_least_squares` is given no citation.
+    template <typename Given>
+    struct RequireFitCitation
     {
+        static_assert(sizeof(Given) == 0,
+                      "formula: linear_least_squares needs a citation, the reason the method fits a line "
+                      "here; pass {} when it gives none");
+
+        static constexpr bool value = true;
     };
+
+    /// @p T's dimension, or `dim::Scalar` for something that has none.
+    template <typename T>
+    [[nodiscard]] consteval Dimension dimension_or_scalar() noexcept
+    {
+        if constexpr (requires { T::dimension; })
+            return T::dimension;
+        else
+            return dim::Scalar;
+    }
+
+    /// What a refused `linear_least_squares` returns: a fit of a refused
+    /// curve (`CurveNode::refused`), in @p Domain's and @p Values'
+    /// dimensions when they have one. Its outputs are nodes, refused as the
+    /// call is, so taking one and evaluating it compiles and asks nothing
+    /// again -- the one mistake draws the one message.
+    template <typename Domain, typename Values>
+    using RefusedFit =
+        OpaqueCall<LinearLeastSquares,
+                   CurveNode<RefusedSeries<dimension_or_scalar<Domain>()>, RefusedSeries<dimension_or_scalar<Values>()>>>;
+
+    template <typename Domain, typename Values>
+    [[nodiscard]] constexpr RefusedFit<Domain, Values> refused_fit(Citation citation) noexcept
+    {
+        using Refused =
+            CurveNode<RefusedSeries<dimension_or_scalar<Domain>()>, RefusedSeries<dimension_or_scalar<Values>()>>;
+        return RefusedFit<Domain, Values> { std::tuple<Refused> { Refused { {}, {}, {} } }, citation };
+    }
 } // namespace detail
 
+/// A curve handed to `linear_least_squares` without a citation: refused in
+/// this library's words. Anything else handed to it alone is refused the
+/// same way, once: the citation is missing either way.
+template <typename Fitted>
+[[nodiscard]] constexpr auto linear_least_squares(Fitted) noexcept
+{
+    static_assert(detail::RequireFitCitation<Fitted>::value);
+    if constexpr (CurveExpression<Fitted>)
+        return detail::refused_fit<detail::RefusedSeries<Fitted::domainDimension>, Fitted>(Citation {});
+    else
+        return detail::refused_fit<void, Fitted>(Citation {});
+}
+
 /// Anything but a curve handed to `linear_least_squares`: refused in this
-/// library's words.
+/// library's words. The return type is deduced, so that the refusal is
+/// instantiated wherever the call is (`cumulative`, `series.hpp`).
 template <typename NotCurve>
     requires(!CurveExpression<NotCurve>)
-[[nodiscard]] constexpr detail::RefusedFit linear_least_squares(NotCurve, Citation) noexcept
+[[nodiscard]] constexpr auto linear_least_squares(NotCurve, Citation citation) noexcept
 {
     static_assert(detail::RequireFitOfCurve<NotCurve>::value);
-    return {};
+    return detail::refused_fit<void, NotCurve>(citation);
 }
 
 /// Two loose series handed to `linear_least_squares`: refused in this
 /// library's words. A curve pairs the domain with its values, which two
 /// series would have to re-derive.
 template <typename Domain, typename Values>
-[[nodiscard]] constexpr detail::RefusedFit linear_least_squares(Domain, Values, Citation) noexcept
+[[nodiscard]] constexpr auto linear_least_squares(Domain, Values, Citation citation) noexcept
 {
     static_assert(detail::RequireFitOfCurve<Domain, Values>::value);
-    return {};
+    return detail::refused_fit<Domain, Values>(citation);
 }
-
 } // namespace formula
