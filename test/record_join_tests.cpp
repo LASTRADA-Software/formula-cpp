@@ -407,11 +407,13 @@ TEST_CASE("raw observations read from another record are stamped with its origin
           != std::string::npos);
 }
 
-TEST_CASE("a series typed in on another record says where it was read from, and no more", "[record-join]")
+TEST_CASE("a series typed in on another record says where it was read from, and that it was typed in",
+          "[record-join]")
 {
-    // Task 10 step 5. Phase 12 records no source for a series -- its
-    // evaluator reports none -- so the line names the record and does not
-    // invent "entered by hand" for it.
+    // Task 10 step 5. The environment records whether a series was typed in,
+    // and the series variable's evaluator reports it, as a single value's
+    // does: the line names the record first and then the source, in the order
+    // a single value's line uses.
     constexpr auto typedThere = formula::environment(formula::entered(formula::measured_series<Retained>(
         formula::Measured<Retained> { formula::Rational { 113 } }, formula::Measured<Retained> { formula::Rational { 197 } },
         formula::Measured<Retained> { formula::Rational { 89 } }, formula::Measured<Retained> { formula::Rational { 263 } },
@@ -423,6 +425,99 @@ TEST_CASE("a series typed in on another record says where it was read from, and 
 
     formula::Trace<> recorded {};
     (void) formula::checked_evaluate_si<formula::Rational>(retainedRatio, typedContext, formula::RecordingSink { recorded });
+    std::size_t seriesSteps = 0;
+    for (formula::Step<> const& step: recorded.steps)
+        if (step.kind == formula::StepKind::SeriesVariable)
+        {
+            ++seriesSteps;
+            formula::ValueSource const expected =
+                step.record.has_value() ? formula::ValueSource::ManuallyEntered : formula::ValueSource::Measured;
+            CHECK(step.inputSource == expected);
+        }
+    CHECK(seriesSteps == 2);
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
+    INFO(text);
+    CHECK(text.find("m_r = 113 g; 197 g; 89 g; 263 g; 41 g, from record Reference (sample 23, test 3), entered by hand\n")
+          != std::string::npos);
+    // This record's series was measured, and says nothing.
+    CHECK(text.find("m_r = 130 g; 210 g; 97 g; 340 g; 29 g\n") != std::string::npos);
+}
+
+TEST_CASE("a series typed in on this record says it was typed in, with no record named", "[record-join]")
+{
+    constexpr auto typedHere = formula::environment(formula::entered(formula::measured_series<Retained>(
+        formula::Measured<Retained> { formula::Rational { 130 } }, formula::Measured<Retained> { formula::Rational { 210 } },
+        formula::Measured<Retained> { formula::Rational { 97 } }, formula::Measured<Retained> { formula::Rational { 340 } },
+        formula::Measured<Retained> { formula::Rational { 29 } })));
+    constexpr auto typedContext = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), typedHere),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), screensThere));
+
+    // Through the context and through the plain environment alike.
+    formula::Trace<> viaContext {};
+    (void) formula::checked_evaluate_si<formula::Rational>(retainedRatio, typedContext,
+                                                           formula::RecordingSink { viaContext });
+    formula::Trace<> viaEnvironment {};
+    (void) formula::checked_evaluate_si<formula::Rational>(formula::sum(formula::series<Retained, 5>), typedHere,
+                                                           formula::RecordingSink { viaEnvironment });
+    for (formula::Trace<> const* recorded: { &viaContext, &viaEnvironment })
+    {
+        std::string const text = formula::render_trace(*recorded, { .maxSteps = 40 });
+        INFO(text);
+        CHECK(text.find("m_r = 130 g; 210 g; 97 g; 340 g; 29 g, entered by hand\n") != std::string::npos);
+    }
+    // The reference's series was measured, and says only where it was read from.
+    std::string const contextText = formula::render_trace(viaContext, { .maxSteps = 40 });
+    CHECK(contextText.find("m_r = 113 g; 197 g; 89 g; 263 g; 41 g, from record Reference (sample 23, test 3)\n")
+          != std::string::npos);
+}
+
+namespace
+{
+struct Opening: formula::Quantity<Opening, "d", "screen opening", unit::Millimetre>
+{
+};
+
+// Invented openings: three significant digits, none a preferred number or a
+// sieve size.
+inline constexpr formula::BreakpointTable<5> openings { formula::breakpoint(103), formula::breakpoint(127),
+                                                        formula::breakpoint(163), formula::breakpoint(197),
+                                                        formula::breakpoint(241) };
+
+/// The reference's retained masses along the openings, read at 139 mm: a
+/// third of the way from 127 mm (197 g) to 163 mm (89 g), 161 g.
+inline constexpr auto curveThere = formula::environment(
+    formula::measured_series<Retained>(
+        formula::Measured<Retained> { formula::Rational { 113 } }, formula::Measured<Retained> { formula::Rational { 197 } },
+        formula::Measured<Retained> { formula::Rational { 89 } }, formula::Measured<Retained> { formula::Rational { 263 } },
+        formula::Measured<Retained> { formula::Rational { 41 } }),
+    formula::Measured<Opening> { formula::Rational { 139 } });
+inline constexpr auto curveContext = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), screensHere),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), curveThere));
+} // namespace
+
+TEST_CASE("a curve read inside a read from another record is stamped with that record", "[record-join]")
+{
+    // The curve's own line names no record, as no computed line does, so the
+    // stamp shows only in `Step::record` -- the field a reader of the
+    // structured trace relies on.
+    constexpr auto alongThere = formula::from_record<Reference>(formula::interpolate_at(
+        formula::curve(formula::domain<unit::Millimetre, openings>, formula::series<Retained, 5>), formula::var<Opening>));
+    constexpr auto read = formula::checked_evaluate_si<formula::Rational>(alongThere, curveContext);
+    STATIC_REQUIRE(**read == formula::Rational { 161, 1000 }); // 161 g, in kilograms
+
+    formula::Trace<> recorded {};
+    (void) formula::checked_evaluate_si<formula::Rational>(alongThere, curveContext, formula::RecordingSink { recorded });
+    std::size_t curveSteps = 0;
+    for (formula::Step<> const& step: recorded.steps)
+        if (step.kind == formula::StepKind::CurvePairing || step.kind == formula::StepKind::CurveSplice)
+        {
+            ++curveSteps;
+            REQUIRE(step.record.has_value());
+            CHECK(step.record->role() == "Reference");
+        }
+    CHECK(curveSteps == 1);
     std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
     INFO(text);
     CHECK(text.find("m_r = 113 g; 197 g; 89 g; 263 g; 41 g, from record Reference (sample 23, test 3)\n")

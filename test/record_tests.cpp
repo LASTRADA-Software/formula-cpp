@@ -343,3 +343,29 @@ TEST_CASE("a gated read over an unbound record is absent, and checks no lineage"
     INFO(text);
     CHECK(text == "1. from record Reference (no record bound) = (not measured)\n");
 }
+
+namespace
+{
+struct AbsentRetained: formula::Quantity<AbsentRetained, "m_r", "mass retained on a screen", unit::Gram>
+{
+};
+struct AbsentSize: formula::Quantity<AbsentSize, "d", "particle size", unit::Metre>
+{
+};
+} // namespace
+
+TEST_CASE("a refused record's values answer a series and observations, each as absent", "[record]")
+{
+    // The negative `record_series_through_refused_record` counts the messages
+    // on g++ and clang++; cl stops at the record's own refusal there and
+    // cannot see a missing member. Evaluated here, a series and observations
+    // read through `detail::AbsentEnvironment` are present but absent, on
+    // every compiler.
+    constexpr formula::detail::AbsentEnvironment absent {};
+    STATIC_REQUIRE(!formula::detail::AbsentEnvironment::is_entered_series<AbsentRetained>);
+    constexpr auto total =
+        formula::checked_evaluate_si<formula::Rational>(formula::sum(formula::series<AbsentRetained, 2>), absent);
+    STATIC_REQUIRE(total.has_value());
+    STATIC_REQUIRE(!total->has_value());
+    STATIC_REQUIRE(absent.get_observations<AbsentSize, 3>() == formula::MeasuredObservations<AbsentSize, 3> {});
+}

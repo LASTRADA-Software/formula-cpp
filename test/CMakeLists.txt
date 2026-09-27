@@ -2006,6 +2006,28 @@ formula_add_negative_test(record_series_through_refused_record
     "formula: a record holds its values in an environment(...), and this is not one"
     EXPECT_COUNT 1
     REJECT "get_series")
+# The same refusal, rendered, documented and overlaid: every walk answers the
+# refused scope, as phase 12's walks answer a refused series, so each stays
+# one message. cl stops at the first failed static_assert, so only the
+# overlay's REJECT -- a library static_assert of its own -- can fire there;
+# g++, clang++ and clang-cl see all three.
+formula_add_negative_test(record_scope_of_series_rendered
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1
+    REJECT "render_node")
+formula_add_negative_test(record_scope_of_series_documented
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1
+    REJECT "render_node" "collect")
+formula_add_negative_test(record_scope_of_series_overlaid
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1
+    REJECT "cannot see inside")
+# The lineage form of the same refusal (the task 10 review's L2): without
+# its overload the call finds no from_record at all, and no library message.
+formula_add_negative_test(record_scope_of_series_with_lineage
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1)
 
 formula_add_negative_test(record_values_not_environment
     "formula: a record holds its values in an environment(...), and this is not one"

@@ -1116,7 +1116,9 @@ struct Step
     /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant`: the same,
     /// of the environment's entry the overlay's constant replaced -- whether
     /// or not that entry held a value, which `replacedEntryEmpty` says -- and
-    /// empty when the environment has no entry for the quantity at all. Never
+    /// empty when the environment has no entry for the quantity at all. For
+    /// `SeriesVariable`: the same, of the whole series -- a measured series
+    /// or `entered(measured_series<Q>(...))`. Never
     /// `Derived`: an input is not computed. Empty for every other kind, and
     /// for an environment that cannot say (one without `is_entered`), which
     /// is recorded as not known rather than guessed.
@@ -1325,7 +1327,9 @@ struct Trace
 
     /// Where the variable being recorded read its value from, between its
     /// `entered` and its `produced`: `RecordingSink::input_source` writes it
-    /// and `produced` moves it onto the `Variable` step.
+    /// and `produced` moves it onto the `Variable` step. A series variable's
+    /// comes the same way, between `series_entered` and `series_produced`,
+    /// through `RecordingSink::series_input_source`.
     ///
     /// A single slot, not a stack as `branchStack` is: a variable has no
     /// operands, so nothing can be entered between its own `entered` and
@@ -3061,6 +3065,22 @@ class RecordingSink
     void series_entered(S const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+        _trace->pendingInputSource.reset();
+    }
+
+    /// Told, by a series variable's evaluator, whether the series it read was
+    /// measured or typed in; `series_produced` moves it onto the
+    /// `SeriesVariable` step, in `Step::inputSource`, as `produced` does for a
+    /// single value. The same single slot: nothing is entered between a series
+    /// variable's own `series_entered` and `series_produced`.
+    ///
+    /// Optional, and public, for the reasons `input_source` gives, with the
+    /// same boundary: `series_entered` empties the slot, and `series_produced`
+    /// empties it for every kind.
+    template <Described Q, std::size_t N>
+    void series_input_source(SeriesVarNode<Q, N> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
     }
 
     /// Records one step for the whole series @p node -- however long it is --
@@ -3086,6 +3106,7 @@ class RecordingSink
         {
             seriesStep.unit = Describe<typename S::quantity>::unit;
             seriesStep.symbol = symbol_of<typename S::quantity>(_vocabulary);
+            seriesStep.inputSource = _trace->pendingInputSource;
         }
         // A per-element constant is shown in the unit it was written in; a
         // computed series has no declared unit, as a computed scalar has
@@ -3106,6 +3127,9 @@ class RecordingSink
             for (DecimalPlaces const elementPlaces: S::places)
                 seriesStep.elementGranularities.push_back(elementPlaces.value);
         }
+        // Only a series variable reads an input; the slot is emptied for
+        // every kind, as `produced` empties it.
+        _trace->pendingInputSource.reset();
 
         // Everything unclaimed from `seriesMark` onwards belongs to this
         // series -- see `produced` above for why this is a `while`.

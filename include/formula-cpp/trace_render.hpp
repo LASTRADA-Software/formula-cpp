@@ -1380,8 +1380,12 @@ namespace detail
         // through their operands.
         bool const namesQuantity =
             recorded.kind == StepKind::SeriesVariable || recorded.kind == StepKind::ObservationsVariable;
-        std::string const originText =
+        std::string originText =
             namesQuantity && recorded.record.has_value() ? ", " + record_origin_text(*recorded.record) : std::string {};
+        // A typed-in series says so after its origin, as a single value does:
+        // the record qualifies the values, and the source is said of them.
+        if (recorded.kind == StepKind::SeriesVariable && recorded.inputSource == ValueSource::ManuallyEntered)
+            originText += ", entered by hand";
         std::string lineText = listsItself ? std::string {} : step_expression(recorded) + " = ";
         if (recorded.error.has_value())
             return lineText + std::string { describe(*recorded.error) } + failed_position_text(recorded) + originText;
@@ -2121,17 +2125,19 @@ namespace detail
         return step_expression(recorded) + " = " + valueText + annotation;
     }
 
-    /// @p recorded as its line shows it. A scope's step claims its lineage
-    /// attribute steps as its first operands -- that is the record of what
-    /// was compared before the read -- but its line names the value it read,
-    /// so the attribute steps, each on a line of its own already, are left
-    /// out of the operands the line names. Every other step is its own line
-    /// as recorded.
-    [[nodiscard]] inline Step<Rational> as_rendered(Step<Rational> const& recorded,
-                                                    std::vector<Step<Rational>> const& allSteps)
+    /// @p recorded as its line shows it, when that differs from the step as
+    /// recorded. A scope's step claims its lineage attribute steps as its
+    /// first operands -- that is the record of what was compared before the
+    /// read -- but its line names the value it read, so the attribute steps,
+    /// each on a line of its own already, are left out of the operands the
+    /// line names. Every other step is its own line as recorded, and is
+    /// answered empty rather than copied: a series step's elements are not
+    /// copied once more for every render.
+    [[nodiscard]] inline std::optional<Step<Rational>> as_rendered(Step<Rational> const& recorded,
+                                                                   std::vector<Step<Rational>> const& allSteps)
     {
         if (recorded.kind != StepKind::RecordScope)
-            return recorded;
+            return std::nullopt;
         Step<Rational> shown = recorded;
         std::erase_if(shown.operands, [&allSteps](std::size_t operandIndex) {
             return operandIndex < allSteps.size() && allSteps[operandIndex].kind == StepKind::LineageChecked;
@@ -2151,7 +2157,9 @@ namespace detail
                                                std::size_t& budget,
                                                std::span<LimitRow const> limits = {})
     {
-        EscapedStep const escaped { as_rendered(trace.steps[stepIndex], trace.steps) };
+        Step<Rational> const& recorded = trace.steps[stepIndex];
+        std::optional<Step<Rational>> const asShown = as_rendered(recorded, trace.steps);
+        EscapedStep const escaped { asShown.has_value() ? *asShown : recorded };
         return escaped_step_line(trace, stepIndex, escaped.step, budget, limits);
     }
 } // namespace detail

@@ -1185,7 +1185,9 @@ namespace detail
 
     /// What a refused series-valued `from_record` returns: a node of the
     /// operand's dimension, answered as absent without telling any sink, so
-    /// that a formula built on the refusal draws no message of its own.
+    /// that a formula built on the refusal draws no message of its own --
+    /// evaluated, rendered (`render.hpp`), documented (`document.hpp`) or
+    /// overlaid (its `ConstantRewrite`, below).
     template <typename Operand>
     struct RefusedSeriesScope: NodeBase
     {
@@ -1376,6 +1378,15 @@ namespace detail
     struct ConstantRewrite<Sub, RecordScopeNode<Role, Requirement, Operand>>:
         ConstantRewriteOperand<Sub, Operand,
                                RecordScopeNode<Role, Requirement, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
+    /// A refused series-valued read from another record is a leaf to an
+    /// overlay, as a refused series is (`overlay.hpp`): it holds nothing to
+    /// rewrite, so an overlay over a method holding one adds no "cannot see
+    /// inside" message to the refusal that produced it.
+    template <typename Sub, typename Operand>
+    struct ConstantRewrite<Sub, RefusedSeriesScope<Operand>>: ConstantRewriteLeaf<Sub, RefusedSeriesScope<Operand>>
     {
     };
 } // namespace detail

@@ -472,6 +472,9 @@ namespace detail
     template <Vocabulary V, typename Role, typename Requirement, Node Operand>
     void collect(Walk<V>& walk, RecordScopeNode<Role, Requirement, Operand> const& node);
 
+    template <Vocabulary V, typename Operand>
+    void collect(Walk<V>& walk, RefusedSeriesScope<Operand> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -1018,6 +1021,14 @@ namespace detail
         collect(walk, node.operand);
         walk.role = outerRole;
         walk.roleIdentity = outerRoleIdentity;
+    }
+
+    /// A refused series-valued read from another record names nothing, as a
+    /// refused series names nothing: it only keeps `document` from adding a
+    /// second error to the refusal that produced it.
+    template <Vocabulary V, typename Operand>
+    void collect(Walk<V>&, RefusedSeriesScope<Operand> const&)
+    {
     }
 } // namespace detail
 

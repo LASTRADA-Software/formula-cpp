@@ -10,9 +10,9 @@
 //      context holding the records is this record's environment, so
 //      everything that takes an environment takes it.
 //   2. A scope reads one value from another record, or computes over its
-//      measurements. The page says whose values a sub-derivation uses, and so
-//      does every line of the trace -- including a reference value a person
-//      typed in.
+//      measurements -- a series among them, reduced inside the scope. The
+//      page says whose values a sub-derivation uses, and so does every line
+//      of the trace -- including a reference value a person typed in.
 //   3. Lineage is a gate: a read that requires the two records to share a
 //      batch and a method gives a value, a refusal, or no answer, and the
 //      trace says which attribute decided.
@@ -73,6 +73,9 @@ struct EdgeX: formula::Quantity<EdgeX, "x_m", "measured edge", unit::Millimetre>
 struct EdgeY: formula::Quantity<EdgeY, "y_m", "measured edge", unit::Millimetre>
 {
 };
+struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+{
+};
 } // namespace
 
 template <>
@@ -106,6 +109,22 @@ constexpr auto ratio = var<Strength> / formula::from_record<Reference>(var<Stren
 // ---- 2. A computation over the reference specimen ----------------------------
 
 constexpr auto referenceStrength = formula::from_record<Reference>(var<Force> / (var<EdgeX> * var<EdgeY>));
+
+// The masses retained on three screens, here and on the reference, whose
+// masses were typed in. A series is reduced inside the read: the read holds
+// one value.
+constexpr auto screensHere = formula::environment(formula::measured_series<Retained>(
+    formula::Measured<Retained> { formula::Rational { 163 } }, formula::Measured<Retained> { formula::Rational { 241 } },
+    formula::Measured<Retained> { formula::Rational { 127 } }));
+constexpr auto screensThere = formula::environment(formula::entered(formula::measured_series<Retained>(
+    formula::Measured<Retained> { formula::Rational { 139 } }, formula::Measured<Retained> { formula::Rational { 197 } },
+    formula::Measured<Retained> { formula::Rational { 103 } })));
+constexpr auto screenRecords = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), screensHere),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), screensThere));
+
+constexpr auto retainedRatio =
+    formula::sum(formula::series<Retained, 3>) / formula::from_record<Reference>(formula::sum(formula::series<Retained, 3>));
 
 // ---- 3. The lineage gate -----------------------------------------------------
 
@@ -196,6 +215,12 @@ int main()
                     row.record.empty() ? "this record" : ("record " + std::string { row.record }).c_str());
     std::printf("\n");
     check(page.symbols.size() == 2, "one row per record a quantity is read from");
+
+    std::string const seriesTrace = traceOf(retainedRatio, screenRecords);
+    std::printf("%s\n", seriesTrace.c_str());
+    check(seriesTrace.find("m_r = 139 g; 197 g; 103 g, from record Reference (sample 23, test 3), entered by hand\n")
+              != std::string::npos,
+          "a series read from the reference names the record after its elements, and was typed in");
 
     std::printf("== 3. Lineage is a gate ==\n\n");
 

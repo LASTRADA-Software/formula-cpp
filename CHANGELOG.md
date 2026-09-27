@@ -105,8 +105,8 @@ other specimen's own measurements. A role is a type the author declares and a re
 a sample and test key, an environment and lineage keys -- held by role in a `record_context`,
 which is this record's environment and so goes wherever an environment goes. Every step inside
 a read from another record carries which record it was read from, with both keys, and each value
-read from it names the record in its trace line; every input says whether it was measured or
-typed in, and an entry typed in empty says so. `same_lineage<Attrs...>()` gates a read on the two
+read from it names the record in its trace line; every input, a series included, says whether it
+was measured or typed in, and an entry typed in empty says so. `same_lineage<Attrs...>()` gates a read on the two
 records sharing the author's lineage attributes: the value; a refusal (`DomainError`) when any
 attribute differs, with the trace naming it and both keys; or no answer when a key is unknown and
 none differs. A record not yet made gives no answer, never zero. `checked_explain` traces a

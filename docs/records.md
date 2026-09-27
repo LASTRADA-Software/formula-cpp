@@ -177,6 +177,43 @@ shape factor is the same shape factor in the computation over the reference
 specimen. When it replaces a value a person typed in, the line says
 `replacing a value entered by hand`.
 
+### Series and observations
+
+A series, raw observations or a curve read from another record is reduced
+inside the read, because a read holds one value and the scope's line
+attributes that value to the record. Here both records have the masses
+retained on three screens, and the reference's were typed in:
+
+```cpp
+constexpr auto retainedRatio =
+    formula::sum(formula::series<Retained, 3>) / formula::from_record<Reference>(formula::sum(formula::series<Retained, 3>));
+```
+
+The series line names the record after its elements, as a single value's line
+does after its value, and then says the series was typed in. Every step
+computed from it names it through its operands:
+
+```text
+1. m_r = 163 g; 241 g; 127 g
+2. sum(#1) = 531 g
+3. m_r = 139 g; 197 g; 103 g, from record Reference (sample 23, test 3), entered by hand
+4. sum(#3) = 439 g
+5. #4 from record Reference (sample 23, test 3) = 439 g
+6. #2 / #5 = 531/439
+```
+
+Raw observations and a curve read inside the scope are stamped the same way.
+The page keeps a row for the series of each record it is read from, with the
+series' shape and length.
+
+A read whose value would be the whole series,
+`from_record<Reference>(series<Retained, 3>)`, is refused with one message,
+whether the formula is then evaluated, rendered, documented or overlaid:
+
+```
+static assertion failed: formula: from_record was given a series, raw observations or a curve, and a read from another record holds one value -- reduce it inside the scope, from_record<Role>(sum(series<Q, N>)), and every element read is still traced with its record; the operand appears in this diagnostic as the template argument of RequireSingleValueScopeOperand
+```
+
 ### What the trace guarantees, and what it does not
 
 The guarantee is about the **recording path**: the evaluator never attributes a

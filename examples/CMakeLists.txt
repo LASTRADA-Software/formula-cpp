@@ -191,10 +191,11 @@ add_test(NAME docs.series-snippets
 
 # docs/records.md quotes this program's output verbatim. Pinned here, in the
 # order the program prints them: the compound read's bracketed spelling, a
-# typed-in reference value with its record, the lineage gate's three outcomes,
-# a record not yet made, an entry left empty by hand, and a role spelt
-# through TagName.
-formula_add_example(records records.cpp [==[\(F / \(x_m \* y_m\)\) of Reference = 20000000 Pa.*f_c = 20 MPa, from record Reference \(sample 23, test 3\), entered by hand.*same TestMethod as this record: 12 and 12, satisfied.*same TestMethod as this record: 12 and 13, violated.*same MaterialBatch as this record: 4411 and unknown, not checked.*same TestMethod as this record: 12 and 13, violated.*from record Reference \(no record bound\).*f_c = \(entered by hand as empty\), from record Reference.*f_c of second reference.*all checks passed: yes]==])
+# typed-in reference value with its record, a typed-in reference series with
+# its record (the `;` between its elements matched as `.`, since a `;` would
+# split the pattern into a list), the lineage gate's three outcomes, a record
+# not yet made, an entry left empty by hand, and a role spelt through TagName.
+formula_add_example(records records.cpp [==[\(F / \(x_m \* y_m\)\) of Reference = 20000000 Pa.*f_c = 20 MPa, from record Reference \(sample 23, test 3\), entered by hand.*m_r = 139 g. 197 g. 103 g, from record Reference \(sample 23, test 3\), entered by hand.*same TestMethod as this record: 12 and 12, satisfied.*same TestMethod as this record: 12 and 13, violated.*same MaterialBatch as this record: 4411 and unknown, not checked.*same TestMethod as this record: 12 and 13, violated.*from record Reference \(no record bound\).*f_c = \(entered by hand as empty\), from record Reference.*f_c of second reference.*all checks passed: yes]==])
 
 # Every output block of docs/records.md must be a run of lines the example
 # really prints, and every code block must appear in its source.

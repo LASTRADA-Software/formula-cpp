@@ -784,5 +784,22 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render_trace(seriesAcrossTrace, { .maxSteps = 20 })
                                       .find("103 mm, from record Reference (sample 23, test 3)")
                                   != std::string::npos);
+
+    // The same series typed in on the reference: the series variable's
+    // evaluator tells the sink (`series_input_source`), and the line says so
+    // after the record.
+    auto const typedScreens = formula::environment(
+        formula::entered(formula::measured_series<EdgeX>(edge, formula::Measured<EdgeX> { formula::Rational { 103 } })));
+    auto const typedSeriesRecords = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), bothScreens),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), typedScreens));
+    formula::Trace<> typedSeriesTrace {};
+    auto const typedSeries = formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(formula::sum(formula::series<EdgeX, 2>)), typedSeriesRecords,
+        formula::RecordingSink { typedSeriesTrace, north });
+    probe.checks.push_back(typedSeries.has_value() && **typedSeries == formula::Rational { 253, 1000 }
+                           && formula::render_trace(typedSeriesTrace, { .maxSteps = 20 })
+                                      .find("103 mm, from record Reference (sample 23, test 3), entered by hand\n")
+                                  != std::string::npos);
     return probe;
 }

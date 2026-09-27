@@ -1798,6 +1798,17 @@ template <Dialect D, typename Role, typename Requirement, Node Operand, Vocabula
                + detail::literal_words_in_dialect<D>(roleName);
 }
 
+/// A refused series-valued read from another record
+/// (`detail::RefusedSeriesScope`) renders as a refused series does, as
+/// nothing a reader could take for a formula. A program holding one never
+/// compiles; this only keeps a `render` of it from adding a second,
+/// compiler-worded error to the refusal.
+template <Dialect D, typename Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedSeriesScope<Operand> const&, V const&)
+{
+    return "(refused)";
+}
+
 namespace detail
 {
     /// Renders @p node through the `render_node` it has, and refuses a node of
