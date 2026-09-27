@@ -27,8 +27,9 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 }
 
 // Invented, and plainly so: particle sizes in metres, counted into the
-// classes 0 to under 11, 11 to under 29 and 29 to under 83 m -- primes, and
-// not a sieve size in any unit.
+// classes 0 to under 127, 127 to under 197 and 197 to under 331 m. Every size
+// here has three significant digits, none a preferred number, and none is a
+// sieve size or designation in any unit.
 struct Size: formula::Quantity<Size, "d", "particle size", unit::Metre>
 {
 };
@@ -42,13 +43,13 @@ struct Count: formula::Quantity<Count, "n", "particles in a class", unit::One>
 {
 };
 
-constexpr formula::BandTable<3> sizeClasses { band(0, 1, 11, 1), band(11, 1, 29, 1), band(29, 1, 83, 1) };
+constexpr formula::BandTable<3> sizeClasses { band(0, 1, 127, 1), band(127, 1, 197, 1), band(197, 1, 331, 1) };
 
-// 11 and 29 m sit exactly on class boundaries: half-open, each is counted in
+// 127 and 197 m sit exactly on class boundaries: half-open, each is counted in
 // the upper class, giving 2, 2, 3. Closed at the top instead, the counts
 // would be 3, 2, 2.
 constexpr auto sevenSizes =
-    formula::MeasuredObservations<Size, 7>(rat(4), rat(11), rat(17), rat(79), rat(10), rat(29), rat(47));
+    formula::MeasuredObservations<Size, 7>(rat(103), rat(127), rat(163), rat(277), rat(113), rat(197), rat(241));
 constexpr auto sized = formula::environment(sevenSizes);
 
 constexpr auto counted = formula::binned<unit::Metre, sizeClasses>(formula::observations<Size, 7>);
@@ -80,19 +81,19 @@ TEST_CASE("observations are counted into half-open classes, a boundary in the up
 
 TEST_CASE("an observation in no class is a miss at its own position, never dropped", "[binning]")
 {
-    // 83 m, the last class's high bound, is in no class: the fourth of seven.
-    constexpr auto onTheTop = sizes_env<Size, 7>(rat(4), rat(11), rat(17), rat(83), rat(10), rat(29), rat(47));
+    // 331 m, the last class's high bound, is in no class: the fourth of seven.
+    constexpr auto onTheTop = sizes_env<Size, 7>(rat(103), rat(127), rat(163), rat(331), rat(113), rat(197), rat(241));
     STATIC_REQUIRE(formula::checked_evaluate_series<Count>(counted, onTheTop).error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 3, formula::FailureSite::InputObservation });
     // Below the first class, as the last observation.
-    constexpr auto belowAll = sizes_env<Size, 7>(rat(4), rat(11), rat(17), rat(79), rat(10), rat(29), rat(-1));
+    constexpr auto belowAll = sizes_env<Size, 7>(rat(103), rat(127), rat(163), rat(277), rat(113), rat(197), rat(-103));
     STATIC_REQUIRE(formula::checked_evaluate_series<Count>(counted, belowAll).error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 6, formula::FailureSite::InputObservation });
 }
 
 TEST_CASE("observations in another unit are converted into the classes' unit before counting", "[binning]")
 {
-    constexpr auto inCm = sizes_env<SizeInCm, 7>(rat(400), rat(1100), rat(1700), rat(7900), rat(1000), rat(2900), rat(4700));
+    constexpr auto inCm = sizes_env<SizeInCm, 7>(rat(10300), rat(12700), rat(16300), rat(27700), rat(11300), rat(19700), rat(24100));
     constexpr auto countedInCm = formula::binned<unit::Metre, sizeClasses>(formula::observations<SizeInCm, 7>);
     STATIC_REQUIRE(
         counts_are(formula::checked_evaluate_series<Count>(countedInCm, inCm), std::array { rat(2), rat(2), rat(3) }));
@@ -101,7 +102,7 @@ TEST_CASE("observations in another unit are converted into the classes' unit bef
 TEST_CASE("classes stated in another unit than the coherent one are compared in their own", "[binning]")
 {
     // The same classes in centimetres, the sizes in metres.
-    constexpr formula::BandTable<3> classesInCm { band(0, 1, 1100, 1), band(1100, 1, 2900, 1), band(2900, 1, 8300, 1) };
+    constexpr formula::BandTable<3> classesInCm { band(0, 1, 12700, 1), band(12700, 1, 19700, 1), band(19700, 1, 33100, 1) };
     constexpr auto countedInCm = formula::binned<unit::Centimetre, classesInCm>(formula::observations<Size, 7>);
     STATIC_REQUIRE(
         counts_are(formula::checked_evaluate_series<Count>(countedInCm, sized), std::array { rat(2), rat(2), rat(3) }));
@@ -118,17 +119,17 @@ TEST_CASE("fewer observations than the capacity are counted as they are", "[binn
 {
     // Seven of ten: a count that ran to the capacity would add three zeros to
     // the first class.
-    constexpr auto roomy = sizes_env<Size, 10>(rat(4), rat(11), rat(17), rat(79), rat(10), rat(29), rat(47));
+    constexpr auto roomy = sizes_env<Size, 10>(rat(103), rat(127), rat(163), rat(277), rat(113), rat(197), rat(241));
     constexpr auto countedRoomy = formula::binned<unit::Metre, sizeClasses>(formula::observations<Size, 10>);
     STATIC_REQUIRE(
         counts_are(formula::checked_evaluate_series<Count>(countedRoomy, roomy), std::array { rat(2), rat(2), rat(3) }));
     STATIC_REQUIRE(sevenSizes.size() == 7);
-    STATIC_REQUIRE(sevenSizes.observation(6).value() == rat(47));
+    STATIC_REQUIRE(sevenSizes.observation(6).value() == rat(241));
     // Past the seven made, within the capacity of ten: absent, never a zero.
-    constexpr auto sevenOfTen = formula::MeasuredObservations<Size, 10>(rat(4), rat(11), rat(17), rat(79), rat(10), rat(29), rat(47));
+    constexpr auto sevenOfTen = formula::MeasuredObservations<Size, 10>(rat(103), rat(127), rat(163), rat(277), rat(113), rat(197), rat(241));
     STATIC_REQUIRE(sevenOfTen.observation(7).is_absent());
     // A set of one is not a set of two, whatever the places past the count hold.
-    STATIC_REQUIRE(formula::MeasuredObservations<Size, 2>(rat(4)) != formula::MeasuredObservations<Size, 2>(rat(4), rat(0)));
+    STATIC_REQUIRE(formula::MeasuredObservations<Size, 2>(rat(103)) != formula::MeasuredObservations<Size, 2>(rat(103), rat(0)));
 
     // None at all: every count is zero.
     constexpr auto none = formula::environment(formula::MeasuredObservations<Size, 7> {});
@@ -138,7 +139,7 @@ TEST_CASE("fewer observations than the capacity are counted as they are", "[binn
 
 TEST_CASE("a set known only at run time fills to its capacity, and one more is refused", "[binning][capacity]")
 {
-    std::vector<formula::Rational> const seven { rat(4), rat(11), rat(17), rat(79), rat(10), rat(29), rat(47) };
+    std::vector<formula::Rational> const seven { rat(103), rat(127), rat(163), rat(277), rat(113), rat(197), rat(241) };
     auto const filled = formula::MeasuredObservations<Size, 7>::from(std::span<formula::Rational const> { seven });
     REQUIRE(filled.has_value());
     CHECK(*filled == sevenSizes);
@@ -146,14 +147,14 @@ TEST_CASE("a set known only at run time fills to its capacity, and one more is r
                      std::array { rat(2), rat(2), rat(3) }));
 
     std::vector<formula::Rational> eight = seven;
-    eight.push_back(rat(5));
+    eight.push_back(rat(139));
     auto const overfull = formula::MeasuredObservations<Size, 7>::from(std::span<formula::Rational const> { eight });
     REQUIRE(!overfull.has_value());
     // Refused with both counts, as `envelope_from` refuses a wrong number of
     // rows (final review, L6).
     CHECK(overfull.error() == formula::ObservationsOverCapacity { .given = 8, .capacity = 7 });
 
-    std::vector<formula::Rational> const three { rat(4), rat(11), rat(79) };
+    std::vector<formula::Rational> const three { rat(103), rat(127), rat(277) };
     auto const few = formula::MeasuredObservations<Size, 7>::from(std::span<formula::Rational const> { three });
     REQUIRE(few.has_value());
     CHECK(few->size() == 3);
@@ -163,12 +164,12 @@ TEST_CASE("a set known only at run time fills to its capacity, and one more is r
 
 namespace
 {
-constexpr auto missed = sizes_env<Size, 7>(rat(4), rat(11), rat(17), rat(83), rat(10), rat(29), rat(47));
+constexpr auto missed = sizes_env<Size, 7>(rat(103), rat(127), rat(163), rat(331), rat(113), rat(197), rat(241));
 constexpr formula::SeriesFailure noElement { formula::ArithmeticError::DomainError, std::nullopt };
 
-constexpr formula::BreakpointTable<3> classMidpoints { formula::breakpoint(7),
-                                                       formula::breakpoint(23),
-                                                       formula::breakpoint(61) };
+constexpr formula::BreakpointTable<3> classMidpoints { formula::breakpoint(113),
+                                                       formula::breakpoint(139),
+                                                       formula::breakpoint(277) };
 } // namespace
 
 TEST_CASE("an operation over the counts relays a binning's failure without its observation", "[binning]")
@@ -238,20 +239,22 @@ namespace
 struct SizeInKm: formula::Quantity<SizeInKm, "d_k", "particle size, in kilometres", unit::Kilometre>
 {
 };
-// Classes in micrometres, up to 10^18 um: 1 km is 10^9 um, inside; 10^13 km
-// is 10^22 um, which no int64 holds, though 10^16 m in SI does.
-constexpr formula::BandTable<1> micrometreClasses { band(0, 1, 1'000'000'000'000'000'000, 1) };
+// Classes in micrometres, up to 1.03 x 10^18 um: 103 km is 1.03 x 10^11 um,
+// inside; 1.03 x 10^15 km is 1.03 x 10^24 um, which no int64 holds, though
+// 1.03 x 10^18 m in SI does.
+constexpr formula::BandTable<1> micrometreClasses { band(0, 1, 1'030'000'000'000'000'000, 1) };
 constexpr auto countedInUm = formula::binned<unit::Micrometre, micrometreClasses>(formula::observations<SizeInKm, 3>);
 } // namespace
 
 TEST_CASE("an observation whose conversion overflows fails at its position, never skipped", "[binning]")
 {
     // Into the classes' unit: the second observation.
-    constexpr auto intoKey = sizes_env<SizeInKm, 3>(rat(1), rat(10'000'000'000'000));
+    constexpr auto intoKey = sizes_env<SizeInKm, 3>(rat(103), rat(1'030'000'000'000'000));
     STATIC_REQUIRE(formula::checked_evaluate_series<Count>(countedInUm, intoKey).error()
                    == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1, formula::FailureSite::InputObservation });
-    // Into SI already: 10^17 km is 10^20 m, the third observation.
-    constexpr auto intoSi = sizes_env<SizeInKm, 3>(rat(1), rat(1), rat(100'000'000'000'000'000));
+    // Into SI already: 1.03 x 10^17 km is 1.03 x 10^20 m, the third
+    // observation.
+    constexpr auto intoSi = sizes_env<SizeInKm, 3>(rat(103), rat(103), rat(103'000'000'000'000'000));
     STATIC_REQUIRE(formula::checked_evaluate_series<Count>(countedInUm, intoSi).error()
                    == formula::SeriesFailure { formula::ArithmeticError::Overflow, 2, formula::FailureSite::InputObservation });
 
@@ -270,15 +273,15 @@ TEST_CASE("an observation whose conversion overflows fails at its position, neve
 
 TEST_CASE("a binning renders its observations marked and each class as a band", "[binning][render]")
 {
-    CHECK(formula::render(counted) == "bin(d(i), 0 to under 11 m, 11 to under 29 m, 29 to under 83 m)");
+    CHECK(formula::render(counted) == "bin(d(i), 0 to under 127 m, 127 to under 197 m, 197 to under 331 m)");
     CHECK(formula::render<formula::Dialect::Markdown>(counted)
-          == "bin(`d(i)`, 0 to under 11 m, 11 to under 29 m, 29 to under 83 m)");
+          == "bin(`d(i)`, 0 to under 127 m, 127 to under 197 m, 197 to under 331 m)");
     CHECK(formula::render<formula::Dialect::LaTeX>(counted)
-          == "\\operatorname{bin}({d}_{i},\\allowbreak \\mathrm{0\\ to\\ under\\ 11\\ m},\\allowbreak "
-             "\\mathrm{11\\ to\\ under\\ 29\\ m},\\allowbreak \\mathrm{29\\ to\\ under\\ 83\\ m})");
+          == "\\operatorname{bin}({d}_{i},\\allowbreak \\mathrm{0\\ to\\ under\\ 127\\ m},\\allowbreak "
+             "\\mathrm{127\\ to\\ under\\ 197\\ m},\\allowbreak \\mathrm{197\\ to\\ under\\ 331\\ m})");
     CHECK(formula::render(counted / formula::sum(counted))
-          == "bin(d(i), 0 to under 11 m, 11 to under 29 m, 29 to under 83 m) / sum(bin(d(i), 0 to under 11 m, "
-             "11 to under 29 m, 29 to under 83 m))");
+          == "bin(d(i), 0 to under 127 m, 127 to under 197 m, 197 to under 331 m) / sum(bin(d(i), 0 to under 127 m, "
+             "127 to under 197 m, 197 to under 331 m))");
 }
 
 TEST_CASE("a binning's observations document as one row of their capacity", "[binning][document]")
@@ -300,7 +303,7 @@ TEST_CASE("a binning's trace lists the observations and then the counts", "[binn
     formula::Trace<> trace {};
     (void) formula::checked_evaluate_series<Count>(counted, sized, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
-          == "1. d = 4 m; 11 m; 17 m; 79 m; 10 m; 29 m; 47 m\n"
+          == "1. d = 103 m; 127 m; 163 m; 277 m; 113 m; 197 m; 241 m\n"
              "2. bin(#1) = 2; 2; 3\n");
     REQUIRE(trace.steps.size() == 2);
     CHECK(trace.steps[0].kind == formula::StepKind::ObservationsVariable);
@@ -311,16 +314,16 @@ TEST_CASE("a binning's trace lists the observations and then the counts", "[binn
     formula::Trace<> roomy {};
     (void) formula::checked_evaluate_series<Count>(
         formula::binned<unit::Metre, sizeClasses>(formula::observations<Size, 10>),
-        sizes_env<Size, 10>(rat(4), rat(11), rat(17), rat(79), rat(10), rat(29), rat(47)),
+        sizes_env<Size, 10>(rat(103), rat(127), rat(163), rat(277), rat(113), rat(197), rat(241)),
         formula::RecordingSink<> { roomy });
-    CHECK(formula::render_trace(roomy, { .maxSteps = 30 }).starts_with("1. d = 4 m; 11 m; 17 m; 79 m; 10 m; 29 m; 47 m\n"));
+    CHECK(formula::render_trace(roomy, { .maxSteps = 30 }).starts_with("1. d = 103 m; 127 m; 163 m; 277 m; 113 m; 197 m; 241 m\n"));
 }
 
 TEST_CASE("a binning's observations spend the element budget, and say how many were left out", "[binning][trace]")
 {
     formula::Trace<> trace {};
     (void) formula::checked_evaluate_series<Count>(counted, sized, formula::RecordingSink<> { trace });
-    CHECK(formula::render_trace(trace, { .maxSteps = 5 }).starts_with("1. d = 4 m; 11 m; 17 m; 79 m; ... 3 more\n"));
+    CHECK(formula::render_trace(trace, { .maxSteps = 5 }).starts_with("1. d = 103 m; 127 m; 163 m; 277 m; ... 3 more\n"));
 }
 
 TEST_CASE("a binning's miss names the observation, one-based, its value and the classes' extent", "[binning][trace]")
@@ -329,7 +332,7 @@ TEST_CASE("a binning's miss names the observation, one-based, its value and the 
     (void) formula::checked_evaluate_series<Count>(counted, missed, formula::RecordingSink<> { trace });
     CHECK(formula::render_trace(trace, { .maxSteps = 30 })
               .ends_with("2. bin(#1) = argument outside the domain of the operation at observation 4 "
-                         "[83 m in no class; the classes cover 0 to under 83 m]\n"));
+                         "[331 m in no class; the classes cover 0 to under 331 m]\n"));
     CHECK(trace.steps.back().failedElement == std::optional<std::size_t> { 3 });
 
     // Divided by 7, the failure is relayed with no position; the 7 was never

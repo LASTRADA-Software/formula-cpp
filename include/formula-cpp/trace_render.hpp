@@ -1074,7 +1074,7 @@ namespace detail
     /// or `at observation 3` when `Step::failureSite` says the position is an
     /// observation -- raw observations and a binning. A binning
     /// that found no class for it says which, and what the classes cover:
-    /// `[83 m in no class; the classes cover 0 to under 83 m]`.
+    /// `[331 m in no class; the classes cover 0 to under 331 m]`.
     [[nodiscard]] inline std::string failed_position_text(Step<Rational> const& recorded)
     {
         if (!recorded.failedElement.has_value())
@@ -1151,8 +1151,8 @@ namespace detail
     }
 
     /// The rule a failed curve broke and the point it broke it at:
-    /// `[duplicate domain point 7 m]`, `[domain does not ascend at 17 m]` or
-    /// `[breaks non-decreasing at 11 m]`. Nothing when the step names no rule
+    /// `[duplicate domain point 163 m]`, `[domain does not ascend at 113 m]`
+    /// or `[breaks non-decreasing at 103 m]`. Nothing when the step names no rule
     /// or holds no point at its failed element.
     [[nodiscard]] inline std::string curve_break_suffix(Step<Rational> const& recorded)
     {
@@ -1207,9 +1207,9 @@ namespace detail
     }
 
     /// An interpolation along a curve's clause: the two points the answer
-    /// lay between, `[between 41 and 59 m]`, or `[on the row at 41
-    /// m]` -- `segment_text`, an interpolating lookup's words -- and on a miss
-    /// `[outside the curve, which runs 11 to 83 m]`. Nothing when
+    /// lay between, `[between 163 and 197 m]`, or `[on the row at
+    /// 163 m]` -- `segment_text`, an interpolating lookup's words -- and on a miss
+    /// `[outside the curve, which runs 103 to 241 m]`. Nothing when
     /// nothing was located: a failed or absent curve or point.
     [[nodiscard]] inline std::string curve_interpolation_suffix(Step<Rational> const& recorded)
     {
@@ -1281,10 +1281,10 @@ namespace detail
         return "unknown outcome";
     }
 
-    /// A snap step's clause: the two neighbours, `[41 m to 59 m; nearer
-    /// 41 m]`, or with the tie rule when it decided, `[41 m to 59 m; tie,
-    /// toward higher]`; `[on 29 m]` for an exact hit; and on a miss
-    /// `[outside the permitted set, 11 m to 83 m]`. Nothing
+    /// A snap step's clause: the two neighbours, `[127 m to 163 m;
+    /// nearer 127 m]`, or with the tie rule when it decided, `[127 m to 163 m;
+    /// tie, toward higher]`; `[on 127 m]` for an exact hit; and on a miss
+    /// `[outside the permitted set, 103 m to 241 m]`. Nothing
     /// when nothing was snapped -- a failed or absent operand.
     [[nodiscard]] inline std::string snap_suffix(Step<Rational> const& recorded)
     {

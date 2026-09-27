@@ -15,7 +15,7 @@ struct Count: formula::Quantity<Count, "n", "particles in a class", formula::uni
 {
 };
 inline constexpr auto sized = formula::environment(
-    formula::MeasuredObservations<Size, 3>(formula::Rational { 4 }, formula::Rational { 11 }, formula::Rational { 47 }));
+    formula::MeasuredObservations<Size, 3>(formula::Rational { 103 }, formula::Rational { 127 }, formula::Rational { 241 }));
 
 inline constexpr formula::BandTable<0> noClasses {};
 

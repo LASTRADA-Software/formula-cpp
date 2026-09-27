@@ -244,7 +244,7 @@ inline constexpr formula::BreakpointTable<3> EdgeSnapSet { formula::breakpoint(1
 inline constexpr formula::BreakpointTable<2> EdgeCurvePoints { formula::breakpoint(139), formula::breakpoint(161) };
 inline constexpr formula::BreakpointTable<1> EdgeCurveTail { formula::breakpoint(307) };
 
-inline constexpr formula::BandTable<2> EdgeClasses { formula::band(0, 1, 13, 1), formula::band(13, 1, 41, 1) };
+inline constexpr formula::BandTable<2> EdgeClasses { formula::band(0, 1, 163, 1), formula::band(163, 1, 331, 1) };
 
 inline constexpr formula::PlacesTable<2> edgePlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 } };
 
@@ -433,17 +433,17 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(explainedSeries.outcome.has_value()
                            && formula::render_trace(explainedSeries.trace, { .maxSteps = 4 })
                                   == "1. x_m = 150 mm; (not measured)\n");
-    // Running totals and sums inside an overlaid method: 150 and 100 mm with
-    // the fixed factor 3 give totals 750 and 300 mm from the last, 150 and
-    // 250 mm from the first, and a quotient of sums of 1050/400 = 2.625, or
-    // 2.63 under the method's rule. Either direction swapped gives 3.
+    // Running totals and sums inside an overlaid method: 150 and 103 mm with
+    // the fixed factor 3 give totals 759 and 309 mm from the last, 150 and
+    // 253 mm from the first, and a quotient of sums of 1068/403 = 2.6501..., or
+    // 2.65 under the method's rule. Either direction swapped gives 3.
     auto const bothScreens =
-        formula::environment(formula::measured_series<EdgeX>(edge, formula::Measured<EdgeX> { formula::Rational { 100 } }));
+        formula::environment(formula::measured_series<EdgeX>(edge, formula::Measured<EdgeX> { formula::Rational { 103 } }));
     formula::Trace<> seriesMethodTrace {};
     auto const seriesShare =
         formula::evaluate_method<Cube>(seriesOverlaid, bothScreens, formula::RecordingSink { seriesMethodTrace, north });
     constexpr auto seriesVariant = std::get<0>(seriesOverlaid.variantSet.cases).expression;
-    probe.checks.push_back(seriesShare.has_value() && *seriesShare == formula::Rational { 263, 100 }
+    probe.checks.push_back(seriesShare.has_value() && *seriesShare == formula::Rational { 53, 20 }
                            && formula::render(seriesVariant, north).find("cumulative(x_m(i), from first)") != std::string::npos
                            && formula::render(seriesVariant, north).find("to 0/1 dp of mm") != std::string::npos
                            && formula::render<formula::Dialect::Markdown>(seriesVariant).find("sum(") != std::string::npos
@@ -451,7 +451,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::document(seriesVariant, north).symbols.size() == 2
                            && formula::render_trace(seriesMethodTrace, { .maxSteps = 40 }).find("sum(#")
                                   != std::string::npos);
-    // A conformity check: 150 mm within 139 to 163 mm, 100 mm below its
+    // A conformity check: 150 mm within 139 to 163 mm, 103 mm below its
     // least of 127 mm.
     auto const edgeCheck = formula::conformity<unit::Millimetre>(
         formula::series<EdgeX, 2>,
@@ -499,10 +499,10 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::document(edgeCurve, north).symbols.empty()
                            && formula::render_trace(curveTrace, { .maxSteps = 40 }).find("[between 139 and 161 mm]")
                                   != std::string::npos);
-    // Raw observations, from a span, binned into two classes: 13 mm sits on
+    // Raw observations, from a span, binned into two classes: 163 mm sits on
     // the boundary and is counted in the upper class.
-    std::array<formula::Rational, 3> const edgeReadings { formula::Rational { 7 }, formula::Rational { 13 },
-                                                          formula::Rational { 31 } };
+    std::array<formula::Rational, 3> const edgeReadings { formula::Rational { 103 }, formula::Rational { 163 },
+                                                          formula::Rational { 241 } };
     auto const edgeObserved = formula::MeasuredObservations<EdgeX, 4>::from(edgeReadings);
     auto const edgeSample = formula::environment(*edgeObserved);
     auto const binnedEdges = formula::binned<unit::Millimetre, EdgeClasses>(formula::observations<EdgeX, 4>);
@@ -511,7 +511,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
     auto const sharesValue = formula::checked_evaluate_series<Factor>(edgeShares, edgeSample, formula::RecordingSink { binningTrace, north });
     probe.checks.push_back(edgeObserved.has_value() && edgeSample.get_observations<EdgeX, 4>().size() == 3
                            && sharesValue.has_value() && sharesValue->elements()[1].value() == formula::Rational { 2, 3 }
-                           && formula::render(binnedEdges, north) == "bin(x_m(i), 0 to under 13 mm, 13 to under 41 mm)"
+                           && formula::render(binnedEdges, north) == "bin(x_m(i), 0 to under 163 mm, 163 to under 331 mm)"
                            && formula::document<formula::Dialect::LaTeX>(edgeShares).formula.find("bin") != std::string::npos
                            && formula::document(binnedEdges, north).symbols.front().shape == formula::ValueShape::Observations
                            && formula::render_trace(binningTrace, { .maxSteps = 20 }).find("bin(#1) = 1; 2") != std::string::npos);

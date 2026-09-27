@@ -10,7 +10,7 @@ struct Size: formula::Quantity<Size, "d", "particle size", formula::unit::Metre>
 };
 
 inline constexpr auto overfull =
-    formula::MeasuredObservations<Size, 2>(formula::Rational { 4 }, formula::Rational { 11 }, formula::Rational { 47 });
+    formula::MeasuredObservations<Size, 2>(formula::Rational { 103 }, formula::Rational { 127 }, formula::Rational { 241 });
 
 int main()
 {

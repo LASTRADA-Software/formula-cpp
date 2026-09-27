@@ -14,8 +14,8 @@ namespace
     };
 
     inline constexpr formula::BreakpointTable<2> Permitted {
-        formula::breakpoint(0),
-        formula::breakpoint(10),
+        formula::breakpoint(103),
+        formula::breakpoint(127),
     };
 
     inline constexpr auto node =
@@ -24,7 +24,7 @@ namespace
 
 int main()
 {
-    auto const environment = formula::environment(formula::Measured<Opening> { formula::Rational { 5 } });
+    auto const environment = formula::environment(formula::Measured<Opening> { formula::Rational { 113 } });
     auto const computed = formula::checked_evaluate_si<double>(node, environment);
     return computed.has_value() ? 0 : 1;
 }

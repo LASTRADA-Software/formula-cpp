@@ -14,11 +14,11 @@ namespace
     {
     };
 
-    inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(1), formula::breakpoint(2) };
+    inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(103), formula::breakpoint(127) };
 
     inline constexpr auto node = formula::interpolate_at(
         formula::curve(formula::domain<formula::unit::Metre, Points>(), formula::series<Passing, 2>),
-        formula::constant<formula::unit::Metre>(formula::Rational { 3, 2 }));
+        formula::constant<formula::unit::Metre>(formula::Rational { 113 }));
 } // namespace
 
 int main()

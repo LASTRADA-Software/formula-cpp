@@ -2283,21 +2283,21 @@ TEST_CASE("a series and a curve escape their symbols and units, as a scalar step
     CHECK(formula::render_trace(factorTrace, { .maxSteps = 10 })
           == "1. k\\] \\[fixed by jurisdiction overlay: Example Standard 9:2022 NA = 1; 2\n");
 
-    constexpr formula::BreakpointTable<2> points { formula::breakpoint(1), formula::breakpoint(2) };
+    constexpr formula::BreakpointTable<2> points { formula::breakpoint(103), formula::breakpoint(127) };
     auto const loads = formula::environment(formula::measured_series<ForgingLoad>(
         formula::Measured<ForgingLoad> { formula::Rational { 4 } }, formula::Measured<ForgingLoad> { formula::Rational { 5 } }));
     formula::Trace<> curveTrace {};
     (void) formula::checked_evaluate<ForgingLoad>(
         formula::interpolate_at(formula::curve(formula::domain<unit::Metre, points>(), formula::series<ForgingLoad, 2>),
-                                formula::constant<unit::Metre>(formula::Rational { 3, 2 })),
+                                formula::constant<unit::Metre>(formula::Rational { 113 })),
         loads,
         formula::RecordingSink<> { curveTrace });
     CHECK(formula::render_trace(curveTrace, { .maxSteps = 20 })
-          == "1. 1 m; 2 m\n"
+          == "1. 103 m; 127 m\n"
              "2. P = 4 N\\] \\[x; 5 N\\] \\[x\n"
-             "3. curve(#1, #2) = 1 m: 4 N\\] \\[x; 2 m: 5 N\\] \\[x\n"
-             "4. 3/2 m\n"
-             "5. interpolate(#3, at #4) = 9/2 N\\] \\[x [between 1 and 2 m]\n");
+             "3. curve(#1, #2) = 103 m: 4 N\\] \\[x; 127 m: 5 N\\] \\[x\n"
+             "4. 113 m\n"
+             "5. interpolate(#3, at #4) = 53/12 N\\] \\[x [between 103 and 127 m]\n");
 
     // Raw observations, and a binning's miss, whose clause names the
     // observation and the classes in the author's unit.
