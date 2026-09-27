@@ -834,6 +834,24 @@ TEST_CASE("a replacement names whose formula it is, and keeps the variant's plac
     CHECK(documentation.replacedBy[0] == replacementAnnex);
 }
 
+TEST_CASE("a replacement's step shows its value as the replacement's own step does", "[overlay][trace]")
+{
+    // The replacement rounds in megapascals, which is not the coherent SI unit
+    // of a stress. The replaced-variant step computes nothing of its own, so
+    // its value must read as the rounding's line does -- 4 MPa -- and not as
+    // the same number in pascals with no unit at all.
+    constexpr auto inMegapascals =
+        formula::rounded<unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Force> / (var<EdgeX> * var<EdgeX>) );
+    constexpr auto replaced =
+        formula::apply(formula::overlay(formula::replace_variant<Cylinder>(inMegapascals, replacementAnnex)), threeVariants);
+    auto const rendered = traceOfVariant<Cylinder>(replaced, roundSpecimen);
+
+    CHECK(rendered.find(" = 4 MPa [nearest, ties away from zero]\n") != std::string::npos);
+    CHECK(rendered.find(" = 4 MPa [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
+          != std::string::npos);
+}
+
 TEST_CASE("the documentation marks a replaced formula as replaced even when nothing was cited", "[overlay][document]")
 {
     // Uncited, a replacement adds no citation -- and a page that said nothing

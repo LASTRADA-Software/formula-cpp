@@ -426,9 +426,11 @@ struct Step
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
     /// for a variable or an overridden constant, the constant's own unit for
     /// a constant, the node's own unit for a `Round`, `RoundSignificant` or
-    /// `RoundingRuleApplied` step, and the coherent SI unit
-    /// of `dimension` for anything else computed, which has no declared unit
-    /// of its own.
+    /// `RoundingRuleApplied` step, the unit of the step it wraps for a
+    /// `Documented`, `ReplacedVariant` or `VariantSelected` step -- each
+    /// passes its operand's value through unchanged, so it states it as that
+    /// operand's line does -- and the coherent SI unit of `dimension` for
+    /// anything else computed, which has no declared unit of its own.
     ///
     /// `value` is always in the coherent SI unit, so that steps are
     /// comparable; this is what a renderer converts back to before showing a
@@ -1388,6 +1390,20 @@ class RecordingSink
             ++firstClaimed;
         nodeStep.operands.assign(firstClaimed, _trace->unclaimed.end());
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        // A documented expression and a jurisdiction's replacement compute
+        // nothing of their own: the value is their operand's, so it is stated
+        // in the unit that operand's line states it in -- grams under a
+        // citation over grams, not the same number rescaled into kilograms
+        // and printed with no unit at all. Read off the operand's step rather
+        // than off `N`, for the reason `variant_produced` gives: that step
+        // already says what the number is, including for a variable, whose
+        // unit is not a member of its node. With no operand step -- a
+        // consumer's untraced node -- the coherent SI unit set above stands.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Documented
+                      || detail::StepKindOf<N>::value == StepKind::ReplacedVariant)
+            if (!nodeStep.operands.empty())
+                nodeStep.unit = _trace->steps[nodeStep.operands.back()].unit;
 
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means
