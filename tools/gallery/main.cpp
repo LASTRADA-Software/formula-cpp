@@ -360,6 +360,44 @@ constexpr auto galleryOverlay = formula::overlay(
 
 constexpr auto overlaidStrengthMethod = formula::apply(galleryOverlay, cubeStrengthMethod);
 
+// ---- A screen analysis: a series, a grading curve, and particles binned ----
+//
+// Invented screens of 11, 29, 41, 59 and 83 m -- primes, and not a sieve size
+// in any unit.
+struct RetainedMass: formula::Quantity<RetainedMass, "m_r", "mass retained on a screen", unit::Gram>
+{
+};
+struct DryMass: formula::Quantity<DryMass, "m_t", "total dry mass", unit::Gram>
+{
+};
+struct PassingShare: formula::Quantity<PassingShare, "p", "percentage passing a screen", unit::Percent>
+{
+};
+struct ParticleSize: formula::Quantity<ParticleSize, "s", "particle size", unit::Metre>
+{
+};
+struct ClassShare: formula::Quantity<ClassShare, "n", "share of the particles in a class", unit::One>
+{
+};
+
+inline constexpr formula::BreakpointTable<5> galleryScreens { formula::breakpoint(11), formula::breakpoint(29),
+                                                              formula::breakpoint(41), formula::breakpoint(59),
+                                                              formula::breakpoint(83) };
+
+constexpr auto passingEachScreen =
+    formula::constant<unit::Percent>(formula::Rational { 100 })
+    - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<RetainedMass, 5>) / var<DryMass>;
+
+constexpr auto passingAtOpening = formula::interpolate_at(formula::curve(formula::domain<unit::Metre, galleryScreens>(), passingEachScreen),
+                                                          formula::constant<unit::Metre>(formula::Rational { 47 }));
+
+inline constexpr formula::BandTable<3> gallerySizeClasses { formula::band(0, 1, 11, 1), formula::band(11, 1, 29, 1),
+                                                            formula::band(29, 1, 83, 1) };
+
+constexpr auto countedParticles =
+    formula::binned<unit::Metre, gallerySizeClasses>(formula::observations<ParticleSize, 8>);
+constexpr auto classShares = countedParticles / formula::sum(countedParticles);
+
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
 /// Not reused from render.hpp's own `detail::number_text`, which does exactly
@@ -799,6 +837,101 @@ int main(int argc, char** argv)
 
     out << "```\n";
     out << formula::render_trace(overlaidAcceptance, { .maxSteps = 20 });
+    out << "```\n\n";
+
+    // ---- A series, element by element ----
+    //
+    // A series is evaluated by `checked_evaluate_series`: one trace step per
+    // operation, every element on its line, the total read once.
+
+    out << "## Worked derivation: the percentage passing each screen\n\n";
+    out << "`m_r` = 130, 210, 95, 340 and 28 g retained on five screens, `m_t` = 1250 g. The series is marked "
+           "`(i)` in the formula, and each step of its derivation carries every element:\n\n";
+
+    write_worked_formula(out, passingEachScreen);
+
+    auto const screenAnalysis = formula::environment(
+        formula::measured_series<RetainedMass>(formula::Measured<RetainedMass> { formula::Rational { 130 } },
+                                               formula::Measured<RetainedMass> { formula::Rational { 210 } },
+                                               formula::Measured<RetainedMass> { formula::Rational { 95 } },
+                                               formula::Measured<RetainedMass> { formula::Rational { 340 } },
+                                               formula::Measured<RetainedMass> { formula::Rational { 28 } }),
+        formula::Measured<DryMass> { formula::Rational { 1250 } });
+    formula::Trace<> seriesTrace {};
+    auto const passingValues =
+        formula::checked_evaluate_series<PassingShare>(passingEachScreen, screenAnalysis, formula::RecordingSink<> { seriesTrace });
+    if (!passingValues.has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked series did not evaluate\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(seriesTrace, { .maxSteps = 40 });
+    out << "```\n\n";
+
+    // ---- A grading curve read between two screens ----
+
+    out << "## Worked derivation: a grading curve read between two screens\n\n";
+    out << "The same percentages paired with the declared screens as a curve, and read at 47 m. The last step "
+           "names the two screens the answer lay between:\n\n";
+
+    write_worked_formula(out, passingAtOpening);
+
+    formula::Trace<> curveTrace {};
+    auto const readOff =
+        formula::checked_evaluate<PassingShare>(passingAtOpening, screenAnalysis, formula::RecordingSink<> { curveTrace });
+    if (!readOff.has_value() || !readOff->is_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked curve did not produce a value\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(curveTrace, { .maxSteps = 60 });
+    out << "```\n\n";
+
+    // ---- Particles binned, and one in no class ----
+
+    out << "## Worked derivation: particles counted into classes, and one in no class\n\n";
+    out << "Seven particles, counted into three half-open classes and divided by their total. 11 and 29 m sit "
+           "on class boundaries and count in the upper class:\n\n";
+
+    write_worked_formula(out, classShares);
+
+    auto const sieved = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(
+        formula::Rational { 4 }, formula::Rational { 11 }, formula::Rational { 17 }, formula::Rational { 79 },
+        formula::Rational { 10 }, formula::Rational { 29 }, formula::Rational { 47 }));
+    formula::Trace<> binningTrace {};
+    auto const shared =
+        formula::checked_evaluate_series<ClassShare>(classShares, sieved, formula::RecordingSink<> { binningTrace });
+    if (!shared.has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked binning did not evaluate\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(binningTrace, { .maxSteps = 40 });
+    out << "```\n\n";
+
+    out << "The fourth particle measured 83 m instead: the last class's high bound, in no class. A miss is "
+           "not dropped, and the step names the observation:\n\n";
+
+    auto const oversized = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(
+        formula::Rational { 4 }, formula::Rational { 11 }, formula::Rational { 17 }, formula::Rational { 83 },
+        formula::Rational { 10 }, formula::Rational { 29 }, formula::Rational { 47 }));
+    formula::Trace<> binningMissTrace {};
+    auto const missedShares =
+        formula::checked_evaluate_series<ClassShare>(classShares, oversized, formula::RecordingSink<> { binningMissTrace });
+    if (missedShares.has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the oversized particle did not miss\n");
+        return 1;
+    }
+
+    out << "```\n";
+    out << formula::render_trace(binningMissTrace, { .maxSteps = 40 });
     out << "```\n\n";
 
     out.flush();

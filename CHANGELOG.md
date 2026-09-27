@@ -68,7 +68,8 @@ into one whose values run in a required direction; a curve that fails names the 
 rule it broke there. Raw observations, as many as were made up to a stated capacity, are binned
 into declared half-open classes; an observation in no class fails at its position, never dropped.
 A series renders with an index marker, `m_r(i)`, and its trace spends the same step budget, one
-unit per element.
+unit per element. A new guide, *Series and grading curves*, works a screen analysis through
+all of it, and the gallery gains a series, a grading curve and a binning.
 
 ### Changed
 
