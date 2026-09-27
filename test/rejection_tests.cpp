@@ -957,3 +957,25 @@ TEST_CASE("a pass whose size the table does not declare is a miss, never a defau
              "6. failed in pass 1: the limit: argument outside the domain of the operation\n"
              "7. sample_mean(#6) = argument outside the domain of the operation\n");
 }
+
+TEST_CASE("a sample of binned counts relays a binning's failure without the observation's position", "[rejection]")
+{
+    // Invented classes, 0 to under 41 and 41 to under 47 g: 50 g, the
+    // second observation, is in neither, so the binning fails at observation
+    // 2. That position is an observation's, not a count's: as a sample of
+    // two counts it would name the second count, which is not at fault.
+    constexpr formula::BandTable<2> massClasses { formula::band(0, 1, 41, 1), formula::band(41, 1, 47, 1) };
+    constexpr auto observedMasses = formula::environment(formula::MeasuredObservations<Mass, 3>(rat(40), rat(50), rat(41)));
+    constexpr auto countedMasses = formula::binned<unit::Gram, massClasses>(formula::observations<Mass, 3>);
+    constexpr auto binnedFailure = formula::checked_evaluate_series<Determinations>(countedMasses, observedMasses);
+    STATIC_REQUIRE(*binnedFailure.error().element == 1);
+    constexpr auto sampled = formula::detail::dispatch_sample<Rational>(countedMasses, observedMasses, formula::NullSink {});
+    STATIC_REQUIRE(sampled.error().error == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(!sampled.error().element.has_value());
+    constexpr auto rejected = formula::checked_evaluate_rejection<Determinations>(
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<1>>(
+            countedMasses, formula::deviation_from_mean(formula::number(rat(1))), repeatTest, exampleCited),
+        observedMasses);
+    STATIC_REQUIRE(rejected.error().error == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(!rejected.error().element.has_value());
+}
