@@ -1113,10 +1113,11 @@ struct Step
 
     /// For `Variable`: whether the value was measured or typed in by a
     /// person, as the environment's entry says -- `Measured<Q>` or
-    /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant`: the same,
-    /// of the environment's entry the overlay's constant replaced -- whether
-    /// or not that entry held a value, which `replacedEntryEmpty` says -- and
-    /// empty when the environment has no entry for the quantity at all. For
+    /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant` and
+    /// `DerivedQuantity`: the same, of the environment's entry the overlay's
+    /// constant or definition replaced -- whether or not that entry held a
+    /// value, which `replacedEntryEmpty` says -- and empty when the
+    /// environment has no entry for the quantity at all. For
     /// `SeriesVariable`: the same, of the whole series -- a measured series
     /// or `entered(measured_series<Q>(...))`. Never
     /// `Derived`: an input is not computed. Empty for every other kind, and
@@ -1124,10 +1125,11 @@ struct Step
     /// is recorded as not known rather than guessed.
     std::optional<ValueSource> inputSource {};
 
-    /// For `OverriddenConstant`: true when the environment's entry the
-    /// overlay's constant replaced held no value -- an entry left empty, by
-    /// hand or not -- so a trace says no value was replaced. False for every
-    /// other kind, and when the environment has no entry for the quantity.
+    /// For `OverriddenConstant` and `DerivedQuantity`: true when the
+    /// environment's entry the overlay replaced held no value -- an entry
+    /// left empty, by hand or not -- so a trace says no value was replaced.
+    /// False for every other kind, and when the environment has no entry for
+    /// the quantity.
     bool replacedEntryEmpty {};
 
     /// Which record this step's value was read from, counted from one in its
@@ -2372,12 +2374,37 @@ class RecordingSink
         _trace->pendingInputSource = source;
     }
 
-    /// Told, by the overridden constant's evaluator (`overlay.hpp`), that the
-    /// environment's entry its constant replaced held no value; `produced`
-    /// puts it on the step. Optional, and public, for the reasons
+    /// Told, by an overridden constant's or a derived quantity's evaluator
+    /// (`overlay.hpp`), whether the environment's entry it replaced was
+    /// measured or typed in; `produced` puts it on the step's `inputSource`.
+    /// The replaced entry's source, never the step's value's -- which is why
+    /// it is not `input_source`. Optional, and public, for the reasons
     /// `input_source` gives, with the same boundary.
     template <Described Q>
+    void replaced_entry_source(OverriddenConstantNode<Q> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
+    }
+
+    /// `replaced_entry_source` for a derived quantity.
+    template <Described Q, Node Expr>
+    void replaced_entry_source(DerivedQuantityNode<Q, Expr> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
+    }
+
+    /// Told, by the same evaluators, that the environment's entry the node
+    /// replaced held no value; `produced` puts it on the step. Optional, and
+    /// public, for the reasons `input_source` gives, with the same boundary.
+    template <Described Q>
     void replaced_entry_empty(OverriddenConstantNode<Q> const&) noexcept
+    {
+        _trace->pendingReplacedEntryEmpty = true;
+    }
+
+    /// `replaced_entry_empty` for a derived quantity.
+    template <Described Q, Node Expr>
+    void replaced_entry_empty(DerivedQuantityNode<Q, Expr> const&) noexcept
     {
         _trace->pendingReplacedEntryEmpty = true;
     }
@@ -2510,16 +2537,18 @@ class RecordingSink
 
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
-        // Only a variable reads an input. For every other kind the slot is
-        // already empty -- `entered` emptied it, and only the variable
-        // evaluator writes it -- and it is emptied again regardless, so that
+        // Only a variable reads an input, and only a fixed constant or a
+        // derived quantity replaces an entry. For every other kind the slot
+        // is already empty -- `entered` emptied it, and only those
+        // evaluators write it -- and it is emptied again regardless, so that
         // nothing a caller wrote by hand outlives the step it was written
         // during.
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable
-                      || detail::StepKindOf<N>::value == StepKind::OverriddenConstant)
+        constexpr bool replacesEntry = detail::StepKindOf<N>::value == StepKind::OverriddenConstant
+                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable || replacesEntry)
             nodeStep.inputSource = _trace->pendingInputSource;
         _trace->pendingInputSource.reset();
-        if constexpr (detail::StepKindOf<N>::value == StepKind::OverriddenConstant)
+        if constexpr (replacesEntry)
             nodeStep.replacedEntryEmpty = _trace->pendingReplacedEntryEmpty;
         _trace->pendingReplacedEntryEmpty = false;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)

@@ -596,3 +596,142 @@ TEST_CASE("an unbound record holds every kind of entry, each absent", "[record-j
     STATIC_REQUIRE(EveryKind::is_entered<ShapeFactor>);
     STATIC_REQUIRE(EveryKind::is_entered_series<Opening>);
 }
+
+namespace
+{
+/// A shape factor an overlay derives from the edges, over a formula that
+/// reads it here, with no scope.
+inline constexpr auto derivedHere = formula::apply(
+    formula::overlay(formula::add_derived<ShapeFactor>(var<EdgeX> / var<EdgeY>, annex)),
+    formula::method(
+        formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<Force>)),
+        formula::rounding_rule<unit::Newton, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints()));
+
+/// The same derivation over the base method, which reads the shape factor
+/// only inside the scope.
+inline constexpr auto derivedInside =
+    formula::apply(formula::overlay(formula::add_derived<ShapeFactor>(var<EdgeX> / var<EdgeY>, annex)), baseMethod);
+
+/// The derived quantity's step, and the whole trace rendered, over @p env.
+template <typename Env>
+std::pair<formula::Step<>, std::string> derived_step_over(Env const& env)
+{
+    formula::Trace<> recorded {};
+    (void) formula::evaluate_method<Cube>(derivedHere, env, formula::RecordingSink { recorded });
+    formula::Step<> derived {};
+    for (formula::Step<> const& step: recorded.steps)
+        if (step.kind == formula::StepKind::DerivedQuantity)
+            derived = step;
+    return { derived, formula::render_trace(recorded, { .maxSteps = 20 }) };
+}
+} // namespace
+
+TEST_CASE("an overlay's derived quantity that replaced a typed-in value says so, here and inside a scope",
+          "[record-join]")
+{
+    // The final review's M2: the typed value was not used, and a reader must
+    // not assume it was -- the reason a fixed constant says so applies to a
+    // derived quantity equally.
+    auto const [overTyped, typedText] =
+        derived_step_over(formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
+                                               formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                               formula::Measured<EdgeY> { formula::Rational { 103 } },
+                                               formula::entered(formula::Measured<ShapeFactor> { formula::Rational { 1 } })));
+    INFO(typedText);
+    CHECK(overTyped.kind == formula::StepKind::DerivedQuantity);
+    CHECK(overTyped.inputSource == formula::ValueSource::ManuallyEntered);
+    CHECK_FALSE(overTyped.replacedEntryEmpty);
+    CHECK(typedText.find("[derived by jurisdiction overlay: Example Standard 14:2022 NA, NA.1, replacing a value entered "
+                         "by hand]")
+          != std::string::npos);
+
+    // An entry typed in empty: no value was replaced, in the words a typed-in
+    // empty input has.
+    auto const [overEmpty, emptyText] =
+        derived_step_over(formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
+                                               formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                               formula::Measured<EdgeY> { formula::Rational { 103 } },
+                                               formula::entered(formula::Measured<ShapeFactor>::absent())));
+    INFO(emptyText);
+    CHECK(overEmpty.replacedEntryEmpty);
+    CHECK(emptyText.find("[derived by jurisdiction overlay: Example Standard 14:2022 NA, NA.1, replacing a value entered "
+                         "by hand as empty]")
+          != std::string::npos);
+
+    // A measured entry, and none: only who derived it.
+    auto const [overMeasured, measuredText] =
+        derived_step_over(formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
+                                               formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                               formula::Measured<EdgeY> { formula::Rational { 103 } },
+                                               formula::Measured<ShapeFactor> { formula::Rational { 1 } }));
+    CHECK(overMeasured.inputSource == formula::ValueSource::Measured);
+    CHECK(measuredText.find("[derived by jurisdiction overlay: Example Standard 14:2022 NA, NA.1]") != std::string::npos);
+    auto const [overNone, noneText] =
+        derived_step_over(formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
+                                               formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                               formula::Measured<EdgeY> { formula::Rational { 103 } }));
+    CHECK_FALSE(overNone.inputSource.has_value());
+    CHECK(noneText.find("replacing") == std::string::npos);
+
+    // Inside the scope: the reference's shape factor was typed in, and the
+    // line says so after the record, as a fixed constant's does.
+    formula::Trace<> recorded {};
+    (void) formula::evaluate_method<Cube>(derivedInside, context(), formula::RecordingSink { recorded, north });
+    std::string const scopedText = formula::render_trace(recorded, { .maxSteps = 40 });
+    INFO(scopedText);
+    CHECK(scopedText.find(", from record Reference (sample 23, test 3) [derived by jurisdiction overlay: Example "
+                          "Standard 14:2022 NA, NA.1, replacing a value entered by hand]")
+          != std::string::npos);
+}
+
+namespace
+{
+/// A consumer's sink that counts what each source hook is told.
+struct SourceCountingSink
+{
+    int* variables;
+    int* replacedEntries;
+
+    template <formula::Node N>
+    void entered(N const&) const
+    {
+    }
+    template <formula::Node N>
+    void produced(N const&, formula::Evaluated<formula::Rational> const&) const
+    {
+    }
+    template <formula::Described Q>
+    void input_source(formula::VarNode<Q> const&, formula::ValueSource) const
+    {
+        ++*variables;
+    }
+    template <formula::Node N>
+    void replaced_entry_source(N const&, formula::ValueSource) const
+    {
+        ++*replacedEntries;
+    }
+};
+} // namespace
+
+TEST_CASE("a consumer's input_source hears only variables, and a replaced entry has its own hook", "[record-join]")
+{
+    // The final review's L3: a consumer's `input_source(VarNode<Q>)` binds to
+    // an overlay's constant too, which is a `VarNode<Q>`. Told there, it
+    // would read the replaced entry's source as the constant's own. The
+    // constant and the derived quantity report through
+    // `replaced_entry_source` instead: here the force is a variable, and the
+    // shape factor, typed in, is fixed once and derived once.
+    constexpr auto typedShape = formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
+                                                     formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                                     formula::Measured<EdgeY> { formula::Rational { 103 } },
+                                                     formula::entered(formula::Measured<ShapeFactor> { formula::Rational { 1 } }));
+    int variables = 0;
+    int replacedEntries = 0;
+    (void) formula::evaluate_method<Cube>(fixedHere, typedShape, SourceCountingSink { &variables, &replacedEntries });
+    CHECK(variables == 1);
+    CHECK(replacedEntries == 1);
+    (void) formula::evaluate_method<Cube>(derivedHere, typedShape, SourceCountingSink { &variables, &replacedEntries });
+    CHECK(variables == 4); // the force, and the definition's two edges
+    CHECK(replacedEntries == 2);
+}

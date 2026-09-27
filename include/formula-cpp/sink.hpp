@@ -66,6 +66,40 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 /// nothing. This sink defines neither and pays nothing, and a sink written
 /// before series existed keeps compiling and is told nothing about them.
 /// `RecordingSink` (`trace.hpp`) defines both.
+///
+/// **Optional hooks.** Each is asked for through its own `requires`, so a
+/// sink that does not define one is told nothing through it and still
+/// compiles. `RecordingSink` defines them all:
+///
+///     sink.branch_taken(node, thenTaken);           // a `when` chose a branch
+///     sink.input_source(varNode, source);           // a variable was measured or typed in
+///     sink.series_input_source(seriesNode, source); // the same, of a whole series
+///     sink.replaced_entry_source(node, source);     // an overlay's constant or derived
+///                                                   // quantity replaced an entry of this source
+///     sink.replaced_entry_empty(node);              // ... and that entry held no value
+///     sink.record_entered(origin);                  // a read from another record began
+///     sink.lineage_checked(check, outcome);         // one lineage attribute compared
+///
+/// Two of them are easy to misread:
+/// - `input_source` is told about a **variable's own value** only. An
+///   overlay's fixed constant and derived quantity are `VarNode<Q>`s too, and
+///   bind to an `input_source(VarNode<Q> const&, ...)` overload; but the
+///   source they have is the replaced entry's, never the value the step shows
+///   -- the jurisdiction's -- so they report it through
+///   `replaced_entry_source` instead, and a sink reading `input_source` as
+///   "this value was typed in" is never misled by a constant.
+/// - `record_entered` and `lineage_checked` come as a pair around a read from
+///   another record (`record.hpp`); a sink defining only one is refused
+///   (`detail::RequireScopeHooksTogether`), since the attribute steps it
+///   records would otherwise belong to no record.
+///
+/// **A sink that records steps** must say, of every step recorded between a
+/// `record_entered` and the scope's own `produced`, that it was read from that
+/// record -- on every path that records one, a series', a curve's and a
+/// conformity check's included. `RecordingSink` does it in one place
+/// (`stamp_origin`), which every path that appends to `Trace::steps` calls;
+/// a path added later that does not traces a value read from another record as
+/// this record's.
 struct NullSink
 {
     /// Told that a node is about to be evaluated, and does nothing with it.

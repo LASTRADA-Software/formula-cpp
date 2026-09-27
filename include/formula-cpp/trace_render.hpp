@@ -2115,8 +2115,14 @@ namespace detail
             annotation = snap_suffix(recorded);
         else if (recorded.kind == StepKind::CurveInterpolation)
             annotation = curve_interpolation_suffix(recorded);
+        // A derived quantity that replaced a value a person typed in says so,
+        // in the clause that says who derived it, as a fixed constant does.
         else if (recorded.kind == StepKind::DerivedQuantity)
-            annotation = derived_quantity_suffix(recorded.citation);
+            annotation = recorded.inputSource == ValueSource::ManuallyEntered
+                             ? " [derived by " + overlay_source_text(recorded.citation)
+                                   + (recorded.replacedEntryEmpty ? ", replacing a value entered by hand as empty]"
+                                                                  : ", replacing a value entered by hand]")
+                             : derived_quantity_suffix(recorded.citation);
         else if (recorded.kind == StepKind::ReplacedVariant)
             annotation = replaced_variant_suffix(recorded.citation);
         // A typed-in input says so; a measured one says nothing, since

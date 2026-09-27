@@ -175,8 +175,9 @@ A quantity an overlay fixes or derives is the jurisdiction's, read from no
 record, and keeps one row wherever it is used. An overlay's constant reaches
 inside a scope as it reaches everywhere else in the method: a jurisdiction's
 shape factor is the same shape factor in the computation over the reference
-specimen. When it replaces a value a person typed in, the line says
-`replacing a value entered by hand`.
+specimen. When a fixed constant or a derived quantity replaces a value a
+person typed in, its line says `replacing a value entered by hand`, since the
+typed value was not used.
 
 ### Series and observations
 
