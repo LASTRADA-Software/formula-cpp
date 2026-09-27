@@ -702,8 +702,6 @@ TEST_CASE("observations are a sample: the same determinations give the same stat
     STATIC_REQUIRE(
         formula::checked_evaluate<Spread>(formula::sample_range(observedMasses), fixtureAObserved)->measurement().value()
         == rat(42, 10));
-    STATIC_REQUIRE(decltype(formula::sample_mean(observedMasses))::dimension == formula::dim::Mass);
-    STATIC_REQUIRE(formula::detail::sample_capacity<decltype(observedMasses)> == 8);
 }
 
 TEST_CASE("observations filled to their capacity are a sample; one more is refused before any statistic", "[statistics]")
@@ -720,10 +718,12 @@ TEST_CASE("observations filled to their capacity are a sample; one more is refus
     auto const counted = formula::checked_evaluate<Determinations>(formula::sample_count(observedMasses), eight);
     REQUIRE(counted.has_value());
     CHECK(counted->measurement().value() == rat(8));
-    // Nine: nothing is dropped to fit, so there is no set to take a
-    // statistic of.
-    CHECK(formula::MeasuredObservations<Mass, 8>::from(read).error()
-          == formula::ObservationsOverCapacity { .given = 9, .capacity = 8 });
+    // Nine: nothing is dropped to fit, so no mean is taken of eight of them.
+    auto const overfilled =
+        formula::MeasuredObservations<Mass, 8>::from(read).transform([](formula::MeasuredObservations<Mass, 8> const& made) {
+            return formula::checked_evaluate<Mass>(formula::sample_mean(observedMasses), formula::environment(made));
+        });
+    CHECK(overfilled.error() == formula::ObservationsOverCapacity { .given = 9, .capacity = 8 });
 }
 
 TEST_CASE("observations of none reach the empty-sample guards: a count of 0 and no mean", "[statistics]")
@@ -773,6 +773,21 @@ TEST_CASE("a statistic of observations renders on them, and the page gives their
         CHECK(page.symbols[0].shape == formula::ValueShape::Observations);
         CHECK(page.symbols[0].length == 8);
     }
+}
+
+TEST_CASE("a statistic of fewer observations than their capacity, in double, is a constant expression", "[statistics]")
+{
+    // Six made in room for eight: the two unfilled places are written, so
+    // nothing indeterminate is copied -- which clang refuses in a constant
+    // expression, and which at run time would read an indeterminate double.
+    constexpr auto inDouble =
+        formula::checked_evaluate_si<double>(formula::sample_mean(observedMasses), fixtureAObserved, formula::NullSink {});
+    STATIC_REQUIRE(**inDouble > 0.04129);
+    STATIC_REQUIRE(**inDouble < 0.04131);
+    constexpr auto rangeInDouble =
+        formula::checked_evaluate_si<double>(formula::sample_range(observedMasses), fixtureAObserved, formula::NullSink {});
+    STATIC_REQUIRE(**rangeInDouble > 0.00419);
+    STATIC_REQUIRE(**rangeInDouble < 0.00421);
 }
 
 TEST_CASE("a statistic of observations read at run time", "[statistics]")

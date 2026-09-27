@@ -782,6 +782,9 @@ formula_add_negative_test(gap_to_range_every_exceeding
 formula_add_negative_test(gap_to_range_limit_not_scalar
     "formula: this rejection's limit does not measure what its criterion compares"
     REJECT "gap_to_range examines only")
+formula_add_negative_test(rejection_series_shorter_than_keep_at_least
+    "formula: without_outliers keeps at least m determinations of a series that holds fewer"
+    REJECT "declares KeepAtLeast<0>")
 formula_add_negative_test(pass_mean_outside_rejection
     "formula: pass_mean and pass_count are meaningful only inside the limit expression of without_outliers"
     REJECT "provides no value for this quantity")

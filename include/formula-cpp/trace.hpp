@@ -630,6 +630,9 @@ namespace detail
         std::vector<std::size_t> wouldReject {};
         bool pastAtMost {};
         bool belowKeepAtLeast {};
+        /// For an abort before pass 1: the sample started with fewer than
+        /// `keepAtLeast`. `pass` is then 0.
+        bool startedShort {};
         /// For a failed pass: what failed. The determination it failed at,
         /// when there is one, is `position`; the error is the step's own.
         std::optional<RejectionFailurePoint> failurePoint {};
@@ -2660,7 +2663,7 @@ class RecordingSink
         if (_trace->rejectionsInProgress.empty())
             return;
         detail::RejectionInProgress const inProgress = _trace->rejectionsInProgress.back();
-        if (event.pass == 0)
+        if (event.pass == 0 && !event.startedShort)
         {
             _trace->rejectionsInProgress.pop_back();
             return;
@@ -2687,6 +2690,7 @@ class RecordingSink
         rejectionRecord.wouldReject.assign(event.wouldReject.begin(), event.wouldReject.end());
         rejectionRecord.pastAtMost = event.pastAtMost;
         rejectionRecord.belowKeepAtLeast = event.belowKeepAtLeast;
+        rejectionRecord.startedShort = event.startedShort;
         rejectionRecord.failurePoint = event.failurePoint;
         rejectionRecord.position = event.failedPosition;
         rejectionRecord.atMost = event.atMost;

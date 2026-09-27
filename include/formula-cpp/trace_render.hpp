@@ -1730,7 +1730,9 @@ namespace detail
     ///  - settled: `settled: 2 rejected, 4 remain`;
     ///  - aborted: `element 6 of 6 would be rejection 2 of at most 1: discard
     ///    the determinations and repeat the test [Example Standard, 7.4]` --
-    ///    naming both bounds when the rejection would pass both;
+    ///    naming both bounds when the rejection would pass both; or, before
+    ///    any pass, `3 values, fewer than the at least 4 to keep: discard the
+    ///    determinations and repeat the test`;
     ///  - failed: `failed in pass 1: the variance: overflow in exact
     ///    arithmetic at element 1 of 6`, or `failed in pass 1: the range:
     ///    overflow in exact arithmetic`, or, for a deviation in standard
@@ -1798,6 +1800,19 @@ namespace detail
                 return "settled: " + std::to_string(rejectionRecord->rejectedCount) + " rejected, "
                        + std::to_string(rejectionRecord->remaining) + " remain";
             case StepKind::RejectionAborted: {
+                if (rejectionRecord->startedShort)
+                {
+                    if (rejectionRecord->pass != 0 || !rejectionRecord->wouldReject.empty()
+                        || rejectionRecord->rejectedCount != 0 || rejectionRecord->pastAtMost
+                        || rejectionRecord->remaining != rejectionRecord->originalSize
+                        || rejectionRecord->remaining >= rejectionRecord->keepAtLeast)
+                        return "rejection aborted (its record is invalid)";
+                    EscapedCitation const cited { rejectionRecord->citation };
+                    return std::to_string(rejectionRecord->originalSize)
+                           + (rejectionRecord->originalSize == 1 ? " value" : " values") + ", fewer than the at least "
+                           + std::to_string(rejectionRecord->keepAtLeast) + " to keep: "
+                           + escaped_author_text(rejectionRecord->verdict.label) + citation_suffix(cited.cited());
+                }
                 bool const namesNobody = rejectionRecord->wouldReject.empty();
                 bool const leavesFewerThanNone = rejectionRecord->remaining < rejectionRecord->wouldReject.size();
                 bool positionPastSample = false;

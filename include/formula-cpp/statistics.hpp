@@ -155,13 +155,13 @@ namespace detail
         EvaluatedObservations<Rep, Capacity> const evaluated = evaluate_observations<Rep>(node, environment, sink);
         if (!evaluated.has_value())
             return std::unexpected { evaluated.error() };
-        // Every place is written, the unfilled ones with zero at their own
-        // position, so that a copy reads nothing indeterminate; `count` says
-        // which hold a determination.
+        // Every place is copied -- `evaluate_observations` writes the unfilled
+        // ones with zero -- each at its own position; `count` says which hold
+        // a determination.
         SampleValue<Rep, Capacity> sampled;
         for (std::size_t at = 0; at < Capacity; ++at)
         {
-            sampled.values[at] = at < evaluated->count ? evaluated->elements[at] : Rep {};
+            sampled.values[at] = evaluated->elements[at];
             sampled.positions[at] = at;
         }
         sampled.count = evaluated->count;

@@ -33,6 +33,12 @@
 /// that may remain). Each count is its own type, so the two cannot be
 /// swapped without a message.
 ///
+/// **m is the method's precondition, too.** A sample that starts with fewer
+/// than m determinations -- observations, whose count is known only at run
+/// time -- gives the author's verdict before pass 1, whether or not it holds
+/// an outlier: "the fewest that may remain" is not met by what was made. A
+/// series shorter than m is refused where it is written.
+///
 /// **Termination is guaranteed by the type.** Every pass but the last
 /// removes at least one determination and at most k are ever removed, so at
 /// most k + 1 passes run; the loop is bounded by that, and needs no cap of
@@ -316,6 +322,22 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Fails to compile when a series of @p Length determinations is to keep
+    /// at least @p M: every evaluation would give the verdict before a single
+    /// pass. Asked only for a series, once the bounds are in order and m is
+    /// positive (@p Asked).
+    template <std::size_t Length, std::size_t M, bool Asked>
+    struct RequireSeriesHoldsKeepAtLeast
+    {
+        static_assert(!Asked || Length >= M,
+                      "formula: without_outliers keeps at least m determinations of a series that holds fewer, so "
+                      "every evaluation would give the verdict before a single pass; the two counts appear in this "
+                      "diagnostic as the template arguments Length and M of RequireSeriesHoldsKeepAtLeast -- declare "
+                      "KeepAtLeast<m> with m at most the series' length");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when `gap_to_range` is paired with
     /// `PerPass::EveryExceeding`: it examines two determinations, and "every
     /// exceeding" would read as though it examined more. Asked once the
@@ -469,6 +491,10 @@ struct RejectionNode
 
     static_assert(detail::RequireAtMostPositive<detail::bound_value<AtMostT>, boundsInOrder>::value);
     static_assert(detail::RequireKeepAtLeastPositive<detail::bound_value<KeepAtLeastT>, boundsInOrder>::value);
+    static_assert(detail::RequireSeriesHoldsKeepAtLeast<detail::sample_capacity<S>,
+                                                        detail::bound_value<KeepAtLeastT>,
+                                                        boundsInOrder && SeriesNode<S>
+                                                            && detail::bound_value<KeepAtLeastT> >= 1>::value);
     static_assert(detail::RequireGapToRangeMostExtreme<P, Criterion, boundsInOrder>::value);
 
     /// Whether the policy is one the criterion allows: the checks below are
@@ -737,6 +763,8 @@ namespace detail
         /// when it would have passed both.
         bool pastAtMost;
         bool belowKeepAtLeast;
+        /// For an abort before pass 1: the sample started with fewer than m.
+        bool startedShort;
         /// For a failure in a pass: what failed, how, and the zero-based
         /// position of the determination it failed at, when there is one.
         std::optional<RejectionFailurePoint> failurePoint;
@@ -946,6 +974,7 @@ namespace detail
         std::size_t wouldRejectCount = 0;
         bool pastAtMost = false;
         bool belowKeepAtLeast = false;
+        bool startedShort = false;
         std::optional<RejectionFailurePoint> failurePoint;
         // How many determinations the sample was read with: its count, never
         // its capacity -- observations fill as many places as were made.
@@ -963,6 +992,7 @@ namespace detail
                     .wouldReject = std::span<std::size_t const> { wouldReject.data(), wouldRejectCount },
                     .pastAtMost = pastAtMost,
                     .belowKeepAtLeast = belowKeepAtLeast,
+                    .startedShort = startedShort,
                     .failurePoint = failurePoint,
                     .error = run.failure.has_value() ? std::optional<ArithmeticError> { run.failure->error } : std::nullopt,
                     .failedPosition = run.failure.has_value() ? run.failure->element : std::nullopt,
@@ -988,6 +1018,15 @@ namespace detail
             return finish(RejectionEnd::Absent);
         run.survivors = **sampled;
         originalSize = run.survivors.count;
+
+        // Fewer made than the fewest that may remain: the method's
+        // precondition is not met, outlier or none.
+        if (originalSize < bound_value<KeepAtLeastT>)
+        {
+            startedShort = true;
+            belowKeepAtLeast = true;
+            return finish(RejectionEnd::Aborted);
+        }
 
         // At most k + 1 passes: every pass but the last removes at least one
         // determination, and at most k are ever removed (AtMost). This bound

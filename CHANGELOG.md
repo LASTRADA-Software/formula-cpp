@@ -89,7 +89,7 @@ repeatability or reproducibility limit at the level of the results it checks, in
 passes, with `precision_level` read only inside it. `without_outliers` rejects outliers from a
 sample by a criterion (a deviation from the mean or in standard deviations, or the gap from an
 extreme to its neighbour over the range), whose limit may read a critical value at each pass's
-sample size, re-running the mean until nothing more is rejected; a declared bound turns one rejection too many, or too few left,
+sample size, re-running the mean until nothing more is rejected; a declared bound turns one rejection too many, too few left, or too few made to begin with,
 into the author's verdict. Every pass and every rejected value is its own step in the trace.
 A sample is a series or raw observations, `observations<Q, Capacity>`, whose count is known only
 at run time: `Capacity` is a bound, and every statistic, rejection and critical value reads the

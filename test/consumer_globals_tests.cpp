@@ -619,7 +619,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render_trace(gappedTrace, { .maxSteps = 20 }).find("would leave 0 of at least 1")
                                   != std::string::npos);
     // Statistics of the raw observations: 103, 163 and 241 mm made in room for
-    // four, a mean of 169 mm from 3, and a rejection within 200 mm of it that
+    // four, a mean of 169 mm from 3, and a rejection within 197 mm of it that
     // keeps all three.
     auto const observedMean = formula::sample_mean(formula::observations<EdgeX, 4>);
     formula::Trace<> observedTrace {};
@@ -631,7 +631,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                                         formula::AtMost<1>,
                                                         formula::KeepAtLeast<3>>(
             formula::observations<EdgeX, 4>,
-            formula::deviation_from_mean(formula::constant<unit::Millimetre>(formula::Rational { 200 })),
+            formula::deviation_from_mean(formula::constant<unit::Millimetre>(formula::Rational { 197 })),
             formula::Verdict { "repeat the test" })),
         edgeSample);
     probe.checks.push_back(

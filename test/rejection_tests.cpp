@@ -815,7 +815,7 @@ TEST_CASE("a rejection record that contradicts itself is refused, not printed", 
     // evaluation produced.
     formula::Trace<> aborted {};
     (void) formula::checked_evaluate_rejection<Mass>(rejectionA1, fixtureA, formula::RecordingSink<> { aborted });
-    REQUIRE(!aborted.rejectionRecords.empty());
+    REQUIRE(aborted.rejectionRecords.size() >= 2);
     std::size_t const abortRecord = aborted.rejectionRecords.size() - 1;
     std::size_t const outlierRecord = 1; // pass 1, then its rejection
     REQUIRE(aborted.steps[aborted.rejectionRecords[outlierRecord].step].kind == formula::StepKind::OutlierRejected);
@@ -864,6 +864,7 @@ TEST_CASE("a rejection record that contradicts itself is refused, not printed", 
     // ended in pass 0.
     formula::Trace<> settled {};
     (void) formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA, formula::RecordingSink<> { settled });
+    REQUIRE((!settled.rejectionRecords.empty() && !settled.steps.empty()));
     REQUIRE(settled.steps.back().kind == formula::StepKind::RejectionSettled);
     CHECK(formula::render_trace(settled, { .maxSteps = 40 }).ends_with("settled: 2 rejected, 4 remain\n"));
     formula::Trace<> settledCounts = settled;
@@ -886,6 +887,7 @@ TEST_CASE("a rejection record that contradicts itself is refused, not printed", 
             formula::series<Heavy, 3>, formula::deviation_from_mean(formula::constant<unit::Kilogram>(rat(1))), repeatTest),
         heavyMean,
         formula::RecordingSink<> { failed });
+    REQUIRE((!failed.rejectionRecords.empty() && !failed.steps.empty()));
     REQUIRE(failed.steps.back().kind == formula::StepKind::RejectionFailed);
     CHECK(formula::render_trace(failed, { .maxSteps = 20 })
               .ends_with("failed in pass 1: the mean: overflow in exact arithmetic at element 2 of 3\n"));
@@ -1204,25 +1206,65 @@ TEST_CASE("a rejection of observations reads a critical value at the count made,
              "19. settled: 2 rejected, 4 remain\n");
 }
 
-TEST_CASE("a rejection of observations too few to keep its bound, or of none", "[rejection]")
+TEST_CASE("observations fewer than KeepAtLeast give the verdict before pass 1, outlier or none", "[rejection]")
 {
-    // Three made, KeepAtLeast<4>: 40, 40 and 44 g, 44 g past 6 % of the
-    // mean. Rejecting it would leave two of at least four, so the rejection
-    // aborts with the author's verdict, nothing rejected -- as a series of
-    // three would. Within the limit, three made settle on all three: too few
-    // is a reason to stop only when a determination would go.
-    constexpr auto three = formula::checked_evaluate_rejection<Mass>(
+    // KeepAtLeast<4> is the fewest that may remain, so three made do not meet
+    // the method's precondition: the author's verdict, in no pass, whether
+    // 44 g is past 6 % of the mean or 41 g is not.
+    constexpr auto withOutlier = formula::checked_evaluate_rejection<Mass>(
         observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent), observedOf(rat(40), rat(40), rat(44)));
-    STATIC_REQUIRE(three->outcome().is_verdict());
-    STATIC_REQUIRE(three->rejected().empty());
-    STATIC_REQUIRE(three->passes() == 1);
-    constexpr auto within = formula::checked_evaluate_rejection<Mass>(
+    STATIC_REQUIRE(withOutlier->outcome().is_verdict());
+    STATIC_REQUIRE(withOutlier->rejected().empty());
+    STATIC_REQUIRE(withOutlier->passes() == 0);
+    constexpr auto withoutOutlier = formula::checked_evaluate_rejection<Mass>(
         observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent), observedOf(rat(40), rat(40), rat(41)));
-    STATIC_REQUIRE(within->outcome().measurement().value() == rat(121, 3));
-    STATIC_REQUIRE(within->survivors().size() == 3);
-    // None made: the first pass has no mean.
+    STATIC_REQUIRE(withoutOutlier->outcome().is_verdict());
+    STATIC_REQUIRE(withoutOutlier->passes() == 0);
+    STATIC_REQUIRE(withoutOutlier->survivors().size() == 3);
+    STATIC_REQUIRE(
+        formula::checked_evaluate<Mass>(formula::sample_mean(observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent)),
+                                        observedOf(rat(40), rat(40), rat(41)))
+            .error()
+        == formula::ArithmeticError::DomainError);
+    // None made: the verdict too, never a division by zero.
     constexpr auto none =
         formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent), observedOf());
-    STATIC_REQUIRE(none.error().error == formula::ArithmeticError::DivisionByZero);
-    STATIC_REQUIRE(!none.error().element.has_value());
+    STATIC_REQUIRE(none->outcome().is_verdict());
+    STATIC_REQUIRE(none->passes() == 0);
+    // Exactly four made meet it, and the rejection runs.
+    constexpr auto four = formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent),
+                                                                    observedOf(rat(40), rat(40), rat(41), rat(40)));
+    STATIC_REQUIRE(four->outcome().measurement().value() == rat(161, 4));
+    STATIC_REQUIRE(four->passes() == 1);
+
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent),
+                                                     observedOf(rat(40), rat(40), rat(41)),
+                                                     formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. m = 40 g; 40 g; 41 g\n"
+             "2. 3 values, fewer than the at least 4 to keep: discard the determinations and repeat the test "
+             "[Example Standard, 7.4]\n");
+
+    // A forged record: a short start in a pass, or with enough kept.
+    REQUIRE(trace.rejectionRecords.size() == 1);
+    formula::Trace<> inPass = trace;
+    inPass.rejectionRecords.back().pass = 1;
+    CHECK(formula::render_trace(inPass, { .maxSteps = 20 }).ends_with("rejection aborted (its record is invalid)\n"));
+    formula::Trace<> enough = trace;
+    enough.rejectionRecords.back().keepAtLeast = 3;
+    CHECK(formula::render_trace(enough, { .maxSteps = 20 }).ends_with("rejection aborted (its record is invalid)\n"));
+}
+
+TEST_CASE("an observation that cannot be read fails a rejection at its own position", "[rejection]")
+{
+    // 1/INT64_MAX g has no kilogram value: the read fails at observation 2,
+    // which is the sample's own second determination, and the rejection
+    // relays it there.
+    constexpr auto unreadable =
+        observedOf(rat(40), Rational { 1, std::numeric_limits<std::int64_t>::max() }, rat(41), rat(40));
+    constexpr auto failed =
+        formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 3>(sixPercent), unreadable);
+    STATIC_REQUIRE(failed.error().error == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(*failed.error().element == 1);
 }
