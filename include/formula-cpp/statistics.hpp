@@ -7,10 +7,13 @@
 /// `sum` is for a series.
 ///
 /// **A sample** (`SampleSource`) is any source of repeated determinations of
-/// one quantity. In this phase that is a phase 12 series, `series<Q, N>` or
-/// any expression over one: a series expression is a sample (T14), so
+/// one quantity. That is a phase 12 series, `series<Q, N>` or any expression
+/// over one: a series expression is a sample (T14), so
 /// `sample_mean(series<A, 3> / series<B, 3>)` is the mean of the per-element
-/// ratios.
+/// ratios. It is also raw observations, `observations<Q, Capacity>`, whose
+/// count is known only at run time: `Capacity` is a bound, not a count, and
+/// every statistic reads the observations made -- `sample_count` of six made
+/// in room for eight is 6, and none made is an empty sample.
 ///
 /// **Absence is strict** (T2). One absent determination makes every
 /// statistic of the sample absent -- the count included, which is neither N
@@ -25,6 +28,7 @@
 /// Each statistic is one trace step over the whole sample, whose operand is
 /// the sample's own step with every element.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -53,20 +57,32 @@ namespace detail
     /// by argument-dependent lookup.
     template <typename T>
     inline constexpr bool is_sample_transformer = false;
+
+    /// Whether @p T is raw observations of one quantity
+    /// (`ObservationsVarNode`, `binning.hpp`), a sample whose count is known
+    /// only at run time.
+    template <typename T>
+    inline constexpr bool is_observations_sample = false;
+
+    template <Described Q, std::size_t Capacity>
+    inline constexpr bool is_observations_sample<ObservationsVarNode<Q, Capacity>> = true;
 } // namespace detail
 
 /// A source of repeated determinations of one quantity: a phase 12 series,
-/// any expression over one, or a rejection of outliers from one
-/// (`without_outliers`, `rejection.hpp`). Its dimension is `S::dimension`,
-/// and how many determinations it can hold is `detail::sample_capacity<S>`
-/// -- `N` for a series.
+/// any expression over one, raw observations (`observations<Q, Capacity>`),
+/// or a rejection of outliers from any of these (`without_outliers`,
+/// `rejection.hpp`). Its dimension is `S::dimension`, and how many
+/// determinations it can hold is `detail::sample_capacity<S>` -- `N` for a
+/// series, `Capacity` for observations; how many it does hold is known when
+/// it is evaluated.
 template <typename S>
-concept SampleSource = SeriesNode<S> || detail::is_sample_transformer<std::remove_cvref_t<S>>;
+concept SampleSource = SeriesNode<S> || detail::is_observations_sample<std::remove_cvref_t<S>>
+                       || detail::is_sample_transformer<std::remove_cvref_t<S>>;
 
 namespace detail
 {
     /// How many determinations @p S can hold: its length, for a series; its
-    /// declared capacity, for a transformer.
+    /// declared capacity, for observations and a transformer.
     template <SampleSource S>
     inline constexpr std::size_t sample_capacity = [] {
         if constexpr (requires { std::remove_cvref_t<S>::capacity; })
@@ -128,8 +144,33 @@ namespace detail
         return std::optional<SampleValue<Rep, sampleCapacity>> { sampled };
     }
 
+    /// `dispatch_sample` for raw observations: the ones made, in the order
+    /// made, and as many as were made -- never the capacity. Each is present,
+    /// so the sample is never absent; a failure reading one is relayed at its
+    /// position, which is the sample's own.
+    template <typename Rep, Described Q, std::size_t Capacity, typename Env, typename Sink>
+    [[nodiscard]] constexpr EvaluatedSample<Rep, Capacity> dispatch_observations_sample(
+        ObservationsVarNode<Q, Capacity> const& node, Env const& environment, Sink sink) noexcept
+    {
+        EvaluatedObservations<Rep, Capacity> const evaluated = evaluate_observations<Rep>(node, environment, sink);
+        if (!evaluated.has_value())
+            return std::unexpected { evaluated.error() };
+        // Every place is written, the unfilled ones with zero at their own
+        // position, so that a copy reads nothing indeterminate; `count` says
+        // which hold a determination.
+        SampleValue<Rep, Capacity> sampled;
+        for (std::size_t at = 0; at < Capacity; ++at)
+        {
+            sampled.values[at] = at < evaluated->count ? evaluated->elements[at] : Rep {};
+            sampled.positions[at] = at;
+        }
+        sampled.count = evaluated->count;
+        return std::optional<SampleValue<Rep, Capacity>> { sampled };
+    }
+
     /// Evaluates the sample @p node: a series through
-    /// `dispatch_series_sample`, a transformer through the
+    /// `dispatch_series_sample`, observations through
+    /// `dispatch_observations_sample`, a transformer through the
     /// `checked_evaluate_sample_si` its header declares.
     template <typename Rep, SampleSource S, typename Env, typename Sink>
     [[nodiscard]] constexpr EvaluatedSample<Rep, sample_capacity<S>> dispatch_sample(S const& node,
@@ -138,6 +179,8 @@ namespace detail
     {
         if constexpr (SeriesNode<S>)
             return dispatch_series_sample<Rep>(node, environment, sink);
+        else if constexpr (is_observations_sample<std::remove_cvref_t<S>>)
+            return dispatch_observations_sample<Rep>(node, environment, sink);
         else
             return checked_evaluate_sample_si<Rep>(node, environment, sink);
     }

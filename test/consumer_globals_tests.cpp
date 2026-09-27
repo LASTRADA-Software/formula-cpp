@@ -41,8 +41,9 @@
 // divided by their sum, on the same surfaces;
 // a sample's count, mean, variance and range, and a rounded root of the
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
-// and under a mean, on the same surfaces, and one by gap to range; and the
-// four table validators. A template it does not reach is not
+// and under a mean, on the same surfaces, and one by gap to range; a mean
+// and a rejection of raw observations, on the same surfaces; and the four
+// table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -617,6 +618,28 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render(gapped, north).find("gap to range > 3/4") != std::string::npos
                            && formula::render_trace(gappedTrace, { .maxSteps = 20 }).find("would leave 0 of at least 1")
                                   != std::string::npos);
+    // Statistics of the raw observations: 103, 163 and 241 mm made in room for
+    // four, a mean of 169 mm from 3, and a rejection within 200 mm of it that
+    // keeps all three.
+    auto const observedMean = formula::sample_mean(formula::observations<EdgeX, 4>);
+    formula::Trace<> observedTrace {};
+    auto const observedEdge =
+        formula::checked_evaluate<EdgeX>(observedMean, edgeSample, formula::RecordingSink { observedTrace, north });
+    auto const keptObserved = formula::checked_evaluate<Factor>(
+        formula::sample_count(formula::without_outliers<formula::PerPass::MostExtreme,
+                                                        formula::OnLimit::Keep,
+                                                        formula::AtMost<1>,
+                                                        formula::KeepAtLeast<3>>(
+            formula::observations<EdgeX, 4>,
+            formula::deviation_from_mean(formula::constant<unit::Millimetre>(formula::Rational { 200 })),
+            formula::Verdict { "repeat the test" })),
+        edgeSample);
+    probe.checks.push_back(
+        observedEdge.has_value() && observedEdge->measurement().value() == formula::Rational { 169 }
+        && keptObserved.has_value() && keptObserved->measurement().value() == formula::Rational { 3 }
+        && formula::render(observedMean, north) == "sample_mean(x_m(i))"
+        && formula::document(observedMean, north).symbols.front().shape == formula::ValueShape::Observations
+        && formula::render_trace(observedTrace, { .maxSteps = 20 }).find("sample_mean(#1) = 169 mm") != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

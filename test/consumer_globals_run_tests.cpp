@@ -13,7 +13,7 @@
 TEST_CASE("a consumer's ordinary globals do not break a build that includes every header", "[hygiene]")
 {
     ConsumerGlobalsProbe const probe = probe_consumer_globals();
-    REQUIRE(probe.checks.size() == 48);
+    REQUIRE(probe.checks.size() == 49);
     for (std::size_t index = 0; index < probe.checks.size(); ++index)
     {
         INFO("check " << index);

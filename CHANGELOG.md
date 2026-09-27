@@ -91,6 +91,9 @@ sample by a criterion (a deviation from the mean or in standard deviations, or t
 extreme to its neighbour over the range), whose limit may read a critical value at each pass's
 sample size, re-running the mean until nothing more is rejected; a declared bound turns one rejection too many, or too few left,
 into the author's verdict. Every pass and every rejected value is its own step in the trace.
+A sample is a series or raw observations, `observations<Q, Capacity>`, whose count is known only
+at run time: `Capacity` is a bound, and every statistic, rejection and critical value reads the
+observations actually made. None made count 0 and have no mean.
 
 ### Changed
 

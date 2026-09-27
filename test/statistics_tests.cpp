@@ -9,13 +9,16 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace
 {
@@ -665,4 +668,125 @@ TEST_CASE("a statistic used from two translation units is one formula", "[statis
     REQUIRE(there.has_value());
     CHECK(here->measurement().value() == rat(23));
     CHECK(there->measurement().value() == rat(23));
+}
+
+namespace
+{
+/// Room for eight determinations, however many were made: a bound, not a
+/// count.
+inline constexpr auto observedMasses = formula::observations<Mass, 8>;
+
+// Fixture A again, as six observations in a set that holds eight.
+inline constexpr auto fixtureAObserved = formula::environment(
+    formula::MeasuredObservations<Mass, 8>(rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10)));
+} // namespace
+
+TEST_CASE("observations are a sample: the same determinations give the same statistics as a series", "[statistics]")
+{
+    // Fixture A, six of eight places filled: 41.3 g from 6. Divided by the
+    // capacity, the mean would be 247.8 / 8 = 30.975 g; counted as eight, the
+    // two unfilled places would join as zeros -- the range 44 g, the count 8.
+    constexpr auto mean = formula::checked_evaluate<Mass>(formula::sample_mean(observedMasses), fixtureAObserved);
+    STATIC_REQUIRE(mean->measurement().value() == rat(413, 10));
+    STATIC_REQUIRE(
+        mean->measurement().value()
+        == formula::checked_evaluate<Mass>(formula::sample_mean(determinations), fixtureA)->measurement().value());
+    STATIC_REQUIRE(formula::checked_evaluate<Determinations>(formula::sample_count(observedMasses), fixtureAObserved)
+                       ->measurement()
+                       .value()
+                   == rat(6));
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(formula::sample_variance(observedMasses), fixtureAObserved)
+                       ->measurement()
+                       .value()
+                   == rat(427, 125));
+    STATIC_REQUIRE(
+        formula::checked_evaluate<Spread>(formula::sample_range(observedMasses), fixtureAObserved)->measurement().value()
+        == rat(42, 10));
+    STATIC_REQUIRE(decltype(formula::sample_mean(observedMasses))::dimension == formula::dim::Mass);
+    STATIC_REQUIRE(formula::detail::sample_capacity<decltype(observedMasses)> == 8);
+}
+
+TEST_CASE("observations filled to their capacity are a sample; one more is refused before any statistic", "[statistics]")
+{
+    // Eight: fixture A and 41 and 39 g, 327.8 g over 8.
+    std::array<Rational, 9> const read { rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40),
+                                         rat(433, 10), rat(41),      rat(39),      rat(50) };
+    auto const filled = formula::MeasuredObservations<Mass, 8>::from(std::span<Rational const> { read }.first(8));
+    REQUIRE(filled.has_value());
+    auto const eight = formula::environment(*filled);
+    auto const mean = formula::checked_evaluate<Mass>(formula::sample_mean(observedMasses), eight);
+    REQUIRE(mean.has_value());
+    CHECK(mean->measurement().value() == rat(1639, 40));
+    auto const counted = formula::checked_evaluate<Determinations>(formula::sample_count(observedMasses), eight);
+    REQUIRE(counted.has_value());
+    CHECK(counted->measurement().value() == rat(8));
+    // Nine: nothing is dropped to fit, so there is no set to take a
+    // statistic of.
+    CHECK(formula::MeasuredObservations<Mass, 8>::from(read).error()
+          == formula::ObservationsOverCapacity { .given = 9, .capacity = 8 });
+}
+
+TEST_CASE("observations of none reach the empty-sample guards: a count of 0 and no mean", "[statistics]")
+{
+    // No sample a formula names at compile time is empty; observations, whose
+    // count is data, can be.
+    constexpr auto none = formula::environment(formula::MeasuredObservations<Mass, 8>());
+    STATIC_REQUIRE(
+        formula::checked_evaluate<Determinations>(formula::sample_count(observedMasses), none)->measurement().value()
+        == rat(0));
+    STATIC_REQUIRE(formula::checked_evaluate<Mass>(formula::sample_mean(observedMasses), none).error()
+                   == formula::ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(formula::checked_evaluate<Spread>(formula::sample_range(observedMasses), none).error()
+                   == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(formula::sample_variance(observedMasses), none).error()
+                   == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("a statistic of observations is one step over the observations' own step", "[statistics][trace-render]")
+{
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Mass>(
+        formula::sample_mean(observedMasses), fixtureAObserved, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
+             "2. sample_mean(#1) = 413/10 g\n");
+    formula::Trace<> counted {};
+    (void) formula::checked_evaluate<Determinations>(
+        formula::sample_count(observedMasses), fixtureAObserved, formula::RecordingSink<> { counted });
+    CHECK(formula::render_trace(counted, { .maxSteps = 20 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g\n"
+             "2. sample_count(#1) = 6\n");
+}
+
+TEST_CASE("a statistic of observations renders on them, and the page gives their capacity as a bound",
+          "[statistics][render][document]")
+{
+    CHECK(formula::render(formula::sample_mean(observedMasses)) == "sample_mean(m(i))");
+    CHECK(formula::render<formula::Dialect::LaTeX>(formula::sample_count(observedMasses)) == "n({m}_{i})");
+    for (formula::Documentation const& page: { formula::document(formula::sample_count(observedMasses)),
+                                               formula::document(formula::sample_mean(observedMasses)),
+                                               formula::document(formula::sample_variance(observedMasses)),
+                                               formula::document(formula::sample_range(observedMasses)) })
+    {
+        REQUIRE(page.symbols.size() == 1);
+        CHECK(page.symbols[0].symbol == "m");
+        CHECK(page.symbols[0].shape == formula::ValueShape::Observations);
+        CHECK(page.symbols[0].length == 8);
+    }
+}
+
+TEST_CASE("a statistic of observations read at run time", "[statistics]")
+{
+    std::vector<Rational> const read { rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10) };
+    auto const observed = formula::MeasuredObservations<Mass, 8>::from(read);
+    REQUIRE(observed.has_value());
+    auto const mean = formula::checked_evaluate<Mass>(formula::sample_mean(observedMasses), formula::environment(*observed));
+    REQUIRE(mean.has_value());
+    CHECK(mean->measurement().value() == rat(413, 10));
+    auto const inDouble = formula::checked_evaluate_si<double>(
+        formula::sample_mean(observedMasses), formula::environment(*observed), formula::NullSink {});
+    REQUIRE(inDouble.has_value());
+    REQUIRE(inDouble->has_value());
+    CHECK(**inDouble > 0.04129);
+    CHECK(**inDouble < 0.04131);
 }

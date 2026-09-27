@@ -938,6 +938,9 @@ namespace detail
         bool pastAtMost = false;
         bool belowKeepAtLeast = false;
         std::optional<RejectionFailurePoint> failurePoint;
+        // How many determinations the sample was read with: its count, never
+        // its capacity -- observations fill as many places as were made.
+        std::size_t originalSize = 0;
 
         auto const finish = [&](RejectionEnd ending) {
             run.end = ending;
@@ -945,7 +948,7 @@ namespace detail
                 sink.rejection_finished(RejectionEndEvent {
                     .end = ending,
                     .pass = run.passes,
-                    .originalSize = sampleCapacity,
+                    .originalSize = originalSize,
                     .rejectedCount = run.rejectedCount,
                     .remaining = run.survivors.count,
                     .wouldReject = std::span<std::size_t const> { wouldReject.data(), wouldRejectCount },
@@ -975,6 +978,7 @@ namespace detail
         if (!sampled->has_value())
             return finish(RejectionEnd::Absent);
         run.survivors = **sampled;
+        originalSize = run.survivors.count;
 
         // At most k + 1 passes: every pass but the last removes at least one
         // determination, and at most k are ever removed (AtMost). This bound
@@ -1207,7 +1211,7 @@ namespace detail
                     if constexpr (hears)
                         sink.outlier_rejected(OutlierEvent { .pass = passNumber,
                                                              .position = working.positions[taken],
-                                                             .originalSize = sampleCapacity,
+                                                             .originalSize = originalSize,
                                                              .rejectedValue = working.values[taken],
                                                              .statistic = statistics[taken],
                                                              .limit = compareAgainst,

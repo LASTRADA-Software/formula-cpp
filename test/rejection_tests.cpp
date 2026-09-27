@@ -965,17 +965,127 @@ TEST_CASE("a sample of binned counts relays a binning's failure without the obse
     // 2. That position is an observation's, not a count's: as a sample of
     // two counts it would name the second count, which is not at fault.
     constexpr formula::BandTable<2> massClasses { formula::band(0, 1, 41, 1), formula::band(41, 1, 47, 1) };
-    constexpr auto observedMasses = formula::environment(formula::MeasuredObservations<Mass, 3>(rat(40), rat(50), rat(41)));
+    constexpr auto weighedMasses = formula::environment(formula::MeasuredObservations<Mass, 3>(rat(40), rat(50), rat(41)));
     constexpr auto countedMasses = formula::binned<unit::Gram, massClasses>(formula::observations<Mass, 3>);
-    constexpr auto binnedFailure = formula::checked_evaluate_series<Determinations>(countedMasses, observedMasses);
+    constexpr auto binnedFailure = formula::checked_evaluate_series<Determinations>(countedMasses, weighedMasses);
     STATIC_REQUIRE(*binnedFailure.error().element == 1);
-    constexpr auto sampled = formula::detail::dispatch_sample<Rational>(countedMasses, observedMasses, formula::NullSink {});
+    constexpr auto sampled = formula::detail::dispatch_sample<Rational>(countedMasses, weighedMasses, formula::NullSink {});
     STATIC_REQUIRE(sampled.error().error == formula::ArithmeticError::DomainError);
     STATIC_REQUIRE(!sampled.error().element.has_value());
     constexpr auto rejected = formula::checked_evaluate_rejection<Determinations>(
         formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<1>>(
             countedMasses, formula::deviation_from_mean(formula::number(rat(1))), repeatTest, exampleCited),
-        observedMasses);
+        weighedMasses);
     STATIC_REQUIRE(rejected.error().error == formula::ArithmeticError::DomainError);
     STATIC_REQUIRE(!rejected.error().element.has_value());
+}
+
+namespace
+{
+/// Room for eight determinations, however many were made.
+inline constexpr auto observedMasses = formula::observations<Mass, 8>;
+
+template <typename... Values>
+[[nodiscard]] constexpr auto observedOf(Values... values)
+{
+    return formula::environment(formula::MeasuredObservations<Mass, 8>(values...));
+}
+
+template <formula::PerPass P, formula::OnLimit L, std::size_t K, std::size_t M, typename Criterion>
+[[nodiscard]] constexpr auto observedRejectionOf(Criterion criterion)
+{
+    return formula::without_outliers<P, L, formula::AtMost<K>, formula::KeepAtLeast<M>>(
+        observedMasses, criterion, repeatTest, exampleCited);
+}
+} // namespace
+
+TEST_CASE("a rejection of observations decides as the rejection of the same series (fixture A)", "[rejection]")
+{
+    // Six of eight places filled; the two unfilled are no determinations,
+    // neither zeros nor absent ones: 321/8 g, {3, 5}, three passes, as the
+    // series gives.
+    constexpr auto observedA = observedOf(rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10));
+    constexpr auto rejection = observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent);
+    constexpr auto out = formula::checked_evaluate_rejection<Mass>(rejection, observedA);
+    constexpr auto asSeries = formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA);
+    STATIC_REQUIRE(out->outcome().measurement().value() == rat(321, 8));
+    STATIC_REQUIRE(out->outcome().measurement().value() == asSeries->outcome().measurement().value());
+    STATIC_REQUIRE(out->rejected().size() == 2);
+    STATIC_REQUIRE(out->rejected()[0] == formula::RejectedElement { 3, 1 });
+    STATIC_REQUIRE(out->rejected()[1] == formula::RejectedElement { 5, 2 });
+    STATIC_REQUIRE(out->passes() == 3);
+    STATIC_REQUIRE(out->survivors().size() == 4);
+    STATIC_REQUIRE(
+        formula::checked_evaluate<Determinations>(formula::sample_count(rejection), observedA)->measurement().value()
+        == rat(4));
+}
+
+TEST_CASE("a rejection of observations reads a critical value at the count made, not the capacity (fixture B)",
+          "[rejection]")
+{
+    // Six made of eight: pass 1 reads n = 6, 9/20, and the gap table goes on
+    // as for the series -- 321/8 g, {3, 5}, three passes. Read at the
+    // capacity, n = 8 gives 1/20 in every pass.
+    constexpr auto observedB = observedOf(rat(402, 10), rat(398, 10), rat(405, 10), rat(452, 10), rat(40), rat(372, 10));
+    constexpr auto three =
+        formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 3>(gapTable), observedB);
+    STATIC_REQUIRE(three->outcome().measurement().value() == rat(321, 8));
+    STATIC_REQUIRE(three->rejected().size() == 2);
+    STATIC_REQUIRE(three->rejected()[0] == formula::RejectedElement { 3, 1 });
+    STATIC_REQUIRE(three->rejected()[1] == formula::RejectedElement { 5, 2 });
+    STATIC_REQUIRE(three->passes() == 3);
+    // The deviation table, at n = 6 then 5: 1977/50 g with {3}.
+    constexpr auto two =
+        formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 3>(deviationTable), observedB);
+    STATIC_REQUIRE(two->outcome().measurement().value() == rat(1977, 50));
+    STATIC_REQUIRE(two->passes() == 2);
+
+    // The observations' step is the sample's, and each rejected element is
+    // one of the six made -- not of the eight places.
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_rejection<Mass>(
+        observedRejectionOf<MostExtreme, Keep, 2, 3>(gapTable), observedB, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. m = 201/5 g; 199/5 g; 81/2 g; 226/5 g; 40 g; 186/5 g\n"
+             "2. pass n = 6\n"
+             "3. critical(#2) = 45 [critical value at n = 6]\n"
+             "4. 1/100\n"
+             "5. #3 * #4 = 9/20\n"
+             "6. pass 1: 6 values, mean 2429/60 g\n"
+             "7. rejected element 4 of 6 (226/5 g) in pass 1: gap / range = 47/80 > 9/20 (gap to range)\n"
+             "8. pass n = 5\n"
+             "9. critical(#8) = 30 [critical value at n = 5]\n"
+             "10. 1/100\n"
+             "11. #9 * #10 = 3/10\n"
+             "12. pass 2: 5 values, mean 1977/50 g\n"
+             "13. rejected element 6 of 6 (186/5 g) in pass 2: gap / range = 26/33 > 3/10 (gap to range)\n"
+             "14. pass n = 4\n"
+             "15. critical(#14) = 700 [critical value at n = 4]\n"
+             "16. 1/100\n"
+             "17. #15 * #16 = 7\n"
+             "18. pass 3: 4 values, mean 321/8 g\n"
+             "19. settled: 2 rejected, 4 remain\n");
+}
+
+TEST_CASE("a rejection of observations too few to keep its bound, or of none", "[rejection]")
+{
+    // Three made, KeepAtLeast<4>: 40, 40 and 44 g, 44 g past 6 % of the
+    // mean. Rejecting it would leave two of at least four, so the rejection
+    // aborts with the author's verdict, nothing rejected -- as a series of
+    // three would. Within the limit, three made settle on all three: too few
+    // is a reason to stop only when a determination would go.
+    constexpr auto three = formula::checked_evaluate_rejection<Mass>(
+        observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent), observedOf(rat(40), rat(40), rat(44)));
+    STATIC_REQUIRE(three->outcome().is_verdict());
+    STATIC_REQUIRE(three->rejected().empty());
+    STATIC_REQUIRE(three->passes() == 1);
+    constexpr auto within = formula::checked_evaluate_rejection<Mass>(
+        observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent), observedOf(rat(40), rat(40), rat(41)));
+    STATIC_REQUIRE(within->outcome().measurement().value() == rat(121, 3));
+    STATIC_REQUIRE(within->survivors().size() == 3);
+    // None made: the first pass has no mean.
+    constexpr auto none =
+        formula::checked_evaluate_rejection<Mass>(observedRejectionOf<MostExtreme, Keep, 2, 4>(sixPercent), observedOf());
+    STATIC_REQUIRE(none.error().error == formula::ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(!none.error().element.has_value());
 }

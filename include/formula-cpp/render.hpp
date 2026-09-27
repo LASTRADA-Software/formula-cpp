@@ -722,6 +722,11 @@ template <Dialect D, typename R, Vocabulary V>
     requires detail::is_sample_transformer<R>
 [[nodiscard]] std::string render(R const& node, V const& vocabulary);
 
+/// The counterpart for raw observations (`binning.hpp`), neither a `Node` nor
+/// a series, when a statistic renders its sample.
+template <Dialect D, ObservationsNode O, Vocabulary V>
+[[nodiscard]] std::string render(O const& node, V const& vocabulary);
+
 namespace detail
 {
     template <Dialect D, typename Child, Vocabulary V>
@@ -1837,6 +1842,14 @@ template <Dialect D, SeriesNode S, Vocabulary V>
 template <Dialect D, typename R, Vocabulary V>
     requires detail::is_sample_transformer<R>
 [[nodiscard]] std::string render(R const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the raw observations @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, ObservationsNode O, Vocabulary V>
+[[nodiscard]] std::string render(O const& node, V const& vocabulary)
 {
     return detail::render_in_vocabulary<D>(node, vocabulary);
 }
