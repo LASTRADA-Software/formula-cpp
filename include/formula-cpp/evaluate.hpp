@@ -187,8 +187,10 @@ namespace detail
     }
 
     /// Tells @p sink that @p node failed with @p arithmeticFailure, and
-    /// returns that failure -- the one way a node reports its own error or
-    /// relays its operand's.
+    /// returns that failure -- how a node relays an operand's failure, and
+    /// how a lookup reports its miss, its key conversion failure or its
+    /// interpolation failure. A node's own arithmetic result, failed or not,
+    /// is still recorded and returned as the named value it computed.
     ///
     /// The result is built twice rather than held in a named local: GCC 13
     /// reports a false -Wmaybe-uninitialized, at -O2 and above, on returning a
