@@ -1399,6 +1399,26 @@ TEST_CASE("a documented step over a consumer node that forwards the sink keeps t
           != std::string::npos);
 }
 
+TEST_CASE("a documented step over a consumer node with one operand of its dimension keeps the coherent SI unit",
+          "[trace-render][citation]")
+{
+    // The consumer's node has a single operand, a Celsius reading, and
+    // returns its rise above 16.3 degrees C: the documented step claims
+    // exactly one step, of the right dimension, so nothing at run time tells
+    // it from the node's own. Only the node's kind does -- a consumer's node
+    // records no step -- and the rise stays in coherent SI rather than being
+    // stated as a Celsius reading of it.
+    constexpr formula::Citation cited { .title = "Rise above the reference",
+                                        .reference = "Example Standard 1:2020",
+                                        .section = "6.5" };
+    constexpr auto rise =
+        formula::documented(forwarding::rise_above(var<EndTemperature>, formula::Rational { 5789, 20 }), cited);
+    std::string const degreesCelsius = "\xc2\xb0" "C";
+    CHECK(derivationOf(rise, formula::environment(formula::Measured<EndTemperature> { formula::Rational { 277, 10 } }))
+          == "1. T_1 = 277/10 " + degreesCelsius + "\n"
+             + "2. #1 = 57/5 [Rise above the reference, Example Standard 1:2020, 6.5]\n");
+}
+
 TEST_CASE("a derivation renders a lookup's own conversion failure as neither a miss nor a relay",
           "[trace-render][lookup]")
 {

@@ -892,6 +892,27 @@ TEST_CASE("a replacement by a consumer node that forwards the sink keeps the coh
           != std::string::npos);
 }
 
+TEST_CASE("a replacement by a consumer node with one operand of its dimension keeps the coherent SI unit",
+          "[overlay][trace]")
+{
+    // One operand, a Celsius reading, of the method's own dimension: the
+    // replaced-variant step claims exactly one step of the right dimension,
+    // and only the node's kind says it is not the replacement's own. The rise
+    // above 16.3 degrees C stays in coherent SI.
+    constexpr auto baseRise = formula::method(
+        formula::variants(formula::variant<Cube>(var<EndTemperature> - var<StartTemperature>)),
+        formula::RoundingRule<unit::Kelvin, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero> {},
+        formula::constraints());
+    constexpr auto replaced = formula::apply(
+        formula::overlay(formula::replace_variant<Cube>(
+            forwarding::rise_above(var<EndTemperature>, formula::Rational { 5789, 20 }), replacementAnnex)),
+        baseRise);
+    auto const reading = formula::environment(formula::Measured<EndTemperature> { formula::Rational { 277, 10 } });
+    CHECK(traceOfVariant<Cube>(replaced, reading)
+              .find(" = 57/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.3.1]\n")
+          != std::string::npos);
+}
+
 TEST_CASE("the documentation marks a replaced formula as replaced even when nothing was cited", "[overlay][document]")
 {
     // Uncited, a replacement adds no citation -- and a page that said nothing

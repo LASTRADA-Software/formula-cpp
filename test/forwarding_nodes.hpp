@@ -34,6 +34,30 @@ struct Quotient: formula::NodeBase
     Rhs rhs;
 };
 
+/// `operand` less a fixed reference, stated in the coherent SI unit of their
+/// dimension. It has one operand, of its own dimension, so a pass-through
+/// step over it claims exactly one step whose dimension is right -- and over
+/// a Celsius reading that step is still a reading, while this node's value is
+/// a rise above the reference. Only the node's kind tells the two apart.
+template <formula::Node Operand>
+struct RiseAbove: formula::NodeBase
+{
+    static constexpr formula::Dimension dimension = Operand::dimension;
+    Operand operand;
+    formula::Rational reference;
+};
+
+template <typename Rep = formula::Rational, typename Operand, typename Env, typename Sink>
+[[nodiscard]] constexpr formula::Evaluated<Rep> checked_evaluate_si(RiseAbove<Operand> const& node,
+                                                                    Env const& environment,
+                                                                    Sink sink) noexcept
+{
+    formula::Evaluated<Rep> const measured = formula::detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!measured.has_value() || !measured->has_value())
+        return measured;
+    return formula::detail::present<Rep>(**measured - node.reference);
+}
+
 template <typename Rep = formula::Rational, typename Lhs, typename Rhs, typename Env, typename Sink>
 [[nodiscard]] constexpr formula::Evaluated<Rep> checked_evaluate_si(Difference<Lhs, Rhs> const& node,
                                                                     Env const& environment,
@@ -66,6 +90,12 @@ template <formula::Node Lhs, formula::Node Rhs>
 [[nodiscard]] constexpr Difference<Lhs, Rhs> difference(Lhs lhs, Rhs rhs) noexcept
 {
     return Difference<Lhs, Rhs> { {}, lhs, rhs };
+}
+
+template <formula::Node Operand>
+[[nodiscard]] constexpr RiseAbove<Operand> rise_above(Operand operand, formula::Rational reference) noexcept
+{
+    return RiseAbove<Operand> { {}, operand, reference };
 }
 
 template <formula::Node Lhs, formula::Node Rhs>
