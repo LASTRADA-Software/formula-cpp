@@ -55,8 +55,8 @@ inline constexpr auto m =
                     formula::rounding_rule<formula::unit::Megapascal,
                                            formula::DecimalPlaces { 1 },
                                            formula::RoundingMode::HalfAwayFromZero>(),
-                    formula::constraints(formula::constraint(var<Ratio> <= formula::number(formula::Rational { 1 }),
-                                                             formula::Verdict { "the ratio exceeds one" })));
+                    formula::constraints(formula::constraint(var<Ratio> <= formula::number(formula::Rational { 137, 100 }),
+                                                             formula::Verdict { "the ratio exceeds 1.37" })));
 
 } // namespace
 
@@ -64,7 +64,7 @@ int main()
 {
     constexpr auto overlaid = formula::apply(
         formula::overlay(
-            formula::with_constant<Other>(formula::Rational { 1, 2 },
+            formula::with_constant<Other>(formula::Rational { 431, 1000 },
                                           formula::Citation { .reference = "Example Standard 12:2021 NA" }),
             formula::replace_variant<Cylinder>(var<Other> * var<Force> / (var<EdgeX> * var<EdgeX>),
                                                formula::Citation { .reference = "Example Standard 12:2021 NA" })),

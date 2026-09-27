@@ -76,7 +76,7 @@ struct NationalFactor: formula::Quantity<NationalFactor, "X_decl", "national fac
 {
 };
 
-inline constexpr formula::BandTable<2> JoinBands { formula::band(100, 1, 150, 1), formula::band(150, 1, 300, 1) };
+inline constexpr formula::BandTable<2> JoinBands { formula::band(103, 1, 163, 1), formula::band(163, 1, 331, 1) };
 
 /// Three variants, reporting a dimensionless ratio rounded in percent. Only
 /// the Cylinder survives the overlays below, so a trace that says "2nd of 3"
@@ -97,13 +97,14 @@ inline constexpr formula::Citation roundingAnnex { .reference = "Example Standar
 /// first, so that the fixed constant and the derived quantity listed after it
 /// are substituted inside it: operations apply in the order listed.
 inline constexpr auto southernOverlay = formula::overlay(
-    formula::replace_variant<Cylinder>(var<NationalFactor> * var<SizeFactor> * var<Strength>
-                                           / (var<Modulus>
-                                              * formula::banded_lookup<unit::Millimetre, JoinBands, unit::One>(
-                                                  var<Diameter>, { formula::Rational { 1 }, formula::Rational { 2 } })),
-                                       replacementAnnex),
-    formula::with_constant<NationalFactor>(formula::Rational { 3, 2 }, constantAnnex),
-    formula::add_derived<SizeFactor>(var<Diameter> / formula::constant<unit::Millimetre>(formula::Rational { 100 }),
+    formula::replace_variant<Cylinder>(
+        var<NationalFactor> * var<SizeFactor> * var<Strength>
+            / (var<Modulus>
+               * formula::banded_lookup<unit::Millimetre, JoinBands, unit::One>(
+                   var<Diameter>, { formula::Rational { 1'127, 1'000 }, formula::Rational { 1'973, 1'000 } })),
+        replacementAnnex),
+    formula::with_constant<NationalFactor>(formula::Rational { 1'487, 1'000 }, constantAnnex),
+    formula::add_derived<SizeFactor>(var<Diameter> / formula::constant<unit::Millimetre>(formula::Rational { 127 }),
                                      derivedAnnex),
     formula::prune_variant<Prism>(formula::Citation { .reference = "Example Standard 12:2021 NA", .section = "NA.1.2" }),
     formula::with_rounding<unit::Percent, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
@@ -128,13 +129,14 @@ inline constexpr auto north = formula::vocabulary(formula::renames<Strength>("R"
                                                   formula::renames<SizeFactor>("k_n"),
                                                   formula::renames<NationalFactor>("x_n"));
 
-// 30 MPa, 11 MPa and 200 mm, distinct from each other and from every table row.
-// The Cylinder then reports 90/22 = 4.0909...: 409.09 % under the overlay's two
-// decimal places and 409.1 % under the base method's one, so which rule
-// rounded shows in the number and not only in the trace's words.
+// 30 MPa, 11 MPa and 241 mm, distinct from each other and from every table row.
+// The Cylinder then reports 1.487 * 241/127 * 30 / (11 * 1.973) = 3.90054...:
+// 390.05 % under the overlay's two decimal places and 390.1 % under the base
+// method's one, so which rule rounded shows in the number and not only in the
+// trace's words.
 inline constexpr auto inputs = formula::environment(formula::Measured<Strength> { formula::Rational { 30 } },
                                                     formula::Measured<Modulus> { formula::Rational { 11 } },
-                                                    formula::Measured<Diameter> { formula::Rational { 200 } });
+                                                    formula::Measured<Diameter> { formula::Rational { 241 } });
 
 // The helpers are `static`, and deliberately so: each translation unit gets its
 // own copy, compiled against its own view of the shared declarations above.

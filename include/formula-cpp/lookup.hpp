@@ -326,9 +326,9 @@
 /// **Interpolating lookup: a value between two rows.** The third table kind in
 /// this file, and the only one whose answer is a number the table does not
 /// contain. A published curve states a value at a handful of key points --
-/// 0, 10, 20, 30 mm, say -- and a specimen measured at 15 mm is not "in the
-/// 10-20 row": the method means the value the two surrounding rows imply at
-/// 15 mm. A band table cannot express that, because a band selects one stored
+/// 0, 103, 197, 293 mm, say -- and a specimen measured at 151 mm is not "in
+/// the 103-197 row": the method means the value the two surrounding rows imply
+/// at 151 mm. A band table cannot express that, because a band selects one stored
 /// correction for its whole interval; this node computes.
 ///
 /// **The table is points, not intervals, and that is why `BandTable` is not
@@ -608,7 +608,7 @@ namespace detail
 /// public aggregate with public members, so
 ///
 ///     inline constexpr ExactLookupNode<ThreeKeys, unit::One> node {
-///         {}, { rat(7, 10) }, Shape::Prism };
+///         {}, { rat(781, 1000) }, Shape::Prism };
 ///
 /// compiled, linked, and evaluated the two rows nobody typed as `0` -- checked
 /// against the installed package on all three node kinds, all three of which
@@ -806,7 +806,7 @@ struct BandedLookupNode: NodeBase
 
 
 /// Declares a banded lookup: `banded_lookup<unit::Millimetre, Bands,
-/// unit::One>(var<Diameter>, { rat(95, 100), rat(1), rat(105, 100) })`.
+/// unit::One>(var<Diameter>, { rat(863, 1000), rat(1043, 1000), rat(1127, 1000) })`.
 ///
 /// `KeyUnit`, `Bands` and `ResultUnit` are deliberately not deduced -- the
 /// same reason `rounded<U, Places, Mode>` (`rounding_node.hpp`) leaves its
@@ -1181,7 +1181,7 @@ struct RequireValidKeyTable
 /// so a caller can declare one **without ever calling the factory** --
 ///
 ///     inline constexpr ExactLookupNode<Duplicated, unit::One> node {
-///         {}, { rat(1), rat(1), rat(1) }, Shape::Cube };
+///         {}, { rat(1127, 1000), rat(863, 1000), rat(1043, 1000) }, Shape::Cube };
 ///
 /// -- and only a `static_assert` in the class body refuses that. With the
 /// asserts in the factory it compiles, links, and carries a silently
@@ -1230,7 +1230,7 @@ struct ExactLookupNode: NodeBase
 };
 
 /// Declares an exact lookup: `exact_lookup<Shapes, unit::One>(shape,
-/// { rat(1), rat(97, 100), rat(92, 100) })`.
+/// { rat(1043, 1000), rat(863, 1000), rat(781, 1000) })`.
 ///
 /// `Keys` and `ResultUnit` are deliberately not deduced, for the reason
 /// `banded_lookup` leaves its structural parameters unstated at the argument
@@ -1344,7 +1344,7 @@ struct Breakpoint
 /// denominator defaults to 1 -- unlike `band()`, which takes both bounds as
 /// explicit pairs -- because a breakpoint is one number rather than two, and a
 /// curve stated at whole-numbered keys then reads
-/// `{ breakpoint(0), breakpoint(10), breakpoint(20) }` rather than carrying a
+/// `{ breakpoint(0), breakpoint(103), breakpoint(197) }` rather than carrying a
 /// column of `1`s that says nothing.
 [[nodiscard]] constexpr Breakpoint breakpoint(std::int64_t keyNumerator, std::int64_t keyDenominator = 1) noexcept
 {
@@ -1580,7 +1580,7 @@ namespace detail
     ///
     /// Dividing first is chosen because it is the better order for the tables
     /// this library is actually for. A published curve states its rows on a
-    /// common grid -- 0, 10, 20 mm -- so `keyOffset` and `keySpan` share their
+    /// common grid -- 0, 103, 197 mm -- so `keyOffset` and `keySpan` share their
     /// denominator, `keyOffset / keySpan` cancels to a weight strictly below 1, and
     /// the key scale never meets the value scale. Multiplying first forms the
     /// one product in the whole computation that mixes key magnitude with value
@@ -1770,7 +1770,7 @@ struct InterpolatingLookupNode: NodeBase
 };
 
 /// Declares an interpolating lookup: `interpolating_lookup<unit::Millimetre,
-/// Points, unit::One>(var<Diameter>, { rat(9, 10), rat(1), rat(12, 10) })`.
+/// Points, unit::One>(var<Diameter>, { rat(873, 1000), rat(1043, 1000), rat(1217, 1000) })`.
 ///
 /// `KeyUnit`, `Points` and `ResultUnit` are deliberately not deduced, for the
 /// reason `banded_lookup` leaves its structural parameters unstated at the

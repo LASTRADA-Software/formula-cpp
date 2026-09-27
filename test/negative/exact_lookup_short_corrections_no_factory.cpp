@@ -30,7 +30,7 @@ namespace
 
     // Only ONE correction for THREE keys, handed straight to the aggregate.
     inline constexpr formula::ExactLookupNode<ShapeKeys, formula::unit::One> broken {
-        {}, { formula::Rational { 1 } }, ShortCorrectionsShape::Prism
+        {}, { formula::Rational { 1127, 1000 } }, ShortCorrectionsShape::Prism
     };
 } // namespace
 

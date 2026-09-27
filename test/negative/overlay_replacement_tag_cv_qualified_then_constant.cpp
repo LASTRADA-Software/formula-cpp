@@ -63,7 +63,7 @@ int main()
         formula::overlay(
             formula::replace_variant<Cylinder const>(var<Ratio> * var<Force> / (var<EdgeX> * var<EdgeY>),
                                                      formula::Citation { .reference = "Example Standard 12:2021 NA" }),
-            formula::with_constant<Ratio>(formula::Rational { 4, 5 },
+            formula::with_constant<Ratio>(formula::Rational { 781, 1000 },
                                           formula::Citation { .reference = "Example Standard 12:2021 NA" })),
         m);
     return std::tuple_size_v<decltype(overlaid.variantSet.cases)> == 2 ? 0 : 1;

@@ -90,7 +90,7 @@ struct formula::TagName<Cylinder>
 {
     static constexpr std::string_view of() noexcept
     {
-        return "cylinder 150 x 300 mm";
+        return "cylinder 135 x 271 mm";
     }
 };
 
@@ -114,17 +114,18 @@ inline constexpr auto compressiveStrength = formula::method(
                       formula::variant<Cylinder>(formula::constant<unit::One>(rat(4)) * var<Force>
                                                  / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(50)),
-                                             formula::Verdict { "the load at failure is below 50 kN" })));
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(473, 10)),
+                                             formula::Verdict { "the load at failure is below 47.3 kN" })));
 // clang-format on
 
-// A 150 x 100 mm cube face loaded to 90.1 kN: 6.00666... MPa, so a rounding
-// rule's granularity shows in the number -- 6.0 MPa to one decimal, 6.01 to two.
-inline constexpr auto specimen = formula::environment(formula::Measured<Force> { rat(90'100) },
-                                                      formula::Measured<EdgeA> { rat(150) },
-                                                      formula::Measured<EdgeB> { rat(100) },
-                                                      formula::Measured<Diameter> { rat(150) },
-                                                      formula::Measured<ShapeFactor> { rat(1) });
+// A 163 x 103 mm cube face loaded to 89.3 kN with a measured shape factor of
+// 1.043: 5.5477... MPa, so a rounding rule's granularity shows in the number --
+// 5.5 MPa to one decimal, 5.55 to two.
+inline constexpr auto specimen = formula::environment(formula::Measured<Force> { rat(89'300) },
+                                                      formula::Measured<EdgeA> { rat(163) },
+                                                      formula::Measured<EdgeB> { rat(103) },
+                                                      formula::Measured<Diameter> { rat(135) },
+                                                      formula::Measured<ShapeFactor> { rat(1043, 1000) });
 
 // ---- 2. Overlays -----------------------------------------------------------------
 inline constexpr formula::Citation northConstant { .title = "Shape factor",
@@ -136,24 +137,24 @@ inline constexpr formula::Citation southReplacement { .reference = "Example Stan
 inline constexpr formula::Citation southScope { .reference = "Example Standard 7:2019 A", .section = "A.1" };
 inline constexpr formula::Citation eastScope { .reference = "Example Standard 3:2023 E", .section = "E.1" };
 
-/// The north fixes the shape factor at 0.97 where the base method reads it
+/// The north fixes the shape factor at 0.863 where the base method reads it
 /// from the specimen, and reports in newtons per square millimetre to two
 /// decimals. A method answers in coherent SI whatever its rule; the rule's unit
 /// is the unit a jurisdiction REPORTS in, and it must measure the method's
 /// dimension.
 inline constexpr auto north =
-    formula::overlay(formula::with_constant<ShapeFactor>(rat(97, 100), northConstant),
+    formula::overlay(formula::with_constant<ShapeFactor>(rat(863, 1000), northConstant),
                      formula::with_rounding<unit::NewtonPerSquareMillimetre,
                                             formula::DecimalPlaces { 2 },
                                             formula::RoundingMode::HalfAwayFromZero>(northRounding));
 
 /// The south derives the shape factor from the cube's own edges, replaces the
-/// cylinder formula with its own -- 5.3 MPa for this specimen, where the base
-/// method's gives 5.1 MPa -- and has no prisms at all. The replacement
+/// cylinder formula with its own -- 4.3 MPa for this specimen, where the base
+/// method's gives 6.2 MPa -- and has no prisms at all. The replacement
 /// is listed first so that nothing listed after it is missed inside it.
 inline constexpr auto south = formula::overlay(
     formula::replace_variant<Cylinder>(
-        var<Force> / (formula::constant<unit::One>(rat(3, 4)) * formula::pow<2>(var<Diameter>)), southReplacement),
+        var<Force> / (formula::constant<unit::One>(rat(1127, 1000)) * formula::pow<2>(var<Diameter>)), southReplacement),
     formula::add_derived<ShapeFactor>(var<EdgeB> / var<EdgeA>, southDefinition),
     formula::prune_variant<Prism>(southScope));
 
@@ -209,17 +210,17 @@ inline constexpr formula::Citation westRevision { .title = "Acceptance",
 /// has one, and neither of them the base method's. `with_constraints` replaces
 /// the method's constraints wholesale -- it does not add to them.
 inline constexpr auto west = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(100)),
-                                             formula::Verdict { "the load at failure is below 100 kN" }),
-                         formula::constraint(var<EdgeA> <= formula::number(rat(2)) * var<EdgeB>,
-                                             formula::Verdict { "the loaded face is more than twice as long as wide" })),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(973, 10)),
+                                             formula::Verdict { "the load at failure is below 97.3 kN" }),
+                         formula::constraint(var<EdgeA> <= formula::number(rat(173, 100)) * var<EdgeB>,
+                                             formula::Verdict { "the loaded face is more than 1.73 times as long as wide" })),
     westAcceptance));
 
 /// A later revision of the west's annex, applied on top of the west's method:
 /// its one constraint is all the stacked method checks.
 inline constexpr auto westRevised = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(80)),
-                                             formula::Verdict { "the load at failure is below 80 kN" })),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(831, 10)),
+                                             formula::Verdict { "the load at failure is below 83.1 kN" })),
     westRevision));
 
 inline constexpr auto western = formula::apply(west, compressiveStrength);
@@ -330,11 +331,11 @@ int main()
     auto const cube = formula::evaluate_method<Cube>(compressiveStrength, specimen);
     std::printf("cube:   %s\n", exact(cube).c_str());
     std::printf("\n%s\n", derivationOf<Cube>(compressiveStrength).c_str());
-    check(exact(cube) == "6000000 Pa", "the cube's strength, rounded to 6.0 MPa and answered in pascals");
+    check(exact(cube) == "5500000 Pa", "the cube's strength, rounded to 5.5 MPa and answered in pascals");
 
     std::string const cylinderTrace = derivationOf<Cylinder>(compressiveStrength);
     std::printf("%s\n", cylinderTrace.c_str());
-    check(cylinderTrace.find("[variant cylinder 150 x 300 mm (3rd of 3), selected by tag]") != std::string::npos,
+    check(cylinderTrace.find("[variant cylinder 135 x 271 mm (3rd of 3), selected by tag]") != std::string::npos,
           "the cylinder variant is named as its TagName spells it, at its published position");
 
     // ---- 2. Overlays ---------------------------------------------------------------
@@ -342,19 +343,19 @@ int main()
 
     auto const northCube = formula::evaluate_method<Cube>(northern, specimen);
     std::printf("north cube: %s\n\n%s\n", exact(northCube).c_str(), derivationOf<Cube>(northern).c_str());
-    check(exact(northCube) == "5830000 Pa", "the north's fixed 0.97, rounded to 5.83 N/mm2 by its own rule");
+    check(exact(northCube) == "4590000 Pa", "the north's fixed 0.863, rounded to 4.59 N/mm2 by its own rule");
 
     auto const southCube = formula::evaluate_method<Cube>(southern, specimen);
     std::printf("south cube: %s\n\n%s\n", exact(southCube).c_str(), derivationOf<Cube>(southern).c_str());
-    check(exact(southCube) == "4000000 Pa", "the south's derived shape factor b / a = 2/3");
+    check(exact(southCube) == "3400000 Pa", "the south's derived shape factor b / a = 103/163");
 
     std::string const southCylinder = derivationOf<Cylinder>(southern);
     std::printf("%s\n", southCylinder.c_str());
     check(southCylinder.find("[replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]") != std::string::npos,
           "the south's cylinder formula is marked as the south's");
-    check(exact(formula::evaluate_method<Cylinder>(southern, specimen)) == "5300000 Pa"
-              && exact(formula::evaluate_method<Cylinder>(compressiveStrength, specimen)) == "5100000 Pa",
-          "the south's replacement formula is the one that ran: 5.3 MPa, not the base method's 5.1");
+    check(exact(formula::evaluate_method<Cylinder>(southern, specimen)) == "4300000 Pa"
+              && exact(formula::evaluate_method<Cylinder>(compressiveStrength, specimen)) == "6200000 Pa",
+          "the south's replacement formula is the one that ran: 4.3 MPa, not the base method's 6.2");
     check(southCylinder.find("(3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard "
                              "7:2019 A, A.1]")
               != std::string::npos,
@@ -402,7 +403,7 @@ int main()
     (void) formula::evaluate_method<Cube>(compressiveStrength, specimen, formula::RecordingSink { trace, southernWords });
     std::string const southernTrace = formula::render_trace(trace, { .maxSteps = 30 });
     std::printf("%s\n", southernTrace.c_str());
-    check(southernTrace.find("4. b = 150 mm\n") != std::string::npos, "the trace writes the 150 mm edge as the south does");
+    check(southernTrace.find("4. b = 163 mm\n") != std::string::npos, "the trace writes the 163 mm edge as the south does");
 
     // ---- 5. Constraints ----------------------------------------------------------------
     std::printf("== 5. Whose acceptance logic ==\n\n");
@@ -412,9 +413,9 @@ int main()
     print_outcomes("base", baseOutcomes);
     print_outcomes("west", westOutcomes);
     std::printf("\n");
-    check(baseOutcomes.size() == 1 && baseOutcomes[0].is_satisfied(), "the base method's one check: 90.1 kN >= 50 kN");
+    check(baseOutcomes.size() == 1 && baseOutcomes[0].is_satisfied(), "the base method's one check: 89.3 kN >= 47.3 kN");
     check(westOutcomes.size() == 2 && westOutcomes[0].is_violated() && westOutcomes[1].is_satisfied(),
-          "the west's two checks, each at its own index: 90.1 kN < 100 kN, and 150 mm <= 2 x 100 mm");
+          "the west's two checks, each at its own index: 89.3 kN < 97.3 kN, and 163 mm <= 1.73 x 103 mm");
 
     std::printf("base constraints: %s\n", whoseConstraints(compressiveStrength).c_str());
     std::printf("west constraints: %s\n\n", whoseConstraints(western).c_str());
@@ -424,7 +425,7 @@ int main()
     std::printf("%s\n%s\n", baseAcceptance.c_str(), westAcceptanceTrace.c_str());
     check(baseAcceptance.find("[satisfied; the method's own constraint]") != std::string::npos,
           "the base method's verdict is the method's own");
-    check(westAcceptanceTrace.find("[the load at failure is below 100 kN; jurisdiction overlay: Acceptance, "
+    check(westAcceptanceTrace.find("[the load at failure is below 97.3 kN; jurisdiction overlay: Acceptance, "
                                    "Example Standard 9:2022 B, B.2]")
               != std::string::npos,
           "the west's verdict names the west's annex");

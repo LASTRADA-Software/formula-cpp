@@ -17,7 +17,7 @@
 ///
 /// **Ruling, decided here once and binding on every other surface: a
 /// half-open interval is spelled `<low> to under <high>`, never `[low,
-/// high)`.** A band really is `[10, 20)` (`band.hpp`), and that is exactly
+/// high)`.** A band really is `[103, 197)` (`band.hpp`), and that is exactly
 /// the character sequence CommonMark reads as a link label -- the defect
 /// phase 8 published, when `round[to 1 dp of mm](d)` reached a page with its
 /// operand silently dropped. The guard test in `render_tests.cpp` asserts
@@ -206,7 +206,7 @@ namespace detail
     }
 
     /// A number followed by its unit's symbol, or the number alone when the
-    /// unit has none (`unit::One`) -- `150 mm`, `19/20`.
+    /// unit has none (`unit::One`) -- `139 mm`, `863/1000`.
     ///
     /// Factored out of `render_node(ConstantNode)`, which is the spelling this
     /// library already had, rather than invented for the lookup tables below:
@@ -258,7 +258,7 @@ namespace detail
         return std::to_string(declaredNumerator) + "/" + std::to_string(declaredDenominator);
     }
 
-    /// A half-open band as text: `10 to under 20 mm`. **The one spelling of a
+    /// A half-open band as text: `103 to under 197 mm`. **The one spelling of a
     /// half-open interval in this library** -- see this file's comment for the
     /// ruling and for the published defect that bought it.
     [[nodiscard]] inline std::string band_text(Band const& shownBand, std::string_view keySymbol)
@@ -404,8 +404,8 @@ namespace detail
     }
 
     /// One row of a rendered lookup table: what selects the row, then what the
-    /// row gives. `10 to under 20 mm gives 19/20`, `key Cylinder gives 1`,
-    /// `at 25 mm gives 6/5`.
+    /// row gives. `103 to under 197 mm gives 863/1000`, `key Cylinder gives
+    /// 1127/1000`, `at 241 mm gives 1043/1000`.
     [[nodiscard]] inline std::string lookup_row_text(std::string const& selector, std::string const& correction)
     {
         return selector + " gives " + correction;
@@ -872,19 +872,20 @@ template <Dialect D, Node Expr, Vocabulary V>
 // `lookup.hpp` calls out as deliberate: a banded and an exact table *select* a
 // number their author wrote down, while an interpolating table *computes* one
 // that appears in no row of it. Which of band or key did the selecting is
-// visible in every row already (`10 to under 20 mm` against `key Cylinder`), so
+// visible in every row already (`103 to under 197 mm` against `key Cylinder`), so
 // spending the head name on that instead would name the difference a reader
 // can see and leave the one they cannot.
 //
 // **The banded and the interpolating domain render differently because they
 // are different**, and this is the other thing a reader must not miss. A band
-// is an interval whose top is excluded and says so -- `20 to under 30 mm`.  A
-// breakpoint is a row, not a boundary: the table states a value *at* it, the
-// last one included, so it renders as the point it is -- `at 30 mm`. Nothing
-// in an interpolating rendering excludes anything, because nothing in an
-// interpolating table does. `lookup.hpp` pins the two behaviours against each
-// other at 30 mm; `render_tests.cpp` pins the two spellings against each other
-// on the same number, so that "harmonising" them in either direction fails.
+// is an interval whose top is excluded and says so -- `209/10 to under 293/10
+// mm`. A breakpoint is a row, not a boundary: the table states a value *at*
+// it, the last one included, so it renders as the point it is -- `at 293/10
+// mm`. Nothing in an interpolating rendering excludes anything, because
+// nothing in an interpolating table does. `lookup_tests.cpp` pins the two
+// behaviours against each other and `render_tests.cpp` the two spellings, each
+// on one shared number of its own, so that "harmonising" them in either
+// direction fails.
 //
 // None of the three needs a `PrecedenceOf` override, for `RoundNode`'s reason:
 // each always emits its own `(` ... `)`, which groups whatever it holds, so
@@ -1049,8 +1050,8 @@ template <Dialect D, Comparison Op, Node Left, Node Right, Vocabulary V>
 ///
 /// This project's own two illustrative constraints (`constraint.hpp`'s file
 /// comment) do not settle it by prose alone, and are not cited here as if
-/// they did: "the two replicates shall agree within 5%" names no consequence
-/// at all, while "reject the specimen below 30 MPa" folds one in. A standard
+/// they did: "the two replicates shall agree within 4.7%" names no consequence
+/// at all, while "reject the specimen below 27.3 MPa" folds one in. A standard
 /// is read either way in practice, which is exactly why the deciding fact
 /// has to be what `Verdict` structurally *is* on this type, not which of two
 /// quoted sentences sounds more natural.

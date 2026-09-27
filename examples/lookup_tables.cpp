@@ -22,7 +22,7 @@
 //   2. **The banded and the interpolating domains deliberately disagree at
 //      their top end.** A band's high bound is excluded; a curve's last
 //      breakpoint is a row the table states a value at, so it is reached.
-//      Step 4 below evaluates both kinds at the same 200 mm and shows them
+//      Step 4 below evaluates both kinds at the same 211 mm and shows them
 //      answering differently on purpose.
 //
 // Every citation here is invented -- generic physics with fictional Example
@@ -70,20 +70,20 @@ struct SizeCorrection: formula::Quantity<SizeCorrection, "k", "size correction f
 // anywhere in here is a compile error naming the two offending bands -- see
 // docs/lookup-tables.md, which shows the diagnostic.
 inline constexpr formula::BandTable<3> SizeBands {
-    formula::band(0, 1, 100, 1),   // 0 to under 100 mm
-    formula::band(100, 1, 150, 1), // 100 to under 150 mm
-    formula::band(150, 1, 200, 1), // 150 to under 200 mm -- 200 mm itself is NOT in it
+    formula::band(0, 1, 127, 1),   // 0 to under 127 mm
+    formula::band(127, 1, 173, 1), // 127 to under 173 mm
+    formula::band(173, 1, 211, 1), // 173 to under 211 mm -- 211 mm itself is NOT in it
 };
 
-// The same top row, written the way a published table meaning "150 mm to 200
+// The same top row, written the way a published table meaning "173 mm to 211
 // mm inclusive" must be written: the high bound at the next tick the domain
 // can actually take on. `unit::Millimetre` declares one decimal, so that tick
-// is 200.1 mm = 2001/10 -- a real, exact number, not an approximation.
+// is 211.1 mm = 2111/10 -- a real, exact number, not an approximation.
 //
 // This is the caller's reconciliation to do, and there is deliberately no
 // closed-upper-bound flag on `Band` to do it with (band.hpp says why).
 inline constexpr formula::BandTable<1> TopRowInclusive {
-    formula::band(150, 1, 2001, 10), // 150 to under 200.1 mm -- 200 mm IS in it
+    formula::band(173, 1, 2111, 10), // 173 to under 211.1 mm -- 211 mm IS in it
 };
 
 // ---- The exact table --------------------------------------------------------
@@ -172,13 +172,13 @@ inline constexpr formula::KeyTable<LookupExampleCuring, 3> CuringKeys {
 //
 // The same domain as SizeBands, stated as a curve instead of as steps: three
 // breakpoints, each a key the table states a value AT. The domain is closed at
-// both ends -- 100 mm and 200 mm are both hits -- because a breakpoint is a
+// both ends -- 127 mm and 211 mm are both hits -- because a breakpoint is a
 // row, not a boundary between rows, and excluding the last would make the
 // table's own final row unreachable.
 inline constexpr formula::BreakpointTable<3> SizeCurve {
-    formula::breakpoint(100),
-    formula::breakpoint(150),
-    formula::breakpoint(200),
+    formula::breakpoint(127),
+    formula::breakpoint(173),
+    formula::breakpoint(211),
 };
 
 // ---- The bands a nested lookup buckets that curve into -----------------------
@@ -188,9 +188,9 @@ inline constexpr formula::BreakpointTable<3> SizeCurve {
 // into the published class the method actually applies. Both tables are keyed
 // in percent here, which is what the curve produces.
 inline constexpr formula::BandTable<3> ClassBands {
-    formula::band(90, 1, 100, 1),  // 90 to under 100 %
-    formula::band(100, 1, 110, 1), // 100 to under 110 %
-    formula::band(110, 1, 120, 1), // 110 to under 120 %
+    formula::band(837, 10, 973, 10),   // 83.7 to under 97.3 %
+    formula::band(973, 10, 1041, 10),  // 97.3 to under 104.1 %
+    formula::band(1041, 10, 1179, 10), // 104.1 to under 117.9 %
 };
 
 // The corrections are declared in PERCENT while the factor a formula consumes
@@ -200,36 +200,36 @@ inline constexpr formula::BandTable<3> ClassBands {
 // bands, the keys, the breakpoints, and both units -- lives in the type.
 [[nodiscard]] constexpr auto sizeFactor()
 {
-    return formula::banded_lookup<unit::Millimetre, SizeBands, unit::Percent>(var<Diameter>,
-                                                                              { rat(95), rat(100), rat(105) });
+    return formula::banded_lookup<unit::Millimetre, SizeBands, unit::Percent>(
+        var<Diameter>, { rat(913, 10), rat(1051, 10), rat(1127, 10) });
 }
 
 [[nodiscard]] constexpr auto topRowInclusiveFactor()
 {
-    return formula::banded_lookup<unit::Millimetre, TopRowInclusive, unit::Percent>(var<Diameter>, { rat(105) });
+    return formula::banded_lookup<unit::Millimetre, TopRowInclusive, unit::Percent>(var<Diameter>, { rat(1127, 10) });
 }
 
 [[nodiscard]] constexpr auto shapeFactor(LookupExampleShape shape)
 {
-    return formula::exact_lookup<ShapeKeys, unit::Percent>(shape, { rat(100), rat(97), rat(92) });
+    return formula::exact_lookup<ShapeKeys, unit::Percent>(shape, { rat(1013, 10), rat(863, 10), rat(931, 10) });
 }
 
 [[nodiscard]] constexpr auto curingFactor(LookupExampleCuring curing)
 {
-    return formula::exact_lookup<CuringKeys, unit::Percent>(curing, { rat(100), rat(96), rat(90) });
+    return formula::exact_lookup<CuringKeys, unit::Percent>(curing, { rat(1043, 10), rat(937, 10), rat(881, 10) });
 }
 
 [[nodiscard]] constexpr auto sizeCurveFactor()
 {
-    return formula::interpolating_lookup<unit::Millimetre, SizeCurve, unit::Percent>(var<Diameter>,
-                                                                                     { rat(95), rat(100), rat(105) });
+    return formula::interpolating_lookup<unit::Millimetre, SizeCurve, unit::Percent>(
+        var<Diameter>, { rat(913, 10), rat(1051, 10), rat(1127, 10) });
 }
 
 // The nested shape: a banded lookup whose operand is an interpolating lookup.
 [[nodiscard]] constexpr auto classFactor()
 {
     return formula::banded_lookup<unit::Percent, ClassBands, unit::Percent>(sizeCurveFactor(),
-                                                                            { rat(95), rat(100), rat(105) });
+                                                                            { rat(919, 10), rat(1013, 10), rat(1087, 10) });
 }
 
 // The whole method: a measured strength corrected by two tables at once. The
@@ -306,7 +306,7 @@ int main()
     //
     // A band is written `<low> to under <high>`, and that is the ONE spelling
     // of a half-open interval anywhere in this library. That is
-    // not a stylistic choice: `[10, 20)` opens Markdown link syntax, which
+    // not a stylistic choice: `[0, 127)` opens Markdown link syntax, which
     // once silently dropped an operand from a published page of this
     // project's own documentation. The Markdown rendering below carries no
     // square bracket at all, and the assertion at the bottom of this file
@@ -315,49 +315,46 @@ int main()
     std::string const bandedMarkdown = formula::render<formula::Dialect::Markdown>(sizeFactor());
     std::printf("banded (md):   %s\n", bandedMarkdown.c_str());
 
-    std::optional<formula::Rational> const at120 = valueOf<SizeCorrection>(sizeFactor(), diameterOf(120));
-    std::printf("d = 120 mm:    %s\n", exact_text(*at120).c_str());
+    std::optional<formula::Rational> const at139 = valueOf<SizeCorrection>(sizeFactor(), diameterOf(139));
+    std::printf("d = 139 mm:    %s\n", exact_text(*at139).c_str());
 
     // ---- 2. Bands are half-open, and the boundary belongs to the band above --
     //
-    // 100 mm is the boundary the first two bands share. It belongs to
+    // 127 mm is the boundary the first two bands share. It belongs to
     // the band whose LOW bound it is, never the band whose high bound it is.
-    std::optional<formula::Rational> const at100 = valueOf<SizeCorrection>(sizeFactor(), diameterOf(100));
-    std::printf("d = 100 mm:    %s (the band above the boundary, never the one below)\n",
-                exact_text(*at100).c_str());
+    std::optional<formula::Rational> const at127 = valueOf<SizeCorrection>(sizeFactor(), diameterOf(127));
+    std::printf("d = 127 mm:    %s (the band above the boundary, never the one below)\n", exact_text(*at127).c_str());
 
     // ---- 3. The table's own top bound is excluded, and that is the caller's --
     //          reconciliation to do
     //
-    // SizeBands' last row runs 150 to under 200 mm, so 200 mm falls in NO band. A
-    // published row meaning "150 mm to 200 mm inclusive" is written with its
-    // high bound at the next tick past 200 -- 200.1 mm, one decimal being what
+    // SizeBands' last row runs 173 to under 211 mm, so 211 mm falls in NO band. A
+    // published row meaning "173 mm to 211 mm inclusive" is written with its
+    // high bound at the next tick past 211 -- 211.1 mm, one decimal being what
     // unit::Millimetre declares.
-    std::optional<formula::ArithmeticError> const at200Missed =
-        errorOf<SizeCorrection>(sizeFactor(), diameterOf(200));
-    std::optional<formula::Rational> const at200Inclusive =
-        valueOf<SizeCorrection>(topRowInclusiveFactor(), diameterOf(200));
-    std::string_view const missText = formula::describe(*at200Missed);
-    std::printf("d = 200 mm:    %.*s\n", static_cast<int>(missText.size()), missText.data());
+    std::optional<formula::ArithmeticError> const at211Missed = errorOf<SizeCorrection>(sizeFactor(), diameterOf(211));
+    std::optional<formula::Rational> const at211Inclusive =
+        valueOf<SizeCorrection>(topRowInclusiveFactor(), diameterOf(211));
+    std::string_view const missText = formula::describe(*at211Missed);
+    std::printf("d = 211 mm:    %.*s\n", static_cast<int>(missText.size()), missText.data());
     std::printf("inclusive top: %s\n", formula::render(topRowInclusiveFactor()).c_str());
-    std::printf("d = 200 mm:    %s\n", exact_text(*at200Inclusive).c_str());
+    std::printf("d = 211 mm:    %s\n", exact_text(*at211Inclusive).c_str());
 
     // ---- 4. An interpolating table computes a number no row contains --------
     //
     // ... and its domain is CLOSED at both ends, deliberately unlike a band
-    // table's. The same 200 mm that missed above is this table's last row, and
+    // table's. The same 211 mm that missed above is this table's last row, and
     // a row is a value the table states, not a boundary between two of them.
     std::printf("interpolating: %s\n", formula::render(sizeCurveFactor()).c_str());
 
-    std::optional<formula::Rational> const curveAt120 = valueOf<SizeCorrection>(sizeCurveFactor(), diameterOf(120));
-    std::optional<formula::Rational> const curveAt200 = valueOf<SizeCorrection>(sizeCurveFactor(), diameterOf(200));
-    std::optional<formula::ArithmeticError> const curveAt220 =
-        errorOf<SizeCorrection>(sizeCurveFactor(), diameterOf(220));
-    std::string_view const curveMissText = formula::describe(*curveAt220);
-    std::printf("d = 120 mm:    %s (between two rows -- in neither of them)\n", exact_text(*curveAt120).c_str());
-    std::printf("d = 200 mm:    %s (the last row, reached -- where the band table missed)\n",
-                exact_text(*curveAt200).c_str());
-    std::printf("d = 220 mm:    %.*s (no extrapolation past the last row)\n",
+    std::optional<formula::Rational> const curveAt139 = valueOf<SizeCorrection>(sizeCurveFactor(), diameterOf(139));
+    std::optional<formula::Rational> const curveAt211 = valueOf<SizeCorrection>(sizeCurveFactor(), diameterOf(211));
+    std::optional<formula::ArithmeticError> const curveAt233 = errorOf<SizeCorrection>(sizeCurveFactor(), diameterOf(233));
+    std::string_view const curveMissText = formula::describe(*curveAt233);
+    std::printf("d = 139 mm:    %s (between two rows -- in neither of them)\n", exact_text(*curveAt139).c_str());
+    std::printf("d = 211 mm:    %s (the last row, reached -- where the band table missed)\n",
+                exact_text(*curveAt211).c_str());
+    std::printf("d = 233 mm:    %.*s (no extrapolation past the last row)\n",
                 static_cast<int>(curveMissText.size()),
                 curveMissText.data());
 
@@ -401,14 +398,14 @@ int main()
     // evaluates, and it traces.
     std::printf("nested:        %s\n", formula::render(classFactor()).c_str());
 
-    std::optional<formula::Rational> const nestedAt120 = valueOf<SizeCorrection>(classFactor(), diameterOf(120));
-    std::printf("d = 120 mm:    %s (curve gives 97 %%, which falls in the 90-to-under-100 %% band)\n",
-                exact_text(*nestedAt120).c_str());
+    std::optional<formula::Rational> const nestedAt139 = valueOf<SizeCorrection>(classFactor(), diameterOf(139));
+    std::printf("d = 139 mm:    %s (curve gives 94.9 %%, which falls in the 83.7-to-under-97.3 %% band)\n",
+                exact_text(*nestedAt139).c_str());
 
     formula::Documentation const nestedDocumentation = formula::document(classFactor());
     std::printf("nested symbols: %zu\n", nestedDocumentation.symbols.size());
 
-    std::printf("%s", tracedEvaluation<SizeCorrection>(classFactor(), diameterOf(120)).c_str());
+    std::printf("%s", tracedEvaluation<SizeCorrection>(classFactor(), diameterOf(139)).c_str());
 
     // ---- 6a. An interpolating lookup's own trace clause, in both its forms ---
     //
@@ -419,8 +416,8 @@ int main()
     // rows the answer appears in neither and a reader has an interpolation to
     // check; on a row the table stated the number directly and there is
     // nothing to check.
-    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeCurveFactor(), diameterOf(120)).c_str());
-    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeCurveFactor(), diameterOf(200)).c_str());
+    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeCurveFactor(), diameterOf(139)).c_str());
+    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeCurveFactor(), diameterOf(211)).c_str());
 
     // ---- 7. The whole method, rendered and documented ------------------------
     auto const method = correctedStrength(LookupExampleShape::Cylinder);
@@ -446,8 +443,8 @@ int main()
                     std::string { formula::view(entry.unit.symbolText) }.c_str());
 
     // ---- 8. The method evaluated, and its derivation -------------------------
-    auto const specimen = formula::environment(formula::Measured<MeasuredStrength> { rat(40) },
-                                               formula::Measured<Diameter> { rat(120) });
+    auto const specimen =
+        formula::environment(formula::Measured<MeasuredStrength> { rat(40) }, formula::Measured<Diameter> { rat(139) });
     std::optional<formula::Rational> const corrected = valueOf<CorrectedStrength>(method, specimen);
     std::printf("f_c:           %s MPa\n", exact_text(*corrected).c_str());
     std::printf("%s", tracedEvaluation<CorrectedStrength>(method, specimen).c_str());
@@ -458,23 +455,23 @@ int main()
     // bracketed clause says the value fell in no band AND what the table
     // actually covers, so a reader can tell a miss from a failure relayed
     // upward from the operand.
-    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeFactor(), diameterOf(200)).c_str());
+    std::printf("%s", tracedEvaluation<SizeCorrection>(sizeFactor(), diameterOf(211)).c_str());
 
     // ---- Every claim printed above, verified in code -------------------------
-    bool const bandedSelects = at120 == rat(1) && at100 == rat(1);
+    bool const bandedSelects = at139 == rat(1051, 1000) && at127 == rat(1051, 1000);
     bool const markdownCarriesNoBracket = bandedMarkdown.find('[') == std::string::npos;
-    bool const topBoundExcluded = at200Missed == formula::ArithmeticError::DomainError;
-    bool const nextTickReachesIt = at200Inclusive == rat(21, 20);
-    bool const curveComputes = curveAt120 == rat(97, 100);
-    bool const curveTopIncluded = curveAt200 == rat(21, 20);
-    bool const noExtrapolation = curveAt220 == formula::ArithmeticError::DomainError;
-    bool const exactSelects = cylinder == rat(97, 100);
+    bool const topBoundExcluded = at211Missed == formula::ArithmeticError::DomainError;
+    bool const nextTickReachesIt = at211Inclusive == rat(1127, 1000);
+    bool const curveComputes = curveAt139 == rat(949, 1000);
+    bool const curveTopIncluded = curveAt211 == rat(1127, 1000);
+    bool const noExtrapolation = curveAt233 == formula::ArithmeticError::DomainError;
+    bool const exactSelects = cylinder == rat(863, 1000);
     bool const absentKeyMisses = core == formula::ArithmeticError::DomainError;
-    bool const customizedSelects = sealed == rat(24, 25);
-    bool const nestedComposes = nestedAt120 == rat(19, 20) && nestedDocumentation.symbols.size() == 1;
-    bool const methodEvaluates = corrected == rat(194, 5);
+    bool const customizedSelects = sealed == rat(937, 1000);
+    bool const nestedComposes = nestedAt139 == rat(919, 1000) && nestedDocumentation.symbols.size() == 1;
+    bool const methodEvaluates = corrected == rat(907013, 25000);
 
-    // The two domains disagree at 200 mm, and that disagreement is the point:
+    // The two domains disagree at 211 mm, and that disagreement is the point:
     // a band's top is excluded, a curve's last row is a row.
     bool const domainsDisagreeOnPurpose = topBoundExcluded && curveTopIncluded;
 

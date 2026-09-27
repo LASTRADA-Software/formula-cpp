@@ -17,8 +17,8 @@ namespace
 
     inline constexpr formula::BreakpointTable<3> Curve {
         formula::breakpoint(0),
-        formula::breakpoint(10),
-        formula::breakpoint(20),
+        formula::breakpoint(103),
+        formula::breakpoint(197),
     };
 
     // Only ONE value for THREE breakpoints, handed straight to the aggregate.
@@ -26,7 +26,7 @@ namespace
                                                       Curve,
                                                       formula::unit::One,
                                                       formula::VarNode<Diameter>>
-        broken { {}, { formula::Rational { 95, 100 } }, formula::var<Diameter> };
+        broken { {}, { formula::Rational { 863, 1000 } }, formula::var<Diameter> };
 } // namespace
 
 int main()

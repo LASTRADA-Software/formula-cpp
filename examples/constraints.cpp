@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Constraints: a rule a standard states purely to validate a result, not to
-// compute one -- "the specimen shall be rejected below 30 MPa", not "compute
+// compute one -- "the specimen shall be rejected below 27.3 MPa", not "compute
 // the strength". formula::constraint() pairs a predicate with what to do when
 // it does not hold; formula::check() reports one of FOUR outcomes, not two:
 // Satisfied, Violated, NotChecked, Invalid.
@@ -38,17 +38,17 @@ struct Diameter: formula::Quantity<Diameter, "d", "measured specimen diameter", 
 {
 };
 
-// "reject the specimen below 30 MPa" -- constraint.hpp's own illustrative
-// example, given a concrete citation here.
+// "reject the specimen below 27.3 MPa" -- an invented threshold, given an
+// invented citation here.
 constexpr auto minimumStrength =
-    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+    formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
                         formula::Verdict { "reject the specimen" },
                         formula::Citation { .title = "Minimum compressive strength",
                                             .reference = "Example Standard 7:2020",
                                             .section = "5.1" });
 
 constexpr auto maximumDiameter =
-    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 100 }),
+    formula::constraint(var<Diameter> <= formula::constant<unit::Millimetre>(formula::Rational { 139 }),
                         formula::Verdict { "specimen exceeds diameter tolerance" });
 
 // Divides a measured value by zero while checking, so the predicate can
@@ -206,9 +206,9 @@ int main()
 
     // ---- Every claim printed above, verified in code ------------------------
     bool const renderedCorrectly =
-        formula::render(minimumStrength) == "require f >= 30 MPa"
-        && formula::render<formula::Dialect::LaTeX>(minimumStrength) == "\\text{require } f \\geq 30\\,\\mathrm{MPa}";
-    bool const documentedCorrectly = documentation.formula == "require f >= 30 MPa" && documentation.symbols.size() == 1
+        formula::render(minimumStrength) == "require f >= 273/10 MPa"
+        && formula::render<formula::Dialect::LaTeX>(minimumStrength) == "\\text{require } f \\geq 273/10\\,\\mathrm{MPa}";
+    bool const documentedCorrectly = documentation.formula == "require f >= 273/10 MPa" && documentation.symbols.size() == 1
                                      && citation.title == "Minimum compressive strength"
                                      && citation.reference == "Example Standard 7:2020";
     bool const fourOutcomesCorrect = satisfied.is_satisfied() && violated.is_violated() && notChecked.is_not_checked()

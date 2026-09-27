@@ -50,8 +50,8 @@ enum class LookupShape : std::uint8_t
 };
 
 inline constexpr formula::KeyTable<LookupShape, 2> Keys { LookupShape::Square, LookupShape::Round };
-inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 2, 1), formula::band(2, 1, 6, 1) };
-inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), formula::breakpoint(8) };
+inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 193, 100), formula::band(193, 100, 437, 100) };
+inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), formula::breakpoint(713, 100) };
 // Tables of no rows, whose `Corrections<0>` IS default-constructible: the one
 // case in which a lookup's own `operand` is reached by the probe at all.
 inline constexpr formula::BandTable<0> NoBands {};
@@ -62,27 +62,30 @@ inline constexpr formula::BreakpointTable<0> NoPoints {};
 // row or the bare operand cannot pass.
 [[nodiscard]] constexpr auto banded()
 {
-    // 3 falls in [2, 6), the second band: 7.
-    return formula::banded_lookup<unit::One, Bands, unit::One>(var<Ratio>,
-                                                               { formula::Rational { 1 }, formula::Rational { 7 } });
+    // 3 falls in [1.93, 4.37), the second band: 3.71.
+    return formula::banded_lookup<unit::One, Bands, unit::One>(
+        var<Ratio>, { formula::Rational { 863, 1000 }, formula::Rational { 371, 100 } });
 }
 
 [[nodiscard]] constexpr auto interpolating()
 {
-    // 3/8 of the way from 0 to 80: 30.
+    // 300/713 of the way from 0.781 to 1.494: 1.081.
     return formula::interpolating_lookup<unit::One, Points, unit::One>(
-        var<Ratio>, { formula::Rational { 0 }, formula::Rational { 80 } });
+        var<Ratio>, { formula::Rational { 781, 1000 }, formula::Rational { 1494, 1000 } });
 }
 
 [[nodiscard]] constexpr auto exact()
 {
-    // The second key's row: 5.
-    return formula::exact_lookup<Keys, unit::One>(LookupShape::Round, { formula::Rational { 2 }, formula::Rational { 5 } });
+    // The second key's row: 2.917.
+    return formula::exact_lookup<Keys, unit::One>(LookupShape::Round,
+                                                  { formula::Rational { 1093, 1000 }, formula::Rational { 2917, 1000 } });
 }
 
+// Nine places: no answer below has more than six, so the rule leaves every
+// one as it is, with room for an edit that adds a digit.
 [[nodiscard]] constexpr auto unrounded()
 {
-    return formula::rounding_rule<unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>();
+    return formula::rounding_rule<unit::One, formula::DecimalPlaces { 9 }, formula::RoundingMode::HalfAwayFromZero>();
 }
 
 inline constexpr auto ratioOfThree = formula::environment(formula::Measured<Ratio> { formula::Rational { 3 } });
@@ -93,10 +96,11 @@ template <typename Tag, typename M>
     return formula::evaluate_method<Tag>(m, ratioOfThree)->value();
 }
 
-[[nodiscard]] constexpr auto exactSixteen()
+[[nodiscard]] constexpr auto exactPerfectSquare()
 {
-    // A perfect square, for the root row below: the second key's row, 16.
-    return formula::exact_lookup<Keys, unit::One>(LookupShape::Round, { formula::Rational { 2 }, formula::Rational { 16 } });
+    // A perfect square, for the root row below: the second key's row, 0.7569.
+    return formula::exact_lookup<Keys, unit::One>(LookupShape::Round,
+                                                  { formula::Rational { 1093, 1000 }, formula::Rational { 7569, 10000 } });
 }
 
 // Whether @p expression survives being a method's variant: it compiles in
@@ -105,13 +109,13 @@ template <typename Tag, typename M>
 // tuple of two or more elements, where g++ 14 and clang++ with libstdc++
 // asked it of one.
 template <formula::Node Expr>
-[[nodiscard]] constexpr bool survives_a_method(Expr expression, long long expected)
+[[nodiscard]] constexpr bool survives_a_method(Expr expression, formula::Rational expected)
 {
     auto const m =
         formula::method(formula::variants(formula::variant<Cube>(expression), formula::variant<Cylinder>(expression)),
                         unrounded(),
                         formula::constraints());
-    return answer<Cube>(m) == formula::Rational { expected } && answer<Cylinder>(m) == formula::Rational { expected };
+    return answer<Cube>(m) == expected && answer<Cylinder>(m) == expected;
 }
 
 // Whether a method holding @p expression compiles and, evaluated, misses:
@@ -146,7 +150,7 @@ TEST_CASE("a method whose variant is a banded lookup evaluates it", "[method][lo
     constexpr auto result = formula::evaluate_method<Cube>(m, ratioOfThree);
     STATIC_REQUIRE(result.has_value());
     STATIC_REQUIRE(result->has_value());
-    STATIC_REQUIRE(result->value() == formula::Rational { 7 });
+    STATIC_REQUIRE(result->value() == formula::Rational { 371, 100 });
 }
 
 TEST_CASE("a method whose variant is an interpolating lookup evaluates it", "[method][lookup]")
@@ -156,7 +160,7 @@ TEST_CASE("a method whose variant is an interpolating lookup evaluates it", "[me
     constexpr auto result = formula::evaluate_method<Cube>(m, ratioOfThree);
     STATIC_REQUIRE(result.has_value());
     STATIC_REQUIRE(result->has_value());
-    STATIC_REQUIRE(result->value() == formula::Rational { 30 });
+    STATIC_REQUIRE(result->value() == formula::Rational { 1081, 1000 });
 }
 
 TEST_CASE("a method whose variant is an exact lookup evaluates it", "[method][lookup]")
@@ -166,19 +170,19 @@ TEST_CASE("a method whose variant is an exact lookup evaluates it", "[method][lo
     constexpr auto result = formula::evaluate_method<Cube>(m, ratioOfThree);
     STATIC_REQUIRE(result.has_value());
     STATIC_REQUIRE(result->has_value());
-    STATIC_REQUIRE(result->value() == formula::Rational { 5 });
+    STATIC_REQUIRE(result->value() == formula::Rational { 2917, 1000 });
 }
 
 TEST_CASE("a method evaluates a lookup nested inside a variant's expression", "[method][lookup]")
 {
     // The spec's own shape: a measured quantity scaled by a tabulated
-    // correction, 3 * 5.
+    // correction, 3 * 2.917.
     constexpr auto m = formula::method(
         formula::variants(formula::variant<Cube>(var<Ratio> * exact())), unrounded(), formula::constraints());
     constexpr auto result = formula::evaluate_method<Cube>(m, ratioOfThree);
     STATIC_REQUIRE(result.has_value());
     STATIC_REQUIRE(result->has_value());
-    STATIC_REQUIRE(result->value() == formula::Rational { 15 });
+    STATIC_REQUIRE(result->value() == formula::Rational { 8751, 1000 });
 }
 
 TEST_CASE("a method selects between variants that are both lookups", "[method][lookup]")
@@ -187,8 +191,8 @@ TEST_CASE("a method selects between variants that are both lookups", "[method][l
         formula::method(formula::variants(formula::variant<Cube>(banded()), formula::variant<Cylinder>(interpolating())),
                         unrounded(),
                         formula::constraints());
-    STATIC_REQUIRE(answer<Cube>(m) == formula::Rational { 7 });
-    STATIC_REQUIRE(answer<Cylinder>(m) == formula::Rational { 30 });
+    STATIC_REQUIRE(answer<Cube>(m) == formula::Rational { 371, 100 });
+    STATIC_REQUIRE(answer<Cylinder>(m) == formula::Rational { 1081, 1000 });
 }
 
 TEST_CASE("a method's constraint may hold a lookup", "[method][lookup]")
@@ -235,76 +239,84 @@ TEST_CASE("a lookup survives a method under every member that holds a child expr
     // under no other node member on the way to the variant, so restoring `{}`
     // on one member fails that member's own row. `VariantCase::expression` is
     // under every row.
-    // WhenNode::predicate, and PredicateNode::lhs under it: 7 > 3 holds.
+    // WhenNode::predicate, and PredicateNode::lhs under it: 3.71 > 3 holds.
     STATIC_REQUIRE(
-        survives_a_method(formula::when(banded() > var<Ratio>, var<Ratio>, formula::number(formula::Rational { 0 })), 3));
+        survives_a_method(formula::when(banded() > var<Ratio>, var<Ratio>, formula::number(formula::Rational { 0 })),
+                          formula::Rational { 3 }));
     STATIC_REQUIRE(refuses_default_construction(
         formula::when(banded() > var<Ratio>, var<Ratio>, formula::number(formula::Rational { 0 }))));
     // WhenNode::thenBranch.
     STATIC_REQUIRE(
-        survives_a_method(formula::when(var<Ratio> > formula::number(formula::Rational { 1 }), banded(), var<Ratio>), 7));
+        survives_a_method(formula::when(var<Ratio> > formula::number(formula::Rational { 137, 100 }), banded(), var<Ratio>),
+                          formula::Rational { 371, 100 }));
     STATIC_REQUIRE(refuses_default_construction(
-        formula::when(var<Ratio> > formula::number(formula::Rational { 1 }), banded(), var<Ratio>)));
+        formula::when(var<Ratio> > formula::number(formula::Rational { 137, 100 }), banded(), var<Ratio>)));
     // WhenNode::elseBranch.
     STATIC_REQUIRE(
-        survives_a_method(formula::when(var<Ratio> > formula::number(formula::Rational { 10 }), var<Ratio>, banded()), 7));
+        survives_a_method(formula::when(var<Ratio> > formula::number(formula::Rational { 137, 10 }), var<Ratio>, banded()),
+                          formula::Rational { 371, 100 }));
     STATIC_REQUIRE(refuses_default_construction(
-        formula::when(var<Ratio> > formula::number(formula::Rational { 10 }), var<Ratio>, banded())));
+        formula::when(var<Ratio> > formula::number(formula::Rational { 137, 10 }), var<Ratio>, banded())));
     // DocumentedNode::inner.
     STATIC_REQUIRE(survives_a_method(
         formula::documented(
             banded(),
             formula::Citation { .title = "Band correction", .reference = "Example Standard 1:2020", .section = "4.2" }),
-        7));
+        formula::Rational { 371, 100 }));
     STATIC_REQUIRE(refuses_default_construction(formula::documented(
         banded(),
         formula::Citation { .title = "Band correction", .reference = "Example Standard 1:2020", .section = "4.2" })));
     // UnaryNode::operand.
-    STATIC_REQUIRE(survives_a_method(-banded(), -7));
+    STATIC_REQUIRE(survives_a_method(-banded(), formula::Rational { -371, 100 }));
     STATIC_REQUIRE(refuses_default_construction(-banded()));
     // BinaryNode::lhs.
-    STATIC_REQUIRE(survives_a_method(banded() * var<Ratio>, 21));
+    STATIC_REQUIRE(survives_a_method(banded() * var<Ratio>, formula::Rational { 1113, 100 }));
     STATIC_REQUIRE(refuses_default_construction(banded() * var<Ratio>));
     // BinaryNode::rhs.
-    STATIC_REQUIRE(survives_a_method(var<Ratio> * exact(), 15));
+    STATIC_REQUIRE(survives_a_method(var<Ratio> * exact(), formula::Rational { 8751, 1000 }));
     STATIC_REQUIRE(refuses_default_construction(var<Ratio> * exact()));
-    // PowerNode::operand: 5 squared.
-    STATIC_REQUIRE(survives_a_method(formula::pow<2>(exact()), 25));
+    // PowerNode::operand: 2.917 squared.
+    STATIC_REQUIRE(survives_a_method(formula::pow<2>(exact()), formula::Rational { 8508889, 1000000 }));
     STATIC_REQUIRE(refuses_default_construction(formula::pow<2>(exact())));
-    // RootNode::operand: the square root of 16.
-    STATIC_REQUIRE(survives_a_method(formula::sqrt(exactSixteen()), 4));
-    STATIC_REQUIRE(refuses_default_construction(formula::sqrt(exactSixteen())));
-    // RoundNode::operand.
+    // RootNode::operand: the square root of 0.7569.
+    STATIC_REQUIRE(survives_a_method(formula::sqrt(exactPerfectSquare()), formula::Rational { 87, 100 }));
+    STATIC_REQUIRE(refuses_default_construction(formula::sqrt(exactPerfectSquare())));
+    // RoundNode::operand: 1.081 to two decimal places, 1.08 -- distinct from
+    // both rows (0.781, 1.494) and from the operand read as zero (0.781), so
+    // the rounded value still proves which number the lookup computed.
     STATIC_REQUIRE(survives_a_method(
-        formula::rounded<unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(interpolating()),
-        30));
+        formula::rounded<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(interpolating()),
+        formula::Rational { 27, 25 }));
     STATIC_REQUIRE(refuses_default_construction(
-        formula::rounded<unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::rounded<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
             interpolating())));
-    // RoundSignificantNode::operand.
+    // RoundSignificantNode::operand: 1.081 to three significant digits, 1.08,
+    // for the same reason.
     STATIC_REQUIRE(survives_a_method(
-        formula::rounded_to_digits<unit::One, formula::SignificantDigits { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::rounded_to_digits<unit::One, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfAwayFromZero>(
             interpolating()),
-        30));
+        formula::Rational { 27, 25 }));
     STATIC_REQUIRE(refuses_default_construction(
-        formula::rounded_to_digits<unit::One, formula::SignificantDigits { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::rounded_to_digits<unit::One, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfAwayFromZero>(
             interpolating())));
     // NumericValueNode::operand.
-    STATIC_REQUIRE(survives_a_method(formula::numeric_value_of<unit::One, "a ratio is already a pure number">(banded()), 7));
+    STATIC_REQUIRE(survives_a_method(formula::numeric_value_of<unit::One, "a ratio is already a pure number">(banded()),
+                                     formula::Rational { 371, 100 }));
     STATIC_REQUIRE(
         refuses_default_construction(formula::numeric_value_of<unit::One, "a ratio is already a pure number">(banded())));
-    // BandedLookupNode::operand: the exact lookup's 5 falls in [2, 6).
-    STATIC_REQUIRE(survives_a_method(
-        formula::banded_lookup<unit::One, Bands, unit::One>(exact(), { formula::Rational { 1 }, formula::Rational { 7 } }),
-        7));
-    STATIC_REQUIRE(refuses_default_construction(
-        formula::banded_lookup<unit::One, Bands, unit::One>(exact(), { formula::Rational { 1 }, formula::Rational { 7 } })));
-    // InterpolatingLookupNode::operand: 5/8 of the way from 0 to 80.
+    // BandedLookupNode::operand: the exact lookup's 2.917 falls in [1.93, 4.37).
+    STATIC_REQUIRE(survives_a_method(formula::banded_lookup<unit::One, Bands, unit::One>(
+                                         exact(), { formula::Rational { 863, 1000 }, formula::Rational { 371, 100 } }),
+                                     formula::Rational { 371, 100 }));
+    STATIC_REQUIRE(refuses_default_construction(formula::banded_lookup<unit::One, Bands, unit::One>(
+        exact(), { formula::Rational { 863, 1000 }, formula::Rational { 371, 100 } })));
+    // InterpolatingLookupNode::operand: 2917/7130 of the way from 0.781 to
+    // 1.494.
     STATIC_REQUIRE(survives_a_method(formula::interpolating_lookup<unit::One, Points, unit::One>(
-                                         exact(), { formula::Rational { 0 }, formula::Rational { 80 } }),
-                                     50));
+                                         exact(), { formula::Rational { 781, 1000 }, formula::Rational { 1494, 1000 } }),
+                                     formula::Rational { 10727, 10000 }));
     STATIC_REQUIRE(refuses_default_construction(formula::interpolating_lookup<unit::One, Points, unit::One>(
-        exact(), { formula::Rational { 0 }, formula::Rational { 80 } })));
+        exact(), { formula::Rational { 781, 1000 }, formula::Rational { 1494, 1000 } })));
     // The two lookups' own `operand`, which the probe reaches only past a
     // `Corrections<0>`: under a table with rows, `corrections` comes first
     // and refuses before `operand` is looked at.

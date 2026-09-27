@@ -212,7 +212,7 @@ namespace detail
 /// node to a sink as its own type, and a `RecordingSink` records a
 /// `StepKind::OverriddenConstant` step (`trace.hpp`): `Q`'s symbol, in `Q`'s
 /// unit, holding the overlay's value and citing `source` -- rendered as
-/// `k_s = 97/100 [fixed by jurisdiction overlay: ...]`. An ordinary variable
+/// `k_s = 863/1000 [fixed by jurisdiction overlay: ...]`. An ordinary variable
 /// step would be true of the value and false of where it came from: it reads
 /// as a number the specimen supplied. `document()` marks it the same way, as
 /// a symbol row fixed at `value` (`SymbolEntry::fixedValue`).

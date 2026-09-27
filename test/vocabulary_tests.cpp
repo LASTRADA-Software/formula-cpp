@@ -53,9 +53,9 @@ inline constexpr auto f = var<Strength> / var<Modulus>;
 
 // Named for this file alone: see `trace_render_tests.cpp` on what clang does
 // to two anonymous-namespace tables of one spelling in two translation units.
-inline constexpr formula::BandTable<2> VocabularyDiameterBands { formula::band(100, 1, 150, 1),
-                                                                 formula::band(150, 1, 300, 1) };
-inline constexpr formula::BreakpointTable<2> VocabularyDiameterPoints { formula::breakpoint(100), formula::breakpoint(300) };
+inline constexpr formula::BandTable<2> VocabularyDiameterBands { formula::band(103, 1, 163, 1),
+                                                                 formula::band(163, 1, 331, 1) };
+inline constexpr formula::BreakpointTable<2> VocabularyDiameterPoints { formula::breakpoint(103), formula::breakpoint(331) };
 } // namespace
 
 TEST_CASE("two jurisdictions cross over one pair of symbols", "[vocabulary]")
@@ -121,8 +121,10 @@ TEST_CASE("a vocabulary reaches every node kind that holds an operand", "[vocabu
                                          formula::SignificantDigits { 2 },
                                          formula::RoundingMode::HalfAwayFromZero>(m),
         formula::numeric_value_of<unit::Megapascal, "a table stated in megapascals">(s)
-            * formula::banded_lookup<unit::Millimetre, VocabularyDiameterBands, unit::Megapascal>(d, { rat(1), rat(2) })
-            * formula::interpolating_lookup<unit::Millimetre, VocabularyDiameterPoints, unit::One>(d, { rat(1), rat(3) })
+            * formula::banded_lookup<unit::Millimetre, VocabularyDiameterBands, unit::Megapascal>(
+                d, { rat(1127, 1000), rat(1973, 1000) })
+            * formula::interpolating_lookup<unit::Millimetre, VocabularyDiameterPoints, unit::One>(
+                d, { rat(1043, 1000), rat(2917, 1000) })
             * formula::pow<3>(m));
 
     constexpr auto everywhere = formula::vocabulary(
@@ -139,20 +141,21 @@ TEST_CASE("a vocabulary reaches every node kind that holds an operand", "[vocabu
     }
     CHECK(plain
           == "if R >= E then (-R^2 + root3(E * E * E)^2) * round(R, to 1 dp of MPa) * round(E, to 2 sf of MPa) "
-             "else numeric(R, in MPa) * lookup(D, 100 to under 150 mm gives 1 MPa, 150 to under 300 mm gives 2 MPa) "
-             "* interpolate(D, at 100 mm gives 1, at 300 mm gives 3) * E^3");
+             "else numeric(R, in MPa) * lookup(D, 103 to under 163 mm gives 1127/1000 MPa, 163 to under 331 mm gives "
+             "1973/1000 MPa) * interpolate(D, at 103 mm gives 1043/1000, at 331 mm gives 2917/1000) * E^3");
     CHECK(markdown
           == "if `R` >= `E` then (-`R`^2 + root3(`E` * `E` * `E`)^2) * round(`R`, to 1 dp of MPa) "
-             "* round(`E`, to 2 sf of MPa) else numeric(`R`, in MPa) * lookup(`D`, 100 to under 150 mm gives 1 MPa, "
-             "150 to under 300 mm gives 2 MPa) * interpolate(`D`, at 100 mm gives 1, at 300 mm gives 3) * `E`^3");
+             "* round(`E`, to 2 sf of MPa) else numeric(`R`, in MPa) * lookup(`D`, 103 to under 163 mm gives 1127/1000 MPa, "
+             "163 to under 331 mm gives 1973/1000 MPa) * interpolate(`D`, at 103 mm gives 1043/1000, at 331 mm gives "
+             "2917/1000) * `E`^3");
     CHECK(latex
           == "\\begin{cases} (-R^{2} + \\sqrt[3]{E \\cdot E \\cdot E}^{2}) \\cdot "
              "\\operatorname{round}_{1\\,\\mathrm{MPa}}(R) "
              "\\cdot \\operatorname{round}_{2\\mathrm{sf},\\,\\mathrm{MPa}}(E) & \\text{if } R \\geq E \\\\ "
-             "\\{R/\\mathrm{MPa}\\} \\cdot \\operatorname{lookup}(D,\\allowbreak \\mathrm{100\\ to\\ under\\ 150\\ mm\\ "
-             "gives\\ 1\\ MPa},\\allowbreak \\mathrm{150\\ to\\ under\\ 300\\ mm\\ gives\\ 2\\ MPa}) \\cdot "
-             "\\operatorname{interpolate}(D,\\allowbreak \\mathrm{at\\ 100\\ mm\\ gives\\ 1},\\allowbreak \\mathrm{at\\ "
-             "300\\ mm\\ gives\\ 3}) \\cdot E^{3} & \\text{otherwise} "
+             "\\{R/\\mathrm{MPa}\\} \\cdot \\operatorname{lookup}(D,\\allowbreak \\mathrm{103\\ to\\ under\\ 163\\ mm\\ "
+             "gives\\ 1127/1000\\ MPa},\\allowbreak \\mathrm{163\\ to\\ under\\ 331\\ mm\\ gives\\ 1973/1000\\ MPa}) \\cdot "
+             "\\operatorname{interpolate}(D,\\allowbreak \\mathrm{at\\ 103\\ mm\\ gives\\ 1043/1000},\\allowbreak "
+             "\\mathrm{at\\ 331\\ mm\\ gives\\ 2917/1000}) \\cdot E^{3} & \\text{otherwise} "
              "\\end{cases}");
 }
 
@@ -219,22 +222,23 @@ using OneDecimalOfMegapascal =
 // does not: a variable under a lookup, variables under arithmetic, a constant
 // an overlay fixes, all under the method's rounding step and its variant
 // selection.
-inline constexpr auto crossedMethod = formula::method(
-    formula::variants(formula::variant<Cube>(
-        var<Factor> * var<Strength>
-            * formula::banded_lookup<unit::Millimetre, VocabularyDiameterBands, unit::One>(var<Diameter>, { rat(1), rat(2) })
-        - var<Modulus>)),
-    OneDecimalOfMegapascal {},
-    formula::constraints());
+inline constexpr auto crossedMethod =
+    formula::method(formula::variants(formula::variant<Cube>(
+                        var<Factor> * var<Strength>
+                            * formula::banded_lookup<unit::Millimetre, VocabularyDiameterBands, unit::One>(
+                                var<Diameter>, { rat(1127, 1000), rat(1973, 1000) })
+                        - var<Modulus>)),
+                    OneDecimalOfMegapascal {},
+                    formula::constraints());
 
 inline constexpr auto fixedFactor = formula::overlay(
-    formula::with_constant<Factor>(rat(97, 100), formula::Citation { .reference = "Example Standard 12:2021 NA" }));
+    formula::with_constant<Factor>(rat(863, 1000), formula::Citation { .reference = "Example Standard 12:2021 NA" }));
 
-// 30 MPa, 12 MPa and 200 mm, each distinct from the others, so a symbol
+// 30 MPa, 12 MPa and 241 mm, each distinct from the others, so a symbol
 // attached to the wrong quantity attaches to the wrong number.
 inline constexpr auto crossedInputs = formula::environment(formula::Measured<Strength> { rat(30) },
                                                            formula::Measured<Modulus> { rat(12) },
-                                                           formula::Measured<Diameter> { rat(200) });
+                                                           formula::Measured<Diameter> { rat(241) });
 
 inline constexpr auto everyNamedQuantity = formula::vocabulary(formula::renames<Strength>("E"),
                                                                formula::renames<Modulus>("R"),
@@ -266,31 +270,31 @@ TEST_CASE("the trace names quantities in the sink's vocabulary", "[vocabulary][t
     constexpr auto overlaid = formula::apply(fixedFactor, crossedMethod);
 
     CHECK(traceOf(overlaid, everyNamedQuantity)
-          == "1. k_s = 97/100 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+          == "1. k_s = 863/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. E = 30 MPa\n"
-             "3. #1 * #2 = 29100000\n"
-             "4. D = 200 mm\n"
-             "5. lookup(#4) = 2 [150 to under 300 mm]\n"
-             "6. #3 * #5 = 58200000\n"
+             "3. #1 * #2 = 25890000\n"
+             "4. D = 241 mm\n"
+             "5. lookup(#4) = 1973/1000 [163 to under 331 mm]\n"
+             "6. #3 * #5 = 51080970\n"
              "7. R = 12 MPa\n"
-             "8. #6 - #7 = 46200000\n"
-             "9. round(#8, in MPa) = 231/5 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "10. #9 = 231/5 MPa [variant Cube (1st of 1), selected by tag]\n");
+             "8. #6 - #7 = 39080970\n"
+             "9. round(#8, in MPa) = 391/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "10. #9 = 391/10 MPa [variant Cube (1st of 1), selected by tag]\n");
 
     // The same evaluation with no vocabulary, so that the lines above are
     // known to differ from the declared symbols in exactly the four places
     // that name a quantity, and nowhere else.
     CHECK(traceOf(overlaid)
-          == "1. k = 97/100 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+          == "1. k = 863/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "2. f_c = 30 MPa\n"
-             "3. #1 * #2 = 29100000\n"
-             "4. d = 200 mm\n"
-             "5. lookup(#4) = 2 [150 to under 300 mm]\n"
-             "6. #3 * #5 = 58200000\n"
+             "3. #1 * #2 = 25890000\n"
+             "4. d = 241 mm\n"
+             "5. lookup(#4) = 1973/1000 [163 to under 331 mm]\n"
+             "6. #3 * #5 = 51080970\n"
              "7. E_m = 12 MPa\n"
-             "8. #6 - #7 = 46200000\n"
-             "9. round(#8, in MPa) = 231/5 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "10. #9 = 231/5 MPa [variant Cube (1st of 1), selected by tag]\n");
+             "8. #6 - #7 = 39080970\n"
+             "9. round(#8, in MPa) = 391/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "10. #9 = 391/10 MPa [variant Cube (1st of 1), selected by tag]\n");
 }
 
 TEST_CASE("the documentation of an overlaid formula agrees with its formula", "[vocabulary][document]")
@@ -301,12 +305,13 @@ TEST_CASE("the documentation of an overlaid formula agrees with its formula", "[
     constexpr auto cube = std::get<0>(formula::apply(fixedFactor, crossedMethod).variantSet.cases).expression;
     formula::Documentation const southern = formula::document(cube, everyNamedQuantity);
 
-    CHECK(southern.formula == "k_s * E * lookup(D, 100 to under 150 mm gives 1, 150 to under 300 mm gives 2) - R");
+    CHECK(southern.formula
+          == "k_s * E * lookup(D, 103 to under 163 mm gives 1127/1000, 163 to under 331 mm gives 1973/1000) - R");
     REQUIRE(southern.symbols.size() == 4);
     CHECK(southern.symbols[0].symbol == "k_s");
     CHECK(southern.symbols[0].description == "shape factor");
     REQUIRE(southern.symbols[0].fixedValue.has_value());
-    CHECK(*southern.symbols[0].fixedValue == rat(97, 100));
+    CHECK(*southern.symbols[0].fixedValue == rat(863, 1000));
     CHECK(southern.symbols[1].symbol == "E");
     CHECK(southern.symbols[1].description == "compressive strength");
     CHECK(!southern.symbols[1].fixedValue.has_value());
@@ -579,11 +584,12 @@ inline constexpr formula::Citation everyCited { .reference = "Example Standard 1
                                                 formula::SignificantDigits { 2 },
                                                 formula::RoundingMode::HalfAwayFromZero>(r),
                formula::numeric_value_of<unit::Megapascal, "a table stated in megapascals">(a)
-                   * formula::banded_lookup<unit::Millimetre, VocabularyDiameterBands, unit::One>(d, { rat(1), rat(2) })
+                   * formula::banded_lookup<unit::Millimetre, VocabularyDiameterBands, unit::One>(
+                       d, { rat(1127, 1000), rat(1973, 1000) })
                    * formula::interpolating_lookup<unit::Millimetre, VocabularyDiameterPoints, unit::One>(
-                       d, { rat(1), rat(3) }))
+                       d, { rat(1043, 1000), rat(2917, 1000) }))
            * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
-           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1), rat(5, 4) });
+           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) });
 }
 
 inline constexpr auto everyMethod = formula::method(
@@ -593,18 +599,18 @@ inline constexpr auto everyMethod = formula::method(
     formula::constraints());
 
 inline constexpr auto everyOverlay = formula::overlay(
-    formula::with_constant<EveryFixed>(rat(3, 2), formula::Citation { .reference = "Example Standard 12:2021 NA" }),
-    formula::add_derived<EveryDerived>(var<EveryDiameter> / formula::constant<unit::Millimetre>(rat(100)),
+    formula::with_constant<EveryFixed>(rat(1487, 1000), formula::Citation { .reference = "Example Standard 12:2021 NA" }),
+    formula::add_derived<EveryDerived>(var<EveryDiameter> / formula::constant<unit::Millimetre>(rat(127)),
                                        formula::Citation { .reference = "Example Standard 12:2021 NA" }),
     formula::replace_variant<EveryCylinder>(var<EveryModulus> / var<EveryStrength>,
                                             formula::Citation { .reference = "Example Standard 12:2021 NA" }));
 
 inline constexpr auto everyOverlaid = formula::apply(everyOverlay, everyMethod);
 
-// 30 MPa, 12 MPa and 200 mm, distinct from each other and from every table row.
+// 30 MPa, 12 MPa and 241 mm, distinct from each other and from every table row.
 inline constexpr auto everyInputs = formula::environment(formula::Measured<EveryStrength> { rat(30) },
                                                          formula::Measured<EveryModulus> { rat(12) },
-                                                         formula::Measured<EveryDiameter> { rat(200) });
+                                                         formula::Measured<EveryDiameter> { rat(241) });
 
 template <typename Tag>
 [[nodiscard]] std::string everyTraceOf()
@@ -627,9 +633,9 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
 
     CHECK(formula::render(cube, everyVocabulary)
           == "(if E >= R then (-(E / R)^2 + root3(E / R * E / R * E / R)^3) * round(E / R, to 1 dp of %) "
-             "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 100 to under 150 mm gives 1, "
-             "150 to under 300 mm gives 2) * interpolate(D, at 100 mm gives 1, at 300 mm gives 3)) * k_n * x_n "
-             "* pi * 2 * lookup(key Rough, key Smooth gives 1, key Rough gives 5/4)");
+             "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 103 to under 163 mm gives 1127/1000, "
+             "163 to under 331 mm gives 1973/1000) * interpolate(D, at 103 mm gives 1043/1000, at 331 mm gives 2917/1000)) "
+             "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
     for (std::string const& text: { formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(cube, everyVocabulary),
@@ -651,7 +657,7 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
     CHECK(plain.symbols[2].symbol == "D");
     CHECK(plain.symbols[3].symbol == "k_n");
     REQUIRE(plain.symbols[3].derivedAs.has_value());
-    CHECK(*plain.symbols[3].derivedAs == "D / 100 mm");
+    CHECK(*plain.symbols[3].derivedAs == "D / 127 mm");
     CHECK(plain.symbols[4].symbol == "x_n");
     CHECK(plain.symbols[4].fixedValue.has_value());
 
@@ -691,10 +697,11 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
     CHECK(declares_no_symbol(cube));
     CHECK(cube.starts_with("1. E = 30 MPa\n"
                            "2. R = 12 MPa\n"));
-    CHECK(cube.find("34. D = 200 mm\n") != std::string::npos);
-    CHECK(cube.find("37. k_n = #36 = 2 [derived by jurisdiction overlay: Example Standard 12:2021 NA]\n")
+    CHECK(cube.find("34. D = 241 mm\n") != std::string::npos);
+    CHECK(cube.find("37. k_n = #36 = 241/127 [derived by jurisdiction overlay: Example Standard 12:2021 NA]\n")
           != std::string::npos);
-    CHECK(cube.find("39. x_n = 3/2 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n") != std::string::npos);
+    CHECK(cube.find("39. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n")
+          != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"

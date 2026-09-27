@@ -52,7 +52,7 @@ namespace detail
 ///     template <>
 ///     struct formula::TagName<Cylinder>
 ///     {
-///         static constexpr std::string_view of() noexcept { return "cylinder 150 x 300 mm"; }
+///         static constexpr std::string_view of() noexcept { return "cylinder 139 x 277 mm"; }
 ///     };
 ///
 /// **The same shape as `EnumeratorName`, less the argument**, so that an
@@ -283,7 +283,7 @@ namespace detail
 /// otherwise the tag's own name as written in its declaration, unqualified
 /// (`Cylinder`, never `specimen::Cylinder`, and never with an anonymous
 /// namespace in front of it) and with a template specialization's arguments
-/// kept (`Sized<150>`) -- see `detail::normalized_type_name` for how those
+/// kept (`Sized<163>`) -- see `detail::normalized_type_name` for how those
 /// are spelt. A reflected name that would not name the tag plainly is
 /// refused at compile time -- see `RequireReadableTagName`. Empty only if
 /// the compiler's signature is not in the shape the library reads, in which

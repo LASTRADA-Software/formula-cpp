@@ -56,6 +56,6 @@ int main()
 {
     static_cast<void>(m);
     constexpr formula::Citation forged { .reference = "Nobody's NA" };
-    constexpr formula::OverriddenConstantNode<ShapeFactor> fixed { formula::Rational { 97, 100 }, forged };
-    return fixed.value() == formula::Rational { 97, 100 } ? 0 : 1;
+    constexpr formula::OverriddenConstantNode<ShapeFactor> fixed { formula::Rational { 863, 1000 }, forged };
+    return fixed.value() == formula::Rational { 863, 1000 } ? 0 : 1;
 }

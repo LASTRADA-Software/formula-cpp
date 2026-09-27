@@ -47,11 +47,11 @@ The area of a circular cross-section computed from its diameter.
 ## Maximum specimen diameter
 
 ```
-require d <= 150 mm
+require d <= 139 mm
 ```
 
 $$
-\text{require } d \leq 150\,\mathrm{mm}
+\text{require } d \leq 139\,\mathrm{mm}
 $$
 
 | Symbol | Description | Unit |
@@ -106,11 +106,11 @@ Ratio of the effective water content to the cement content of a batch.
 ## Compaction-adjusted bulk density
 
 ```
-if rho_m < 1800 kg/m3 then rho_m * 11/10 else rho_m
+if rho_m < 1737 kg/m3 then rho_m * 1127/1000 else rho_m
 ```
 
 $$
-\begin{cases} rho_m \cdot 11/10 & \text{if } rho_m < 1800\,\mathrm{kg/m3} \\ rho_m & \text{otherwise} \end{cases}
+\begin{cases} rho_m \cdot 1127/1000 & \text{if } rho_m < 1737\,\mathrm{kg/m3} \\ rho_m & \text{otherwise} \end{cases}
 $$
 
 | Symbol | Description | Unit |
@@ -125,11 +125,11 @@ A specimen compacted below the reference density is corrected upward by a fixed 
 ## Size allowance by specimen diameter
 
 ```
-lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)
+lookup(d, 0 to under 103 mm gives 237/100 MPa, 103 to under 163 mm gives 113/100 MPa, 163 to under 197 mm gives 41/100 MPa)
 ```
 
 $$
-\operatorname{lookup}(d,\allowbreak \mathrm{0\ to\ under\ 100\ mm\ gives\ 2\ MPa},\allowbreak \mathrm{100\ to\ under\ 150\ mm\ gives\ 1\ MPa},\allowbreak \mathrm{150\ to\ under\ 200\ mm\ gives\ 0\ MPa})
+\operatorname{lookup}(d,\allowbreak \mathrm{0\ to\ under\ 103\ mm\ gives\ 237/100\ MPa},\allowbreak \mathrm{103\ to\ under\ 163\ mm\ gives\ 113/100\ MPa},\allowbreak \mathrm{163\ to\ under\ 197\ mm\ gives\ 41/100\ MPa})
 $$
 
 | Symbol | Description | Unit |
@@ -144,11 +144,11 @@ The allowance deducted from a measured crushing strength, selected by the band t
 ## Mould factor by specimen mould
 
 ```
-lookup(key Cylinder, key Cube gives 1, key Cylinder gives 19/20, key Prism gives 9/10)
+lookup(key Cylinder, key Cube gives 1061/1000, key Cylinder gives 863/1000, key Prism gives 781/1000)
 ```
 
 $$
-\operatorname{lookup}(\mathrm{key\ Cylinder},\allowbreak \mathrm{key\ Cube\ gives\ 1},\allowbreak \mathrm{key\ Cylinder\ gives\ 19/20},\allowbreak \mathrm{key\ Prism\ gives\ 9/10})
+\operatorname{lookup}(\mathrm{key\ Cylinder},\allowbreak \mathrm{key\ Cube\ gives\ 1061/1000},\allowbreak \mathrm{key\ Cylinder\ gives\ 863/1000},\allowbreak \mathrm{key\ Prism\ gives\ 781/1000})
 $$
 
 - Reference: Example Standard 7:2020
@@ -159,11 +159,11 @@ A category key names a row directly, and renders under its enumerator's name. An
 ## Maturity factor by curing age
 
 ```
-interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+interpolate(t, at 31 h gives 613/1000, at 83 h gives 857/1000, at 197 h gives 1031/1000)
 ```
 
 $$
-\operatorname{interpolate}(t,\allowbreak \mathrm{at\ 24\ h\ gives\ 3/5},\allowbreak \mathrm{at\ 72\ h\ gives\ 17/20},\allowbreak \mathrm{at\ 168\ h\ gives\ 1})
+\operatorname{interpolate}(t,\allowbreak \mathrm{at\ 31\ h\ gives\ 613/1000},\allowbreak \mathrm{at\ 83\ h\ gives\ 857/1000},\allowbreak \mathrm{at\ 197\ h\ gives\ 1031/1000})
 $$
 
 | Symbol | Description | Unit |
@@ -179,11 +179,11 @@ A curve stated at three ages. A specimen tested between two of them gets the val
 ## Size- and age-corrected crushing strength
 
 ```
-(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key Cylinder, key Cube gives 1, key Cylinder gives 19/20, key Prism gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+(f - lookup(d, 0 to under 103 mm gives 237/100 MPa, 103 to under 163 mm gives 113/100 MPa, 163 to under 197 mm gives 41/100 MPa)) * lookup(key Cylinder, key Cube gives 1061/1000, key Cylinder gives 863/1000, key Prism gives 781/1000) * interpolate(t, at 31 h gives 613/1000, at 83 h gives 857/1000, at 197 h gives 1031/1000)
 ```
 
 $$
-(f - \operatorname{lookup}(d,\allowbreak \mathrm{0\ to\ under\ 100\ mm\ gives\ 2\ MPa},\allowbreak \mathrm{100\ to\ under\ 150\ mm\ gives\ 1\ MPa},\allowbreak \mathrm{150\ to\ under\ 200\ mm\ gives\ 0\ MPa})) \cdot \operatorname{lookup}(\mathrm{key\ Cylinder},\allowbreak \mathrm{key\ Cube\ gives\ 1},\allowbreak \mathrm{key\ Cylinder\ gives\ 19/20},\allowbreak \mathrm{key\ Prism\ gives\ 9/10}) \cdot \operatorname{interpolate}(t,\allowbreak \mathrm{at\ 24\ h\ gives\ 3/5},\allowbreak \mathrm{at\ 72\ h\ gives\ 17/20},\allowbreak \mathrm{at\ 168\ h\ gives\ 1})
+(f - \operatorname{lookup}(d,\allowbreak \mathrm{0\ to\ under\ 103\ mm\ gives\ 237/100\ MPa},\allowbreak \mathrm{103\ to\ under\ 163\ mm\ gives\ 113/100\ MPa},\allowbreak \mathrm{163\ to\ under\ 197\ mm\ gives\ 41/100\ MPa})) \cdot \operatorname{lookup}(\mathrm{key\ Cylinder},\allowbreak \mathrm{key\ Cube\ gives\ 1061/1000},\allowbreak \mathrm{key\ Cylinder\ gives\ 863/1000},\allowbreak \mathrm{key\ Prism\ gives\ 781/1000}) \cdot \operatorname{interpolate}(t,\allowbreak \mathrm{at\ 31\ h\ gives\ 613/1000},\allowbreak \mathrm{at\ 83\ h\ gives\ 857/1000},\allowbreak \mathrm{at\ 197\ h\ gives\ 1031/1000})
 $$
 
 | Symbol | Description | Unit |
@@ -227,28 +227,28 @@ m / V
 
 ## Worked derivation: compaction-adjusted bulk density
 
-`rho_m` = 1500 kg/m3 -- below the 1800 kg/m3 reference density, so the predicate holds and the correction factor is applied:
+`rho_m` = 1523 kg/m3 -- below the 1737 kg/m3 reference density, so the predicate holds and the correction factor is applied:
 
 ```
-if rho_m < 1800 kg/m3 then rho_m * 11/10 else rho_m
+if rho_m < 1737 kg/m3 then rho_m * 1127/1000 else rho_m
 ```
 
 ```
-1. rho_m = 1500 kg/m3
-2. 1800 kg/m3
-3. rho_m = 1500 kg/m3
-4. 11/10
-5. #3 * #4 = 1650
-6. if #1 < #2 then #5 = 1650
-7. #6 = 1650 [Compaction-adjusted bulk density, Example Standard 5:2020, 4.5]
+1. rho_m = 1523 kg/m3
+2. 1737 kg/m3
+3. rho_m = 1523 kg/m3
+4. 1127/1000
+5. #3 * #4 = 1716421/1000
+6. if #1 < #2 then #5 = 1716421/1000
+7. #6 = 1716421/1000 [Compaction-adjusted bulk density, Example Standard 5:2020, 4.5]
 ```
 
 ## Worked derivation: maximum specimen diameter, alongside the circular area it validates
 
-`d` = 200 mm -- above the 150 mm tolerance, so the constraint is violated and its verdict appears in the trace, `formula::check()` and `formula::render_trace()`:
+`d` = 173 mm -- above the 139 mm tolerance, so the constraint is violated and its verdict appears in the trace, `formula::check()` and `formula::render_trace()`:
 
 ```
-require d <= 150 mm
+require d <= 139 mm
 ```
 
 ```
@@ -256,63 +256,63 @@ pi * d^2 / 4
 ```
 
 ```
-1. d = 200 mm
-2. 150 mm
+1. d = 173 mm
+2. 139 mm
 3. require #1 <= #2 [specimen exceeds diameter tolerance]
 ```
 
 ## Worked derivation: size- and age-corrected crushing strength
 
-`f` = 32 MPa, `d` = 120 mm, `t` = 48 h, mould `key Cylinder`. Each table names the row it answered from: the banded one its interval, the interpolating one the two rows it drew on. The exact lookup adds nothing there -- its key is already the subject of its own line.
+`f` = 33 MPa, `d` = 127 mm, `t` = 57 h, mould `key Cylinder`. Each table names the row it answered from: the banded one its interval, the interpolating one the two rows it drew on. The exact lookup adds nothing there -- its key is already the subject of its own line.
 
 ```
-(f - lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)) * lookup(key Cylinder, key Cube gives 1, key Cylinder gives 19/20, key Prism gives 9/10) * interpolate(t, at 24 h gives 3/5, at 72 h gives 17/20, at 168 h gives 1)
+(f - lookup(d, 0 to under 103 mm gives 237/100 MPa, 103 to under 163 mm gives 113/100 MPa, 163 to under 197 mm gives 41/100 MPa)) * lookup(key Cylinder, key Cube gives 1061/1000, key Cylinder gives 863/1000, key Prism gives 781/1000) * interpolate(t, at 31 h gives 613/1000, at 83 h gives 857/1000, at 197 h gives 1031/1000)
 ```
 
 ```
-1. f = 32 MPa
-2. d = 120 mm
-3. lookup(#2) = 1 MPa [100 to under 150 mm]
-4. #1 - #3 = 31000000
-5. lookup(key Cylinder) = 19/20
-6. #4 * #5 = 29450000
-7. t = 48 h
-8. interpolate(#7) = 29/40 [between 24 and 72 h]
-9. #6 * #8 = 21351250
-10. #9 = 21351250 [Size- and age-corrected crushing strength, Example Standard 7:2020, 8.5, (8)]
+1. f = 33 MPa
+2. d = 127 mm
+3. lookup(#2) = 113/100 MPa [103 to under 163 mm]
+4. #1 - #3 = 31870000
+5. lookup(key Cylinder) = 863/1000
+6. #4 * #5 = 27503810
+7. t = 57 h
+8. interpolate(#7) = 147/200 [between 31 and 83 h]
+9. #6 * #8 = 404306007/20
+10. #9 = 404306007/20 [Size- and age-corrected crushing strength, Example Standard 7:2020, 8.5, (8)]
 ```
 
 ## Worked derivation: a lookup that found nothing
 
-The same size-allowance table at `d` = 250 mm. The table's last band stops below 200 mm, so 250 mm falls in no band -- and a miss is not a value: not zero, not the nearest band, not the last one. The bracketed clause is what keeps the line from being read as a failure relayed up from somewhere below it.
+The same size-allowance table at `d` = 241 mm. The table's last band stops below 197 mm, so 241 mm falls in no band -- and a miss is not a value: not zero, not the nearest band, not the last one. The bracketed clause is what keeps the line from being read as a failure relayed up from somewhere below it.
 
 ```
-lookup(d, 0 to under 100 mm gives 2 MPa, 100 to under 150 mm gives 1 MPa, 150 to under 200 mm gives 0 MPa)
+lookup(d, 0 to under 103 mm gives 237/100 MPa, 103 to under 163 mm gives 113/100 MPa, 163 to under 197 mm gives 41/100 MPa)
 ```
 
 ```
-1. d = 250 mm
-2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 200 mm]
+1. d = 241 mm
+2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 197 mm]
 3. #2 = argument outside the domain of the operation [Size allowance by specimen diameter, Example Standard 7:2020, 8.2]
 ```
 
 ## Worked derivation: a method's selected variant, and the same method overlaid
 
-`F` = 226 kN, `a` = 150 mm, `k_s` = 1, the cube variant selected by tag. The method rounds by its own rule, and the trace says which variant ran and whose rule rounded it:
+`F` = 226 kN, `a` = 150 mm, `k_s` = 1043/1000, the cube variant selected by tag. The method rounds by its own rule, and the trace says which variant ran and whose rule rounded it:
 
 ```
 k_s * F / a^2
 ```
 
 ```
-1. k_s = 1
+1. k_s = 1043/1000
 2. F = 226000 N
-3. #1 * #2 = 226000
+3. #1 * #2 = 235718
 4. a = 150 mm
 5. #4^2 = 9/400
-6. #3 / #5 = 90400000/9
-7. round(#6, in MPa) = 10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
-8. #7 = 10 MPa [variant Cube (1st of 2), selected by tag]
+6. #3 / #5 = 94287200/9
+7. round(#6, in MPa) = 21/2 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+8. #7 = 21/2 MPa [variant Cube (1st of 2), selected by tag]
 ```
 
 The same specimen under a jurisdiction's overlay, which fixes the shape factor and reports in N/mm2 to two decimals:
@@ -322,14 +322,14 @@ k_s * F / a^2
 ```
 
 ```
-1. k_s = 19/20 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
+1. k_s = 887/1000 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
 2. F = 226000 N
-3. #1 * #2 = 214700
+3. #1 * #2 = 200462
 4. a = 150 mm
 5. #4^2 = 9/400
-6. #3 / #5 = 85880000/9
-7. round(#6, in N/mm2) = 477/50 N/mm2 [rounded to 2 dp (jurisdiction overlay: Example Standard 7:2020 NA, NA.4); nearest, ties away from zero]
-8. #7 = 477/50 N/mm2 [variant Cube (1st of 2), selected by tag]
+6. #3 / #5 = 80184800/9
+7. round(#6, in N/mm2) = 891/100 N/mm2 [rounded to 2 dp (jurisdiction overlay: Example Standard 7:2020 NA, NA.4); nearest, ties away from zero]
+8. #7 = 891/100 N/mm2 [variant Cube (1st of 2), selected by tag]
 ```
 
 ## Worked acceptance: the method's own checks, and a jurisdiction's
@@ -338,7 +338,7 @@ The same specimen checked by the method's own acceptance check:
 
 ```
 1. F = 226000 N
-2. 150 kN
+2. 163 kN
 3. require #1 >= #2 [satisfied; the method's own constraint]
 4. acceptance(#3) [the method's own constraints]
 ```
@@ -347,10 +347,10 @@ And by the overlay's two checks in its place. The overlay lists the shape factor
 
 ```
 1. F = 226000 N
-2. 250 kN
-3. require #1 >= #2 [the load at failure is below 250 kN; jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
-4. k_s = 19/20 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
-5. 1
+2. 277 kN
+3. require #1 >= #2 [the load at failure is below 277 kN; jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
+4. k_s = 887/1000 [fixed by jurisdiction overlay: Shape factor, Example Standard 7:2020 NA, NA.2]
+5. 913/1000
 6. require #4 <= #5 [satisfied; jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
 7. acceptance(#3, #6) [jurisdiction overlay: Acceptance, Example Standard 7:2020 NA, NA.6]
 ```

@@ -361,8 +361,8 @@ TEST_CASE("a derivation renders a NumericValue step's justification, and the uni
 
 TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-render]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+    constexpr auto overThreshold = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+    constexpr auto chosen = formula::when(overThreshold, var<Strength>, var<Strength> * formula::Rational { 2 });
     auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
 
     formula::Trace<> trace {};
@@ -380,7 +380,7 @@ TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-rende
     // the keyword in the body already names the branch.
     CHECK(text
           == "1. f = 60 MPa\n"
-             "2. 50 MPa\n"
+             "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
              "4. if #1 > #2 then #3 = 60000000\n");
     CHECK(text.find("when(") == std::string::npos);
@@ -389,8 +389,8 @@ TEST_CASE("a derivation renders a Conditional step's then branch", "[trace-rende
 
 TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-render]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+    constexpr auto overThreshold = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+    constexpr auto chosen = formula::when(overThreshold, var<Strength>, var<Strength> * formula::Rational { 2 });
     auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 40 } });
 
     formula::Trace<> trace {};
@@ -401,7 +401,7 @@ TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-rende
 
     CHECK(text
           == "1. f = 40 MPa\n"
-             "2. 50 MPa\n"
+             "2. 473/10 MPa\n"
              "3. f = 40 MPa\n"
              "4. 2\n"
              "5. #3 * #4 = 80000000\n"
@@ -412,8 +412,8 @@ TEST_CASE("a derivation renders a Conditional step's else branch", "[trace-rende
 TEST_CASE("a derivation renders a Conditional step with no branch when the predicate is absent",
           "[trace-render]")
 {
-    constexpr auto overFifty = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto chosen = formula::when(overFifty, var<Strength>, var<Strength> * formula::Rational { 2 });
+    constexpr auto overThreshold = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+    constexpr auto chosen = formula::when(overThreshold, var<Strength>, var<Strength> * formula::Rational { 2 });
     auto const environment = formula::environment(formula::Measured<Strength>::absent());
 
     formula::Trace<> trace {};
@@ -430,7 +430,7 @@ TEST_CASE("a derivation renders a Conditional step with no branch when the predi
     // it must stay distinct from the else branch's `else #5` above.
     CHECK(text
           == "1. f = (not measured)\n"
-             "2. 50 MPa\n"
+             "2. 473/10 MPa\n"
              "3. if #1 > #2 = (not measured) [no branch]\n");
 }
 
@@ -469,8 +469,8 @@ TEST_CASE("a derivation renders the comparison a conditional actually made", "[t
     // step carried a Comparison, both rendered `when(#1, #2, #3)` -- a trace
     // that says two values were compared but never which way is not an audit
     // trail, because the trace is the artefact that survives on its own.
-    constexpr auto over = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 50 });
-    constexpr auto under = var<Strength> < formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto over = var<Strength> > formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
+    constexpr auto under = var<Strength> < formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
     auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
 
     auto const traceOf = [&environment](auto const& node) {
@@ -485,12 +485,12 @@ TEST_CASE("a derivation renders the comparison a conditional actually made", "[t
 
     CHECK(greater
           == "1. f = 60 MPa\n"
-             "2. 50 MPa\n"
+             "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
              "4. if #1 > #2 then #3 = 60000000\n");
     CHECK(less
           == "1. f = 60 MPa\n"
-             "2. 50 MPa\n"
+             "2. 473/10 MPa\n"
              "3. f = 60 MPa\n"
              "4. if #1 < #2 else #3 = 60000000\n");
 }
@@ -503,14 +503,14 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
     // against the formula it derives must not meet two notations for one
     // comparison -- so the agreement is pinned here, on both surfaces at
     // once, for all six operators rather than the two the cases above reach.
-    constexpr auto fifty = formula::constant<unit::Megapascal>(formula::Rational { 50 });
+    constexpr auto threshold = formula::constant<unit::Megapascal>(formula::Rational { 473, 10 });
     auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 60 } });
 
     auto const bothSurfaces = [&environment](auto const& predicate, std::string_view token) {
         auto const node = formula::when(predicate, var<Strength>, var<Strength>);
 
-        // render(): `if f <token> 50 MPa then f else f`.
-        CHECK(formula::render(node) == "if f " + std::string { token } + " 50 MPa then f else f");
+        // render(): `if f <token> 473/10 MPa then f else f`.
+        CHECK(formula::render(node) == "if f " + std::string { token } + " 473/10 MPa then f else f");
 
         // The trace: `if #1 <token> #2 <branch> #3`.
         formula::Trace<> trace {};
@@ -520,12 +520,12 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
         CHECK(text.find("if #1 " + std::string { token } + " #2 ") != std::string::npos);
     };
 
-    bothSurfaces(var<Strength> < fifty, "<");
-    bothSurfaces(var<Strength> <= fifty, "<=");
-    bothSurfaces(var<Strength> > fifty, ">");
-    bothSurfaces(var<Strength> >= fifty, ">=");
-    bothSurfaces(var<Strength> == fifty, "==");
-    bothSurfaces(var<Strength> != fifty, "!=");
+    bothSurfaces(var<Strength> < threshold, "<");
+    bothSurfaces(var<Strength> <= threshold, "<=");
+    bothSurfaces(var<Strength> > threshold, ">");
+    bothSurfaces(var<Strength> >= threshold, ">=");
+    bothSurfaces(var<Strength> == threshold, "==");
+    bothSurfaces(var<Strength> != threshold, "!=");
 
     // A Constraint's two surfaces must agree the same way a WhenNode's do
     // above, and for the same reason nothing here has checked it yet:
@@ -539,7 +539,7 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
     // test compared the two surfaces to each other.
     //
     // Extracts just the keyword and the comparison token from each surface
-    // -- both "require f >= 30 MPa" (render) and "require #1 >= #2 [...]"
+    // -- both "require f >= 473/10 MPa" (render) and "require #1 >= #2 [...]"
     // (trace) are shaped "<keyword> <operand> <comparison> <operand> ...",
     // differing only in how the operand is spelled (a variable's symbol vs.
     // a step reference), which is expected and not what this checks -- and
@@ -555,16 +555,16 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
                + std::string { text.substr(secondSpace + 1, thirdSpace - secondSpace - 1) };
     };
 
-    constexpr auto atLeastFifty =
-        formula::constraint(var<Strength> >= fifty, formula::Verdict { "reject the specimen" });
-    std::string const renderedConstraint = formula::render(atLeastFifty);
+    constexpr auto atLeastThreshold =
+        formula::constraint(var<Strength> >= threshold, formula::Verdict { "reject the specimen" });
+    std::string const renderedConstraint = formula::render(atLeastThreshold);
 
     formula::Trace<> constraintTrace {};
     formula::RecordingSink<> constraintSink { constraintTrace };
-    (void) formula::check(atLeastFifty, environment, constraintSink);
+    (void) formula::check(atLeastThreshold, environment, constraintSink);
     std::string const fullTrace = formula::render_trace(constraintTrace, { .maxSteps = 10 });
 
-    // render_trace() returns every step, numbered ("1. f = 60 MPa\n2. 50
+    // render_trace() returns every step, numbered ("1. f = 60 MPa\n2. 473/10
     // MPa\n3. require #1 >= #2 [...]\n"), not the constraint line alone --
     // its line is the last one here, because the constraint step is the
     // outermost and so the last claimed. Found by position, not by
@@ -593,14 +593,14 @@ TEST_CASE("a derivation spells a comparison the way render() does", "[trace-rend
 
 TEST_CASE("a derivation renders a satisfied Constraint step", "[trace-render]")
 {
-    constexpr auto atLeastThirty =
-        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+    constexpr auto atLeastMinimum =
+        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
                             formula::Verdict { "reject the specimen" });
     auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 45 } });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    (void) formula::check(atLeastThirty, environment, sink);
+    (void) formula::check(atLeastMinimum, environment, sink);
 
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
 
@@ -610,27 +610,27 @@ TEST_CASE("a derivation renders a satisfied Constraint step", "[trace-render]")
     // mistake `Conditional`'s withdrawn `when(#1, #2, #3)` made.
     CHECK(text
           == "1. f = 45 MPa\n"
-             "2. 30 MPa\n"
+             "2. 273/10 MPa\n"
              "3. require #1 >= #2 [satisfied]\n");
     CHECK(text.find("constraint(") == std::string::npos);
 }
 
 TEST_CASE("a derivation renders a violated Constraint step, carrying the verdict", "[trace-render]")
 {
-    constexpr auto atLeastThirty =
-        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+    constexpr auto atLeastMinimum =
+        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
                             formula::Verdict { "reject the specimen" });
     auto const environment = formula::environment(formula::Measured<Strength> { formula::Rational { 20 } });
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    (void) formula::check(atLeastThirty, environment, sink);
+    (void) formula::check(atLeastMinimum, environment, sink);
 
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
 
     CHECK(text
           == "1. f = 20 MPa\n"
-             "2. 30 MPa\n"
+             "2. 273/10 MPa\n"
              "3. require #1 >= #2 [reject the specimen]\n");
 }
 
@@ -641,20 +641,20 @@ TEST_CASE("a derivation renders a Constraint step as not checked when the predic
     // that would be exactly the safety property `ConstraintOutcome` exists
     // to protect, silently lost at the one surface an inspector actually
     // reads.
-    constexpr auto atLeastThirty =
-        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 30 }),
+    constexpr auto atLeastMinimum =
+        formula::constraint(var<Strength> >= formula::constant<unit::Megapascal>(formula::Rational { 273, 10 }),
                             formula::Verdict { "reject the specimen" });
     auto const environment = formula::environment(formula::Measured<Strength>::absent());
 
     formula::Trace<> trace {};
     formula::RecordingSink<> sink { trace };
-    (void) formula::check(atLeastThirty, environment, sink);
+    (void) formula::check(atLeastMinimum, environment, sink);
 
     std::string const text = formula::render_trace(trace, { .maxSteps = 10 });
 
     CHECK(text
           == "1. f = (not measured)\n"
-             "2. 30 MPa\n"
+             "2. 273/10 MPa\n"
              "3. require #1 >= #2 [not checked]\n");
 }
 
@@ -751,14 +751,15 @@ using formula::KeyTable;
 /// table's **outer** two, which are the only bounds a covered-range rendering
 /// ever reads.
 inline constexpr BandTable<3> SizeBands {
-    band(2, 2, 5, 2),  // 1 to under 5/2 cm -- 2/2 declared, and the table's low end
-    band(5, 2, 10, 2), // 5/2 to under 5 cm -- 10/2 declared, so reduction shows
-    band(5, 1, 18, 2), // 5 to under 9 cm -- 18/2 declared, and the table's high end
+    band(254, 200, 241, 100),  // 127/100 to under 241/100 cm -- 254/200 declared, and the table's low end
+    band(241, 100, 946, 200),  // 241/100 to under 473/100 cm -- 946/200 declared, so reduction shows
+    band(473, 100, 1754, 200), // 473/100 to under 877/100 cm -- 1754/200 declared, and the table's high end
 };
 
 [[nodiscard]] constexpr auto sizeLookup()
 {
-    return banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(var<Diameter>, { rat(95), rat(112), rat(105) });
+    return banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(var<Diameter>,
+                                                                     { rat(863, 10), rat(1127, 10), rat(1043, 10) });
 }
 
 /// A signed underlying type with two negative enumerators: `Undercut`, a row
@@ -819,40 +820,40 @@ inline constexpr KeyTable<RenderedShape, 3> ShapeKeys {
 
 [[nodiscard]] constexpr auto shapeLookup(RenderedShape shape)
 {
-    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(31, 25), rat(4), rat(13, 10) });
+    return exact_lookup<ShapeKeys, unit::Megapascal>(shape, { rat(2791, 1000), rat(43), rat(1373, 1000) });
 }
 
 /// Three breakpoints in centimetres, unequally spaced, none of them reduced --
 /// the outer two because they are the only rows a covered-range rendering
 /// reads, the middle one because it is the row a segment rendering reads.
 inline constexpr BreakpointTable<3> CurvePoints {
-    breakpoint(4, 4),  // 1 cm -- the curve's low end, declared unreduced
-    breakpoint(14, 4), // 7/2 cm -- declared unreduced, and in the middle
-    breakpoint(24, 3), // 8 cm -- the curve's high end, declared unreduced
+    breakpoint(278, 200),  // 139/100 cm -- the curve's low end, declared unreduced
+    breakpoint(662, 200),  // 331/100 cm -- declared unreduced, and in the middle
+    breakpoint(2379, 300), // 793/100 cm -- the curve's high end, declared unreduced
 };
 
 [[nodiscard]] constexpr auto curveLookup()
 {
-    return interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(var<Diameter>,
-                                                                              { rat(90), rat(-115), rat(120) });
+    return interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
+        var<Diameter>, { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
 }
 
 /// The two domains ending on the same number, so that a renderer spelling
-/// them the same way fails here. `lookup.hpp` pins the two *behaviours*
-/// against each other at 30 mm and `render_tests.cpp` pins the two spellings
-/// inside a formula; a derivation is the third surface, and it is pinned on
-/// the same number for the same reason.
-/// Both top ends are declared unreduced (`60/2`), so that a rendering which
-/// stopped reducing a covered range or a row would print `60/2 mm` here
-/// instead of `30 mm` rather than passing unchanged.
-inline constexpr BandTable<2> TopBands { band(9, 1, 20, 1), band(20, 1, 60, 2) };
-inline constexpr BreakpointTable<2> TopPoints { breakpoint(20), breakpoint(60, 2) };
+/// them the same way fails here. `lookup_tests.cpp` pins the two *behaviours*
+/// against each other and `render_tests.cpp` the two spellings inside a
+/// formula; a derivation is the third surface. Each pins them on one shared
+/// number of its own, for the same reason.
+/// Both top ends are declared unreduced (`586/20`), so that a rendering which
+/// stopped reducing a covered range or a row would print `586/20 mm` here
+/// instead of `293/10 mm` rather than passing unchanged.
+inline constexpr BandTable<2> TopBands { band(973, 100, 209, 10), band(209, 10, 586, 20) };
+inline constexpr BreakpointTable<2> TopPoints { breakpoint(209, 10), breakpoint(586, 20) };
 
 /// The degenerate tables: one that covers nothing at all, and one whose only
 /// row is simultaneously its first and its last.
 inline constexpr BandTable<0> NoBands {};
 inline constexpr BreakpointTable<0> NoPoints {};
-inline constexpr BreakpointTable<1> OnePoint { breakpoint(30, 4) }; // 15/2 cm
+inline constexpr BreakpointTable<1> OnePoint { breakpoint(1474, 200) }; // 737/100 cm
 
 constexpr std::int64_t Huge = std::int64_t { 1 } << 62;
 
@@ -862,13 +863,13 @@ inline constexpr BreakpointTable<2> UnrepresentableAnswer { breakpoint(0), break
 
 /// A band that is hit, whose correction is stated in kilometres and does not
 /// survive the conversion into metres -- an own failure that is not a miss.
-inline constexpr BandTable<1> WideBand { band(0, 1, 100, 1) };
+inline constexpr BandTable<1> WideBand { band(0, 1, 103, 1) };
 
 /// The inner table of the nested pair, whose corrections are lengths so that
 /// a lookup can stand where another lookup's operand stands.
 inline constexpr BandTable<2> InnerBands {
-    band(2, 2, 3, 1),  // 1 to under 3 cm
-    band(3, 1, 12, 2), // 3 to under 6 cm
+    band(218, 200, 307, 100),  // 109/100 to under 307/100 cm
+    band(307, 100, 1226, 200), // 307/100 to under 613/100 cm
 };
 
 /// An exact table whose corrections are stated in kilometres, so that a row
@@ -895,13 +896,13 @@ inline constexpr KeyTable<RenderedFinish, 3> FinishKeys {
 
 [[nodiscard]] constexpr auto finishLookup(RenderedFinish finish)
 {
-    return exact_lookup<FinishKeys, unit::One>(finish, { rat(1), rat(2), rat(3) });
+    return exact_lookup<FinishKeys, unit::One>(finish, { rat(1127, 1000), rat(863, 1000), rat(1043, 1000) });
 }
 
 /// Two rows in centimetres whose values are stated in kilometres: 0 cm sits
 /// exactly on the first row, so the interpolation does no arithmetic and the
 /// failure that follows belongs to the conversion alone.
-inline constexpr BreakpointTable<2> FarValues { breakpoint(0), breakpoint(5) };
+inline constexpr BreakpointTable<2> FarValues { breakpoint(0), breakpoint(437, 100) };
 
 /// A consumer's own node kind, written against the two-parameter extension
 /// point, so the library never hands it to a sink and it contributes no step.
@@ -1007,14 +1008,15 @@ struct EnumeratorName<RenderedFinish>
 
 TEST_CASE("a derivation names the band a banded lookup's value fell in", "[trace-render][lookup]")
 {
-    // A step reading only `= 112 %` explains nothing. What a reader checking
-    // a number needs is that 112 % came from the band containing the input --
+    // A step reading only `= 1127/10 %` explains nothing. What a reader
+    // checking a number needs is that 1127/10 % came from the band containing
+    // the input --
     // and the band is stated in the unit the table declared it in, which is
     // neither the unit the operand was entered in nor the one the result is
     // shown in.
     CHECK(derivationOf(sizeLookup(), diameterOf(30))
           == "1. d = 30 mm\n"
-             "2. lookup(#1) = 112 % [5/2 to under 5 cm]\n");
+             "2. lookup(#1) = 1127/10 % [241/100 to under 473/100 cm]\n");
 }
 
 TEST_CASE("a derivation renders a banded miss as a miss, never as a value", "[trace-render][lookup]")
@@ -1026,7 +1028,7 @@ TEST_CASE("a derivation renders a banded miss as a miss, never as a value", "[tr
     CHECK(derivationOf(sizeLookup(), diameterOf(95))
           == "1. d = 95 mm\n"
              "2. lookup(#1) = argument outside the domain of the operation"
-             " [in no band; the bands cover 1 to under 9 cm]\n");
+             " [in no band; the bands cover 127/100 to under 877/100 cm]\n");
 }
 
 TEST_CASE("a derivation renders a lookup's own miss differently from one it is relaying",
@@ -1038,18 +1040,18 @@ TEST_CASE("a derivation renders a lookup's own miss differently from one it is r
     // for both -- true-sounding, and in the second case describing a table
     // that was never consulted.
     constexpr auto inner =
-        banded_lookup<unit::Centimetre, InnerBands, unit::Millimetre>(var<Diameter>, { rat(950), rat(35) });
+        banded_lookup<unit::Centimetre, InnerBands, unit::Millimetre>(var<Diameter>, { rat(947), rat(373, 10) });
     constexpr auto nested =
-        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(inner, { rat(95), rat(112), rat(105) });
+        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(inner, { rat(863, 10), rat(1127, 10), rat(1043, 10) });
 
-    // The inner table hits and answers 950 mm == 95 cm, which the outer table
+    // The inner table hits and answers 947 mm == 947/10 cm, which the outer table
     // does not reach: the outer lookup missed on its own.
     std::string const ownMiss = derivationOf(nested, diameterOf(15));
     CHECK(ownMiss
           == "1. d = 15 mm\n"
-             "2. lookup(#1) = 950 mm [1 to under 3 cm]\n"
+             "2. lookup(#1) = 947 mm [109/100 to under 307/100 cm]\n"
              "3. lookup(#2) = argument outside the domain of the operation"
-             " [in no band; the bands cover 1 to under 9 cm]\n");
+             " [in no band; the bands cover 127/100 to under 877/100 cm]\n");
 
     // The inner table misses and the outer one relays its error untouched.
     // The outer line claims nothing about the outer table, and points at the
@@ -1058,7 +1060,7 @@ TEST_CASE("a derivation renders a lookup's own miss differently from one it is r
     CHECK(relayed
           == "1. d = 95 mm\n"
              "2. lookup(#1) = argument outside the domain of the operation"
-             " [in no band; the bands cover 1 to under 6 cm]\n"
+             " [in no band; the bands cover 109/100 to under 613/100 cm]\n"
              "3. lookup(#2) = argument outside the domain of the operation [carried up from #2]\n");
 
     // And the two outermost lines are compared to each other rather than only
@@ -1079,7 +1081,8 @@ TEST_CASE("a derivation renders an exact lookup's key, which is its whole subjec
     // By name, and the name of the MIDDLE row: kills a recorder that names
     // the first or the last row whatever the key, and a renderer that ignores
     // the recorded name and prints the value.
-    CHECK(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment()) == "1. lookup(key Undercut) = 4 MPa\n");
+    CHECK(derivationOf(shapeLookup(RenderedShape::Undercut), formula::environment())
+          == "1. lookup(key Undercut) = 43 MPa\n");
 
     // A key that is a perfectly legitimate enumerator of the author's own
     // enumeration, and simply names no row of this table. It has a name in
@@ -1123,12 +1126,12 @@ TEST_CASE("a derivation renders an interpolation's own overflow differently from
 TEST_CASE("a derivation renders an interpolating miss as outside the curve, not as no band",
           "[trace-render][lookup]")
 {
-    // 100 mm == 10 cm, past the curve's last row at 8 cm. No extrapolation
+    // 100 mm == 10 cm, past the curve's last row at 793/100 cm. No extrapolation
     // and no clamp; the range is closed at both ends and says so.
     CHECK(derivationOf(curveLookup(), diameterOf(100))
           == "1. d = 100 mm\n"
              "2. interpolate(#1) = argument outside the domain of the operation"
-             " [outside the curve, which runs 1 to 8 cm]\n");
+             " [outside the curve, which runs 139/100 to 793/100 cm]\n");
 
     // A value inside the curve names the two rows its answer came from --
     // which is what an auditor reconciles against a published curve, and the
@@ -1138,7 +1141,7 @@ TEST_CASE("a derivation renders an interpolating miss as outside the curve, not 
     // way out, as every other declared bound in this library is.
     CHECK(derivationOf(curveLookup(), diameterOf(60))
           == "1. d = 60 mm\n"
-             "2. interpolate(#1) = 140/9 % [between 7/2 and 8 cm]\n");
+             "2. interpolate(#1) = 53773/2310 % [between 331/100 and 793/100 cm]\n");
 
     // The other end of the same axis: 2 cm is in the FIRST segment. A suite
     // that only ever probed the second lets "report the last pair" through in
@@ -1146,49 +1149,51 @@ TEST_CASE("a derivation renders an interpolating miss as outside the curve, not 
     // through by only ever selecting the middle one.
     CHECK(derivationOf(curveLookup(), diameterOf(20))
           == "1. d = 20 mm\n"
-             "2. interpolate(#1) = 8 % [between 1 and 7/2 cm]\n");
+             "2. interpolate(#1) = 11221/480 % [between 139/100 and 331/100 cm]\n");
 
     // A value sitting exactly on a row says so instead. The two clauses mean
     // different things -- between two rows a reader has an interpolation to
     // check, on a row the table stated the number itself.
-    CHECK(derivationOf(curveLookup(), diameterOf(35))
-          == "1. d = 35 mm\n"
-             "2. interpolate(#1) = -115 % [on the row at 7/2 cm]\n");
+    CHECK(derivationOf(curveLookup(), diameterOf(331, 10))
+          == "1. d = 331/10 mm\n"
+             "2. interpolate(#1) = -1139/10 % [on the row at 331/100 cm]\n");
 
     // And on the curve's LAST row, where it is the only way an answer can be
     // produced at all -- and the row index every other on-a-row probe in this
     // file happens not to be.
-    CHECK(derivationOf(curveLookup(), diameterOf(80))
-          == "1. d = 80 mm\n"
-             "2. interpolate(#1) = 120 % [on the row at 8 cm]\n");
+    CHECK(derivationOf(curveLookup(), diameterOf(793, 10))
+          == "1. d = 793/10 mm\n"
+             "2. interpolate(#1) = 1217/10 % [on the row at 793/100 cm]\n");
 }
 
 TEST_CASE("a derivation spells a band's excluded top and a curve's included one differently",
           "[trace-render][lookup]")
 {
-    // Both tables end on 30 mm, and the difference is one word. A band's top
-    // is excluded -- 30 mm falls in no band of it -- and a breakpoint is a
-    // row the table states a value at, so 30 mm hits the curve exactly.
+    // Both tables end on 293/10 mm, and the difference is one word. A band's
+    // top is excluded -- 293/10 mm falls in no band of it -- and a breakpoint
+    // is a row the table states a value at, so 293/10 mm hits the curve
+    // exactly.
     // "Harmonising" the two spellings in either direction fails here.
-    constexpr auto bands = banded_lookup<unit::Millimetre, TopBands, unit::One>(var<Diameter>, { rat(1), rat(2) });
-    constexpr auto curve =
-        interpolating_lookup<unit::Millimetre, TopPoints, unit::One>(var<Diameter>, { rat(1), rat(2) });
+    constexpr auto bands =
+        banded_lookup<unit::Millimetre, TopBands, unit::One>(var<Diameter>, { rat(1127, 1000), rat(863, 1000) });
+    constexpr auto curve = interpolating_lookup<unit::Millimetre, TopPoints, unit::One>(
+        var<Diameter>, { rat(1127, 1000), rat(863, 1000) });
 
-    std::vector<std::string> const banded = lines(derivationOf(bands, diameterOf(30)));
+    std::vector<std::string> const banded = lines(derivationOf(bands, diameterOf(293, 10)));
     REQUIRE(banded.size() == 2);
-    CHECK(bracketed(banded[1]) == "in no band; the bands cover 9 to under 30 mm");
+    CHECK(bracketed(banded[1]) == "in no band; the bands cover 973/100 to under 293/10 mm");
 
     // The same number, reached rather than excluded -- and the line says so:
-    // 30 mm is a row of this curve, and the clause names it as one.
-    CHECK(derivationOf(curve, diameterOf(30))
-          == "1. d = 30 mm\n"
-             "2. interpolate(#1) = 2 [on the row at 30 mm]\n");
+    // 293/10 mm is a row of this curve, and the clause names it as one.
+    CHECK(derivationOf(curve, diameterOf(293, 10))
+          == "1. d = 293/10 mm\n"
+             "2. interpolate(#1) = 863/1000 [on the row at 293/10 mm]\n");
 
     // And the curve's own extent, spelled without the word that makes a band
     // half-open -- on the same number the band table excluded.
     std::vector<std::string> const past = lines(derivationOf(curve, diameterOf(35)));
     REQUIRE(past.size() == 2);
-    CHECK(bracketed(past[1]) == "outside the curve, which runs 20 to 30 mm");
+    CHECK(bracketed(past[1]) == "outside the curve, which runs 209/10 to 293/10 mm");
     CHECK(bracketed(past[1]).find("under") == std::string::npos);
 }
 
@@ -1264,7 +1269,8 @@ TEST_CASE("a derivation says when it cannot tell whose failure a lookup is carry
     // nothing recorded below, the line says exactly that rather than picking
     // whichever of the two answers sounds better.
     constexpr auto node =
-        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(UntracedLength {}, { rat(95), rat(112), rat(105) });
+        banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(UntracedLength {},
+                                                                  { rat(863, 10), rat(1127, 10), rat(1043, 10) });
 
     CHECK(derivationOf(node, formula::environment())
           == "1. lookup() = division by zero"
@@ -1286,7 +1292,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // The same state on the exact kind, which has no operand and no
     // interpolation -- so nothing else in this file would notice the clause
     // going missing entirely.
-    constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(RenderedShape::Cylinder, { rat(1), rat(Huge) });
+    constexpr auto far = exact_lookup<FarKeys, unit::Kilometre>(RenderedShape::Cylinder, { rat(1127, 1000), rat(Huge) });
     CHECK(derivationOf(far, formula::environment())
           == "1. lookup(key Cylinder) = overflow in exact arithmetic"
              " [this lookup's own unit conversion failed, not anything below it]\n");
@@ -1295,7 +1301,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // claiming "the interpolation itself overflowed" about an interpolation
     // that did no arithmetic at all: 0 cm sits exactly on the first row.
     constexpr auto afterCurve =
-        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1) });
+        interpolating_lookup<unit::Centimetre, FarValues, unit::Kilometre>(var<Diameter>, { rat(Huge), rat(1127, 1000) });
     CHECK(derivationOf(afterCurve, diameterOf(0))
           == "1. d = 0 mm\n"
              "2. interpolate(#1) = overflow in exact arithmetic"
@@ -1305,7 +1311,7 @@ TEST_CASE("a derivation renders a lookup's own conversion failure as neither a m
     // from claiming a three-row curve declares no rows: converting 2^62 metres
     // into centimetres overflows before any row is looked at.
     constexpr auto beforeCurve = interpolating_lookup<unit::Centimetre, CurvePoints, unit::Percent>(
-        formula::constant<unit::Metre>(rat(Huge)), { rat(90), rat(-115), rat(120) });
+        formula::constant<unit::Metre>(rat(Huge)), { rat(873, 10), rat(-1139, 10), rat(1217, 10) });
     std::vector<std::string> const keySide = lines(derivationOf(beforeCurve, formula::environment()));
     REQUIRE(keySide.size() == 2);
     CHECK(bracketed(keySide[1]) == "this lookup's own unit conversion failed, not anything below it");
@@ -1327,12 +1333,13 @@ TEST_CASE("a derivation renders a miss against a table that covers nothing at al
     CHECK(bracketed(empty[1]) == "the curve declares no rows");
 
     // The other degenerate shape: a curve whose only row is its first and its
-    // last at once. "Runs 15/2 to 15/2 cm" would describe it as a range it is
+    // last at once. "Runs 737/100 to 737/100 cm" would describe it as a range it is
     // not, so it is named as the point it is.
-    constexpr auto onePoint = interpolating_lookup<unit::Centimetre, OnePoint, unit::Percent>(var<Diameter>, { rat(90) });
+    constexpr auto onePoint =
+        interpolating_lookup<unit::Centimetre, OnePoint, unit::Percent>(var<Diameter>, { rat(873, 10) });
     std::vector<std::string> const single = lines(derivationOf(onePoint, diameterOf(30)));
     REQUIRE(single.size() == 2);
-    CHECK(bracketed(single[1]) == "outside the curve, whose only row is at 15/2 cm");
+    CHECK(bracketed(single[1]) == "outside the curve, whose only row is at 737/100 cm");
 }
 
 // ---------------------------------------------------------------------------
@@ -1361,15 +1368,15 @@ struct MaximumLoad: formula::Quantity<MaximumLoad, "F", "maximum load", unit::Ki
 {
 };
 
-// An invented method: a 150 mm cube, a 150 mm diameter cylinder, a 200 mm
+// An invented method: a 139 mm cube, a 163 mm diameter cylinder, a 197 mm
 // square prism. The areas are what those shapes have; nothing here is taken
 // from any published standard.
 inline constexpr auto compressiveStrength = formula::method(
     formula::variants(
-        formula::variant<specimen::Cube>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(22'500)),
-        formula::variant<specimen::Cylinder>(var<MaximumLoad>
-                                             / (formula::pi * formula::constant<unit::SquareMillimetre>(5'625))),
-        formula::variant<specimen::Prism>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(40'000))),
+        formula::variant<specimen::Cube>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(19'321)),
+        formula::variant<specimen::Cylinder>(
+            var<MaximumLoad> / (formula::pi * formula::constant<unit::SquareMillimetre>(formula::Rational { 26'569, 4 }))),
+        formula::variant<specimen::Prism>(var<MaximumLoad> / formula::constant<unit::SquareMillimetre>(38'809))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 
@@ -1433,13 +1440,13 @@ TEST_CASE("a variant step reads as its operand, with the variant and its positio
     // killed twice and prove nothing about either. What this one pins is
     // the shape of the whole line and the ordinal.
     //
-    // 562 kN over 22 500 mm2 is 24.97... MPa, which rounds to 25.0.
+    // 562 kN over 19 321 mm2 is 29.087... MPa, which rounds to 29.1.
     CHECK(methodDerivation<specimen::Cube>(compressiveStrength)
           == "1. F = 562 kN\n"
-             "2. 22500 mm2\n"
-             "3. #1 / #2 = 224800000/9\n"
-             "4. round(#3, in MPa) = 25 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "5. #4 = 25 MPa [variant Cube (1st of 3), selected by tag]\n");
+             "2. 19321 mm2\n"
+             "3. #1 / #2 = 562000000000/19321\n"
+             "4. round(#3, in MPa) = 291/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "5. #4 = 291/10 MPa [variant Cube (1st of 3), selected by tag]\n");
 }
 
 TEST_CASE("a variant's position is an ordinal counted from one", "[trace-render][method]")
@@ -1535,8 +1542,9 @@ TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[t
 {
     // Probe 2's F4: printed as written, the clause named the method's own
     // constraint a jurisdiction's as well.
-    constexpr auto limit = formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 10 }),
-                                               formula::Verdict { "reject; jurisdiction overlay: Example Standard 9:2022 NA" });
+    constexpr auto limit =
+        formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 973, 100 }),
+                            formula::Verdict { "reject; jurisdiction overlay: Example Standard 9:2022 NA" });
     auto const m = formula::method(formula::variants(formula::variant<PlainDensity>(var<Mass> / var<Volume>)),
                                    formula::rounding_rule<unit::KilogramPerCubicMetre,
                                                           formula::DecimalPlaces { 0 },
@@ -1550,7 +1558,7 @@ TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[t
 
     CHECK(formula::render_trace(trace, { .maxSteps = 10 })
           == "1. m = 6 kg\n"
-             "2. 10 kg\n"
+             "2. 973/100 kg\n"
              "3. require #1 >= #2 [reject\\; jurisdiction overlay: Example Standard 9:2022 NA; the method's own constraint]\n"
              "4. acceptance(#3) [the method's own constraints]\n");
 }
@@ -1583,7 +1591,7 @@ enum class EscapedGrade : std::uint8_t
 
 inline constexpr formula::KeyTable<EscapedGrade, 2> EscapedGradeKeys { EscapedGrade::Plain, EscapedGrade::Forging };
 
-inline constexpr formula::BandTable<1> ForgingLoadBands { formula::band(1, 1, 9, 1) };
+inline constexpr formula::BandTable<1> ForgingLoadBands { formula::band(127, 100, 973, 100) };
 } // namespace
 
 template <>
@@ -1639,10 +1647,11 @@ TEST_CASE("a unit's symbol is escaped in a numeric value, a method's rounding an
 
     formula::Trace<> lookupTrace {};
     (void) formula::checked_evaluate_si<formula::Rational>(
-        formula::banded_lookup<ForgingNewton, ForgingLoadBands, unit::One>(var<ForgingLoad>, { formula::Rational { 2 } }),
+        formula::banded_lookup<ForgingNewton, ForgingLoadBands, unit::One>(var<ForgingLoad>,
+                                                                           { formula::Rational { 1127, 1000 } }),
         environment,
         formula::RecordingSink<> { lookupTrace });
-    CHECK(formula::render_trace(lookupTrace, { .maxSteps = 10 }).ends_with(" [1 to under 9 N\\] \\[x]\n"));
+    CHECK(formula::render_trace(lookupTrace, { .maxSteps = 10 }).ends_with(" [127/100 to under 973/100 N\\] \\[x]\n"));
 }
 
 TEST_CASE("a variant's tag and a lookup key's name are escaped", "[trace-render][escape]")
@@ -1662,11 +1671,11 @@ TEST_CASE("a variant's tag and a lookup key's name are escaped", "[trace-render]
 
     formula::Trace<> keyTrace {};
     (void) formula::checked_evaluate_si<formula::Rational>(
-        formula::exact_lookup<EscapedGradeKeys, unit::One>(EscapedGrade::Forging,
-                                                           { formula::Rational { 1 }, formula::Rational { 2 } }),
+        formula::exact_lookup<EscapedGradeKeys, unit::One>(
+            EscapedGrade::Forging, { formula::Rational { 1127, 1000 }, formula::Rational { 863, 1000 } }),
         environment,
         formula::RecordingSink<> { keyTrace });
-    CHECK(formula::render_trace(keyTrace, { .maxSteps = 10 }) == "1. lookup(key steel\\; y \\\\) = 2\n");
+    CHECK(formula::render_trace(keyTrace, { .maxSteps = 10 }) == "1. lookup(key steel\\; y \\\\) = 863/1000\n");
 }
 
 TEST_CASE("a rounding or a numeric value in a unit with no symbol adds no unit clause to its line", "[trace-render]")

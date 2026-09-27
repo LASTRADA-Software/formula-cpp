@@ -72,9 +72,9 @@ constexpr auto waterCementRatio = var<WaterVolume> / var<CementVolume>;
 int main()
 {
     // ---- 1. A formula with a constant and a power ----
-    constexpr auto diameterKnown = formula::environment(formula::Measured<Diameter> { formula::Rational { 100 } });
+    constexpr auto diameterKnown = formula::environment(formula::Measured<Diameter> { formula::Rational { 103 } });
     constexpr auto area = formula::checked_evaluate<Area>(circularArea, diameterKnown);
-    std::printf("circular area of a 100 mm diameter = %f m2 (%s)\n",
+    std::printf("circular area of a 103 mm diameter = %f m2 (%s)\n",
                 area->measurement().value().to_double(),
                 area->is_value() ? "computed" : "no value");
 
@@ -107,8 +107,8 @@ int main()
     // Every number printed above is checked here; nothing is printed that this
     // bool does not also cover.
     bool const circularAreaIsCorrect = area.has_value() && area->is_value()
-                                       && area->measurement().value().to_double() > 0.00785398
-                                       && area->measurement().value().to_double() < 0.00785399;
+                                       && area->measurement().value().to_double() > 0.00833228
+                                       && area->measurement().value().to_double() < 0.00833229;
     bool const massConvertsExactly = massConverted.has_value() && massConverted->is_value()
                                      && massConverted->measurement().value() == formula::Rational { 5, 2 };
     bool const absenceStaysEmpty = emptyArea.has_value() && emptyArea->is_empty();

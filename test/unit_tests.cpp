@@ -470,16 +470,16 @@ static_assert(converted(1, 2, unit::One, unit::Percent) == *Rational::make(50, 1
 // exactly 4 mm, and exactly 4/1000 of a metre.
 static_assert(converted(40, 1, unit::Decimillimetre, unit::Millimetre) == *Rational::make(4, 1));
 static_assert(converted(40, 1, unit::Decimillimetre, unit::Metre) == *Rational::make(1, 250));
-// A sieve aperture: 63 um is 63/1000 mm.
-static_assert(converted(63, 1, unit::Micrometre, unit::Millimetre) == *Rational::make(63, 1000));
+// A fine aperture: 67 um is 67/1000 mm.
+static_assert(converted(67, 1, unit::Micrometre, unit::Millimetre) == *Rational::make(67, 1000));
 // Areas and volumes scale by the square and the cube, and the factors are exact.
 static_assert(converted(1, 1, unit::SquareCentimetre, unit::SquareMillimetre) == *Rational::make(100, 1));
 static_assert(converted(1, 1, unit::SquareMetre, unit::SquareMillimetre) == *Rational::make(1000000, 1));
 static_assert(converted(1, 1, unit::CubicCentimetre, unit::CubicMillimetre) == *Rational::make(1000, 1));
 static_assert(converted(1, 1, unit::Litre, unit::CubicCentimetre) == *Rational::make(1000, 1));
-// A curing age: 28 days is 28 * 86400 seconds, and 672 hours.
-static_assert(converted(28, 1, unit::Day, unit::Hour) == *Rational::make(672, 1));
-static_assert(converted(28, 1, unit::Day, unit::Second) == *Rational::make(2419200, 1));
+// A curing age: 31 days is 31 * 86400 seconds, and 744 hours.
+static_assert(converted(31, 1, unit::Day, unit::Hour) == *Rational::make(744, 1));
+static_assert(converted(31, 1, unit::Day, unit::Second) == *Rational::make(2678400, 1));
 // A load frame's reading.
 static_assert(converted(1, 1, unit::Kilonewton, unit::Newton) == *Rational::make(1000, 1));
 // A loading rate: 50 mm/min is exactly 1/1200 m/s -- and back, with nothing lost.

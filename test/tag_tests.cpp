@@ -93,7 +93,10 @@ struct TagBridged
 template <>
 struct formula::TagName<TagCustomized>
 {
-    static constexpr std::string_view of() noexcept { return "cylinder 150 x 300 mm"; }
+    static constexpr std::string_view of() noexcept
+    {
+        return "cylinder 139 x 277 mm";
+    }
 };
 
 template <>
@@ -169,7 +172,7 @@ TEST_CASE("a tag nested in a class is named without the class", "[tag]")
 
 TEST_CASE("a class template specialization keeps its arguments, spelt alike on every compiler", "[tag]")
 {
-    STATIC_REQUIRE(tag_name<TagSized<150>>() == "TagSized<150>");
+    STATIC_REQUIRE(tag_name<TagSized<163>>() == "TagSized<163>");
     STATIC_REQUIRE(tag_name<TagSized<-3>>() == "TagSized<-3>");
     // An argument's qualification goes too, at every depth.
     STATIC_REQUIRE(tag_name<TagBox<tag_outer::tag_inner::TagNested>>() == "TagBox<TagNested>");
@@ -207,7 +210,7 @@ TEST_CASE("a reflected tag name lives in static storage of its own", "[tag]")
 
 TEST_CASE("a customized tag is spelled the author's way, at compile time", "[tag]")
 {
-    STATIC_REQUIRE(tag_name<TagCustomized>() == "cylinder 150 x 300 mm");
+    STATIC_REQUIRE(tag_name<TagCustomized>() == "cylinder 139 x 277 mm");
 }
 
 TEST_CASE("a customization that leaves a tag empty falls back to its own name", "[tag]")
@@ -293,7 +296,7 @@ TEST_CASE("a defaulted const argument is shown only by cl, and refused only ther
 TEST_CASE("a plain name is a class name and its arguments, and nothing else", "[tag]")
 {
     using formula::detail::is_plain_type_name;
-    STATIC_REQUIRE(is_plain_type_name("TagBox<TagBox<int>, 150>"));
+    STATIC_REQUIRE(is_plain_type_name("TagBox<TagBox<int>, 163>"));
     STATIC_REQUIRE(is_plain_type_name("_Leading"));
     STATIC_REQUIRE(!is_plain_type_name(""));
     STATIC_REQUIRE(!is_plain_type_name("<lambda()>"));

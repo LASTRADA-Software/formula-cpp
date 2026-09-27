@@ -45,8 +45,8 @@ inline constexpr auto m =
                     formula::constraints());
 
 inline constexpr auto inputs = formula::environment(formula::Measured<Force> { formula::Rational { 90'000 } },
-                                                    formula::Measured<EdgeX> { formula::Rational { 150 } },
-                                                    formula::Measured<EdgeY> { formula::Rational { 100 } });
+                                                    formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                                    formula::Measured<EdgeY> { formula::Rational { 103 } });
 } // namespace
 
 int main()

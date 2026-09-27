@@ -23,9 +23,9 @@ namespace
 
     inline constexpr formula::BreakpointTable<4> DescendingPoints {
         formula::breakpoint(0),
-        formula::breakpoint(20),
-        formula::breakpoint(10), // below the row above it
-        formula::breakpoint(30),
+        formula::breakpoint(197),
+        formula::breakpoint(103), // below the row above it
+        formula::breakpoint(293),
     };
 
     // No `interpolating_lookup` call anywhere in this file.
@@ -33,7 +33,10 @@ namespace
                                                       formula::unit::One, decltype(formula::var<Diameter>)>
         broken {
             {},
-            { formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 } },
+            { formula::Rational { 1127, 1000 },
+              formula::Rational { 853, 1000 },
+              formula::Rational { 917, 1000 },
+              formula::Rational { 1043, 1000 } },
             formula::var<Diameter>,
         };
 } // namespace

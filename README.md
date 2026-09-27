@@ -80,12 +80,12 @@ formula mentions either — the conversion is part of what the declaration means
 ```cpp
 constexpr auto circularArea = formula::pi * formula::pow<2>(var<Diameter>) / formula::Rational { 4 };
 
-constexpr auto known = formula::environment(formula::Measured<Diameter> { formula::Rational { 100 } });
+constexpr auto known = formula::environment(formula::Measured<Diameter> { formula::Rational { 103 } });
 constexpr auto area  = formula::checked_evaluate<Area>(circularArea, known);
 ```
 
 ```
-circular area of a 100 mm diameter = 0.007854 m2 (computed)
+circular area of a 103 mm diameter = 0.008332 m2 (computed)
 2500 g reported as m = 2.500000 kg
 ```
 
@@ -187,19 +187,19 @@ library targets. See [the tracing guide](docs/tracing.md).
 
 ```cpp
 inline constexpr formula::BandTable<3> SizeBands {
-    formula::band(0, 1, 100, 1),   // 0 to under 100 mm
-    formula::band(100, 1, 150, 1), // 100 to under 150 mm
-    formula::band(150, 1, 200, 1), // 150 to under 200 mm -- 200 mm itself is NOT in it
+    formula::band(0, 1, 127, 1),   // 0 to under 127 mm
+    formula::band(127, 1, 173, 1), // 127 to under 173 mm
+    formula::band(173, 1, 211, 1), // 173 to under 211 mm -- 211 mm itself is NOT in it
 };
 ```
 
 ```
-1. d = 200 mm
-2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 200 mm]
+1. d = 211 mm
+2. lookup(#1) = argument outside the domain of the operation [in no band; the bands cover 0 to under 211 mm]
 ```
 
 Not zero, not the nearest band, not the last row. A method that defined no
-correction at 200 mm has defined none, and inventing one would put a number in
+correction at 211 mm has defined none, and inventing one would put a number in
 a test report that nothing downstream could tell apart from a number the method
 actually published. A table with a **gap** in it does not even compile, and the
 diagnostic names the two rows that do not meet. Three table kinds — banded,

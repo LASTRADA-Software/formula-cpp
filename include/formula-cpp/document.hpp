@@ -82,7 +82,7 @@ struct SymbolEntry
     /// nothing else.
     ///
     /// Only a formula assembled by hand has both -- `apply` substitutes every
-    /// use -- and then a row saying only "fixed at 97/100" would hide that the
+    /// use -- and then a row saying only "fixed at 863/1000" would hide that the
     /// specimen's value is read as well, and one saying only "read" would hide
     /// the fixed value. It says both, in whichever order the two were met.
     bool alsoReadAsInput {};

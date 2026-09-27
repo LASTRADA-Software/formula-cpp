@@ -5,7 +5,7 @@
 // as a customization -- the author wrote the specialisation -- and the silent
 // reading of it, "no `of`, so not customized", would record the variant under
 // its reflected name `MisspeltCylinder` while the author believes the trace
-// reads "cylinder 150 x 300 mm". Nothing would say the wording had been
+// reads "cylinder 139 x 277 mm". Nothing would say the wording had been
 // dropped. So it must be refused in the library's own words. This must not
 // compile.
 //
@@ -29,7 +29,7 @@ struct formula::TagName<MisspeltCylinder>
 {
     static constexpr std::string_view Of() noexcept
     {
-        return "cylinder 150 x 300 mm";
+        return "cylinder 139 x 277 mm";
     }
 };
 

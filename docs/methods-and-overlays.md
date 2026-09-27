@@ -42,8 +42,8 @@ inline constexpr auto compressiveStrength = formula::method(
                       formula::variant<Cylinder>(formula::constant<unit::One>(rat(4)) * var<Force>
                                                  / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(50)),
-                                             formula::Verdict { "the load at failure is below 50 kN" })));
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(473, 10)),
+                                             formula::Verdict { "the load at failure is below 47.3 kN" })));
 ```
 
 - **A tag** such as `Cube` is an empty struct, never instantiated, and it need
@@ -68,12 +68,12 @@ auto const cube = formula::evaluate_method<Cube>(compressiveStrength, specimen);
 ```
 
 ```text
-cube:   6000000 Pa
+cube:   5500000 Pa
 ```
 
 **A method answers in coherent SI**, here pascals, like every `Evaluated`
 value in this library. The rule rounded the value in megapascals, to one
-decimal (6.00666... MPa became 6.0 MPa), and the answer is that rounded value
+decimal (5.5477... MPa became 5.5 MPa), and the answer is that rounded value
 expressed in pascals. A method has no typed result. It knows only its variants'
 dimension, so its answer is a number in the coherent SI unit of that dimension.
 
@@ -81,15 +81,15 @@ Traced, the selection is a step of its own, the root of the derivation, with
 the rounded variant beneath it. The rounding step says whose rule it was:
 
 ```text
-1. k_s = 1
-2. F = 90100 N
-3. #1 * #2 = 90100
-4. a = 150 mm
-5. b = 100 mm
-6. #4 * #5 = 3/200
-7. #3 / #6 = 18020000/3
-8. round(#7, in MPa) = 6 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
-9. #8 = 6 MPa [variant Cube (2nd of 3), selected by tag]
+1. k_s = 1043/1000
+2. F = 89300 N
+3. #1 * #2 = 931399/10
+4. a = 163 mm
+5. b = 103 mm
+6. #4 * #5 = 16789/1000000
+7. #3 / #6 = 93139900000/16789
+8. round(#7, in MPa) = 11/2 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+9. #8 = 11/2 MPa [variant Cube (2nd of 3), selected by tag]
 ```
 
 ### Naming a variant as the published method does
@@ -104,13 +104,13 @@ struct formula::TagName<Cylinder>
 {
     static constexpr std::string_view of() noexcept
     {
-        return "cylinder 150 x 300 mm";
+        return "cylinder 135 x 271 mm";
     }
 };
 ```
 
 ```text
-10. #9 = 51/10 MPa [variant cylinder 150 x 300 mm (3rd of 3), selected by tag]
+10. #9 = 31/5 MPa [variant cylinder 135 x 271 mm (3rd of 3), selected by tag]
 ```
 
 A spelling holding a square bracket or a control character is refused, since
@@ -246,24 +246,24 @@ static assertion failed: formula: pin_variant<Tag>() was given no citation; whic
 
 ```cpp
 inline constexpr auto north =
-    formula::overlay(formula::with_constant<ShapeFactor>(rat(97, 100), northConstant),
+    formula::overlay(formula::with_constant<ShapeFactor>(rat(863, 1000), northConstant),
                      formula::with_rounding<unit::NewtonPerSquareMillimetre,
                                             formula::DecimalPlaces { 2 },
                                             formula::RoundingMode::HalfAwayFromZero>(northRounding));
 ```
 
 ```text
-north cube: 5830000 Pa
+north cube: 4590000 Pa
 
-1. k_s = 97/100 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.1]
-2. F = 90100 N
-3. #1 * #2 = 87397
-4. a = 150 mm
-5. b = 100 mm
-6. #4 * #5 = 3/200
-7. #3 / #6 = 17479400/3
-8. round(#7, in N/mm2) = 583/100 N/mm2 [rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, NA.4); nearest, ties away from zero]
-9. #8 = 583/100 N/mm2 [variant Cube (2nd of 3), selected by tag]
+1. k_s = 863/1000 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.1]
+2. F = 89300 N
+3. #1 * #2 = 770659/10
+4. a = 163 mm
+5. b = 103 mm
+6. #4 * #5 = 16789/1000000
+7. #3 / #6 = 77065900000/16789
+8. round(#7, in N/mm2) = 459/100 N/mm2 [rounded to 2 dp (jurisdiction overlay: Example Standard 12:2021 NA, NA.4); nearest, ties away from zero]
+9. #8 = 459/100 N/mm2 [variant Cube (2nd of 3), selected by tag]
 ```
 
 **What "changing the declared unit" means for a method.** The design
@@ -290,7 +290,7 @@ measurements](quantities.md)), so a number can never disagree with its label.
 ```cpp
 inline constexpr auto south = formula::overlay(
     formula::replace_variant<Cylinder>(
-        var<Force> / (formula::constant<unit::One>(rat(3, 4)) * formula::pow<2>(var<Diameter>)), southReplacement),
+        var<Force> / (formula::constant<unit::One>(rat(1127, 1000)) * formula::pow<2>(var<Diameter>)), southReplacement),
     formula::add_derived<ShapeFactor>(var<EdgeB> / var<EdgeA>, southDefinition),
     formula::prune_variant<Prism>(southScope));
 ```
@@ -298,20 +298,20 @@ inline constexpr auto south = formula::overlay(
 A derived quantity is traced as the quantity equal to its definition's step:
 
 ```text
-south cube: 4000000 Pa
+south cube: 3400000 Pa
 
-1. b = 100 mm
-2. a = 150 mm
-3. #1 / #2 = 2/3
-4. k_s = #3 = 2/3 [derived by jurisdiction overlay: Example Standard 7:2019 A, A.3]
-5. F = 90100 N
-6. #4 * #5 = 180200/3
-7. a = 150 mm
-8. b = 100 mm
-9. #7 * #8 = 3/200
-10. #6 / #9 = 36040000/9
-11. round(#10, in MPa) = 4 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
-12. #11 = 4 MPa [variant Cube (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
+1. b = 103 mm
+2. a = 163 mm
+3. #1 / #2 = 103/163
+4. k_s = #3 = 103/163 [derived by jurisdiction overlay: Example Standard 7:2019 A, A.3]
+5. F = 89300 N
+6. #4 * #5 = 9197900/163
+7. a = 163 mm
+8. b = 103 mm
+9. #7 * #8 = 16789/1000000
+10. #6 / #9 = 89300000000/26569
+11. round(#10, in MPa) = 17/5 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+12. #11 = 17/5 MPa [variant Cube (2nd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
 ```
 
 The last line says the prune: one of the method's three published variants is
@@ -322,15 +322,15 @@ the Cylinder as the 3rd of 3, although the Prism published before it is gone --
 the position is the published one, not the Cylinder's place in what is left:
 
 ```text
-1. F = 90100 N
-2. 3/4
-3. d = 150 mm
-4. #3^2 = 9/400
-5. #2 * #4 = 27/1600
-6. #1 / #5 = 144160000/27
-7. #6 = 144160000/27 [replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]
-8. round(#7, in MPa) = 53/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
-9. #8 = 53/10 MPa [variant cylinder 150 x 300 mm (3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
+1. F = 89300 N
+2. 1127/1000
+3. d = 135 mm
+4. #3^2 = 729/40000
+5. #2 * #4 = 821583/40000000
+6. #1 / #5 = 3572000000000/821583
+7. #6 = 3572000000000/821583 [replaced by jurisdiction overlay: Example Standard 7:2019 A, A.5]
+8. round(#7, in MPa) = 43/10 MPa [rounded to 1 dp (method default); nearest, ties away from zero]
+9. #8 = 43/10 MPa [variant cylinder 135 x 271 mm (3rd of 3), selected by tag; 1 of 3 pruned by jurisdiction overlay: Example Standard 7:2019 A, A.1]
 ```
 
 `document()` marks the same things on the page. A fixed quantity's row carries
@@ -358,7 +358,7 @@ inline constexpr auto east = formula::overlay(formula::pin_variant<Cube>(eastSco
 The east's cube is still `(2nd of 3)`, and the selection says the pin:
 
 ```text
-9. #8 = 6 MPa [variant Cube (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard 3:2023 E, E.1]
+9. #8 = 11/2 MPa [variant Cube (2nd of 3), selected by tag; pinned by jurisdiction overlay: Example Standard 3:2023 E, E.1]
 
 east: 1 variant(s) left after the pin
 ```
@@ -494,16 +494,16 @@ own frame.
 ## Whose acceptance logic
 
 A method's third part is its constraints: the checks a result must pass before
-it is accepted. The base method holds one of its own, `F >= 50 kN` (declared
+it is accepted. The base method holds one of its own, `F >= 47.3 kN` (declared
 [above](#a-method-variants-tags-and-one-rounding-rule)), and the west
 replaces it with two checks of its own:
 
 ```cpp
 inline constexpr auto west = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(100)),
-                                             formula::Verdict { "the load at failure is below 100 kN" }),
-                         formula::constraint(var<EdgeA> <= formula::number(rat(2)) * var<EdgeB>,
-                                             formula::Verdict { "the loaded face is more than twice as long as wide" })),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(973, 10)),
+                                             formula::Verdict { "the load at failure is below 97.3 kN" }),
+                         formula::constraint(var<EdgeA> <= formula::number(rat(173, 100)) * var<EdgeB>,
+                                             formula::Verdict { "the loaded face is more than 1.73 times as long as wide" })),
     westAcceptance));
 ```
 
@@ -521,12 +521,12 @@ auto const westOutcomes = formula::check_method(western, specimen);
 base: 1 constraint(s)
   [0] satisfied
 west: 2 constraint(s)
-  [0] violated: the load at failure is below 100 kN
+  [0] violated: the load at failure is below 97.3 kN
   [1] satisfied
 ```
 
 **`with_constraints` replaces the constraints, it does not add to them.** The
-west's method no longer checks the base method's 50 kN. A jurisdiction that
+west's method no longer checks the base method's 47.3 kN. A jurisdiction that
 keeps a base check restates it in its own set, with its own citation. An
 overlay can also leave fewer constraints than the method had, or none:
 `with_constraints(formula::constraints(), citation)` is accepted, because a
@@ -553,27 +553,27 @@ verdicts under an `acceptance` step of their own, in the order it returns
 them:
 
 ```text
-1. F = 90100 N
-2. 50 kN
+1. F = 89300 N
+2. 473/10 kN
 3. require #1 >= #2 [satisfied; the method's own constraint]
 4. acceptance(#3) [the method's own constraints]
 ```
 
 ```text
-1. F = 90100 N
-2. 100 kN
-3. require #1 >= #2 [the load at failure is below 100 kN; jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
-4. a = 150 mm
-5. 2
-6. b = 100 mm
-7. #5 * #6 = 1/5
+1. F = 89300 N
+2. 973/10 kN
+3. require #1 >= #2 [the load at failure is below 97.3 kN; jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
+4. a = 163 mm
+5. 173/100
+6. b = 103 mm
+7. #5 * #6 = 17819/100000
 8. require #4 <= #7 [satisfied; jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
 9. acceptance(#3, #8) [jurisdiction overlay: Acceptance, Example Standard 9:2022 B, B.2]
 ```
 
 A method with no constraints still gets its `acceptance` line --
 `acceptance(none)`, with whose it is -- so a jurisdiction that removed every
-check is never silent about it. Step 7 is `2 x 100 mm` in coherent SI, 0.2 m,
+check is never silent about it. Step 7 is `1.73 x 103 mm` in coherent SI, 0.17819 m,
 written without its unit, as the computed steps of the cube's trace above are
 too.
 
@@ -655,8 +655,8 @@ Two limits, stated here so that nobody mistakes them for supported cases:
 /// A later revision of the west's annex, applied on top of the west's method:
 /// its one constraint is all the stacked method checks.
 inline constexpr auto westRevised = formula::overlay(formula::with_constraints(
-    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(80)),
-                                             formula::Verdict { "the load at failure is below 80 kN" })),
+    formula::constraints(formula::constraint(var<Force> >= formula::constant<unit::Kilonewton>(rat(831, 10)),
+                                             formula::Verdict { "the load at failure is below 83.1 kN" })),
     westRevision));
 
 inline constexpr auto western = formula::apply(west, compressiveStrength);
@@ -697,9 +697,9 @@ ordinary `switch` on a runtime value:
 ```
 
 ```text
-jurisdiction 0: 6000000 Pa
-jurisdiction 1: 5830000 Pa
-jurisdiction 2: 4000000 Pa
+jurisdiction 0: 5500000 Pa
+jurisdiction 1: 4590000 Pa
+jurisdiction 2: 3400000 Pa
 ```
 
 **Why not an overlay chosen at run time, from a registry?** A fixed constant,
@@ -752,8 +752,8 @@ formula::Trace<> trace {};
 ```
 
 ```text
-4. b = 150 mm
-5. a = 100 mm
+4. b = 163 mm
+5. a = 103 mm
 ```
 
 A vocabulary renames quantities only. A variant's tag (`TagName`) and a lookup

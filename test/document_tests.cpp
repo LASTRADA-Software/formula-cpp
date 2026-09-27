@@ -269,8 +269,8 @@ TEST_CASE("document: a WhenNode's predicate contributes to the symbol table", "[
     // this fails if collect(WhenNode) walks the branches but forgets the
     // predicate, or if PredicateNode's own collect() forgets one of its
     // sides.
-    constexpr auto node =
-        formula::when(var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50)), var<Diameter>, var<ExcavationDepth>);
+    constexpr auto node = formula::when(
+        var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10)), var<Diameter>, var<ExcavationDepth>);
     formula::Documentation const documentation = formula::document(node);
 
     REQUIRE(documentation.symbols.size() == 3);
@@ -304,8 +304,8 @@ TEST_CASE("document: a WhenNode documents both branches, not just the one that w
     // which branch some particular evaluation happened to take. If
     // collect(WhenNode) only walked thenBranch (mirroring evaluation),
     // ExcavationDepth would be missing below.
-    constexpr auto node =
-        formula::when(var<Strength> > formula::constant<formula::unit::Megapascal>(rat(50)), var<Diameter>, var<ExcavationDepth>);
+    constexpr auto node = formula::when(
+        var<Strength> > formula::constant<formula::unit::Megapascal>(rat(473, 10)), var<Diameter>, var<ExcavationDepth>);
     formula::Documentation const documentation = formula::document(node);
 
     REQUIRE(documentation.symbols.size() == 3);
@@ -457,9 +457,9 @@ struct AbsentReading: formula::Quantity<AbsentReading, "Z_q", "a reading no form
 /// fixture that was degenerate on an axis nobody had yet named has let a
 /// mutation survive in every task of this phase.
 inline constexpr BandTable<3> LayerBands {
-    band(3, 2, 7, 1),   // 3/2 to under 7 mm
-    band(7, 1, 34, 2),  // 7 to under 17 mm -- 34/2 declared, so reduction shows
-    band(17, 1, 40, 1), // 17 to under 40 mm
+    band(139, 100, 713, 100),   // 139/100 to under 713/100 mm
+    band(713, 100, 3466, 200),  // 713/100 to under 1733/100 mm -- 3466/200 declared, so reduction shows
+    band(1733, 100, 4127, 100), // 1733/100 to under 4127/100 mm
 };
 
 enum class ApparatusType : std::uint8_t
@@ -476,9 +476,9 @@ inline constexpr KeyTable<ApparatusType, 3> ApparatusKeys {
 };
 
 inline constexpr BreakpointTable<3> ProfilePoints {
-    breakpoint(3),
-    breakpoint(22, 4), // 11/2 -- declared unreduced, and in the middle
-    breakpoint(24),
+    breakpoint(317, 100),
+    breakpoint(2332, 400), // 583/100 -- declared unreduced, and in the middle
+    breakpoint(2411, 100),
 };
 
 /// Key unit `mm` (a symbol), result unit `One` (none) -- and an operand that is
@@ -487,21 +487,22 @@ inline constexpr BreakpointTable<3> ProfilePoints {
 [[nodiscard]] constexpr auto bandedLookup()
 {
     return banded_lookup<unit::Millimetre, LayerBands, unit::One>(var<PlateThickness> * rat(2),
-                                                                  { rat(23, 25), rat(6, 5), rat(27, 20) });
+                                                                  { rat(863, 1000), rat(1127, 1000), rat(1349, 1000) });
 }
 
 /// No operand at all -- the whole of what distinguishes this kind for a
 /// documentation walk.
 [[nodiscard]] constexpr auto apparatusLookup()
 {
-    return exact_lookup<ApparatusKeys, unit::Megapascal>(ApparatusType::Rig, { rat(8, 5), rat(3, 4), rat(21, 10) });
+    return exact_lookup<ApparatusKeys, unit::Megapascal>(ApparatusType::Rig,
+                                                         { rat(1613, 1000), rat(743, 1000), rat(2089, 1000) });
 }
 
 /// A bare variable as the operand, against `bandedLookup`'s compound one.
 [[nodiscard]] constexpr auto profileLookup()
 {
-    return interpolating_lookup<unit::Millimetre, ProfilePoints, unit::Megapascal>(var<CoreLength>,
-                                                                                   { rat(4, 5), rat(-9, 10), rat(13, 10) });
+    return interpolating_lookup<unit::Millimetre, ProfilePoints, unit::Megapascal>(
+        var<CoreLength>, { rat(787, 1000), rat(-907, 1000), rat(1319, 1000) });
 }
 
 // Invented, as every citation in this repository must be.
@@ -529,7 +530,7 @@ constexpr formula::Citation coreSource { .title = "Core length, as measured",
 {
     return formula::documented(
         banded_lookup<unit::Millimetre, LayerBands, unit::One>(formula::documented(var<PlateThickness>, thicknessSource),
-                                                               { rat(23, 25), rat(6, 5), rat(27, 20) }),
+                                                               { rat(863, 1000), rat(1127, 1000), rat(1349, 1000) }),
         layerSource);
 }
 
@@ -542,7 +543,7 @@ constexpr formula::Citation coreSource { .title = "Core length, as measured",
 {
     return formula::documented(
         interpolating_lookup<unit::Millimetre, ProfilePoints, unit::Megapascal>(
-            formula::documented(var<CoreLength>, coreSource), { rat(4, 5), rat(-9, 10), rat(13, 10) }),
+            formula::documented(var<CoreLength>, coreSource), { rat(787, 1000), rat(-907, 1000), rat(1319, 1000) }),
         profileSource);
 }
 

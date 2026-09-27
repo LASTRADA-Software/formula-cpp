@@ -17,12 +17,12 @@ namespace
     };
 
     inline constexpr formula::BandTable<2> Bands {
-        formula::band(0, 1, 10, 1),
-        formula::band(10, 1, 20, 1),
+        formula::band(0, 1, 103, 1),
+        formula::band(103, 1, 197, 1),
     };
 
     inline constexpr auto node = formula::banded_lookup<formula::unit::Millimetre, Bands, formula::unit::One>(
-        formula::var<Diameter>, { formula::Rational { 1 }, formula::Rational { 1 } });
+        formula::var<Diameter>, { formula::Rational { 1127, 1000 }, formula::Rational { 853, 1000 } });
 } // namespace
 
 int main()

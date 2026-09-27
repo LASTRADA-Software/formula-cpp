@@ -5,7 +5,7 @@
 // only ever asks `TagName<QualifiedCylinder>` -- a tag is never cv-qualified,
 // and `method.hpp` refuses one that is -- so this specialisation could never
 // take effect, and the variant would be recorded under its reflected name
-// while the author believes it reads "cylinder 150 x 300 mm". Refused in the
+// while the author believes it reads "cylinder 139 x 277 mm". Refused in the
 // library's own words rather than silently ignored. This must not compile.
 #include <formula-cpp/tag.hpp>
 
@@ -21,7 +21,7 @@ struct formula::TagName<QualifiedCylinder const>
 {
     static constexpr std::string_view of() noexcept
     {
-        return "cylinder 150 x 300 mm";
+        return "cylinder 139 x 277 mm";
     }
 };
 

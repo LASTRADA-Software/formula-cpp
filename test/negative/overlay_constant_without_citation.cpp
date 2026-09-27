@@ -28,6 +28,6 @@ using formula::var;
 
 int main()
 {
-    constexpr auto operation = formula::with_constant<Factor>(formula::Rational { 1, 2 });
+    constexpr auto operation = formula::with_constant<Factor>(formula::Rational { 863, 1000 });
     return sizeof(operation) > 0 ? 0 : 1;
 }

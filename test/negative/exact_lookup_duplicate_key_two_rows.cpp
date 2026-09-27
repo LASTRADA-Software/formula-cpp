@@ -16,17 +16,17 @@ namespace
 {
     enum class SpecimenShape
     {
-        Cube100,
-        Cube150,
+        CubeSmall,
+        CubeLarge,
     };
 
     inline constexpr formula::KeyTable<SpecimenShape, 2> DuplicatedKeys {
-        SpecimenShape::Cube150,
-        SpecimenShape::Cube150,
+        SpecimenShape::CubeLarge,
+        SpecimenShape::CubeLarge,
     };
 
     inline constexpr auto broken = formula::exact_lookup<DuplicatedKeys, formula::unit::One>(
-        SpecimenShape::Cube150, { formula::Rational { 1 }, formula::Rational { 1 } });
+        SpecimenShape::CubeLarge, { formula::Rational { 1127, 1000 }, formula::Rational { 853, 1000 } });
 } // namespace
 
 int main()

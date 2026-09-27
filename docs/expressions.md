@@ -295,7 +295,7 @@ constexpr auto circularArea = formula::pi * formula::pow<2>(var<Diameter>) / for
 ```
 
 ```
-circular area of a 100 mm diameter = 0.007854 m2 (computed)
+circular area of a 103 mm diameter = 0.008332 m2 (computed)
 ```
 
 `formula::Pi` is a documented rational convergent -- `245850922/78256779`,

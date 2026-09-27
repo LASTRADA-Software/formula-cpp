@@ -111,7 +111,7 @@ struct NormalizedTypeName
 }
 
 /// @p argument -- a type as `type_argument_text` found it -- reduced to the
-/// spelling a method's author wrote: `Cylinder`, `Sized<150>`, `Box<Anon>`.
+/// spelling a method's author wrote: `Cylinder`, `Sized<163>`, `Box<Anon>`.
 ///
 /// **Every qualification goes, at every level.** Measured on cl 19.51,
 /// clang-cl 22.1.3, clang++ 20.1.8, g++ 13.3 and g++-14 14.2, the four

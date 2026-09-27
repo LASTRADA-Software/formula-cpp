@@ -30,7 +30,7 @@ struct formula::TagName<DanglingCylinder>
 {
     static constexpr std::string of()
     {
-        return "cylinder 150 x 300 mm";
+        return "cylinder 139 x 277 mm";
     }
 };
 

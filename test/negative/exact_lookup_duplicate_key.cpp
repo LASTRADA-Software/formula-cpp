@@ -20,24 +20,27 @@ namespace
 {
     enum class SpecimenShape
     {
-        Cube100,
-        Cube150,
+        CubeSmall,
+        CubeLarge,
         CylinderShort,
         Prism,
     };
 
     inline constexpr formula::KeyTable<SpecimenShape, 5> DuplicatedKeys {
-        SpecimenShape::Cube100,
-        SpecimenShape::Cube150,
+        SpecimenShape::CubeSmall,
+        SpecimenShape::CubeLarge,
         SpecimenShape::CylinderShort,
-        SpecimenShape::Cube150, // already declared two rows above
+        SpecimenShape::CubeLarge, // already declared two rows above
         SpecimenShape::Prism,
     };
 
     inline constexpr auto broken = formula::exact_lookup<DuplicatedKeys, formula::unit::One>(
-        SpecimenShape::Cube100,
-        { formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 }, formula::Rational { 1 },
-          formula::Rational { 1 } });
+        SpecimenShape::CubeSmall,
+        { formula::Rational { 1127, 1000 },
+          formula::Rational { 853, 1000 },
+          formula::Rational { 917, 1000 },
+          formula::Rational { 1043, 1000 },
+          formula::Rational { 1127, 1000 } });
 } // namespace
 
 int main()
