@@ -210,9 +210,13 @@ namespace detail
         Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
         if (!evaluatedOperand.has_value())
         {
-            Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
-            sink.produced(node, failed);
-            return failed;
+            // Built twice rather than held in a named local: GCC 13 reports a
+            // false -Wmaybe-uninitialized on returning a named std::expected that
+            // has been passed to the sink by reference (see `evaluate.hpp`). The
+            // error is a plain enumerator, so constructing it twice costs nothing.
+            auto const operandFailure = evaluatedOperand.error();
+            sink.produced(node, Evaluated<Rep> { std::unexpected { operandFailure } });
+            return Evaluated<Rep> { std::unexpected { operandFailure } };
         }
         if (!evaluatedOperand->has_value())
         {
@@ -252,9 +256,13 @@ template <typename Rep = Rational, Unit U, SignificantDigits Digits, RoundingMod
     Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
     if (!evaluatedOperand.has_value())
     {
-        Evaluated<Rep> const failed = std::unexpected { evaluatedOperand.error() };
-        sink.produced(node, failed);
-        return failed;
+        // Built twice rather than held in a named local: GCC 13 reports a
+        // false -Wmaybe-uninitialized on returning a named std::expected that
+        // has been passed to the sink by reference (see `evaluate.hpp`). The
+        // error is a plain enumerator, so constructing it twice costs nothing.
+        auto const operandFailure = evaluatedOperand.error();
+        sink.produced(node, Evaluated<Rep> { std::unexpected { operandFailure } });
+        return Evaluated<Rep> { std::unexpected { operandFailure } };
     }
     if (!evaluatedOperand->has_value())
     {

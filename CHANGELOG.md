@@ -70,7 +70,8 @@ and `TagName` spells a variant's tag.
   of the step it wraps, as that step does: `#2 = 16 g`.
 - A local in `evaluate.hpp` made GCC 13.3 report `-Wmaybe-uninitialized` at `-O2`, a false
   positive, in a consumer's own build: under `-Werror` a program including the header failed to
-  build. CI's GCC 14 does not report it.
+  build. CI's GCC 14 does not report it. `rounded()` and `rounded_to_digits()` had the same local,
+  reported under `documented()` at `-O3`.
 - `check_all(constraints())`, over an empty set, made GCC 13 report
   `-Wunused-but-set-parameter` on the sink, in a consumer's own build under `-Werror`.
 - Locals and parameters in the public headers shared names with ordinary globals such as
