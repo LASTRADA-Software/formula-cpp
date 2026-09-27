@@ -125,13 +125,15 @@ add_test(NAME docs.methods-and-overlays-snippets
 # docs/series.md quotes this program's output verbatim. Pinned here, in the
 # order the program prints them: the index marker on the series and not on the
 # total, the segment an interpolation lay between, the symbol table's shape,
-# a list cut short with its count, a running total made absent from the
-# unrecorded screen on, a failed element named from one, a closed lower limit
+# a list cut short with its count, every row of the absence table (rounding in
+# grams, a running total made absent from the unrecorded screen on, an absent
+# curve read with no clause, three screens not checked), a failed element
+# named from one and zero, a closed lower limit
 # satisfied, the snap's nearer and tie clauses and its miss, the splice's
 # failure naming the point and the rule, the binning's classes, and its miss
 # naming the observation. No literal `;`: PASS_REGULAR_EXPRESSION is a list
 # property, and a `;` would split the regex (see the lookup_tables entry).
-formula_add_example(series series.cpp [==[100 % - cumulative\(m_r\(i\), from last\) / m_t.*\[between 41 and 59 m\].*m_r: series, 5 value\(s\).*m_t: single value.*cumulative\(#2, from last\) = \.\.\. 5 more.*\(not measured\). 368 g. 28 g.*division by zero at element 5.*3 satisfied \(at least 1574/25 %\).*\[29 m to 41 m. nearer 29 m\].*tie, toward lower\].*tie, toward higher\].*\[outside the permitted set, 11 m to 83 m\].*at element 4 \[breaks non-decreasing at 11 m\].*bin\(s\(i\), 0 to under 11 m, 11 to under 29 m, 29 to under 83 m\).*at observation 4 \[83 m in no class. the classes cover 0 to under 83 m\].*all checks passed: yes]==])
+formula_add_example(series series.cpp [==[100 % - cumulative\(m_r\(i\), from last\) / m_t.*\[between 163 and 197 m\].*m_r: series, 5 value\(s\).*m_t: single value.*cumulative\(#2, from last\) = \.\.\. 5 more.*round\(#1, to 0/0/0/0/0 dp of g\) = 130 g. 210 g. \(not measured\).*\(not measured\). 368 g. 28 g.*interpolate\(#8, at #9\) = \(not measured\).*not checked. not checked. not checked. satisfied.*division by zero at element 5.*element 4, counted from zero, a result element: yes.*3 satisfied \(at least 1574/25 %\).*\[127 m to 163 m. nearer 127 m\].*tie, toward lower\].*tie, toward higher\].*\[outside the permitted set, 103 m to 241 m\].*at element 4 \[breaks non-decreasing at 103 m\].*bin\(s\(i\), 0 to under 127 m, 127 to under 197 m, 197 to under 331 m\).*at observation 4 \[331 m in no class. the classes cover 0 to under 331 m\].*all checks passed: yes]==])
 
 # Every ```text block of docs/series.md must be lines the example really
 # prints, and every ```cpp block lines of its source.

@@ -362,8 +362,8 @@ constexpr auto overlaidStrengthMethod = formula::apply(galleryOverlay, cubeStren
 
 // ---- A screen analysis: a series, a grading curve, and particles binned ----
 //
-// Invented screens of 11, 29, 41, 59 and 83 m -- primes, and not a sieve size
-// in any unit.
+// Invented screens of 103, 127, 163, 197 and 241 m: three significant digits,
+// none a preferred number, and not a sieve size or designation in any unit.
 struct RetainedMass: formula::Quantity<RetainedMass, "m_r", "mass retained on a screen", unit::Gram>
 {
 };
@@ -380,19 +380,19 @@ struct ClassShare: formula::Quantity<ClassShare, "n", "share of the particles in
 {
 };
 
-inline constexpr formula::BreakpointTable<5> galleryScreens { formula::breakpoint(11), formula::breakpoint(29),
-                                                              formula::breakpoint(41), formula::breakpoint(59),
-                                                              formula::breakpoint(83) };
+inline constexpr formula::BreakpointTable<5> galleryScreens { formula::breakpoint(103), formula::breakpoint(127),
+                                                              formula::breakpoint(163), formula::breakpoint(197),
+                                                              formula::breakpoint(241) };
 
 constexpr auto passingEachScreen =
     formula::constant<unit::Percent>(formula::Rational { 100 })
     - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<RetainedMass, 5>) / var<DryMass>;
 
 constexpr auto passingAtOpening = formula::interpolate_at(formula::curve(formula::domain<unit::Metre, galleryScreens>(), passingEachScreen),
-                                                          formula::constant<unit::Metre>(formula::Rational { 47 }));
+                                                          formula::constant<unit::Metre>(formula::Rational { 173 }));
 
-inline constexpr formula::BandTable<3> gallerySizeClasses { formula::band(0, 1, 11, 1), formula::band(11, 1, 29, 1),
-                                                            formula::band(29, 1, 83, 1) };
+inline constexpr formula::BandTable<3> gallerySizeClasses { formula::band(0, 1, 127, 1), formula::band(127, 1, 197, 1),
+                                                            formula::band(197, 1, 331, 1) };
 
 constexpr auto countedParticles =
     formula::binned<unit::Metre, gallerySizeClasses>(formula::observations<ParticleSize, 8>);
@@ -873,8 +873,9 @@ int main(int argc, char** argv)
     // ---- A grading curve read between two screens ----
 
     out << "## Worked derivation: a grading curve read between two screens\n\n";
-    out << "The same percentages paired with the declared screens as a curve, and read at 47 m. The last step "
-           "names the two screens the answer lay between:\n\n";
+    out << "The same percentages paired with the declared screens as a curve, and read at 173 m. The last step "
+           "names the two screens the answer lay between. Its value, like every computed step's, reads in the "
+           "coherent unit, a plain fraction for a percentage: 6927/10625 is about 65.2 %.\n\n";
 
     write_worked_formula(out, passingAtOpening);
 
@@ -894,14 +895,16 @@ int main(int argc, char** argv)
     // ---- Particles binned, and one in no class ----
 
     out << "## Worked derivation: particles counted into classes, and one in no class\n\n";
-    out << "Seven particles, counted into three half-open classes and divided by their total. 11 and 29 m sit "
-           "on class boundaries and count in the upper class:\n\n";
+    out << "Seven particles, counted into three half-open classes and divided by their total. 127 and 197 m "
+           "sit on class boundaries and count in the upper class. The formula names the binning twice -- once "
+           "counted, once summed -- and each is evaluated where it stands, so the observations are read, and "
+           "binned, twice:\n\n";
 
     write_worked_formula(out, classShares);
 
     auto const sieved = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(
-        formula::Rational { 4 }, formula::Rational { 11 }, formula::Rational { 17 }, formula::Rational { 79 },
-        formula::Rational { 10 }, formula::Rational { 29 }, formula::Rational { 47 }));
+        formula::Rational { 103 }, formula::Rational { 127 }, formula::Rational { 163 }, formula::Rational { 277 },
+        formula::Rational { 113 }, formula::Rational { 197 }, formula::Rational { 241 }));
     formula::Trace<> binningTrace {};
     auto const shared =
         formula::checked_evaluate_series<ClassShare>(classShares, sieved, formula::RecordingSink<> { binningTrace });
@@ -915,12 +918,14 @@ int main(int argc, char** argv)
     out << formula::render_trace(binningTrace, { .maxSteps = 40 });
     out << "```\n\n";
 
-    out << "The fourth particle measured 83 m instead: the last class's high bound, in no class. A miss is "
-           "not dropped, and the step names the observation:\n\n";
+    out << "The fourth particle measured 331 m instead: the last class's high bound, in no class. A miss is "
+           "not dropped, and the step names the observation. The division then relays the failure without a "
+           "position, and names only the operand it evaluated: its divisor was never reached, so the line "
+           "reads `/ #2`:\n\n";
 
     auto const oversized = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(
-        formula::Rational { 4 }, formula::Rational { 11 }, formula::Rational { 17 }, formula::Rational { 83 },
-        formula::Rational { 10 }, formula::Rational { 29 }, formula::Rational { 47 }));
+        formula::Rational { 103 }, formula::Rational { 127 }, formula::Rational { 163 }, formula::Rational { 331 },
+        formula::Rational { 113 }, formula::Rational { 197 }, formula::Rational { 241 }));
     formula::Trace<> binningMissTrace {};
     auto const missedShares =
         formula::checked_evaluate_series<ClassShare>(classShares, oversized, formula::RecordingSink<> { binningMissTrace });

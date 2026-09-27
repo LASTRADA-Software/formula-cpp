@@ -68,7 +68,14 @@ into one whose values run in a required direction; a curve that fails names the 
 rule it broke there. Raw observations, as many as were made up to a stated capacity, are binned
 into declared half-open classes; an observation in no class fails at its position, never dropped.
 A series renders with an index marker, `m_r(i)`, and its trace spends the same step budget, one
-unit per element. A new guide, *Series and grading curves*, works a screen analysis through
+unit per element. A series is evaluated with `checked_evaluate_series` and explained with
+`explain_series`, a curve with `checked_evaluate_curve`. A failure is a `SeriesFailure` naming its
+position, and its `FailureSite` says whether that is an element of the result or, for a binning,
+an observation of the input. `envelope_from` builds an envelope from rows read at run time, and
+`MeasuredObservations::from` a set of observations; each refuses a wrong count with both counts,
+never padding or truncating. Everything that compares -- a curve, a splice, a snap, a binning and
+a conformity check -- is evaluated with `Rational` only, and refuses any other `Rep` at compile
+time. A new guide, *Series and grading curves*, works a screen analysis through
 all of it, and the gallery gains a series, a grading curve and a binning.
 
 ### Changed
