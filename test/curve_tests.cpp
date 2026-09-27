@@ -167,6 +167,29 @@ TEST_CASE("an absent element anywhere makes the interpolation absent", "[curve]"
     STATIC_REQUIRE(fromDomain->measurement().is_absent());
 }
 
+TEST_CASE("an interpolation along an absent curve states no segment and no range", "[curve][trace]")
+{
+    // Read inside the curve's extent: a range clause would say it was read
+    // outside, which is false; a segment clause would say it was located.
+    constexpr auto noneMeasured = formula::environment(formula::measured_series<Passing>(
+        formula::Measured<Passing>::absent(), formula::Measured<Passing>::absent(), formula::Measured<Passing>::absent(),
+        formula::Measured<Passing>::absent(), formula::Measured<Passing>::absent()));
+    formula::Trace<> none {};
+    (void) formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(47)), noneMeasured,
+                                              formula::RecordingSink<> { none });
+    CHECK(formula::render_trace(none, { .maxSteps = 30 }).ends_with("5. interpolate(#3, at #4) = (not measured)\n"));
+    CHECK(!none.steps.back().coveredRange.has_value());
+
+    constexpr auto firstAbsent = formula::environment(formula::measured_series<Passing>(
+        formula::Measured<Passing>::absent(), m<Passing>(1154, 25), m<Passing>(1574, 25), m<Passing>(1764, 25),
+        m<Passing>(2444, 25)));
+    formula::Trace<> first {};
+    (void) formula::checked_evaluate<Passing>(formula::interpolate_at(grading, metres(47)), firstAbsent,
+                                              formula::RecordingSink<> { first });
+    CHECK(formula::render_trace(first, { .maxSteps = 30 }).ends_with("5. interpolate(#3, at #4) = (not measured)\n"));
+    CHECK(!first.steps.back().selectedSegment.has_value());
+}
+
 TEST_CASE("a one-point curve answers at its point and misses everywhere else", "[curve]")
 {
     constexpr formula::BreakpointTable<1> onePoint { breakpoint(41) };

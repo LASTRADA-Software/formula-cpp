@@ -448,29 +448,48 @@ namespace detail
 /// A sink that defines both `conformity_entered` and `conformity_produced`
 /// -- `RecordingSink` does -- records one step for the whole check, whose
 /// operand is the subject's step.
+///
+/// `Rep = Rational` only, refused otherwise in this library's words: a limit
+/// is closed, and a value exactly on it judged a few units in the last place
+/// off is violated where it is satisfied.
 template <typename Rep = Rational, Unit U, SeriesNode S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr std::array<ConstraintOutcome, S::length> check_conformity(Conformity<U, S> const& conformityCheck,
                                                                                  Env const& environment,
                                                                                  Sink sink = {}) noexcept
 {
-    if constexpr (detail::HearsConformity<Sink, Conformity<U, S>>)
-        sink.conformity_entered(conformityCheck);
-
-    EvaluatedSeries<Rep, S::length> const evaluated = detail::dispatch_series<Rep>(conformityCheck.subject, environment, sink);
-    // Default-initialised, not `{}`: see `SeriesValue` for cl's reason.
-    std::array<ConstraintOutcome, S::length> elementOutcomes;
-    for (std::size_t at = 0; at < S::length; ++at)
+    if constexpr (!std::is_same_v<Rep, Rational>)
     {
-        if (!evaluated.has_value())
-            elementOutcomes[at] = ConstraintOutcome::invalid(evaluated.error().error);
-        else
-            elementOutcomes[at] = detail::judge_element<Rep>(evaluated->elements[at], conformityCheck.envelope[at], U,
-                                                      conformityCheck.verdict);
+        static_assert(sizeof(Rep) == 0,
+                      "formula: a conformity check can only be evaluated with Rep = Rational -- a limit is closed, "
+                      "and judging a value that sits exactly on it needs exact comparison; evaluate it with "
+                      "Rep = Rational instead (check_conformity's default)");
+        // Default-initialised, not `{}`: see `SeriesValue` for cl's reason.
+        std::array<ConstraintOutcome, S::length> refusedOutcomes;
+        for (ConstraintOutcome& refusedOutcome: refusedOutcomes)
+            refusedOutcome = ConstraintOutcome::invalid(ArithmeticError::DomainError);
+        return refusedOutcomes;
     }
+    else
+    {
+        if constexpr (detail::HearsConformity<Sink, Conformity<U, S>>)
+            sink.conformity_entered(conformityCheck);
 
-    if constexpr (detail::HearsConformity<Sink, Conformity<U, S>>)
-        sink.conformity_produced(conformityCheck, elementOutcomes);
-    return elementOutcomes;
+        EvaluatedSeries<Rep, S::length> const evaluated = detail::dispatch_series<Rep>(conformityCheck.subject, environment, sink);
+        // Default-initialised, not `{}`: see `SeriesValue` for cl's reason.
+        std::array<ConstraintOutcome, S::length> elementOutcomes;
+        for (std::size_t at = 0; at < S::length; ++at)
+        {
+            if (!evaluated.has_value())
+                elementOutcomes[at] = ConstraintOutcome::invalid(evaluated.error().error);
+            else
+                elementOutcomes[at] = detail::judge_element<Rep>(evaluated->elements[at], conformityCheck.envelope[at], U,
+                                                          conformityCheck.verdict);
+        }
+
+        if constexpr (detail::HearsConformity<Sink, Conformity<U, S>>)
+            sink.conformity_produced(conformityCheck, elementOutcomes);
+        return elementOutcomes;
+    }
 }
 
 } // namespace formula

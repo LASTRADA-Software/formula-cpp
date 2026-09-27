@@ -449,6 +449,11 @@ formula_add_negative_test(conformity_empty_envelope
     "this envelope was given a different number of rows than its series has elements"
     REJECT "no matching" "could not convert")
 
+# Task 11 review H1: conformity compares, so it is Rational-only, as the
+# snap, curve and binning are.
+formula_add_negative_test(conformity_rep_not_rational
+    "formula: a conformity check can only be evaluated with Rep = Rational")
+
 # Task 8: an empty permitted set refuses once, with the breakpoint validation
 # and the key check gated off; a descending set is the shipped breakpoint
 # validation's refusal, with the key check gated off; a key of the wrong

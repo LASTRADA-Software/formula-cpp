@@ -1582,6 +1582,15 @@ namespace detail
         {
             if (curveRecorded.error.has_value() || !pointStep.has_value() || !steps[*pointStep].value.has_value())
                 return;
+            // An absent element anywhere makes the answer absent (S7): nothing
+            // was located, so no clause -- not a segment, and never a miss's
+            // range, which a curve absent inside its extent would otherwise
+            // state falsely.
+            if (curveRecorded.domainElements.size() != curveRecorded.elements.size())
+                return;
+            for (std::size_t at = 0; at < curveRecorded.elements.size(); ++at)
+                if (!curveRecorded.domainElements[at].has_value() || !curveRecorded.elements[at].has_value())
+                    return;
             std::expected<std::pair<Rational, KeyPosition>, ArithmeticError> const answered =
                 interpolate_along(curveRecorded.domainElements, curveRecorded.elements, *steps[*pointStep].value);
             if (answered.has_value())
