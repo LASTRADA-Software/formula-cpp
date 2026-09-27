@@ -65,8 +65,10 @@ at both ends and either side explicitly unbounded, and the trace records the row
 `snapped` replaces a value with the nearest permitted one under a stated tie rule. Curves pair a
 domain with values, `interpolate_at` reads one between two points, and `splice` joins two curves
 into one whose values run in a required direction; a curve that fails names the point and the
-rule it broke there. A series renders with an index marker, `m_r(i)`, and its trace spends the
-same step budget, one unit per element.
+rule it broke there. Raw observations, as many as were made up to a stated capacity, are binned
+into declared half-open classes; an observation in no class fails at its position, never dropped.
+A series renders with an index marker, `m_r(i)`, and its trace spends the same step budget, one
+unit per element.
 
 ### Changed
 

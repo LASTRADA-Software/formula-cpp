@@ -49,6 +49,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_name.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_list.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/band.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/binning.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/citation.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/conditional.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/conformity.hpp"

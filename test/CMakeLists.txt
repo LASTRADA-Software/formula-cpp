@@ -68,6 +68,7 @@ add_executable(formula-cpp-tests
     series_cross_tu_b.cpp
     conformity_tests.cpp
     snap_tests.cpp
+    binning_tests.cpp
     curve_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
@@ -499,6 +500,40 @@ formula_add_negative_test(curve_of_single_values
 formula_add_negative_test(splice_of_single_value
     "formula: splice joins two curves, and this is a single value, not a curve"
     REJECT "no matching" "have domains of different dimensions" "have values of different dimensions")
+
+# Task 10: binning. More observations than the capacity; binned given a
+# series; a key unit of another dimension; classes with a gap (the shipped
+# band validation) and with none; a Rep other than Rational; and the four
+# reads of raw observations in the wrong shape or capacity, each refused once
+# in words true of it.
+formula_add_negative_test(observations_over_capacity
+    "more observations were listed than this set's capacity holds")
+formula_add_negative_test(binned_series_not_observations
+    "binned counts raw observations into classes, and this is not a set of observations"
+    REJECT "no matching" "this binning's key unit" "not raw observations" "must be initialized by a constant expression")
+formula_add_negative_test(binned_key_dimension_mismatch
+    "this binning's key unit does not measure the dimension of the observations it bins"
+    REJECT "gap or overlap" "declares no classes")
+formula_add_negative_test(binned_class_gap
+    "this band table has a gap or overlap between two adjacent bands"
+    REJECT "this binning's key unit" "declares no classes")
+formula_add_negative_test(binned_no_classes
+    "this binning declares no classes"
+    REJECT "gap or overlap" "this binning's key unit" "this series has no elements" "must be initialized by a constant expression")
+formula_add_negative_test(binned_rep_not_rational
+    "a binning can only be evaluated with Rep = Rational")
+formula_add_negative_test(observations_read_as_single
+    "this environment holds raw observations for this quantity, which are neither a single value nor a series"
+    REJECT "provides no value for this quantity" "holds a series for this quantity" "cannot convert" "no viable conversion" "could not convert")
+formula_add_negative_test(observations_read_as_series
+    "this environment holds raw observations for this quantity, which are neither a single value nor a series"
+    REJECT "provides no value for this quantity" "holds a single value for this quantity" "cannot convert" "no viable conversion" "could not convert")
+formula_add_negative_test(series_read_as_observations
+    "this environment holds a single value or a series for this quantity, not raw observations"
+    REJECT "provides no value for this quantity" "different capacity" "cannot convert" "no viable conversion" "could not convert")
+formula_add_negative_test(observations_capacity_mismatch
+    "this environment holds observations of a different capacity for this quantity than the one read"
+    REJECT "provides no value for this quantity" "not raw observations" "cannot convert" "no viable conversion" "could not convert")
 
 # Task 5: sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT

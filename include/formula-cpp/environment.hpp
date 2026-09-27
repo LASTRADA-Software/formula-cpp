@@ -20,14 +20,25 @@
 /// as a series, never both, and each is read its own way -- `get<Q>()` and
 /// `get_series<Q, N>()` -- so that reading one as the other is a compile error
 /// in this library's words rather than a value of the wrong shape.
+///
+/// A third shape is **raw observations**, `MeasuredObservations<Q, Capacity>`:
+/// as many values of one quantity as were observed, up to a stated capacity,
+/// each at no point of any domain -- the particles measured one by one that a
+/// method bins into classes (`binning.hpp`). Read with
+/// `get_observations<Q, Capacity>()`, and refused, in this library's words,
+/// wherever a single value or a series is read.
 
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/rational.hpp>
 
 #include <array>
 #include <concepts>
 #include <cstddef>
+#include <expected>
+#include <span>
 #include <tuple>
 #include <type_traits>
 
@@ -186,6 +197,114 @@ template <Described Q, std::size_t N>
 
 namespace detail
 {
+    /// Fails to compile when more observations are listed than the stated
+    /// capacity holds. Named so both counts print.
+    template <std::size_t Given, std::size_t Capacity>
+    struct RequireObservationsWithinCapacity
+    {
+        static_assert(Given <= Capacity,
+                      "formula: more observations were listed than this set's capacity holds; the two counts "
+                      "appear in this diagnostic as the template arguments Given and Capacity of "
+                      "RequireObservationsWithinCapacity -- state a capacity at least as large as the most "
+                      "observations the method takes");
+
+        static constexpr bool value = true;
+    };
+} // namespace detail
+
+/// Why `MeasuredObservations::from` refused: the observations given, and the
+/// most the set holds. A count, not arithmetic, and so not an
+/// `ArithmeticError` -- the shape `envelope_from`'s refusal has too
+/// (`conformity.hpp`).
+struct ObservationsOverCapacity
+{
+    /// How many observations the loader had.
+    std::size_t given;
+    /// The most the set holds: its `Capacity`.
+    std::size_t capacity;
+
+    /// Memberwise equality.
+    [[nodiscard]] constexpr bool operator==(ObservationsOverCapacity const&) const noexcept = default;
+};
+
+/// Raw observations of one quantity -- each particle's size, say, measured one
+/// by one: as many as were observed, up to `Capacity`, in the order observed.
+///
+/// Unlike a series, an observation sits at no point of a method's domain, so
+/// how many there are is data, not part of the type; only the most there can
+/// be is. The capacity is static because evaluation allocates nothing (see
+/// `series.hpp`): more observations than it holds are refused, at compile time
+/// for a list written out and at run time by `from`, never truncated. Each
+/// observation is present -- one not made is simply not listed -- and in
+/// `Q`'s declared unit, as a `Measured<Q>` is.
+///
+/// Holds values, never expression nodes.
+template <Described Q, std::size_t Capacity>
+class MeasuredObservations
+{
+  public:
+    /// The observations listed, in order, each in `Q`'s declared unit:
+    /// `MeasuredObservations<Size, 50>(Rational { 163 }, Rational { 241 })`. More
+    /// than `Capacity` fails to compile, naming both counts; none at all is an
+    /// empty set.
+    template <typename... Rs>
+        requires(std::same_as<Rs, Rational> && ...)
+    constexpr explicit MeasuredObservations(Rs... observed) noexcept
+    {
+        static_assert(detail::RequireObservationsWithinCapacity<sizeof...(Rs), Capacity>::value);
+        if constexpr (sizeof...(Rs) <= Capacity)
+        {
+            std::size_t placed = 0;
+            ((_observations[placed++] = observed), ...);
+            _count = sizeof...(Rs);
+        }
+    }
+
+    /// The observations in @p observed, in order, each in `Q`'s declared
+    /// unit -- a set only known at run time. More than `Capacity` is refused
+    /// with both counts, and nothing is dropped to make them fit.
+    [[nodiscard]] static constexpr std::expected<MeasuredObservations, ObservationsOverCapacity> from(
+        std::span<Rational const> observed) noexcept
+    {
+        if (observed.size() > Capacity)
+            return std::unexpected { ObservationsOverCapacity { .given = observed.size(), .capacity = Capacity } };
+        MeasuredObservations filled;
+        for (std::size_t at = 0; at < observed.size(); ++at)
+            filled._observations[at] = observed[at];
+        filled._count = observed.size();
+        return filled;
+    }
+
+    /// The observation at zero-based position @p at, or absent at and past
+    /// `size()`: never a zero, and never another observation.
+    [[nodiscard]] constexpr Measured<Q> observation(std::size_t at) const noexcept
+    {
+        return at < _count ? Measured<Q> { _observations[at] } : Measured<Q>::absent();
+    }
+
+    /// How many observations were made.
+    [[nodiscard]] constexpr std::size_t size() const noexcept
+    {
+        return _count;
+    }
+
+    /// The most observations this set holds.
+    [[nodiscard]] static constexpr std::size_t capacity() noexcept
+    {
+        return Capacity;
+    }
+
+    /// Equality of the observations made, in order. Places past `size()`
+    /// hold zero, so they compare equal.
+    [[nodiscard]] constexpr bool operator==(MeasuredObservations const&) const noexcept = default;
+
+  private:
+    std::array<Rational, Capacity> _observations;
+    std::size_t _count = 0;
+};
+
+namespace detail
+{
     /// Reads the quantity and the provenance out of an environment entry. The
     /// primary template is deliberately empty, so a type that is neither a
     /// `Measured` nor an `Entered` fails at the point it is used rather than
@@ -202,6 +321,7 @@ namespace detail
         static constexpr ValueSource source = ValueSource::Measured;
         static constexpr bool isEntered = false;
         static constexpr bool isSeries = false;
+        static constexpr bool isObservations = false;
 
         [[nodiscard]] static constexpr Measured<Q> measurement(Measured<Q> measuredEntry) noexcept
         {
@@ -216,6 +336,7 @@ namespace detail
         static constexpr ValueSource source = ValueSource::ManuallyEntered;
         static constexpr bool isEntered = true;
         static constexpr bool isSeries = false;
+        static constexpr bool isObservations = false;
 
         [[nodiscard]] static constexpr Measured<Q> measurement(Entered<Q> enteredEntry) noexcept
         {
@@ -230,6 +351,7 @@ namespace detail
         static constexpr ValueSource source = ValueSource::Measured;
         static constexpr bool isEntered = false;
         static constexpr bool isSeries = true;
+        static constexpr bool isObservations = false;
         static constexpr std::size_t length = N;
 
         [[nodiscard]] static constexpr MeasuredSeries<Q, N> measurement(MeasuredSeries<Q, N> measuredEntry) noexcept
@@ -245,11 +367,29 @@ namespace detail
         static constexpr ValueSource source = ValueSource::ManuallyEntered;
         static constexpr bool isEntered = true;
         static constexpr bool isSeries = true;
+        static constexpr bool isObservations = false;
         static constexpr std::size_t length = N;
 
         [[nodiscard]] static constexpr MeasuredSeries<Q, N> measurement(EnteredSeries<Q, N> enteredEntry) noexcept
         {
             return enteredEntry.measurement;
+        }
+    };
+
+    template <Described Q, std::size_t Capacity>
+    struct EntryTraits<MeasuredObservations<Q, Capacity>>
+    {
+        using quantity = Q;
+        static constexpr ValueSource source = ValueSource::Measured;
+        static constexpr bool isEntered = false;
+        static constexpr bool isSeries = false;
+        static constexpr bool isObservations = true;
+        static constexpr std::size_t capacity = Capacity;
+
+        [[nodiscard]] static constexpr MeasuredObservations<Q, Capacity> measurement(
+            MeasuredObservations<Q, Capacity> measuredEntry) noexcept
+        {
+            return measuredEntry;
         }
     };
 
@@ -325,10 +465,54 @@ namespace detail
     template <typename Q, typename Entry>
     struct RequireSeriesEntry
     {
-        static_assert(EntryTraits<Entry>::isSeries,
+        static_assert(EntryTraits<Entry>::isSeries || EntryTraits<Entry>::isObservations,
                       "formula: this environment holds a single value for this quantity, not a series; "
                       "supply it with measured_series, or read it with var<Q>; the quantity and the entry "
                       "appear in this diagnostic as the template arguments of RequireSeriesEntry");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a quantity the environment holds as raw
+    /// observations is read as a single value or as a series. Neither
+    /// `RequireSingleValueEntry`'s words nor `RequireSeriesEntry`'s would be
+    /// true of it.
+    template <typename Q, typename Entry>
+    struct RequireNotObservationsEntry
+    {
+        static_assert(!EntryTraits<Entry>::isObservations,
+                      "formula: this environment holds raw observations for this quantity, which are neither a "
+                      "single value nor a series; read them with observations<Q, Capacity> and bin them into "
+                      "classes with binned<KeyUnit, Classes>; the quantity and the entry appear in this "
+                      "diagnostic as the template arguments of RequireNotObservationsEntry");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a quantity the environment holds as a single
+    /// value or a series is read as raw observations.
+    template <typename Q, typename Entry>
+    struct RequireObservationsEntry
+    {
+        static_assert(EntryTraits<Entry>::isObservations,
+                      "formula: this environment holds a single value or a series for this quantity, not raw "
+                      "observations; supply them with MeasuredObservations<Q, Capacity>, or read the quantity "
+                      "with var<Q> or series<Q, N>; the quantity and the entry appear in this diagnostic as "
+                      "the template arguments of RequireObservationsEntry");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when raw observations are read with a capacity other
+    /// than the one they were supplied with. Named so both capacities print.
+    template <typename Q, std::size_t Supplied, std::size_t Read>
+    struct RequireObservationsCapacity
+    {
+        static_assert(Supplied == Read,
+                      "formula: this environment holds observations of a different capacity for this quantity "
+                      "than the one read; the quantity, the capacity supplied and the capacity read appear in "
+                      "this diagnostic as the template arguments Q, Supplied and Read of "
+                      "RequireObservationsCapacity -- a method states its capacity once");
 
         static constexpr bool value = true;
     };
@@ -415,7 +599,8 @@ class Environment
             // constexpr` a series entry would reach the `return` below and add
             // the compiler's own conversion error to this library's message.
             static_assert(detail::RequireSingleValueEntry<Q, Entry>::value);
-            if constexpr (!detail::EntryTraits<Entry>::isSeries)
+            static_assert(detail::RequireNotObservationsEntry<Q, Entry>::value);
+            if constexpr (!detail::EntryTraits<Entry>::isSeries && !detail::EntryTraits<Entry>::isObservations)
                 return detail::EntryTraits<Entry>::measurement(std::get<entryIndex>(_entries));
             else
                 return Measured<Q>::absent();
@@ -441,6 +626,7 @@ class Environment
             constexpr std::size_t entryIndex = index_of<Q>();
             using Entry = std::tuple_element_t<entryIndex, std::tuple<Entries...>>;
             static_assert(detail::RequireSeriesEntry<Q, Entry>::value);
+            static_assert(detail::RequireNotObservationsEntry<Q, Entry>::value);
             if constexpr (detail::EntryTraits<Entry>::isSeries)
             {
                 static_assert(detail::RequireSeriesLength<Q, detail::EntryTraits<Entry>::length, N>::value);
@@ -454,6 +640,37 @@ class Environment
         }
         else
             return MeasuredSeries<Q, N> { std::array<Measured<Q>, N> {} };
+    }
+
+    /// The raw observations held for @p Q, which must have capacity
+    /// @p Capacity. Asking for a quantity this environment does not hold, for
+    /// one it holds as a single value or a series, or for observations of
+    /// another capacity, is a compile error with one message of this
+    /// library's for each.
+    template <Described Q, std::size_t Capacity>
+    [[nodiscard]] constexpr MeasuredObservations<Q, Capacity> get_observations() const noexcept
+    {
+        static_assert(detail::RequireProvided<Q, Environment>::value);
+        // Each refusal is followed by an empty set nobody will see, for
+        // `get()`'s reason above.
+        if constexpr (provides<Q>)
+        {
+            constexpr std::size_t entryIndex = index_of<Q>();
+            using Entry = std::tuple_element_t<entryIndex, std::tuple<Entries...>>;
+            static_assert(detail::RequireObservationsEntry<Q, Entry>::value);
+            if constexpr (detail::EntryTraits<Entry>::isObservations)
+            {
+                static_assert(detail::RequireObservationsCapacity<Q, detail::EntryTraits<Entry>::capacity, Capacity>::value);
+                if constexpr (detail::EntryTraits<Entry>::capacity == Capacity)
+                    return detail::EntryTraits<Entry>::measurement(std::get<entryIndex>(_entries));
+                else
+                    return MeasuredObservations<Q, Capacity> {};
+            }
+            else
+                return MeasuredObservations<Q, Capacity> {};
+        }
+        else
+            return MeasuredObservations<Q, Capacity> {};
     }
 
     /// Where the value for @p Q came from.

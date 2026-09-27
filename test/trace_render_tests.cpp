@@ -2298,4 +2298,17 @@ TEST_CASE("a series and a curve escape their symbols and units, as a scalar step
              "3. curve(#1, #2) = 1 m: 4 N\\] \\[x; 2 m: 5 N\\] \\[x\n"
              "4. 3/2 m\n"
              "5. interpolate(#3, at #4) = 9/2 N\\] \\[x [between 1 and 2 m]\n");
+
+    // Raw observations, and a binning's miss, whose clause names the
+    // observation and the classes in the author's unit.
+    auto const observedLoads = formula::environment(
+        formula::MeasuredObservations<ForgingLoad, 2>(formula::Rational { 4 }, formula::Rational { 12 }));
+    formula::Trace<> binningTrace {};
+    (void) formula::checked_evaluate_series_si(formula::binned<ForgingNewton, ForgingLoadBands>(formula::observations<ForgingLoad, 2>),
+                                               observedLoads,
+                                               formula::RecordingSink<> { binningTrace });
+    CHECK(formula::render_trace(binningTrace, { .maxSteps = 20 })
+          == "1. P = 4 N\\] \\[x; 12 N\\] \\[x\n"
+             "2. bin(#1) = argument outside the domain of the operation at observation 2 "
+             "[12 N\\] \\[x in no class; the classes cover 127/100 to under 973/100 N\\] \\[x]\n");
 }

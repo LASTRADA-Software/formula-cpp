@@ -803,6 +803,14 @@ namespace detail
             // The direction is always written, as `render()` writes it.
             case StepKind::CurveSplice:
                 return "splice(" + operands_text(step) + ", " + std::string { describe(step.monotone) } + ")";
+            // The quantity, unmarked, as a series variable's is; the
+            // observations follow the `=`.
+            case StepKind::ObservationsVariable:
+                return std::string { step.symbol };
+            // The classes are `render()`'s to print, as a lookup's bands are;
+            // the counts follow the `=`.
+            case StepKind::Binning:
+                return "bin(" + sole_operand(step) + ")";
         }
         return "unknown step kind";
     }
@@ -1058,7 +1066,32 @@ namespace detail
         return stepKind == StepKind::SeriesVariable || stepKind == StepKind::SeriesConstant || stepKind == StepKind::ElementwiseNegate
                || stepKind == StepKind::ElementwiseAdd || stepKind == StepKind::ElementwiseSubtract
                || stepKind == StepKind::ElementwiseMultiply || stepKind == StepKind::ElementwiseDivide
-               || stepKind == StepKind::CumulativeSum || stepKind == StepKind::ElementwiseRound || stepKind == StepKind::SeriesDomain;
+               || stepKind == StepKind::CumulativeSum || stepKind == StepKind::ElementwiseRound || stepKind == StepKind::SeriesDomain
+               || stepKind == StepKind::ObservationsVariable || stepKind == StepKind::Binning;
+    }
+
+    /// Where a series step's failure arose, counted from one: `at element 3`,
+    /// or `at observation 3` for raw observations and a binning, whose
+    /// failure names an observation, not an element of their own. A binning
+    /// that found no class for it says which, and what the classes cover:
+    /// `[83 m in no class; the classes cover 0 to under 83 m]`.
+    [[nodiscard]] inline std::string failed_position_text(Step<Rational> const& recorded)
+    {
+        if (!recorded.failedElement.has_value())
+            return {};
+        std::size_t const failedAt = *recorded.failedElement;
+        bool const namesObservation = recorded.kind == StepKind::ObservationsVariable || recorded.kind == StepKind::Binning;
+        std::string positionText = (namesObservation ? " at observation " : " at element ") + std::to_string(failedAt + 1);
+        if (recorded.kind != StepKind::Binning || recorded.error != ArithmeticError::DomainError
+            || failedAt >= recorded.domainElements.size() || !recorded.domainElements[failedAt].has_value()
+            || !recorded.coveredRange.has_value())
+            return positionText;
+        Step<Rational> observationShape {};
+        observationShape.dimension = recorded.sourceUnit.dimension;
+        observationShape.unit = recorded.sourceUnit;
+        std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
+        return positionText + " [" + value_in_declared_unit(observationShape, recorded.domainElements[failedAt])
+               + " in no class; the classes cover " + half_open_range_text(*recorded.coveredRange, keySymbol) + "]";
     }
 
     /// A series step's line, without its number: the expression, an `=`, and
@@ -1082,12 +1115,7 @@ namespace detail
         bool const listsItself = recorded.kind == StepKind::SeriesConstant || recorded.kind == StepKind::SeriesDomain;
         std::string lineText = listsItself ? std::string {} : step_expression(recorded) + " = ";
         if (recorded.error.has_value())
-        {
-            lineText += describe(*recorded.error);
-            if (recorded.failedElement.has_value())
-                lineText += " at element " + std::to_string(*recorded.failedElement + 1);
-            return lineText;
-        }
+            return lineText + std::string { describe(*recorded.error) } + failed_position_text(recorded);
         std::size_t const elementCount = recorded.elements.size();
         if (elementCount == 0)
             return lineText + "(no elements)";

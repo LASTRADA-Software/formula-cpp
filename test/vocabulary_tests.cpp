@@ -542,6 +542,9 @@ struct EverySeries
 struct EveryCurve
 {
 };
+struct EveryBinned
+{
+};
 
 struct EveryStrength: formula::Quantity<EveryStrength, "A_decl", "compressive strength", unit::Megapascal>
 {
@@ -564,6 +567,9 @@ struct EveryRetained: formula::Quantity<EveryRetained, "S_decl", "mass retained 
 struct EveryTotal: formula::Quantity<EveryTotal, "T_decl", "total dry mass", unit::Gram>
 {
 };
+struct EveryParticle: formula::Quantity<EveryParticle, "P_decl", "particle size", unit::Millimetre>
+{
+};
 
 enum class EveryFinish : std::uint8_t
 {
@@ -579,7 +585,8 @@ inline constexpr auto everyVocabulary = formula::vocabulary(formula::renames<Eve
                                                             formula::renames<EveryDerived>("k_n"),
                                                             formula::renames<EveryFixed>("x_n"),
                                                             formula::renames<EveryRetained>("m_n"),
-                                                            formula::renames<EveryTotal>("M_n"));
+                                                            formula::renames<EveryTotal>("M_n"),
+                                                            formula::renames<EveryParticle>("d_n"));
 
 inline constexpr formula::Citation everyCited { .reference = "Example Standard 1:2020", .section = "3.1" };
 
@@ -649,11 +656,25 @@ inline constexpr formula::BreakpointTable<2> everyCurveSnapSet { formula::breakp
         var<EveryFixed>));
 }
 
+// Binning (S9): raw particle sizes counted into two classes, the upper
+// class's share times the overlay's fixed factor. Invented classes, 0 to
+// under 150 and 150 to under 300 mm; the 150 mm particle is on the boundary,
+// in the upper class.
+inline constexpr formula::BandTable<2> everyClasses { formula::band(0, 1, 150, 1), formula::band(150, 1, 300, 1) };
+
+[[nodiscard]] constexpr auto everyBinnedKind()
+{
+    constexpr auto counted = formula::binned<unit::Millimetre, everyClasses>(formula::observations<EveryParticle, 4>);
+    return formula::sum(counted * formula::series_constant<unit::One>(rat(0), rat(1))) / formula::sum(counted)
+           * var<EveryFixed>;
+}
+
 inline constexpr auto everyMethod = formula::method(
     formula::variants(formula::variant<EveryCube>(everyNodeKind()),
                       formula::variant<EveryCylinder>(var<EveryStrength> / var<EveryModulus>),
                       formula::variant<EverySeries>(everySeriesKind()),
-                      formula::variant<EveryCurve>(everyCurveKind())),
+                      formula::variant<EveryCurve>(everyCurveKind()),
+                      formula::variant<EveryBinned>(everyBinnedKind())),
     formula::rounding_rule<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 
@@ -682,7 +703,8 @@ inline constexpr auto everyInputs = formula::environment(
     formula::measured_series<EveryRetained>(formula::Measured<EveryRetained> { rat(10) },
                                             formula::Measured<EveryRetained> { rat(20) },
                                             formula::Measured<EveryRetained> { rat(40) }),
-    formula::Measured<EveryTotal> { rat(2020) });
+    formula::Measured<EveryTotal> { rat(2020) },
+    formula::MeasuredObservations<EveryParticle, 4>(rat(60), rat(150), rat(250), rat(120)));
 
 template <typename Tag>
 [[nodiscard]] std::string everyTraceOf()
@@ -739,7 +761,15 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
              "\\operatorname{values}(1/20)),\\allowbreak \\mathrm{non-decreasing}),\\allowbreak \\mathrm{at\\ }x_n),"
              "\\allowbreak \\mathrm{to\\ 1/200,\\ 1/100})");
 
-    for (std::string const& text: { formula::render<formula::Dialect::Markdown>(curveVariant, everyVocabulary),
+    // Binning, the observations marked, each class a band.
+    constexpr auto binnedVariant = std::get<4>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(binnedVariant, everyVocabulary)
+          == "sum(bin(d_n(i), 0 to under 150 mm, 150 to under 300 mm) * values(0, 1)) / sum(bin(d_n(i), 0 to under 150 mm, "
+             "150 to under 300 mm)) * x_n");
+
+    for (std::string const& text: { formula::render<formula::Dialect::Markdown>(binnedVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(binnedVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::Markdown>(curveVariant, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(curveVariant, everyVocabulary),
                                     formula::render<formula::Dialect::Markdown>(cube, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(cube, everyVocabulary),
@@ -805,7 +835,20 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
     CHECK(curvePage.symbols[2].symbol == "x_n");
     CHECK(curvePage.symbols[2].fixedValue.has_value());
 
-    for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
+    // The binning variant: the observations read once, as a row of their
+    // capacity, and the fixed factor.
+    constexpr auto binnedVariant = std::get<4>(everyOverlaid.variantSet.cases).expression;
+    formula::Documentation const binnedPage = formula::document(binnedVariant, everyVocabulary);
+    REQUIRE(binnedPage.symbols.size() == 2);
+    CHECK(binnedPage.symbols[0].symbol == "d_n");
+    CHECK(binnedPage.symbols[0].shape == formula::ValueShape::Observations);
+    CHECK(binnedPage.symbols[0].length == 4);
+    CHECK(binnedPage.symbols[1].symbol == "x_n");
+    CHECK(binnedPage.symbols[1].fixedValue.has_value());
+
+    for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(binnedVariant, everyVocabulary),
+                                      formula::document<formula::Dialect::LaTeX>(binnedVariant, everyVocabulary),
+                                      formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
                                       formula::document<formula::Dialect::LaTeX>(cube, everyVocabulary),
                                       formula::document<formula::Dialect::Markdown>(cylinder, everyVocabulary),
                                       formula::document<formula::Dialect::LaTeX>(cylinder, everyVocabulary),
@@ -848,7 +891,7 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "3. #1 / #2 = 2/5\n"
              "4. #3 = 2/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "5. round(#4, in %) = 40 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "6. #5 = 40 % [variant EveryCylinder (2nd of 4), selected by tag]\n");
+             "6. #5 = 40 % [variant EveryCylinder (2nd of 5), selected by tag]\n");
 
     // Every series kind: each series step in the jurisdiction's symbol, the
     // fixed factor broadcast once, the running total from the last screen,
@@ -869,7 +912,7 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "12. M_n = 2020 g\n"
              "13. #11 / #12 = 503/2020\n"
              "14. round(#13, in %) = 249/10 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "15. #14 = 249/10 % [variant EverySeries (3rd of 4), selected by tag]\n");
+             "15. #14 = 249/10 % [variant EverySeries (3rd of 5), selected by tag]\n");
 
     // Every curve kind: the retained masses as shares of the total, 1/202,
     // 1/101 and 2/101 at 1, 2 and 4, spliced with 1/20 at 5; read at the
@@ -889,7 +932,25 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "11. interpolate(#9, at #10) = 1487/202000 [between 1 and 2]\n"
              "12. snap(#11) = 1/200 [1/200 to 1/100; nearer 1/200]\n"
              "13. round(#12, in %) = 1/2 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "14. #13 = 1/2 % [variant EveryCurve (4th of 4), selected by tag]\n");
+             "14. #13 = 1/2 % [variant EveryCurve (4th of 5), selected by tag]\n");
+
+    // Binning: 60, 150, 250 and 120 mm counted 2 and 2 -- the 150 mm particle
+    // in the upper class -- the upper class's share 1/2, times the fixed 1487/1000.
+    // Counted closed at the top, it would be 1/4, and 37.2 %.
+    CHECK(everyTraceOf<EveryBinned>()
+          == "1. d_n = 60 mm; 150 mm; 250 mm; 120 mm\n"
+             "2. bin(#1) = 2; 2\n"
+             "3. 0; 1\n"
+             "4. #2 * #3 = 0; 2\n"
+             "5. sum(#4) = 2\n"
+             "6. d_n = 60 mm; 150 mm; 250 mm; 120 mm\n"
+             "7. bin(#6) = 2; 2\n"
+             "8. sum(#7) = 4\n"
+             "9. #5 / #8 = 1/2\n"
+             "10. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "11. #9 * #10 = 1487/2000\n"
+             "12. round(#11, in %) = 372/5 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "13. #12 = 372/5 % [variant EveryBinned (5th of 5), selected by tag]\n");
 }
 
 TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",

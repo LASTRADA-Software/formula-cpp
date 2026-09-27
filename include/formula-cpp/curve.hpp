@@ -645,9 +645,9 @@ template <typename Rep = Rational, Unit U, BreakpointTable Points, typename Env,
 }
 
 /// Pairs the evaluated domain and values: the domain first, then the values,
-/// each once; a failure of either is relayed as it is. When every point is
-/// present they must strictly ascend, or the curve fails at the first point
-/// that is not above the one before it. An absent element stays absent here,
+/// each once; a failure of either is relayed (`detail::relayed_failure`).
+/// When every point is present they must strictly ascend, or the curve fails
+/// at the first point that is not above the one before it. An absent element stays absent here,
 /// and makes whatever reads the curve absent.
 template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedCurve<Rep, CurveNode<D, V>::length> checked_evaluate_curve_si(CurveNode<D, V> const& node,
@@ -670,10 +670,10 @@ template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typ
         EvaluatedCurve<Rep, curveLength> const evaluated = [&]() -> EvaluatedCurve<Rep, curveLength> {
             EvaluatedSeries<Rep, curveLength> const points = detail::dispatch_series<Rep>(node.domainSeries, environment, sink);
             if (!points.has_value())
-                return std::unexpected { points.error() };
+                return std::unexpected { detail::relayed_failure<D>(points) };
             EvaluatedSeries<Rep, curveLength> const pairedValues = detail::dispatch_series<Rep>(node.valueSeries, environment, sink);
             if (!pairedValues.has_value())
-                return std::unexpected { pairedValues.error() };
+                return std::unexpected { detail::relayed_failure<V>(pairedValues) };
 
             CurveValue<Rep, curveLength> paired;
             paired.domain = points->elements;

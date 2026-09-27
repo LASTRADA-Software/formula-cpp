@@ -11,6 +11,7 @@
 /// when you want a documentation page, alongside `render.hpp` for the text
 /// itself.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/lookup.hpp>
@@ -38,6 +39,9 @@ enum class ValueShape : std::uint8_t
     Single,
     /// A series of `SymbolEntry::length` values: `series<Q, N>`.
     Series,
+    /// Raw observations, at most `SymbolEntry::length` of them:
+    /// `observations<Q, Capacity>`.
+    Observations,
 };
 
 /// One row of a formula's symbol table: how a variable is written, what it
@@ -105,7 +109,7 @@ struct SymbolEntry
     ValueShape shape = ValueShape::Single;
 
     /// How many values the formula reads for this row: the series' length
-    /// `N`, or one for a single value.
+    /// `N`, the most observations there can be, or one for a single value.
     std::size_t length = 1;
 
     /// Memberwise equality.
@@ -178,6 +182,12 @@ namespace detail
     /// `series<Q, 5>` in one formula are two rows with one symbol.
     template <typename Q, std::size_t N>
     inline bool seriesIdentity = false;
+
+    /// A distinct address per quantity @p Q read as observations of at most
+    /// @p Capacity, for `seriesIdentity`'s reason: a series of `Q` and
+    /// observations of `Q` in one formula are two rows.
+    template <typename Q, std::size_t Capacity>
+    inline bool observationsIdentity = false;
 
     /// The walk's own state: the `Documentation` being assembled, plus which
     /// quantities have already contributed a row, tracked in parallel because
@@ -331,6 +341,15 @@ namespace detail
 
     template <Vocabulary V, Unit U, BreakpointTable Points>
     void collect(Walk<V>& walk, DomainNode<U, Points> const& node);
+
+    template <Vocabulary V, Described Q, std::size_t Capacity>
+    void collect(Walk<V>& walk, ObservationsVarNode<Q, Capacity> const& node);
+
+    template <Vocabulary V>
+    void collect(Walk<V>& walk, RefusedObservations const& node);
+
+    template <Vocabulary V, Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    void collect(Walk<V>& walk, BinnedNode<KeyUnit, Classes, Obs> const& node);
 
     template <Vocabulary V, SeriesNode DomainSeries, SeriesNode ValueSeries>
     void collect(Walk<V>& walk, CurveNode<DomainSeries, ValueSeries> const& node);
@@ -633,6 +652,39 @@ namespace detail
                                                            .unit = Describe<Q>::unit,
                                                            .shape = ValueShape::Series,
                                                            .length = N });
+    }
+
+    /// Raw observations contribute one row, marked as observations of at
+    /// most @p Capacity -- unless the same quantity has already contributed
+    /// such a row of that capacity. Deduplicated as a series variable is,
+    /// on quantity, shape and capacity (`observationsIdentity`).
+    template <Vocabulary V, Described Q, std::size_t Capacity>
+    void collect(Walk<V>& walk, ObservationsVarNode<Q, Capacity> const&)
+    {
+        void const* const identity = &observationsIdentity<Q, Capacity>;
+        for (void const* const seen: walk.seenQuantities)
+            if (seen == identity)
+                return;
+        walk.seenQuantities.push_back(identity);
+        walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                                           .description = Describe<Q>::description,
+                                                           .unit = Describe<Q>::unit,
+                                                           .shape = ValueShape::Observations,
+                                                           .length = Capacity });
+    }
+
+    /// Observations refused already name nothing.
+    template <Vocabulary V>
+    void collect(Walk<V>&, RefusedObservations const&)
+    {
+    }
+
+    /// A binning names nothing of its own; its observations do. Its classes
+    /// are `render()`'s to print, as a lookup's bands are.
+    template <Vocabulary V, Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    void collect(Walk<V>& walk, BinnedNode<KeyUnit, Classes, Obs> const& node)
+    {
+        collect(walk, node.source);
     }
 
     /// A per-element constant names no variable, as a scalar constant names

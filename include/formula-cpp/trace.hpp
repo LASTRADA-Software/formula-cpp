@@ -11,6 +11,7 @@
 /// separately-optional header. Include this one to record a derivation, and
 /// that one as well to print it.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -257,6 +258,23 @@ enum class StepKind : std::uint8_t
     /// `Step::curveBreak`. Checked on GCC under
     /// `-Wshadow`: the node is `SpliceNode` and its factory `splice`.
     CurveSplice,
+    /// Raw observations (`ObservationsVarNode`, `binning.hpp`): the
+    /// quantity's symbol and declared unit, and every observation made, in
+    /// `Step::elements`, as many as were made. A failure records the
+    /// observation it arose at in `Step::failedElement`. Recorded by
+    /// `RecordingSink::observations_produced`. Checked on GCC under
+    /// `-Wshadow`: the node is `ObservationsVarNode` and its spelling in a
+    /// formula `observations`, so nothing in namespace `formula` is spelt
+    /// `ObservationsVariable`.
+    ObservationsVariable,
+    /// Raw observations counted into classes (`BinnedNode`): one count per
+    /// class in `Step::elements`; the classes' unit in `Step::sourceUnit`,
+    /// their extent in `Step::coveredRange`, and the observations binned, in
+    /// the coherent SI unit, in `Step::domainElements`. A failure's
+    /// `Step::failedElement` is the **observation** it arose at, not a
+    /// count. Checked on GCC under `-Wshadow`: the node is `BinnedNode` and
+    /// its factory `binned`.
+    Binning,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -683,6 +701,9 @@ struct Step
     ///
     /// Empty for a table with no rows at all, which covers nothing and always
     /// misses.
+    ///
+    /// For `Binning`: its classes' extent, half-open as a band table's is,
+    /// recorded whether or not an observation missed.
     std::optional<LookupRange> coveredRange {};
 
     /// For `ExactLookup`: the key this lookup selected with, as the
@@ -855,7 +876,8 @@ struct Step
     /// coherent SI unit of `sourceUnit`'s dimension, each at the position of
     /// its value in `elements`. Empty for every other kind, and for a curve
     /// that failed -- unless `curveBreak` names a rule, when they are the
-    /// points that broke it.
+    /// points that broke it. For `Binning`: the observations it binned, in
+    /// the coherent SI unit of `sourceUnit`'s dimension, in the order made.
     std::vector<std::optional<Rep>> domainElements {};
 
     /// For `CurveSplice`: the direction its values had to run in.
@@ -1181,6 +1203,12 @@ namespace detail
     struct SeriesStepKindOf<DomainNode<U, Points>>
     {
         static constexpr StepKind value = StepKind::SeriesDomain;
+    };
+
+    template <Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    struct SeriesStepKindOf<BinnedNode<KeyUnit, Classes, Obs>>
+    {
+        static constexpr StepKind value = StepKind::Binning;
     };
 
     /// The `StepKind` a curve node maps to, closed as `SeriesStepKindOf` is.
@@ -1630,6 +1658,28 @@ namespace detail
         failedStep.curveBreak = broken->rule;
         failedStep.domainElements = std::move(points);
         failedStep.elements = std::move(pointValues);
+    }
+
+    /// Fills in a binning step: the classes' unit and extent, from the node's
+    /// type, and the observations it binned, off its operand's step -- in
+    /// the coherent SI unit, as that step holds them. Nothing of the
+    /// observations when their step failed or is not there.
+    template <SeriesNode S, typename Rep>
+    void record_binning(Step<Rep>& binningStep, std::vector<Step<Rep>> const& steps)
+    {
+        binningStep.sourceUnit = S::unit;
+        constexpr auto binnedClasses = S::classes;
+        if constexpr (binnedClasses.size() > 0)
+            binningStep.coveredRange = LookupRange { .lowNumerator = binnedClasses.front().lowNumerator,
+                                                     .lowDenominator = binnedClasses.front().lowDenominator,
+                                                     .highNumerator = binnedClasses.back().highNumerator,
+                                                     .highDenominator = binnedClasses.back().highDenominator };
+        if (binningStep.operands.size() != 1)
+            return;
+        Step<Rep> const& observedStep = steps[binningStep.operands.front()];
+        if (observedStep.kind != StepKind::ObservationsVariable || observedStep.error.has_value())
+            return;
+        binningStep.domainElements = observedStep.elements;
     }
 } // namespace detail
 
@@ -2168,6 +2218,11 @@ class RecordingSink
             seriesStep.unit = detail::operand_unit_or(_trace->steps, seriesStep.operands, seriesStep.dimension, seriesStep.unit);
             seriesStep.cumulativeDirection = S::direction;
         }
+        // A binning names its classes' unit and extent, and keeps the
+        // observations it binned, so that a miss can state the one that fit
+        // no class.
+        else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::Binning)
+            detail::record_binning<S>(seriesStep, _trace->steps);
 
         if (!result.has_value())
         {
@@ -2178,6 +2233,32 @@ class RecordingSink
             seriesStep.elements.assign(result->elements.begin(), result->elements.end());
 
         _trace->steps.push_back(std::move(seriesStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+    }
+
+    /// Records one step for raw observations, carrying every observation made
+    /// in `Step::elements`, in the coherent SI unit, shown in the unit the
+    /// quantity is declared in under the symbol this sink's vocabulary gives
+    /// it. A failure records its error and the observation it arose at, and
+    /// no observations. Observations are a leaf: the step claims nothing.
+    template <Described Q, std::size_t Capacity>
+    void observations_produced(ObservationsVarNode<Q, Capacity> const&, EvaluatedObservations<Rep, Capacity> const& result)
+    {
+        Step<Rep> observationsStep {};
+        observationsStep.kind = StepKind::ObservationsVariable;
+        observationsStep.dimension = Describe<Q>::dimension;
+        observationsStep.unit = Describe<Q>::unit;
+        observationsStep.symbol = symbol_of<Q>(_vocabulary);
+        if (!result.has_value())
+        {
+            observationsStep.error = result.error().error;
+            observationsStep.failedElement = result.error().element;
+        }
+        else
+            for (std::size_t at = 0; at < result->count; ++at)
+                observationsStep.elements.push_back(result->elements[at]);
+
+        _trace->steps.push_back(std::move(observationsStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 

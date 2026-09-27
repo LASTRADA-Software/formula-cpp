@@ -31,6 +31,7 @@
 /// defect itself rather than a matter of taste.
 
 #include <formula-cpp/band.hpp>
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -1281,6 +1282,37 @@ template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
         return "\\operatorname{domain}(" + points + ")";
     else
         return "domain(" + points + ")";
+}
+
+/// Raw observations render as their quantity's symbol, marked as a series is
+/// (`detail::series_marker`): each is one of many values, and the symbol
+/// table says how many there can be.
+template <Dialect D, Described Q, std::size_t Capacity, Vocabulary V>
+[[nodiscard]] std::string render_node(ObservationsVarNode<Q, Capacity> const&, V const& vocabulary)
+{
+    return detail::series_marker<D>(std::string { symbol_of<Q>(vocabulary) });
+}
+
+/// Observations refused already: never seen, since the program does not
+/// compile.
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedObservations const&, V const&)
+{
+    return "(refused)";
+}
+
+/// A binning renders as `bin(<observations>, <class>, ...)`: one field per
+/// class, in the declared order, each in the one spelling of a band
+/// (`detail::band_text`), shaped as a lookup is (`detail::lookup_call`).
+template <Dialect D, Unit KeyUnit, BandTable Classes, ObservationsNode Obs, Vocabulary V>
+[[nodiscard]] std::string render_node(BinnedNode<KeyUnit, Classes, Obs> const& node, V const& vocabulary)
+{
+    constexpr Unit keyUnit = KeyUnit;
+    std::string classText;
+    for (std::size_t classIndex = 0; classIndex < Classes.size(); ++classIndex)
+        classText += detail::lookup_separator<D>()
+                     + detail::lookup_words_in_dialect<D>(detail::band_text(Classes[classIndex], view(keyUnit.symbolText)));
+    return detail::lookup_call<D>("bin", render_node<D>(node.source, vocabulary), classText);
 }
 
 /// A curve renders as a call on its two series, `curve(d(i), p(i))`, each

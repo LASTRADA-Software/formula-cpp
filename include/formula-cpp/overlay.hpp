@@ -133,6 +133,7 @@
 /// refused when only the variant that goes away reads `Q`: in either order,
 /// the method produced never reads it.
 
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/constraint.hpp>
@@ -1796,6 +1797,57 @@ namespace detail
     struct ConstantRewrite<Sub, ElementwiseRoundNode<U, Places, Mode, S>>:
         ConstantRewriteOperand<Sub, S, ElementwiseRoundNode<U, Places, Mode, typename ConstantRewriteOf<Sub, S>::type>>
     {
+    };
+
+    /// Raw observations: known, and never replaced, as a series variable is
+    /// -- one constant cannot stand for every observation -- and counted as
+    /// a series use of `Q`, so that a substitution for it is refused by the
+    /// result check.
+    template <typename Sub, Described P, std::size_t Capacity>
+    struct ConstantRewrite<Sub, ObservationsVarNode<P, Capacity>>
+    {
+        /// A kind this header knows.
+        static constexpr bool known = true;
+        /// Whether these are observations of `Q` and @p Sub counts a series
+        /// use -- see `countsSeriesUse`.
+        static constexpr bool mentions = std::is_same_v<typename Sub::quantity, P> && countsSeriesUse<Sub>;
+        /// Unchanged.
+        using type = ObservationsVarNode<P, Capacity>;
+
+        /// The node itself.
+        [[nodiscard]] static constexpr type apply(ObservationsVarNode<P, Capacity> const& original, Sub const&) noexcept
+        {
+            return original;
+        }
+    };
+
+    /// Observations refused already name nothing, as a refused series names
+    /// nothing.
+    template <typename Sub>
+    struct ConstantRewrite<Sub, RefusedObservations>: ConstantRewriteLeaf<Sub, RefusedObservations>
+    {
+    };
+
+    /// A binning, around its rewritten observations; its classes are in its
+    /// type.
+    template <typename Sub, Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
+    struct ConstantRewrite<Sub, BinnedNode<KeyUnit, Classes, Obs>>
+    {
+        /// How the observations are rewritten.
+        using Inner = ConstantRewriteOf<Sub, Obs>;
+
+        /// Whether the observations are known.
+        static constexpr bool known = Inner::known;
+        /// Whether the observations use `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same binning, around the rewritten observations.
+        using type = BinnedNode<KeyUnit, Classes, typename Inner::type>;
+
+        /// The binning, around the rewritten observations.
+        [[nodiscard]] static constexpr type apply(BinnedNode<KeyUnit, Classes, Obs> const& original, Sub const& overriding) noexcept
+        {
+            return type { {}, Inner::apply(original.source, overriding) };
+        }
     };
 
     /// An elementwise operation, either side a series or a broadcast scalar:

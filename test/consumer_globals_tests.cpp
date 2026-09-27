@@ -35,6 +35,8 @@
 // overlay's constant rewrote, evaluated, rendered, documented and traced; a
 // conformity check against a limit envelope, a snap, and curves -- a declared
 // domain, a pairing, a splice and an interpolation -- on the same surfaces;
+// raw observations, `from` and `get_observations`, binned into classes and
+// divided by their sum, on the same surfaces;
 // and the three table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
@@ -76,6 +78,7 @@
 // fails when one is missing from the list below.
 #include "consumer_globals.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -103,6 +106,7 @@ int index;
 // clang-format on
 
 #include <formula-cpp/band.hpp>
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -239,6 +243,8 @@ inline constexpr formula::BreakpointTable<3> EdgeSnapSet { formula::breakpoint(1
 
 inline constexpr formula::BreakpointTable<2> EdgeCurvePoints { formula::breakpoint(100), formula::breakpoint(200) };
 inline constexpr formula::BreakpointTable<1> EdgeCurveTail { formula::breakpoint(300) };
+
+inline constexpr formula::BandTable<2> EdgeClasses { formula::band(0, 1, 150, 1), formula::band(150, 1, 400, 1) };
 
 inline constexpr formula::PlacesTable<2> edgePlaces { formula::DecimalPlaces { 0 }, formula::DecimalPlaces { 1 } };
 
@@ -493,6 +499,22 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::document(edgeCurve, north).symbols.empty()
                            && formula::render_trace(curveTrace, { .maxSteps = 40 }).find("[between 100 and 200 mm]")
                                   != std::string::npos);
+    // Raw observations, from a span, binned into two classes: 150 mm sits on
+    // the boundary and is counted in the upper class.
+    std::array<formula::Rational, 3> const edgeReadings { formula::Rational { 90 }, formula::Rational { 150 },
+                                                          formula::Rational { 390 } };
+    auto const edgeObserved = formula::MeasuredObservations<EdgeX, 4>::from(edgeReadings);
+    auto const edgeSample = formula::environment(*edgeObserved);
+    auto const binnedEdges = formula::binned<unit::Millimetre, EdgeClasses>(formula::observations<EdgeX, 4>);
+    auto const edgeShares = binnedEdges / formula::sum(binnedEdges);
+    formula::Trace<> binningTrace {};
+    auto const sharesValue = formula::checked_evaluate_series<Factor>(edgeShares, edgeSample, formula::RecordingSink { binningTrace, north });
+    probe.checks.push_back(edgeObserved.has_value() && edgeSample.get_observations<EdgeX, 4>().size() == 3
+                           && sharesValue.has_value() && sharesValue->elements()[1].value() == formula::Rational { 2, 3 }
+                           && formula::render(binnedEdges, north) == "bin(x_m(i), 0 to under 150 mm, 150 to under 400 mm)"
+                           && formula::document<formula::Dialect::LaTeX>(edgeShares).formula.find("bin") != std::string::npos
+                           && formula::document(binnedEdges, north).symbols.front().shape == formula::ValueShape::Observations
+                           && formula::render_trace(binningTrace, { .maxSteps = 20 }).find("bin(#1) = 1; 2") != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

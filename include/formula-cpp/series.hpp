@@ -897,16 +897,38 @@ namespace detail
         return evaluatedScalar;
     }
 
-    /// A failed series operand's failure, relayed as it is.
-    template <typename Rep, std::size_t N>
+    /// Whether a failure of the series node @p S names one of its own
+    /// elements. True for every kind whose positions are its elements; a kind
+    /// whose failure names a position in something else -- a binning's names
+    /// an observation (`binning.hpp`) -- specialises it false.
+    template <typename S>
+    inline constexpr bool failure_names_element = true;
+
+    /// A failed series operand @p Operand's failure, relayed: with its
+    /// position when that is one of the operand's elements, which is then the
+    /// same element of the result, and without it when it is not
+    /// (`failure_names_element`) -- a position in something else would name
+    /// an element of the result that is not at fault. The operand's own step
+    /// names it either way.
+    template <typename Operand, typename Rep, std::size_t N>
+    [[nodiscard]] constexpr SeriesFailure relayed_failure(EvaluatedSeries<Rep, N> const& failed) noexcept
+    {
+        if constexpr (failure_names_element<Operand>)
+            return failed.error();
+        else
+            return SeriesFailure { failed.error().error, std::nullopt };
+    }
+
+    /// A failed series operand's failure, relayed (`relayed_failure`).
+    template <typename Operand, typename Rep, std::size_t N>
     [[nodiscard]] constexpr SeriesFailure operand_failure(EvaluatedSeries<Rep, N> const& failed) noexcept
     {
-        return failed.error();
+        return relayed_failure<Operand>(failed);
     }
 
     /// A failed scalar operand's failure: it belongs to no element, since the
     /// scalar was evaluated once, before any element was computed.
-    template <typename Rep>
+    template <typename Operand, typename Rep>
     [[nodiscard]] constexpr SeriesFailure operand_failure(Evaluated<Rep> const& failed) noexcept
     {
         return SeriesFailure { failed.error(), std::nullopt };
@@ -953,7 +975,7 @@ template <typename Rep = Rational, Unit U, std::size_t N, typename Env, typename
 }
 
 /// Negates each element. An absent element stays absent; a failure names its
-/// element; a failed operand is relayed unchanged.
+/// element; a failed operand is relayed (`detail::relayed_failure`).
 template <typename Rep = Rational, UnaryOperator Op, SeriesNode Operand, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedSeries<Rep, Operand::length> checked_evaluate_series_si(
     ElementwiseUnaryNode<Op, Operand> const& node, Env const& environment, Sink sink = {}) noexcept
@@ -965,7 +987,7 @@ template <typename Rep = Rational, UnaryOperator Op, SeriesNode Operand, typenam
         EvaluatedSeries<Rep, seriesLength> const operandResult =
             detail::dispatch_series<Rep>(node.operand, environment, sink);
         if (!operandResult.has_value())
-            return std::unexpected { operandResult.error() };
+            return std::unexpected { detail::relayed_failure<Operand>(operandResult) };
         SeriesValue<Rep, seriesLength> negated;
         for (std::size_t at = 0; at < seriesLength; ++at)
         {
@@ -1000,10 +1022,10 @@ template <typename Rep = Rational, BinaryOperator Op, typename Left, typename Ri
     EvaluatedSeries<Rep, seriesLength> const evaluated = [&]() -> EvaluatedSeries<Rep, seriesLength> {
         auto const leftResult = detail::evaluate_operand<Rep>(node.lhs, environment, sink);
         if (!leftResult.has_value())
-            return std::unexpected { detail::operand_failure(leftResult) };
+            return std::unexpected { detail::operand_failure<Left>(leftResult) };
         auto const rightResult = detail::evaluate_operand<Rep>(node.rhs, environment, sink);
         if (!rightResult.has_value())
-            return std::unexpected { detail::operand_failure(rightResult) };
+            return std::unexpected { detail::operand_failure<Right>(rightResult) };
 
         SeriesValue<Rep, seriesLength> combined;
         for (std::size_t at = 0; at < seriesLength; ++at)
@@ -1053,7 +1075,7 @@ template <typename Rep = Rational, Unit U, auto Places, RoundingMode Mode, Serie
             EvaluatedSeries<Rep, seriesLength> const operandResult =
                 detail::dispatch_series<Rep>(node.operand, environment, sink);
             if (!operandResult.has_value())
-                return std::unexpected { operandResult.error() };
+                return std::unexpected { detail::relayed_failure<S>(operandResult) };
 
             SeriesValue<Rep, seriesLength> roundedElements;
             for (std::size_t at = 0; at < seriesLength; ++at)
@@ -1075,9 +1097,9 @@ template <typename Rep = Rational, Unit U, auto Places, RoundingMode Mode, Serie
 
 /// The running total along the operand, from the end `D` names.
 ///
-/// A failed operand is relayed unchanged. Once an element is absent, the total
-/// there and at every later element in the running direction stays absent
-/// (`CumulativeNode`). A total that overflows fails the whole series at the
+/// A failed operand is relayed (`detail::relayed_failure`). Once an element
+/// is absent, the total there and at every later element in the running
+/// direction stays absent (`CumulativeNode`). A total that overflows fails the whole series at the
 /// element whose addition overflowed.
 template <typename Rep = Rational, CumulativeDirection D, SeriesNode S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedSeries<Rep, S::length> checked_evaluate_series_si(CumulativeNode<D, S> const& node,
@@ -1090,7 +1112,7 @@ template <typename Rep = Rational, CumulativeDirection D, SeriesNode S, typename
         EvaluatedSeries<Rep, seriesLength> const operandResult =
             detail::dispatch_series<Rep>(node.operand, environment, sink);
         if (!operandResult.has_value())
-            return std::unexpected { operandResult.error() };
+            return std::unexpected { detail::relayed_failure<S>(operandResult) };
 
         SeriesValue<Rep, seriesLength> totals;
         std::optional<Rep> runningTotal;
