@@ -762,27 +762,34 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                       { .reference = "Example Standard 3" });
     auto const fitSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeFit), specimen);
     probe.checks.push_back(fitSlope.has_value() && fitSlope->measurement().value() == formula::Rational { 73, 110 });
-    // A retry over the two recorded edges, judged from the second: 150 and
-    // 103 mm differ by 47 mm, within 53, so the second is accepted --
-    // evaluated, traced, rendered and documented.
+    // A retry over the two recorded edges, evaluated, traced, rendered and
+    // documented in all three dialects.
     constexpr auto edgesAgree = formula::when(formula::this_attempt<AgreedEdge> >= formula::previous_attempt<AgreedEdge>,
                                               formula::this_attempt<AgreedEdge> - formula::previous_attempt<AgreedEdge>,
                                               formula::previous_attempt<AgreedEdge> - formula::this_attempt<AgreedEdge>)
                                 <= formula::constant<unit::Millimetre>(formula::Rational { 53 });
-    constexpr auto recordedEdges =
-        formula::retry<AgreedEdge, 2, formula::FirstJudged::AtSecondAttempt>(formula::attempt_input<EdgeX>,
-                                                                             edgesAgree,
-                                                                             formula::Verdict { "measure the edge again" },
-                                                                             { .reference = "Example Standard 3" });
+    // With a starting value, so that the starting branch and its environment
+    // are reached too; judged from the first attempt, whose previous value is
+    // the starting 139 mm: 150 mm is 11 mm from it, so the first is accepted.
+    constexpr auto recordedEdges = formula::retry<AgreedEdge, 2, formula::FirstJudged::AtFirstAttempt>(
+        formula::starting_from(formula::constant<unit::Millimetre>(formula::Rational { 139 })),
+        formula::attempt_input<EdgeX>,
+        edgesAgree,
+        formula::Verdict { "measure the edge again" },
+        { .reference = "Example Standard 3" });
     auto const edgesRetried = formula::checked_evaluate_retry(recordedEdges, bothScreens);
     auto const explainedEdges = formula::explain_retry(recordedEdges, bothScreens, north);
     probe.checks.push_back(
         edgesRetried.has_value() && edgesRetried->end() == formula::RetryEnd::Accepted
-        && edgesRetried->outcome().measurement().value() == formula::Rational { 103 }
-        && formula::render_trace(explainedEdges.trace, { .maxSteps = 20 }).find("accepted at attempt 2 of 2")
+        && edgesRetried->outcome().measurement().value() == formula::Rational { 150 }
+        && formula::render_trace(explainedEdges.trace, { .maxSteps = 20 }).find("accepted at attempt 1 of 2")
                != std::string::npos
         && formula::render(recordedEdges, north).find("x_m(k)") != std::string::npos
-        && formula::document(recordedEdges, north).symbols.size() == 2);
+        && formula::render<formula::Dialect::Markdown>(recordedEdges, north).find("`x_m(k)`") != std::string::npos
+        && formula::render<formula::Dialect::LaTeX>(recordedEdges, north).find("{x_m}_{k}") != std::string::npos
+        && formula::document(recordedEdges, north).symbols.size() == 2
+        && formula::document<formula::Dialect::Markdown>(recordedEdges, north).symbols.size() == 2
+        && formula::document<formula::Dialect::LaTeX>(recordedEdges, north).symbols.size() == 2);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

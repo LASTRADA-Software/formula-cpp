@@ -615,28 +615,58 @@ namespace detail
     };
 
     /// Whether the type @p T -- a node, or any type a node is built from --
-    /// holds a `previous_attempt<Q>` or a `this_attempt<Q>` whose `Q` is not
-    /// @p R, cv-qualification aside. A walk over types, not values, so that
-    /// a retry is refused where it is written, and `render` and `document`
-    /// never print another quantity's label for the retry's own value.
+    /// holds a type @p Probe matches (`Probe::matches<U>`). A walk over types,
+    /// not values, so that a mistake is refused where the formula is written
+    /// or documented, and not only where it is evaluated.
     ///
     /// Structural: it looks into every type argument of a class template
-    /// whose parameters are types, or a few values followed by types, or a
-    /// type followed by values -- every shape a node of this library has --
-    /// and stops at anything else. It knows no node kind but the two context
-    /// nodes, so a node added later is walked without an entry here. One
-    /// whose parameters take another shape is not looked into, and a
-    /// misnamed context node inside it is still refused where it is
-    /// evaluated (`RequireRetriedQuantity`).
-    template <typename R, typename T>
-    struct NamesAnotherQuantity: std::false_type
+    /// whose parameters are types, or one to three values followed by types,
+    /// or a type followed by values -- every shape a node of this library has
+    /// -- and stops at anything else. It knows no node kind; @p Probe does, so
+    /// a node added later is walked without an entry here. One whose
+    /// parameters take another shape is not looked into, and what it holds is
+    /// still refused where it is evaluated.
+    template <typename Probe, typename T>
+    struct HoldsNodeType: std::bool_constant<Probe::template matches<T>>
     {
     };
 
-    /// Whether @p T itself is a context node naming a quantity other than
-    /// @p R. Asked by the walk's own specialisation below, rather than being
-    /// one of its own, so that exactly one specialisation of the walk matches
-    /// any type: `PreviousAttemptNode<Q>` is also a `T<Args...>`.
+    template <typename Probe, template <typename...> class T, typename... Args>
+    struct HoldsNodeType<Probe, T<Args...>>:
+        std::bool_constant<Probe::template matches<T<Args...>>
+                           || (HoldsNodeType<Probe, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    template <typename Probe, template <auto, typename...> class T, auto V, typename... Args>
+    struct HoldsNodeType<Probe, T<V, Args...>>:
+        std::bool_constant<(HoldsNodeType<Probe, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    template <typename Probe, template <auto, auto, typename...> class T, auto V, auto W, typename... Args>
+    struct HoldsNodeType<Probe, T<V, W, Args...>>:
+        std::bool_constant<(HoldsNodeType<Probe, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    template <typename Probe, template <auto, auto, auto, typename...> class T, auto V, auto W, auto X, typename... Args>
+    struct HoldsNodeType<Probe, T<V, W, X, Args...>>:
+        std::bool_constant<(HoldsNodeType<Probe, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    // At least one value: with none, `T<Arg>` would also match `T<Args...>`
+    // above, and clang finds the two ambiguous.
+    template <typename Probe, template <typename, auto, auto...> class T, typename Arg, auto Value, auto... Values>
+    struct HoldsNodeType<Probe, T<Arg, Value, Values...>>: HoldsNodeType<Probe, std::remove_cv_t<Arg>>
+    {
+    };
+
+    /// Whether @p T is a context node naming a quantity other than @p R,
+    /// cv-qualification aside. A probe's test rather than a specialisation of
+    /// the walk, so that exactly one specialisation of the walk matches any
+    /// type: `PreviousAttemptNode<Q>` is also a `T<Args...>`.
     template <typename R, typename T>
     inline constexpr bool isMisnamedContextNode = false;
 
@@ -648,38 +678,70 @@ namespace detail
     inline constexpr bool isMisnamedContextNode<R, ThisAttemptNode<Q>> =
         !std::is_same_v<std::remove_cv_t<Q>, std::remove_cv_t<R>>;
 
-    template <typename R, template <typename...> class T, typename... Args>
-    struct NamesAnotherQuantity<R, T<Args...>>:
-        std::bool_constant<isMisnamedContextNode<R, T<Args...>>
-                           || (NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    /// `HoldsNodeType`'s probe for a context node misnamed under @p R.
+    template <typename R>
+    struct MisnamedContextProbe
+    {
+        template <typename T>
+        static constexpr bool matches = isMisnamedContextNode<R, T>;
+    };
+
+    /// Whether @p T -- a retry's attempt or acceptance -- reads
+    /// `previous_attempt<Q>` or `this_attempt<Q>` for a `Q` that is not @p R,
+    /// so that `render` and `document` never print another quantity's label
+    /// for the retry's own value.
+    template <typename R, typename T>
+    struct NamesAnotherQuantity: HoldsNodeType<MisnamedContextProbe<R>, T>
     {
     };
 
-    template <typename R, template <auto, typename...> class T, auto V, typename... Args>
-    struct NamesAnotherQuantity<R, T<V, Args...>>:
-        std::bool_constant<(NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    /// Whether @p T is an `attempt_input` node.
+    template <typename T>
+    inline constexpr bool isAttemptInputNode = false;
+
+    template <typename Q>
+    inline constexpr bool isAttemptInputNode<AttemptInputNode<Q>> = true;
+
+    /// `HoldsNodeType`'s probe for `attempt_input`.
+    struct AttemptInputProbe
     {
+        template <typename T>
+        static constexpr bool matches = isAttemptInputNode<T>;
     };
 
-    template <typename R, template <auto, auto, typename...> class T, auto V, auto W, typename... Args>
-    struct NamesAnotherQuantity<R, T<V, W, Args...>>:
-        std::bool_constant<(NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    /// Whether @p T reads `attempt_input` anywhere.
+    template <typename T>
+    inline constexpr bool readsAttemptInput = HoldsNodeType<AttemptInputProbe, std::remove_cv_t<T>>::value;
+
+    /// Fails to compile when a formula documented on its own, outside any
+    /// retry, reads `attempt_input`: its page would list a series of no
+    /// determinations, and nothing could ever evaluate it. Evaluating one is
+    /// refused in the same words (`RequireAttemptInputInsideRetry`). Named so
+    /// the formula prints.
+    template <typename Formula>
+    struct RequireAttemptInputOnlyInRetry
     {
+        static_assert(!readsAttemptInput<Formula>,
+                      "formula: attempt_input reads the determination recorded for the attempt that is running, so "
+                      "it is only meaningful inside a retry's attempt or its acceptance -- the formula appears in "
+                      "this diagnostic as the template argument of RequireAttemptInputOnlyInRetry");
+
+        static constexpr bool value = true;
     };
 
-    template <typename R, template <auto, auto, auto, typename...> class T, auto V, auto W, auto X, typename... Args>
-    struct NamesAnotherQuantity<R, T<V, W, X, Args...>>:
-        std::bool_constant<(NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    /// Fails to compile when a retry's starting value reads `attempt_input`,
+    /// where the retry is built, in the words its evaluation uses
+    /// (`RequireAttemptInputAfterStart`).
+    template <typename Start>
+    struct RequireNoAttemptInputInStart
     {
-    };
+        static_assert(!readsAttemptInput<Start>,
+                      "formula: a retry's starting value is evaluated before its first attempt, so there is no "
+                      "recorded determination for attempt_input to read in it -- the starting value appears in this "
+                      "diagnostic as the template argument of RequireNoAttemptInputInStart");
 
-    // At least one value: with none, `T<Arg>` would also match `T<Args...>`
-    // above, and clang finds the two ambiguous.
-    template <typename R, template <typename, auto, auto...> class T, typename Arg, auto Value, auto... Values>
-    struct NamesAnotherQuantity<R, T<Arg, Value, Values...>>: NamesAnotherQuantity<R, std::remove_cv_t<Arg>>
-    {
+        static constexpr bool value = true;
     };
-
     /// Fails to compile when a retry's attempt or acceptance reads
     /// `previous_attempt<Q>` or `this_attempt<Q>` for a `Q` that is not its
     /// result quantity, where the retry is built -- so that `render` and
@@ -754,8 +816,24 @@ namespace detail
         static_assert(
             std::conditional_t<shapesOk && attemptNamesOk, RequireOnlyRetriedQuantity<R, P>, std::true_type>::value);
 
+        // And a starting value that reads a recorded determination, which it
+        // runs before any attempt has one.
+        static constexpr bool namesOk = shapesOk && attemptNamesOk && acceptNamesOk;
+
+        template <bool Ask>
+        [[nodiscard]] static consteval bool start_reads_no_input() noexcept
+        {
+            if constexpr (Ask)
+                return !readsAttemptInput<Start>;
+            else
+                return true;
+        }
+
+        static constexpr bool startInputOk = start_reads_no_input<namesOk>();
+        static_assert(std::conditional_t<namesOk, RequireNoAttemptInputInStart<Start>, std::true_type>::value);
+
         /// Whether every check passed.
-        static constexpr bool value = shapesOk && attemptNamesOk && acceptNamesOk;
+        static constexpr bool value = namesOk && startInputOk;
     };
 
     struct RetryOutcomeFactory;
@@ -1188,6 +1266,16 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
             return detail::nothing<Rep>();
         }
     }();
+    // Whether the series the determination came from was measured or typed
+    // in, as a series variable reports it (`report_series_input_source`):
+    // through `series_input_source`, when the sink asks and the environment
+    // can answer. A person's entry reads as one in the trace, an empty one
+    // included.
+    if constexpr (
+        readable && requires { sink.series_input_source(node, ValueSource::Measured); }
+        && requires { Env::template is_entered_series<Q>; })
+        sink.series_input_source(node,
+                                 Env::template is_entered_series<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured);
     sink.produced(node, read);
     return read;
 }

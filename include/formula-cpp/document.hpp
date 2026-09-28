@@ -687,9 +687,20 @@ namespace detail
     template <Vocabulary V, Described Q>
     void collect(Walk<V>& walk, AttemptInputNode<Q> const&)
     {
+        // Outside a retry there is no series to name; `document()` refuses
+        // such a formula, so this only keeps a walk begun by hand honest.
+        if (walk.attemptLimit == 0)
+            return;
         void const* const identity = &attemptInputIdentity<Q>;
         for (SeenRow const& seen: walk.seenQuantities)
             if (seen.quantity == identity && seen.role == walk.roleIdentity)
+                return;
+        // `series<Q, Max>` read too names the same entry of the environment:
+        // one row, not two.
+        for (SymbolEntry const& listed: walk.documentation.symbols)
+            if (listed.shape == ValueShape::Series && listed.length == walk.attemptLimit
+                && listed.symbol == symbol_of<Q>(walk.vocabulary) && listed.record == walk.role
+                && listed.unit == Describe<Q>::unit)
                 return;
         walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
         walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
@@ -930,8 +941,14 @@ namespace detail
     {
         void const* const identity = &seriesIdentity<Q, N>;
         for (SeenRow const& seen: walk.seenQuantities)
+        {
             if (seen.quantity == identity && seen.role == walk.roleIdentity)
                 return;
+            // The retry's recorded determinations of `Q`, one per attempt,
+            // are this series already: one row.
+            if (seen.quantity == &attemptInputIdentity<Q> && seen.role == walk.roleIdentity && walk.attemptLimit == N)
+                return;
+        }
         walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
         walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
                                                            .description = Describe<Q>::description,
@@ -1187,6 +1204,9 @@ namespace detail
 template <Dialect D = Dialect::Plain, Node N, Vocabulary V>
 [[nodiscard]] Documentation document(N const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<N>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1210,6 +1230,9 @@ template <Dialect D = Dialect::Plain, Node N>
 template <Dialect D = Dialect::Plain, SeriesNode S, Vocabulary V>
 [[nodiscard]] Documentation document(S const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<S>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1232,6 +1255,9 @@ template <Dialect D = Dialect::Plain, SeriesNode S>
 template <Dialect D = Dialect::Plain, CurveExpression C, Vocabulary V>
 [[nodiscard]] Documentation document(C const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<C>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1272,6 +1298,9 @@ template <Dialect D = Dialect::Plain, CurveExpression C>
 template <Dialect D = Dialect::Plain, Predicate P, Vocabulary V>
 [[nodiscard]] Documentation document(Constraint<P> const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<Constraint<P>>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1336,6 +1365,9 @@ template <Dialect D = Dialect::Plain, Described R, std::size_t Max, FirstJudged 
 template <Dialect D = Dialect::Plain, Unit U, SeriesNode S, Vocabulary V>
 [[nodiscard]] Documentation document(Conformity<U, S> const& conformityCheck, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<Conformity<U, S>>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(conformityCheck, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,

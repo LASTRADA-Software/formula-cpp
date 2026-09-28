@@ -1177,7 +1177,8 @@ struct Step
     /// value, which `replacedEntryEmpty` says -- and empty when the
     /// environment has no entry for the quantity at all. For
     /// `SeriesVariable`: the same, of the whole series -- a measured series
-    /// or `entered(measured_series<Q>(...))`. Never
+    /// or `entered(measured_series<Q>(...))`. For `AttemptInput`: the same, of
+    /// the series the attempt's determination was read from. Never
     /// `Derived`: an input is not computed. Empty for every other kind, and
     /// for an environment that cannot say (one without `is_entered`), which
     /// is recorded as not known rather than guessed.
@@ -2861,15 +2862,16 @@ class RecordingSink
 
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
-        // Only a variable reads an input, and only a fixed constant or a
-        // derived quantity replaces an entry. For every other kind the slot
+        // Only a variable and a retry's recorded determination read an input,
+        // and only a fixed constant or a derived quantity replaces an entry. For every other kind the slot
         // is already empty -- `entered` emptied it, and only those
         // evaluators write it -- and it is emptied again regardless, so that
         // nothing a caller wrote by hand outlives the step it was written
         // during.
         constexpr bool replacesEntry = detail::StepKindOf<N>::value == StepKind::OverriddenConstant
                                        || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable || replacesEntry)
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable || replacesEntry
+                      || detail::StepKindOf<N>::value == StepKind::AttemptInput)
             nodeStep.inputSource = _trace->pendingInputSource;
         _trace->pendingInputSource.reset();
         if constexpr (replacesEntry)
@@ -3473,6 +3475,17 @@ class RecordingSink
     /// empties it for every kind.
     template <Described Q, std::size_t N>
     void series_input_source(SeriesVarNode<Q, N> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
+    }
+
+    /// `series_input_source` for the recorded determination a retry's
+    /// attempt reads (`attempt_input`, `retry.hpp`): whether the series it
+    /// came from was measured or typed in; `produced` puts it on the
+    /// `AttemptInput` step. Optional, and public, for the reasons
+    /// `input_source` gives, with the same boundary.
+    template <Described Q>
+    void series_input_source(AttemptInputNode<Q> const&, ValueSource source) noexcept
     {
         _trace->pendingInputSource = source;
     }

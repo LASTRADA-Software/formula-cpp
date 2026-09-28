@@ -1033,8 +1033,14 @@ TEST_CASE("a recorded attempt reads as the determination in the trace, the rende
     std::string const missingText = formula::render_trace(missing.trace, { .maxSteps = 100 });
     INFO(missingText);
     CHECK(missingText.find("d(k) = (not recorded)\n") != std::string::npos);
-    CHECK(missingText.find("attempt 3: d_a(k) = #") != std::string::npos);
-    CHECK(missingText.find("; not recorded\n") != std::string::npos);
+    // The attempt's line says "not recorded" once, as its value -- never
+    // "(not measured)" for the same missing determination.
+    std::size_t const attemptAt = missingText.find("attempt 3: d_a(k) = #");
+    REQUIRE(attemptAt != std::string::npos);
+    std::string const attemptLine = missingText.substr(attemptAt, missingText.find('\n', attemptAt) - attemptAt);
+    CHECK(attemptLine.ends_with(" = (not recorded)"));
+    CHECK(attemptLine.find("not recorded") == attemptLine.rfind("not recorded"));
+    CHECK(missingText.find("(not measured)") == std::string::npos);
     CHECK(missingText.find("d_a = retry: attempt 3 not recorded [Agreed determination, Example Standard 12, 7]")
           != std::string::npos);
     CHECK(judgements(missing.trace).back() == formula::AttemptJudgement::NotRecorded);
@@ -1053,4 +1059,105 @@ TEST_CASE("a recorded attempt reads as the determination in the trace, the rende
     CHECK(page.symbols[1].description == "an invented determination");
     CHECK(page.symbols[1].shape == formula::ValueShape::Series);
     CHECK(page.symbols[1].length == 4);
+}
+
+TEST_CASE("a determination typed in by a person says so, and so does one typed in empty", "[retry][recorded][trace]")
+{
+    // The series of determinations was entered by hand: each attempt's read
+    // says so, as a series variable over the same entry does, and the empty
+    // third reads as a variable typed in empty does -- never "(not recorded)".
+    constexpr auto typedIn = formula::environment(formula::entered(formula::measured_series<Determination>(
+        grams(413), grams(439), formula::Measured<Determination>::absent(), grams(457))));
+    auto const ran = formula::explain_retry(successive, typedIn);
+    REQUIRE(ran.outcome.has_value());
+    CHECK(ran.outcome->end() == formula::RetryEnd::NotRecorded);
+    std::string const text = formula::render_trace(ran.trace, { .maxSteps = 100 });
+    INFO(text);
+    CHECK(text.find("1. d(k) = 413/10 g, entered by hand\n") != std::string::npos);
+    CHECK(text.find("d(k) = 439/10 g, entered by hand\n") != std::string::npos);
+    CHECK(text.find("d(k) = (entered by hand as empty)\n") != std::string::npos);
+    CHECK(text.find("d(k) = (not recorded)") == std::string::npos);
+    std::size_t typedSteps = 0;
+    for (formula::Step<> const& recorded: ran.trace.steps)
+        if (recorded.kind == formula::StepKind::AttemptInput)
+        {
+            CHECK(recorded.inputSource == formula::ValueSource::ManuallyEntered);
+            ++typedSteps;
+        }
+    CHECK(typedSteps == 3);
+    // Measured, it says nothing, and records that it was measured.
+    auto const measured = formula::explain_retry(successive, allFour);
+    for (formula::Step<> const& recorded: measured.trace.steps)
+        if (recorded.kind == formula::StepKind::AttemptInput)
+            CHECK(recorded.inputSource == formula::ValueSource::Measured);
+    CHECK(formula::render_trace(measured.trace, { .maxSteps = 100 }).find("entered by hand") == std::string::npos);
+}
+
+TEST_CASE("an arithmetic failure outranks a missing determination, in the attempt and in the judgement", "[retry][recorded]")
+{
+    // 1 g / (k - k) divides by zero whatever is read beside it; the first
+    // determination is missing. A binary node evaluates both sides, and the
+    // failure is what the retry reports -- Failed, not NotRecorded.
+    constexpr auto zero = formula::attempt_number - formula::attempt_number;
+    constexpr auto firstMissing =
+        recorded_as(formula::Measured<Determination>::absent(), grams(439), grams(427), grams(457));
+    constexpr auto failingAttempt = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
+        formula::attempt_input<Determination> + formula::constant<unit::Gram>(rat(1)) / zero,
+        agree,
+        formula::Verdict { "repeat the test" },
+        { .reference = "Example Standard 12", .section = "7" });
+    constexpr auto inAttempt = formula::checked_evaluate_retry(failingAttempt, firstMissing);
+    STATIC_REQUIRE(!inAttempt.has_value());
+    STATIC_REQUIRE(inAttempt.error() == formula::RetryFailure { formula::ArithmeticError::DivisionByZero, 0 });
+
+    constexpr auto failingJudgement = formula::retry<Agreed, 4, formula::FirstJudged::AtFirstAttempt>(
+        formula::constant<unit::Gram>(rat(413, 10)),
+        formula::this_attempt<Agreed> >= formula::attempt_input<Determination>
+                                             + formula::constant<unit::Gram>(rat(1)) / zero,
+        formula::Verdict { "repeat the test" },
+        { .reference = "Example Standard 12", .section = "7" });
+    constexpr auto inJudgement = formula::checked_evaluate_retry(failingJudgement, firstMissing);
+    STATIC_REQUIRE(!inJudgement.has_value());
+    STATIC_REQUIRE(inJudgement.error() == formula::RetryFailure { formula::ArithmeticError::DivisionByZero, 0 });
+}
+
+TEST_CASE("a retry that reads its determinations both ways lists them once", "[retry][recorded][document]")
+{
+    // attempt_input<d> and series<d, 4> in a retry of 4 read one entry of the
+    // environment: one row, whichever the page meets first.
+    constexpr auto total = formula::sum(formula::series<Determination, 4>);
+    constexpr auto inputFirst = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
+        formula::attempt_input<Determination> + total - total,
+        agree,
+        formula::Verdict { "repeat the test" },
+        { .reference = "Example Standard 12" });
+    constexpr auto seriesFirst = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
+        total - total + formula::attempt_input<Determination>,
+        agree,
+        formula::Verdict { "repeat the test" },
+        { .reference = "Example Standard 12" });
+    for (formula::Documentation const& page: { formula::document(inputFirst), formula::document(seriesFirst) })
+    {
+        REQUIRE(page.symbols.size() == 2);
+        CHECK(page.symbols[1].symbol == "d");
+        CHECK(page.symbols[1].shape == formula::ValueShape::Series);
+        CHECK(page.symbols[1].length == 4);
+    }
+    // A series of another length is another row.
+    constexpr auto otherLength = formula::sum(formula::series<Determination, 3>);
+    constexpr auto both = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
+        formula::attempt_input<Determination> + otherLength - otherLength,
+        agree,
+        formula::Verdict { "repeat the test" },
+        { .reference = "Example Standard 12" });
+    CHECK(formula::document(both).symbols.size() == 3);
+}
+
+TEST_CASE("the walk behind attempt_input's refusals finds it however deep", "[retry][recorded]")
+{
+    // The walk behind the refusal finds it however deep.
+    STATIC_REQUIRE(formula::detail::readsAttemptInput<decltype(formula::attempt_input<Determination> * rat(2))>);
+    STATIC_REQUIRE(!formula::detail::readsAttemptInput<decltype(formula::previous_attempt<Agreed> * rat(2))>);
+    STATIC_REQUIRE(formula::detail::readsAttemptInput<decltype(formula::documented(
+                       formula::attempt_input<Determination>, { .reference = "Example Standard 12" }))>);
 }

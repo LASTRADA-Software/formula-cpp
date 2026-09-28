@@ -2227,6 +2227,13 @@ namespace detail
         lineText += step_expression(recorded);
         if (!recorded.operands.empty())
             lineText += " = " + operand_reference(recorded.operands.front());
+        // An attempt that read a determination nobody recorded says so once:
+        // as its value when it has none -- the determination's own line reads
+        // the same -- and after its value when only its judgement read one.
+        bool const notRecorded = retryLine.attempt != nullptr && !recorded.error.has_value()
+                                 && retryLine.attempt->judgement == AttemptJudgement::NotRecorded;
+        if (notRecorded && !recorded.value.has_value())
+            return lineText + " = (not recorded)";
         lineText += " = " + step_value_text(recorded);
         if (retryLine.attempt == nullptr || recorded.error.has_value())
             return lineText;
@@ -2235,7 +2242,7 @@ namespace detail
             return lineText + "; not judged";
         // Before an absent value's "cannot be judged": what was missing is a
         // recorded determination, not a comparison.
-        if (judged == AttemptJudgement::NotRecorded)
+        if (notRecorded)
             return lineText + "; not recorded";
         // An absent value: nothing was compared.
         if (!recorded.value.has_value())
@@ -2436,9 +2443,13 @@ namespace detail
         if (recorded.kind == StepKind::PreviousAttempt && recorded.error == ArithmeticError::DomainError)
             return step_expression(recorded) + " = previous attempt: none before attempt 1";
         // A determination nobody recorded: not "not measured", which would
-        // say a measurement was due and missed rather than never entered.
+        // say a measurement was due and missed rather than never entered --
+        // unless a person typed the series in and left it empty, which reads
+        // as a variable typed in empty does.
         if (recorded.kind == StepKind::AttemptInput && !recorded.error.has_value() && !recorded.value.has_value())
-            return step_expression(recorded) + " = (not recorded)";
+            return step_expression(recorded)
+                   + (recorded.inputSource == ValueSource::ManuallyEntered ? " = (entered by hand as empty)"
+                                                                           : " = (not recorded)");
         OpaqueLine const opaqueLine = opaque_line_of(trace, stepIndex);
         // An opaque call's line is its outputs, and ends saying its inside is
         // not shown; an output's names the output.
@@ -2537,8 +2548,8 @@ namespace detail
         // measured is what an input is unless told otherwise. After a comma,
         // not in a bracket: it is a plain statement about where the number
         // came from, not a clause qualifying how it was computed.
-        else if (recorded.kind == StepKind::Variable && recorded.inputSource == ValueSource::ManuallyEntered
-                 && !enteredButEmpty)
+        else if ((recorded.kind == StepKind::Variable || recorded.kind == StepKind::AttemptInput)
+                 && recorded.inputSource == ValueSource::ManuallyEntered && !enteredButEmpty)
             annotation = ", entered by hand";
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
