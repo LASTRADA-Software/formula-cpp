@@ -468,12 +468,12 @@ bin(s(i), 0 to under 127 m, 127 to under 197 m, 197 to under 331 m) / sum(bin(s(
 6. #2 / #5 = 2/7; 2/7; 3/7
 ```
 
-The fourth particle measured 331 m instead: the last class's high bound, in no class. A miss is not dropped, and the step names the observation. The division then relays the failure without a position, and names only the operand it evaluated: its divisor was never reached, so the line reads `/ #2`:
+The fourth particle measured 331 m instead: the last class's high bound, in no class. A miss is not dropped, and the step names the observation. The division then relays the failure without a position. Its divisor was never reached, so the line names the counts it evaluated and says so in the divisor's place, `#2 / (not evaluated)`:
 
 ```
 1. s = 103 m; 127 m; 163 m; 331 m; 113 m; 197 m; 241 m
 2. bin(#1) = argument outside the domain of the operation at observation 4 [331 m in no class; the classes cover 0 to under 331 m]
-3. / #2 = argument outside the domain of the operation
+3. #2 / (not evaluated) = argument outside the domain of the operation
 ```
 
 ## Worked statistics: a mean with its spread, and the mean after rejecting outliers

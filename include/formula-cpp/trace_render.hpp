@@ -269,25 +269,54 @@ namespace detail
         return "#" + std::to_string(stepIndex + 1);
     }
 
-    /// The infix spelling of a binary step.
+    /// The infix spelling of a binary step, `#1 / #2`, with each side where
+    /// it stood even when it has no step to name (`Step::leftOperand`,
+    /// `Step::rightOperand`):
     ///
-    /// Falls back to prefix form when fewer than two operands were recorded.
-    /// A genuine short circuit -- the left operand failed, so the evaluator
-    /// never dispatched the right one -- leaves exactly **one** recorded
-    /// operand, not zero: dividing by zero itself only happens after both
-    /// sides have run, so a real `Divide` that fails this way always has two.
-    /// The one operand named is then the **left** one, the operand that
-    /// failed: `+ #5 = division by zero` means "#5 failed, and the right side
-    /// was never evaluated", though it can read as "something plus #5". The
-    /// elementwise steps (`ElementwiseAdd` and the rest) share this spelling,
-    /// and `trace_render_tests.cpp` pins it for one.
-    /// Zero operands is rarer still: it takes both children being untraced
-    /// extension-point nodes (`sink.hpp`) that produced no step of their own
-    /// to consume. A `Divide` with nothing recorded therefore renders as a
-    /// bare `/`.
+    ///  - `#5 / (not evaluated)`: a genuine short circuit -- the left operand
+    ///    failed, so the evaluator never dispatched the right one. The one
+    ///    operand is the left, the one that failed; dividing by zero itself
+    ///    happens only after both sides have run, so a `Divide` that fails
+    ///    that way names two.
+    ///  - `#1 + (untraced)`, `(untraced) + (not evaluated)`: a side evaluated
+    ///    by a consumer's node that records no step of its own (`sink.hpp`).
+    ///
+    /// The elementwise steps (`ElementwiseAdd` and the rest) share this
+    /// spelling. When the sides do not account for the operands claimed --
+    /// a step built by hand, or an untraced left whose node forwarded the
+    /// sink -- or a side is `NotEvaluated` on a step that did not fail, it
+    /// names the operands as claimed: in infix form when there
+    /// are two, and otherwise in prefix form, `/ #5`, or a bare `/` when
+    /// there are none.
     template <typename Rep>
     [[nodiscard]] std::string binary_expression(Step<Rep> const& step, std::string_view operatorText)
     {
+        std::size_t const sidesRecorded = static_cast<std::size_t>(step.leftOperand == OperandSide::Recorded)
+                                          + static_cast<std::size_t>(step.rightOperand == OperandSide::Recorded);
+        // A side never evaluated means the step failed; a step that holds a
+        // value says otherwise, and its sides are not taken at their word.
+        bool const claimsShortCircuit =
+            step.leftOperand == OperandSide::NotEvaluated || step.rightOperand == OperandSide::NotEvaluated;
+        if (sidesRecorded < 2 && sidesRecorded == step.operands.size()
+            && (!claimsShortCircuit || step.error.has_value()))
+        {
+            std::size_t named = 0;
+            auto const sideText = [&](OperandSide side) -> std::string {
+                switch (side)
+                {
+                    case OperandSide::Recorded:
+                        return operand_reference(step.operands[named++]);
+                    case OperandSide::Untraced:
+                        return "(untraced)";
+                    case OperandSide::NotEvaluated:
+                        return "(not evaluated)";
+                }
+                return "(unknown)";
+            };
+            std::string const leftText = sideText(step.leftOperand);
+            return leftText + " " + std::string { operatorText } + " " + sideText(step.rightOperand);
+        }
+
         if (step.operands.size() >= 2)
             return operand_reference(step.operands[0]) + " " + std::string { operatorText } + " "
                    + operand_reference(step.operands[1]);
@@ -1855,6 +1884,22 @@ namespace detail
         return valueText;
     }
 
+    /// A deviation from the mean or its limit, @p si, as `rejection_value_text`
+    /// shows it -- in the sample's unit when a difference can be shown in it
+    /// (`detail::borrowable`), and otherwise in the coherent one: a deviation
+    /// of Celsius readings is a difference, 106/25 kelvin, and in degrees
+    /// Celsius it would read as a reading, off by the offset. Squared, in the
+    /// coherent unit's square likewise, as the deviation beside it is.
+    [[nodiscard]] inline std::string deviation_text(Step<Rational> const& recorded, Rational si, bool squared)
+    {
+        if (detail::borrowable(recorded.unit))
+            return rejection_value_text(recorded, si, squared);
+        Step<Rational> differenceShape {};
+        differenceShape.dimension = recorded.dimension;
+        differenceShape.unit = coherent(recorded.dimension);
+        return rejection_value_text(differenceShape, si, squared);
+    }
+
     /// `element 4 of 6`, or `elements 4 and 6 of 6`, or `elements 2, 4 and 6
     /// of 6` -- positions counted from one, as every text shows them; with
     /// @p ofObservations, `observation 4 of 6` and the rest.
@@ -1934,11 +1979,11 @@ namespace detail
                         ? "gap / range = " + number_text(*rejectionRecord->statistic) + comparison
                               + number_text(*rejectionRecord->limit) + " (gap to range)"
                     : rejectionRecord->squared
-                        ? "(x - mean)^2 = " + rejection_value_text(recorded, *rejectionRecord->statistic, true) + comparison
-                              + "limit^2 * s^2 = " + rejection_value_text(recorded, *rejectionRecord->limit, true)
+                        ? "(x - mean)^2 = " + deviation_text(recorded, *rejectionRecord->statistic, true) + comparison
+                              + "limit^2 * s^2 = " + deviation_text(recorded, *rejectionRecord->limit, true)
                               + " (deviation in standard deviations)"
-                        : "abs(x - mean) = " + rejection_value_text(recorded, *rejectionRecord->statistic, false)
-                              + comparison + rejection_value_text(recorded, *rejectionRecord->limit, false)
+                        : "abs(x - mean) = " + deviation_text(recorded, *rejectionRecord->statistic, false)
+                              + comparison + deviation_text(recorded, *rejectionRecord->limit, false)
                               + " (deviation from mean)";
                 return "rejected "
                        + elements_text({ *rejectionRecord->position },

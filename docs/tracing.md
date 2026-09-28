@@ -278,8 +278,36 @@ not that `kg2` and `kg2/m3` are awkward to spell. `coherent()`
 whatever its dimension: a computed *mass* prints no `kg` either, nor a
 computed length its `m`. A compound dimension is simply the case where the
 absence is most obvious, since there is no everyday symbol to miss; the
-behaviour itself applies uniformly to anything the evaluator computed rather
-than declared.
+behaviour itself applies to anything the evaluator computed rather than
+declared, with these exceptions, each of which takes its unit off a step it
+read:
+
+- A step that passes a value on unchanged -- a documented step, a
+  jurisdiction's replacement, a variant's selection, a read from another
+  record -- states it in the unit of the step it wraps, below.
+- A value that is a point on its operand's scale -- a mean, a pass's mean, a
+  rejected determination -- reads in that operand's unit when it has a
+  symbol, offset or not: a mean of Celsius readings is a Celsius reading.
+- A curve reads its points and values in the units of the steps it pairs, and
+  a value read off it in its values' unit.
+- A sum, a range, a running total and a series scaled by a pure number read in
+  their series' unit, and a rejection's deviation from the mean in its
+  sample's, when that unit has a symbol and no offset
+  ([Series and grading curves](series.md)).
+- An opaque output reads in an input's unit, or a quotient of two, under the
+  same rule ([Opaque operations and bounded retry](opaque-and-retry.md)).
+
+A binary step whose left operand failed never evaluated its right one, and
+says so where the right operand would stand:
+
+```
+5. #1 / #4 = division by zero
+6. #5 / (not evaluated) = division by zero
+```
+
+(`test/trace_render_tests.cpp`, `"a binary step names the side that failed,
+the side never evaluated and a side that recorded no step"`.) A side computed
+by a consumer's node that records no step of its own reads `(untraced)`.
 
 A citation computes nothing, so a documented step states its value exactly as
 the line it names does -- the same number, in the same unit and spelling. Over

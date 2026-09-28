@@ -344,10 +344,11 @@ TEST_CASE("a binning's miss names the observation, one-based, its value and the 
     CHECK(trace.steps.back().failedElement == std::optional<std::size_t> { 3 });
 
     // Divided by 7, the failure is relayed with no position; the 7 was never
-    // evaluated, so the step names only the counts (`binary_expression`).
+    // evaluated, so the step names the counts and says so in the 7's place
+    // (`binary_expression`).
     formula::Trace<> relayed {};
     (void) formula::checked_evaluate_series<Share>(counted / rat(7), missed, formula::RecordingSink<> { relayed });
     CHECK(formula::render_trace(relayed, { .maxSteps = 30 })
-              .ends_with("3. / #2 = argument outside the domain of the operation\n"));
+              .ends_with("3. #2 / (not evaluated) = argument outside the domain of the operation\n"));
     CHECK(!relayed.steps.back().failedElement.has_value());
 }

@@ -41,6 +41,9 @@ struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", u
 struct Share: formula::Quantity<Share, "s", "share passing a screen", unit::One>
 {
 };
+struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
+{
+};
 
 constexpr formula::BreakpointTable<5> screens {
     breakpoint(103), breakpoint(127), breakpoint(163), breakpoint(197), breakpoint(241)
@@ -557,6 +560,28 @@ TEST_CASE("a curve step shows its pairs, and an interpolation names its segment"
              "2. p = 894/25 %; 1154/25 %; 1574/25 %; 1764/25 %; 2444/25 %\n"
              "3. curve(#1, #2) = 103 m: 894/25 %; 127 m: 1154/25 %; ... 3 more\n"
              "... 2 further steps not shown\n");
+}
+
+TEST_CASE("a curve over a series scaled by a pure number, and a value read off it, read in the series' unit",
+          "[curve][trace]")
+{
+    // 137, 213, 293, 347 and 419 g retained, times 3/2. At 173 m, 5/17 of the
+    // way from 163 to 197 m: 879/2 + 81 * 5/17 = 15753/34 g.
+    constexpr auto masses = formula::environment(formula::measured_series<Retained>(
+        m<Retained>(137), m<Retained>(213), m<Retained>(293), m<Retained>(347), m<Retained>(419)));
+    constexpr auto scaled =
+        formula::curve(formula::domain<unit::Metre, screens>, formula::series<Retained, 5> * formula::number(rat(3, 2)));
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Retained>(
+        formula::interpolate_at(scaled, metres(173)), masses, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. 103 m; 127 m; 163 m; 197 m; 241 m\n"
+             "2. m_r = 137 g; 213 g; 293 g; 347 g; 419 g\n"
+             "3. 3/2\n"
+             "4. #2 * #3 = 411/2 g; 639/2 g; 879/2 g; 1041/2 g; 1257/2 g\n"
+             "5. curve(#1, #4) = 103 m: 411/2 g; 127 m: 639/2 g; 163 m: 879/2 g; 197 m: 1041/2 g; 241 m: 1257/2 g\n"
+             "6. 173 m\n"
+             "7. interpolate(#5, at #6) = 15753/34 g [between 163 and 197 m]\n");
 }
 
 TEST_CASE("an interpolation on a point, and a miss, say so in the trace", "[curve][trace]")

@@ -1934,11 +1934,31 @@ namespace series_trace
     struct Stockpile: formula::Quantity<Stockpile, "m_p", "stockpile mass", unit::Tonne>
     {
     };
+    /// A reading on an offset scale: each is a point on the Celsius scale,
+    /// while a sum or a difference of them is none.
+    struct Reading: formula::Quantity<Reading, "T_r", "a temperature reading", unit::Celsius>
+    {
+    };
+    /// A thousandth of a metre the author gave no symbol: a value shown in it
+    /// could not say what scale it is on.
+    inline constexpr formula::Unit UnnamedMillimetre { .dimension = formula::dim::Length,
+                                                       .magnitudeNumerator = 1,
+                                                       .magnitudeDenominator = 1000,
+                                                       .decimals = 1 };
+    struct Gap: formula::Quantity<Gap, "w", "a gap in an unnamed unit", UnnamedMillimetre>
+    {
+    };
 
     [[nodiscard]] constexpr formula::Measured<Retained> retained(std::int64_t grams)
     {
         return formula::Measured<Retained> { formula::Rational { grams } };
     }
+
+    /// 23.7, 41.3 and 37.9 degrees Celsius.
+    inline constexpr auto readings = formula::environment(
+        formula::measured_series<Reading>(formula::Measured<Reading> { formula::Rational { 237, 10 } },
+                                          formula::Measured<Reading> { formula::Rational { 413, 10 } },
+                                          formula::Measured<Reading> { formula::Rational { 379, 10 } }));
 
     inline constexpr auto inputs = formula::environment(
         formula::measured_series<Retained>(
@@ -2086,6 +2106,49 @@ TEST_CASE("an elementwise step names its operands, and a broadcast scalar appear
     CHECK(trace.steps[2].operands == std::vector<std::size_t> { 0, 1 });
 }
 
+TEST_CASE("a series scaled by a pure number reads in the series' unit", "[series][trace]")
+{
+    // 137, 213 and 293 g, times 3/2 and divided by 3/2: each still a mass in
+    // grams, and shown in grams rather than in unlabelled kilograms --
+    // whichever side the number stands on.
+    constexpr auto masses =
+        formula::environment(formula::measured_series<series_trace::Retained>(
+            series_trace::retained(137), series_trace::retained(213), series_trace::retained(293)));
+    constexpr auto retained = formula::series<series_trace::Retained, 3>;
+    constexpr auto factor = formula::number(formula::Rational { 3, 2 });
+    auto const derivation = [&](auto const& seriesNode) {
+        formula::Trace<> trace {};
+        (void) formula::detail::dispatch_series<formula::Rational>(seriesNode, masses, formula::RecordingSink<> { trace });
+        return formula::render_trace(trace, { .maxSteps = 30 });
+    };
+    CHECK(derivation(retained * factor)
+          == "1. m_r = 137 g; 213 g; 293 g\n"
+             "2. 3/2\n"
+             "3. #1 * #2 = 411/2 g; 639/2 g; 879/2 g\n");
+    CHECK(derivation(factor * retained)
+          == "1. 3/2\n"
+             "2. m_r = 137 g; 213 g; 293 g\n"
+             "3. #1 * #2 = 411/2 g; 639/2 g; 879/2 g\n");
+    CHECK(derivation(retained / factor)
+          == "1. m_r = 137 g; 213 g; 293 g\n"
+             "2. 3/2\n"
+             "3. #1 / #2 = 274/3 g; 142 g; 586/3 g\n");
+    // A number divided by a series is no mass; it keeps the coherent unit.
+    CHECK(derivation(factor / retained)
+          == "1. 3/2\n"
+             "2. m_r = 137 g; 213 g; 293 g\n"
+             "3. #1 / #2 = 1500/137; 500/71; 1500/293\n");
+
+    // Celsius readings doubled are no readings: 593.7 K is not 2 x 23.7 degC.
+    formula::Trace<> doubled {};
+    (void) formula::detail::dispatch_series<formula::Rational>(formula::series<series_trace::Reading, 3>
+                                                                   * formula::number(formula::Rational { 2 }),
+                                                               series_trace::readings,
+                                                               formula::RecordingSink<> { doubled });
+    REQUIRE(doubled.steps.size() == 3);
+    CHECK(formula::render_trace(doubled, { .maxSteps = 30 }).ends_with("3. #1 * #2 = 5937/10; 6289/10; 6221/10\n"));
+}
+
 TEST_CASE("a per-element constant and a negation each record one step with every element", "[series][trace]")
 {
     // Grams, not the coherent kilogram: a line that printed the stored SI
@@ -2122,11 +2185,12 @@ TEST_CASE("a failing scalar operand is reported without a position", "[series][t
     CHECK(text.find("at element") == std::string::npos);
 }
 
-TEST_CASE("an elementwise step whose left operand failed names only that operand, in prefix form", "[series][trace]")
+TEST_CASE("an elementwise step whose left operand failed says its right one was not evaluated", "[series][trace]")
 {
-    // Inherited from the scalar operators (binary_expression): the right side
-    // is never evaluated, so the line names one operand -- the LEFT one, #5,
-    // which failed -- as `* #5`. Pinned so the spelling is a decision.
+    // As for the scalar operators (binary_expression): the right side is
+    // never evaluated, so the line names the left operand, #5, which failed,
+    // in its place, and says what stands in the right one's -- never `* #5`,
+    // which reads as something unseen times #5.
     constexpr auto screens = formula::environment(
         formula::measured_series<series_trace::Retained>(series_trace::retained(130), series_trace::retained(210)),
         formula::Measured<series_trace::TotalMass> { formula::Rational { 1250 } });
@@ -2140,7 +2204,53 @@ TEST_CASE("an elementwise step whose left operand failed names only that operand
              "3. m_r = 130 g; 210 g\n"
              "4. #2 - #3 = 0; 0\n"
              "5. #1 / #4 = division by zero at element 1\n"
-             "6. * #5 = division by zero at element 1\n");
+             "6. #5 * (not evaluated) = division by zero at element 1\n");
+}
+
+TEST_CASE("a binary step names the side that failed, the side never evaluated and a side that recorded no step",
+          "[trace-render]")
+{
+    // The left side fails, so the right is never evaluated: `#4 / (not
+    // evaluated)`, the failed operand where it stood.
+    constexpr auto sample = var<SampleMass>;
+    CHECK(derivationOf(sample / (sample - sample) / sample,
+                       formula::environment(formula::Measured<SampleMass> { formula::Rational { 137 } }))
+          == "1. m_s = 137 g\n"
+             "2. m_s = 137 g\n"
+             "3. m_s = 137 g\n"
+             "4. #2 - #3 = 0\n"
+             "5. #1 / #4 = division by zero\n"
+             "6. #5 / (not evaluated) = division by zero\n");
+
+    // A consumer's node that records no step: on the right, after a left
+    // operand that was evaluated; on the left, where its failure left the
+    // right never evaluated.
+    auto const diameter = formula::environment(formula::Measured<Diameter> { formula::Rational { 263 } });
+    CHECK(derivationOf(var<Diameter> + UntracedLength {}, diameter)
+          == "1. d = 263 mm\n"
+             "2. #1 + (untraced) = division by zero\n");
+    CHECK(derivationOf(UntracedLength {} + var<Diameter>, diameter)
+          == "1. (untraced) + (not evaluated) = division by zero\n");
+    // A recorded left that failed, before an untraced right: the right was
+    // never evaluated, which is not the same as evaluated untraced.
+    constexpr auto d = var<Diameter>;
+    CHECK(lines(derivationOf(d / (d - d) * d + UntracedLength {}, diameter)).back()
+          == "7. #6 + (not evaluated) = division by zero");
+
+    // A side set by hand renders as set, but never a side "not evaluated"
+    // under a value that was computed: such a step names its operands as
+    // claimed.
+    formula::Trace<> forged {};
+    formula::Step<> three {};
+    three.kind = formula::StepKind::Constant;
+    three.unit = formula::coherent(formula::dim::Scalar);
+    three.value = formula::Rational { 3 };
+    formula::Step<> quotient = three;
+    quotient.kind = formula::StepKind::Divide;
+    quotient.operands = { 0 };
+    quotient.rightOperand = formula::OperandSide::NotEvaluated;
+    forged.steps = { three, quotient };
+    CHECK(formula::render_trace(forged, { .maxSteps = 10 }) == "1. 3\n2. / #1 = 3\n");
 }
 
 TEST_CASE("a running total is one step naming its end, in the operand's unit", "[series][trace]")
@@ -2185,6 +2295,51 @@ TEST_CASE("a sum is a single-value step whose operand is the series step", "[ser
     CHECK(explained.trace.steps[1].value == formula::Rational { 803, 1000 }); // one value, in coherent SI
     CHECK(explained.trace.steps[1].elements.empty());
     CHECK(explained.trace.steps[1].operands == std::vector<std::size_t> { 0 });
+}
+
+TEST_CASE("a sum, a range and a running total of Celsius readings read in the coherent unit, not as readings",
+          "[series][trace]")
+{
+    // 296.85, 314.45 and 311.05 K. Their sum, 922.35 K, and their range,
+    // 17.6 K, are no points on the Celsius scale: shown in degrees Celsius
+    // they would read 649.2 and -255.55 degC, each off by the offset. A mean
+    // is a point on the scale, 307.45 K, and reads as the readings do.
+    std::string const degreesCelsius = "\xc2\xb0" "C";
+    std::string const readingsLine = "1. T_r = 237/10 " + degreesCelsius + "; 413/10 " + degreesCelsius + "; 379/10 "
+                                     + degreesCelsius + "\n";
+    constexpr auto readings = formula::series<series_trace::Reading, 3>;
+    CHECK(derivationOf(formula::sum(readings), series_trace::readings) == readingsLine + "2. sum(#1) = 18447/20\n");
+    CHECK(derivationOf(formula::sample_range(readings), series_trace::readings)
+          == readingsLine + "2. sample_range(#1) = 88/5\n");
+    CHECK(derivationOf(formula::sample_mean(readings), series_trace::readings)
+          == readingsLine + "2. sample_mean(#1) = 343/10 " + degreesCelsius + "\n");
+
+    formula::Trace<> running {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::cumulative<formula::CumulativeDirection::FromFirst>(readings),
+        series_trace::readings,
+        formula::RecordingSink<> { running });
+    CHECK(formula::render_trace(running, { .maxSteps = 30 })
+          == readingsLine + "2. cumulative(#1, from first) = 5937/20; 6113/10; 18447/20\n");
+    REQUIRE(running.steps.size() == 2);
+    CHECK(running.steps[1].unit.offsetNumerator == 0);
+}
+
+TEST_CASE("a sum and a mean of a series in a unit with no symbol read in the coherent unit", "[series][trace]")
+{
+    // 0.137 and 0.263 m, entered as 137 and 263 of an unnamed thousandth of
+    // a metre. The sum borrows no unit it cannot name: 0.4 m, in the coherent
+    // unit every unlabelled computed value is shown in.
+    constexpr auto gaps = formula::environment(
+        formula::measured_series<series_trace::Gap>(formula::Measured<series_trace::Gap> { formula::Rational { 137 } },
+                                                    formula::Measured<series_trace::Gap> { formula::Rational { 263 } }));
+    CHECK(derivationOf(formula::sum(formula::series<series_trace::Gap, 2>), gaps)
+          == "1. w = 137; 263\n"
+             "2. sum(#1) = 2/5\n");
+    // Nor does a mean, which would borrow an offset unit: 0.2 m.
+    CHECK(derivationOf(formula::sample_mean(formula::series<series_trace::Gap, 2>), gaps)
+          == "1. w = 137; 263\n"
+             "2. sample_mean(#1) = 1/5\n");
 }
 
 TEST_CASE("a series with nothing measured traces as absence at every element, and never as zero", "[series][trace]")

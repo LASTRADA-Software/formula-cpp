@@ -514,6 +514,30 @@ enum class Branch : std::uint8_t
     return "unknown branch";
 }
 
+/// What stands on one side of a binary step -- `Add` to `Divide` and their
+/// elementwise twins -- so that a line with fewer than two operands still
+/// says which side each one is, and what took the other's place.
+///
+/// Zero-initialises to `Recorded`, which is right for both sides of every
+/// step with two operands, and for every step that is not binary; a step
+/// built by hand therefore renders as it did before these existed.
+///
+/// `RecordingSink` fills `Step::leftOperand` and `Step::rightOperand` in;
+/// like every other field of a `Step`, they are public data, and a side set
+/// by hand renders as set -- except `NotEvaluated` on a step that holds a
+/// value, which contradicts itself and renders the operands as claimed.
+enum class OperandSide : std::uint8_t
+{
+    /// A step of its own, in `Step::operands`.
+    Recorded,
+    /// Evaluated, by a consumer's node that records no step of its own
+    /// (`sink.hpp`), so no operand stands for it.
+    Untraced,
+    /// Never evaluated: the left side failed first, and the right cannot
+    /// change an answer that is already an error (`evaluate.hpp`).
+    NotEvaluated,
+};
+
 /// Whose failure a lookup step is carrying, and of what kind.
 ///
 /// **The one field this whole surface exists for.** All three lookup kinds
@@ -1299,6 +1323,21 @@ struct Step
     /// a binning). Zero-initialises to `ResultElement`, the site of every
     /// other failure.
     FailureSite failureSite {};
+
+    /// For a binary step (`Add` to `Divide`, `ElementwiseAdd` to
+    /// `ElementwiseDivide`): what stands on its left side. `Recorded` on
+    /// both sides, as zero-initialised, when both have a step in `operands`.
+    /// Otherwise the recorder says which side the one operand is -- `#5 /
+    /// (not evaluated)` for a left side that failed, never the `/ #5` that
+    /// reads as something unseen divided by #5 -- whenever the node's types
+    /// let it know: a consumer's node that forwards the sink may leave steps
+    /// of its own operands among the claimed ones, and then both stay
+    /// `Recorded` and the line names the operands as claimed.
+    OperandSide leftOperand {};
+
+    /// For a binary step: what stands on its right side, as `leftOperand`
+    /// says for the left -- `NotEvaluated` when the left failed first.
+    OperandSide rightOperand {};
 };
 
 /// The rows one conformity step judged its elements against, in the unit
@@ -1972,11 +2011,34 @@ namespace detail
         static constexpr StepKind value = StepKind::CurveSplice;
     };
 
-    /// The unit a total is shown in: its operand step's, when it claimed one
-    /// of its own dimension -- a total of grams reads in grams, as the masses
-    /// summed do -- and @p fallback otherwise. Read off the operand's step,
-    /// never off a type, so a computed operand's coherent unit carries over
-    /// too.
+    /// Whether a value computed from values shown in @p shownUnit -- a sum, a
+    /// range, a product by a pure number -- may be shown in it too. Not when
+    /// it has an offset: such a value is no point on the unit's scale -- the
+    /// sum of three Celsius readings is no reading, nor is their range -- and
+    /// shown in degrees Celsius it would be off by the offset. Not when it has
+    /// no symbol: the value could not say what scale it is on, and would read
+    /// as the coherent unit every unlabelled computed value is shown in. The
+    /// value then reads in the coherent unit, as every computed value does.
+    [[nodiscard]] constexpr bool borrowable(Unit const& shownUnit) noexcept
+    {
+        return shownUnit.offsetNumerator == 0 && !view(shownUnit.symbolText).empty();
+    }
+
+    /// Whether a value that is a point on @p shownUnit's scale -- a mean of
+    /// values shown in it, or one of them -- may be shown in it too: when it
+    /// has a symbol, offset or not. A mean of Celsius readings is a Celsius
+    /// reading; a value in a unit with no symbol could not say what scale it
+    /// is on, and reads in the coherent unit, as `borrowable` rules.
+    [[nodiscard]] constexpr bool borrowable_for_a_point(Unit const& shownUnit) noexcept
+    {
+        return !view(shownUnit.symbolText).empty();
+    }
+
+    /// The unit a total or a range is shown in: its operand step's, when it
+    /// claimed one of its own dimension that is `borrowable` -- a total of
+    /// grams reads in grams, as the masses summed do -- and @p fallback
+    /// otherwise. Read off the operand's step, never off a type, so what
+    /// that step shows is what carries over.
     template <typename Rep>
     [[nodiscard]] constexpr Unit operand_unit_or(std::vector<Step<Rep>> const& steps,
                                                  std::vector<std::size_t> const& operands,
@@ -1986,8 +2048,93 @@ namespace detail
         if (operands.size() != 1)
             return fallback;
         Unit const operandUnit = steps[operands.front()].unit;
-        return operandUnit.dimension == dimension ? operandUnit : fallback;
+        return operandUnit.dimension == dimension && borrowable(operandUnit) ? operandUnit : fallback;
     }
+
+    /// Whether `RecordingSink` records a step of its own for @p N, a single
+    /// value's node or a series': `RecordsStep`, extended to the series kinds
+    /// `SeriesStepKindOf` describes.
+    template <typename N>
+    concept RecordsOwnStep = RecordsStep<N> || requires { SeriesStepKindOf<N>::value; };
+
+    /// The two operand types of a binary node, scalar or elementwise.
+    /// Undefined for every other kind.
+    template <typename N>
+    struct BinarySides;
+
+    template <BinaryOperator Op, Node Left, Node Right>
+    struct BinarySides<BinaryNode<Op, Left, Right>>
+    {
+        using left = Left;
+        using right = Right;
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct BinarySides<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        using left = Left;
+        using right = Right;
+    };
+
+    /// Fills in `Step::leftOperand` and `Step::rightOperand` of a binary
+    /// step whose operands are claimed. Each operand of a kind this sink
+    /// records a step for leaves exactly one claimed step when it is
+    /// evaluated, so the count claimed says which sides ran:
+    ///
+    ///  - both sides record one: a single operand is the left's, which
+    ///    failed, and the right was never evaluated;
+    ///  - only the left records one: a single operand is the left's, and the
+    ///    right was evaluated untraced unless the left failed;
+    ///  - only the right records one: none claimed means the left, untraced,
+    ///    failed, and the right was never evaluated.
+    ///
+    /// Anything else leaves both `Recorded`: in particular one operand
+    /// under an untraced left, which may be the right's own step or a step
+    /// the left's node left behind by forwarding the sink.
+    template <typename N, typename Rep>
+    void record_operand_sides(Step<Rep>& binaryStep, std::vector<Step<Rep>> const& steps)
+    {
+        constexpr bool leftRecords = RecordsOwnStep<typename BinarySides<N>::left>;
+        constexpr bool rightRecords = RecordsOwnStep<typename BinarySides<N>::right>;
+        std::size_t const claimed = binaryStep.operands.size();
+        if constexpr (leftRecords && rightRecords)
+        {
+            if (claimed == 1)
+                binaryStep.rightOperand = OperandSide::NotEvaluated;
+        }
+        else if constexpr (leftRecords)
+        {
+            if (claimed == 1)
+                binaryStep.rightOperand = steps[binaryStep.operands.front()].error.has_value() ? OperandSide::NotEvaluated
+                                                                                               : OperandSide::Untraced;
+        }
+        else if constexpr (rightRecords)
+        {
+            if (claimed == 0)
+            {
+                binaryStep.leftOperand = OperandSide::Untraced;
+                binaryStep.rightOperand = OperandSide::NotEvaluated;
+            }
+        }
+    }
+
+    /// Which operand of @p S, an elementwise binary node, its values are that
+    /// operand's scaled by a pure number -- 0 for the left, 1 for the right --
+    /// so that they read in its unit: the non-dimensionless side of a product
+    /// with exactly one dimensionless side, and the left of a quotient by a
+    /// dimensionless right. Empty for every other kind, and for a product of
+    /// two pure numbers, which says nothing about which one's unit it is in.
+    template <typename S>
+    inline constexpr std::optional<std::size_t> scaled_operand = std::nullopt;
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    inline constexpr std::optional<std::size_t> scaled_operand<ElementwiseBinaryNode<Op, Left, Right>> =
+        Op == BinaryOperator::Multiply && Left::dimension == dim::Scalar && !(Right::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 1 }
+        : (Op == BinaryOperator::Multiply || Op == BinaryOperator::Divide) && Right::dimension == dim::Scalar
+                && !(Left::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 0 }
+            : std::nullopt;
 
     template <typename Role, typename Requirement, Node Operand>
     struct StepKindOf<RecordScopeNode<Role, Requirement, Operand>>
@@ -2511,9 +2658,6 @@ namespace detail
         for (std::size_t const operandIndex: operands)
         {
             Step<Rep> const& inputStep = steps[operandIndex];
-            auto const borrowable = [](Unit const& shownUnit) noexcept {
-                return shownUnit.offsetNumerator == 0 && !view(shownUnit.symbolText).empty();
-            };
             if (borrowable(inputStep.unit))
                 shownIn.push_back(inputStep.unit);
             if ((inputStep.kind == StepKind::CurvePairing || inputStep.kind == StepKind::CurveSplice)
@@ -2863,12 +3007,14 @@ class RecordingSink
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             nodeStep.unit = N::unit;
         // A pass's mean reads in its sample's unit, as the pass line beside it
-        // does: grams for a series of masses, bare SI for a computed series.
+        // does: grams for a series of masses, bare SI for a computed series,
+        // and bare SI for a unit with no symbol (`detail::borrowable_for_a_point`).
         // The innermost rejection in progress is the one it is bound to.
         if constexpr (detail::StepKindOf<N>::value == StepKind::PassMean)
             if (!_trace->rejectionsInProgress.empty())
                 if (std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
-                    sampleStep.has_value() && *sampleStep < _trace->steps.size())
+                    sampleStep.has_value() && *sampleStep < _trace->steps.size()
+                    && detail::borrowable_for_a_point(_trace->steps[*sampleStep].unit))
                     nodeStep.unit = _trace->steps[*sampleStep].unit;
 
         if constexpr (namesQuantity)
@@ -2979,12 +3125,26 @@ class RecordingSink
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
                 nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
-        // A sum, a mean and a range read in their series' unit, which only
-        // the claimed operand step knows.
+        // A sum and a range read in their series' unit, which only the
+        // claimed operand step knows -- when it is one a sum or a difference
+        // can be shown in (`detail::borrowable`). A mean is a point on its
+        // series' scale, however that scale is offset, so it reads in the
+        // series' unit as the determinations do: a mean of Celsius readings
+        // is a Celsius reading, as a pass's mean is.
         if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum
-                      || detail::StepKindOf<N>::value == StepKind::SampleMean
                       || detail::StepKindOf<N>::value == StepKind::SampleRange)
             nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
+        else if constexpr (detail::StepKindOf<N>::value == StepKind::SampleMean)
+            if (nodeStep.operands.size() == 1)
+                if (Unit const sampleUnit = _trace->steps[nodeStep.operands.front()].unit;
+                    sampleUnit.dimension == nodeStep.dimension && detail::borrowable_for_a_point(sampleUnit))
+                    nodeStep.unit = sampleUnit;
+
+        // Which side a binary step's operand stood on, when it has one.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Add || detail::StepKindOf<N>::value == StepKind::Subtract
+                      || detail::StepKindOf<N>::value == StepKind::Multiply
+                      || detail::StepKindOf<N>::value == StepKind::Divide)
+            detail::record_operand_sides<N>(nodeStep, _trace->steps);
 
         // A read from another record is its operand's value, unchanged, so it
         // reads in the unit its operand's line does: `4 MPa` after a variable
@@ -3570,6 +3730,23 @@ class RecordingSink
         // no class.
         else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::Binning)
             detail::record_binning<S>(seriesStep, _trace->steps);
+        // Elementwise arithmetic says which side its operand stood on, when
+        // it has one; and a series scaled by a pure number reads in that
+        // series' unit, when a product can be shown in it
+        // (`detail::borrowable`) -- grams times 3/2 are grams.
+        else if constexpr (requires { typename detail::BinarySides<S>::left; })
+        {
+            detail::record_operand_sides<S>(seriesStep, _trace->steps);
+            // Only when each side records exactly one step of its own, so that
+            // the claimed steps are the two sides' and no forwarding node's.
+            if constexpr (detail::scaled_operand<S>.has_value()
+                          && detail::RecordsOwnStep<typename detail::BinarySides<S>::left>
+                          && detail::RecordsOwnStep<typename detail::BinarySides<S>::right>)
+                if (seriesStep.operands.size() == 2)
+                    if (Unit const scaledUnit = _trace->steps[seriesStep.operands[*detail::scaled_operand<S>]].unit;
+                        scaledUnit.dimension == S::dimension && detail::borrowable(scaledUnit))
+                        seriesStep.unit = scaledUnit;
+        }
 
         if (!result.has_value())
         {
@@ -3934,7 +4111,8 @@ class RecordingSink
   private:
     /// A rejection step of @p stepKind, in the dimension and unit of the
     /// rejection's sample -- its own step's, once known -- so that a mean or
-    /// a rejected value reads as the determinations do.
+    /// a rejected value reads as the determinations do; in the coherent unit
+    /// when the sample's has no symbol (`detail::borrowable_for_a_point`).
     [[nodiscard]] Step<Rep> rejection_step(StepKind stepKind) const
     {
         Step<Rep> rejectionStep {};
@@ -3946,8 +4124,10 @@ class RecordingSink
             std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
             if (sampleStep.has_value() && *sampleStep < _trace->steps.size())
             {
+                Unit const sampleUnit = _trace->steps[*sampleStep].unit;
                 rejectionStep.dimension = _trace->steps[*sampleStep].dimension;
-                rejectionStep.unit = _trace->steps[*sampleStep].unit;
+                rejectionStep.unit =
+                    detail::borrowable_for_a_point(sampleUnit) ? sampleUnit : coherent(rejectionStep.dimension);
             }
         }
         return rejectionStep;

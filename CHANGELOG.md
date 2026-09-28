@@ -199,3 +199,19 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   order drew up to five errors on clang++, one the library's message and the rest the compiler
   reading the failed check. Each now draws the one message on cl, clang-cl, clang++ and g++, the
   compilers the library is built and tested with.
+- A trace stated a sum, a range or a running total of readings in a unit with an offset in that
+  unit, as if it were a reading: the sum of 23.7, 41.3 and 37.9 °C read `3246/5 °C` and their
+  range `-5111/20 °C`, each off by the offset. A rejection's deviation from the mean did the same,
+  `abs(x - mean) = -26891/100 °C` for a deviation of 4.24 K. Each now reads in the coherent unit,
+  `18447/20`, `88/5` and `106/25` kelvin, as a difference of two readings does; a mean, which is a
+  reading, stays in degrees Celsius. A sum or a range no longer borrows a unit without a symbol
+  either, and the mean and a rejection's lines -- a pass's mean, a rejected value, a deviation --
+  follow the same rule: in a unit with no symbol they read in the coherent unit.
+- A binary step whose left operand failed named that operand alone, in prefix form: `/ #2` read as
+  something unseen divided by #2, where #2 was the dividend that failed and the divisor was never
+  evaluated. The line now reads `#2 / (not evaluated)`, and a side computed by a consumer's node that
+  records no step of its own reads `(untraced)`. `Step` gains `leftOperand` and `rightOperand`
+  (`OperandSide`), which say so.
+- A series multiplied or divided by a pure number was stated in coherent SI with no unit, `411/2000`
+  for 205.5 g, and so were a curve over it and a value read off that curve. Each now reads in the
+  series' unit, `411/2 g`, when that unit has a symbol and no offset.

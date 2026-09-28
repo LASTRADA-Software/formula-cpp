@@ -104,6 +104,33 @@ it reads in the **coherent unit**: the SI unit of its dimension, with no prefix
 plain fraction, so 447/1250 is 35.76 % and 6927/10625 is 27708/425 %. For a
 mass it is the kilogram.
 
+A few computed steps are still in their series' unit, and say so: a running
+total, a `sum` and a range read in the unit of the series they add up, and a
+series multiplied or divided by a pure number reads in that series' unit, as
+does a curve over it and a value read off that curve. Grams times 3/2 are
+grams:
+
+```text
+1. m_r = 137 g; 213 g; 293 g
+2. 3/2
+3. #1 * #2 = 411/2 g; 639/2 g; 879/2 g
+```
+
+Only a unit that can show the result is used. A sum of Celsius readings is no
+reading, nor is their range, a running total or a multiple, and in degrees
+Celsius each would be off by the offset, so each reads in the coherent unit,
+kelvin, as a difference of two readings does. A unit without a symbol is not
+used either, since the value could not say what scale it is on. A mean is a
+reading, so it stays in degrees Celsius. Over 23.7, 41.3 and 37.9 °C, the sum
+is 922.35 K, the range 17.6 K and the mean 34.3 °C:
+
+```text
+the readings: 1. T_r = 237/10 °C; 413/10 °C; 379/10 °C
+their sum: 2. sum(#1) = 18447/20
+their range: 2. sample_range(#1) = 88/5
+their mean: 2. sample_mean(#1) = 343/10 °C
+```
+
 ## "Map" is elementwise arithmetic
 
 There is no general `map(series, expression)`. What the library offers is
@@ -343,9 +370,10 @@ The position is the **observation's**, counted from one. In the API it is
 zero-based, and `SeriesFailure::site` says `FailureSite::InputObservation`, so
 a consumer cannot take it for the fourth count. An operation over the counts,
 such as the shares above, relays the failure without it, because it would name
-a count that is not at fault. Such a step names only the operand it evaluated
--- in the gallery's `/ #2`, the divisor was never reached. Binning a series
-instead of observations is refused:
+a count that is not at fault. Such a step names the operand it evaluated, and
+says what stands in the other's place: in the gallery's `#2 / (not
+evaluated)`, the divisor was never reached. Binning a series instead of
+observations is refused:
 
 ```
 static assertion failed: formula: binned counts raw observations into classes, and this is not a set of observations; the operand appears in this diagnostic as the template argument of RequireBinnedOfObservations -- read them with observations<Q, Capacity> and supply them with MeasuredObservations; a series already holds one value at each point of a domain, and a single value is one observation, not a set of them

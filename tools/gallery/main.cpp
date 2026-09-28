@@ -987,8 +987,8 @@ int main(int argc, char** argv)
 
     out << "The fourth particle measured 331 m instead: the last class's high bound, in no class. A miss is "
            "not dropped, and the step names the observation. The division then relays the failure without a "
-           "position, and names only the operand it evaluated: its divisor was never reached, so the line "
-           "reads `/ #2`:\n\n";
+           "position. Its divisor was never reached, so the line names the counts it evaluated and says so "
+           "in the divisor's place, `#2 / (not evaluated)`:\n\n";
 
     auto const oversized = formula::environment(formula::MeasuredObservations<ParticleSize, 8>(formula::Rational { 103 },
                                                                                                formula::Rational { 127 },
