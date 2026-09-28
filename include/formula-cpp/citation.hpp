@@ -72,7 +72,7 @@ struct DocumentedNode: NodeBase
     static constexpr Dimension dimension = Inner::dimension;
     /// Whether the wrapped expression was refused -- see
     /// `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Inner>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Inner>();
 };
 
 /// Attaches a citation: `documented(var<A> / var<B>, { .title = "…" })`.

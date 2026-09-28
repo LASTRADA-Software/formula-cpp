@@ -696,7 +696,7 @@ struct OpaqueCall
     /// Whether this call, its operation or one of its inputs was refused: then
     /// nothing downstream asks about its stand-in dimensions again, and its
     /// outputs are never evaluated.
-    static constexpr bool refused = !detail::RequireOpaqueCallValid<Op, Rational, Inputs...>::value;
+    static constexpr detail::RefusedFlag refused = !detail::RequireOpaqueCallValid<Op, Rational, Inputs...>::value;
 
     /// The dimension of each output, in the order the operation declares them.
     static constexpr std::array<Dimension, Op::outputs.size()> output_dimensions = detail::
@@ -811,7 +811,7 @@ struct OpaqueOutputNode: NodeBase
     /// Whether the call was refused (`OpaqueCall::refused`), or this position
     /// names no output: then every check over this node is silent
     /// (`detail::refused_already`), and it is never evaluated.
-    static constexpr bool refused = Call::refused || !(I < Call::operation::outputs.size());
+    static constexpr detail::RefusedFlag refused = Call::refused || !(I < Call::operation::outputs.size());
 };
 
 /// The output named @p Name of @p call: `opaque_output<"slope">(fit)`. An

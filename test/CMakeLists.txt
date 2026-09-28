@@ -2275,6 +2275,11 @@ formula_add_negative_test(retry_render_other_quantity
     "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
     EXPECT_COUNT 1
     REJECT "template arguments of RequireRetriedQuantity" "does not compute the dimension")
+# Only this library's node kinds can claim to be refused already.
+formula_add_negative_test(consumer_refused_member
+    "formula: the two sides of this addition or subtraction measure different dimensions"
+    EXPECT_COUNT 1
+    REJECT "no matching")
 formula_add_negative_test(retry_render_context_in_starting_value
     "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
     EXPECT_COUNT 1

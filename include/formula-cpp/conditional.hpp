@@ -91,7 +91,7 @@ struct WhenNode: NodeBase
     static constexpr Dimension dimension = Then::dimension;
     /// Whether the condition or either branch was refused -- see
     /// `detail::refused_already`.
-    static constexpr bool refused =
+    static constexpr detail::RefusedFlag refused =
         detail::refused_already<P>() || detail::refused_already<Then>() || detail::refused_already<Else>();
 };
 

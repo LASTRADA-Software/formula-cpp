@@ -119,7 +119,7 @@ struct DomainNode: SeriesNodeBase
     static constexpr BreakpointTable<Points.size()> points = Points;
     /// Whether the table was refused -- see `detail::refused_already`. A
     /// curve over it asks nothing more of it.
-    static constexpr bool refused = Points.size() == 0 || !breakpoint_table_is_well_formed(Points);
+    static constexpr detail::RefusedFlag refused = Points.size() == 0 || !breakpoint_table_is_well_formed(Points);
 };
 
 /// A method's points, declared once: `domain<unit::Millimetre, Screens>`. A
@@ -183,7 +183,7 @@ struct CurveNode: CurveNodeBase
     /// The dimension of its values: what an interpolation along it produces.
     static constexpr Dimension dimension = V::dimension;
     /// Whether this curve was refused, or holds a refused series.
-    static constexpr bool refused = operandsRefused || D::length != V::length;
+    static constexpr detail::RefusedFlag refused = operandsRefused || D::length != V::length;
 };
 
 /// Pairs @p domainSeries with @p valueSeries: `curve(domain<unit::Millimetre,
@@ -347,7 +347,7 @@ struct SpliceNode: CurveNodeBase
     /// The dimension of the values.
     static constexpr Dimension dimension = A::dimension;
     /// Whether this splice was refused, or holds a refused curve.
-    static constexpr bool refused =
+    static constexpr detail::RefusedFlag refused =
         operandsRefused || !(A::domainDimension == B::domainDimension) || !(A::dimension == B::dimension);
 };
 
@@ -448,7 +448,7 @@ struct InterpolateAlongNode: NodeBase
     /// The dimension of the curve's values.
     static constexpr Dimension dimension = C::dimension;
     /// Whether this interpolation was refused, or reads a refused curve.
-    static constexpr bool refused =
+    static constexpr detail::RefusedFlag refused =
         detail::refused_already<C>() || detail::refused_already<At>() || !(C::domainDimension == At::dimension);
 };
 

@@ -987,7 +987,7 @@ struct Retry
     /// From which attempt on it is judged.
     static constexpr FirstJudged firstJudged = J;
     /// Whether it was refused; then it is never evaluated.
-    static constexpr bool refused = !detail::RequireRetryValid<R, Max, J, Start, A, P>::value;
+    static constexpr detail::RefusedFlag refused = !detail::RequireRetryValid<R, Max, J, Start, A, P>::value;
 
     /// The starting value, or `NoStartingValue`.
     Start start;
@@ -1581,7 +1581,7 @@ namespace detail
     struct RefusedRetryValue: NodeBase
     {
         static constexpr Dimension dimension = D;
-        static constexpr bool refused = true;
+        static constexpr detail::RefusedFlag refused = true;
     };
 
     /// The refused value arithmetic over @p L and @p Rt gives, one of them a

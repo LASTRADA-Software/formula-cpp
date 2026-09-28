@@ -110,7 +110,7 @@ struct NumericValueNode: NodeBase
     /// carrying a dimension that the rule downstream will contradict.
     static constexpr Dimension dimension = dim::Scalar;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Operand>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// `numeric_value_of<unit::Megapascal, "...">(var<Strength>)`: the numeric

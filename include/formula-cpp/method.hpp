@@ -187,7 +187,7 @@ struct VariantCase
     /// publish the same one -- see `detail::RequireVariantsAgree`.
     static constexpr Dimension dimension = Expr::dimension;
     /// Whether its expression was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Expr>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Expr>();
 };
 
 /// The spelling of one variant in a method: `variant<Cube>(expr)`. See the
@@ -1459,7 +1459,7 @@ namespace detail
         static constexpr Dimension dimension = Expr::dimension;
         /// Whether any variant's expression was refused -- see
         /// `detail::refused_already`.
-        static constexpr bool refused = refused_already<Expr>() || (refused_already<Exprs>() || ...);
+        static constexpr detail::RefusedFlag refused = refused_already<Expr>() || (refused_already<Exprs>() || ...);
     };
 
     /// Fails to compile when a method's rounding rule rounds in a unit that

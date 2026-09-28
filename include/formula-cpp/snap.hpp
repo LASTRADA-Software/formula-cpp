@@ -180,7 +180,7 @@ struct SnapNode: NodeBase
     /// A snapped value keeps its dimension: the key unit's.
     static constexpr Dimension dimension = KeyUnit.dimension;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Operand>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// `snapped<KeyUnit, Permitted, Tie>(operand)`: @p operand snapped to the

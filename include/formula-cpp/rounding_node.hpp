@@ -67,7 +67,7 @@ struct RoundNode: NodeBase
     /// Rounding changes a number, never its dimension.
     static constexpr Dimension dimension = Operand::dimension;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Operand>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// @p Operand rounded to @p Digits significant digits of @p U, under @p Mode.
@@ -93,7 +93,7 @@ struct RoundSignificantNode: NodeBase
     /// Rounding changes a number, never its dimension.
     static constexpr Dimension dimension = Operand::dimension;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Operand>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// `operand` rounded to `Places` decimal places of `U`:

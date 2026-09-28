@@ -85,7 +85,7 @@ struct PredicateNode
     /// Which comparison this is.
     static constexpr Comparison comparison = Op;
     /// Whether either side was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Left>() || detail::refused_already<Right>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Left>() || detail::refused_already<Right>();
 };
 
 namespace detail

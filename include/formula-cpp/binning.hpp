@@ -204,7 +204,7 @@ struct BinnedNode: SeriesNodeBase
 {
     /// Whether the operand was refused already (`binned` of something that is
     /// not observations).
-    static constexpr bool refused = std::is_same_v<Obs, detail::RefusedObservations>;
+    static constexpr detail::RefusedFlag refused = std::is_same_v<Obs, detail::RefusedObservations>;
 
     /// Whether the classes are non-empty and a well-formed band table --
     /// asked of the predicates alone, never of the refusals' `value`, for

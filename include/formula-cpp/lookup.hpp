@@ -803,7 +803,7 @@ struct BandedLookupNode: NodeBase
     /// node stands where a number of *this* dimension stands.
     static constexpr Dimension dimension = ResultUnit.dimension;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Operand>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// Declares a banded lookup: `banded_lookup<unit::Millimetre, Bands,
@@ -1769,7 +1769,7 @@ struct InterpolatingLookupNode: NodeBase
     /// `keyUnit`'s dimension on purpose, exactly as a banded lookup's is.
     static constexpr Dimension dimension = ResultUnit.dimension;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Operand>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// Declares an interpolating lookup: `interpolating_lookup<unit::Millimetre,
