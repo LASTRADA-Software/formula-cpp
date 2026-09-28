@@ -5,7 +5,8 @@ carries a variable's own documentation as part of its type; a single
 metadata-reading access point, `formula::Describe<T>`, that reaches both our
 own types and ones we do not own; and a runtime value that may honestly be
 unmeasured, `formula::Measured<Q>`. This page explains why a variable's
-identity is a type, how to declare one, how `Describe` works for foreign
+identity is a type, how to declare one -- by alias or by struct -- how
+`Describe` works for foreign
 types, what it means for a measurement to be absent, how bounds, precision
 and conversion behave once absence is possible, and where the limits are. The
 worked example below is `examples/quantities.cpp`; every block on this page
@@ -21,14 +22,13 @@ mass fails to compile, with both exponent vectors spelled out in the
 diagnostic (see [`docs/dimensions.md`](dimensions.md)). Quantities take the
 same idea one step further and make a *variable* -- not just its dimension,
 but its symbol, its description and its unit -- a compile-time thing too.
-Declaring `WaterVolume` and `CementVolume` as two distinct types, each
-carrying its own symbol/description/unit through a `formula::Quantity` base,
-means they are two different, unrelated C++ types even when every one of
-their parameters but the tag is identical, and neither is usable where the
-other is expected.
+Declaring `WaterVolume` and `CementVolume` as two quantities, each carrying
+its own symbol/description/unit through `formula::Quantity`, makes them two
+different, unrelated C++ types even when every one of their parameters but
+the tag is identical, and neither is usable where the other is expected.
 
 `test/negative/quantity_wrong_type.cpp` is exactly this case, kept in the
-suite as a negative-compile test:
+suite as a negative-compile test, with the two quantities declared by struct:
 
 ```cpp
 struct WaterVolume: formula::Quantity<WaterVolume, "V", "a volume", formula::unit::Litre>
@@ -55,6 +55,17 @@ error C2664: 'void takes_water(WaterVolume)': cannot convert argument 1 from 'Ce
 note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
 ```
 
+Declared by alias instead -- `using WaterVolume =
+formula::Quantity<struct WaterVolumeTag, "V", "a volume", formula::unit::Litre>;`,
+and `CementVolume` likewise with `CementVolumeTag` -- the call is refused the
+same way. cl's words are the ones above; g++ 14.2 and clang 20.1.8 name the
+`Quantity` specialisation each alias stands for, by its tag:
+
+```
+error: could not convert ‘CementVolume()’ from ‘Quantity<CementVolumeTag,[...],[...],[...]>’ to ‘Quantity<WaterVolumeTag,[...],[...],[...]>’
+note: candidate function not viable: no known conversion from 'Quantity<struct CementVolumeTag, [3 * ...]>' to 'Quantity<struct WaterVolumeTag, [3 * ...]>' for 1st argument
+```
+
 The mistake is caught exactly where the wrong call was written, not
 discovered later by a runtime check, or -- because the two types agree on
 symbol, description and unit -- not discovered at all. That is the payoff of
@@ -64,8 +75,19 @@ that happen to be exercised.
 
 ## Declaring a quantity
 
-A quantity is declared by deriving from `formula::Quantity`, which takes
-exactly four template parameters:
+`formula::Quantity` takes exactly four template parameters, and a quantity is
+declared with it in one of two spellings. The alias is the shorter, and the
+one these guides and the examples use:
+
+```cpp
+using WaterVolume = formula::Quantity<struct WaterVolumeTag,   // the tag
+                                      "V_w",                   // symbol
+                                      "volume of water added", // description
+                                      formula::unit::Litre>;   // unit
+```
+
+The struct derives a type of its own, and gives that type's own name back to
+it as the tag:
 
 ```cpp
 struct WaterVolume:
@@ -77,40 +99,86 @@ struct WaterVolume:
 };
 ```
 
-**The tag is first, and it earns its place — but not for the reason it is
-tempting to give.** It is the type's own name, given back to itself.
+Both are supported everywhere a quantity is named -- `var<Q>`,
+`Measured<Q>`, an environment, a vocabulary, an overlay, a series, a record,
+a retry -- and the two mix in one formula. `test/quantity_alias_tests.cpp`
+runs every one of those surfaces with alias quantities; most other tests
+declare theirs by struct, so both spellings stay covered.
 
-The tempting claim is that without the tag, two quantities whose symbol,
-description and unit coincide would be the *same* C++ type. For the spelling
-above that is false, and this page said it until a reviewer checked. C++ types
-are nominal: two separately declared `struct`s are distinct however identical
-their base. Measured, with the tag removed from a stand-in template:
+**The tag is what makes a quantity distinct.** Two quantities whose symbol,
+description and unit coincide are two types as long as their tags differ. In
+the alias form, `struct WaterVolumeTag` in the argument list declares the tag:
+an incomplete class, never defined and never needing to be, in the nearest
+enclosing namespace or block. Inside a class that is the namespace around the
+class, not the class -- two classes that each declare `struct QTag` this way
+name one tag, which is harmless, as the next section says. An alias cannot name itself, so
+`using WaterVolume = formula::Quantity<WaterVolume, ...>;` does not compile:
+an alias needs a second name for its tag. In the struct form the type is its
+own tag, which also keeps two quantities' *bases* distinct, so a function
+taking one quantity's base cannot accept another's.
 
-```
-struct WaterVolume: NoTag<"V", "a volume", unit::Litre> {};
-struct CementVolume: NoTag<"V", "a volume", unit::Litre> {};
-
-derived structs are the same type   : 0
-aliases are the same type           : 1
-their bases are the same type       : 1
-a base-taking function accepts both : 2
-```
-
-What the tag actually buys is two narrower things, and both are real. It makes
-the *alias* spelling impossible to get wrong — with a tag you cannot name two
-distinct quantities without distinguishing them, and without one
-`using A = Quantity<...>; using B = Quantity<...>;` silently gives one type.
-And it keeps the **bases** distinct, so a function taking the base cannot
-accept two different quantities, as the last line above shows it otherwise
-would.
-
-`examples/quantities.cpp` declares `WaterVolume` and `CementVolume`, alike in
-every parameter but the tag:
+`examples/quantities.cpp` declares `WaterVolume` and `CementVolume` by alias,
+alike in every parameter but the tag, and one quantity by struct beside them:
 
 ```
 WaterVolume and CementVolume share symbol, description and unit: yes
 ...but the tag keeps them different types: yes
 ```
+
+### What each spelling costs
+
+| | alias | struct |
+|---|---|---|
+| forward declaration | not possible | `struct WaterVolume;` |
+| two declarations with all four arguments equal | one type, under two names | two types |
+| one tag, another argument different | two types | -- (a struct is its own tag) |
+| how g++ and clang name it in a diagnostic | `Quantity<WaterVolumeTag, ...>` | `WaterVolume` |
+| how cl names it in a diagnostic | usually `WaterVolume`, not always | `WaterVolume` |
+
+**An alias cannot be forward-declared.** A header that only names a quantity
+-- a function declaration taking `Measured<WaterVolume>` -- can say
+`struct WaterVolume;` for a struct quantity, and must include an alias's
+declaration.
+
+**Two aliases with all four arguments equal are one type.** Repeating a
+declaration -- `using A = formula::Quantity<ATag, "V", "a volume", unit::Litre>;`
+and a `using B` with the same four arguments -- declares one quantity under two
+names, and nothing can object: there is only one type, and naming it twice is
+not an error anywhere in C++. Give every alias a tag of its own. Two structs
+never collapse this way, whatever their bases.
+
+**A tag shared by two quantities is harmless while any other argument
+differs.** The two are still two distinct types, and nothing in the library
+reads the tag on its own. That is what happens in an alias template that
+declares its tag inside itself: every instantiation names the same tag, and
+each is a quantity of its own as long as the arguments differ -- here by unit:
+
+```cpp
+template <formula::Unit U>
+using LengthIn = formula::Quantity<struct LengthInTag, "L", "a length", U>;
+```
+
+`LengthIn<formula::unit::Metre>` and `LengthIn<formula::unit::Millimetre>` are
+two quantities, and add up in one formula. To give each instantiation a tag of
+its own, make the tag depend on what the other arguments depend on:
+
+```cpp
+template <formula::Unit U>
+struct LengthInTag;
+template <formula::Unit U>
+using LengthIn = formula::Quantity<LengthInTag<U>, "L", "a length", U>;
+```
+
+`test/quantity_alias_tests.cpp` runs both, and two aliases that share a tag
+and differ only in symbol.
+
+**A diagnostic names the tag.** g++ and clang print the `Quantity`
+specialisation an alias stands for, tag first. cl usually keeps the alias's
+name where the alias was written, in the library's own messages among them,
+but not always -- see
+[where a dimensional error appears](expressions.md#where-a-dimensional-error-appears).
+Naming a tag after its quantity, `WaterVolumeTag`, is what keeps such a
+diagnostic readable.
 
 **There is no fifth parameter for the dimension.** A `Unit` already carries
 its dimension (`unit.dimension`), so a separate dimension parameter would
@@ -125,8 +193,8 @@ write the contradiction at all.
 
 Nothing above the metadata layer reads a `Quantity` base directly. Everything
 -- our own types and types we do not own alike -- goes through one template,
-`formula::Describe<T>`. A type derived from `formula::Quantity` gets its
-`Describe<T>` for free, by base-class detection. A type nobody owns -- a
+`formula::Describe<T>`. A type declared through `formula::Quantity` -- an
+alias of it, or a struct derived from it -- gets its `Describe<T>` for free. A type nobody owns -- a
 `double`, something from a vendor SDK, a struct we cannot add a base class to
 -- gets one by explicit specialisation:
 
@@ -268,10 +336,10 @@ error C2993: 'formula::Measured<WaterVolume>': is not a valid type for non-type 
 note: '_value' is not a public, non-mutable, non-static data member
 ```
 
-The quantity type itself is different: an empty struct deriving publicly
-from `formula::Quantity` (no non-static data members of its own, a
-structural base) *is* structural, and the same compiler accepts it cleanly
-as a non-type template parameter. Nothing in this library uses that, but the
+The quantity type itself is different: `formula::Quantity` has no
+non-static data members, so an alias of it, and an empty struct deriving
+publicly from it (a structural base), *are* structural, and the same compiler accepts both cleanly
+as non-type template parameters. Nothing in this library uses that, but the
 type is capable of it, where `Measured` never can be -- the compile-time
 identity and the runtime value are deliberately different kinds of thing.
 

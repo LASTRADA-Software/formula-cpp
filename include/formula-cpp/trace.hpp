@@ -670,8 +670,7 @@ namespace detail
 
     /// What a rejection step is, and every number it names, in the trace's
     /// side table, keyed by the step's index -- the same shape as
-    /// `PrecisionRecord`, for the same reason: `Step` gains no field (T10,
-    /// and the lead's ruling on the task 3 review).
+    /// `PrecisionRecord`, for the same reason: `Step` gains no field.
     template <typename Rep>
     struct RejectionRecord
     {
@@ -1448,10 +1447,10 @@ struct Trace
     /// such step, **keyed by the step's index** and appended in step order,
     /// so that a renderer finds a step's record by searching for its index.
     ///
-    /// A side table rather than a field on every step (T10), and keyed by the
+    /// A side table rather than a field on every step, and keyed by the
     /// step rather than reached through an index on it: an index would cost
     /// every step what the view it replaces cost, and this costs a step
-    /// nothing (the lead's ruling on the task 3 review). Written by
+    /// nothing. Written by
     /// `RecordingSink` alone. `Step` and `Trace` are public aggregates, so a
     /// renderer that finds no record for a step says the record is missing
     /// rather than guess.
@@ -2328,7 +2327,7 @@ namespace detail
         {
             if (curveRecorded.error.has_value() || !pointStep.has_value() || !steps[*pointStep].value.has_value())
                 return;
-            // An absent element anywhere makes the answer absent (S7): nothing
+            // An absent element anywhere makes the answer absent: nothing
             // was located, so no clause -- not a segment, and never a miss's
             // range, which a curve absent inside its extent would otherwise
             // state falsely.
@@ -3331,7 +3330,7 @@ class RecordingSink
     /// statistic just produced failed -- a mean or a variance whose total
     /// overflowed there. Amends that step, the last recorded: the scalar
     /// channel carries only the error, and the position survives here, as a
-    /// series step's does (phase 12's S8).
+    /// series step's does.
     ///
     /// **Amends nothing else.** The last step must be a failed `SampleMean`
     /// or `SampleVariance`; any other step, a present one included, is left

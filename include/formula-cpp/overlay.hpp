@@ -13,8 +13,7 @@
 /// which yields a method.
 ///
 /// An overlay is applied at **compile time** and the method it yields is a new
-/// type. That is ruling V3 of the phase's design decisions, settled by a spike
-/// that built both shapes: the compile-time overlay met every one of section
+/// type. A spike that built both shapes settled it: the compile-time overlay met every one of section
 /// 16.7's demands and cost nothing at the call site, where a runtime overlay
 /// could not replace a formula without type erasure. The set of jurisdictions
 /// is closed and lives in the type; which one applies is a runtime choice made

@@ -195,7 +195,7 @@ TEST_CASE("an element that cannot be read into SI fails the whole series and nam
 {
     // Tonnes become kilograms by multiplying by 1000, and the middle element
     // is too large for that. Its neighbours are fine, so a failure reported at
-    // 0 or at the last element, or a partial series, is the wrong answer (S8).
+    // 0 or at the last element, or a partial series, is the wrong answer.
     constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;
     constexpr auto overflowing =
         formula::environment(formula::measured_series<Stockpile>(formula::Measured<Stockpile> { rat(1) },
@@ -314,7 +314,7 @@ TEST_CASE("a curve expression passed to another translation unit is the same typ
     CHECK(there->values()[3].value() == formula::Rational { 100 });
 }
 
-// ---- Elementwise arithmetic and per-element constants (task 4) ----
+// ---- Elementwise arithmetic and per-element constants ----
 
 namespace
 {
@@ -402,7 +402,7 @@ TEST_CASE("two series combine element by element, never across positions", "[ser
 TEST_CASE("a zero divisor in the middle fails the whole series and names that element", "[series]")
 {
     // A / B with B = 2, 0, 5 g -> SeriesFailure { DivisionByZero, 1 }; no
-    // partial vector (S8). Review Focus 5.
+    // partial vector.
     using elementwise::PartA;
     using elementwise::PartB;
     constexpr auto quotient = formula::detail::dispatch_series<formula::Rational>(
@@ -426,7 +426,7 @@ TEST_CASE("a failing scalar operand fails the whole series, and belongs to no el
 
 TEST_CASE("an absent scalar makes every element absent; an absent element only itself", "[series]")
 {
-    // S7, both rows of the table.
+    // Both rows of the absence table.
     using elementwise::FractionRetained;
     constexpr auto fraction = formula::series<Retained, 5> / formula::var<TotalMass>;
 
@@ -563,7 +563,7 @@ TEST_CASE("elementwise arithmetic works in double as well as in Rational", "[ser
     CHECK(out->elements[4] == 0.028 / 1.25);
 }
 
-// ---- Cumulative sums and sum (task 5) ----
+// ---- Cumulative sums and sum ----
 
 namespace
 {
@@ -746,7 +746,7 @@ TEST_CASE("a running total that overflows fails at the element where it overflow
     STATIC_REQUIRE(total.error() == formula::ArithmeticError::Overflow);
 
     // Absence is judged over the whole series first, so where the gap is
-    // plays no part (final review, L1): absent with the gap after the two
+    // plays no part: absent with the gap after the two
     // elements whose addition overflows, and absent with it before them.
     using running::halfLimit;
     constexpr auto gapAfter = formula::environment(formula::measured_series<Load>(formula::Measured<Load> { rat(1) },
@@ -824,7 +824,7 @@ TEST_CASE("an absent element at either end stops the totals past it, and the sum
     STATIC_REQUIRE(sumLast->measurement().is_absent());
 }
 
-// ---- Per-element rounding (task 6) ----
+// ---- Per-element rounding ----
 
 namespace
 {

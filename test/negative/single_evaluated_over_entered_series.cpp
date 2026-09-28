@@ -4,7 +4,7 @@
 //
 // A single-valued result whose quantity a person entered as a SERIES. The
 // entered series must not be computed over, and one value cannot be read
-// from it, so the read is refused (D3 in task 2's report).
+// from it, so the read is refused.
 #include <formula-cpp/series.hpp>
 
 #include <cstdint>

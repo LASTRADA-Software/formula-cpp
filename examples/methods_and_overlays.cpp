@@ -60,21 +60,11 @@ struct Prism
 };
 
 // ---- Quantities ---------------------------------------------------------------
-struct Force: formula::Quantity<Force, "F", "maximum load at failure", unit::Newton>
-{
-};
-struct EdgeA: formula::Quantity<EdgeA, "a", "first loaded edge", unit::Millimetre>
-{
-};
-struct EdgeB: formula::Quantity<EdgeB, "b", "second loaded edge", unit::Millimetre>
-{
-};
-struct Diameter: formula::Quantity<Diameter, "d", "cylinder diameter", unit::Millimetre>
-{
-};
-struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", unit::One>
-{
-};
+using Force = formula::Quantity<struct ForceTag, "F", "maximum load at failure", unit::Newton>;
+using EdgeA = formula::Quantity<struct EdgeATag, "a", "first loaded edge", unit::Millimetre>;
+using EdgeB = formula::Quantity<struct EdgeBTag, "b", "second loaded edge", unit::Millimetre>;
+using Diameter = formula::Quantity<struct DiameterTag, "d", "cylinder diameter", unit::Millimetre>;
+using ShapeFactor = formula::Quantity<struct ShapeFactorTag, "k_s", "shape factor", unit::One>;
 
 [[nodiscard]] constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {

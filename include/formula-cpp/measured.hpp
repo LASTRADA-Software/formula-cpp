@@ -36,8 +36,8 @@ namespace formula
 template <Described Q>
 class Measured
 {
-    // Closes the foreign-type door Ruling A closed on the CRTP path: `Q`'s
-    // dimension must agree with its own unit's, or every reader below --
+    // Closes, for a foreign type, the door `Quantity` closes by deriving its
+    // dimension from its unit: `Q`'s dimension must agree with its own unit's, or every reader below --
     // quantity_dimension() included -- reports a label the value does not
     // have. Fires when this class is COMPLETED (see RequireDescribed's own
     // note), which every constructed Measured<Q> is.

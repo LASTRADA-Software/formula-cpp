@@ -5,8 +5,7 @@
 //
 // A series result whose quantity a person entered as ONE value. The entered
 // value must not be computed over, and a series cannot be answered with one
-// number, so the read of the entered value is refused (D3 in task 2's
-// report). Were checked_evaluate_series to ask is_entered_series instead of
+// number, so the read of the entered value is refused. Were checked_evaluate_series to ask is_entered_series instead of
 // is_entered, it would compute over the person's value silently and this
 // case would compile.
 #include <formula-cpp/series.hpp>

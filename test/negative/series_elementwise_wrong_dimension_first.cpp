@@ -8,7 +8,7 @@
 // whose left dimension is a stand-in (the opening's), asks nothing. One
 // message, counted by hand on cl 19.51, g++-14 and clang++-20. The scalar
 // operators' own chain, var<w> + var<m_r> + var<m_t>, still draws two on g++
-// and clang++ (measured by the task 4 review): BinaryNode carries no such
+// and clang++ (measured): BinaryNode carries no such
 // flag, which is inherited and left for a later phase.
 #include <formula-cpp/series.hpp>
 

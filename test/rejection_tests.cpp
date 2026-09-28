@@ -347,7 +347,7 @@ TEST_CASE("only the library builds a RejectionOutcome", "[rejection]")
     STATIC_REQUIRE(std::is_copy_constructible_v<Built>);
 }
 
-TEST_CASE("every rejection is a step naming the value, the statistic, the limit and the criterion (T10)",
+TEST_CASE("every rejection is a step naming the value, the statistic, the limit and the criterion",
           "[rejection][trace-render]")
 {
     formula::Trace<> settled {};
@@ -651,7 +651,7 @@ TEST_CASE("a pass that fails says what failed, and the rejection claims its step
              "3. failed in pass 1: the mean: overflow in exact arithmetic at element 2 of 3\n"
              "4. sample_mean(#3) = overflow in exact arithmetic\n");
 
-    // The variance: task 6's six-decimal sample (40.053270 ... 40.131659 g)
+    // The variance: the census's six-decimal sample (40.053270 ... 40.131659 g)
     // under 7/4 standard deviations. The mean fits; the squared deviations'
     // total does not, at element 1 -- not the mean, which the pass line
     // shows.
@@ -742,7 +742,7 @@ TEST_CASE("a pass that fails says what failed, and the rejection claims its step
 
 TEST_CASE("an absent limit decides nothing, and the outcome is empty", "[rejection]")
 {
-    // T2's strict absence: a limit nobody measured keeps no determination
+    // Strict absence: a limit nobody measured keeps no determination
     // and rejects none -- the outcome is empty, never the unfiltered mean.
     constexpr auto banded = rejectionOf<MostExtreme, Keep, 2, 4, 6>(formula::deviation_from_mean(var<Band>));
     constexpr auto unmeasured = formula::environment(formula::measured_series<Mass>(grams(rat(402, 10)),

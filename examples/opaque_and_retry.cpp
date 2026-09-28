@@ -44,12 +44,8 @@ using formula::var;
 
 // ---- 1. An opaque operation ----------------------------------------------------
 
-struct Reading: formula::Quantity<Reading, "r", "an invented reading", unit::Gram>
-{
-};
-struct Spread: formula::Quantity<Spread, "r_sp", "the spread of the readings", unit::Gram>
-{
-};
+using Reading = formula::Quantity<struct ReadingTag, "r", "an invented reading", unit::Gram>;
+using Spread = formula::Quantity<struct SpreadTag, "r_sp", "the spread of the readings", unit::Gram>;
 
 // A consumer's operation: a name, the shape of each input, the name of each
 // output, what each output measures given what the inputs measure, and the
@@ -102,15 +98,9 @@ constexpr auto highestLessLowest = formula::opaque_output<"highest">(spanCall) -
 
 // ---- 3. A least-squares line ---------------------------------------------------------
 
-struct Elapsed: formula::Quantity<Elapsed, "t", "an invented elapsed time", unit::Second>
-{
-};
-struct Length: formula::Quantity<Length, "L", "an invented length", unit::Millimetre>
-{
-};
-struct Rate: formula::Quantity<Rate, "v", "an invented rate of change", unit::MillimetrePerMinute>
-{
-};
+using Elapsed = formula::Quantity<struct ElapsedTag, "t", "an invented elapsed time", unit::Second>;
+using Length = formula::Quantity<struct LengthTag, "L", "an invented length", unit::Millimetre>;
+using Rate = formula::Quantity<struct RateTag, "v", "an invented rate of change", unit::MillimetrePerMinute>;
 
 constexpr auto points =
     formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { formula::Rational { 1 } },
@@ -145,12 +135,8 @@ auto distinctDenominators()
 
 // ---- 5. A retry ------------------------------------------------------------------------
 
-struct Estimate: formula::Quantity<Estimate, "w", "an invented iterated estimate", unit::Gram>
-{
-};
-struct Tolerance: formula::Quantity<Tolerance, "t_w", "an invented tolerance", unit::Gram>
-{
-};
+using Estimate = formula::Quantity<struct EstimateTag, "w", "an invented iterated estimate", unit::Gram>;
+using Tolerance = formula::Quantity<struct ToleranceTag, "t_w", "an invented tolerance", unit::Gram>;
 
 // w(k) = 6.08 g + w(k-1) / 2, from 0 g: 6.08, 9.12, 10.64, 11.4 g, rising by
 // 6.08, 3.04, 1.52, 0.76 g. Accepted when it rose by at most 0.76 g, written
@@ -172,12 +158,8 @@ constexpr auto threeAttempts = formula::retry<Estimate, 3, formula::FirstJudged:
 
 // ---- 6. Two successive results agree -----------------------------------------------------
 
-struct Determination: formula::Quantity<Determination, "d", "an invented determination", unit::Gram>
-{
-};
-struct Agreed: formula::Quantity<Agreed, "d_a", "an invented agreed determination", unit::Gram>
-{
-};
+using Determination = formula::Quantity<struct DeterminationTag, "d", "an invented determination", unit::Gram>;
+using Agreed = formula::Quantity<struct AgreedTag, "d_a", "an invented agreed determination", unit::Gram>;
 
 constexpr auto agree = formula::abs(formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>)
                        <= formula::constant<unit::Gram>(formula::Rational { 127, 100 });

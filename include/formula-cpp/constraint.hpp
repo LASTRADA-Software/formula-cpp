@@ -140,7 +140,7 @@ class ConstraintOutcome
     // `is_satisfied()` *and* `is_violated()` *and* `is_not_checked()` *and*
     // `is_invalid()`, and decide what an unresolved check means for them. If
     // you are about to add one back: don't -- read this comment's title
-    // first, then read D2 in phase-9-prep/design-decisions.md.
+    // first.
 
     /// The verdict, present only when `is_violated()`.
     [[nodiscard]] constexpr std::optional<Verdict> verdict() const noexcept

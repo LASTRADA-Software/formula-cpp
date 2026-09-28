@@ -518,7 +518,7 @@ std::string render_node(Gauge const&)
 // ------------------------------------------------- every node kind, crossed
 //
 // One method holding every node kind this library renders, documents and
-// traces -- task 7's derived quantity and replaced variant included -- put
+// traces -- an overlay's derived quantity and replaced variant included -- put
 // through `render`, `document` and the trace under one vocabulary. Every
 // quantity here declares a symbol ending `_decl`, and the vocabulary names
 // every one of them, so a surface that drops the vocabulary anywhere writes
@@ -649,7 +649,7 @@ inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 
            / var<EveryTotal>;
 }
 
-// Every curve kind, and the join with snapping (S17): two curves over declared
+// Every curve kind, and the join with snapping: two curves over declared
 // domains spliced, read at the overlay's fixed factor, and the answer snapped
 // to a permitted value. The overlay's constant is the point the curve is read
 // at, so it reaches inside the interpolation or the method is refused.
@@ -669,7 +669,7 @@ inline constexpr formula::BreakpointTable<2> everyCurveSnapSet { formula::breakp
         var<EveryFixed>));
 }
 
-// Binning (S9): raw particle sizes counted into two classes, the upper
+// Binning: raw particle sizes counted into two classes, the upper
 // class's share times the overlay's fixed factor. Invented classes, 0 to
 // under 163 and 163 to under 277 mm -- three significant digits, none a
 // preferred number; the 163 mm particle is on the boundary, in the upper
@@ -1221,7 +1221,7 @@ TEST_CASE("elementwise arithmetic is written in the page's vocabulary on every s
     CHECK(text.find("m_s") == std::string::npos);
 }
 
-// ---- The join: a series inside a method, under an overlay (phase 12, task 5) ----
+// ---- The join: a series inside a method, under an overlay (phase 12) ----
 //
 // Phase 11's lesson: two separately verified things do not verify their join.
 // `sum` is the first series-holding `Node`, so it is where a series first sits

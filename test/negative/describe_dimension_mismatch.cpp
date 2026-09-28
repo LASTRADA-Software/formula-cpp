@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // A Describe specialisation whose declared dimension disagrees with its own
 // unit's must be refused wherever Measured consumes it -- the same
-// contradiction Ruling A makes unwritable on the CRTP path (Quantity::dimension
-// is derived from its unit, never stated beside it), closed here on the
+// contradiction `Quantity` makes unwritable (Quantity::dimension is derived
+// from its unit, never stated beside it), closed here on the
 // foreign path, where a specialisation states both independently. This must
 // not compile.
 #include <formula-cpp/measured.hpp>

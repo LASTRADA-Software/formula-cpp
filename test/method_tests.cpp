@@ -132,8 +132,8 @@ TEST_CASE("a variant carries its tag, its expression and the dimension it report
     STATIC_REQUIRE(std::is_same_v<decltype(only)::tag, Cube>);
     STATIC_REQUIRE(decltype(only)::dimension == formula::dim::Pressure);
 
-    // A variant is not a `Node`: it names an expression, it is not one. D1 of
-    // the phase's design decisions turns on this -- a method selects among
+    // A variant is not a `Node`: it names an expression, it is not one. The
+    // method's design turns on this -- a method selects among
     // formulas rather than standing where a number stands -- and the cheapest
     // way for that to stop being true is for someone to give `VariantCase` a
     // `NodeBase` it does not need.

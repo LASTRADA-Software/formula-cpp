@@ -1438,7 +1438,7 @@ namespace detail
         using Factory = RetryOutcomeFactory;
 
         // No starting value: reading one at the first attempt is the
-        // author's mistake (R4), and says so.
+        // author's mistake, and says so.
         Evaluated<Rep> before = std::unexpected { ArithmeticError::DomainError };
         if constexpr (StartTraits<Start>::states)
         {

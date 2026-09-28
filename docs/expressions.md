@@ -49,40 +49,40 @@ being written into the formula.
 Because the operator the user wrote is what instantiates the node, a
 dimensional mistake is a compile error on the line the formula is written on,
 not a runtime one discovered when the formula finally runs.
-`test/negative/expression_add_dimension_mismatch.cpp` pins this:
+`test/negative/quantity_alias_add_dimension_mismatch.cpp` pins this, with
+the two quantities declared by alias as [the quantities guide](quantities.md)
+declares them (`test/negative/expression_add_dimension_mismatch.cpp` pins the
+same refusal for quantities declared by struct):
 
 ```cpp
-struct Volume: formula::Quantity<Volume, "V", "a volume", formula::unit::Litre>
-{
-};
-struct Length: formula::Quantity<Length, "L", "a length", formula::unit::Metre>
-{
-};
+using Volume = formula::Quantity<struct VolumeTag, "V", "a volume", formula::unit::Litre>;
+using Length = formula::Quantity<struct LengthTag, "L", "a length", formula::unit::Metre>;
 
 // A volume plus a length has no meaning, and must not compile.
 inline constexpr auto broken = formula::var<Volume> + formula::var<Length>;
 ```
 
-Attempting this gives, verbatim, on MSVC's `cl.exe` (19.51, from Visual
-Studio's `cl-debug` preset):
+Attempting this gives, verbatim but for the paths, which are shown relative to
+the repository, on MSVC's `cl.exe` (19.51, from Visual Studio's `cl-debug`
+preset):
 
 ```
-D:\formula-cpp\include\formula-cpp/expression.hpp(186): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
-D:\formula-cpp\include\formula-cpp/expression.hpp(186): note: the template instantiation context (the oldest one first) is
-D:\formula-cpp\test\negative\expression_add_dimension_mismatch.cpp(13): note: see reference to function template instantiation 'auto formula::operator +<formula::VarNode<Volume>,formula::VarNode<Length>>(Left,Right) noexcept' being compiled
+include\formula-cpp/expression.hpp(186): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
+include\formula-cpp/expression.hpp(186): note: the template instantiation context (the oldest one first) is
+test\negative\quantity_alias_add_dimension_mismatch.cpp(12): note: see reference to function template instantiation 'auto formula::operator +<formula::VarNode<Volume>,formula::VarNode<Length>>(Left,Right) noexcept' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-D:\formula-cpp\include\formula-cpp/expression.hpp(271): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
-D:\formula-cpp\include\formula-cpp/expression.hpp(244): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
+include\formula-cpp/expression.hpp(271): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::VarNode<Volume>,formula::VarNode<Length>>' being compiled
+include\formula-cpp/expression.hpp(244): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
             Right=formula::VarNode<Length>
         ]
-D:\formula-cpp\include\formula-cpp/expression.hpp(203): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
+include\formula-cpp/expression.hpp(203): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
         with
         [
             Left=formula::VarNode<Volume>,
@@ -99,7 +99,14 @@ an assertion whose condition mentions the operator makes clang print
 `(formula::BinaryOperator)0` in its "due to requirement" clause, because an
 enumerator used as a value in a dependent expression is rendered as a cast.
 Written this way, all three compilers (cl, clang-cl and g++) name the two
-operand types instead. `examples/expressions.cpp` shows the same mistake as a
+operand types instead. How they name them depends on how the quantities were
+declared: here cl names each alias by the alias, as it usually does, while
+clang and g++ print the `formula::Quantity` specialisation the alias stands
+for, tag first --
+`VarNode<formula::Quantity<VolumeTag, formula::detail::FixedString<2>{"V"}, ...>>`
+-- which is why a tag is best named after its quantity. A quantity declared by
+struct is named by the struct's own name on all three.
+`examples/expressions.cpp` shows the same mistake as a
 comment rather than as compiled code, since it must not fail the build:
 
 ```cpp
@@ -125,18 +132,16 @@ each either a plain `formula::Measured<Q>` (an observation) or
 `formula::entered(Measured<Q>{...})` (a value a person typed in). Asking for a
 quantity the environment does not hold is a compile error naming that
 quantity, never a runtime lookup failure and never a zero.
-`test/negative/environment_missing_quantity.cpp` pins this:
+`test/negative/quantity_alias_environment_missing.cpp` pins this (and
+`test/negative/environment_missing_quantity.cpp` for quantities declared by
+struct):
 
 ```cpp
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", formula::unit::Litre>
-{
-};
-struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
-{
-};
+using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", formula::unit::Litre>;
+using Ratio = formula::Quantity<struct RatioTag, "w/c", "water/cement ratio", formula::unit::One>;
 
 // An environment that does not hold Ratio; asking for it is a compile error.
-inline constexpr auto env = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } });
+inline constexpr auto env = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 183 } });
 
 int main()
 {
@@ -144,14 +149,15 @@ int main()
 }
 ```
 
-which gives, verbatim, on MSVC's `cl.exe` (19.51, `cl-debug` preset):
+which gives, verbatim but for the paths, shown relative to the repository,
+on MSVC's `cl.exe` (19.51, `cl-debug` preset):
 
 ```
-D:\formula-cpp\include\formula-cpp/environment.hpp(439): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
-D:\formula-cpp\include\formula-cpp/environment.hpp(439): note: the template instantiation context (the oldest one first) is
-D:\formula-cpp\test\negative\environment_missing_quantity.cpp(17): note: see reference to function template instantiation 'formula::Measured<Ratio> formula::Environment<formula::Measured<WaterVolume>>::get<Ratio>(void) noexcept const' being compiled
-D:\formula-cpp\test\negative\environment_missing_quantity.cpp(17): note: see the first reference to 'formula::Environment<formula::Measured<WaterVolume>>::get' in 'main'
-D:\formula-cpp\include\formula-cpp/environment.hpp(584): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
+include\formula-cpp/environment.hpp(439): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
+include\formula-cpp/environment.hpp(439): note: the template instantiation context (the oldest one first) is
+test\negative\quantity_alias_environment_missing.cpp(15): note: see reference to function template instantiation 'formula::Measured<Ratio> formula::Environment<formula::Measured<WaterVolume>>::get<Ratio>(void) noexcept const' being compiled
+test\negative\quantity_alias_environment_missing.cpp(15): note: see the first reference to 'formula::Environment<formula::Measured<WaterVolume>>::get' in 'main'
+include\formula-cpp/environment.hpp(584): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
 ```
 
 The prototype this layer replaced answered a missing input with a runtime

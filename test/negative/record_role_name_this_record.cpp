@@ -5,8 +5,7 @@
 // A role whose TagName is "This Record", bound in a context and read
 // through a scope. Every value read from it would be traced `from record
 // This Record (sample 23, test 3)`, which is how a trace names the record
-// being evaluated, so it is refused in any case (the lead's ruling on the
-// task 9 review's M2). The name is identifier-like, so the REJECT pins that
+// being evaluated, so it is refused in any case. The name is identifier-like, so the REJECT pins that
 // the identifier rule does not also fire; the record and the scope ask one
 // class template, so this draws one message.
 //

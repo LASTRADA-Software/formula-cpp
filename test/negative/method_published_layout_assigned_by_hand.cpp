@@ -2,8 +2,7 @@
 // EXPECT: formula: a variant's published position is stated only by the library
 //
 // The same fabrication at run time: an existing pack's layout reassigned to
-// `{ { 0, 8 }, 9 }`, again with no `detail::` written (final review of phase
-// 11, probe 2, F7). Not a constant expression's initialiser this time, so a
+// `{ { 0, 8 }, 9 }`, again with no `detail::` written. Not a constant expression's initialiser this time, so a
 // case of its own.
 //
 // This must not compile.

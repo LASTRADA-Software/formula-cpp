@@ -234,7 +234,7 @@ TEST_CASE("a short-circuit two levels down does not let its ancestor steal a cou
     // both of its own two children. A fixed-arity scheme has no way to know
     // the middle Divide got only one operand: it claims two regardless,
     // reaching past the middle node and stealing the outer Multiply's own
-    // left child -- verified by the same mutation as Task 4's step 6.
+    // left child -- verified by mutation.
     constexpr auto bad3 =
         var<Mass> * ((var<Volume> / formula::number(formula::Rational { 0 })) / var<Mass>);
 
@@ -318,7 +318,7 @@ TEST_CASE("explain returns the same outcome evaluate would, plus the derivation"
 {
     // Density is Mass / Volume (dim::Density, per dimension.hpp), so the
     // expression has to be the plain ratio -- not the `pow<2>(var<Mass>) /
-    // var<Volume>` used elsewhere in this file for Task 4's arena tests,
+    // var<Volume>` used elsewhere in this file for the arena tests,
     // whose dimension is Mass^2 / Volume and does not match Density. Using
     // that expression here fails RequireResultDimension's static_assert.
     constexpr auto density = var<Mass> / var<Volume>;
@@ -370,8 +370,7 @@ TEST_CASE("a Round step records its own declared unit and granularity, and the p
     // checked_evaluate. The Round step does not duplicate the pre-rounding
     // value onto itself: it is already visible on operand #1, the same way a
     // Negate or Power step never restates its own operand's value either --
-    // that is Task 6's answer to "how does a Round step make the change of
-    // value visible" (see the report for the reasoning).
+    // that is how a Round step makes the change of value visible.
     constexpr auto node =
         formula::rounded<unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Diameter>);
@@ -1932,7 +1931,7 @@ TEST_CASE("explain_series returns the outcome and the derivation that produced i
 
 TEST_CASE("explain_series keeps a failure and its element, and the step that failed", "[series][trace]")
 {
-    // A series has no throwing spelling (S8), so explain_series carries the
+    // A series has no throwing spelling, so explain_series carries the
     // failure in its outcome rather than throwing it away.
     using series_recording::Stockpile;
     constexpr std::int64_t tooLarge = std::numeric_limits<std::int64_t>::max() / 100;

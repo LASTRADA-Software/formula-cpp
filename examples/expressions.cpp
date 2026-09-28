@@ -20,12 +20,8 @@ using formula::var;
 
 // ---- 1 & 3: a circular area -- a constant, a power, and later an absence ----
 
-struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
-{
-};
-struct Area: formula::Quantity<Area, "A", "cross-sectional area", unit::SquareMetre>
-{
-};
+using Diameter = formula::Quantity<struct DiameterTag, "d", "specimen diameter", unit::Millimetre>;
+using Area = formula::Quantity<struct AreaTag, "A", "cross-sectional area", unit::SquareMetre>;
 
 // A = pi * d^2 / 4, with an exact-rational pi. `pi` is a constant node,
 // `pow<2>` a power node -- the result, Area, is declared in square metres
@@ -35,12 +31,8 @@ constexpr auto circularArea = formula::pi * formula::pow<2>(var<Diameter>) / for
 
 // ---- 2: the same point made without a power in the way, for its own line ----
 
-struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "specimen mass", unit::Gram>
-{
-};
-struct MassInKilogram: formula::Quantity<MassInKilogram, "m", "specimen mass", unit::Kilogram>
-{
-};
+using SpecimenMass = formula::Quantity<struct SpecimenMassTag, "m", "specimen mass", unit::Gram>;
+using MassInKilogram = formula::Quantity<struct MassInKilogramTag, "m", "specimen mass", unit::Kilogram>;
 
 // ---- 4: a dimensional mismatch, shown but not compiled ----
 //
@@ -55,15 +47,9 @@ struct MassInKilogram: formula::Quantity<MassInKilogram, "m", "specimen mass", u
 
 // ---- 5: a formula whose result a person may override ----
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", unit::Litre>
-{
-};
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", unit::Litre>
-{
-};
-struct WaterCementRatio: formula::Quantity<WaterCementRatio, "w/c", "ratio of water to cement", unit::One>
-{
-};
+using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
+using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
+using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
 
 constexpr auto waterCementRatio = var<WaterVolume> / var<CementVolume>;
 

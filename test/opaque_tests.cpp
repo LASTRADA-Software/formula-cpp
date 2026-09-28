@@ -65,7 +65,7 @@ struct SeriesSpan
     }
 
     // Counts calls, so a test can tell "absent because compute was never
-    // called" from "absent because compute coped" (Review Focus 2).
+    // called" from "absent because compute coped".
     static inline int calls = 0;
 
     template <typename Rep>

@@ -148,7 +148,7 @@ TEST_CASE("a computed domain that does not strictly ascend fails at its first of
     STATIC_REQUIRE(formula::checked_evaluate_curve<Opening, Passing>(computed, repeated).error()
                    == formula::SeriesFailure { formula::ArithmeticError::DomainError, 2 });
 
-    // A gap does not excuse the points around it (final review, M2): 163 m
+    // A gap does not excuse the points around it: 163 m
     // comes after 197 m with an absent point between them, and the curve
     // fails there, at zero-based 3, rather than being returned with a domain
     // that does not ascend. A point equal to one before the gap is a
@@ -177,7 +177,7 @@ TEST_CASE("a computed domain that does not strictly ascend fails at its first of
 
 TEST_CASE("an absent element anywhere makes the interpolation absent", "[curve]")
 {
-    // Element 5, far from 173 m, is absent: still no answer (S7, strict).
+    // Element 5, far from 173 m, is absent: still no answer (absence is strict).
     constexpr auto lastAbsent =
         formula::environment(formula::measured_series<Passing>(m<Passing>(894, 25),
                                                                m<Passing>(1154, 25),
@@ -690,7 +690,7 @@ TEST_CASE("a curve whose domain does not ascend names the element in the trace",
     CHECK(valuesFailed.steps.back().curveBreak == formula::CurveBreak::None);
 }
 
-// ---- The join with snapping (S17) ----
+// ---- The join with snapping ----
 
 namespace
 {

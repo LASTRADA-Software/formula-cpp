@@ -4,7 +4,7 @@
 // REJECT: compute cannot be called
 //
 // A fit evaluated in double: its input is a curve, and a curve compares, so
-// it is refused once, in the curve's own words (plan, C3). The opaque call's
+// it is refused once, in the curve's own words. The opaque call's
 // own checks for double pass -- LinearLeastSquares::compute is generic over
 // Rep -- and add nothing.
 #include <formula-cpp/least_squares.hpp>

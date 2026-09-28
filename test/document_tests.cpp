@@ -440,8 +440,8 @@ TEST_CASE("document: a constraint predicate's right-hand side reaches the symbol
           "[document]")
 {
     // A second, independent case from the one above -- not a second CHECK in
-    // the same test -- because the task-7 review of phase 8 found
-    // collect(walk, node.rhs) completely uncovered: every predicate in this
+    // the same test -- because collect(walk, node.rhs) was once completely
+    // uncovered: every predicate in this
     // file put its variable on the left and a constant on the right, so
     // deleting that line left the whole suite green. This is the same
     // two-variable predicate as the left-hand test, but the assertion below
@@ -759,7 +759,7 @@ TEST_CASE("document: a quantity read both outside and inside an interpolating lo
 {
     // Its own case rather than a second assertion in the banded one above: the
     // defect is written per overload, and pinning one of the two would leave
-    // the other in the state task 3 left the exact lookup in. The exact lookup
+    // the other in the state the exact lookup was once left in. The exact lookup
     // has no third case here because it has no operand, so it has no inside for
     // a quantity to be read in -- not an omission.
     formula::Documentation const documentation = formula::document(var<CoreLength> * profileLookup());

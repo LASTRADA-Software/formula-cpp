@@ -26,7 +26,7 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
     return formula::Rational { numerator, denominator };
 }
 
-// The retry fixpoint (plan, C13): an invented iterated estimate in grams.
+// The retry fixpoint: an invented iterated estimate in grams.
 struct Estimate: formula::Quantity<Estimate, "w", "an invented iterated estimate", unit::Gram>
 {
 };
@@ -912,7 +912,7 @@ TEST_CASE("the walk behind a retry's quantity check sees a context node inside e
 
 namespace
 {
-// Recorded attempts (plan, task 8): attempt k's result is determination k,
+// Recorded attempts: attempt k's result is determination k,
 // accepted from the second attempt when two successive results agree within
 // 1.27 g. 41.3, 43.9, 42.7, 45.7 g: |43.9 - 41.3| = 2.6, not accepted at 2;
 // |42.7 - 43.9| = 1.2, accepted at 3 with 42.7 g. Never stopping would give

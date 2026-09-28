@@ -54,7 +54,7 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Meg
 
 // Author text that would forge a trace line printed as written: each spells a
 // provenance clause only the library may state, or opens a line of its own.
-// Final review of phase 11, probe 2 (F5): the declared symbol.
+// First, the declared symbol.
 struct ForgingFactor: formula::Quantity<ForgingFactor, "k] [fixed by jurisdiction overlay: Example Standard 9:2022 NA", "factor", unit::One>
 {
 };
@@ -1700,7 +1700,7 @@ TEST_CASE("a declared symbol cannot write a provenance clause into a trace line"
 
 TEST_CASE("a citation cannot close its clause, open another, or start a line", "[trace-render][escape]")
 {
-    // Probe 2's F2, with a newline, another control character and a backslash
+    // A clause-closing citation, with a newline, another control character and a backslash
     // added: every one escaped, and the line stays one line.
     constexpr auto ratio =
         formula::documented(var<WaterVolume> / var<CementVolume>,
@@ -1721,7 +1721,7 @@ TEST_CASE("a citation cannot close its clause, open another, or start a line", "
 
 TEST_CASE("a verdict's label cannot name a second owner for its constraint", "[trace-render][escape]")
 {
-    // Probe 2's F4: printed as written, the clause named the method's own
+    // Printed as written, the clause named the method's own
     // constraint a jurisdiction's as well.
     constexpr auto limit =
         formula::constraint(var<Mass> >= formula::constant<unit::Kilogram>(formula::Rational { 973, 100 }),
@@ -2011,14 +2011,12 @@ TEST_CASE("a long series shares the one maxSteps budget and says how much it lef
     // The count left out is exact, so it is pinned at several budgets: a
     // count hard-coded, or computed from the wrong side, fails at least one.
     //
-    // render_trace is the only surface that shows element values (S5's
-    // "every dialect"), so this is where the count is pinned. render() and
+    // render_trace is the only surface that shows element values, so this is where the count is pinned. render() and
     // document() take no environment and print a formula, never values, so
     // there is nothing for them to truncate and no test of theirs could
     // fail. The gallery (tools/gallery) copies render_trace's output
     // verbatim into a fenced block, so it carries this count by
-    // construction; its series section arrives in task 11, and its test
-    // pins the generated page.
+    // construction, and its test pins the generated page.
     formula::Trace<> const trace = series_trace::series_then_total();
     REQUIRE(trace.steps.size() == 2);
 
@@ -2062,7 +2060,7 @@ TEST_CASE("a series that failed at an element names that element, counted from o
 
 TEST_CASE("an elementwise step names its operands, and a broadcast scalar appears once", "[series][trace]")
 {
-    // S4's reason for existing: m_t is evaluated once and appears once in the
+    // The point of a broadcast: m_t is evaluated once and appears once in the
     // derivation, as an operand of the one elementwise step, however long
     // the series.
     constexpr auto screens =
@@ -2191,7 +2189,7 @@ TEST_CASE("a sum is a single-value step whose operand is the series step", "[ser
 
 TEST_CASE("a series with nothing measured traces as absence at every element, and never as zero", "[series][trace]")
 {
-    // Review Focus 1: a running total or a sum that started from zero would
+    // A running total or a sum that started from zero would
     // print 0 g somewhere. Nothing here may.
     constexpr auto noneMeasured = formula::environment(
         formula::measured_series<series_trace::Retained>(formula::Measured<series_trace::Retained>::absent(),
@@ -2289,8 +2287,8 @@ TEST_CASE("a per-element rounding records each element's granularity and its mod
              "2. round(#1, to 0/0/0/1/1 dp of %) = 63 %; ... 4 more [nearest, ties away from zero]\n");
 
     // A dimensionless unit has no symbol, and the line then names none, as a
-    // scalar rounding's does and as `render()` writes the node (final review,
-    // M4): never a dangling "dp of )".
+    // scalar rounding's does and as `render()` writes the node:
+    // never a dangling "dp of )".
     struct Share: formula::Quantity<Share, "s", "share passing a screen", unit::One>
     {
     };
@@ -2484,7 +2482,7 @@ TEST_CASE("a critical-value step records the count and whose failure it carries,
     CHECK(hit.lookupFailure == formula::LookupFailure::None);
     CHECK(hit.lookupKey == 8);
     // The declared sizes live in the trace's side table, keyed by the step's
-    // index (T10), and the step itself carries nothing for them.
+    // index, and the step itself carries nothing for them.
     REQUIRE(hitTrace.sampleSizeRecords.size() == 1);
     CHECK(hitTrace.sampleSizeRecords[0].step == hitTrace.steps.size() - 1);
     CHECK(hitTrace.sampleSizeRecords[0].declaredSizes == "3, 4, 5, 6, 8");

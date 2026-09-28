@@ -1492,7 +1492,7 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         CHECK(unescapedPositions(text, '[').empty());
 
         // Phase 13: a bare `|`. Inside a Markdown table cell it ends the
-        // cell, silently -- task 1 measured a row whose formula held an
+        // cell, silently -- a spike measured a row whose formula held an
         // absolute value in bars render as one cell holding only the text
         // before the first bar (python-markdown 3.10.3, pymdown-extensions
         // 12.1). No plain or Markdown spelling in this library writes one:
@@ -1762,7 +1762,7 @@ TEST_CASE("render: a lookup key's name is set in math mode, where the site's Mat
     CHECK(formula::detail::latex_math_words("key fit_2") == "key\\ fit\\_2");
 }
 
-// ---- A series variable, marked as a series in the formula itself (phase 12, S14) ----
+// ---- A series variable, marked as a series in the formula itself (phase 12) ----
 
 namespace
 {
@@ -1779,7 +1779,7 @@ namespace series_render
 
 TEST_CASE("a series variable is marked as a series in the formula itself, in every dialect", "[series][render]")
 {
-    // S14 as ruled; the marker task 1 chose (task-1-spike.md): LaTeX braces
+    // The marker: LaTeX braces
     // the whole symbol then subscripts it, plain and Markdown append `(i)`,
     // Markdown inside the backticks.
     using series_render::Retained;
@@ -1793,7 +1793,7 @@ TEST_CASE("a series variable is marked as a series in the formula itself, in eve
     // The marker wraps the jurisdiction's symbol, never the declared one.
     CHECK(formula::render(formula::series<Retained, 5>) == "m_r(i)");
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>) == "{m_r}_{i}");
-    // A symbol with a braced subscript still groups (typeset clean in task 1).
+    // A symbol with a braced subscript still groups (typeset clean in a spike).
     constexpr auto braced = formula::vocabulary(formula::renames<Retained>("f_{c}"));
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::series<Retained, 5>, braced) == "{f_{c}}_{i}");
     // The known limit, pinned so it is a decision and not an accident: a
@@ -1807,7 +1807,7 @@ TEST_CASE("elementwise arithmetic renders as scalar arithmetic does, the series 
 {
     using series_render::Retained;
     constexpr auto fraction = formula::series<Retained, 5> / formula::var<series_render::Total>;
-    // S14: the series variable carries the marker; the operation adds none.
+    // The series variable carries the marker; the operation adds none.
     CHECK(formula::render(fraction) == "m_r(i) / m_t");
     CHECK(formula::render<formula::Dialect::Markdown>(fraction) == "`m_r(i)` / `m_t`");
     CHECK(formula::render<formula::Dialect::LaTeX>(fraction) == "\\frac{{m_r}_{i}}{m_t}");
@@ -1824,7 +1824,7 @@ TEST_CASE("elementwise arithmetic renders as scalar arithmetic does, the series 
 
 TEST_CASE("a per-element constant renders as its list of values", "[series][render]")
 {
-    // S14: a series constant prints its rows, which already reads as many
+    // A series constant prints its rows, which already reads as many
     // values, so it carries no index marker. Each value is spelled as a
     // constant holding it would be.
     constexpr auto factors = formula::series_constant<formula::unit::Millimetre>(rat(11), rat(29), rat(41));

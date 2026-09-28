@@ -4,7 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <iterator> // std::size, used by the distinctness loops
-#include <limits>   // std::numeric_limits, used by Task 6's cases
+#include <limits>   // std::numeric_limits, used by the non-finite cases
 
 using formula::ArithmeticError;
 using formula::ArithmeticException;

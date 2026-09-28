@@ -60,7 +60,7 @@ TEST_CASE("the joined trace names the variant, the lineage, the fixed constant's
     CHECK(text.find("same MaterialBatch as this record: 4411 for this record, 4411 for Reference, satisfied") != std::string::npos);
     CHECK(text.find("P = 57268 N, from record Reference (sample 23, test 3)") != std::string::npos);
     // The overlay's constant replaced the reference's typed-in shape factor,
-    // and the line says so (the task 4 review's L3).
+    // and the line says so.
     CHECK(text.find("k = 97/100, from record Reference (sample 23, test 3) [fixed by ") != std::string::npos);
     CHECK(text.find(", replacing a value entered by hand]") != std::string::npos);
     CHECK(text.find("k_s") == std::string::npos);
@@ -77,8 +77,7 @@ TEST_CASE("the joined trace names the variant, the lineage, the fixed constant's
 TEST_CASE("the joined page documents the fixed constant once, as read from no record", "[record-join]")
 {
     // The fixed value is the overlay's, read from no record, so its row has
-    // no record even though the constant is used only inside the scope (the
-    // task 7 review's L5).
+    // no record even though the constant is used only inside the scope.
     auto const documented = formula::document(std::get<0>(overlaid.variantSet.cases).expression, north);
     std::size_t fixedRows = 0;
     for (formula::SymbolEntry const& row: documented.symbols)
@@ -227,7 +226,7 @@ TEST_CASE("an overlay's constant that replaced a measured value, or none, says o
 TEST_CASE("one constant fixed here and inside a scope traces each step with its own record and source",
           "[record-join]")
 {
-    // The task 8 review's L1. This record's shape factor was measured and the
+    // This record's shape factor was measured and the
     // reference's typed in, so a step stamped with the other's origin, or the
     // two sources swapped, reads differently.
     constexpr auto fixedBoth = formula::apply(deriveRatio, formula::apply(fixShape, bothPlaces));
@@ -254,7 +253,7 @@ TEST_CASE("one constant fixed here and inside a scope traces each step with its 
 TEST_CASE("an overlay's constant that replaced an entry typed in empty says so, here and inside a scope",
           "[record-join]")
 {
-    // The task 8 review's M1: no value was replaced, and the line says what
+    // No value was replaced, and the line says what
     // the entry held, in the words a typed-in empty input has.
     auto const [overEmpty, emptyText] =
         fixed_step_over(formula::environment(formula::Measured<Force> { formula::Rational { 1'000 } },
@@ -319,7 +318,7 @@ inline constexpr auto retainedRatio =
 
 TEST_CASE("a series formula through a context reads as through this record's environment", "[record-join]")
 {
-    // Task 1 step 2's inheritance probe, over phase 12's accessors: the
+    // The inheritance probe, over phase 12's accessors: the
     // context is this record's environment, `get_series` included.
     constexpr auto viaContext =
         formula::checked_evaluate_si<formula::Rational>(formula::sum(formula::series<Retained, 5>), screensContext);
@@ -411,7 +410,7 @@ TEST_CASE("raw observations read from another record are stamped with its origin
 TEST_CASE("a series typed in on another record says where it was read from, and that it was typed in",
           "[record-join]")
 {
-    // Task 10 step 5. The environment records whether a series was typed in,
+    // The environment records whether a series was typed in,
     // and the series variable's evaluator reports it, as a single value's
     // does: the line names the record first and then the source, in the order
     // a single value's line uses.
@@ -630,7 +629,7 @@ std::pair<formula::Step<>, std::string> derived_step_over(Env const& env)
 TEST_CASE("an overlay's derived quantity that replaced a typed-in value says so, here and inside a scope",
           "[record-join]")
 {
-    // The final review's M2: the typed value was not used, and a reader must
+    // The typed value was not used, and a reader must
     // not assume it was -- the reason a fixed constant says so applies to a
     // derived quantity equally.
     auto const [overTyped, typedText] =
@@ -716,7 +715,7 @@ struct SourceCountingSink
 
 TEST_CASE("a consumer's input_source hears only variables, and a replaced entry has its own hook", "[record-join]")
 {
-    // The final review's L3: a consumer's `input_source(VarNode<Q>)` binds to
+    // A consumer's `input_source(VarNode<Q>)` binds to
     // an overlay's constant too, which is a `VarNode<Q>`. Told there, it
     // would read the replaced entry's source as the constant's own. The
     // constant and the derived quantity report through

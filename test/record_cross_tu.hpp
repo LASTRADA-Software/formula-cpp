@@ -14,7 +14,7 @@
 /// against a copy of this header with the lineage requirement dropped: the
 /// link fails on cl, g++ and clang++. A function merely *returning* the type
 /// would not do on g++ and clang++, where a return type is not part of the
-/// mangled name (the task 8 review's M2).
+/// mangled name.
 ///
 /// **What cannot be caught here:** a split that changes only a value and not
 /// a type -- a citation's text, say -- is an ODR violation no link sees. The

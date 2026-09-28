@@ -176,7 +176,7 @@ TEST_CASE("every value read from another record says which record", "[record-tra
 
 TEST_CASE("a scope over a record not yet made says no record is bound", "[record-trace]")
 {
-    // Review Focus 1, the trace half: the scope's own line says so, it has no
+    // The trace half: the scope's own line says so, it has no
     // operands -- nothing was read -- and no line names a sample.
     auto const context = formula::record_context(
         formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),

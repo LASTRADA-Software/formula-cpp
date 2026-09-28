@@ -112,7 +112,7 @@ struct AbsoluteValueNode: NodeBase
 
 /// The absolute value of `operand`: `abs(var<ResultA> - var<ResultB>)`.
 ///
-/// Named `abs` after task 1's spike: beside `<cmath>` and `<cstdlib>`, under
+/// Named `abs` after a spike: beside `<cmath>` and `<cstdlib>`, under
 /// `using namespace std;`, found by ADL and as a consumer's local name, it drew
 /// no ambiguity and no warning on cl 19.51, clang-cl and clang++ 22.1.3, or
 /// g++ 13.3 and 14.2.
@@ -161,7 +161,7 @@ namespace detail
     /// count later. Written once, for every such construct.
     ///
     /// It forwards exactly what the shipped nodes ask of an environment --
-    /// `provides`, `is_entered`, `get` and `source_of`, measured by task 1's
+    /// `provides`, `is_entered`, `get` and `source_of`, measured by a
     /// spike, and phase 12's `is_entered_series` and `get_series` -- so every
     /// node, a series node included, evaluates inside it as it does outside. A
     /// binding it does not hold itself is asked of the environment it wraps,

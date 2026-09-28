@@ -7,8 +7,7 @@
 // must draw one message however many quantities are read: after refusing,
 // `record()` gives the record a detail::AbsentEnvironment, which answers
 // every quantity as absent, so no RequireProvided follows for any of them.
-// The registration rejects that, and the one message is counted by hand
-// (see the phase 14 task 3 report).
+// The registration rejects that, and the one message is counted by hand.
 //
 // This must not compile.
 #include <formula-cpp/formula.hpp>

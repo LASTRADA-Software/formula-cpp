@@ -31,12 +31,8 @@ namespace
 namespace unit = formula::unit;
 using formula::var;
 
-struct Strength: formula::Quantity<Strength, "f", "measured compressive strength", unit::Megapascal>
-{
-};
-struct Diameter: formula::Quantity<Diameter, "d", "measured specimen diameter", unit::Millimetre>
-{
-};
+using Strength = formula::Quantity<struct StrengthTag, "f", "measured compressive strength", unit::Megapascal>;
+using Diameter = formula::Quantity<struct DiameterTag, "d", "measured specimen diameter", unit::Millimetre>;
 
 // "reject the specimen below 27.3 MPa" -- an invented threshold, given an
 // invented citation here.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: RecordOrigin
 //
-// The forgery the task 5 review found: an explicit specialisation of
+// A forgery once possible: an explicit specialisation of
 // RecordOrigin's refusing constructor, written without naming anything in
 // `detail::`, whose body -- a member's -- sets the private role and key. It
 // compiled and rendered a forged origin while that constructor was a member

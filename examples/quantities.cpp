@@ -22,36 +22,32 @@ namespace
 namespace unit = formula::unit;
 
 // ---- 1 & 2: two ordinary declarations, one pair distinguished only by tag ----
+//
+// A quantity is declared as an alias of formula::Quantity, whose first
+// argument declares a tag of its own...
+using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "volume of water added", unit::Litre>;
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "volume of water added", unit::Litre>
-{
-};
-
+// ...or as a struct deriving from it, which is its own tag. The two spellings
+// are read the same way everywhere, and mix in one formula.
 struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen", unit::Kilogram>
 {
 };
 
-struct VolumeInCubicMetres: formula::Quantity<VolumeInCubicMetres, "V", "volume of water added", unit::CubicMetre>
-{
-};
+using VolumeInCubicMetres = formula::Quantity<struct VolumeInCubicMetresTag, "V", "volume of water added", unit::CubicMetre>;
 
 // Same symbol, same description, same unit as WaterVolume above -- only the
-// tag (this type's own name) differs.
-struct CementVolume: formula::Quantity<CementVolume, "V_w", "volume of water added", unit::Litre>
-{
-};
+// tag differs: CementVolumeTag, where WaterVolume has WaterVolumeTag.
+using CementVolume = formula::Quantity<struct CementVolumeTag, "V_w", "volume of water added", unit::Litre>;
 
 // combine's result quantity, for step 6 below -- a THIRD quantity, sharing
 // neither the mass's nor the volume's tag, symbol or unit. Naming a result
 // that reuses an operand's quantity is exactly the mislabelling combine's
 // signature no longer allows.
-struct Density: formula::Quantity<Density, "rho", "density of the specimen", unit::Gram>
-{
-};
+using Density = formula::Quantity<struct DensityTag, "rho", "density of the specimen", unit::Gram>;
 
 } // namespace
 
-// ---- 3: a foreign type, not derived from Quantity, joining by specialisation ----
+// ---- 3: a foreign type, not declared through Quantity, joining by specialisation ----
 //
 // Standing in for a `double` or a vendor SDK type: no base, no cooperation,
 // not ours to change. Specialising Describe is the sanctioned way to bring it

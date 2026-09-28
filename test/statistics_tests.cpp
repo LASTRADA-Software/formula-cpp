@@ -130,7 +130,7 @@ TEST_CASE("sample_mean averages every element, in coherent SI, and returns to th
                    == rat(2429, 60));
 }
 
-TEST_CASE("one absent determination makes the mean and the count absent (T2)", "[statistics]")
+TEST_CASE("one absent determination makes the mean and the count absent", "[statistics]")
 {
     // A skip-absent mean gives 2073/50 g (41.46 g) and a count of 5; both are
     // refused here.
@@ -411,7 +411,7 @@ TEST_CASE("one determination has a range of 0 and no variance", "[statistics]")
         == rat(0));
 }
 
-TEST_CASE("one absent determination makes the variance and the range absent (T2)", "[statistics]")
+TEST_CASE("one absent determination makes the variance and the range absent", "[statistics]")
 {
     STATIC_REQUIRE(formula::checked_evaluate<MassVariance>(variance, fixtureAMissingThird)->is_empty());
     STATIC_REQUIRE(formula::checked_evaluate<Spread>(range, fixtureAMissingThird)->is_empty());
@@ -577,7 +577,7 @@ inline constexpr auto fourDeterminations = formula::environment(
 //    11/50 * (1/10 + 40.35 / 50) = 9977/50000 g = 0.19954 g: violated;
 //  - at level 0 (an unbound placeholder), 0.022 g: violated;
 //  - with the count ignored and n = 3 read instead, 10 * 0.90925 g: still
-//    satisfied -- the count's own tests are task 3's.
+//    satisfied -- the count has tests of its own.
 inline constexpr auto rangeCheck = formula::constraint(
     formula::sample_range(formula::series<Mass, 4>)
         <= formula::critical_value<JoinSizes, unit::One>(formula::sample_count(formula::series<Mass, 4>),

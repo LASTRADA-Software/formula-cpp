@@ -6,8 +6,7 @@
 // read record is known to declare the attribute. The message names the
 // attribute and the read record's role; the other attributes are declared
 // on both, and the context is well formed. The one message is counted by
-// hand (see the phase 14 task 6 report), since REJECT cannot refuse a second
-// copy of it.
+// hand, since REJECT cannot refuse a second copy of it.
 //
 // This must not compile.
 #include <formula-cpp/formula.hpp>

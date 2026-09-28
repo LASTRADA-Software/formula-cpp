@@ -3,7 +3,7 @@
 //
 // A read from another record over a series itself, and used in a formula. A
 // scope holds one value, which its trace line attributes to the record; a
-// series-valued scope has none (F3). The author is told to reduce it inside
+// series-valued scope has none. The author is told to reduce it inside
 // the scope. The refused scope is answered as absent, so the division it is
 // used in draws no message of its own.
 //

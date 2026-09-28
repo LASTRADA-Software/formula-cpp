@@ -4,8 +4,7 @@
 // A two-variant pack stated, in an aggregate initialiser with no `detail::`
 // written, as published at the 6th and 8th of 9: a well-formed layout, which
 // the checking constructor used to accept, so that a method no overlay
-// touched traced `[variant Cylinder (8th of 9), selected by tag]` (final
-// review of phase 11, probe 2, F3). A layout is stated only by the library.
+// touched traced `[variant Cylinder (8th of 9), selected by tag]`. A layout is stated only by the library.
 //
 // This must not compile.
 #include <formula-cpp/method.hpp>

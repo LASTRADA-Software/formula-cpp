@@ -13,9 +13,8 @@ namespace unit = formula::unit;
 using formula::Rational;
 using formula::var;
 
-/// How many determinations a sample holds. A plain quantity for now: task 5's
-/// `sample_count` does not exist yet, and a critical value does not care where
-/// its count comes from.
+/// How many determinations a sample holds. A plain quantity: a critical value
+/// does not care where its count comes from.
 struct Specimens: formula::Quantity<Specimens, "n", "number of determinations", unit::One>
 {
 };

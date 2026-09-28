@@ -6,8 +6,8 @@
 //
 // A single value given as a curve's values: there is no value at each point.
 // Refused in this library's words, through an overload that takes a Node for
-// no other purpose, rather than as a constraint nobody satisfied -- the task
-// 5 ruling for sum and cumulative. The curve it returns is refused already,
+// no other purpose, rather than as a constraint nobody satisfied -- as sum
+// and cumulative refuse one. The curve it returns is refused already,
 // so neither its length check nor the interpolation over it -- read at a
 // point of the wrong dimension too -- adds a message.
 #include <formula-cpp/curve.hpp>

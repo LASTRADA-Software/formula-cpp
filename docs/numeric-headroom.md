@@ -194,7 +194,7 @@ fit on its own test fixtures; the fit over every size is below.
 | 20 masses at 3 dp: mean, variance, range | 25 | 45 | 45 | 0 | 18 |
 | 64-point grading curve: cumulative percentages, one reading | 26 | 24 | 26 | 0 | 37 |
 | 20 masses at 3 dp: spread at 3 dp | 25 | 45 | 48 | 40 | 15 |
-| least squares, task 4's 4-point fixture: slope and intercept | 11 | 17 | 17 | 0 | 46 |
+| least squares, the 4-point fixture: slope and intercept | 11 | 17 | 17 | 0 | 46 |
 | least squares, 5 points on distinct denominators (stress control) | 21 | 20 | 21 | 0 | 42 |
 
 <!-- /census:statistics -->

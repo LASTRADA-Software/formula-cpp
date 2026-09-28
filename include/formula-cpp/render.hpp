@@ -888,7 +888,7 @@ template <Dialect D, BinaryOperator Op, Node Left, Node Right, Vocabulary V>
 
 /// An elementwise binary node renders exactly as the scalar operator does
 /// (`detail::render_binary`): the operation adds no marker of its own, and a
-/// series operand carries its own (S14).
+/// series operand carries its own.
 template <Dialect D, BinaryOperator Op, typename Left, typename Right, Vocabulary V>
 [[nodiscard]] std::string render_node(ElementwiseBinaryNode<Op, Left, Right> const& node, V const& vocabulary)
 {
@@ -997,7 +997,7 @@ template <Dialect D, SampleSource S, Vocabulary V>
 
 /// A sample's variance renders as a call on its sample,
 /// `sample_variance(m(i))`, and in LaTeX as `s^{2}({m}_{i})`, the spelling
-/// task 1 typeset clean. The variance is one value and carries no series
+/// a spike typeset clean. The variance is one value and carries no series
 /// marker; its sample carries its own.
 template <Dialect D, SampleSource S, Vocabulary V>
 [[nodiscard]] std::string render_node(SampleVarianceNode<S> const& node, V const& vocabulary)
@@ -1035,7 +1035,7 @@ template <Dialect D, SeriesNode S, Vocabulary V>
 /// A per-element constant renders as its list of values, `values(0.7 mm,
 /// 1.9 mm, ...)`, each spelled as a constant holding it would be
 /// (`detail::number_with_unit`), separated as a lookup's rows are. A list
-/// already reads as many values, so it carries no index marker (S14). A
+/// already reads as many values, so it carries no index marker. A
 /// formula's own values are never truncated.
 template <Dialect D, Unit U, std::size_t N, Vocabulary V>
 [[nodiscard]] std::string render_node(SeriesConstantNode<U, N> const& node, V const&)
@@ -1105,7 +1105,7 @@ template <Dialect D, int Degree, Node Operand, Vocabulary V>
 /// of mm)`, operand first, in the "value, then how" order `ROUND(value,
 /// digits)` already reads to an engineer -- rather than trailing after the
 /// operand with nothing between them (`round(<operand> to <places> dp of
-/// <unit>)`, the shape this rendered before a review caught it). That
+/// <unit>)`, the shape this rendered once). That
 /// trailing shape reads fine for an operand that is a single token, but a
 /// `WhenNode` operand has no closing delimiter of its own in Plain or
 /// Markdown -- `round(if p then a else b to 1 dp of mm)` reads as if only `b`
@@ -1522,7 +1522,7 @@ template <Dialect D, SampleSizeTable Sizes, Unit ResultUnit, Node Count, Vocabul
 /// and as `\left\lvert <operand>\right\rvert` in LaTeX.
 ///
 /// **Never a `|`, in any dialect.** A bare vertical bar inside a Markdown table
-/// cell ends the cell, silently: task 1 measured a row whose formula held an
+/// cell ends the cell, silently: a spike measured a row whose formula held an
 /// absolute value in bars render as a one-cell row holding only the text
 /// before the first bar (python-markdown 3.10.3, pymdown-extensions 12.1). A
 /// formula is quoted in exactly such tables -- a symbol table, a gallery row,
@@ -1556,7 +1556,7 @@ template <Dialect D, Described Q, Vocabulary V>
 
 /// The current pass's mean renders as words, `pass mean`, and in LaTeX as
 /// `\bar{x}_{\text{pass}}`: a symbol could collide with an author's own
-/// quantity's (T11).
+/// quantity's.
 template <Dialect D, Described Q, Vocabulary V>
 [[nodiscard]] std::string render_node(PassMeanNode<Q> const&, V const&)
 {
@@ -1582,8 +1582,8 @@ template <Dialect D, Vocabulary V>
 /// extreme per pass; keep on limit; at most 2; keep at least 4)`. A rendering
 /// that left one out would state half the rule. A gap criterion reads `gap to
 /// range > critical(pass n, at 3, 4, 5, 6, 8) * 1/100`. The deviation is `abs(...)`,
-/// never bars, outside LaTeX: a bar inside a Markdown table cell ends the cell
-/// (T11); the Markdown guard checks it. In LaTeX the parentheses are plain,
+/// never bars, outside LaTeX: a bar inside a Markdown table cell ends the cell;
+/// the Markdown guard checks it. In LaTeX the parentheses are plain,
 /// not `\left(`...`\right)`: TeX never breaks a line inside that pair, and
 /// the `\allowbreak` after each `;` is what lets so long a formula wrap.
 template <Dialect D,
@@ -1631,7 +1631,7 @@ template <Dialect D,
 /// `r(0.1 g + 1/50 * level; level = (x_A + x_B) / 2)`, `R(...)` for
 /// reproducibility, and in LaTeX
 /// `r\left(... \right)\Big\vert_{\text{level} = ...}`, the evaluation bar
-/// typeset clean under MathJax 3.2.2 and tectonic by task 1 -- spelt
+/// typeset clean under MathJax 3.2.2 and tectonic by a spike -- spelt
 /// `\vert`, not `|`, so that no `|` reaches a Markdown table cell (see the
 /// absolute value's `render_node`).
 ///
@@ -1880,7 +1880,7 @@ template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
 /// author-words escaping lookup keys use in Markdown; and in LaTeX in math
 /// mode, `\ \text{of }\mathrm{...}`, through `detail::latex_math_words` --
 /// not inside `\text{}`, where the site's MathJax shows a text-mode escape
-/// literally (phase 14's X11 ruling).
+/// literally.
 ///
 /// A lineage requirement is not rendered: it gates whether the value is read,
 /// and the trace records every attribute it compared.
@@ -1923,7 +1923,7 @@ namespace detail
     /// lives in their own namespace, and is found only by the unqualified,
     /// argument-dependent calls. A one-argument overload of this library's is
     /// refused outright: it would render its node's operands in the declared
-    /// symbols under every vocabulary, the defect the phase-11 review found
+    /// symbols under every vocabulary, a defect found
     /// waiting for the join with derived and replaced variants, and one no
     /// test that lacks such a node would see.
     ///

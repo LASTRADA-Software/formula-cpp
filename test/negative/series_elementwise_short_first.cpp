@@ -9,7 +9,7 @@
 // again. REJECT cannot refuse a second copy of the EXPECTed text; the second
 // REJECT names what only the second message would -- the refused node as the
 // guard's left argument, as g++ and clang++ print it. Counted by hand: one
-// message on cl 19.51, g++-14 and clang++-20 (M1 of the task 4 review).
+// message on cl 19.51, g++-14 and clang++-20.
 #include <formula-cpp/series.hpp>
 
 struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>

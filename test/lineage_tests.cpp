@@ -139,7 +139,7 @@ TEST_CASE("a violated attribute refuses the read whatever order it is checked in
 
 TEST_CASE("every attribute checked appears in the trace, in declared order", "[lineage-trace]")
 {
-    // Review Focus 4: the mismatch is in attribute 2 of 3. Three attribute
+    // The mismatch is in attribute 2 of 3. Three attribute
     // lines, satisfied / violated / satisfied, each with both keys; they are
     // the scope's first operands; and the operand is never read.
     constexpr auto gated = formula::from_record<Reference>(
@@ -228,7 +228,7 @@ TEST_CASE("a requirement against another role compares with that record", "[line
 
 TEST_CASE("a comparison with another role names the record that played it, and whose key is whose", "[lineage-trace]")
 {
-    // The final review's M1: the prior test's batch, 4412, is a value read
+    // The prior test's batch, 4412, is a value read
     // from the record playing PriorTest -- sample 17, test 3 -- and the line
     // says so, with each key named by whose it is rather than by its place.
     // The attribute step is inside the reference's scope and stamped with

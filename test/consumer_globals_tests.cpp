@@ -53,7 +53,8 @@
 // unbound record, untraced and traced into `render_trace`, gated on
 // `same_lineage` through `checked_explain`, rendered and documented, with
 // `lineage_of` and `origin_of` reading the trace's side tables, and under an
-// overlay's constant and derived quantity, traced. A
+// overlay's constant and derived quantity, traced; and a quantity declared by
+// alias at global scope, so that its tag is one more global. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -176,6 +177,11 @@ int index;
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>
 #include <formula-cpp/vocabulary.hpp>
+
+// A quantity declared by alias at global scope, as a consumer would: the
+// elaborated type specifier declares its tag, `AliasEdgeTag`, as one more
+// global of the consumer's.
+using AliasEdge = formula::Quantity<struct AliasEdgeTag, "x_g", "an edge declared by alias", formula::unit::Millimetre>;
 
 namespace
 {
@@ -914,5 +920,15 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render_trace(typedSeriesTrace, { .maxSteps = 20 })
                                       .find("103 mm, from record Reference (sample 23, test 3), entered by hand\n")
                                   != std::string::npos);
+
+    // A quantity declared by alias, evaluated, traced and rendered.
+    formula::Trace<> aliasTrace {};
+    auto const doubledEdge = formula::checked_evaluate<AliasEdge>(
+        var<AliasEdge> * formula::Rational { 2 },
+        formula::environment(formula::Measured<AliasEdge> { formula::Rational { 139 } }),
+        formula::RecordingSink { aliasTrace, north });
+    probe.checks.push_back(doubledEdge.has_value() && doubledEdge->measurement().value() == formula::Rational { 278 }
+                           && formula::render_trace(aliasTrace, { .maxSteps = 5 }).starts_with("1. x_g = 139 mm\n")
+                           && formula::render(var<AliasEdge> * formula::Rational { 2 }) == "x_g * 2");
     return probe;
 }

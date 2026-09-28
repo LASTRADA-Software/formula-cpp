@@ -4,7 +4,7 @@
 /// @file
 /// Outlier rejection: a sample transformer that removes determinations a
 /// declared criterion finds too far from the rest, re-running the mean until
-/// nothing more is rejected or a declared bound aborts it (T4, T6).
+/// nothing more is rejected or a declared bound aborts it.
 ///
 ///     formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep,
 ///                               formula::AtMost<2>, formula::KeepAtLeast<4>>(
@@ -60,16 +60,16 @@
 /// nothing more is rejected: the trace records the author's `Verdict`,
 /// naming the determinations that would have gone, and anything reduced from
 /// the rejection fails with `DomainError` (the scalar channel carries the
-/// enum; S8's precedent). `checked_evaluate_rejection` returns the whole
+/// enum, as it does for a series). `checked_evaluate_rejection` returns the whole
 /// result -- the mean of the survivors, or the verdict, the rejected
 /// positions and the passes -- in a `RejectionOutcome` only the library
 /// builds.
 ///
-/// **Exact only.** A rejection decides, so it evaluates in `Rational` only
-/// (S15): a comparison a few ULPs off would move a determination across the
+/// **Exact only.** A rejection decides, so it evaluates in `Rational` only:
+/// a comparison a few ULPs off would move a determination across the
 /// limit, not a result by a few ULPs.
 ///
-/// **Absence is strict** (T2): one absent determination and no pass runs;
+/// **Absence is strict**: one absent determination and no pass runs;
 /// the outcome is empty.
 
 #include <formula-cpp/citation.hpp>
@@ -906,7 +906,7 @@ namespace detail
     };
 
     /// Fails to compile when a rejection is evaluated in a representation
-    /// other than `Rational`: it decides, and a decision is exact (S15).
+    /// other than `Rational`: it decides, and a decision is exact.
     template <typename Rep>
     struct RequireRationalRejection
     {
@@ -998,7 +998,7 @@ namespace detail
             return dispatch_sample<Rational>(node, environment, sink);
     }
 
-    /// Runs T4's loop over a working copy of the sample. See the file comment.
+    /// Runs the rejection loop over a working copy of the sample. See the file comment.
     template <PerPass P,
               OnLimit L,
               typename AtMostT,

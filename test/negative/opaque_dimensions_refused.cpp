@@ -5,9 +5,8 @@
 //
 // Grams raised by a dimensionless level: the operation's output_dimensions
 // answers std::nullopt. Refused once where the call is built. The output is
-// only built, not evaluated under a result quantity: O1's amendment 3 is
-// still open, and until the lead rules, a refused call's stand-in dimension
-// would draw RequireResultDimension as well (plan, C12).
+// only built, not evaluated under a result quantity: a refused call's
+// stand-in dimension would draw RequireResultDimension as well.
 #include <formula-cpp/opaque.hpp>
 
 #include <array>

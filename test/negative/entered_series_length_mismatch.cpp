@@ -4,7 +4,7 @@
 //
 // A person entered four elements for a series result of three. The entered
 // series is what the result would be, so its length is held to the
-// expression's, exactly as a measured one is (D3 in task 2's report).
+// expression's, exactly as a measured one is.
 #include <formula-cpp/series.hpp>
 
 #include <cstdint>
