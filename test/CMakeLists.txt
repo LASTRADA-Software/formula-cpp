@@ -87,6 +87,7 @@ add_executable(formula-cpp-tests
     opaque_tests.cpp
     opaque_cross_tu_b.cpp
     least_squares_tests.cpp
+    retry_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -2198,6 +2199,39 @@ formula_add_negative_test(overlay_constant_bypassed_inside_opaque
 formula_add_negative_test(overlay_constant_before_derivation_inside_opaque
     "formula: this overlay fixes a quantity that nothing read where the constant is listed"
     REJECT "cannot see inside")
+
+# Bounded retry (`retry.hpp`): each refusal is gated on the ones before it,
+# so that one mistake draws one message.
+formula_add_negative_test(retry_zero_attempts
+    "formula: a retry allows no attempts at all; MaxAttempts must be at least one"
+    REJECT "allows at most 64 attempts" "second attempt allows only one attempt")
+formula_add_negative_test(retry_over_cap
+    "formula: a retry allows at most 64 attempts; the methods this shape exists for repeat a step a few times, and a larger count is almost always a typo"
+    REJECT "allows no attempts at all" "second attempt allows only one attempt")
+formula_add_negative_test(retry_second_attempt_of_one
+    "formula: a retry judged from its second attempt allows only one attempt, so its acceptance could never be judged"
+    REJECT "allows no attempts at all" "allows at most 64 attempts")
+formula_add_negative_test(retry_attempt_dimension
+    "formula: this retry's attempt expression does not compute the dimension of its result quantity"
+    REJECT "RequireResultDimension" "RequireComparandsAgree" "no matching")
+formula_add_negative_test(retry_starting_dimension
+    "formula: this retry's starting value does not compute the dimension of its result quantity"
+    REJECT "does not compute the dimension of its result quantity; each attempt" "no matching")
+formula_add_negative_test(retry_accept_not_predicate
+    "formula: a retry's acceptance is a comparison that holds or does not"
+    REJECT "no matching" "checked_evaluate_predicate")
+formula_add_negative_test(retry_attempt_not_node
+    "formula: a retry's attempt is one expression that produces one value"
+    REJECT "no matching" "does not compute the dimension")
+formula_add_negative_test(retry_this_attempt_in_attempt
+    "formula: this_attempt is the value an attempt produced, known only when judging it"
+    REJECT "only meaningful inside a retry" "no matching")
+formula_add_negative_test(retry_in_double
+    "formula: a retry can only be evaluated with Rep = Rational"
+    REJECT "no matching" "only meaningful inside a retry")
+formula_add_negative_test(retry_previous_outside
+    "formula: previous_attempt, this_attempt and attempt_number are only meaningful inside a retry"
+    REJECT "RequireProvided" "no matching")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

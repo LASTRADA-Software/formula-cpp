@@ -40,6 +40,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
