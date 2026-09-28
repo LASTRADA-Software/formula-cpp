@@ -119,9 +119,9 @@ namespace detail
 {
     /// The type of a library node kind's `refused` member: whether the node
     /// was refused already, or holds one that was (`refused_already`). A
-    /// `detail::` type, so that only this library's node kinds can claim to
-    /// be refused, and silence the checks around them. Converts to `bool`
-    /// both ways.
+    /// `detail::` type, so that no consumer's node kind claims to be refused
+    /// by accident; converts to `bool` both ways. Borrowing it on purpose
+    /// (`decltype`) is outside the contract, as friend injection is.
     struct RefusedFlag
     {
         bool value;
@@ -150,10 +150,10 @@ namespace detail
     /// operation does not declare (`opaque.hpp`), and every node built over
     /// one of those, which carries its operands' `refused` on.
     ///
-    /// Only this library's node kinds can claim it: the flag is read only
-    /// when it is a `RefusedFlag`, a `detail::` type. A consumer's node
-    /// kind with a `bool refused` member of its own meaning is asked every
-    /// question a node is asked, as on any other node.
+    /// The flag is read only when it is a `RefusedFlag`: a consumer's node
+    /// kind with a `bool refused` of its own meaning is asked every question,
+    /// as any node is. One that borrows `RefusedFlag`'s type on purpose is
+    /// outside the contract, like the friend injection `method.hpp` names.
     template <typename T>
     [[nodiscard]] consteval bool refused_already() noexcept
     {
