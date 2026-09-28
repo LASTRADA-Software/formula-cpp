@@ -212,3 +212,6 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   evaluated. The line now reads `#2 / (not evaluated)`, and a side computed by a consumer's node that
   records no step of its own reads `(untraced)`. `Step` gains `leftOperand` and `rightOperand`
   (`OperandSide`), which say so.
+- A series multiplied or divided by a pure number was stated in coherent SI with no unit, `411/2000`
+  for 205.5 g, and so were a curve over it and a value read off that curve. Each now reads in the
+  series' unit, `411/2 g`, when that unit has a symbol and no offset.

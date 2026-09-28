@@ -8,7 +8,8 @@
 //      reduction -- `sum` or `interpolate_at` -- brings it back to one value.
 //      A sum and a range read in the series' unit, unless it has an offset.
 //   2. "Map" is elementwise arithmetic: one trace step per operation, the
-//      broadcast scalar read once.
+//      broadcast scalar read once. A series scaled by a pure number reads
+//      in its series' unit.
 //   3. Absence is decided at the size of what is produced: every row of the
 //      table, run.
 //   4. A failed element fails the whole series, and names itself.
@@ -268,6 +269,14 @@ int main()
     check(passingTrace.ends_with("6. #1 - #5 = 447/1250; 577/1250; 787/1250; 441/625; 611/625\n"),
           "35.76, 46.16, 62.96, 70.56 and 97.76 % passing");
     std::printf("the same, within a budget of 8:\n%s\n", series_trace<Passing>(passing, analysis, 8).c_str());
+
+    // A series scaled by a pure number is still in its series' unit.
+    auto const threeScreens = formula::environment(
+        formula::measured_series<Retained>(m<Retained>(137), m<Retained>(213), m<Retained>(293)));
+    std::string const scaledTrace =
+        series_trace<Retained>(formula::series<Retained, 3> * formula::number(rat(3, 2)), threeScreens);
+    std::printf("%s\n", scaledTrace.c_str());
+    check(scaledTrace.ends_with("3. #1 * #2 = 411/2 g; 639/2 g; 879/2 g\n"), "grams times 3/2 are grams");
 
     std::printf("== 3. Absence, decided at the size of what is produced ==\n\n");
     // The third screen's mass was not recorded; in the last row, the total.

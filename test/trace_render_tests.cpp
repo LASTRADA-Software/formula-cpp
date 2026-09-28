@@ -2106,6 +2106,49 @@ TEST_CASE("an elementwise step names its operands, and a broadcast scalar appear
     CHECK(trace.steps[2].operands == std::vector<std::size_t> { 0, 1 });
 }
 
+TEST_CASE("a series scaled by a pure number reads in the series' unit", "[series][trace]")
+{
+    // 137, 213 and 293 g, times 3/2 and divided by 3/2: each still a mass in
+    // grams, and shown in grams rather than in unlabelled kilograms --
+    // whichever side the number stands on.
+    constexpr auto masses =
+        formula::environment(formula::measured_series<series_trace::Retained>(
+            series_trace::retained(137), series_trace::retained(213), series_trace::retained(293)));
+    constexpr auto retained = formula::series<series_trace::Retained, 3>;
+    constexpr auto factor = formula::number(formula::Rational { 3, 2 });
+    auto const derivation = [&](auto const& seriesNode) {
+        formula::Trace<> trace {};
+        (void) formula::detail::dispatch_series<formula::Rational>(seriesNode, masses, formula::RecordingSink<> { trace });
+        return formula::render_trace(trace, { .maxSteps = 30 });
+    };
+    CHECK(derivation(retained * factor)
+          == "1. m_r = 137 g; 213 g; 293 g\n"
+             "2. 3/2\n"
+             "3. #1 * #2 = 411/2 g; 639/2 g; 879/2 g\n");
+    CHECK(derivation(factor * retained)
+          == "1. 3/2\n"
+             "2. m_r = 137 g; 213 g; 293 g\n"
+             "3. #1 * #2 = 411/2 g; 639/2 g; 879/2 g\n");
+    CHECK(derivation(retained / factor)
+          == "1. m_r = 137 g; 213 g; 293 g\n"
+             "2. 3/2\n"
+             "3. #1 / #2 = 274/3 g; 142 g; 586/3 g\n");
+    // A number divided by a series is no mass; it keeps the coherent unit.
+    CHECK(derivation(factor / retained)
+          == "1. 3/2\n"
+             "2. m_r = 137 g; 213 g; 293 g\n"
+             "3. #1 / #2 = 1500/137; 500/71; 1500/293\n");
+
+    // Celsius readings doubled are no readings: 593.7 K is not 2 x 23.7 degC.
+    formula::Trace<> doubled {};
+    (void) formula::detail::dispatch_series<formula::Rational>(formula::series<series_trace::Reading, 3>
+                                                                   * formula::number(formula::Rational { 2 }),
+                                                               series_trace::readings,
+                                                               formula::RecordingSink<> { doubled });
+    REQUIRE(doubled.steps.size() == 3);
+    CHECK(formula::render_trace(doubled, { .maxSteps = 30 }).ends_with("3. #1 * #2 = 5937/10; 6289/10; 6221/10\n"));
+}
+
 TEST_CASE("a per-element constant and a negation each record one step with every element", "[series][trace]")
 {
     // Grams, not the coherent kilogram: a line that printed the stored SI

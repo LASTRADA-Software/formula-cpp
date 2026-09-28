@@ -2118,6 +2118,24 @@ namespace detail
         }
     }
 
+    /// Which operand of @p S, an elementwise binary node, its values are that
+    /// operand's scaled by a pure number -- 0 for the left, 1 for the right --
+    /// so that they read in its unit: the non-dimensionless side of a product
+    /// with exactly one dimensionless side, and the left of a quotient by a
+    /// dimensionless right. Empty for every other kind, and for a product of
+    /// two pure numbers, which says nothing about which one's unit it is in.
+    template <typename S>
+    inline constexpr std::optional<std::size_t> scaled_operand = std::nullopt;
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    inline constexpr std::optional<std::size_t> scaled_operand<ElementwiseBinaryNode<Op, Left, Right>> =
+        Op == BinaryOperator::Multiply && Left::dimension == dim::Scalar && !(Right::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 1 }
+        : (Op == BinaryOperator::Multiply || Op == BinaryOperator::Divide) && Right::dimension == dim::Scalar
+                && !(Left::dimension == dim::Scalar)
+            ? std::optional<std::size_t> { 0 }
+            : std::nullopt;
+
     template <typename Role, typename Requirement, Node Operand>
     struct StepKindOf<RecordScopeNode<Role, Requirement, Operand>>
     {
@@ -3713,9 +3731,22 @@ class RecordingSink
         else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::Binning)
             detail::record_binning<S>(seriesStep, _trace->steps);
         // Elementwise arithmetic says which side its operand stood on, when
-        // it has one.
+        // it has one; and a series scaled by a pure number reads in that
+        // series' unit, when a product can be shown in it
+        // (`detail::borrowable`) -- grams times 3/2 are grams.
         else if constexpr (requires { typename detail::BinarySides<S>::left; })
+        {
             detail::record_operand_sides<S>(seriesStep, _trace->steps);
+            // Only when each side records exactly one step of its own, so that
+            // the claimed steps are the two sides' and no forwarding node's.
+            if constexpr (detail::scaled_operand<S>.has_value()
+                          && detail::RecordsOwnStep<typename detail::BinarySides<S>::left>
+                          && detail::RecordsOwnStep<typename detail::BinarySides<S>::right>)
+                if (seriesStep.operands.size() == 2)
+                    if (Unit const scaledUnit = _trace->steps[seriesStep.operands[*detail::scaled_operand<S>]].unit;
+                        scaledUnit.dimension == S::dimension && detail::borrowable(scaledUnit))
+                        seriesStep.unit = scaledUnit;
+        }
 
         if (!result.has_value())
         {
