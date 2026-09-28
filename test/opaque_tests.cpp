@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/opaque.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
@@ -1219,4 +1220,24 @@ TEST_CASE("an opaque output does not borrow a unit with no symbol, and reads in 
     CHECK(text.find("halve(#1) = half = 1957/400 m [inside not shown] [Example Standard 12]\n") != std::string::npos);
     CHECK(text.find("half of #2 = 1957/400 m\n") != std::string::npos);
     CHECK(text.find("9785/2 m") == std::string::npos);
+}
+
+TEST_CASE("a precision limit can take its level from an opaque output", "[opaque][precision]")
+{
+    // Readings 41.3, 43.9 and 42.7 g: span 2.6 g <= r, r = 1.97 g + level / 50
+    // at the level of the highest reading, 43.9 g: 1.97 + 0.878 = 2.848 g,
+    // satisfied. An unbound level, read as 0, would give 1.97 g, violated.
+    constexpr auto spanOf = formula::opaque<SeriesSpan>({ .reference = "Example Standard 12" }, formula::series<Reading, 3>);
+    constexpr auto limitOfLevel =
+        formula::constant<unit::Gram>(rat(197, 100)) + rat(1, 50) * formula::precision_level<Reading>;
+    constexpr auto withinLimit = formula::constraint(formula::opaque_output<"span">(spanOf)
+                                                         <= formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                                                             formula::opaque_output<"highest">(spanOf), limitOfLevel),
+                                                     formula::Verdict { "repeat the readings" });
+    constexpr auto three =
+        formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(413, 10) },
+                                                               formula::Measured<Reading> { rat(439, 10) },
+                                                               formula::Measured<Reading> { rat(427, 10) }));
+    STATIC_REQUIRE(formula::check(withinLimit, three).is_satisfied());
+    STATIC_REQUIRE(formula::detail::LevelChildren<std::remove_cv_t<decltype(formula::opaque_output<"span">(spanOf))>>::seen);
 }
