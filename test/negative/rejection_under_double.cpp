@@ -2,7 +2,7 @@
 // EXPECT: formula: a rejection of outliers can only be evaluated with Rep = Rational
 //
 // A rejection decides which determinations remain, so it evaluates in
-// Rational only (S15). Asked in double, it is refused once.
+// Rational only. Asked in double, it is refused once.
 // This must not compile.
 #include <formula-cpp/formula.hpp>
 

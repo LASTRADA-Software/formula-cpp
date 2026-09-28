@@ -173,8 +173,7 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
     // Every expected value below is written out independently of unit.hpp's
     // own initialisers -- read the physics, not the expression that defines
     // the constant -- so a broken initialiser cannot satisfy the row that
-    // checks it. Same lesson as dimension_tests.cpp's ground-truth CHECKs
-    // (Ruling P3-4).
+    // checks it. Same lesson as dimension_tests.cpp's ground-truth CHECKs.
     struct Expected
     {
         Unit actual;
@@ -853,7 +852,7 @@ TEST_CASE("round_to_declared throws exactly where checked_round_to_declared repo
     // The pair's other half: on a SUCCEEDING input, round_to_declared must
     // return the same value checked_round_to_declared reports, not merely
     // "doesn't throw". Only the throwing case was pinned until now -- a
-    // rename (Ruling G) that ignored its own `mode` argument and always
+    // rename that ignored its own `mode` argument and always
     // rounded TowardZero left the whole suite green.
     CHECK(formula::round_to_declared(*Rational::make(123456, 1000), unit::Litre, formula::RoundingMode::HalfAwayFromZero)
           == *Rational::from_decimal(1235, -1));

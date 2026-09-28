@@ -160,7 +160,7 @@ TEST_CASE("a limit is a value or explicitly unbounded, never a value nobody fill
     // (`conformity_empty_envelope`); the trait therefore answers true. An
     // `Elements`, which an expression holds, leaves `{}` undeclared and the
     // trait answers false. Both pinned, since the one rule that decides each
-    // is stated on the two types (final review, L4).
+    // is stated on the two types.
     STATIC_REQUIRE(std::is_default_constructible_v<formula::Envelope<2>>);
     STATIC_REQUIRE_FALSE(std::is_default_constructible_v<formula::Elements<2>>);
     STATIC_REQUIRE(limit(rat(3)).value() == rat(3));

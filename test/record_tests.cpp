@@ -309,7 +309,7 @@ struct RecordBatch
 
 TEST_CASE("an unbound record may name its environment's type as decltype gives it", "[record-context]")
 {
-    // The lead's ruling on the task 9 finding: `there` is a constexpr
+    // `there` is a constexpr
     // variable, so `decltype(there)` is const. The record returned is the
     // unqualified one, the type `record<Reference>(key, there)` builds, so a
     // context holding either is one type.
@@ -324,7 +324,7 @@ TEST_CASE("an unbound record may name its environment's type as decltype gives i
 
 TEST_CASE("a gated read over an unbound record is absent, and checks no lineage", "[record-context]")
 {
-    // The task 9 review's H1, ruled: an unbound record's lineage is unknown
+    // An unbound record's lineage is unknown
     // for every attribute it declares, so a gated read over it is absent, as
     // a read of its values is. The attributes are named in its type, since
     // `unbound()` takes nothing to declare them with.

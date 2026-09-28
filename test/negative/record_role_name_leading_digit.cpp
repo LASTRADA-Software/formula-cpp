@@ -3,8 +3,7 @@
 //
 // A role whose TagName starts with a digit, read through a scope. `f_c of 2nd
 // reference` -- and a name that is all digits, `f_c of 9` -- reads as
-// arithmetic on a number, so a role's name must start with a letter (the
-// lead's ruling on the task 9 review's L5).
+// arithmetic on a number, so a role's name must start with a letter.
 //
 // This must not compile.
 #include <formula-cpp/environment.hpp>

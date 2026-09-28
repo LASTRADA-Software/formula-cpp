@@ -9,8 +9,7 @@
 //
 // The duplicate sits in the MIDDLE pair of four rows, neither the first pair
 // nor the last, because a check confined to either end passes a table with a
-// defect anywhere else -- task 1's review finding, applied rather than merely
-// recorded. This must not compile.
+// defect anywhere else. This must not compile.
 #include <formula-cpp/lookup.hpp>
 
 namespace

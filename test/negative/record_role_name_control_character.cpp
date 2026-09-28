@@ -4,7 +4,7 @@
 // A role whose TagName holds a newline, on a record alone. A blank line in
 // a role's name ends a paragraph inside LaTeX math mode, which stops the
 // document compiling, and in Markdown it can turn the whole formula into a
-// heading (the task 7 review's L1). The record refuses it before any formula
+// heading. The record refuses it before any formula
 // reads from it.
 //
 // This must not compile.

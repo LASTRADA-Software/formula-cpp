@@ -23,7 +23,7 @@ struct SizeCorrection: formula::Quantity<SizeCorrection, "k", "size correction f
 
 /// A second input, used only by the composition test below, to prove a
 /// banded lookup stands where a number stands and combines with `*` like any
-/// other node (D5).
+/// other node.
 struct NominalSize: formula::Quantity<NominalSize, "d0", "nominal specimen size", unit::Millimetre>
 {
 };
@@ -40,8 +40,7 @@ struct CorrectedSize: formula::Quantity<CorrectedSize, "d_c", "corrected specime
 /// the unit `Diameter` itself is declared in -- so evaluating this table
 /// exercises a real unit conversion (coherent SI -> the table's own key
 /// unit) rather than an identity one. In millimetres these are [0,13.9),
-/// [13.9,27.1) and [27.1,41.1): a first, a middle and a last band, as task 1's
-/// review requires (a defect that only shows up in the middle is strictly
+/// [13.9,27.1) and [27.1,41.1): a first, a middle and a last band (a defect that only shows up in the middle is strictly
 /// stronger than one visible at either end).
 inline constexpr BandTable<3> SizeBands {
     band(0, 1, 139, 100),     // [0, 1.39) cm     == [0, 13.9) mm
@@ -88,7 +87,7 @@ TEST_CASE("a value in the first band selects that band's correction", "[lookup]"
 TEST_CASE("a value in a middle band selects that band's correction", "[lookup]")
 {
     // 15 mm == 1.5 cm, inside [1.39, 2.71) cm -- not the first band and not the
-    // last, the position task 1's review established as strictly stronger.
+    // last, the position that is strictly stronger.
     constexpr auto computed = formula::checked_evaluate<SizeCorrection>(lookup(), millimetresOfDiameter(15));
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_value());
@@ -189,7 +188,7 @@ TEST_CASE("an absent operand stays absent -- absence and a miss are not the same
 
 TEST_CASE("a banded lookup composes with other nodes, exactly like any other Node", "[lookup]")
 {
-    // D5: a lookup produces a quantity, so it stands where a number stands
+    // A lookup produces a quantity, so it stands where a number stands
     // and combines with `*` the same way a `ConstantNode` would -- no
     // separate entry point, unlike `Constraint`.
     constexpr auto corrected = var<NominalSize> * lookup();
@@ -330,8 +329,8 @@ TEST_CASE("the first key in an exact table selects its own row", "[lookup]")
 
 TEST_CASE("a middle key in an exact table selects its own row", "[lookup]")
 {
-    // Neither first nor last: the position task 1's review established as
-    // strictly stronger, here on the hit side.
+    // Neither first nor last: the position that is strictly stronger, here
+    // on the hit side.
     constexpr auto computed =
         formula::checked_evaluate<SizeCorrection>(shapeLookup(SpecimenVariant::CylinderShort), formula::environment());
     STATIC_REQUIRE(computed.has_value());
@@ -439,7 +438,7 @@ TEST_CASE("a row whose correction is zero is a hit worth zero, never a miss", "[
 
 TEST_CASE("an exact lookup composes with other nodes, exactly like any other Node", "[lookup]")
 {
-    // D5 again, for the second table kind: a lookup produces a quantity, so
+    // Again, for the second table kind: a lookup produces a quantity, so
     // it stands where a number stands and combines with `*` the same way a
     // `ConstantNode` would.
     constexpr auto corrected = var<NominalSize> * shapeLookup(SpecimenVariant::CubeLarge);
@@ -861,7 +860,7 @@ TEST_CASE("an absent operand stays absent for an interpolating lookup too", "[lo
 
 TEST_CASE("an interpolating lookup composes with other nodes, exactly like any other Node", "[lookup]")
 {
-    // D5 for the third table kind.
+    // The same, for the third table kind.
     constexpr auto corrected = var<NominalSize> * curve();
     STATIC_REQUIRE(decltype(corrected)::dimension == formula::Describe<CorrectedSize>::dimension);
 

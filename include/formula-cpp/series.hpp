@@ -1028,8 +1028,8 @@ template <typename Rep = Rational, UnaryOperator Op, SeriesNode Operand, typenam
 /// either fails the whole series at once -- a series operand's with its own
 /// position, a scalar's with none. Only then is each element considered: an
 /// element absent on either side is absent in the result and no other, an
-/// absent scalar makes every element absent (S7), and an arithmetic error at
-/// an element fails the whole series naming that element (S8). There is no
+/// absent scalar makes every element absent, and an arithmetic error at an
+/// element fails the whole series naming that element. There is no
 /// partial result.
 template <typename Rep = Rational, BinaryOperator Op, typename Left, typename Right, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedSeries<Rep, ElementwiseBinaryNode<Op, Left, Right>::length> checked_evaluate_series_si(

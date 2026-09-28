@@ -747,7 +747,7 @@ TEST_CASE("a later overlay's rounding rule holds over an earlier one's", "[overl
 }
 
 // ---------------------------------------------------------------------------
-// Wholesale replacement and derived quantities (task 7)
+// Wholesale replacement and derived quantities
 //
 // Results are coherent SI and rounded by the method's one-decimal rule, so
 // every fixture below is chosen so that the right and the plausible wrong
@@ -1353,7 +1353,7 @@ TEST_CASE("an overlay's constraint judges a category code, and its verdict names
     // fixed where the constraint is written, because `exact_lookup` takes it
     // as a value and not from the environment, so this constraint judges the
     // round category for every specimen, not the specimen's own category --
-    // which no constraint can judge yet. What it does pin is ruling 4: the
+    // which no constraint can judge yet. What it does pin is that the
     // verdict's derivation names the category by its enumerator.
     constexpr auto acceptedShape = formula::constraint(
         formula::exact_lookup<ShapeKeys, unit::One>(Shape::Round, { formula::Rational { 1 }, formula::Rational { 0 } })

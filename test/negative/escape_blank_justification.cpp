@@ -4,7 +4,7 @@
 // A justification of nothing but spaces satisfies "carries a justification"
 // and says nothing at all, which defeats this escape hatch exactly as
 // thoroughly as an empty one. The first version of the check counted bytes
-// rather than content, so this compiled; a reviewer found it by trying it.
+// rather than content, so this compiled until it was tried.
 //
 // The same applies to a tab, a newline, or a NUL -- `FixedString` is
 // byte-oriented and will carry any of them. This case pins the one a person

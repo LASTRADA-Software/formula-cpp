@@ -8,14 +8,14 @@
 ///
 /// **A sample** (`SampleSource`) is any source of repeated determinations of
 /// one quantity. That is a phase 12 series, `series<Q, N>` or any expression
-/// over one: a series expression is a sample (T14), so
+/// over one: a series expression is a sample, so
 /// `sample_mean(series<A, 3> / series<B, 3>)` is the mean of the per-element
 /// ratios. It is also raw observations, `observations<Q, Capacity>`, whose
 /// count is known only at run time: `Capacity` is a bound, not a count, and
 /// every statistic reads the observations made -- `sample_count` of six made
 /// in room for eight is 6, and none made is an empty sample.
 ///
-/// **Absence is strict** (T2). One absent determination makes every
+/// **Absence is strict**. One absent determination makes every
 /// statistic of the sample absent -- the count included, which is neither N
 /// nor N - 1 but unknown. A mean of the determinations that happen to be
 /// present is exactly the wrong number: "a formula with one missing input has
@@ -111,7 +111,7 @@ namespace detail
 } // namespace detail
 
 /// The result of evaluating a sample: its values, absent as a whole when the
-/// sample is (T2), or the failure that stopped it -- phase 12's
+/// sample is, or the failure that stopped it -- phase 12's
 /// `SeriesFailure`, whose `element` is empty when the failure belongs to no
 /// determination.
 template <typename Rep, std::size_t C>
@@ -200,7 +200,7 @@ namespace detail
 } // namespace detail
 
 /// How many determinations a sample holds: a bare number. Absent when any
-/// determination is (T2) -- not N, and not N - 1.
+/// determination is -- not N, and not N - 1.
 template <SampleSource S>
 struct SampleCountNode: NodeBase
 {
@@ -219,7 +219,7 @@ struct SampleCountNode: NodeBase
 };
 
 /// The mean of a sample: the total of its determinations over their count,
-/// in their dimension. Absent when any determination is (T2).
+/// in their dimension. Absent when any determination is.
 template <SampleSource S>
 struct SampleMeanNode: NodeBase
 {
@@ -275,7 +275,7 @@ template <Node N>
 /// The sample variance: the squared deviations from the mean, totalled and
 /// divided by n - 1 -- the **sample** variance, as the name says, not the
 /// population's. In the square of the determinations' dimension. Absent when
-/// any determination is (T2); fewer than two is `DomainError`.
+/// any determination is; fewer than two is `DomainError`.
 template <SampleSource S>
 struct SampleVarianceNode: NodeBase
 {
@@ -294,7 +294,7 @@ struct SampleVarianceNode: NodeBase
 };
 
 /// The range of a sample: its largest determination less its smallest, in
-/// their dimension. Absent when any determination is (T2); one determination
+/// their dimension. Absent when any determination is; one determination
 /// has a range of 0.
 template <SampleSource S>
 struct SampleRangeNode: NodeBase
@@ -353,7 +353,7 @@ namespace detail
     /// statistic over a sample failed, when it asks -- after `produced`, so
     /// that the step it amends exists. The scalar channel carries only the
     /// error (`Evaluated<Rep>`); the position survives in the trace, as
-    /// phase 12's S8 has it for a series.
+    /// it does for a series.
     template <typename Sink>
     constexpr void tell_sample_failed_at(Sink& sink, std::size_t at) noexcept
     {
@@ -422,7 +422,7 @@ namespace detail
     /// @p reduce over its determinations, with the sink told the node, the
     /// result, and -- when @p reduce names one -- the determination a failure
     /// arose at. A failed sample relays its error; an absent one makes the
-    /// statistic absent (T2).
+    /// statistic absent.
     template <typename Rep, typename N, typename S, typename Env, typename Sink, typename Reduce>
     [[nodiscard]] constexpr Evaluated<Rep> evaluate_statistic(
         N const& node, S const& sampleSource, Env const& environment, Sink sink, Reduce reduce) noexcept
@@ -472,7 +472,7 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 /// deviations from it, totalled and divided by n - 1. Fewer than two
 /// determinations is `DomainError`: n - 1 is then no count of anything.
 ///
-/// **Headroom, as measured** (task 6 and its review). The one-pass textbook
+/// **Headroom, as measured.** The one-pass textbook
 /// form, (sum x^2 - (sum x)^2 / n) / (n - 1), squares the determinations
 /// themselves, and at large *magnitudes* overflows first: at 2^25 times
 /// fixture A's masses, where this form holds until 2^31
@@ -480,7 +480,7 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 /// dividing by n before squaring puts n^2 into every deviation's
 /// denominator, and at 6 dp in g near 40 g with n = 6 this form overflows on
 /// 423 of 1000 samples (the overflow census's draw, docs/numeric-headroom.md),
-/// where task 6 found the one-pass form holding more often.
+/// where the one-pass form was found holding more often.
 /// Every such failure is `Overflow`, naming the determination it arose at --
 /// never a wrong value.
 template <typename Rep = Rational, SampleSource S, typename Env, typename Sink = NullSink>
@@ -556,7 +556,7 @@ namespace detail
 } // namespace detail
 
 /// The range: the largest determination less the smallest (`detail::range_of`).
-/// It takes a value and makes no decision, so it works for any `Rep` (T3).
+/// It takes a value and makes no decision, so it works for any `Rep`.
 template <typename Rep = Rational, SampleSource S, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(SampleRangeNode<S> const& node,
                                                            Env const& environment,

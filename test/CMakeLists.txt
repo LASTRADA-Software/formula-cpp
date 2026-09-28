@@ -189,8 +189,8 @@ function(formula_add_negative_test name expected)
     # How many times EXPECT must appear: one message per mistake, made a check
     # that can fail. Not under cl, which stops at the first failed
     # static_assert of an instantiation chain, so a count there cannot tell one
-    # message from several (measured on cl 19.51 with the task 8 review's L5
-    # case: 1 either way). clang-cl counts as clang++ does.
+    # message from several (measured on cl 19.51 with snap_rep_not_rational:
+    # 1 either way). clang-cl counts as clang++ does.
     if(DEFINED arg_EXPECT_COUNT AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         string(APPEND content "set(EXPECT_COUNT ${arg_EXPECT_COUNT})\n")
     endif()
@@ -353,7 +353,7 @@ formula_add_negative_test(environment_series_read_as_single
 # and the compiler adds a conversion error to the library's message -- cl
 # "cannot convert", clang "no viable conversion", g++ "could not convert",
 # measured on cl 19.51, clang-cl 22.1.3, clang++ 20.1.8, g++ 13.3 and
-# g++ 14.2 by the task 2 review. None of the three occurs with the gate.
+# g++ 14.2. None of the three occurs with the gate.
 
 # A single value read as a series: neither a missing quantity nor a length.
 formula_add_negative_test(environment_single_read_as_series
@@ -391,7 +391,7 @@ formula_add_negative_test(method_variant_holds_series
 formula_add_negative_test(evaluate_series_result_dimension_mismatch
     "does not measure the dimension this expression computes"
     REJECT "~expected")
-# The REJECT pins D5's `if constexpr` gate in checked_evaluate_series:
+# The REJECT pins the `if constexpr` gate in checked_evaluate_series:
 # without it g++ 13.3 and 14.2 follow the refusal with errors from the
 # evaluation below, among them "no matching function for call to
 # ...~expected()" (3 more errors at 793dda5, 6 more once the series hooks
@@ -410,7 +410,7 @@ formula_add_negative_test(measured_series_padded_empty "MeasuredSeries<")
 formula_add_negative_test(entered_series_padded "MeasuredSeries<")
 formula_add_negative_test(entered_series_aggregate_padded "MeasuredSeries<")
 
-# Task 2's D3: an entered value is read in the shape the result asks for,
+# An entered value is read in the shape the result asks for,
 # and refused in the other shape or another length, never computed over.
 formula_add_negative_test(series_evaluated_over_entered_single
     "this environment holds a single value for this quantity, not a series"
@@ -427,7 +427,7 @@ formula_add_negative_test(environment_series_missing_quantity
     "provides no value for this quantity"
     REJECT "holds a single value for this quantity" "holds a series of a different length")
 
-# Elementwise arithmetic (task 4). A length mismatch refuses once and gates
+# Elementwise arithmetic. A length mismatch refuses once and gates
 # the dimension check off, so the REJECT pins that the additive message stays
 # silent; a dimension mismatch between series of one length is the scalar
 # operators' own refusal, and the REJECT pins that no length is blamed.
@@ -464,7 +464,7 @@ formula_add_negative_test(series_elementwise_wrong_dimension_first
 # The refusal passed upward along each other path, the second REJECT naming
 # what only a second message prints on g++ and clang++: a refused right-hand
 # operand, a negation, a running total, and a per-element rounding over a
-# refused operand (task 6 review, L1; each deletion-checked on both).
+# refused operand (each deletion-checked on both).
 formula_add_negative_test(series_elementwise_short_on_the_right
     "the two series combined here have different lengths"
     REJECT "the two sides of this addition or subtraction measure different"
@@ -495,7 +495,7 @@ formula_add_negative_test(series_zero_length
     "this series has no elements"
     REJECT "no matching")
 
-# Task 7: an envelope of the wrong length, through the factory and through
+# Conformity: an envelope of the wrong length, through the factory and through
 # aggregate initialisation of the check, and limits in a unit of the wrong
 # dimension.
 formula_add_negative_test(conformity_envelope_short
@@ -507,7 +507,7 @@ formula_add_negative_test(conformity_envelope_short_no_factory
 formula_add_negative_test(conformity_unit_dimension_mismatch
     "this conformity check states its limits in a unit that does not measure the dimension of its subject"
     REJECT "this envelope was given a different number of rows")
-# Task 7 review, L3: a single value as the subject, and an envelope of {},
+# A single value as the subject, and an envelope of {},
 # each refused once in the library's words.
 formula_add_negative_test(conformity_single_value_subject
     "a conformity check judges each element of a series against its own row, and this subject is a single value"
@@ -516,12 +516,12 @@ formula_add_negative_test(conformity_empty_envelope
     "this envelope was given a different number of rows than its series has elements"
     REJECT "no matching" "could not convert")
 
-# Task 11 review H1: conformity compares, so it is Rational-only, as the
+# Conformity compares, so it is Rational-only, as the
 # snap, curve and binning are.
 formula_add_negative_test(conformity_rep_not_rational
     "formula: a conformity check can only be evaluated with Rep = Rational")
 
-# Task 8: an empty permitted set refuses once, with the breakpoint validation
+# Snapping: an empty permitted set refuses once, with the breakpoint validation
 # and the key check gated off; a descending set is the shipped breakpoint
 # validation's refusal, with the key check gated off; a key of the wrong
 # dimension.
@@ -535,11 +535,11 @@ formula_add_negative_test(snap_descending_permitted_set
 formula_add_negative_test(snap_key_dimension_mismatch
     "this snap's key unit does not measure the dimension of the expression it snaps"
     REJECT "breakpoints do not strictly ascend" "permitted set is empty")
-# Task 8 review, L5: a snap evaluated in anything but Rational.
+# A snap evaluated in anything but Rational.
 formula_add_negative_test(snap_rep_not_rational
     "formula: a snap can only be evaluated with Rep = Rational")
 
-# Task 9: curves. Each mistake refused once; a curve, splice or interpolation
+# Curves. Each mistake refused once; a curve, splice or interpolation
 # over a refused operand asks nothing more.
 formula_add_negative_test(curve_length_mismatch
     "formula: this curve pairs a domain and values of different lengths"
@@ -560,7 +560,7 @@ formula_add_negative_test(domain_descending
     REJECT "must be initialized by a constant expression" "this curve pairs a domain and values of different lengths")
 formula_add_negative_test(curve_rep_not_rational
     "formula: a curve can only be evaluated with Rep = Rational")
-# Task 9 concern 5, ruled: a single value given to curve() or splice() is
+# A single value given to curve() or splice() is
 # refused once in the library's words, as sum and cumulative refuse one.
 formula_add_negative_test(curve_of_single_value
     "formula: a curve pairs a series of points with a series of values, and this is a single value"
@@ -573,7 +573,7 @@ formula_add_negative_test(splice_of_single_value
     "formula: splice joins two curves, and this is a single value, not a curve"
     REJECT "no matching" "have domains of different dimensions" "have values of different dimensions")
 
-# Task 10: binning. More observations than the capacity; binned given a
+# Binning. More observations than the capacity; binned given a
 # series; a key unit of another dimension; classes with a gap (the shipped
 # band validation) and with none; a Rep other than Rational; and the four
 # reads of raw observations in the wrong shape or capacity, each refused once
@@ -607,7 +607,7 @@ formula_add_negative_test(observations_capacity_mismatch
     "this environment holds observations of a different capacity for this quantity than the one read"
     REJECT "provides no value for this quantity" "not raw observations" "cannot convert" "no viable conversion" "could not convert")
 
-# Task 5: sum and cumulative given a single value, refused in this library's
+# Sum and cumulative given a single value, refused in this library's
 # words by an overload that takes a Node for no other purpose. The REJECT
 # pins that the refusal is not the compiler's own "no matching function".
 formula_add_negative_test(series_sum_of_single_value
@@ -617,20 +617,19 @@ formula_add_negative_test(series_cumulative_of_single_value
     "cumulative runs a total along a series, and this is a single value, not a series"
     REJECT "no matching" "this expression is a series, not a single value")
 # The refusing cumulative returns a series already refused, so a sum over
-# it, and checked_evaluate_series around it, add nothing (task 5 review, H1
-# and M1); on cl the second case used to lose the library's words entirely.
+# it, and checked_evaluate_series around it, add nothing; on cl the second case used to lose the library's words entirely.
 formula_add_negative_test(series_sum_of_cumulative_of_single_value
     "cumulative runs a total along a series, and this is a single value, not a series"
     REJECT "sum adds up the elements of a series" "no matching")
 formula_add_negative_test(series_cumulative_of_single_value_as_series
     "cumulative runs a total along a series, and this is a single value, not a series"
     REJECT "no matching" "this expression is a series, not a single value")
-# A per-element rounding given a single value, likewise (final review, M1).
+# A per-element rounding given a single value, likewise.
 formula_add_negative_test(series_round_of_single_value
     "rounded_elementwise rounds each element of a series, and this is a single value, not a series"
     REJECT "no matching" "this expression is a series, not a single value")
 
-# Task 6: a per-element rounding with a table of the wrong length, which
+# A per-element rounding with a table of the wrong length, which
 # gates the unit check off, and one with a unit of the wrong dimension.
 formula_add_negative_test(series_round_places_count_mismatch
     "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
@@ -641,7 +640,7 @@ formula_add_negative_test(series_round_unit_dimension_mismatch
 # Past a refused table nothing indexes or loops over it: evaluated in a
 # constant expression, rendered, documented and traced, a table of the wrong
 # count, and a lone DecimalPlaces, each draw the one message; a table of the
-# right count but the wrong type is told the truth (task 6 review, L2).
+# right count but the wrong type is told the truth.
 formula_add_negative_test(series_round_places_count_mismatch_evaluated
     "are not a PlacesTable<N> of one DecimalPlaces per element of its series"
     REJECT "outside the bounds" "must be initialized by a constant expression" "no match" "not a range" "subscript"
@@ -1448,8 +1447,7 @@ formula_add_negative_test(overlay_argument_not_an_operation
 # inside. The REJECT pins that the unused-quantity rule waits until every node
 # is known: the only use here is inside the unknown node, where it cannot be
 # seen, and "unused" would be false.
-# A role's displayed name must be identifier-like (the task 7 review's M2,
-# L1 and L2, and the lead's ruling): an operator character through a scope,
+# A role's displayed name must be identifier-like: an operator character through a scope,
 # a template specialisation's own name through a record and a scope (one
 # message for both, counted by hand), and a control character through a
 # record alone.
@@ -1461,7 +1459,7 @@ formula_add_negative_test(record_role_name_control_character
     "formula: this record role's displayed name is not identifier-like")
 
 # A role's name must start with a letter, and must not read as "this
-# record", in any case (the lead's rulings on the task 9 review's L5 and M2).
+# record", in any case.
 # The second is identifier-like, so the identifier rule must not also fire:
 # the REJECT. Through a record and a scope at once, it draws one message.
 formula_add_negative_test(record_role_name_leading_digit
@@ -1470,8 +1468,7 @@ formula_add_negative_test(record_role_name_this_record
     "formula: this record role is displayed as 'this record'"
     EXPECT_COUNT 1
     REJECT "formula: this record role's displayed name is not identifier-like")
-# The same, spelt as an identifier, and two roles displayed alike (the final
-# review's L4).
+# The same, spelt as an identifier, and two roles displayed alike.
 formula_add_negative_test(record_role_name_this_record_identifier
     "formula: this record role is displayed as 'this record'"
     EXPECT_COUNT 1
@@ -1494,8 +1491,8 @@ formula_add_negative_test(overlay_constant_unknown_node_then_pruned
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 # The same unseeable node inside three scope types. The overlay sees through
-# every scope, so the mistake is refused once, not once per scope type (the
-# task 3 review's L5): EXPECT_COUNT pins one message, and gives three with
+# every scope, so the mistake is refused once, not once per scope type:
+# EXPECT_COUNT pins one message, and gives three with
 # the scope's rewrite deleted. Not counted under cl, which stops at the first
 # failed static_assert in this chain and so reads 1 either way.
 formula_add_negative_test(record_scope_overlay_one_refusal
@@ -1663,7 +1660,7 @@ formula_add_negative_test(method_check_arguments_out_of_order
 formula_add_negative_test(method_rounding_rule_node_hand_built
     "formula: only evaluate_method builds a rounding rule node")
 
-# Task 7: wholesale replacement and derived quantities. Each case's own file
+# Wholesale replacement and derived quantities. Each case's own file
 # says what it pins; the REJECTs pin the gates between refusals, so that one
 # mistake gets one message. Both orders of a replacement and a prune are
 # refused in the same words, and so are both orders of a definition and a
@@ -1874,8 +1871,8 @@ formula_add_negative_test(record_role_not_plain
 
 # A context is its own record's environment, so a quantity that record lacks
 # is refused as it is for the plain environment, by RequireProvided. Its
-# message is counted once by hand on cl, clang-cl, g++ 13 and clang++ 20.1.8
-# (see the phase 14 task 2 report); REJECT cannot refuse a second copy of it.
+# message is counted once by hand on cl, clang-cl, g++ 13 and clang++ 20.1.8;
+# REJECT cannot refuse a second copy of it.
 formula_add_negative_test(record_context_missing_quantity
     "formula: this environment provides no value for this quantity"
     REJECT "RequireThisRecordFirst" "RequireDistinctRoles" "RequirePlainRole")
@@ -1909,12 +1906,12 @@ formula_add_negative_test(record_key_swapped "TestId' to '" REJECT "formula: ")
 formula_add_negative_test(record_key_sample_from_integer "'int' to '" REJECT "formula: ")
 formula_add_negative_test(record_key_test_from_integer "'int' to '" REJECT "formula: ")
 
-# Phase 14, task 3: reading from another record through from_record<Role>.
+# Reading from another record through from_record<Role>.
 # Each refusal is gated so that it is the only message: the evaluator does
 # not dispatch the operand after refusing, which each case's REJECT of
 # RequireProvided holds it to (each case's operand names a quantity the
-# environment it would fall back to does not hold). Messages counted by hand
-# are recorded in the phase 14 task 3 report. Removing any of the three gates
+# environment it would fall back to does not hold), and messages were counted
+# by hand. Removing any of the three gates
 # makes its cases fail on their REJECT under g++ 13 and clang++ 20.1.8;
 # cl-debug showed one message either way, so only those legs see a cascade.
 formula_add_negative_test(record_scope_plain_environment
@@ -1954,13 +1951,11 @@ formula_add_negative_test(record_origin_by_hand
 
 # The same forgery by explicit specialisation, which compiled while the
 # refusing constructor was a member template. The compiler's own words, since
-# no library static_assert is involved; measured wording in the phase 14
-# task 5 report.
+# no library static_assert is involved.
 formula_add_negative_test(record_origin_specialised "RecordOrigin" REJECT "formula: ")
 
-# Phase 14, task 6: lineage requirements. Each case's own comment says why
-# its mistake is the only thing wrong with it; messages counted by hand are
-# in the phase 14 task 6 report.
+# Lineage requirements. Each case's own comment says why its mistake is the
+# only thing wrong with it; messages were counted by hand.
 formula_add_negative_test(lineage_requirement_empty
     "formula: this lineage requirement names no attribute"
     REJECT "RequireAttributesNamedOnce")
@@ -2004,8 +1999,7 @@ formula_add_negative_test(record_scope_nested
     "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
     REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")
 # The same nesting, put there by an overlay's add_derived: the refusal's words
-# name it, since the author did evaluate against a context (the final
-# review's L2).
+# name it, since the author did evaluate against a context.
 formula_add_negative_test(record_scope_nested_by_overlay
     "a from_record sits inside another from_record, perhaps put there by an overlay's add_derived"
     EXPECT_COUNT 1
@@ -2018,8 +2012,7 @@ formula_add_negative_test(record_unbound_this_record
 # After this refusal `record()` returns a record over the context's own
 # record's environment, so that using it -- its key, or evaluating through
 # it -- draws nothing more. The message is counted once by hand on cl,
-# clang-cl, g++ 13 and clang++ 20.1.8 (see the phase 14 task 2 report); REJECT
-# cannot refuse a second copy of it, and REJECTs RequireProvided, the message
+# clang-cl, g++ 13 and clang++ 20.1.8; REJECT cannot refuse a second copy of it, and REJECTs RequireProvided, the message
 # an evaluation through a record with no values would add.
 formula_add_negative_test(record_environment_is_context
     "formula: a record holds its values in an environment(...), and this is not one"
@@ -2029,7 +2022,7 @@ formula_add_negative_test(record_environment_is_context
 # quantities evaluated through a context over that record. One message: the
 # refused record holds detail::AbsentEnvironment, which answers every
 # quantity as absent without a RequireProvided of its own.
-# A read from another record over a series itself (F3): refused with one
+# A read from another record over a series itself: refused with one
 # message, the refused scope answered as absent so the formula it is used in
 # draws nothing more; and a series read through a record whose values were
 # refused, which AbsentEnvironment answers without a get_series error.
@@ -2057,7 +2050,7 @@ formula_add_negative_test(record_scope_of_series_overlaid
     "formula: from_record was given a series, raw observations or a curve"
     EXPECT_COUNT 1
     REJECT "cannot see inside")
-# The lineage form of the same refusal (the task 10 review's L2): without
+# The lineage form of the same refusal: without
 # its overload the call finds no from_record at all, and no library message.
 formula_add_negative_test(record_scope_of_series_with_lineage
     "formula: from_record was given a series, raw observations or a curve"
@@ -2199,7 +2192,7 @@ formula_add_negative_test(opaque_forged_output_position
 formula_add_negative_test(opaque_forged_sentinel_position
     "formula: this opaque output's position names no output of its operation"
     REJECT "subscript" "RequireAddendsAgree" "RequireResultDimension")
-# Overlays over opaque calls (task 5 review): a refused call is never rebuilt,
+# Overlays over opaque calls: a refused call is never rebuilt,
 # and a substitution inside a call is seen by every rule over the method.
 formula_add_negative_test(overlay_constant_inside_refused_opaque
     "formula: this opaque operation does not accept inputs of these dimensions"

@@ -87,8 +87,8 @@ TEST_CASE("a compound read from another record keeps its brackets", "[record-ren
 
 TEST_CASE("a role's name is escaped for the dialect it is written in", "[record-render]")
 {
-    // LaTeX: in math mode, inside \mathrm, with the math-mode escaper (X11's
-    // ruling): spaces as "\ ", _ backslashed. Markdown: the author-words
+    // LaTeX: in math mode, inside \mathrm, with the math-mode escaper:
+    // spaces as "\ ", _ backslashed. Markdown: the author-words
     // escaping lookup keys use. Plain: as spelt.
     constexpr auto odd = formula::from_record<OddlyNamed>(var<Strength>);
     CHECK(formula::render<formula::Dialect::LaTeX>(odd) == "f_c\\ \\text{of }\\mathrm{reference\\ specimen\\_B}");
@@ -100,9 +100,9 @@ TEST_CASE("a role's name is escaped for the dialect it is written in", "[record-
 
 TEST_CASE("a role's name must be identifier-like", "[record-render]")
 {
-    // The lead's ruling on the task 7 review's M2, L1 and L2: ASCII letters,
+    // ASCII letters,
     // digits, underscores and single spaces between words. Each refusal below
-    // is a character class the ruling removes; each negative test
+    // is a character class the rule removes; each negative test
     // (`record_role_name_*`) is the same through a real role.
     STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("Reference"));
     STATIC_REQUIRE(formula::detail::is_identifier_like_role_name("reference specimen_B 2"));
@@ -127,9 +127,8 @@ TEST_CASE("a role's name must be identifier-like", "[record-render]")
 
 TEST_CASE("a role may not be displayed as this record", "[record-render]")
 {
-    // The task 9 review's M2, ruled: "from record this record" would name
-    // the record being evaluated. Any mix of case -- and, by the final
-    // review's L4, with or without the space or with an underscore for it:
+    // "from record this record" would name the record being evaluated. Any
+    // mix of case -- and with or without the space or with an underscore for it:
     // `ThisRecord` is how a lineage check names the record being evaluated.
     STATIC_REQUIRE(formula::detail::reads_as_this_record("this record"));
     STATIC_REQUIRE(formula::detail::reads_as_this_record("This Record"));
@@ -194,7 +193,7 @@ TEST_CASE("a vocabulary renames a quantity read from another record, on the page
 
 TEST_CASE("a scope's trace line shows its value in the quantity's unit", "[record-render]")
 {
-    // The lead's ruling: a single quantity read from another record reads in
+    // A single quantity read from another record reads in
     // that quantity's unit, 4 MPa, not bare coherent SI (4000000). A compound
     // operand names no single quantity, and stays in coherent SI.
     formula::Trace<> trace {};
@@ -208,7 +207,7 @@ TEST_CASE("a scope's trace line shows its value in the quantity's unit", "[recor
 
 TEST_CASE("a quantity read from two different records has a row for each, each labelled", "[record-render]")
 {
-    // The task 7 review's M1: one identity shared by every role would merge
+    // One identity shared by every role would merge
     // the two foreign reads into one row labelled Reference, and tell a
     // reader to supply one value where the formula reads two.
     auto const page = formula::document(
@@ -236,7 +235,7 @@ TEST_CASE("a read from another record as a conditional's else branch is brackete
 
 TEST_CASE("a scope's trace line shows the unit its operand's line does", "[record-render]")
 {
-    // The task 7 review's L4: a scope is its operand's value unchanged, so it
+    // A scope is its operand's value unchanged, so it
     // takes its operand step's unit. A rounded read shows MPa as the rounding
     // does; a compound one shows what the computation's line shows: 400000,
     // coherent N/m, which has no symbol.
@@ -262,7 +261,7 @@ TEST_CASE("a scope's trace line shows the unit its operand's line does", "[recor
 
 TEST_CASE("an overlay's constant used here and inside a scope has one row, of no record", "[record-render]")
 {
-    // The task 7 review's L5: the fixed value is the overlay's, read from no
+    // The fixed value is the overlay's, read from no
     // record, so it is not repeated under the scope's role. The strength it
     // multiplies is read from both records, and has a row for each.
     constexpr auto both = formula::method(
@@ -313,10 +312,10 @@ constexpr auto retainedRatio =
 
 TEST_CASE("a series read from another record has its own row, marked as a series, on the page", "[record-render]")
 {
-    // Task 10 step 6: the series marker and the scope's words combine, and
+    // The series marker and the scope's words combine, and
     // the symbol table keeps a row per record, each with the series' shape
     // and length. The LaTeX typesets clean under MathJax 3.2.2, with the
-    // site's configuration and strictly (task 10's run).
+    // site's configuration and strictly.
     CHECK(formula::render(retainedRatio) == "sum(m_r(i)) / (sum(m_r(i)) of Reference)");
     CHECK(formula::render<formula::Dialect::Markdown>(retainedRatio) == "sum(`m_r(i)`) / (sum(`m_r(i)`) of Reference)");
     CHECK(formula::render<formula::Dialect::LaTeX>(retainedRatio)

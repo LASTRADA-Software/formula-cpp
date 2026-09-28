@@ -85,7 +85,7 @@ TEST_CASE("least squares gives the exact slope and intercept", "[least-squares]"
 TEST_CASE("the order the points are listed in does not change the fit", "[least-squares]")
 {
     // Through compute directly: a curve refuses a domain listed out of order
-    // as its own NotAscending failure (plan, C4). Same four pairs, listed
+    // as its own NotAscending failure. Same four pairs, listed
     // 4, 1, 7, 2 s: identical coefficients (defect class 6).
     constexpr std::array<formula::Rational, 4> shuffledTimes { rat(4), rat(1), rat(7), rat(2) };
     constexpr std::array<formula::Rational, 4> shuffledLengths {
@@ -160,7 +160,7 @@ TEST_CASE("a fit handed spans of different lengths is a domain error, never a re
     REQUIRE(!reversed.has_value());
     CHECK(reversed.error() == formula::ArithmeticError::DomainError);
     // All equal, through a curve: the curve refuses its repeated point
-    // itself, so the call relays that failure -- Propagated, not Own (C4).
+    // itself, so the call relays that failure -- Propagated, not Own.
     constexpr auto repeated =
         formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { rat(3) },
                                                                formula::Measured<Elapsed> { rat(3) },
@@ -239,7 +239,7 @@ TEST_CASE("a fit that exceeds Rational's range says Overflow, never a wrong numb
 
 TEST_CASE("least squares works in double, to within the representation", "[least-squares]")
 {
-    // Through compute directly: a curve is evaluated only in Rational (C3).
+    // Through compute directly: a curve is evaluated only in Rational.
     std::array<double, 4> const times { 1.0, 2.0, 4.0, 7.0 };
     std::array<double, 4> const lengths { 0.0102, 0.0109, 0.0121, 0.0143 };
     auto const inDouble =

@@ -5,7 +5,7 @@
 // `record_role_name_this_record` spelt as an identifier: a role whose
 // TagName is "this_record". A lineage check against it would name it as the
 // library names its own ThisRecord, and a reader could tell the two apart by
-// nothing, so it is refused as "This Record" is (the final review's L4). The
+// nothing, so it is refused as "This Record" is. The
 // name is identifier-like, so the REJECT pins that the identifier rule does
 // not also fire; this draws one message.
 //

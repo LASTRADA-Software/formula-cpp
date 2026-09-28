@@ -3,8 +3,7 @@
 //
 // A layout selected by hand from a throwaway pack of nine: a two-variant
 // method no overlay touched would then report its variants as the 6th and
-// 8th of 9, with no prune on record (final re-review of phase 11, probe 4,
-// R3). No `detail::` is written: `decltype(nine.published)` names the layout,
+// 8th of 9, with no prune on record. No `detail::` is written: `decltype(nine.published)` names the layout,
 // and `select` is its public member.
 //
 // This must not compile.

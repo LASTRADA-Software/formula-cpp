@@ -6,8 +6,8 @@
 // so it trips either guard and cannot tell you which. This one names symbol,
 // unit AND a dimension that agrees with the unit -- so the consistency guard is
 // satisfied -- and omits only `description`. The one thing left to catch it is
-// the concept requiring all four members rather than two, which is exactly what
-// the final review found missing. This must not compile.
+// the concept requiring all four members rather than two, which was once
+// missing. This must not compile.
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/unit.hpp>
 

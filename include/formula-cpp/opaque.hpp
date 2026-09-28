@@ -29,7 +29,7 @@
 /// its values. Nothing is converted on the way out either: each output is in
 /// the coherent SI unit of the dimension the operation declares for it.
 ///
-/// **Absence is strict** (phase 12's S7): an absent single value, or an absent
+/// **Absence is strict**, as it is for a series: an absent single value, or an absent
 /// element anywhere in a series or a curve, makes the whole call absent, and
 /// `compute` is not called at all -- an operation cannot choose to fit "the
 /// points someone happened to enter". Absence is decided after every input

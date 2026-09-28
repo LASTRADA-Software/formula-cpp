@@ -199,7 +199,7 @@ template <typename Tag, Node Expr>
 }
 
 /// A series handed to `variant<Tag>`: fails to compile, in this library's
-/// words. A method reports one value (S13 of the phase 12 plan), so a variant
+/// words. A method reports one value, so a variant
 /// holds a `Node`; a series becomes one only through a reduction.
 ///
 /// What it returns is a variant of the right tag and dimension over a

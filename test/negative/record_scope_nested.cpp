@@ -8,8 +8,7 @@
 // scope's role is bound in the outer context, so a bound-role message here
 // would mean the inner scope looked at the wrong context; and the operand is
 // not dispatched after the refusal, so no RequireProvided follows. Both are
-// rejected. The one expected message is counted by hand (see the phase 14
-// task 3 report), since REJECT cannot refuse a second copy of it.
+// rejected. The one expected message is counted by hand, since REJECT cannot refuse a second copy of it.
 //
 // This must not compile.
 #include <formula-cpp/formula.hpp>

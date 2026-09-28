@@ -4,7 +4,7 @@
 // A role whose TagName holds a hyphen, read through a scope. In LaTeX math
 // mode `\mathrm{Reference-B}` typesets as a subtraction, `Reference - B`,
 // which the method does not perform, so the name is refused rather than
-// escaped (the task 7 review's M2, and the lead's ruling).
+// escaped.
 //
 // This must not compile.
 #include <formula-cpp/environment.hpp>

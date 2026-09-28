@@ -43,7 +43,7 @@
 ///  - **In the type** (compile-time shape, part of what a formula *is*):
 ///    `KeyUnit` (the unit band boundaries are stated in and the operand's
 ///    value is compared against them in), `Bands` (the boundaries
-///    themselves, an NTTP reusing task 1's `BandTable<N>` exactly as
+///    themselves, an NTTP reusing `band.hpp`'s `BandTable<N>` exactly as
 ///    declared there), `ResultUnit` (the unit each band's correction is
 ///    stated in, playing the same role `ConstantNode`'s `unit` plays), and
 ///    `Operand` (the child expression whose value selects a band). These are
@@ -56,7 +56,7 @@
 ///    runtime state for the same reason `ConstantNode::number` is: a
 ///    constant's *value* may arrive late even though its *unit* cannot.
 ///
-/// Validating `Bands` is entirely task 1's job, reused rather than
+/// Validating `Bands` is entirely `band.hpp`'s job, reused rather than
 /// reimplemented: `RequireValidBandTable` (`band.hpp`) is instantiated in
 /// this node's own body, so a gap, an overlap, an inverted band or a
 /// zero-width band anywhere in `Bands` is a compile error here, at the
@@ -87,9 +87,8 @@
 ///      propagates out of `Outcome` entirely, as the outer `std::expected`'s
 ///      error. Reaching `Outcome::invalid` from inside a node's own
 ///      `checked_evaluate_si` would mean widening `Evaluated<Rep>` for every
-///      existing node kind to serve this one new caller -- exactly the kind
-///      of change task 2's file list (this header, its tests, and the
-///      umbrella) does not include, and a much larger one than "add a node".
+///      existing node kind to serve this one new caller -- a change far
+///      beyond this header, and a much larger one than "add a node".
 ///   2. A prior spike proved `InvalidReason::label` is a non-owning
 ///      `std::string_view` that dangles the moment it is built from anything
 ///      but a string literal -- it printed the pointer inside the
@@ -127,7 +126,7 @@
 /// is deliberately outside this task's own file list; nothing here forecloses
 /// it, and nothing here composes a sentence that would make it harder.
 ///
-/// **Bands are half-open, `[low, high)`, exactly as task 1 declared them --
+/// **Bands are half-open, `[low, high)`, exactly as `band.hpp` declares them --
 /// see `band.hpp`'s file comment.** A value sitting exactly on a shared
 /// boundary belongs to the band whose *low* bound it is, never the band
 /// whose *high* bound it is; `lookup_tests.cpp` exercises this concretely
@@ -463,7 +462,7 @@
 /// **What a later task is owed.** Everything the banded lookup's own note above
 /// says applies unchanged: a miss carries `DomainError` and nothing else, the
 /// value that missed is the operand's own evaluated result, and the table's
-/// identity comes from `documented()`. One thing is new, and belongs to task 6
+/// identity comes from `documented()`. One thing is new, and belongs to the interpolating lookup
 /// rather than here: this node can produce `ArithmeticError::Overflow` *of its
 /// own*, from the interpolation, where the other two kinds only ever propagate
 /// one they were handed. A trace that wants to say "the interpolation
@@ -792,7 +791,7 @@ struct BandedLookupNode: NodeBase
     /// value is compared against them in -- part of the table's *structure*.
     static constexpr Unit keyUnit = KeyUnit;
     /// The band boundaries themselves, already validated above -- reused from
-    /// task 1, never reimplemented here.
+    /// `band.hpp`, never reimplemented here.
     static constexpr BandTable<Bands.size()> bands = Bands;
     /// The unit each entry of `corrections` is stated in, and this node's own
     /// declared unit -- the same role `ConstantNode::unit` plays.
@@ -944,7 +943,7 @@ namespace detail
     /// point that takes a key enforces it, not only the node. A validator that
     /// accepted an `std::array<int, N>` no node would ever take is two
     /// surfaces disagreeing about the same question -- the defect this phase
-    /// keeps finding -- and a runtime loader (phase 10 task 4) reaching for
+    /// keeps finding -- and a runtime loader of tables reaching for
     /// `key_table_is_well_formed` is exactly where it would bite.
     template <typename Key>
     struct RequireScopedEnumKey
@@ -1150,7 +1149,7 @@ struct RequireValidKeyTable: detail::KeyChecks<Keys, std::make_index_sequence<Ke
 /// Both `static_assert`s sit in the class body rather than in the factory,
 /// and the property that buys is narrower than it first looks -- stated
 /// precisely here because an earlier revision of this comment claimed more
-/// than it could deliver, and a reviewer measured the difference. Discarding
+/// than it could deliver, and the difference was measured. Discarding
 /// the factory's result is **not** what distinguishes the two placements:
 /// `exact_lookup` returns `ExactLookupNode` *by value*, so calling it
 /// completes the class whichever placement is chosen, and an assert in the

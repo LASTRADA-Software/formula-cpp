@@ -2,7 +2,7 @@
 // EXPECT: formula: this band table has a gap or overlap between two adjacent bands
 // REJECT: must be initialized by a constant expression
 //
-// Proves the reuse, not merely the declaration: task 1's validation must be
+// Proves the reuse, not merely the declaration: band.hpp's validation must be
 // reachable through an actual `banded_lookup(...)` call, not only through
 // `RequireValidBandTable` used directly (band_gap.cpp already pins that). A
 // gap in the middle pair, not the first or the last, for the same reason

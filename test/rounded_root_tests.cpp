@@ -111,7 +111,7 @@ TEST_CASE("an exactly representable root is the only tie, and the mode decides i
 
 TEST_CASE("the half-way test compares the remainder when the floor sits exactly on f*f + f", "[rounded_root]")
 {
-    // Task 1: fixtures A, B and F do not kill the mutation `q >= f*f + f`
+    // Fixtures A, B and F do not kill the mutation `q >= f*f + f`
     // (only 4 of 200,000 random radicands did). These two do, one each way:
     // 21/10 at 0 dp: q = 2 = f*f + f with f = 1, and r/b = 1/10 < 1/4, so the
     //   root, 1.449..., is below the half-way point and rounds to 1.
@@ -143,7 +143,7 @@ TEST_CASE("rounded_sqrt of a negative radicand is a domain error, never a clamp 
     STATIC_REQUIRE(outcome.error() == formula::ArithmeticError::DomainError);
 }
 
-TEST_CASE("rounded_sqrt of zero is zero exactly (Review Focus 1)", "[rounded_root]")
+TEST_CASE("rounded_sqrt of zero is zero exactly", "[rounded_root]")
 {
     // Under Ceiling, so that zero taken down the irrational path -- rather
     // than recognised as the exact root it is -- would come out as 0.01 g.
@@ -165,7 +165,7 @@ TEST_CASE("rounded_sqrt of an absent radicand is absent", "[rounded_root]")
 
 TEST_CASE("rounded_sqrt reports overflow rather than a wrapped result", "[rounded_root]")
 {
-    // Task 1: an integer radicand of about 10^6 fits at 6 dp and overflows at
+    // An integer radicand of about 10^6 fits at 6 dp and overflows at
     // 7 dp, because floor(v) * 10^(2p) must stay below 2^64. 1000001 rather
     // than 10^6 itself, whose root is exactly 1000 and would take the tie
     // path, which has headroom of its own. Its root is 1000.000499999875...

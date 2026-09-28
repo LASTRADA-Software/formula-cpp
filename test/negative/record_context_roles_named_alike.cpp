@@ -4,8 +4,7 @@
 //
 // Two roles, each a type of its own, one spelt through TagName as the other
 // reads. A trace names a record by its role's name, so their lines would be
-// told apart by their keys alone, and the page's two rows not at all (the
-// final review's L4). Two distinct types, so the same-role refusal must not
+// told apart by their keys alone, and the page's two rows not at all. Two distinct types, so the same-role refusal must not
 // also fire: the REJECT.
 //
 // This must not compile.

@@ -7,7 +7,7 @@
 // distinct scope types: two roles, and one role with a lineage requirement.
 // The overlay sees through every scope, so the one mistake -- the node it
 // cannot see into -- is refused once, not once per scope type around it.
-// The task 3 review's L5: before the overlay saw through scopes, each scope
+// Before the overlay saw through scopes, each scope
 // type drew a refusal of its own. `EXPECT_COUNT 1` (test/CMakeLists.txt)
 // pins the one message on g++, clang++ and clang-cl; not on cl, which stops
 // at the first failed static_assert of the chain and so reads 1 either way.

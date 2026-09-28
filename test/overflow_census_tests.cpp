@@ -231,7 +231,7 @@ std::array<Rational, 20> const twentyMasses {
     rat(39853, 1000), rat(40239, 1000), rat(39991, 1000), rat(40073, 1000), rat(39811, 1000),
 };
 
-// The task 6 review's six masses at 6 decimal places of g -- microgram
+// Six masses at 6 decimal places of g -- microgram
 // resolution. Their variance overflows.
 std::array<Rational, 6> const sixAtMicrograms { rat(40053270, 1000000), rat(39475922, 1000000), rat(39025798, 1000000),
                                                 rat(40615904, 1000000), rat(39418416, 1000000), rat(40131659, 1000000) };
@@ -310,7 +310,7 @@ template <int Places, typename Evaluate>
     return found;
 }
 
-// ---- Least squares (phase 15), the task 1 spike's data shapes ---------------------
+// ---- Least squares (phase 15), a spike's data shapes ------------------------------
 
 // Point k of each shape, in coherent SI -- seconds and newtons -- so the fit
 // sees exactly these numbers. Invented; the spike's offsets are replaced by
@@ -335,7 +335,7 @@ struct FitPoint
     return { rat(1000 * k + 241 + (k * 37) % 1000, 1000), rat(2'410'000 + 3217 * k + (k * 7919) % 997, 1000) };
 }
 
-/// A different denominator on every point, task 4's overflow shape:
+/// A different denominator on every point, the shape that overflows:
 /// ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) N).
 [[nodiscard]] FitPoint distinct_denominators_point(std::int64_t k)
 {
@@ -710,15 +710,15 @@ TEST_CASE("census: a cylinder's cross-section and its strength, for d from 101 t
 
 TEST_CASE("census: least squares over 2 to 128 points", "[census]")
 {
-    // The task 1 spike's shapes, through the library's own fit: which sizes
+    // The spike's shapes, through the library's own fit: which sizes
     // overflow, and what the others leave. An overflowing fit is the library's
     // Overflow, never a line.
-    // Task 4's fixtures, through the node as a method states the fit: t = 1,
+    // The least-squares tests' fixtures, through the node as a method states the fit: t = 1,
     // 2, 4, 7 s against L = 10.2, 10.9, 12.1, 14.3 mm, whose lengths are
     // converted to metres first; and five distinct denominators, the size
-    // below task 4's overflowing fifteen.
+    // below the fifteen that overflow.
     print_row(
-        "least squares, task 4's 4-point fixture: slope and intercept", census_of([] {
+        "least squares, the 4-point fixture: slope and intercept", census_of([] {
             auto const inputs =
                 formula::environment(formula::measured_series<FitTime>(formula::Measured<FitTime> { rat(1) },
                                                                        formula::Measured<FitTime> { rat(2) },

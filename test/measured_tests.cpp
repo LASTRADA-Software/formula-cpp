@@ -26,12 +26,12 @@ struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "mass of the specimen"
 
 // combine's result quantity, for the mass/volume example below. Deliberately a
 // THIRD quantity, sharing neither operand's tag, symbol or unit -- reusing one
-// of them is exactly how F1's mislabelling passed six reviews.
+// of them is exactly how an earlier combine's mislabelling went unnoticed.
 struct Density: formula::Quantity<Density, "rho", "density of the specimen", unit::Gram>
 {
 };
 
-// constexpr, not consteval: Task 5 calls this from TEST_CASE bodies (runtime
+// constexpr, not consteval: this is called from TEST_CASE bodies (runtime
 // code), not only from static_assert. cl.exe (19.51, MSVC v143) miscompiles a
 // consteval factory returning a class type with an explicit single-argument
 // constructor when the call is not manifestly constant-evaluated -- it reports
@@ -163,7 +163,7 @@ static_assert(formula::transform(Measured<WaterVolume> {}, doubled).is_absent())
 // combine names its OWN result quantity -- Density here, which is neither
 // WaterVolume nor SpecimenMass. The static TYPE is asserted with is_same_v,
 // not merely the value: mutating combine back to labelling the result with
-// either operand's quantity (the F1 defect) changes no VALUE here, only the
+// either operand's quantity (the earlier signature's defect) changes no VALUE here, only the
 // type, so a value-only check would stay green through that mutation.
 static_assert(std::is_same_v<decltype(formula::combine<Density>(measured(3, 1),
                                                                  Measured<SpecimenMass> { *Rational::make(2, 1) },

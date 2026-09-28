@@ -64,7 +64,7 @@ TEST_CASE("NullSink is empty, stateless, and satisfies the seam for every node k
     sink.produced(density, formula::Rational { 12 });
 }
 
-TEST_CASE("CountingSink satisfies the seam too, so Task 2 can use it", "[sink]")
+TEST_CASE("CountingSink satisfies the seam too", "[sink]")
 {
     int entered = 0;
     int produced = 0;

@@ -49,7 +49,7 @@
 /// algebra, written with elementwise arithmetic before splicing, where the
 /// trace shows it.
 ///
-/// **Absence is strict** (S7): an absent element anywhere in a curve makes an
+/// **Absence is strict**: an absent element anywhere in a curve makes an
 /// interpolation along it absent, and a splice of it wholly absent.
 ///
 /// Everything here compares, so a curve is evaluated with `Rep = Rational`
@@ -238,7 +238,7 @@ namespace detail
 
 /// A single value handed to `curve`, for its points, its values or both:
 /// refused in this library's words, once, naming the first single value --
-/// the task 5 ruling for `sum` and `cumulative`. It returns a curve of refused
+/// as `sum` and `cumulative` refuse one. It returns a curve of refused
 /// series, which every check over it takes as already refused. The return
 /// type is deduced, for `cumulative`'s reason.
 template <typename D, typename V>
@@ -773,7 +773,7 @@ template <typename Rep = Rational, Monotone M, CurveExpression A, CurveExpressio
 /// once. A failed curve relays its error -- its position cannot be carried by
 /// one value, and the trace names it -- and a failed point relays its own.
 /// An absent point, or an absent element anywhere in the curve, makes the
-/// answer absent (S7). Off the ends of the domain is a `DomainError` miss;
+/// answer absent. Off the ends of the domain is a `DomainError` miss;
 /// an interpolation whose exact answer is not representable is `Overflow`.
 template <typename Rep = Rational, CurveExpression C, Node At, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(InterpolateAlongNode<C, At> const& node,

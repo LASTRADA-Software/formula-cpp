@@ -156,7 +156,7 @@ TEST_CASE("a set known only at run time fills to its capacity, and one more is r
     auto const overfull = formula::MeasuredObservations<Size, 7>::from(std::span<formula::Rational const> { eight });
     REQUIRE(!overfull.has_value());
     // Refused with both counts, as `envelope_from` refuses a wrong number of
-    // rows (final review, L6).
+    // rows.
     CHECK(overfull.error() == formula::ObservationsOverCapacity { .given = 8, .capacity = 7 });
 
     std::vector<formula::Rational> const three { rat(103), rat(127), rat(277) };

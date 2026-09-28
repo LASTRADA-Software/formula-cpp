@@ -1370,8 +1370,8 @@ namespace detail
     inline constexpr bool isSeriesValued = SeriesNode<Operand> || ObservationsNode<Operand> || CurveExpression<Operand>;
 
     /// Fails to compile when `from_record` is given a series, raw
-    /// observations or a curve. A read from another record holds one value
-    /// (F3): its trace line says which record that value came from, and a
+    /// observations or a curve. A read from another record holds one value:
+    /// its trace line says which record that value came from, and a
     /// series-valued scope has no single value for a formula to use. Reduce
     /// it inside the scope instead -- `from_record<Reference>(sum(series<Q,
     /// N>))` -- where every element's step is stamped with the record.
@@ -1566,8 +1566,7 @@ namespace detail
     ///
     /// A jurisdiction's constant is the method's constant, and a scope
     /// evaluates the method's algebra over another record's measurements, so
-    /// a shape factor in that algebra is the same shape factor (phase 14's
-    /// X10 ruling). Without this, the primary template would refuse every
+    /// a shape factor in that algebra is the same shape factor. Without this, the primary template would refuse every
     /// overlay over a method holding a scope, with `RequireOverlaySeesNode`.
     /// A use of the quantity inside the scope counts as a use for the
     /// overlay's own checks, and an `OverriddenConstant` step recorded there
