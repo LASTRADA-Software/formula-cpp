@@ -1172,7 +1172,7 @@ TEST_CASE("a pass whose size the table does not declare is a miss, never a defau
           == "1. m = 40 g; 41 g; 39 g; 40 g; 42 g; 38 g; 40 g\n"
              "2. pass n = 7\n"
              "3. critical(#2) = argument outside the domain of the operation [no row for n = 7 (declared: 3, 4, 5, 6, 8)]\n"
-             "4. * #3 = argument outside the domain of the operation\n"
+             "4. #3 * (not evaluated) = argument outside the domain of the operation\n"
              "5. pass 1: 7 values, mean 40 g\n"
              "6. failed in pass 1: the limit: argument outside the domain of the operation\n"
              "7. sample_mean(#6) = argument outside the domain of the operation\n");

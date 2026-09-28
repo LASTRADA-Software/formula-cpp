@@ -361,9 +361,10 @@ The position is the **observation's**, counted from one. In the API it is
 zero-based, and `SeriesFailure::site` says `FailureSite::InputObservation`, so
 a consumer cannot take it for the fourth count. An operation over the counts,
 such as the shares above, relays the failure without it, because it would name
-a count that is not at fault. Such a step names only the operand it evaluated
--- in the gallery's `/ #2`, the divisor was never reached. Binning a series
-instead of observations is refused:
+a count that is not at fault. Such a step names the operand it evaluated, and
+says what stands in the other's place: in the gallery's `#2 / (not
+evaluated)`, the divisor was never reached. Binning a series instead of
+observations is refused:
 
 ```
 static assertion failed: formula: binned counts raw observations into classes, and this is not a set of observations; the operand appears in this diagnostic as the template argument of RequireBinnedOfObservations -- read them with observations<Q, Capacity> and supply them with MeasuredObservations; a series already holds one value at each point of a domain, and a single value is one observation, not a set of them

@@ -711,12 +711,14 @@ consteval std::size_t field_count()
 
 TEST_CASE("opaque trace data lives in side tables, and a Step has no more fields for it", "[opaque][trace]")
 {
-    // Counted, not measured: Step has 45 fields at the branch point, 9d3cdd4.
-    // A byte-sized field -- an enum or a flag, the likeliest slip for an
-    // opaque step's failure or a retry's -- can land in padding and leave
-    // sizeof unchanged (it did, on g++-14 and on libc++); it cannot leave the
-    // count unchanged. Any field added to Step, on any library, fails this.
-    STATIC_REQUIRE(field_probe::field_count<formula::Step<formula::Rational>>() == 45);
+    // Counted, not measured: Step had 45 fields at the branch point, 9d3cdd4,
+    // and has 47 since a binary step says which side each operand stood on
+    // (`leftOperand`, `rightOperand`), which no opaque step uses. A byte-sized
+    // field -- an enum or a flag, the likeliest slip for an opaque step's
+    // failure or a retry's -- can land in padding and leave sizeof unchanged
+    // (it did, on g++-14 and on libc++); it cannot leave the count unchanged.
+    // Any field added to Step, on any library, fails this.
+    STATIC_REQUIRE(field_probe::field_count<formula::Step<formula::Rational>>() == 47);
 }
 namespace
 {

@@ -2142,11 +2142,12 @@ TEST_CASE("a failing scalar operand is reported without a position", "[series][t
     CHECK(text.find("at element") == std::string::npos);
 }
 
-TEST_CASE("an elementwise step whose left operand failed names only that operand, in prefix form", "[series][trace]")
+TEST_CASE("an elementwise step whose left operand failed says its right one was not evaluated", "[series][trace]")
 {
-    // Inherited from the scalar operators (binary_expression): the right side
-    // is never evaluated, so the line names one operand -- the LEFT one, #5,
-    // which failed -- as `* #5`. Pinned so the spelling is a decision.
+    // As for the scalar operators (binary_expression): the right side is
+    // never evaluated, so the line names the left operand, #5, which failed,
+    // in its place, and says what stands in the right one's -- never `* #5`,
+    // which reads as something unseen times #5.
     constexpr auto screens = formula::environment(
         formula::measured_series<series_trace::Retained>(series_trace::retained(130), series_trace::retained(210)),
         formula::Measured<series_trace::TotalMass> { formula::Rational { 1250 } });
@@ -2160,7 +2161,53 @@ TEST_CASE("an elementwise step whose left operand failed names only that operand
              "3. m_r = 130 g; 210 g\n"
              "4. #2 - #3 = 0; 0\n"
              "5. #1 / #4 = division by zero at element 1\n"
-             "6. * #5 = division by zero at element 1\n");
+             "6. #5 * (not evaluated) = division by zero at element 1\n");
+}
+
+TEST_CASE("a binary step names the side that failed, the side never evaluated and a side that recorded no step",
+          "[trace-render]")
+{
+    // The left side fails, so the right is never evaluated: `#4 / (not
+    // evaluated)`, the failed operand where it stood.
+    constexpr auto sample = var<SampleMass>;
+    CHECK(derivationOf(sample / (sample - sample) / sample,
+                       formula::environment(formula::Measured<SampleMass> { formula::Rational { 137 } }))
+          == "1. m_s = 137 g\n"
+             "2. m_s = 137 g\n"
+             "3. m_s = 137 g\n"
+             "4. #2 - #3 = 0\n"
+             "5. #1 / #4 = division by zero\n"
+             "6. #5 / (not evaluated) = division by zero\n");
+
+    // A consumer's node that records no step: on the right, after a left
+    // operand that was evaluated; on the left, where its failure left the
+    // right never evaluated.
+    auto const diameter = formula::environment(formula::Measured<Diameter> { formula::Rational { 263 } });
+    CHECK(derivationOf(var<Diameter> + UntracedLength {}, diameter)
+          == "1. d = 263 mm\n"
+             "2. #1 + (untraced) = division by zero\n");
+    CHECK(derivationOf(UntracedLength {} + var<Diameter>, diameter)
+          == "1. (untraced) + (not evaluated) = division by zero\n");
+    // A recorded left that failed, before an untraced right: the right was
+    // never evaluated, which is not the same as evaluated untraced.
+    constexpr auto d = var<Diameter>;
+    CHECK(lines(derivationOf(d / (d - d) * d + UntracedLength {}, diameter)).back()
+          == "7. #6 + (not evaluated) = division by zero");
+
+    // A side set by hand renders as set, but never a side "not evaluated"
+    // under a value that was computed: such a step names its operands as
+    // claimed.
+    formula::Trace<> forged {};
+    formula::Step<> three {};
+    three.kind = formula::StepKind::Constant;
+    three.unit = formula::coherent(formula::dim::Scalar);
+    three.value = formula::Rational { 3 };
+    formula::Step<> quotient = three;
+    quotient.kind = formula::StepKind::Divide;
+    quotient.operands = { 0 };
+    quotient.rightOperand = formula::OperandSide::NotEvaluated;
+    forged.steps = { three, quotient };
+    CHECK(formula::render_trace(forged, { .maxSteps = 10 }) == "1. 3\n2. / #1 = 3\n");
 }
 
 TEST_CASE("a running total is one step naming its end, in the operand's unit", "[series][trace]")

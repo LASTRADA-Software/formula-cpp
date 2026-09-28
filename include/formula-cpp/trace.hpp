@@ -514,6 +514,30 @@ enum class Branch : std::uint8_t
     return "unknown branch";
 }
 
+/// What stands on one side of a binary step -- `Add` to `Divide` and their
+/// elementwise twins -- so that a line with fewer than two operands still
+/// says which side each one is, and what took the other's place.
+///
+/// Zero-initialises to `Recorded`, which is right for both sides of every
+/// step with two operands, and for every step that is not binary; a step
+/// built by hand therefore renders as it did before these existed.
+///
+/// `RecordingSink` fills `Step::leftOperand` and `Step::rightOperand` in;
+/// like every other field of a `Step`, they are public data, and a side set
+/// by hand renders as set -- except `NotEvaluated` on a step that holds a
+/// value, which contradicts itself and renders the operands as claimed.
+enum class OperandSide : std::uint8_t
+{
+    /// A step of its own, in `Step::operands`.
+    Recorded,
+    /// Evaluated, by a consumer's node that records no step of its own
+    /// (`sink.hpp`), so no operand stands for it.
+    Untraced,
+    /// Never evaluated: the left side failed first, and the right cannot
+    /// change an answer that is already an error (`evaluate.hpp`).
+    NotEvaluated,
+};
+
 /// Whose failure a lookup step is carrying, and of what kind.
 ///
 /// **The one field this whole surface exists for.** All three lookup kinds
@@ -1299,6 +1323,21 @@ struct Step
     /// a binning). Zero-initialises to `ResultElement`, the site of every
     /// other failure.
     FailureSite failureSite {};
+
+    /// For a binary step (`Add` to `Divide`, `ElementwiseAdd` to
+    /// `ElementwiseDivide`): what stands on its left side. `Recorded` on
+    /// both sides, as zero-initialised, when both have a step in `operands`.
+    /// Otherwise the recorder says which side the one operand is -- `#5 /
+    /// (not evaluated)` for a left side that failed, never the `/ #5` that
+    /// reads as something unseen divided by #5 -- whenever the node's types
+    /// let it know: a consumer's node that forwards the sink may leave steps
+    /// of its own operands among the claimed ones, and then both stay
+    /// `Recorded` and the line names the operands as claimed.
+    OperandSide leftOperand {};
+
+    /// For a binary step: what stands on its right side, as `leftOperand`
+    /// says for the left -- `NotEvaluated` when the left failed first.
+    OperandSide rightOperand {};
 };
 
 /// The rows one conformity step judged its elements against, in the unit
@@ -2010,6 +2049,73 @@ namespace detail
             return fallback;
         Unit const operandUnit = steps[operands.front()].unit;
         return operandUnit.dimension == dimension && borrowable(operandUnit) ? operandUnit : fallback;
+    }
+
+    /// Whether `RecordingSink` records a step of its own for @p N, a single
+    /// value's node or a series': `RecordsStep`, extended to the series kinds
+    /// `SeriesStepKindOf` describes.
+    template <typename N>
+    concept RecordsOwnStep = RecordsStep<N> || requires { SeriesStepKindOf<N>::value; };
+
+    /// The two operand types of a binary node, scalar or elementwise.
+    /// Undefined for every other kind.
+    template <typename N>
+    struct BinarySides;
+
+    template <BinaryOperator Op, Node Left, Node Right>
+    struct BinarySides<BinaryNode<Op, Left, Right>>
+    {
+        using left = Left;
+        using right = Right;
+    };
+
+    template <BinaryOperator Op, typename Left, typename Right>
+    struct BinarySides<ElementwiseBinaryNode<Op, Left, Right>>
+    {
+        using left = Left;
+        using right = Right;
+    };
+
+    /// Fills in `Step::leftOperand` and `Step::rightOperand` of a binary
+    /// step whose operands are claimed. Each operand of a kind this sink
+    /// records a step for leaves exactly one claimed step when it is
+    /// evaluated, so the count claimed says which sides ran:
+    ///
+    ///  - both sides record one: a single operand is the left's, which
+    ///    failed, and the right was never evaluated;
+    ///  - only the left records one: a single operand is the left's, and the
+    ///    right was evaluated untraced unless the left failed;
+    ///  - only the right records one: none claimed means the left, untraced,
+    ///    failed, and the right was never evaluated.
+    ///
+    /// Anything else leaves both `Recorded`: in particular one operand
+    /// under an untraced left, which may be the right's own step or a step
+    /// the left's node left behind by forwarding the sink.
+    template <typename N, typename Rep>
+    void record_operand_sides(Step<Rep>& binaryStep, std::vector<Step<Rep>> const& steps)
+    {
+        constexpr bool leftRecords = RecordsOwnStep<typename BinarySides<N>::left>;
+        constexpr bool rightRecords = RecordsOwnStep<typename BinarySides<N>::right>;
+        std::size_t const claimed = binaryStep.operands.size();
+        if constexpr (leftRecords && rightRecords)
+        {
+            if (claimed == 1)
+                binaryStep.rightOperand = OperandSide::NotEvaluated;
+        }
+        else if constexpr (leftRecords)
+        {
+            if (claimed == 1)
+                binaryStep.rightOperand = steps[binaryStep.operands.front()].error.has_value() ? OperandSide::NotEvaluated
+                                                                                               : OperandSide::Untraced;
+        }
+        else if constexpr (rightRecords)
+        {
+            if (claimed == 0)
+            {
+                binaryStep.leftOperand = OperandSide::Untraced;
+                binaryStep.rightOperand = OperandSide::NotEvaluated;
+            }
+        }
     }
 
     template <typename Role, typename Requirement, Node Operand>
@@ -3016,6 +3122,12 @@ class RecordingSink
                     sampleUnit.dimension == nodeStep.dimension && detail::borrowable_for_a_point(sampleUnit))
                     nodeStep.unit = sampleUnit;
 
+        // Which side a binary step's operand stood on, when it has one.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Add || detail::StepKindOf<N>::value == StepKind::Subtract
+                      || detail::StepKindOf<N>::value == StepKind::Multiply
+                      || detail::StepKindOf<N>::value == StepKind::Divide)
+            detail::record_operand_sides<N>(nodeStep, _trace->steps);
+
         // A read from another record is its operand's value, unchanged, so it
         // reads in the unit its operand's line does: `4 MPa` after a variable
         // or a rounding in MPa, and the coherent unit after a computation --
@@ -3600,6 +3712,10 @@ class RecordingSink
         // no class.
         else if constexpr (detail::SeriesStepKindOf<S>::value == StepKind::Binning)
             detail::record_binning<S>(seriesStep, _trace->steps);
+        // Elementwise arithmetic says which side its operand stood on, when
+        // it has one.
+        else if constexpr (requires { typename detail::BinarySides<S>::left; })
+            detail::record_operand_sides<S>(seriesStep, _trace->steps);
 
         if (!result.has_value())
         {

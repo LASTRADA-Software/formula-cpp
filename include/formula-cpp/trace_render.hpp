@@ -269,25 +269,54 @@ namespace detail
         return "#" + std::to_string(stepIndex + 1);
     }
 
-    /// The infix spelling of a binary step.
+    /// The infix spelling of a binary step, `#1 / #2`, with each side where
+    /// it stood even when it has no step to name (`Step::leftOperand`,
+    /// `Step::rightOperand`):
     ///
-    /// Falls back to prefix form when fewer than two operands were recorded.
-    /// A genuine short circuit -- the left operand failed, so the evaluator
-    /// never dispatched the right one -- leaves exactly **one** recorded
-    /// operand, not zero: dividing by zero itself only happens after both
-    /// sides have run, so a real `Divide` that fails this way always has two.
-    /// The one operand named is then the **left** one, the operand that
-    /// failed: `+ #5 = division by zero` means "#5 failed, and the right side
-    /// was never evaluated", though it can read as "something plus #5". The
-    /// elementwise steps (`ElementwiseAdd` and the rest) share this spelling,
-    /// and `trace_render_tests.cpp` pins it for one.
-    /// Zero operands is rarer still: it takes both children being untraced
-    /// extension-point nodes (`sink.hpp`) that produced no step of their own
-    /// to consume. A `Divide` with nothing recorded therefore renders as a
-    /// bare `/`.
+    ///  - `#5 / (not evaluated)`: a genuine short circuit -- the left operand
+    ///    failed, so the evaluator never dispatched the right one. The one
+    ///    operand is the left, the one that failed; dividing by zero itself
+    ///    happens only after both sides have run, so a `Divide` that fails
+    ///    that way names two.
+    ///  - `#1 + (untraced)`, `(untraced) + (not evaluated)`: a side evaluated
+    ///    by a consumer's node that records no step of its own (`sink.hpp`).
+    ///
+    /// The elementwise steps (`ElementwiseAdd` and the rest) share this
+    /// spelling. When the sides do not account for the operands claimed --
+    /// a step built by hand, or an untraced left whose node forwarded the
+    /// sink -- or a side is `NotEvaluated` on a step that did not fail, it
+    /// names the operands as claimed: in infix form when there
+    /// are two, and otherwise in prefix form, `/ #5`, or a bare `/` when
+    /// there are none.
     template <typename Rep>
     [[nodiscard]] std::string binary_expression(Step<Rep> const& step, std::string_view operatorText)
     {
+        std::size_t const sidesRecorded = static_cast<std::size_t>(step.leftOperand == OperandSide::Recorded)
+                                          + static_cast<std::size_t>(step.rightOperand == OperandSide::Recorded);
+        // A side never evaluated means the step failed; a step that holds a
+        // value says otherwise, and its sides are not taken at their word.
+        bool const claimsShortCircuit =
+            step.leftOperand == OperandSide::NotEvaluated || step.rightOperand == OperandSide::NotEvaluated;
+        if (sidesRecorded < 2 && sidesRecorded == step.operands.size()
+            && (!claimsShortCircuit || step.error.has_value()))
+        {
+            std::size_t named = 0;
+            auto const sideText = [&](OperandSide side) -> std::string {
+                switch (side)
+                {
+                    case OperandSide::Recorded:
+                        return operand_reference(step.operands[named++]);
+                    case OperandSide::Untraced:
+                        return "(untraced)";
+                    case OperandSide::NotEvaluated:
+                        return "(not evaluated)";
+                }
+                return "(unknown)";
+            };
+            std::string const leftText = sideText(step.leftOperand);
+            return leftText + " " + std::string { operatorText } + " " + sideText(step.rightOperand);
+        }
+
         if (step.operands.size() >= 2)
             return operand_reference(step.operands[0]) + " " + std::string { operatorText } + " "
                    + operand_reference(step.operands[1]);

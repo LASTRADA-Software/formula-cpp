@@ -207,3 +207,8 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   reading, stays in degrees Celsius. A sum or a range no longer borrows a unit without a symbol
   either, and the mean and a rejection's lines -- a pass's mean, a rejected value, a deviation --
   follow the same rule: in a unit with no symbol they read in the coherent unit.
+- A binary step whose left operand failed named that operand alone, in prefix form: `/ #2` read as
+  something unseen divided by #2, where #2 was the dividend that failed and the divisor was never
+  evaluated. The line now reads `#2 / (not evaluated)`, and a side computed by a consumer's node that
+  records no step of its own reads `(untraced)`. `Step` gains `leftOperand` and `rightOperand`
+  (`OperandSide`), which say so.
