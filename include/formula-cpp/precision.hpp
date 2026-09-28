@@ -310,7 +310,8 @@ namespace detail
     /// library ships, leaves included**, each saying `seen = true`. The kinds
     /// declared in headers this one cannot include specialise it there:
     /// `DerivedQuantityNode`, `OverriddenConstantNode` and
-    /// `ReplacedVariantNode` in `overlay.hpp`.
+    /// `ReplacedVariantNode` in `overlay.hpp`, and the retry's context nodes
+    /// in `retry.hpp`.
     ///
     /// The primary is a consumer's node kind, which cannot be seen inside: it
     /// answers no children and `seen = false`. **A library kind does not reach

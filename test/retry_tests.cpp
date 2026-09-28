@@ -14,6 +14,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 namespace
@@ -1160,4 +1161,59 @@ TEST_CASE("the walk behind attempt_input's refusals finds it however deep", "[re
     STATIC_REQUIRE(!formula::detail::readsAttemptInput<decltype(formula::previous_attempt<Agreed> * rat(2))>);
     STATIC_REQUIRE(formula::detail::readsAttemptInput<decltype(formula::documented(
                        formula::attempt_input<Determination>, { .reference = "Example Standard 12" }))>);
+}
+
+TEST_CASE("an acceptance may take a precision limit's level from this attempt", "[retry][precision]")
+{
+    // |d_a(k) - d_a(k-1)| <= r, r = 0.347 g + level / 50, the level this
+    // attempt's value. Attempt 2: |43.9 - 41.3| = 2.6 > 0.347 + 0.878 g;
+    // attempt 3: |42.7 - 43.9| = 1.2 <= 0.347 + 0.854 = 1.201 g, accepted. An
+    // unbound level, read as 0, would give 0.347 g and accept nothing.
+    constexpr auto limitOfLevel =
+        formula::constant<unit::Gram>(rat(347, 1000)) + rat(1, 50) * formula::precision_level<Agreed>;
+    constexpr auto withinLimit =
+        formula::abs(formula::previous_attempt<Agreed> - formula::this_attempt<Agreed>)
+        <= formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::this_attempt<Agreed>, limitOfLevel);
+    constexpr auto limited = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
+        formula::attempt_input<Determination>,
+        withinLimit,
+        formula::Verdict { "repeat the test" },
+        { .reference = "Example Standard 12", .section = "7" });
+    constexpr auto ran = formula::checked_evaluate_retry(limited, allFour);
+    STATIC_REQUIRE(ran.has_value());
+    STATIC_REQUIRE(ran->end() == formula::RetryEnd::Accepted);
+    STATIC_REQUIRE(ran->accepted_at() == std::optional<std::size_t> { 2 });
+    STATIC_REQUIRE(ran->outcome().measurement().value() == rat(427, 10));
+    // The level is its own value's, and each context node a leaf the level
+    // checks see whole.
+    STATIC_REQUIRE(formula::detail::LevelChildren<formula::ThisAttemptNode<Agreed>>::seen);
+    STATIC_REQUIRE(formula::detail::LevelChildren<formula::PreviousAttemptNode<Agreed>>::seen);
+    STATIC_REQUIRE(formula::detail::LevelChildren<formula::AttemptNumberNode>::seen);
+    STATIC_REQUIRE(formula::detail::LevelChildren<formula::AttemptInputNode<Determination>>::seen);
+    CHECK(formula::render(limited).find("d_a(k)") != std::string::npos);
+}
+
+TEST_CASE("the walk behind the starting value's refusal finds every context node, whatever it names", "[retry]")
+{
+    using formula::detail::readsAttemptContext;
+    STATIC_REQUIRE(readsAttemptContext<decltype(formula::previous_attempt<Determination> * rat(2))>);
+    STATIC_REQUIRE(readsAttemptContext<decltype(formula::this_attempt<Agreed> + formula::constant<unit::Gram>(rat(1)))>);
+    STATIC_REQUIRE(readsAttemptContext<decltype(formula::constant<unit::Gram>(rat(1)) * formula::attempt_number)>);
+    STATIC_REQUIRE(readsAttemptContext<decltype(formula::starting_from(formula::previous_attempt<Determination>))>);
+    STATIC_REQUIRE(!readsAttemptContext<decltype(formula::starting_from(formula::constant<unit::Gram>(rat(0))))>);
+    STATIC_REQUIRE(!readsAttemptContext<decltype(formula::attempt_input<Determination> * rat(2))>);
+}
+
+TEST_CASE("asking whether a retry compares or adds is answered, not refused", "[retry]")
+{
+    // A concept over a retry is an answer: the refused operators name their
+    // return type, so their bodies -- the refusal -- are never instantiated.
+    using Retried = std::remove_cv_t<decltype(successive)>;
+    STATIC_REQUIRE(!std::equality_comparable<Retried>);
+    STATIC_REQUIRE(!std::totally_ordered<Retried>);
+    STATIC_REQUIRE(!std::equality_comparable_with<Retried, formula::ConstantNode<unit::Gram>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(std::declval<Retried>() + std::declval<Retried>()),
+                                  formula::detail::RefusedRetryValue<formula::dim::Mass>>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(-std::declval<Retried>()), formula::detail::RefusedRetryValue<formula::dim::Mass>>);
 }

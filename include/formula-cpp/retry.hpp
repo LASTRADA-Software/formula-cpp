@@ -48,6 +48,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/outcome.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
@@ -214,6 +215,33 @@ struct AttemptInputNode: NodeBase
 /// The determination of @p Q recorded for the attempt that is running.
 template <Described Q>
 inline constexpr AttemptInputNode<Q> attempt_input {};
+
+namespace detail
+{
+    /// The context nodes, seen by a precision limit's checks
+    /// (`precision.hpp`, which cannot include this header): each is a value
+    /// read whole, with nothing inside it, so an acceptance may take a
+    /// limit's level from `this_attempt`, or from any of them.
+    template <>
+    struct LevelChildren<AttemptNumberNode>: LevelLeaf
+    {
+    };
+
+    template <Described R>
+    struct LevelChildren<PreviousAttemptNode<R>>: LevelLeaf
+    {
+    };
+
+    template <Described R>
+    struct LevelChildren<ThisAttemptNode<R>>: LevelLeaf
+    {
+    };
+
+    template <Described Q>
+    struct LevelChildren<AttemptInputNode<Q>>: LevelLeaf
+    {
+    };
+} // namespace detail
 
 namespace detail
 {
@@ -729,6 +757,48 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Whether @p T is `attempt_number`, `previous_attempt<Q>` or
+    /// `this_attempt<Q>`, for any `Q`.
+    template <typename T>
+    inline constexpr bool isAttemptContextNode = false;
+
+    template <>
+    inline constexpr bool isAttemptContextNode<AttemptNumberNode> = true;
+
+    template <typename Q>
+    inline constexpr bool isAttemptContextNode<PreviousAttemptNode<Q>> = true;
+
+    template <typename Q>
+    inline constexpr bool isAttemptContextNode<ThisAttemptNode<Q>> = true;
+
+    /// `HoldsNodeType`'s probe for a context node.
+    struct AttemptContextProbe
+    {
+        template <typename T>
+        static constexpr bool matches = isAttemptContextNode<T>;
+    };
+
+    /// Whether @p T reads `attempt_number`, `previous_attempt` or
+    /// `this_attempt` anywhere, whatever quantity it names.
+    template <typename T>
+    inline constexpr bool readsAttemptContext = HoldsNodeType<AttemptContextProbe, std::remove_cv_t<T>>::value;
+
+    /// Fails to compile when a retry's starting value reads a context node,
+    /// where the retry is built -- so that `render` and `document`, which
+    /// never evaluate it, are refused too, and a misnamed
+    /// `previous_attempt<Q>` there is refused as the misplaced read it is --
+    /// in the words its evaluation uses (`RequireNotInStartingValue`).
+    template <typename Start>
+    struct RequireNoContextInStart
+    {
+        static_assert(!readsAttemptContext<Start>,
+                      "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists "
+                      "yet; previous_attempt, this_attempt and attempt_number cannot be read in it -- the starting "
+                      "value appears in this diagnostic as the template argument of RequireNoContextInStart");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when a retry's starting value reads `attempt_input`,
     /// where the retry is built, in the words its evaluation uses
     /// (`RequireAttemptInputAfterStart`).
@@ -816,9 +886,21 @@ namespace detail
         static_assert(
             std::conditional_t<shapesOk && attemptNamesOk, RequireOnlyRetriedQuantity<R, P>, std::true_type>::value);
 
-        // And a starting value that reads a recorded determination, which it
-        // runs before any attempt has one.
+        // And a starting value that reads an attempt's context or a recorded
+        // determination, which it runs before any attempt has either.
         static constexpr bool namesOk = shapesOk && attemptNamesOk && acceptNamesOk;
+
+        template <bool Ask>
+        [[nodiscard]] static consteval bool start_reads_no_context() noexcept
+        {
+            if constexpr (Ask)
+                return !readsAttemptContext<Start>;
+            else
+                return true;
+        }
+
+        static constexpr bool startContextOk = start_reads_no_context<namesOk>();
+        static_assert(std::conditional_t<namesOk, RequireNoContextInStart<Start>, std::true_type>::value);
 
         template <bool Ask>
         [[nodiscard]] static consteval bool start_reads_no_input() noexcept
@@ -829,11 +911,12 @@ namespace detail
                 return true;
         }
 
-        static constexpr bool startInputOk = start_reads_no_input<namesOk>();
-        static_assert(std::conditional_t<namesOk, RequireNoAttemptInputInStart<Start>, std::true_type>::value);
+        static constexpr bool startInputOk = start_reads_no_input<namesOk && startContextOk>();
+        static_assert(
+            std::conditional_t<namesOk && startContextOk, RequireNoAttemptInputInStart<Start>, std::true_type>::value);
 
         /// Whether every check passed.
-        static constexpr bool value = namesOk && startInputOk;
+        static constexpr bool value = namesOk && startContextOk && startInputOk;
     };
 
     struct RetryOutcomeFactory;
@@ -1500,6 +1583,32 @@ namespace detail
         static constexpr Dimension dimension = D;
         static constexpr bool refused = true;
     };
+
+    /// The refused value arithmetic over @p L and @p Rt gives, one of them a
+    /// retry.
+    template <typename L, typename Rt>
+    [[nodiscard]] constexpr auto refused_retry_value() noexcept
+    {
+        return RefusedRetryValue<retried_dimension<L, Rt>()> {};
+    }
+
+    /// The type an arithmetic operator over @p L and @p Rt returns when one
+    /// of them is a retry; none otherwise. The operators name it, so that
+    /// asking whether a retry can be added, as a concept does, is answered
+    /// without instantiating their bodies -- the refusal. A class, so that
+    /// over two operands neither of which is a retry it has no `type`, a
+    /// substitution failure: clang substitutes into the return type before
+    /// it checks the operators' constraints.
+    template <typename L, typename Rt, bool = isRetry<L> || isRetry<Rt>>
+    struct RefusedRetryResult
+    {
+    };
+
+    template <typename L, typename Rt>
+    struct RefusedRetryResult<L, Rt, true>
+    {
+        using type = decltype(refused_retry_value<L, Rt>());
+    };
 } // namespace detail
 
 /// A refused retry value evaluates to nothing but `DomainError`; a program
@@ -1564,46 +1673,46 @@ template <typename Tag, Described R, std::size_t Max, FirstJudged J, typename St
 /// refused in this library's words, giving a node refused already.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator+(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator+(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
-    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+    return detail::refused_retry_value<L, Rt>();
 }
 
 /// See `operator+` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator-(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator-(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
-    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+    return detail::refused_retry_value<L, Rt>();
 }
 
 /// See `operator+` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator*(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator*(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
-    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+    return detail::refused_retry_value<L, Rt>();
 }
 
 /// See `operator+` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator/(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator/(L, Rt) noexcept -> typename detail::RefusedRetryResult<L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
-    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+    return detail::refused_retry_value<L, Rt>();
 }
 
 /// See `operator+` over a retry.
 template <typename Operand>
     requires(detail::isRetry<Operand>)
-[[nodiscard]] constexpr auto operator-(Operand) noexcept
+[[nodiscard]] constexpr auto operator-(Operand) noexcept -> typename detail::RefusedRetryResult<Operand, Operand>::type
 {
     static_assert(detail::RequireRetryAtTop<Operand>::value);
-    return detail::RefusedRetryValue<Describe<typename Operand::quantity>::dimension> {};
+    return detail::refused_retry_value<Operand, Operand>();
 }
 
 namespace detail
@@ -1621,6 +1730,22 @@ namespace detail
         constexpr Dimension retriedDimension = retried_dimension<L, Rt>();
         return PredicateNode<Op, RefusedRetryValue<retriedDimension>, RefusedRetryValue<retriedDimension>> { {}, {} };
     }
+
+    /// The type a comparison operator over @p L and @p Rt returns when one of
+    /// them is a retry; none otherwise. The operators name it, so that asking
+    /// whether a retry can be compared -- as `std::equality_comparable`
+    /// does -- answers no, and is not the refusal; a class for the reason
+    /// `RefusedRetryResult` is one.
+    template <Comparison Op, typename L, typename Rt, bool = isRetry<L> || isRetry<Rt>>
+    struct RefusedRetryComparison
+    {
+    };
+
+    template <Comparison Op, typename L, typename Rt>
+    struct RefusedRetryComparison<Op, L, Rt, true>
+    {
+        using type = decltype(refused_retry_comparison<Op, L, Rt>());
+    };
 } // namespace detail
 
 /// A retry compared, on either side of `<`, `<=`, `>`, `>=`, `==` or `!=`:
@@ -1628,7 +1753,8 @@ namespace detail
 /// acceptance is a comparison, so this is the likeliest place to write one.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator<(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator<(L, Rt) noexcept ->
+    typename detail::RefusedRetryComparison<Comparison::Less, L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
     return detail::refused_retry_comparison<Comparison::Less, L, Rt>();
@@ -1637,7 +1763,8 @@ template <typename L, typename Rt>
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator<=(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator<=(L, Rt) noexcept ->
+    typename detail::RefusedRetryComparison<Comparison::LessOrEqual, L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
     return detail::refused_retry_comparison<Comparison::LessOrEqual, L, Rt>();
@@ -1646,7 +1773,8 @@ template <typename L, typename Rt>
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator>(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator>(L, Rt) noexcept ->
+    typename detail::RefusedRetryComparison<Comparison::Greater, L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
     return detail::refused_retry_comparison<Comparison::Greater, L, Rt>();
@@ -1655,7 +1783,8 @@ template <typename L, typename Rt>
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator>=(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator>=(L, Rt) noexcept ->
+    typename detail::RefusedRetryComparison<Comparison::GreaterOrEqual, L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
     return detail::refused_retry_comparison<Comparison::GreaterOrEqual, L, Rt>();
@@ -1664,7 +1793,8 @@ template <typename L, typename Rt>
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator==(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator==(L, Rt) noexcept ->
+    typename detail::RefusedRetryComparison<Comparison::Equal, L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
     return detail::refused_retry_comparison<Comparison::Equal, L, Rt>();
@@ -1673,7 +1803,8 @@ template <typename L, typename Rt>
 /// See `operator<` over a retry.
 template <typename L, typename Rt>
     requires(detail::isRetry<L> || detail::isRetry<Rt>)
-[[nodiscard]] constexpr auto operator!=(L, Rt) noexcept
+[[nodiscard]] constexpr auto operator!=(L, Rt) noexcept ->
+    typename detail::RefusedRetryComparison<Comparison::NotEqual, L, Rt>::type
 {
     static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
     return detail::refused_retry_comparison<Comparison::NotEqual, L, Rt>();

@@ -771,18 +771,19 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                 <= formula::constant<unit::Millimetre>(formula::Rational { 53 });
     // With a starting value, so that the starting branch and its environment
     // are reached too; judged from the first attempt, whose previous value is
-    // the starting 139 mm: 150 mm is 11 mm from it, so the first is accepted.
+    // the starting 139 mm: the span's first edge, 163 mm, is 24 mm from it, so the
+    // first is accepted.
     constexpr auto recordedEdges = formula::retry<AgreedEdge, 2, formula::FirstJudged::AtFirstAttempt>(
         formula::starting_from(formula::constant<unit::Millimetre>(formula::Rational { 139 })),
         formula::attempt_input<EdgeX>,
         edgesAgree,
         formula::Verdict { "measure the edge again" },
         { .reference = "Example Standard 3" });
-    auto const edgesRetried = formula::checked_evaluate_retry(recordedEdges, bothScreens);
-    auto const explainedEdges = formula::explain_retry(recordedEdges, bothScreens, north);
+    auto const edgesRetried = formula::checked_evaluate_retry(recordedEdges, spanEdges);
+    auto const explainedEdges = formula::explain_retry(recordedEdges, spanEdges, north);
     probe.checks.push_back(
         edgesRetried.has_value() && edgesRetried->end() == formula::RetryEnd::Accepted
-        && edgesRetried->outcome().measurement().value() == formula::Rational { 150 }
+        && edgesRetried->outcome().measurement().value() == formula::Rational { 163 }
         && formula::render_trace(explainedEdges.trace, { .maxSteps = 20 }).find("accepted at attempt 1 of 2")
                != std::string::npos
         && formula::render(recordedEdges, north).find("x_m(k)") != std::string::npos

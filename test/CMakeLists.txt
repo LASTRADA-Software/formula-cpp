@@ -2251,6 +2251,7 @@ formula_add_negative_test(retry_previous_other_dimension
     REJECT "only meaningful inside a retry" "does not compute the dimension" "template arguments of RequireRetriedQuantity")
 formula_add_negative_test(retry_context_in_starting_value
     "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
+    EXPECT_COUNT 1
     REJECT "only meaningful inside a retry" "no matching")
 formula_add_negative_test(retry_start_not_starting_value
     "formula: a retry starts from starting_from(expression), or from nothing; this starting value is neither"
@@ -2274,6 +2275,10 @@ formula_add_negative_test(retry_render_other_quantity
     "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
     EXPECT_COUNT 1
     REJECT "template arguments of RequireRetriedQuantity" "does not compute the dimension")
+formula_add_negative_test(retry_render_context_in_starting_value
+    "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
+    EXPECT_COUNT 1
+    REJECT "names another" "only meaningful inside a retry" "does not compute the dimension")
 formula_add_negative_test(retry_compared
     "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
     EXPECT_COUNT 1
