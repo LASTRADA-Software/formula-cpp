@@ -14,11 +14,16 @@
 #include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
@@ -116,6 +121,33 @@ struct SymbolEntry
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
 };
 
+/// A rejection of outliers the formula holds, as its page states it: the
+/// criterion, its limit rendered in the page's dialect and vocabulary, the
+/// four parameters that shape the result, and the author's verdict and
+/// citation.
+struct RejectionEntry
+{
+    /// Which statistic the criterion compares.
+    CriterionKind criterion {};
+    /// The limit expression, rendered as the formula is.
+    std::string limit {};
+    /// How many candidates one pass rejects.
+    PerPass perPass {};
+    /// What becomes of a determination exactly on the limit.
+    OnLimit onLimit {};
+    /// k: the most rejected in total.
+    std::size_t atMost {};
+    /// m: the fewest that may remain.
+    std::size_t keepAtLeast {};
+    /// What the author declares when the bound is reached.
+    Verdict verdict {};
+    /// Where the rule comes from.
+    Citation citation {};
+
+    /// Memberwise equality.
+    [[nodiscard]] bool operator==(RejectionEntry const&) const = default;
+};
+
 /// Everything a documentation page needs from a formula: the formula itself
 /// rendered to text, what it cites, and the symbol table for what it reads.
 struct Documentation
@@ -139,6 +171,10 @@ struct Documentation
     /// the base standard's page for a formula that is not the base
     /// standard's. A cited replacement's citation also joins `citations`.
     std::vector<Citation> replacedBy {};
+    /// One entry per rejection of outliers the formula holds, in the order
+    /// met (`RejectionEntry`). A cited rejection's citation also joins
+    /// `citations`.
+    std::vector<RejectionEntry> rejections {};
 };
 
 namespace detail
@@ -291,6 +327,9 @@ namespace detail
     template <Vocabulary V, Unit U, SignificantDigits Digits, RoundingMode Mode, Node Operand>
     void collect(Walk<V>& walk, RoundSignificantNode<U, Digits, Mode, Operand> const& node);
 
+    template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node);
+
     template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
     void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node);
 
@@ -299,6 +338,18 @@ namespace detail
 
     template <Vocabulary V, KeyTable Keys, Unit ResultUnit>
     void collect(Walk<V>& walk, ExactLookupNode<Keys, ResultUnit> const& node);
+
+    template <Vocabulary V, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    void collect(Walk<V>& walk, SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node);
+
+    template <Vocabulary V, Node Operand>
+    void collect(Walk<V>& walk, AbsoluteValueNode<Operand> const& node);
+
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, PrecisionLevelNode<Q> const& node);
+
+    template <Vocabulary V, PrecisionKind K, Node Level, Node Limit>
+    void collect(Walk<V>& walk, PrecisionLimitNode<K, Level, Limit> const& node);
 
     template <Vocabulary V, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node Operand>
     void collect(Walk<V>& walk, InterpolatingLookupNode<KeyUnit, Points, ResultUnit, Operand> const& node);
@@ -329,6 +380,27 @@ namespace detail
 
     template <Vocabulary V, SeriesNode S>
     void collect(Walk<V>& walk, SumNode<S> const& node);
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleCountNode<S> const& node);
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleMeanNode<S> const& node);
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleVarianceNode<S> const& node);
+
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, PassMeanNode<Q> const& node);
+
+    template <Vocabulary V>
+    void collect(Walk<V>& walk, PassCountNode const& node);
+
+    template <Vocabulary V, PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    void collect(Walk<V>& walk, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node);
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleRangeNode<S> const& node);
 
     template <Vocabulary V, Unit U, auto Places, RoundingMode Mode, SeriesNode S>
     void collect(Walk<V>& walk, ElementwiseRoundNode<U, Places, Mode, S> const& node);
@@ -533,6 +605,48 @@ namespace detail
         collect(walk, node.operand);
     }
 
+    /// An absolute value reads what its operand reads.
+    template <Vocabulary V, Node Operand>
+    void collect(Walk<V>& walk, AbsoluteValueNode<Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A precision limit's level placeholder is no input: it is the level the
+    /// limit's own level expression produced, and that expression's
+    /// variables are collected from it. `Q` only names the unit, so it gets
+    /// no row of its own for being named here.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>&, PrecisionLevelNode<Q> const&)
+    {
+    }
+
+    /// A precision limit reads what its level and its limit read, level first,
+    /// as the evaluation does.
+    template <Vocabulary V, PrecisionKind K, Node Level, Node Limit>
+    void collect(Walk<V>& walk, PrecisionLimitNode<K, Level, Limit> const& node)
+    {
+        collect(walk, node.level);
+        collect(walk, node.limit);
+    }
+
+    /// A critical-value lookup reads what its count reads. Its sizes are
+    /// printed by `render()` in the page's formula, and its values are data,
+    /// as a lookup's corrections are.
+    template <Vocabulary V, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    void collect(Walk<V>& walk, SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node)
+    {
+        collect(walk, node.count);
+    }
+
+    /// A rounded square root reads what its radicand reads, as a rounding
+    /// node reads what its operand does.
+    template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node)
+    {
+        collect(walk, node.radicand);
+    }
+
     /// The escape hatch still reads a variable, even though what it produces
     /// no longer carries a dimension.
     template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
@@ -722,6 +836,66 @@ namespace detail
     void collect(Walk<V>& walk, SumNode<S> const& node)
     {
         collect(walk, node.operand);
+    }
+
+    /// A sample statistic is one value, but what it reads is a sample, and
+    /// the row says so: the series beneath it contributes its series row.
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleCountNode<S> const& node)
+    {
+        collect(walk, node.sample);
+    }
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleMeanNode<S> const& node)
+    {
+        collect(walk, node.sample);
+    }
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleVarianceNode<S> const& node)
+    {
+        collect(walk, node.sample);
+    }
+
+    /// A pass placeholder names no quantity of its own: it is a value the
+    /// rejection computed, not one measured.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>&, PassMeanNode<Q> const&)
+    {
+    }
+
+    template <Vocabulary V>
+    void collect(Walk<V>&, PassCountNode const&)
+    {
+    }
+
+    /// A rejection lists its sample's row and whatever its limit reads, and
+    /// states itself: criterion, limit, the four parameters, verdict and
+    /// citation (`RejectionEntry`).
+    template <Vocabulary V, PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    void collect(Walk<V>& walk, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node)
+    {
+        Citation const& cited = node.citation;
+        if (!cited.title.empty() || !cited.reference.empty() || !cited.section.empty() || !cited.equation.empty())
+            walk.documentation.citations.push_back(cited);
+        collect(walk, node.sample);
+        collect(walk, node.criterion.limit);
+        walk.documentation.rejections.push_back(
+            RejectionEntry { .criterion = Criterion::kind,
+                             .limit = render_in(walk.dialect, node.criterion.limit, walk.vocabulary),
+                             .perPass = P,
+                             .onLimit = L,
+                             .atMost = detail::bound_value<AtMostT>,
+                             .keepAtLeast = detail::bound_value<KeepAtLeastT>,
+                             .verdict = node.verdict,
+                             .citation = node.citation });
+    }
+
+    template <Vocabulary V, SampleSource S>
+    void collect(Walk<V>& walk, SampleRangeNode<S> const& node)
+    {
+        collect(walk, node.sample);
     }
 
     /// A refused series names nothing: it only keeps `document` from adding a

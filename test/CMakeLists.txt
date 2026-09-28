@@ -48,6 +48,9 @@ add_executable(formula-cpp-tests
     trace_tests.cpp
     trace_render_tests.cpp
     rounding_node_tests.cpp
+    rounded_root_tests.cpp
+    critical_value_tests.cpp
+    precision_tests.cpp
     predicate_tests.cpp
     constraint_tests.cpp
     conditional_tests.cpp
@@ -70,11 +73,28 @@ add_executable(formula-cpp-tests
     snap_tests.cpp
     binning_tests.cpp
     curve_tests.cpp
+    statistics_tests.cpp
+    statistics_cross_tu_b.cpp
+    rejection_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
 
 catch_discover_tests(formula-cpp-tests)
+
+# The overflow census (docs/numeric-headroom.md) is its own program: it is
+# built with FORMULA_OVERFLOW_CENSUS, which changes what the library's inline
+# arithmetic does, so no translation unit of formula-cpp-tests may share it.
+add_executable(formula-cpp-census-tests
+    overflow_census_tests.cpp
+    "${PROJECT_SOURCE_DIR}/support/census_tally.cpp"
+    "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
+target_link_libraries(formula-cpp-census-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
+target_compile_definitions(formula-cpp-census-tests PRIVATE FORMULA_OVERFLOW_CENSUS)
+target_include_directories(formula-cpp-census-tests PRIVATE "${PROJECT_SOURCE_DIR}/support")
+formula_apply_warnings(formula-cpp-census-tests)
+
+catch_discover_tests(formula-cpp-census-tests TEST_PREFIX "census.")
 
 # Each negative case is its own EXCLUDE_FROM_ALL target, so a normal build stays
 # green while `ctest` drives the failing compile deliberately.
@@ -611,6 +631,219 @@ formula_add_negative_test(escape_blank_justification
 
 formula_add_negative_test(escape_unit_dimension_mismatch
     "formula: this numeric_value_of names a unit that does not measure the dimension")
+
+# The class-body check, reached through the factory and around it. Each
+# REJECTs the dimension messages of the nodes a rounded root could be
+# mistaken for, or built from: a rounding node's unit check and the
+# evaluator's result check.
+formula_add_negative_test(rounded_sqrt_unit_dimension_mismatch
+    "formula: this rounded_sqrt names a unit whose square does not measure the dimension of its radicand"
+    REJECT "formula: this rounding node names a unit that does not measure the dimension"
+           "does not measure the dimension this expression computes"
+           "formula: these two dimensions are not the same")
+
+formula_add_negative_test(rounded_sqrt_no_factory_dimension_mismatch
+    "formula: this rounded_sqrt names a unit whose square does not measure the dimension of its radicand"
+    REJECT "formula: this rounding node names a unit that does not measure the dimension"
+           "does not measure the dimension this expression computes"
+           "formula: these two dimensions are not the same")
+
+# A unit with an offset (degrees Celsius) of the right dimension, and the
+# same unit over the wrong dimension: the offset check is gated on the
+# dimension matching, so the second draws the dimension message alone.
+formula_add_negative_test(rounded_sqrt_unit_has_offset
+    "formula: this rounded_sqrt names a unit with an offset, such as degrees Celsius"
+    REJECT "formula: this rounded_sqrt names a unit whose square does not measure")
+
+formula_add_negative_test(rounded_sqrt_offset_unit_dimension_mismatch
+    "formula: this rounded_sqrt names a unit whose square does not measure the dimension of its radicand"
+    REJECT "formula: this rounded_sqrt names a unit with an offset")
+
+# Critical values keyed by sample size. A malformed table is refused once,
+# for its first defect, and the arity check is gated behind it; a valid
+# table's arity is checked on both routes.
+formula_add_negative_test(critical_value_sizes_descending
+    "formula: this sample-size table's sizes do not strictly ascend"
+    REJECT "this lookup table was given a different number of corrections")
+
+formula_add_negative_test(critical_value_sizes_duplicate
+    "formula: this sample-size table's sizes do not strictly ascend"
+    REJECT "declares a size of zero")
+
+formula_add_negative_test(critical_value_size_zero
+    "formula: this sample-size table declares a size of zero"
+    REJECT "do not strictly ascend")
+
+formula_add_negative_test(critical_value_short
+    "this lookup table was given a different number of corrections than it has rows"
+    REJECT "sample-size table")
+
+formula_add_negative_test(critical_value_short_no_factory
+    "this lookup table was given a different number of corrections than it has rows"
+    REJECT "sample-size table")
+
+formula_add_negative_test(critical_value_count_not_scalar
+    "formula: this critical value's count is not dimensionless"
+    REJECT "sample-size table" "stated in a unit other than a bare number")
+
+# A dimensionless count in a unit other than a bare number. Gated on the
+# count being dimensionless, so `count_not_scalar` above REJECTs this message.
+formula_add_negative_test(critical_value_count_in_percent
+    "formula: this critical value's count is stated in a unit other than a bare number"
+    REJECT "is not dimensionless" "sample-size table")
+
+formula_add_negative_test(critical_value_rep_not_rational
+    "formula: a critical-value lookup node can only be evaluated with Rep = Rational")
+
+# Precision limits. Each refusal is gated so that one mistake draws one
+# message: the placeholder never asks an environment for a value, and a limit
+# refused where it is declared is never evaluated.
+formula_add_negative_test(precision_level_outside_limit
+    "formula: precision_level is meaningful only inside the limit expression of precision_limit"
+    REJECT "provides no value for this quantity")
+
+formula_add_negative_test(precision_level_in_own_level
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "provides no value for this quantity")
+
+formula_add_negative_test(precision_level_dimension_mismatch
+    "formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression"
+    REJECT "reads a level of another dimension" "these two dimensions are not the same")
+
+formula_add_negative_test(precision_limit_no_factory_level_dimension
+    "formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression"
+    REJECT "reads a level of another dimension")
+
+formula_add_negative_test(precision_level_hidden_dimension_mismatch
+    "formula: this precision_level reads a level of another dimension"
+    REJECT "limit expression reads a precision_level whose quantity" "has no detail::LevelChildren specialisation")
+
+# A node kind declared in namespace formula with no LevelChildren
+# specialisation is refused, never walked as a leaf; the consumer's node just
+# above, templated over a library type, is not.
+formula_add_negative_test(precision_level_check_unlisted_library_kind
+    "formula: this library node kind has no detail::LevelChildren specialisation"
+    REJECT "reads precision_level" "reads a level of another dimension")
+
+# The level check sees through the overlay's derived quantity: a placeholder
+# an overlay puts into a level is refused as a level reading a level, where
+# `apply` builds the rewritten limit -- nested or outermost -- and never as a
+# placeholder evaluated where no limit binds it.
+formula_add_negative_test(precision_level_derived_into_nested_level
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "cannot see inside")
+
+formula_add_negative_test(precision_level_derived_into_level
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "cannot see inside")
+
+# Sample statistics. A single value handed to one is refused once, and the
+# refusing overload returns what the statistic would have been -- the value
+# itself for a mean, a bare number for a count -- so nothing downstream, and
+# no concept failure of the sample overload, adds a second message.
+formula_add_negative_test(sample_mean_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
+formula_add_negative_test(sample_count_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
+formula_add_negative_test(sample_variance_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
+formula_add_negative_test(sample_range_of_single_value
+    "formula: a sample statistic needs a sample (a series or observations), not a single value"
+    REJECT "no matching" "this expression is a series, not a single value"
+           "this result quantity does not measure the dimension this expression computes")
+# Outlier rejection. Each refusal is gated so that one mistake draws one
+# message: the positive counts, the limit's dimension and the sample's
+# placeholders are asked only once the bounds are in order.
+formula_add_negative_test(rejection_bounds_swapped
+    "formula: without_outliers takes AtMost<k> and then KeepAtLeast<m>, in that order"
+    REJECT "declares AtMost<0>" "declares KeepAtLeast<0>" "does not measure what its criterion compares" "no matching")
+formula_add_negative_test(rejection_bounds_swapped_zero
+    "formula: without_outliers takes AtMost<k> and then KeepAtLeast<m>, in that order"
+    REJECT "declares AtMost<0>" "declares KeepAtLeast<0>")
+formula_add_negative_test(rejection_bound_not_a_bound
+    "formula: without_outliers takes AtMost<k> and then KeepAtLeast<m>, in that order"
+    REJECT "must be a class or namespace" "is not a member of" "prior to '::'" "no matching")
+formula_add_negative_test(rejection_at_most_zero
+    "formula: without_outliers declares AtMost<0>"
+    REJECT "in that order")
+formula_add_negative_test(rejection_keep_at_least_zero
+    "formula: without_outliers declares KeepAtLeast<0>"
+    REJECT "in that order")
+formula_add_negative_test(rejection_limit_dimension_mismatch
+    "formula: this rejection's limit does not measure what its criterion compares"
+    REJECT "pass_mean whose quantity")
+formula_add_negative_test(rejection_limit_and_pass_mean_dimension_mismatch
+    "formula: this rejection's limit does not measure what its criterion compares"
+    REJECT "pass_mean whose quantity")
+formula_add_negative_test(pass_mean_wrong_dimension
+    "formula: this rejection's limit reads a pass_mean whose quantity does not measure the determinations' dimension"
+    REJECT "does not measure what its criterion compares")
+formula_add_negative_test(rejection_result_dimension
+    "formula: this result quantity does not measure what the rejection's determinations measure"
+    REJECT "the dimension this expression computes")
+formula_add_negative_test(rejection_under_double
+    "formula: a rejection of outliers can only be evaluated with Rep = Rational"
+    REJECT "no matching")
+formula_add_negative_test(gap_to_range_every_exceeding
+    "formula: gap_to_range examines only the lowest and the highest value; declare PerPass::MostExtreme"
+    REJECT "does not measure what its criterion compares")
+formula_add_negative_test(gap_to_range_limit_not_scalar
+    "formula: this rejection's limit does not measure what its criterion compares"
+    REJECT "gap_to_range examines only")
+formula_add_negative_test(rejection_series_shorter_than_keep_at_least
+    "formula: without_outliers keeps at least m determinations of a series that holds fewer"
+    REJECT "declares KeepAtLeast<0>")
+formula_add_negative_test(rejection_of_rejection
+    "formula: without_outliers takes a series or observations as its sample, not another without_outliers"
+    REJECT "keeps at least m")
+formula_add_negative_test(rejection_observations_below_keep_at_least
+    "formula: without_outliers keeps at least m determinations of observations that hold at most fewer"
+    REJECT "of a series that holds fewer")
+formula_add_negative_test(rejection_of_rejection_declared
+    "formula: without_outliers takes a series or observations as its sample, not another without_outliers"
+    REJECT "keeps at least m")
+formula_add_negative_test(rejection_observations_below_keep_at_least_declared
+    "formula: without_outliers keeps at least m determinations of observations that hold at most fewer"
+    REJECT "of a series that holds fewer")
+formula_add_negative_test(rejection_stddevs_keep_fewer_than_three
+    "formula: deviation_in_stddevs needs at least 3 determinations in every pass it decides"
+    REJECT "keeps at least m")
+formula_add_negative_test(pass_mean_outside_rejection
+    "formula: pass_mean and pass_count are meaningful only inside the limit expression of without_outliers"
+    REJECT "provides no value for this quantity")
+formula_add_negative_test(pass_mean_in_rejected_sample
+    "formula: the sample this rejection reads mentions pass_mean or pass_count"
+    REJECT "meaningful only inside")
+formula_add_negative_test(rejection_of_single_value
+    "formula: without_outliers rejects determinations from a sample"
+    REJECT "no matching" "a sample statistic needs a sample")
+
+# Phase 12's series-quantity refusal, reused unchanged for a statistic.
+formula_add_negative_test(sample_mean_overlay_constant_on_sample
+    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    REJECT "overrides a quantity that no variant or constraint of the method uses" "cannot see inside")
+
+# The same check sees through phase 12's series kinds: a placeholder added to
+# every element of a series a nested level sums.
+formula_add_negative_test(precision_level_in_nested_level_through_series
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside")
+
+formula_add_negative_test(precision_level_offset_unit
+    "formula: this precision_level names a quantity whose unit has an offset"
+    REJECT "reads a level of another dimension" "limit expression reads a precision_level whose quantity")
+
+# `RepRounding<double>`'s own refusal, not one of the rounded root's: the node
+# rounds through the representation's rounding, as every rounding node does.
+formula_add_negative_test(rounded_sqrt_rep_double
+    "formula: a rounding node cannot be evaluated with Rep = double"
+    REJECT "formula: this rounded_sqrt names a unit")
 
 # Same NAME-not-message shape as the exponent and symbol-length sentinels
 # above: there is no static_assert to quote here, only a deleted default

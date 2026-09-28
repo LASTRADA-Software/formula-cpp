@@ -31,6 +31,7 @@ extra_javascript:
 nav:
   - Home: index.md
   - Numbers: numbers.md
+  - Numeric headroom: numeric-headroom.md
   - Dimensions and units: dimensions.md
   - Quantities and measurements: quantities.md
   - Expressions and evaluation: expressions.md
@@ -41,6 +42,7 @@ nav:
   - Lookup tables: lookup-tables.md
   - Methods and overlays: methods-and-overlays.md
   - Series and grading curves: series.md
+  - Statistics, outliers and precision: statistics.md
   - Gallery: gallery.md
   # Doxygen output, dropped into the built site's api/ directory by
   # .github/workflows/pages.yml after `mkdocs build` runs -- not a page

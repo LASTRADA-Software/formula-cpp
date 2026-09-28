@@ -137,6 +137,7 @@
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -144,13 +145,17 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rejection.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
-#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 
 #include <array>
 #include <cstddef>
@@ -423,6 +428,27 @@ namespace detail
         {
             return ReplacedVariantNode<Expr> { OverlayMade {}, replacement, source };
         }
+    };
+
+    /// The overlay's node kinds, seen by a precision limit's checks
+    /// (`precision.hpp`): a derived quantity is its definition, so an overlay
+    /// that defines a quantity read in a level by `precision_level` makes the
+    /// rewritten limit refuse, where `apply` builds it. Each is required, not
+    /// a refinement: the two quantity nodes derive from `VarNode`, whose entry
+    /// does not reach them.
+    template <Described Q>
+    struct LevelChildren<OverriddenConstantNode<Q>>: LevelLeaf
+    {
+    };
+
+    template <Described Q, Node Expr>
+    struct LevelChildren<DerivedQuantityNode<Q, Expr>>: LevelParent<Expr>
+    {
+    };
+
+    template <Node Expr>
+    struct LevelChildren<ReplacedVariantNode<Expr>>: LevelParent<Expr>
+    {
     };
 } // namespace detail
 
@@ -1567,6 +1593,93 @@ namespace detail
     {
     };
 
+    /// A rounded square root, rebuilt around its rewritten radicand. Not
+    /// `ConstantRewriteOperand`, whose `apply` reads a member named `operand`:
+    /// this node's one child is its `radicand`.
+    template <typename Sub, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    struct ConstantRewrite<Sub, RoundedRootNode<U, Places, Mode, Radicand>>
+    {
+        /// How the radicand is rewritten.
+        using Inner = ConstantRewriteOf<Sub, Radicand>;
+
+        /// Whether the radicand is a kind this header knows, all the way down.
+        static constexpr bool known = Inner::known;
+        /// Whether the radicand uses `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same rounded root, around the rewritten radicand.
+        using type = RoundedRootNode<U, Places, Mode, typename Inner::type>;
+
+        /// The node, around the rewritten radicand.
+        [[nodiscard]] static constexpr type apply(RoundedRootNode<U, Places, Mode, Radicand> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, Inner::apply(node.radicand, overriding) };
+        }
+    };
+
+    template <typename Sub, Node Operand>
+    struct ConstantRewrite<Sub, AbsoluteValueNode<Operand>>:
+        ConstantRewriteOperand<Sub, Operand, AbsoluteValueNode<typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
+    /// A precision limit's level names no input quantity: carried over
+    /// unchanged. The quantity it names is for its unit, and a constant fixed
+    /// for that quantity does not reach the level, which is the level the
+    /// limit's level expression produced.
+    template <typename Sub, Described Q>
+    struct ConstantRewrite<Sub, PrecisionLevelNode<Q>>: ConstantRewriteLeaf<Sub, PrecisionLevelNode<Q>>
+    {
+    };
+
+    /// A precision limit, both its level and its limit rewritten.
+    template <typename Sub, PrecisionKind K, Node Level, Node Limit>
+    struct ConstantRewrite<Sub, PrecisionLimitNode<K, Level, Limit>>
+    {
+        /// How the level expression is rewritten.
+        using LevelRewrite = ConstantRewriteOf<Sub, Level>;
+        /// How the limit expression is rewritten.
+        using LimitRewrite = ConstantRewriteOf<Sub, Limit>;
+
+        /// Whether both are kinds this header knows, all the way down.
+        static constexpr bool known = LevelRewrite::known && LimitRewrite::known;
+        /// Whether either uses `Q`.
+        static constexpr bool mentions = LevelRewrite::mentions || LimitRewrite::mentions;
+        /// The same limit, around the rewritten level and limit.
+        using type = PrecisionLimitNode<K, typename LevelRewrite::type, typename LimitRewrite::type>;
+
+        /// The node, around the rewritten level and limit.
+        [[nodiscard]] static constexpr type apply(PrecisionLimitNode<K, Level, Limit> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, LevelRewrite::apply(node.level, overriding), LimitRewrite::apply(node.limit, overriding) };
+        }
+    };
+
+    /// A critical-value lookup, rebuilt around its rewritten count with its
+    /// own values: a jurisdiction fixing a quantity changes what the count
+    /// reads, never the table.
+    template <typename Sub, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    struct ConstantRewrite<Sub, SampleSizeLookupNode<Sizes, ResultUnit, Count>>
+    {
+        /// How the count is rewritten.
+        using Inner = ConstantRewriteOf<Sub, Count>;
+
+        /// Whether the count is a kind this header knows, all the way down.
+        static constexpr bool known = Inner::known;
+        /// Whether the count uses `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same lookup, around the rewritten count.
+        using type = SampleSizeLookupNode<Sizes, ResultUnit, typename Inner::type>;
+
+        /// The node, around the rewritten count, with the same values.
+        [[nodiscard]] static constexpr type apply(SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { {}, node.corrections, Inner::apply(node.count, overriding) };
+        }
+    };
+
     template <typename Sub, Unit U, FixedString Justification, Node Operand>
     struct ConstantRewrite<Sub, NumericValueNode<U, Justification, Operand>>:
         ConstantRewriteOperand<Sub,
@@ -1791,6 +1904,118 @@ namespace detail
     template <typename Sub, CumulativeDirection D, SeriesNode S>
     struct ConstantRewrite<Sub, CumulativeNode<D, S>>:
         ConstantRewriteOperand<Sub, S, CumulativeNode<D, typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    /// A sample statistic, rebuilt around its rewritten sample.
+    template <typename Sub, typename Sample, typename Rebuilt>
+    struct ConstantRewriteSample
+    {
+        /// How the sample is rewritten.
+        using Inner = ConstantRewriteOf<Sub, Sample>;
+
+        /// Whether the sample is a kind this header knows, all the way down.
+        static constexpr bool known = Inner::known;
+        /// Whether the sample uses `Q`.
+        static constexpr bool mentions = Inner::mentions;
+        /// The same statistic, around the rewritten sample.
+        using type = Rebuilt;
+
+        /// The statistic, around the rewritten sample.
+        template <typename N>
+        [[nodiscard]] static constexpr type apply(N const& node, Sub const& overriding) noexcept
+        {
+            return type { {}, Inner::apply(node.sample, overriding) };
+        }
+    };
+
+    /// The pass placeholders name no quantity; carried over unchanged.
+    template <typename Sub, Described Q>
+    struct ConstantRewrite<Sub, PassMeanNode<Q>>: ConstantRewriteLeaf<Sub, PassMeanNode<Q>>
+    {
+    };
+
+    template <typename Sub>
+    struct ConstantRewrite<Sub, PassCountNode>: ConstantRewriteLeaf<Sub, PassCountNode>
+    {
+    };
+
+    /// A criterion of the same kind over @p NewLimit.
+    template <typename Criterion, typename NewLimit>
+    struct RebindCriterion;
+
+    template <Node Limit, typename NewLimit>
+    struct RebindCriterion<DeviationFromMean<Limit>, NewLimit>
+    {
+        using type = DeviationFromMean<NewLimit>;
+    };
+
+    template <Node Limit, typename NewLimit>
+    struct RebindCriterion<DeviationInStddevs<Limit>, NewLimit>
+    {
+        using type = DeviationInStddevs<NewLimit>;
+    };
+
+    template <Node Limit, typename NewLimit>
+    struct RebindCriterion<GapToRange<Limit>, NewLimit>
+    {
+        using type = GapToRange<NewLimit>;
+    };
+
+    /// A rejection, rebuilt around its rewritten sample and limit, with its
+    /// own bounds, verdict and citation: a jurisdiction's tolerance reaches
+    /// the limit (`with_constant<Tolerance>`, §16.7), and a substitution for
+    /// the sample's quantity is refused by the result check, as it is for any
+    /// series (phase 12's message).
+    template <typename Sub, PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    struct ConstantRewrite<Sub, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>
+    {
+        /// How the sample is rewritten.
+        using SampleRewrite = ConstantRewriteOf<Sub, S>;
+        /// How the limit is rewritten.
+        using LimitRewrite = ConstantRewriteOf<Sub, std::remove_cvref_t<decltype(std::declval<Criterion>().limit)>>;
+        /// The criterion, over the rewritten limit.
+        using RewrittenCriterion = typename RebindCriterion<Criterion, typename LimitRewrite::type>::type;
+
+        /// Whether both are kinds this header knows, all the way down.
+        static constexpr bool known = SampleRewrite::known && LimitRewrite::known;
+        /// Whether either uses `Q`.
+        static constexpr bool mentions = SampleRewrite::mentions || LimitRewrite::mentions;
+        /// The same rejection, around the rewritten sample and limit.
+        using type = RejectionNode<P, L, AtMostT, KeepAtLeastT, typename SampleRewrite::type, RewrittenCriterion>;
+
+        /// The rejection, rebuilt.
+        [[nodiscard]] static constexpr type apply(RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node,
+                                                  Sub const& overriding) noexcept
+        {
+            return type { SampleRewrite::apply(node.sample, overriding),
+                          RewrittenCriterion { LimitRewrite::apply(node.criterion.limit, overriding) },
+                          node.verdict,
+                          node.citation };
+        }
+    };
+
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleCountNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleCountNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleMeanNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleMeanNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleVarianceNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleVarianceNode<typename ConstantRewriteOf<Sub, S>::type>>
+    {
+    };
+
+    template <typename Sub, SampleSource S>
+    struct ConstantRewrite<Sub, SampleRangeNode<S>>:
+        ConstantRewriteSample<Sub, S, SampleRangeNode<typename ConstantRewriteOf<Sub, S>::type>>
     {
     };
 
@@ -2060,6 +2285,28 @@ namespace detail
     {
     };
 
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    struct SubstitutedIn<RoundedRootNode<U, Places, Mode, Radicand>>: SubstitutedInOperand<Radicand>
+    {
+    };
+
+    template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    struct SubstitutedIn<SampleSizeLookupNode<Sizes, ResultUnit, Count>>: SubstitutedInOperand<Count>
+    {
+    };
+
+    template <Node Operand>
+    struct SubstitutedIn<AbsoluteValueNode<Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    template <PrecisionKind K, Node Level, Node Limit>
+    struct SubstitutedIn<PrecisionLimitNode<K, Level, Limit>>
+    {
+        /// Whatever the level and the limit substitute.
+        using type = SubstitutedInAll<Level, Limit>;
+    };
+
     template <Unit U, FixedString Justification, Node Operand>
     struct SubstitutedIn<NumericValueNode<U, Justification, Operand>>: SubstitutedInOperand<Operand>
     {
@@ -2140,6 +2387,33 @@ namespace detail
     {
         /// Whatever the curve or the point substitutes.
         using type = SubstitutedInAll<C, At>;
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleCountNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    struct SubstitutedIn<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>
+    {
+        /// Whatever the sample and the limit substitute.
+        using type = SubstitutedInAll<S, std::remove_cvref_t<decltype(std::declval<Criterion>().limit)>>;
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleMeanNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleVarianceNode<S>>: SubstitutedInOperand<S>
+    {
+    };
+
+    template <SampleSource S>
+    struct SubstitutedIn<SampleRangeNode<S>>: SubstitutedInOperand<S>
+    {
     };
 
     template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>

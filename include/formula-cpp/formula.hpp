@@ -15,6 +15,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/detail/checked_int.hpp>
 #include <formula-cpp/dimension.hpp>
@@ -30,13 +31,17 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rejection.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>

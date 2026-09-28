@@ -16,16 +16,18 @@
 // locals and parameters it reports where the function is defined, so
 // including the header is enough for those. The probe below instantiates:
 // evaluation of every node kind -- arithmetic with a bare number on either
-// side, negation, powers and every root, pi, rounding both ways, a
-// conditional, the escape hatch and the three lookups -- untraced and traced,
-// with `explain`; `render` and `document` in all three dialects, with and
-// without a vocabulary, of that formula, of a constraint and its predicate,
-// and of formulas an overlay fixed, derived and replaced; `render_trace`;
-// `check` and `check_all`; `evaluate_method` of an original and of a
-// replaced variant, and `check_method`, with `RecordingSink` and with a sink
-// of its own; `apply` with every overlay operation; `Outcome`'s factories;
-// `checked_convert_to`, `checked_within_bounds`, `checked_round_to_declared`,
-// `transform` and `combine`; `entered`, `Environment::get` and `source_of`;
+// side, negation, powers and every root, pi, rounding both ways, a rounded
+// square root, a conditional, the escape hatch, the three lookups, a
+// critical value, an absolute value and a two-pass precision limit --
+// untraced and traced, with `explain`; `render` and `document` in all three
+// dialects, with and without a vocabulary, of that formula, of a constraint
+// and its predicate, and of formulas an overlay fixed, derived and replaced;
+// `render_trace`; `check` and `check_all`; `evaluate_method` of an original
+// and of a replaced variant, and `check_method`, with `RecordingSink` and
+// with a sink of its own; `apply` with every overlay operation; `Outcome`'s
+// factories; `checked_convert_to`, `checked_within_bounds`,
+// `checked_round_to_declared`, `transform` and `combine`; `entered`,
+// `Environment::get` and `source_of`;
 // `measured_series`, `entered` of a series, `Environment::get_series` and
 // `checked_evaluate_series` of a series variable, derived and entered;
 // `render` and `document` of a series variable, and `explain_series` with
@@ -37,7 +39,11 @@
 // domain, a pairing, a splice and an interpolation -- on the same surfaces;
 // raw observations, `from` and `get_observations`, binned into classes and
 // divided by their sum, on the same surfaces;
-// and the three table validators. A template it does not reach is not
+// a sample's count, mean, variance and range, and a rounded root of the
+// variance, on the same surfaces; a rejection of outliers, evaluated alone
+// and under a mean, on the same surfaces, and one by gap to range; a mean
+// and a rejection of raw observations, on the same surfaces; and the four
+// table validators. A template it does not reach is not
 // guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -99,7 +105,9 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     segment, separator, set, source, span, start, state, status, stop, str, stream, string, success, suffix, sum, t,
     tail, target, temp, temperature, temporary, threshold, timeout, title, tmp, token, tokens, tolerance, tree, tuple,
     type, types, u, unit, unitName, upper, v, valid, values, vector, view, volume, w, weight, what, when, where, who,
-    why, word, words, x, y, z;
+    why, word, words, x, y, z, variance, spread, deviation, deviations, gap, statistic, survivors, rejected, sampled,
+    counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
+    statistics;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -111,6 +119,7 @@ int index;
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/document.hpp>
@@ -127,15 +136,19 @@ int index;
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
-#include <formula-cpp/snap.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/tag.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
@@ -180,16 +193,23 @@ struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit
 inline constexpr formula::KeyTable<SpecimenForm, 2> SpecimenFormKeys { SpecimenForm::Square, SpecimenForm::Round };
 inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 277, 100), formula::band(277, 100, 613, 100) };
 inline constexpr formula::BreakpointTable<2> Points { formula::breakpoint(0), formula::breakpoint(831, 100) };
+inline constexpr formula::SampleSizeTable<2> Sizes { 1, 2 };
 
 /// A formula touching every node kind the evaluator, renderer and trace know:
 /// arithmetic, a power and a root, a documented citation, rounding both
-/// ways, a conditional, the escape hatch, and all three lookups.
+/// ways, a rounded square root, a conditional, the escape hatch, all three
+/// lookups, a critical value, an absolute value and a precision limit.
 inline constexpr auto everything = formula::documented(
     formula::rounded<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
         var<Force> / formula::pow<2>(var<EdgeX>)
         * formula::when(
             var<Factor> > formula::number(formula::Rational { 0 }), var<Factor>, formula::number(formula::Rational { 1 }))
         * formula::sqrt(formula::pow<2>(var<Factor>))
+        * formula::rounded_sqrt<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Factor> * formula::Rational { 2 })
+        * formula::critical_value<Sizes, unit::One>(var<Factor>, { formula::Rational { 70 }, formula::Rational { 20 } })
+        * formula::abs(var<Factor>)
+        * formula::precision_limit<formula::PrecisionKind::Repeatability>(var<Factor>, formula::precision_level<Factor>)
         * formula::exact_lookup<SpecimenFormKeys, unit::One>(
             SpecimenForm::Round, { formula::Rational { 1'087, 1'000 }, formula::Rational { 1'249, 1'000 } })
         * formula::banded_lookup<unit::One, Bands, unit::One>(
@@ -356,6 +376,12 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(withPi.is_value());
     probe.checks.push_back(rooted.is_value());
     probe.checks.push_back(mixed.is_value());
+    // The irrational path of the rounded root: sqrt(2) to 0.01 is 1.41.
+    auto const spreadNode = formula::evaluate<Factor>(
+        formula::rounded_sqrt<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Factor> * formula::Rational { 2 }),
+        specimen);
+    probe.checks.push_back(spreadNode.is_value() && spreadNode.measurement().value() == formula::Rational { 141, 100 });
     pages += formula::render(-var<Force>) + formula::render(formula::pi * var<Force>)
              + formula::render<formula::Dialect::LaTeX>(formula::cbrt(var<Force>));
 
@@ -524,6 +550,98 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::document<formula::Dialect::LaTeX>(edgeShares).formula.find("bin") != std::string::npos
         && formula::document(binnedEdges, north).symbols.front().shape == formula::ValueShape::Observations
         && formula::render_trace(binningTrace, { .maxSteps = 20 }).find("bin(#1) = 1; 2") != std::string::npos);
+
+    // The count and the mean of a sample, evaluated, rendered, documented
+    // and traced: 150 and 103 mm give 253/2 mm from 2 determinations.
+    auto const sampleMean = formula::sample_mean(formula::series<EdgeX, 2>);
+    auto const sampleCount = formula::sample_count(formula::series<EdgeX, 2>);
+    formula::Trace<> sampleTrace {};
+    auto const meanEdge =
+        formula::checked_evaluate<EdgeX>(sampleMean, bothScreens, formula::RecordingSink { sampleTrace, north });
+    auto const countedEdges = formula::checked_evaluate<Factor>(sampleCount, bothScreens);
+    probe.checks.push_back(meanEdge.has_value() && meanEdge->measurement().value() == formula::Rational { 253, 2 }
+                           && countedEdges.has_value() && countedEdges->measurement().value() == formula::Rational { 2 }
+                           && formula::render(sampleMean, north) == "sample_mean(x_m(i))"
+                           && formula::render<formula::Dialect::LaTeX>(sampleCount) == "n({x_m}_{i})"
+                           && formula::document(sampleMean * sampleCount, north).symbols.size() == 1
+                           && formula::render_trace(sampleTrace, { .maxSteps = 4 }).find("sample_mean(#1) = 253/2 mm")
+                                  != std::string::npos);
+    // The range and the variance of the same sample, and the variance's
+    // exact root: 150 and 103 mm give a range of 47 mm and a variance of
+    // 2209/2 mm^2, whose root is 33.23 mm to 2 dp.
+    auto const sampleRange = formula::sample_range(formula::series<EdgeX, 2>);
+    auto const sampleSpread =
+        formula::rounded_sqrt<unit::Millimetre, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            formula::sample_variance(formula::series<EdgeX, 2>));
+    formula::Trace<> spreadTrace {};
+    auto const rangedEdges = formula::checked_evaluate<EdgeX>(sampleRange, bothScreens);
+    auto const spreadEdges =
+        formula::checked_evaluate<EdgeX>(sampleSpread, bothScreens, formula::RecordingSink { spreadTrace, north });
+    probe.checks.push_back(
+        rangedEdges.has_value() && rangedEdges->measurement().value() == formula::Rational { 47 } && spreadEdges.has_value()
+        && spreadEdges->measurement().value() == formula::Rational { 3323, 100 }
+        && formula::render(sampleSpread, north) == "round(sqrt(sample_variance(x_m(i))), to 2 dp of mm)"
+        && formula::render<formula::Dialect::LaTeX>(sampleRange) == "\\operatorname{range}({x_m}_{i})"
+        && formula::document(sampleSpread + sampleRange, north).symbols.size() == 1
+        && formula::render_trace(spreadTrace, { .maxSteps = 4 }).find("sample_variance(#1)") != std::string::npos);
+    // A rejection of outliers at 30 % of the pass's mean: 150 and 103 mm
+    // deviate 23.5 mm from 126.5 mm, inside 37.95 mm, so it settles in its
+    // first pass with both kept.
+    auto const trimmed = formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<1>>(
+            formula::series<EdgeX, 2>,
+            formula::deviation_from_mean(formula::Rational { 3, 10 } * formula::pass_mean<EdgeX>),
+            formula::Verdict { "repeat the test" });
+    formula::Trace<> trimmedTrace {};
+    auto const trimmedOutcome = formula::checked_evaluate_rejection<EdgeX>(trimmed, bothScreens);
+    auto const trimmedMean = formula::checked_evaluate<EdgeX>(
+        formula::sample_mean(trimmed), bothScreens, formula::RecordingSink { trimmedTrace, north });
+    probe.checks.push_back(trimmedOutcome.has_value()
+                           && trimmedOutcome->outcome().measurement().value() == formula::Rational { 253, 2 }
+                           && trimmedOutcome->rejected().empty() && trimmedMean.has_value()
+                           && trimmedMean->measurement().value() == formula::Rational { 253, 2 }
+                           && formula::render(trimmed, north).find("without outliers(x_m(i)") != std::string::npos
+                           && formula::render<formula::Dialect::LaTeX>(trimmed).find("\\bar{x}") != std::string::npos
+                           && formula::document(formula::sample_mean(trimmed), north).rejections.size() == 1
+                           && formula::render_trace(trimmedTrace, { .maxSteps = 20 }).find("settled: 0 rejected, 2 remain")
+                                  != std::string::npos);
+    // Gap to range at 3/4: 150 and 103 mm are each other's neighbour, a gap
+    // of the whole range, so both are past it -- and rejecting both would
+    // leave none of at least 1, so it aborts with the verdict.
+    auto const gapped = formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<2>, formula::KeepAtLeast<1>>(
+            formula::series<EdgeX, 2>,
+            formula::gap_to_range(formula::number(formula::Rational { 3, 4 })),
+            formula::Verdict { "repeat the test" });
+    formula::Trace<> gappedTrace {};
+    auto const gappedOutcome =
+        formula::checked_evaluate_rejection<EdgeX>(gapped, bothScreens, formula::RecordingSink { gappedTrace, north });
+    probe.checks.push_back(gappedOutcome.has_value() && gappedOutcome->outcome().is_verdict()
+                           && formula::render(gapped, north).find("gap to range > 3/4") != std::string::npos
+                           && formula::render_trace(gappedTrace, { .maxSteps = 20 }).find("would leave 0 of at least 1")
+                                  != std::string::npos);
+    // Statistics of the raw observations: 103, 163 and 241 mm made in room for
+    // four, a mean of 169 mm from 3, and a rejection within 197 mm of it that
+    // keeps all three.
+    auto const observedMean = formula::sample_mean(formula::observations<EdgeX, 4>);
+    formula::Trace<> observedTrace {};
+    auto const observedEdge =
+        formula::checked_evaluate<EdgeX>(observedMean, edgeSample, formula::RecordingSink { observedTrace, north });
+    auto const keptObserved = formula::checked_evaluate<Factor>(
+        formula::sample_count(formula::without_outliers<formula::PerPass::MostExtreme,
+                                                        formula::OnLimit::Keep,
+                                                        formula::AtMost<1>,
+                                                        formula::KeepAtLeast<3>>(
+            formula::observations<EdgeX, 4>,
+            formula::deviation_from_mean(formula::constant<unit::Millimetre>(formula::Rational { 197 })),
+            formula::Verdict { "repeat the test" })),
+        edgeSample);
+    probe.checks.push_back(
+        observedEdge.has_value() && observedEdge->measurement().value() == formula::Rational { 169 }
+        && keptObserved.has_value() && keptObserved->measurement().value() == formula::Rational { 3 }
+        && formula::render(observedMean, north) == "sample_mean(x_m(i))"
+        && formula::document(observedMean, north).symbols.front().shape == formula::ValueShape::Observations
+        && formula::render_trace(observedTrace, { .maxSteps = 20 }).find("sample_mean(#1) = 169 mm") != std::string::npos);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });
@@ -531,6 +649,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
 
     // The tables' own validators.
     probe.checks.push_back(formula::band_table_is_well_formed(Bands) && formula::key_table_is_well_formed(SpecimenFormKeys)
-                           && formula::breakpoint_table_is_well_formed(Points));
+                           && formula::breakpoint_table_is_well_formed(Points)
+                           && formula::sample_size_table_is_well_formed(Sizes));
     return probe;
 }

@@ -13,6 +13,23 @@ add_executable(formula-cpp-gallery main.cpp "${PROJECT_SOURCE_DIR}/support/fail_
 target_link_libraries(formula-cpp-gallery PRIVATE formula-cpp::formula-cpp)
 formula_apply_warnings(formula-cpp-gallery)
 
+# The generator's overflow-census twin (docs/numeric-headroom.md): the same
+# program, built with FORMULA_OVERFLOW_CENSUS, which prints how many of the 63
+# bits the gallery's run-time evaluations used when it exits. It writes its
+# page into the build tree, never over docs/gallery.md.
+add_executable(formula-cpp-census-gallery
+    main.cpp
+    "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp"
+    "${PROJECT_SOURCE_DIR}/support/census_tally.cpp"
+    "${PROJECT_SOURCE_DIR}/support/census_report.cpp")
+target_link_libraries(formula-cpp-census-gallery PRIVATE formula-cpp::formula-cpp)
+target_compile_definitions(formula-cpp-census-gallery PRIVATE FORMULA_OVERFLOW_CENSUS)
+target_include_directories(formula-cpp-census-gallery PRIVATE "${PROJECT_SOURCE_DIR}/support")
+formula_apply_warnings(formula-cpp-census-gallery)
+add_test(NAME census.gallery
+    COMMAND formula-cpp-census-gallery "${CMAKE_CURRENT_BINARY_DIR}/census-gallery.md")
+set_tests_properties(census.gallery PROPERTIES PASS_REGULAR_EXPRESSION "overflow census: ")
+
 # Regenerates the gallery into a temporary file and compares it against the
 # checked-in docs/gallery.md. Bare enable_testing() at the top level (see the
 # comment above it in the root CMakeLists.txt) means this registers regardless

@@ -16,6 +16,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -23,10 +24,14 @@
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
+#include <formula-cpp/rejection.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <cstddef>
@@ -275,6 +280,126 @@ enum class StepKind : std::uint8_t
     /// count. Checked on GCC under `-Wshadow`: the node is `BinnedNode` and
     /// its factory `binned`.
     Binning,
+
+    /// A `RoundedRootNode`: the square root of its one operand, rounded to a
+    /// number of decimal places of the node's unit -- `Step::granularity`,
+    /// `Step::unit` and `Step::mode`, as for `Round`. One step and not a
+    /// `Root` beneath a `Round`: the root is irrational for almost every
+    /// radicand, so a `Root` step would have to show a number the evaluator
+    /// never had. The operand's value is exact, and so is this step's.
+    ///
+    /// Checked on GCC under `-Wshadow`, the way `PiConstant` above had to be:
+    /// the node is `RoundedRootNode` and the factory `rounded_sqrt`, so
+    /// nothing in namespace `formula` is spelt `RoundedRoot`.
+    RoundedRoot,
+    /// A `SampleSizeLookupNode`: a critical value read from an author's table
+    /// by sample size (`critical_value.hpp`). A lookup like the three above:
+    /// `Step::lookupFailure` says whose failure a failed step carries,
+    /// `Step::lookupKey` holds the count it selected with, and
+    /// `Trace::sampleSizeRecords` the sizes the table declares, keyed by the
+    /// step's index, so that a miss can say which counts would have hit.
+    ///
+    /// Checked on GCC under `-Wshadow`, the way `PiConstant` above had to be:
+    /// the node is `SampleSizeLookupNode` and the factory `critical_value`, so
+    /// nothing in namespace `formula` is spelt `SampleSizeLookup`.
+    SampleSizeLookup,
+    /// An `AbsoluteValueNode`: the magnitude of its one operand.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `AbsoluteValueNode` and the
+    /// factory `abs`, so nothing in namespace `formula` is spelt
+    /// `AbsoluteValue`.
+    AbsoluteValue,
+    /// A precision limit's level, in one of two roles its side-table record
+    /// (`Trace::precisionRecords`) names: **pass 1** of a `precision_limit`,
+    /// the level expression's value, whose operand is that expression; or a
+    /// `precision_level` placeholder read inside the limit expression, which
+    /// names the limit that bound it.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `PrecisionLevelNode` and
+    /// the variable template `precision_level`, so nothing in namespace
+    /// `formula` is spelt `PrecisionLevel`.
+    PrecisionLevel,
+    /// A `PrecisionLimitNode`: **pass 2**, the limit evaluated at the level
+    /// pass 1 produced. Its operands are the pass-1 step and then the limit
+    /// expression's steps; its record names its kind and its level step.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `PrecisionLimitNode` and
+    /// the factory `precision_limit`, so nothing in namespace `formula` is
+    /// spelt `PrecisionLimit`.
+    PrecisionLimit,
+    /// A `SampleCountNode`: how many determinations a sample holds, a bare
+    /// number. Its one operand is the sample's own step, with every element.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleCountNode` and the
+    /// factory `sample_count`, so nothing in namespace `formula` is spelt
+    /// `SampleCount`.
+    SampleCount,
+    /// A `SampleMeanNode`: the mean of a sample, shown in its operand's unit,
+    /// as a sum is. Its one operand is the sample's own step. A total that
+    /// overflowed names, in `Step::failedElement`, the determination at which
+    /// it did.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleMeanNode` and the
+    /// factory `sample_mean`, so nothing in namespace `formula` is spelt
+    /// `SampleMean`.
+    SampleMean,
+    /// A `SampleVarianceNode`: the sample variance, over n - 1. Its one
+    /// operand is the sample's own step. Shown in the coherent unit of its
+    /// squared dimension, as every computed step is: no declared unit names
+    /// a squared mass.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleVarianceNode` and
+    /// the factory `sample_variance`, so nothing in namespace `formula` is
+    /// spelt `SampleVariance`.
+    SampleVariance,
+    /// A `SampleRangeNode`: the largest determination less the smallest,
+    /// shown in its operand's unit, as a mean is.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `SampleRangeNode` and the
+    /// factory `sample_range`, so nothing in namespace `formula` is spelt
+    /// `SampleRange`.
+    SampleRange,
+    /// A `PassMeanNode`: the current pass's mean, read inside a rejection's
+    /// limit expression, shown in the unit of the quantity it names.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `PassMeanNode` and the
+    /// variable template `pass_mean`, so nothing in namespace `formula` is
+    /// spelt `PassMean`.
+    PassMean,
+    /// A `PassCountNode`: the current pass's number of determinations.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `PassCountNode` and the
+    /// variable `pass_count`, so nothing in namespace `formula` is spelt
+    /// `PassCount`.
+    PassCount,
+    /// One pass of a rejection (`without_outliers`, `rejection.hpp`): its
+    /// number, the sample size and the mean it ran at, in the sample's unit.
+    /// Its operands are the limit expression's steps; its record is in
+    /// `Trace::rejectionRecords`.
+    ///
+    /// Recorded by `RecordingSink::rejection_pass_produced`, not through
+    /// `detail::StepKindOf`: a rejection is not a `Node`. The eight rejection
+    /// kinds are spelt as no name in namespace `formula` is (checked on GCC
+    /// under `-Wshadow`).
+    RejectionPass,
+    /// One rejected determination: its position, its value, and the
+    /// statistic and limit the decision used, exactly.
+    OutlierRejected,
+    /// A rejection that ended with a pass rejecting nothing: how many were
+    /// rejected and how many remain. Its operands are every step of the
+    /// rejection, the sample's own first.
+    RejectionSettled,
+    /// A rejection that ended at its bound: the determinations that would
+    /// have been rejected, the bound, and the author's verdict and citation.
+    RejectionAborted,
+    /// A rejection whose pass failed: what failed -- the mean, the variance,
+    /// the limit (or a negative limit), limit^2 * s^2, or a determination's
+    /// deviation -- and the determination, when there is one. Its error is
+    /// the failure's. Its operands are every step of the rejection.
+    RejectionFailed,
+    /// A rejection whose limit was absent in a pass: no decision, and an
+    /// absent result. Its operands are every step of the rejection.
+    RejectionUndecided,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -371,6 +496,12 @@ enum class LookupFailure : std::uint8_t
     /// plausible answer to a question the recorder cannot actually answer,
     /// which is the whole defect this enum exists to close.
     Undetermined,
+    /// This lookup's key was no count at all -- not a whole, non-negative
+    /// number -- so no row could be asked. Reachable only for
+    /// `StepKind::SampleSizeLookup`: 5.5 determinations names no row, and
+    /// neither truncating nor rounding it is the table's rule. Its own
+    /// failure, and not `Missed`, because the table was never consulted.
+    NotACount,
 };
 
 /// An interval a lookup step reports about, as its table declared it --
@@ -403,6 +534,140 @@ struct LookupRange
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(LookupRange const&) const noexcept = default;
 };
+
+namespace detail
+{
+    /// What a critical-value lookup step's table declared, in the trace's
+    /// side table, keyed by the step's index.
+    struct SampleSizeRecord
+    {
+        /// The index of the `SampleSizeLookup` step this record belongs to.
+        std::size_t step {};
+
+        /// The declared sizes, spelled `3, 4, 5, 6, 8`; empty for a table of
+        /// no rows.
+        ///
+        /// **A view, safe to keep for the life of the trace and beyond**: it
+        /// points into a `static constexpr` array built from the table's type
+        /// (`detail::SampleSizeList`), static storage as `lookupKeyName`'s
+        /// names are, with the same limit for a shared library that is
+        /// unloaded.
+        std::string_view declaredSizes {};
+    };
+
+    /// Which part of a two-pass precision limit a step is.
+    enum class PrecisionStepRole : std::uint8_t
+    {
+        /// Pass 1: the level expression's value.
+        LevelPass,
+        /// A `precision_level` placeholder read inside the limit expression.
+        Placeholder,
+        /// Pass 2: the limit, evaluated at the level.
+        LimitPass,
+    };
+
+    /// What a precision step is and where its level is, in the trace's side
+    /// table, keyed by the step's index.
+    struct PrecisionRecord
+    {
+        /// The index of the step this record belongs to.
+        std::size_t step {};
+        /// Which precision the limit states: `r` or `R`.
+        PrecisionKind kind {};
+        /// Which part of the limit the step is.
+        PrecisionStepRole role {};
+        /// The index of the pass-1 step: the step itself for `LevelPass`, and
+        /// the level the placeholder or the limit read otherwise.
+        std::size_t levelStep {};
+        /// The index of the `PrecisionLimit` step the level belongs to -- the
+        /// step itself for `LimitPass`, the limit that bound a placeholder, the
+        /// limit a pass-1 step fed. Empty until that limit is recorded, and for
+        /// good when it never is.
+        std::optional<std::size_t> limitStep {};
+    };
+
+    /// What a rejection step is, and every number it names, in the trace's
+    /// side table, keyed by the step's index -- the same shape as
+    /// `PrecisionRecord`, for the same reason: `Step` gains no field (T10,
+    /// and the lead's ruling on the task 3 review).
+    template <typename Rep>
+    struct RejectionRecord
+    {
+        /// The index of the step this record belongs to.
+        std::size_t step {};
+        /// The pass, from 1; for a terminal step, the last pass run.
+        std::size_t pass {};
+        /// The determinations in the pass.
+        std::size_t sampleSize {};
+        /// The determinations in the sample as entered.
+        std::size_t originalSize {};
+        /// For a rejected determination, or a failed pass that failed at one:
+        /// its zero-based position as entered.
+        std::optional<std::size_t> position {};
+        /// For a rejected determination: its value, in the coherent SI unit.
+        std::optional<Rep> rejectedValue {};
+        /// For a rejected determination: its statistic -- abs(x - mean), or
+        /// (x - mean)^2 when `squared`.
+        std::optional<Rep> statistic {};
+        /// For a rejected determination: the limit it was compared with --
+        /// limit^2 * s^2 when `squared`.
+        std::optional<Rep> limit {};
+        /// Whether the statistic and limit are squares (`deviation_in_stddevs`).
+        bool squared {};
+        /// The criterion.
+        CriterionKind criterion {};
+        /// What becomes of a determination on the limit.
+        OnLimit onLimit {};
+        /// k and m.
+        std::size_t atMost {};
+        std::size_t keepAtLeast {};
+        /// For a terminal step: how many were rejected, and how many remain.
+        std::size_t rejectedCount {};
+        std::size_t remaining {};
+        /// For an abort: the positions that would have been rejected, and
+        /// which bound -- `AtMost`, `KeepAtLeast`, or both -- would have been
+        /// passed.
+        std::vector<std::size_t> wouldReject {};
+        bool pastAtMost {};
+        bool belowKeepAtLeast {};
+        /// For an abort before pass 1: the sample started with fewer than
+        /// `keepAtLeast`. `pass` is then 0.
+        bool startedShort {};
+        /// Whether the sample is raw observations (`observations<Q,
+        /// Capacity>`): its positions are then observations', as
+        /// `FailureSite::InputObservation` counts them.
+        bool ofObservations {};
+        /// For a failed pass: what failed. The determination it failed at,
+        /// when there is one, is `position`; the error is the step's own.
+        std::optional<RejectionFailurePoint> failurePoint {};
+        /// For an abort: the author's verdict and citation.
+        Verdict verdict {};
+        Citation citation {};
+    };
+
+    /// A rejection in progress: bookkeeping for `RecordingSink`. Where the
+    /// arena stood when it began, and the sample's own step once known, whose
+    /// unit its passes and rejections are shown in.
+    struct RejectionInProgress
+    {
+        std::size_t mark {};
+        std::optional<std::size_t> sampleStep {};
+    };
+
+    /// A precision limit whose level is bound, while its limit expression is
+    /// being evaluated: bookkeeping for `RecordingSink`.
+    struct PrecisionBinding
+    {
+        /// Which precision the limit states.
+        PrecisionKind kind {};
+        /// The index of the pass-1 step.
+        std::size_t levelStep {};
+        /// Where in `Trace::precisionRecords` the pass-1 step's record is, and
+        /// the records of every placeholder read under this binding, so that
+        /// each can be told which limit bound it once that limit is recorded.
+        std::vector<std::size_t> pendingRecords {};
+    };
+} // namespace detail
 
 /// One node's contribution to a derivation.
 ///
@@ -453,8 +718,9 @@ struct Step
     /// For `Power`: the exponent. For `Root`: the degree. Zero otherwise.
     int exponent {};
 
-    /// For `Round` and `RoundingRuleApplied`: the decimal places kept. For
-    /// `RoundSignificant`: the significant digits kept. Zero otherwise.
+    /// For `Round`, `RoundedRoot` and `RoundingRuleApplied`: the decimal
+    /// places kept. For `RoundSignificant`: the significant digits kept. Zero
+    /// otherwise.
     ///
     /// A field of its own rather than a third and fourth meaning piled onto
     /// `exponent` above, which already carries two (`Power`'s exponent,
@@ -497,8 +763,8 @@ struct Step
     /// exact same exception for the same reason.
     Comparison comparison {};
 
-    /// For `Round`, `RoundSignificant` and `RoundingRuleApplied`: the
-    /// tie-breaking rule the node rounded under.
+    /// For `Round`, `RoundSignificant`, `RoundedRoot` and
+    /// `RoundingRuleApplied`: the tie-breaking rule the node rounded under.
     ///
     /// Two rounding nodes differing only in their mode produce different
     /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
@@ -510,7 +776,7 @@ struct Step
     ///
     /// As with `comparison` above, the zero value is a real mode
     /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
-    /// sentinel: meaningful only for the three rounding kinds.
+    /// sentinel: meaningful only for the four rounding kinds.
     RoundingMode mode {};
 
     /// For `RoundingRuleApplied`: where the rule came from -- the method's
@@ -541,12 +807,12 @@ struct Step
 
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
     /// for a variable or an overridden constant, the constant's own unit for
-    /// a constant, the node's own unit for a `Round`, `RoundSignificant` or
-    /// `RoundingRuleApplied` step, the unit of the step it wraps for a
-    /// `Documented`, `ReplacedVariant` or `VariantSelected` step -- each
-    /// passes its operand's value through unchanged, so it states it as that
-    /// operand's line does, whenever that line is the wrapped node's own and
-    /// not the operands of a consumer's node -- and the coherent SI unit of
+    /// a constant, the node's own unit for a `Round`, `RoundSignificant`,
+    /// `RoundedRoot` or `RoundingRuleApplied` step, the unit of the step it
+    /// wraps for a `Documented`, `ReplacedVariant` or `VariantSelected` step --
+    /// each passes its operand's value through unchanged, so it states it as
+    /// that operand's line does, whenever that line is the wrapped node's own
+    /// and not the operands of a consumer's node -- and the coherent SI unit of
     /// `dimension` for anything else computed, which has no declared unit of
     /// its own.
     ///
@@ -724,6 +990,11 @@ struct Step
     /// than as one signed integer, because an enumeration's underlying type
     /// may be `unsigned long long`, whose top half no signed type can hold --
     /// the same case `key_text` spells its two casts separately for.
+    ///
+    /// For `SampleSizeLookup`: the count this lookup selected with, when it
+    /// was a whole, non-negative number, read unsigned. A count that was not
+    /// one (`LookupFailure::NotACount`) leaves this zero, and its value stays
+    /// in the operand's own step, where the renderer points.
     std::uint64_t lookupKey {};
 
     /// Whether `lookupKey` above is to be read as a signed value. Meaningful
@@ -957,6 +1228,40 @@ struct Trace
     /// other step pays nothing for them.
     std::vector<ConformityLimits> conformityLimits {};
 
+    /// What each `SampleSizeLookup` step's table declared, one record per
+    /// such step, **keyed by the step's index** and appended in step order,
+    /// so that a renderer finds a step's record by searching for its index.
+    ///
+    /// A side table rather than a field on every step (T10), and keyed by the
+    /// step rather than reached through an index on it: an index would cost
+    /// every step what the view it replaces cost, and this costs a step
+    /// nothing (the lead's ruling on the task 3 review). Written by
+    /// `RecordingSink` alone. `Step` and `Trace` are public aggregates, so a
+    /// renderer that finds no record for a step says the record is missing
+    /// rather than guess.
+    std::vector<detail::SampleSizeRecord> sampleSizeRecords {};
+
+    /// What each `PrecisionLevel` and `PrecisionLimit` step is and where its
+    /// level is, one record per such step, keyed by the step's index and
+    /// appended in step order -- the same side-table shape as
+    /// `sampleSizeRecords`, for the same reason. Written by `RecordingSink`
+    /// alone; a renderer that finds no record for such a step says so.
+    std::vector<detail::PrecisionRecord> precisionRecords {};
+
+    /// The precision limits whose level is bound, innermost last, while their
+    /// limit expressions are evaluated. Bookkeeping, as `marks` is: a
+    /// placeholder read now belongs to the innermost one.
+    std::vector<detail::PrecisionBinding> precisionBindings {};
+
+    /// What each rejection step is and every number it names, one record per
+    /// such step, keyed by the step's index and appended in step order --
+    /// the shape of `precisionRecords`. Written by `RecordingSink` alone; a
+    /// renderer that finds no record for such a step says so.
+    std::vector<detail::RejectionRecord<Rep>> rejectionRecords {};
+
+    /// The rejections in progress, innermost last. Bookkeeping, as `marks` is.
+    std::vector<detail::RejectionInProgress> rejectionsInProgress {};
+
     /// The index of the outermost step -- the one nothing else consumed.
     ///
     /// A `Trace` may hold more than one walk's steps: constructing a
@@ -981,6 +1286,17 @@ struct Trace
 
 namespace detail
 {
+    /// Whether the positions in @p trace's step @p stepIndex count raw
+    /// observations, as `FailureSite::InputObservation` does: the step is
+    /// the observations' own. False for any other step, and for an index
+    /// past the steps. (A rejection's sample is a series or observations:
+    /// `without_outliers` refuses another rejection as its sample.)
+    template <typename Rep>
+    [[nodiscard]] bool step_counts_observations(Trace<Rep> const& trace, std::size_t stepIndex)
+    {
+        return stepIndex < trace.steps.size() && trace.steps[stepIndex].kind == StepKind::ObservationsVariable;
+    }
+
     /// The `StepKind` a node maps to, as a compile-time property of its type.
     template <typename N>
     struct StepKindOf;
@@ -1046,6 +1362,36 @@ namespace detail
     struct StepKindOf<RoundSignificantNode<U, Digits, Mode, Operand>>
     {
         static constexpr StepKind value = StepKind::RoundSignificant;
+    };
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
+    struct StepKindOf<RoundedRootNode<U, Places, Mode, Radicand>>
+    {
+        static constexpr StepKind value = StepKind::RoundedRoot;
+    };
+
+    template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    struct StepKindOf<SampleSizeLookupNode<Sizes, ResultUnit, Count>>
+    {
+        static constexpr StepKind value = StepKind::SampleSizeLookup;
+    };
+
+    template <Node Operand>
+    struct StepKindOf<AbsoluteValueNode<Operand>>
+    {
+        static constexpr StepKind value = StepKind::AbsoluteValue;
+    };
+
+    template <Described Q>
+    struct StepKindOf<PrecisionLevelNode<Q>>
+    {
+        static constexpr StepKind value = StepKind::PrecisionLevel;
+    };
+
+    template <PrecisionKind K, Node Level, Node Limit>
+    struct StepKindOf<PrecisionLimitNode<K, Level, Limit>>
+    {
+        static constexpr StepKind value = StepKind::PrecisionLimit;
     };
 
     template <Predicate P, Node Then, Node Else>
@@ -1163,6 +1509,42 @@ namespace detail
         static constexpr StepKind value = StepKind::CurveInterpolation;
     };
 
+    template <SampleSource S>
+    struct StepKindOf<SampleCountNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleCount;
+    };
+
+    template <SampleSource S>
+    struct StepKindOf<SampleMeanNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleMean;
+    };
+
+    template <SampleSource S>
+    struct StepKindOf<SampleVarianceNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleVariance;
+    };
+
+    template <SampleSource S>
+    struct StepKindOf<SampleRangeNode<S>>
+    {
+        static constexpr StepKind value = StepKind::SampleRange;
+    };
+
+    template <Described Q>
+    struct StepKindOf<PassMeanNode<Q>>
+    {
+        static constexpr StepKind value = StepKind::PassMean;
+    };
+
+    template <>
+    struct StepKindOf<PassCountNode>
+    {
+        static constexpr StepKind value = StepKind::PassCount;
+    };
+
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
     /// `SeriesNode`, and closed the same way. The primary template is left
     /// undefined, so a series node kind added without an entry here fails to
@@ -1255,7 +1637,7 @@ namespace detail
         return operandUnit.dimension == dimension ? operandUnit : fallback;
     }
 
-    /// Whether @p stepKind is one of the three lookup kinds. Written once because
+    /// Whether @p stepKind is one of the four lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
     /// `record_lookup` below, and `trace_render.hpp`'s `step_line`, which
     /// appends the clause that keeps a lookup line from lying -- and spelling
@@ -1264,7 +1646,7 @@ namespace detail
     [[nodiscard]] constexpr bool is_lookup(StepKind stepKind) noexcept
     {
         return stepKind == StepKind::BandedLookup || stepKind == StepKind::ExactLookup
-               || stepKind == StepKind::InterpolatingLookup;
+               || stepKind == StepKind::InterpolatingLookup || stepKind == StepKind::SampleSizeLookup;
     }
 
     /// Whether any step @p step claimed as an operand failed.
@@ -1705,6 +2087,50 @@ namespace detail
             return;
         binningStep.domainElements = observedStep.elements;
     }
+
+    /// Fills in a critical-value lookup step's count and `lookupFailure`. The
+    /// table's declared sizes go to the trace's side table, which
+    /// `RecordingSink::produced` owns.
+    ///
+    /// The count is read from the operand's own step and turned into a sample
+    /// size by `as_sample_size`, and the row found by `find_sample_size` --
+    /// `critical_value.hpp`'s own functions, the ones that decided during the
+    /// evaluation -- so the derivation cannot disagree with the number.
+    template <typename Rep, SampleSizeTable Sizes, Unit ResultUnit, Node Count>
+    void record_lookup(SampleSizeLookupNode<Sizes, ResultUnit, Count> const&,
+                       Step<Rep>& step,
+                       std::vector<Step<Rep>> const& steps)
+    {
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            if (an_operand_failed(steps, step))
+            {
+                step.lookupFailure = LookupFailure::Propagated;
+                return;
+            }
+
+            std::optional<Rational> const operandValue = sole_operand_value(steps, step);
+            if (!operandValue.has_value())
+            {
+                if (step.error.has_value())
+                    step.lookupFailure = LookupFailure::Undetermined;
+                return;
+            }
+
+            std::optional<std::uint64_t> const sampleSize = as_sample_size(*operandValue);
+            if (!sampleSize.has_value())
+            {
+                step.lookupFailure = LookupFailure::NotACount;
+                return;
+            }
+            step.lookupKey = *sampleSize;
+
+            if (!find_sample_size<Sizes>(*sampleSize).has_value())
+                step.lookupFailure = LookupFailure::Missed;
+            else if (step.error.has_value())
+                step.lookupFailure = LookupFailure::Conversion;
+        }
+    }
 } // namespace detail
 
 /// Records a derivation into a `Trace` the caller owns.
@@ -1750,6 +2176,13 @@ namespace detail
 /// vocabulary does not make the trace agree with it, so give the sink the one
 /// `render()` and `document()` are given.
 ///
+/// **Its hooks are public**, as every sink hook is, and a consumer's own node
+/// kind evaluated under it may call them. `Trace` is a public arena besides.
+/// What the evaluator guarantees is what *it* records; a hook called by
+/// consumer code during a recorded evaluation records what that code says --
+/// within each hook's own checks (`sample_failed_at` amends only a failed
+/// sample statistic, and the renderer checks the position it names).
+///
 ///     formula::RecordingSink sink { trace, north };
 template <typename Rep = Rational, Vocabulary V = DefaultVocabulary>
 class RecordingSink
@@ -1769,6 +2202,7 @@ class RecordingSink
         _trace->marks.clear();
         _trace->unclaimed.clear();
         _trace->branchStack.clear();
+        _trace->rejectionsInProgress.clear();
     }
 
     /// Remembers how much of the arena predates this node, so `produced` can
@@ -1840,16 +2274,17 @@ class RecordingSink
         // Anything computed has no declared unit, so the coherent SI one is
         // the truthful answer; a variable overrides it with the unit its
         // quantity is declared in. `requires { N::unit; }` now also selects
-        // `ConstantNode<U>`, `RoundNode`, and `RoundSignificantNode` -- every
-        // one of them declares a unit that is the single most load-bearing
-        // fact about the step: `rounded<Megapascal, 1>(...)` rounds *in
-        // megapascals*, and a step recording "rounded to 1 dp" without saying
-        // 1 dp of what is not a record of anything. `VarNode` still carries
+        // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode` and
+        // `RoundedRootNode` -- every one of them declares a unit that is the
+        // single most load-bearing fact about the step:
+        // `rounded<Megapascal, 1>(...)` rounds *in megapascals*, and a step
+        // recording "rounded to 1 dp" without saying 1 dp of what is not a
+        // record of anything. `VarNode` still carries
         // its unit on `Describe<quantity>` instead of a member of its own,
         // which is why it needs the branch above rather than this one.
         //
         // `NumericValueNode` is excluded even though it also declares
-        // `unit`: unlike the three kinds above, its declared unit measures
+        // `unit`: unlike the four kinds above, its declared unit measures
         // its *operand's* dimension, not its own -- a `NumericValueNode` is
         // always `Scalar` -- so assigning it here would make this step's
         // `unit` disagree with its `dimension`, and the renderer's
@@ -1864,10 +2299,18 @@ class RecordingSink
                                        || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
                                        || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
         nodeStep.unit = coherent(N::dimension);
-        if constexpr (namesQuantity)
+        if constexpr (namesQuantity || detail::StepKindOf<N>::value == StepKind::PrecisionLevel)
             nodeStep.unit = Describe<typename N::quantity>::unit;
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             nodeStep.unit = N::unit;
+        // A pass's mean reads in its sample's unit, as the pass line beside it
+        // does: grams for a series of masses, bare SI for a computed series.
+        // The innermost rejection in progress is the one it is bound to.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::PassMean)
+            if (!_trace->rejectionsInProgress.empty())
+                if (std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
+                    sampleStep.has_value() && *sampleStep < _trace->steps.size())
+                    nodeStep.unit = _trace->steps[*sampleStep].unit;
 
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
@@ -1910,9 +2353,9 @@ class RecordingSink
         else if constexpr (requires { N::digits; })
             nodeStep.granularity = N::digits.value;
 
-        // `RoundNode` and `RoundSignificantNode` are the only kinds that
-        // declare one, so the `requires` alone selects them -- the same shape
-        // `exponent` and `granularity` above use.
+        // `RoundNode`, `RoundSignificantNode` and `RoundedRootNode` are the
+        // only kinds that declare one, so the `requires` alone selects them --
+        // the same shape `exponent` and `granularity` above use.
         if constexpr (requires { N::mode; })
             nodeStep.mode = N::mode;
 
@@ -1962,9 +2405,11 @@ class RecordingSink
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
                 nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
-        // A sum reads in its series' unit, which only the claimed operand
-        // step knows.
-        if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum)
+        // A sum, a mean and a range read in their series' unit, which only
+        // the claimed operand step knows.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum
+                      || detail::StepKindOf<N>::value == StepKind::SampleMean
+                      || detail::StepKindOf<N>::value == StepKind::SampleRange)
             nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
 
         // After the operands are claimed, and not before: telling this
@@ -1978,6 +2423,41 @@ class RecordingSink
             detail::record_snap(node, nodeStep, _trace->steps);
         if constexpr (detail::StepKindOf<N>::value == StepKind::CurveInterpolation)
             detail::record_curve_interpolation(node, nodeStep, _trace->steps);
+
+        if constexpr (detail::StepKindOf<N>::value == StepKind::SampleSizeLookup)
+            _trace->sampleSizeRecords.push_back(detail::SampleSizeRecord {
+                .step = _trace->steps.size(), .declaredSizes = detail::SampleSizeList<N::sizes>::view() });
+
+        // A placeholder belongs to the innermost bound limit, which learns of
+        // it here and names itself on it once it is recorded. A limit names
+        // itself on its level step and on every placeholder read under it.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::PrecisionLevel)
+        {
+            if (!_trace->precisionBindings.empty())
+            {
+                detail::PrecisionBinding& binding = _trace->precisionBindings.back();
+                binding.pendingRecords.push_back(_trace->precisionRecords.size());
+                _trace->precisionRecords.push_back(detail::PrecisionRecord { .step = _trace->steps.size(),
+                                                                             .kind = binding.kind,
+                                                                             .role = detail::PrecisionStepRole::Placeholder,
+                                                                             .levelStep = binding.levelStep });
+            }
+        }
+        if constexpr (detail::StepKindOf<N>::value == StepKind::PrecisionLimit)
+        {
+            if (!_trace->precisionBindings.empty())
+            {
+                detail::PrecisionBinding const& binding = _trace->precisionBindings.back();
+                std::size_t const limitIndex = _trace->steps.size();
+                for (std::size_t const recordIndex: binding.pendingRecords)
+                    _trace->precisionRecords[recordIndex].limitStep = limitIndex;
+                _trace->precisionRecords.push_back(detail::PrecisionRecord { .step = limitIndex,
+                                                                             .kind = N::kind,
+                                                                             .role = detail::PrecisionStepRole::LimitPass,
+                                                                             .levelStep = binding.levelStep,
+                                                                             .limitStep = limitIndex });
+            }
+        }
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
@@ -2124,6 +2604,205 @@ class RecordingSink
     void acceptance_entered(ConstraintOrigin const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Told that a rejection is about to evaluate its sample: remembers where
+    /// the arena stood, so that its terminal step can claim every step of it.
+    void rejection_entered()
+    {
+        _trace->rejectionsInProgress.push_back(detail::RejectionInProgress { .mark = _trace->steps.size() });
+    }
+
+    /// Told that a pass is about to evaluate its limit: remembers where the
+    /// arena stood, and, the first time, which step is the sample's own.
+    void rejection_pass_entered()
+    {
+        if (!_trace->rejectionsInProgress.empty() && !_trace->rejectionsInProgress.back().sampleStep.has_value()
+            && !_trace->steps.empty())
+            _trace->rejectionsInProgress.back().sampleStep = _trace->steps.size() - 1;
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records a `RejectionPass` step, claiming the limit expression's steps.
+    void rejection_pass_produced(detail::RejectionPassEvent const& event)
+    {
+        if (_trace->marks.empty())
+            return;
+        std::size_t const passMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> passStep = rejection_step(StepKind::RejectionPass);
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < passMark)
+            ++firstClaimed;
+        passStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+        if (event.error.has_value())
+            passStep.error = event.error;
+        else if (event.passMean.has_value())
+            passStep.value = *event.passMean;
+
+        detail::RejectionRecord<Rep> rejectionRecord {};
+        rejectionRecord.pass = event.pass;
+        rejectionRecord.sampleSize = event.sampleSize;
+        rejectionRecord.originalSize = event.originalSize;
+        push_rejection_step(std::move(passStep), std::move(rejectionRecord));
+    }
+
+    /// Records an `OutlierRejected` step: every number the decision used.
+    void outlier_rejected(detail::OutlierEvent const& event)
+    {
+        Step<Rep> rejectedStep = rejection_step(StepKind::OutlierRejected);
+        detail::RejectionRecord<Rep> rejectionRecord {};
+        rejectionRecord.pass = event.pass;
+        rejectionRecord.originalSize = event.originalSize;
+        rejectionRecord.position = event.position;
+        rejectionRecord.rejectedValue = event.rejectedValue;
+        rejectionRecord.statistic = event.statistic;
+        rejectionRecord.limit = event.limit;
+        rejectionRecord.squared = event.squared;
+        rejectionRecord.criterion = event.criterion;
+        rejectionRecord.onLimit = event.onLimit;
+        push_rejection_step(std::move(rejectedStep), std::move(rejectionRecord));
+    }
+
+    /// Records the rejection's terminal step -- `RejectionSettled`,
+    /// `RejectionAborted`, `RejectionFailed` or `RejectionUndecided` --
+    /// claiming every step of the rejection, the sample's own first, so that
+    /// whatever reads the rejection has one operand. A rejection that ended
+    /// before its first pass -- its sample failed, or held an absent
+    /// determination -- records none: the sample's own step, which says why,
+    /// is then the reader's operand.
+    void rejection_finished(detail::RejectionEndEvent const& event)
+    {
+        if (_trace->rejectionsInProgress.empty())
+            return;
+        detail::RejectionInProgress const inProgress = _trace->rejectionsInProgress.back();
+        if (event.pass == 0 && !event.startedShort)
+        {
+            _trace->rejectionsInProgress.pop_back();
+            return;
+        }
+
+        StepKind const endKind = event.end == detail::RejectionEnd::Settled   ? StepKind::RejectionSettled
+                                 : event.end == detail::RejectionEnd::Aborted ? StepKind::RejectionAborted
+                                 : event.end == detail::RejectionEnd::Failed  ? StepKind::RejectionFailed
+                                                                              : StepKind::RejectionUndecided;
+        Step<Rep> endStep = rejection_step(endKind);
+        if (event.error.has_value())
+            endStep.error = event.error;
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < inProgress.mark)
+            ++firstClaimed;
+        endStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        detail::RejectionRecord<Rep> rejectionRecord {};
+        rejectionRecord.pass = event.pass;
+        rejectionRecord.originalSize = event.originalSize;
+        rejectionRecord.rejectedCount = event.rejectedCount;
+        rejectionRecord.remaining = event.remaining;
+        rejectionRecord.wouldReject.assign(event.wouldReject.begin(), event.wouldReject.end());
+        rejectionRecord.pastAtMost = event.pastAtMost;
+        rejectionRecord.belowKeepAtLeast = event.belowKeepAtLeast;
+        rejectionRecord.startedShort = event.startedShort;
+        rejectionRecord.failurePoint = event.failurePoint;
+        rejectionRecord.position = event.failedPosition;
+        rejectionRecord.atMost = event.atMost;
+        rejectionRecord.keepAtLeast = event.keepAtLeast;
+        rejectionRecord.verdict = event.verdict;
+        rejectionRecord.citation = event.citation;
+        push_rejection_step(std::move(endStep), std::move(rejectionRecord));
+        _trace->rejectionsInProgress.pop_back();
+    }
+
+    /// Told the zero-based position of the determination at which the
+    /// statistic just produced failed -- a mean or a variance whose total
+    /// overflowed there. Amends that step, the last recorded: the scalar
+    /// channel carries only the error, and the position survives here, as a
+    /// series step's does (phase 12's S8).
+    ///
+    /// **Amends nothing else.** The last step must be a failed `SampleMean`
+    /// or `SampleVariance`; any other step, a present one included, is left
+    /// alone. The hook is public, as every sink hook is, so code of a
+    /// consumer's -- a node of its own, calling it during a recorded
+    /// evaluation -- can reach it: what it can still do is name another
+    /// position on a failed statistic, which the renderer checks against
+    /// the statistic's sample (`(no such element)` beyond its end).
+    void sample_failed_at(std::size_t at)
+    {
+        if (_trace->steps.empty())
+            return;
+        Step<Rep>& failed = _trace->steps.back();
+        if ((failed.kind == StepKind::SampleMean || failed.kind == StepKind::SampleVariance) && failed.error.has_value())
+            failed.failedElement = at;
+    }
+
+    /// Told that a precision limit is about to be evaluated. Remembers
+    /// nothing: the limit's own `entered` marks the arena, and its level is
+    /// not bound until pass 1 has produced it (`precision_level_produced`).
+    void precision_limit_entered(PrecisionKind) noexcept {}
+
+    /// Told that a precision limit has produced its value: its binding ends,
+    /// and a placeholder read from now on belongs to an enclosing limit, if
+    /// any.
+    void precision_limit_produced(PrecisionKind, Evaluated<Rep> const&) noexcept
+    {
+        if (!_trace->precisionBindings.empty())
+            _trace->precisionBindings.pop_back();
+    }
+
+    /// Told that pass 1 is about to evaluate a precision limit's level.
+    /// Remembers where the arena stood, as `entered` does for a `Node`.
+    void precision_level_entered(PrecisionKind)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records the pass-1 step, claiming the level expression's step as its
+    /// operand, and binds the level for the limit expression that follows.
+    ///
+    /// Its value is in @p levelUnit, the unit of the quantity the limit's
+    /// placeholders name, so that the level reads as the results do; its
+    /// dimension is the level expression's.
+    void precision_level_produced(PrecisionKind precisionKind, Unit levelUnit, Evaluated<Rep> const& produced)
+    {
+        // Told without `precision_level_entered`, or after a second sink
+        // cleared the bookkeeping: as for `produced`, there is no mark to
+        // claim from, and reading one off an empty stack is undefined
+        // behaviour (cl's debug library aborts), so the step is dropped.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const levelMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> levelStep {};
+        levelStep.kind = StepKind::PrecisionLevel;
+        levelStep.dimension = levelUnit.dimension;
+        levelStep.unit = levelUnit;
+
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < levelMark)
+            ++firstClaimed;
+        levelStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        if (!produced.has_value())
+            levelStep.error = produced.error();
+        else if (produced->has_value())
+            levelStep.value = **produced;
+
+        std::size_t const levelIndex = _trace->steps.size();
+        std::size_t const recordIndex = _trace->precisionRecords.size();
+        _trace->precisionRecords.push_back(detail::PrecisionRecord { .step = levelIndex,
+                                                                     .kind = precisionKind,
+                                                                     .role = detail::PrecisionStepRole::LevelPass,
+                                                                     .levelStep = levelIndex });
+        _trace->precisionBindings.push_back(
+            detail::PrecisionBinding { .kind = precisionKind, .levelStep = levelIndex, .pendingRecords = { recordIndex } });
+
+        _trace->steps.push_back(std::move(levelStep));
+        _trace->unclaimed.push_back(levelIndex);
     }
 
     /// Records a `StepKind::AcceptanceChecked` step for constraints of
@@ -2410,6 +3089,44 @@ class RecordingSink
     }
 
   private:
+    /// A rejection step of @p stepKind, in the dimension and unit of the
+    /// rejection's sample -- its own step's, once known -- so that a mean or
+    /// a rejected value reads as the determinations do.
+    [[nodiscard]] Step<Rep> rejection_step(StepKind stepKind) const
+    {
+        Step<Rep> rejectionStep {};
+        rejectionStep.kind = stepKind;
+        rejectionStep.dimension = dim::Scalar;
+        rejectionStep.unit = unit::One;
+        if (!_trace->rejectionsInProgress.empty())
+        {
+            std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
+            if (sampleStep.has_value() && *sampleStep < _trace->steps.size())
+            {
+                rejectionStep.dimension = _trace->steps[*sampleStep].dimension;
+                rejectionStep.unit = _trace->steps[*sampleStep].unit;
+            }
+        }
+        return rejectionStep;
+    }
+
+    /// Appends @p rejectionStep, unclaimed, with @p rejectionRecord keyed to it,
+    /// marked as over observations when the rejection's sample is.
+    void push_rejection_step(Step<Rep> rejectionStep, detail::RejectionRecord<Rep> rejectionRecord)
+    {
+        // Before pass 1 no sample step is noted; nor does a line that early
+        // name a position.
+        if (!_trace->rejectionsInProgress.empty())
+            if (std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
+                sampleStep.has_value())
+                rejectionRecord.ofObservations = detail::step_counts_observations(*_trace, *sampleStep);
+        std::size_t const stepIndex = _trace->steps.size();
+        rejectionRecord.step = stepIndex;
+        _trace->rejectionRecords.push_back(std::move(rejectionRecord));
+        _trace->steps.push_back(std::move(rejectionStep));
+        _trace->unclaimed.push_back(stepIndex);
+    }
+
     Trace<Rep>* _trace;
     FORMULA_NO_UNIQUE_ADDRESS V _vocabulary;
 };

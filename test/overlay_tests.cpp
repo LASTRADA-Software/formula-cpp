@@ -397,6 +397,12 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
         == Rational { 10 });
     STATIC_REQUIRE(withRatioFixedAtFour(f::numeric_value_of<unit::One, "Example Standard 12:2021 states it bare">(r))
                    == Rational { 4 });
+    // sqrt(12) = 3.4641..., rounded by the node to 3.46 and left there by the
+    // method's three decimals.
+    STATIC_REQUIRE(
+        withRatioFixedAtFour(f::rounded_sqrt<unit::One, f::DecimalPlaces { 2 }, f::RoundingMode::HalfAwayFromZero>(
+            r * f::number(Rational { 3 })))
+        == Rational { 173, 50 });
     STATIC_REQUIRE(withRatioFixedAtFour(f::when(r > f::number(Rational { 1 }), r, f::number(Rational { 0 })))
                    == Rational { 4 });
     STATIC_REQUIRE(withRatioFixedAtFour(f::banded_lookup<unit::One, RatioBands, unit::One>(
@@ -406,12 +412,68 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
                        r, { Rational { 137, 100 }, Rational { 839, 10 } }))
                    == Rational { 41'096, 1'000 });
 
+    // An absolute value's operand, and both passes of a precision limit: the
+    // level expression reads the fixed 4, and the limit, twice the level,
+    // reads it through the placeholder -- which is itself no input and is
+    // left alone.
+    STATIC_REQUIRE(withRatioFixedAtFour(f::abs(r - f::number(Rational { 6 }))) == Rational { 2 });
+    STATIC_REQUIRE(withRatioFixedAtFour(f::precision_limit<f::PrecisionKind::Repeatability>(
+                       r, f::precision_level<Ratio> * f::number(Rational { 2 })))
+                   == Rational { 8 });
+
+    // The count of a critical-value lookup: 4 selects the second of the rows
+    // 3, 4 and 6, and the values come along unchanged. The values are
+    // invented and deliberately unrealistic.
+    STATIC_REQUIRE(withRatioFixedAtFour(f::critical_value<f::SampleSizeTable<3> { 3, 4, 6 }, unit::One>(
+                       r, { Rational { 70 }, Rational { 20 }, Rational { 90 } }))
+                   == Rational { 20 });
+
     // The leaves that name no quantity are carried over, contents and all.
     STATIC_REQUIRE(
         withRatioFixedAtFour(
             r * f::exact_lookup<ShapeKeys, unit::One>(Shape::Round, { Rational { 219, 100 }, Rational { 317, 100 } }))
         == Rational { 1'268, 100 });
     STATIC_REQUIRE(withRatioFixedAtFour(r * f::pi) == Rational { 12'566, 1'000 });
+}
+
+namespace
+{
+/// A gram squared, for a variance of masses in grams.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+struct MassSquared: formula::Quantity<MassSquared, "s2", "variance of the determinations", GramSquared>
+{
+};
+} // namespace
+
+TEST_CASE("with_constant reaches the radicand of a rounded square root", "[overlay]")
+{
+    // A jurisdiction fixing the variance at fixture A's 427/125 g^2. The
+    // environment holds nothing, so this compiles only if the rewrite reached
+    // the radicand; the value, 1.85 g (37/20000 kg), says the node was rebuilt
+    // with its own unit, places and mode.
+    constexpr auto m = formula::method(
+        formula::variants(formula::variant<Cube>(
+            formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                var<MassSquared>))),
+        formula::rounding_rule<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    constexpr auto overlaid = formula::apply(
+        formula::overlay(formula::with_constant<MassSquared>(formula::Rational { 427, 125 }, nationalAnnex)), m);
+    STATIC_REQUIRE(formula::evaluate_method<Cube>(overlaid, formula::environment())->value()
+                   == formula::Rational { 37, 20'000 });
+
+    // And the trace says whose number the root was taken of.
+    formula::Trace<> trace {};
+    (void) formula::evaluate_method<Cube>(overlaid, formula::environment(), formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. s2 = 427/125 g2 [fixed by jurisdiction overlay: Shape factor, Example Standard 12:2021 NA, NA.2.3]\n"
+             "2. round(sqrt(#1), to 2 dp of g) = 37/20 g [nearest, ties away from zero]\n"
+             "3. round(#2, in g) = 37/20 g [rounded to 2 dp (method default); nearest, ties away from zero]\n"
+             "4. #3 = 37/20 g [variant Cube (1st of 1), selected by tag]\n");
 }
 
 TEST_CASE("an overlay fixes a constant under a const child type", "[overlay]")

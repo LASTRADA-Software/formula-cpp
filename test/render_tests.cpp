@@ -36,10 +36,49 @@ struct Strength: formula::Quantity<Strength, "f", "measured strength", formula::
 {
 };
 
+/// A gram squared, for a variance of masses in grams.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
+struct OtherVariance: formula::Quantity<OtherVariance, "t2", "variance of a second series", GramSquared>
+{
+};
+
+struct Determinations: formula::Quantity<Determinations, "n_d", "number of determinations", formula::unit::One>
+{
+};
+
+/// The shared fixtures' critical-value table. **Invented, and deliberately
+/// unrealistic -- no published table holds values like these.** No row for 7.
+inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
+
+/// The deviation table's critical value, read at the number of determinations.
+inline constexpr auto criticalLimit =
+    formula::critical_value<DeviationSizes, formula::unit::One>(formula::var<Determinations>,
+                                                                { formula::Rational { 10 },
+                                                                  formula::Rational { 30 },
+                                                                  formula::Rational { 20 },
+                                                                  formula::Rational { 50 },
+                                                                  formula::Rational { 40 } });
+
+/// The root of the variance, to 0.01 g -- the spelling every dialect below pins.
+inline constexpr auto roundedSpread =
+    formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::var<MassVariance>);
+
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
     return formula::Rational { numerator, denominator };
 }
+
+/// A precision limit over a diameter, for the Markdown guards.
+inline constexpr auto precisionOfDiameter = formula::precision_limit<formula::PrecisionKind::Repeatability>(
+    (formula::var<Diameter> + formula::var<Diameter>) / rat(2), rat(1, 50) * formula::precision_level<Diameter>);
 
 using formula::Dialect;
 using formula::var;
@@ -169,6 +208,51 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     CHECK(formula::render<Dialect::Markdown>(formula::sqrt(var<Area>)) == "sqrt(`A`)");                 // RootNode
     CHECK(formula::render<Dialect::Markdown>(formula::pi) == "pi");                                     // PiNode
     CHECK(formula::render<Dialect::Markdown>(citedDiameter) == "`d`");                                  // DocumentedNode
+    CHECK(formula::render<Dialect::Markdown>(roundedSpread) == "round(sqrt(`s2`), to 2 dp of g)");      // RoundedRootNode
+    CHECK(formula::render<Dialect::Markdown>(criticalLimit) == "critical(`n_d`, at 3, 4, 5, 6, 8)"); // SampleSizeLookupNode
+    CHECK(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>))
+          == "abs(`d` - `d`)"); // AbsoluteValueNode
+    CHECK(formula::render<Dialect::Markdown>(precisionOfDiameter)
+          == "r(1/50 * level; level = (`d` + `d`) / 2)"); // PrecisionLimitNode, PrecisionLevelNode
+}
+
+TEST_CASE("render: a critical value prints every declared size and none of the values", "[render]")
+{
+    CHECK(formula::render(criticalLimit) == "critical(n_d, at 3, 4, 5, 6, 8)");
+    CHECK(formula::render<Dialect::LaTeX>(criticalLimit)
+          == "\\operatorname{critical}(n_d,\\allowbreak \\mathrm{at\\ }3,\\allowbreak 4,\\allowbreak 5,\\allowbreak "
+             "6,\\allowbreak 8)");
+    // The values are data: 50 and 40 appear nowhere in the formula's text.
+    CHECK(formula::render(criticalLimit).find("50") == std::string::npos);
+    CHECK(formula::render(criticalLimit).find("40") == std::string::npos);
+    // A call, so an atom to whatever holds it.
+    CHECK(formula::render(criticalLimit * var<Determinations>) == "critical(n_d, at 3, 4, 5, 6, 8) * n_d");
+    // A table of no sizes says so, as an empty lookup does.
+    constexpr auto empty =
+        formula::critical_value<formula::SampleSizeTable<0> {}, formula::unit::One>(var<Determinations>, {});
+    CHECK(formula::render(empty) == "critical(n_d, no rows)");
+}
+
+TEST_CASE("render: a rounded square root reads as a rounding of a root, in every dialect", "[render]")
+{
+    CHECK(formula::render(roundedSpread) == "round(sqrt(s2), to 2 dp of g)");
+    CHECK(formula::render<Dialect::LaTeX>(roundedSpread) == "\\operatorname{round}_{2\\,\\mathrm{g}}(\\sqrt{s2})");
+
+    // The mode is the trace's, as it is for `rounded`: these two differ only
+    // in it, and render alike.
+    CHECK(formula::render(
+              formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
+                  var<MassVariance>))
+          == formula::render(roundedSpread));
+
+    // The call's own parentheses group a compound radicand, and the call is
+    // an atom to whatever holds it: no bracket either side.
+    constexpr auto pooled =
+        formula::rounded_sqrt<formula::unit::Gram, formula::DecimalPlaces { 3 }, formula::RoundingMode::Ceiling>(
+            (var<MassVariance> + var<OtherVariance>) / rat(2));
+    CHECK(formula::render(pooled) == "round(sqrt((s2 + t2) / 2), to 3 dp of g)");
+    CHECK(formula::render(pooled * rat(2)) == "round(sqrt((s2 + t2) / 2), to 3 dp of g) * 2");
+    CHECK(formula::render<Dialect::LaTeX>(pooled) == "\\operatorname{round}_{3\\,\\mathrm{g}}(\\sqrt{\\frac{s2 + t2}{2}})");
 }
 
 TEST_CASE("render: a citation does not appear in the rendered formula", "[render]")
@@ -1386,6 +1470,14 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
         // author-supplied name carries one (`detail::literal_words_in_dialect`).
         CHECK(unescapedPositions(text, '[').empty());
 
+        // Phase 13: a bare `|`. Inside a Markdown table cell it ends the
+        // cell, silently -- task 1 measured a row whose formula held an
+        // absolute value in bars render as one cell holding only the text
+        // before the first bar (python-markdown 3.10.3, pymdown-extensions
+        // 12.1). No plain or Markdown spelling in this library writes one:
+        // an absolute value is `abs(...)` there, and bars are LaTeX's alone.
+        CHECK(unescapedPositions(text, '|').empty());
+
         // Phase 10 round 2: an asterisk. A bare `*` CANNOT be forbidden the
         // way `[` is, because one node kind emits it legitimately --
         // `render_node(BinaryNode)` spells multiplication ` * ` in Plain and
@@ -1451,6 +1543,10 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(rounded));                               // RoundNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSig));                            // RoundSignificantNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(numeric));                               // NumericValueNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(roundedSpread));                         // RoundedRootNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(criticalLimit));                         // SampleSizeLookupNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>))); // AbsoluteValueNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(precisionOfDiameter));                         // PrecisionLimitNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(rule));                                  // Constraint

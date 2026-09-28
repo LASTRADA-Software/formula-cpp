@@ -79,6 +79,26 @@ a conformity check -- is evaluated with `Rational` only, and refuses any other `
 time. A new guide, *Series and grading curves*, works a screen analysis through
 all of it, and the gallery gains a series, a grading curve and a binning.
 
+**Phase 13: statistics.** A sample of determinations reduced to one value: `sample_count`,
+`sample_mean`, `sample_variance` (over n - 1, in two passes) and `sample_range`, strict about
+absence, exact, and naming the determination at which an overflow happened. `rounded_sqrt` rounds a
+square root exactly to a declared granularity, so a standard deviation is the correctly rounded
+decimal and never a rounded floating-point one. `critical_value` reads an author's table by sample
+size and misses rather than guessing a neighbouring row. `precision_limit` evaluates a
+repeatability or reproducibility limit at the level of the results it checks, in two declared
+passes, with `precision_level` read only inside it. `without_outliers` rejects outliers from a
+sample by a criterion (a deviation from the mean or in standard deviations, or the gap from an
+extreme to its neighbour over the range), whose limit may read a critical value at each pass's
+sample size, re-running the mean until nothing more is rejected; a declared bound turns one rejection too many, too few left, or too few made to begin with,
+into the author's verdict. Every pass and every rejected value is its own step in the trace.
+A sample is a series or raw observations, `observations<Q, Capacity>`, whose count is known only
+at run time: `Capacity` is a bound, and every statistic, rejection and critical value reads the
+observations actually made. None made count 0 and have no mean.
+`docs/statistics.md` is the guide to all of it, with `examples/statistics.cpp` and gallery entries.
+`docs/numeric-headroom.md` measures how many of `Rational`'s 64 bits real formulas use: most
+leave 30 bits or more, but a sample variance of masses read to 0.01 mg leaves 4, and read to
+1 µg it overflows on 423 of 1,000 samples -- which recommends 128-bit intermediates.
+
 ### Changed
 
 - Invented example numbers replaced so none resembles a published table: the band edges, lookup

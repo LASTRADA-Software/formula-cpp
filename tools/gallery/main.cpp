@@ -401,6 +401,71 @@ inline constexpr formula::BandTable<3> gallerySizeClasses { formula::band(0, 1, 
 constexpr auto countedParticles = formula::binned<unit::Metre, gallerySizeClasses>(formula::observations<ParticleSize, 8>);
 constexpr auto classShares = countedParticles / formula::sum(countedParticles);
 
+// ---- 10: statistics, outliers and precision -----------------------------------
+//
+// Six determinations of one mass, their spread reported exactly, their mean
+// after outliers are rejected, and a precision check of two determinations
+// against a limit that depends on their own level.
+
+struct DeterminedMass: formula::Quantity<DeterminedMass, "m", "mass of a determination", unit::Gram>
+{
+};
+struct MassSpread: formula::Quantity<MassSpread, "s", "spread of the determinations", unit::Gram>
+{
+};
+struct FirstResult: formula::Quantity<FirstResult, "x_A", "first determination", unit::Gram>
+{
+};
+struct SecondResult: formula::Quantity<SecondResult, "x_B", "second determination", unit::Gram>
+{
+};
+
+constexpr auto massMean = formula::sample_mean(formula::series<DeterminedMass, 6>);
+
+constexpr auto massSpread = formula::documented(
+    formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+        formula::sample_variance(formula::series<DeterminedMass, 6>)),
+    { .title = "Spread of repeated determinations",
+      .reference = "Example Standard 5:2022",
+      .section = "7.2",
+      .text = "The square root of the sample variance, rounded exactly to 0.01 g: never a rounded "
+              "floating-point root." });
+
+constexpr formula::Verdict repeatTheTest { "discard the determinations and repeat the test" };
+constexpr formula::Citation outlierRule { .title = "Outliers", .reference = "Example Standard 5:2022", .section = "7.4" };
+
+template <typename AtMostT>
+[[nodiscard]] constexpr auto massWithoutOutliers()
+{
+    return formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, AtMostT, formula::KeepAtLeast<4>>(
+            formula::series<DeterminedMass, 6>,
+            formula::deviation_from_mean(formula::Rational { 6, 100 } * formula::pass_mean<DeterminedMass>),
+            repeatTheTest,
+            outlierRule);
+}
+
+constexpr auto meanWithoutOutliers = formula::documented(
+    formula::sample_mean(massWithoutOutliers<formula::AtMost<2>>()),
+    { .title = "Mean after rejecting outliers",
+      .reference = "Example Standard 5:2022",
+      .section = "7.4",
+      .text = "A determination more than 6 % of the mean from it is rejected, and the mean is taken again, "
+              "until nothing more is rejected; a third rejection, or fewer than four left, is the author's "
+              "verdict." });
+
+constexpr auto repeatabilityCheck = formula::constraint(
+    formula::abs(var<FirstResult> - var<SecondResult>) <= formula::precision_limit<formula::PrecisionKind::Repeatability>(
+        (var<FirstResult> + var<SecondResult>) / formula::Rational { 2 },
+        formula::constant<unit::Gram>(formula::Rational { 1, 10 })
+            + formula::Rational { 1, 50 } * formula::precision_level<FirstResult>),
+    formula::Verdict { "repeat the determinations" },
+    { .title = "Repeatability of two determinations",
+      .reference = "Example Standard 5:2022",
+      .section = "8.1",
+      .text = "The two determinations agree when they differ by no more than r = 0.1 g + level / 50, the "
+              "level being their mean." });
+
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
 /// Not reused from render.hpp's own `detail::number_text`, which does exactly
@@ -611,6 +676,10 @@ int main(int argc, char** argv)
     write_formula(out, mouldFactor);
     write_formula(out, maturityFactor);
     write_formula(out, correctedStrength);
+    write_formula(out, massSpread);
+    write_formula(out, meanWithoutOutliers);
+    if (!write_constraint(out, repeatabilityCheck))
+        return 1;
 
     // ---- A worked evaluation, so the page proves the numbers as well as the text ----
 
@@ -949,6 +1018,86 @@ int main(int argc, char** argv)
     out << "```\n";
     out << formula::render_trace(binningMissTrace, { .maxSteps = 40 });
     out << "```\n\n";
+
+    // ---- Statistics, outliers and precision ----
+
+    out << "## Worked statistics: a mean with its spread, and the mean after rejecting outliers\n\n";
+    out << "Six determinations, 40.2, 39.8, 40.5, 44.0, 40.0 and 43.3 g. Their mean:\n\n";
+
+    auto const sixDeterminations = formula::environment(
+        formula::measured_series<DeterminedMass>(formula::Measured<DeterminedMass> { formula::Rational { 402, 10 } },
+                                                 formula::Measured<DeterminedMass> { formula::Rational { 398, 10 } },
+                                                 formula::Measured<DeterminedMass> { formula::Rational { 405, 10 } },
+                                                 formula::Measured<DeterminedMass> { formula::Rational { 44 } },
+                                                 formula::Measured<DeterminedMass> { formula::Rational { 40 } },
+                                                 formula::Measured<DeterminedMass> { formula::Rational { 433, 10 } }));
+
+    write_worked_formula(out, massMean);
+    formula::Trace<> meanTrace {};
+    auto const meanValue =
+        formula::checked_evaluate<DeterminedMass>(massMean, sixDeterminations, formula::RecordingSink<> { meanTrace });
+    if (!meanValue.has_value() || meanValue->measurement().value() != formula::Rational { 413, 10 })
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked mean did not come to 41.3 g\n");
+        return 1;
+    }
+    out << "```\n" << formula::render_trace(meanTrace, { .maxSteps = 20 }) << "```\n\n";
+
+    out << "Their spread, reported exactly:\n\n";
+    write_worked_formula(out, massSpread);
+    formula::Trace<> spreadTrace {};
+    auto const spreadValue =
+        formula::checked_evaluate<MassSpread>(massSpread, sixDeterminations, formula::RecordingSink<> { spreadTrace });
+    if (!spreadValue.has_value() || spreadValue->measurement().value() != formula::Rational { 37, 20 })
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked spread did not come to 1.85 g\n");
+        return 1;
+    }
+    out << "```\n" << formula::render_trace(spreadTrace, { .maxSteps = 20 }) << "```\n\n";
+
+    out << "Their mean after rejecting outliers: 44.0 g goes in pass 1, 43.3 g in pass 2, and pass 3 "
+           "settles:\n\n";
+    write_worked_formula(out, meanWithoutOutliers);
+    formula::Trace<> settledTrace {};
+    auto const settledMean = formula::checked_evaluate<DeterminedMass>(
+        meanWithoutOutliers, sixDeterminations, formula::RecordingSink<> { settledTrace });
+    if (!settledMean.has_value() || settledMean->measurement().value() != formula::Rational { 321, 8 })
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked rejection did not settle at 321/8 g\n");
+        return 1;
+    }
+    out << "```\n" << formula::render_trace(settledTrace, { .maxSteps = 30 }) << "```\n\n";
+
+    out << "The same rule allowed one rejection: the second is one too many, and the author's verdict "
+           "stands in place of a mean:\n\n";
+    constexpr auto meanAtMostOne = formula::sample_mean(massWithoutOutliers<formula::AtMost<1>>());
+    write_worked_formula(out, meanAtMostOne);
+    formula::Trace<> abortedTrace {};
+    auto const abortedMean = formula::checked_evaluate<DeterminedMass>(
+        meanAtMostOne, sixDeterminations, formula::RecordingSink<> { abortedTrace });
+    if (abortedMean.has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked rejection did not abort\n");
+        return 1;
+    }
+    out << "```\n" << formula::render_trace(abortedTrace, { .maxSteps = 30 }) << "```\n\n";
+
+    out << "## Worked precision check: two determinations at their own level\n\n";
+    out << "`x_A` = 40.0 g and `x_B` = 40.905 g, 0.905 g apart. The limit is evaluated at the level it "
+           "checks -- their mean, 40.4525 g -- in two declared passes:\n\n";
+    write_worked_formula(out, repeatabilityCheck);
+    auto const twoDeterminations =
+        formula::environment(formula::Measured<FirstResult> { formula::Rational { 40 } },
+                             formula::Measured<SecondResult> { formula::Rational { 40905, 1000 } });
+    formula::Trace<> precisionTrace {};
+    formula::ConstraintOutcome const agreed =
+        formula::check(repeatabilityCheck, twoDeterminations, formula::RecordingSink<> { precisionTrace });
+    if (!agreed.is_satisfied())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the worked precision check did not hold\n");
+        return 1;
+    }
+    out << "```\n" << formula::render_trace(precisionTrace, { .maxSteps = 30 }) << "```\n\n";
 
     out.flush();
     return out ? 0 : 1;

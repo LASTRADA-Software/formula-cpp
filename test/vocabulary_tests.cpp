@@ -546,6 +546,10 @@ struct EveryBinned
 {
 };
 
+struct EverySample
+{
+};
+
 struct EveryStrength: formula::Quantity<EveryStrength, "A_decl", "compressive strength", unit::Megapascal>
 {
 };
@@ -618,7 +622,15 @@ inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(
                        d, { rat(1043, 1000), rat(2917, 1000) }))
            * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
            * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) })
-           * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>);
+           * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>)
+           // Phase 13's kinds, added rather than multiplied in: the product
+           // above leaves too few bits for another factor.
+           + formula::rounded_sqrt<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+               r * var<EveryFixed>)
+               * formula::critical_value<formula::SampleSizeTable<2> { 2, 3 }, unit::One>(
+                   formula::constant<unit::One>(rat(2)), { rat(60), rat(80) })
+               * formula::abs(r)
+               * formula::precision_limit<formula::PrecisionKind::Repeatability>(r, formula::precision_level<EveryDerived>);
 }
 
 inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
@@ -671,12 +683,44 @@ inline constexpr formula::BandTable<2> everyClasses { formula::band(0, 1, 163, 1
            * var<EveryFixed>;
 }
 
+// Every sample statistic, in a variant of its own: the mean of the retained
+// masses, with the overlay's constant inside the sample, over the total and
+// the count, plus the variance over the squared range, the overlay's
+// constant inside every sample. 10, 20 and 40 g times 3/2 are 15, 30 and
+// 60 g, whose mean is 35 g; over 2020 g and 3, 7/1212. Their variance is
+// 525 g^2 and their range 45 g, so 7/27; the whole is 2891/10908 -- 26.5 %
+// at 1 dp. Unscaled (a rewrite that did not reach in) the variance and range
+// would read 700/3 g^2 and 30 g in the trace.
+//
+// And a rejection of outliers, the overlay's constant in its sample and in
+// its limit, x_n / 3 = 1/2 of the pass's mean: 15, 30 and 60 g deviate 20, 5
+// and 25 g from 35 g, past 17.5 g for 60 g alone; 15 and 30 g then deviate
+// 7.5 g from 22.5 g, inside 11.25 g. Two remain, so the count less 2 adds
+// nothing to the whole. A limit the rewrite did not reach reads no x_n and
+// is refused; a sample it did not reach is 10, 20 and 40 g, which rejects
+// 40 g at a limit it cannot read either.
+[[nodiscard]] constexpr auto everySampleKind()
+{
+    constexpr auto s = formula::series<EveryRetained, 3>;
+    constexpr auto trimmed = formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            s * var<EveryFixed>,
+            formula::deviation_from_mean(var<EveryFixed> / formula::number(rat(3)) * formula::pass_mean<EveryRetained>),
+            formula::Verdict { "repeat the sieving" },
+            everyCited);
+    return formula::sample_mean(s * var<EveryFixed>) / var<EveryTotal> / formula::sample_count(s)
+           + formula::sample_variance(s * var<EveryFixed>)
+                 / (formula::sample_range(s * var<EveryFixed>) * formula::sample_range(s * var<EveryFixed>))
+           + (formula::sample_count(trimmed) - formula::number(rat(2)));
+}
+
 inline constexpr auto everyMethod = formula::method(
     formula::variants(formula::variant<EveryCube>(everyNodeKind()),
                       formula::variant<EveryCylinder>(var<EveryStrength> / var<EveryModulus>),
                       formula::variant<EverySeries>(everySeriesKind()),
                       formula::variant<EveryCurve>(everyCurveKind()),
-                      formula::variant<EveryBinned>(everyBinnedKind())),
+                      formula::variant<EveryBinned>(everyBinnedKind()),
+                      formula::variant<EverySample>(everySampleKind())),
     formula::rounding_rule<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints());
 
@@ -713,7 +757,7 @@ template <typename Tag>
 {
     formula::Trace<> trace {};
     (void) formula::evaluate_method<Tag>(everyOverlaid, everyInputs, formula::RecordingSink { trace, everyVocabulary });
-    return formula::render_trace(trace, { .maxSteps = 60 });
+    return formula::render_trace(trace, { .maxSteps = 80 });
 }
 
 [[nodiscard]] bool declares_no_symbol(std::string_view text)
@@ -732,7 +776,9 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
              "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 103 to under 163 mm gives 1127/1000, "
              "163 to under 331 mm gives 1973/1000) * interpolate(D, at 103 mm gives 1043/1000, at 331 mm gives 2917/1000)) "
              "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000) "
-             "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000)");
+             "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000) "
+             "+ round(sqrt(E / R * x_n), to 1 dp of %) "
+             "* critical(2, at 2, 3) * abs(E / R) * r(level; level = E / R)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
 
     // Every series kind, the jurisdiction's symbol marked in each dialect.
@@ -746,6 +792,26 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
           == "\\frac{\\sum \\operatorname{cumulative}_{\\text{from last}}(\\operatorname{round}_{0/0/-1\\,"
              "\\mathrm{g}}(-{m_n}_{i} + {m_n}_{i} \\cdot \\operatorname{values}(1,\\allowbreak 2,\\allowbreak 3) "
              "\\cdot x_n))}{M_n}");
+
+    // Every sample statistic: the sample marked, the statistic not.
+    constexpr auto sampleVariant = std::get<5>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(sampleVariant, everyVocabulary)
+          == "sample_mean(m_n(i) * x_n) / M_n / sample_count(m_n(i)) + sample_variance(m_n(i) * x_n) / "
+             "(sample_range(m_n(i) * x_n) * sample_range(m_n(i) * x_n)) + sample_count(without outliers(m_n(i) * x_n; "
+             "abs(x - pass mean) > x_n / 3 * pass mean; most extreme per pass; keep on limit; at most 1; "
+             "keep at least 2)) - 2");
+    CHECK(formula::render<formula::Dialect::Markdown>(sampleVariant, everyVocabulary)
+          == "sample_mean(`m_n(i)` * `x_n`) / `M_n` / sample_count(`m_n(i)`) + sample_variance(`m_n(i)` * `x_n`) "
+             "/ (sample_range(`m_n(i)` * `x_n`) * sample_range(`m_n(i)` * `x_n`)) + sample_count(without outliers("
+             "`m_n(i)` * `x_n`; abs(x - pass mean) > `x_n` / 3 * pass mean; most extreme per pass; keep on limit; "
+             "at most 1; keep at least 2)) - 2");
+    CHECK(formula::render<formula::Dialect::LaTeX>(sampleVariant, everyVocabulary)
+          == "\\frac{\\frac{\\overline{{m_n}_{i} \\cdot x_n}}{M_n}}{n({m_n}_{i})} + \\frac{s^{2}({m_n}_{i} \\cdot x_n)}"
+             "{\\operatorname{range}({m_n}_{i} \\cdot x_n) \\cdot \\operatorname{range}({m_n}_{i} \\cdot x_n)} "
+             "+ n(\\operatorname{without\\ outliers}({m_n}_{i} \\cdot x_n;\\allowbreak "
+             "\\left\\lvert x - \\bar{x}_{\\text{pass}}\\right\\rvert > \\frac{x_n}{3} \\cdot \\bar{x}_{\\text{pass}};\\allowbreak "
+             "\\text{most extreme per pass};\\allowbreak \\text{keep on limit};\\allowbreak "
+             "\\text{at most }1;\\allowbreak \\text{keep at least }2)) - 2");
 
     // Every curve kind, the series marked, the domains listed, the direction
     // stated.
@@ -778,7 +844,9 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
                                     formula::render<formula::Dialect::Markdown>(cylinder, everyVocabulary),
                                     formula::render<formula::Dialect::LaTeX>(cylinder, everyVocabulary),
                                     formula::render<formula::Dialect::Markdown>(seriesVariant, everyVocabulary),
-                                    formula::render<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary) })
+                                    formula::render<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::Markdown>(sampleVariant, everyVocabulary),
+                                    formula::render<formula::Dialect::LaTeX>(sampleVariant, everyVocabulary) })
         CHECK(declares_no_symbol(text));
 }
 
@@ -848,6 +916,14 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
     CHECK(binnedPage.symbols[1].symbol == "x_n");
     CHECK(binnedPage.symbols[1].fixedValue.has_value());
 
+    // The sample variant: its rejection states its limit in the page's
+    // words, the fixed factor as the jurisdiction names it.
+    constexpr auto sampleVariant = std::get<5>(everyOverlaid.variantSet.cases).expression;
+    formula::Documentation const samplePage = formula::document(sampleVariant, everyVocabulary);
+    REQUIRE(samplePage.rejections.size() == 1);
+    CHECK(samplePage.rejections[0].limit == "x_n / 3 * pass mean");
+
+
     for (auto const& documentation: { formula::document<formula::Dialect::Markdown>(binnedVariant, everyVocabulary),
                                       formula::document<formula::Dialect::LaTeX>(binnedVariant, everyVocabulary),
                                       formula::document<formula::Dialect::Markdown>(cube, everyVocabulary),
@@ -855,9 +931,13 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
                                       formula::document<formula::Dialect::Markdown>(cylinder, everyVocabulary),
                                       formula::document<formula::Dialect::LaTeX>(cylinder, everyVocabulary),
                                       formula::document<formula::Dialect::Markdown>(seriesVariant, everyVocabulary),
-                                      formula::document<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary) })
+                                      formula::document<formula::Dialect::LaTeX>(seriesVariant, everyVocabulary),
+                                      formula::document<formula::Dialect::Markdown>(sampleVariant, everyVocabulary),
+                                      formula::document<formula::Dialect::LaTeX>(sampleVariant, everyVocabulary) })
     {
         CHECK(declares_no_symbol(documentation.formula));
+        for (formula::RejectionEntry const& rejection: documentation.rejections)
+            CHECK(declares_no_symbol(rejection.limit));
         for (formula::SymbolEntry const& row: documentation.symbols)
         {
             CHECK(declares_no_symbol(row.symbol));
@@ -870,8 +950,9 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
 TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 {
     // The lines that name a quantity, found by what they say rather than
-    // pinned whole: the rest of this 48-step derivation is arithmetic, and pi's
-    // rational approximation would pin nothing about vocabularies.
+    // pinned whole: the rest of this derivation, some sixty steps, is
+    // arithmetic, and pi's rational approximation would pin nothing about
+    // vocabularies.
     std::string const cube = everyTraceOf<EveryCube>();
     CHECK(declares_no_symbol(cube));
     CHECK(cube.starts_with("1. E = 30 MPa\n"
@@ -886,6 +967,14 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
     CHECK(cube.find("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n")
           != cube.rfind("x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"));
     CHECK(cube.find("= 1537/1000 [1437/1000 to 1537/1000; tie, toward higher]\n") != std::string::npos);
+    // The rounded root reads the fixed factor through its radicand, and its
+    // step shows only exact numbers.
+    CHECK(cube.find("53. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+                    "54. #52 * #53 = 1487/400\n"
+                    "55. round(sqrt(#54), to 1 dp of %) = 964/5 % [nearest, ties away from zero]\n")
+          != std::string::npos);
+    // The critical value reads a count of 2.
+    CHECK(cube.find(") = 60 [critical value at n = 2]\n") != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"
@@ -893,12 +982,64 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "3. #1 / #2 = 2/5\n"
              "4. #3 = 2/5 [replaced by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "5. round(#4, in %) = 40 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "6. #5 = 40 % [variant EveryCylinder (2nd of 5), selected by tag]\n");
+             "6. #5 = 40 % [variant EveryCylinder (2nd of 6), selected by tag]\n");
 
     // Every series kind: each series step in the jurisdiction's symbol, the
     // fixed factor broadcast once, the running total from the last screen,
     // and the sum a single value. Computed steps have no declared unit, so
     // they read in kilograms, exactly.
+    // The statistics read the fixed factor through their sample, and each
+    // reads its sample's own step, with every element. The rejection reads
+    // the fixed factor in its sample and again in each pass's limit, and its
+    // pass means read, as its sample does, in kilograms.
+    CHECK(everyTraceOf<EverySample>()
+          == "1. m_n = 10 g; 20 g; 40 g\n"
+             "2. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "3. #1 * #2 = 1487/100000; 1487/50000; 1487/25000\n"
+             "4. sample_mean(#3) = 10409/300000\n"
+             "5. M_n = 2020 g\n"
+             "6. #4 / #5 = 10409/606000\n"
+             "7. m_n = 10 g; 20 g; 40 g\n"
+             "8. sample_count(#7) = 3\n"
+             "9. #6 / #8 = 10409/1818000\n"
+             "10. m_n = 10 g; 20 g; 40 g\n"
+             "11. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "12. #10 * #11 = 1487/100000; 1487/50000; 1487/25000\n"
+             "13. sample_variance(#12) = 15478183/30000000000\n"
+             "14. m_n = 10 g; 20 g; 40 g\n"
+             "15. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "16. #14 * #15 = 1487/100000; 1487/50000; 1487/25000\n"
+             "17. sample_range(#16) = 4461/100000\n"
+             "18. m_n = 10 g; 20 g; 40 g\n"
+             "19. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "20. #18 * #19 = 1487/100000; 1487/50000; 1487/25000\n"
+             "21. sample_range(#20) = 4461/100000\n"
+             "22. #17 * #21 = 19900521/10000000000\n"
+             "23. #13 / #22 = 7/27\n"
+             "24. #9 + #23 = 1445227/5454000\n"
+             "25. m_n = 10 g; 20 g; 40 g\n"
+             "26. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "27. #25 * #26 = 1487/100000; 1487/50000; 1487/25000\n"
+             "28. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "29. 3\n"
+             "30. #28 / #29 = 1487/3000\n"
+             "31. pass mean = 10409/300000\n"
+             "32. #30 * #31 = 15478183/900000000\n"
+             "33. pass 1: 3 values, mean 10409/300000\n"
+             "34. rejected element 3 of 3 (1487/25000) in pass 1: abs(x - mean) = 1487/60000 > 15478183/900000000 (deviation from mean)\n"
+             "35. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+             "36. 3\n"
+             "37. #35 / #36 = 1487/3000\n"
+             "38. pass mean = 4461/200000\n"
+             "39. #37 * #38 = 2211169/200000000\n"
+             "40. pass 2: 2 values, mean 4461/200000\n"
+             "41. settled: 1 rejected, 2 remain\n"
+             "42. sample_count(#41) = 2\n"
+             "43. 2\n"
+             "44. #42 - #43 = 0\n"
+             "45. #24 + #44 = 1445227/5454000\n"
+             "46. round(#45, in %) = 53/2 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
+             "47. #46 = 53/2 % [variant EverySample (6th of 6), selected by tag]\n");
     CHECK(everyTraceOf<EverySeries>()
           == "1. m_n = 10 g; 20 g; 40 g\n"
              "2. -#1 = -1/100; -1/50; -1/25\n"
@@ -914,7 +1055,7 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "12. M_n = 2020 g\n"
              "13. #11 / #12 = 503/2020\n"
              "14. round(#13, in %) = 249/10 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "15. #14 = 249/10 % [variant EverySeries (3rd of 5), selected by tag]\n");
+             "15. #14 = 249/10 % [variant EverySeries (3rd of 6), selected by tag]\n");
 
     // Every curve kind: the retained masses as shares of the total, 1/202,
     // 1/101 and 2/101 at 1, 2 and 4, spliced with 1/20 at 5; read at the
@@ -934,7 +1075,7 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "11. interpolate(#9, at #10) = 1487/202000 [between 1 and 2]\n"
              "12. snap(#11) = 1/200 [1/200 to 1/100; nearer 1/200]\n"
              "13. round(#12, in %) = 1/2 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "14. #13 = 1/2 % [variant EveryCurve (4th of 5), selected by tag]\n");
+             "14. #13 = 1/2 % [variant EveryCurve (4th of 6), selected by tag]\n");
 
     // Binning: 103, 163, 197 and 127 mm counted 2 and 2 -- the 163 mm particle
     // in the upper class -- the upper class's share 1/2, times the fixed 1487/1000.
@@ -952,7 +1093,49 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
              "10. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
              "11. #9 * #10 = 1487/2000\n"
              "12. round(#11, in %) = 372/5 % [rounded to 1 dp (method default); nearest, ties away from zero]\n"
-             "13. #12 = 372/5 % [variant EveryBinned (5th of 5), selected by tag]\n");
+             "13. #12 = 372/5 % [variant EveryBinned (5th of 6), selected by tag]\n");
+}
+
+TEST_CASE("a precision limit's checks see inside every node kind", "[vocabulary][precision]")
+{
+    // The every-kind method, overlaid -- its series variant holding every
+    // series kind -- and the method's rounding around it: every node kind
+    // this library ships. One that fell to `LevelChildren`'s
+    // primary would hide a placeholder from the level checks without a word,
+    // as the overlay's derived quantity once did.
+    using Cube = std::remove_cvref_t<decltype(std::get<0>(everyOverlaid.variantSet.cases).expression)>;
+    using Cylinder = std::remove_cvref_t<decltype(std::get<1>(everyOverlaid.variantSet.cases).expression)>;
+    using Series = std::remove_cvref_t<decltype(std::get<2>(everyOverlaid.variantSet.cases).expression)>;
+    using Curve = std::remove_cvref_t<decltype(std::get<3>(everyOverlaid.variantSet.cases).expression)>;
+    using Binned = std::remove_cvref_t<decltype(std::get<4>(everyOverlaid.variantSet.cases).expression)>;
+    using Sample = std::remove_cvref_t<decltype(std::get<5>(everyOverlaid.variantSet.cases).expression)>;
+    using Rounded = formula::
+        RoundingRuleNode<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero, Cube>;
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Cube>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Cylinder>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Series>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Curve>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Binned>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Sample>());
+    STATIC_REQUIRE(formula::detail::level_check_sees_every_node<Rounded>());
+    // A consumer's node kind is unseen by design, which is what makes the
+    // six above able to fail.
+    STATIC_REQUIRE_FALSE(formula::detail::level_check_sees_every_node<decltype(Gauge {} * var<Strength>)>());
+    // Told apart by the namespace a kind is declared in, never by its
+    // template arguments' -- which is what keeps a consumer's node over a
+    // library node walking as unseen, where a library kind without its
+    // specialisation is refused.
+    STATIC_REQUIRE(formula::detail::declared_in_library<formula::VarNode<Strength>>());
+    STATIC_REQUIRE(formula::detail::declared_in_library<Cube>());            // the every-kind expression
+    STATIC_REQUIRE_FALSE(formula::detail::declared_in_library<EveryCube>()); // a tag of this file's
+    STATIC_REQUIRE(formula::detail::declared_in_library<formula::detail::RefusedSeries<formula::dim::Mass>>());
+    STATIC_REQUIRE_FALSE(formula::detail::declared_in_library<Gauge>());
+    STATIC_REQUIRE_FALSE(formula::detail::declared_in_library<std::tuple<formula::VarNode<Strength>>>());
+    // Nor is one in a limit expression hidden from it, where a placeholder is
+    // bound rather than free.
+    STATIC_REQUIRE_FALSE(formula::detail::level_check_sees_every_node<
+                         decltype(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+                             var<Strength>, Gauge {} * var<Strength>))>());
 }
 
 TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",

@@ -36,6 +36,7 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/detail/latex_math.hpp>
 #include <formula-cpp/escape.hpp>
@@ -43,11 +44,15 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/rejection.hpp>
+#include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/snap.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -657,6 +662,16 @@ namespace detail
     }
 } // namespace detail
 
+namespace detail
+{
+    /// A precision limit's symbol: `r` for repeatability, `R` for
+    /// reproducibility.
+    [[nodiscard]] constexpr std::string_view precision_render_symbol(PrecisionKind precisionKind) noexcept
+    {
+        return precisionKind == PrecisionKind::Reproducibility ? "R" : "r";
+    }
+} // namespace detail
+
 template <Dialect D, Node N>
 [[nodiscard]] std::string render(N const& node);
 
@@ -700,6 +715,17 @@ template <Dialect D, CurveExpression C, Vocabulary V>
 /// The `Constraint` counterpart of the overload above.
 template <Dialect D, Predicate P, Vocabulary V>
 [[nodiscard]] std::string render(Constraint<P> const& node, V const& vocabulary);
+
+/// The counterpart for a sample transformer -- a rejection of outliers
+/// (`rejection.hpp`) -- which is neither a `Node` nor a series.
+template <Dialect D, typename R, Vocabulary V>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node, V const& vocabulary);
+
+/// The counterpart for raw observations (`binning.hpp`), neither a `Node` nor
+/// a series, when a statistic renders its sample.
+template <Dialect D, ObservationsNode O, Vocabulary V>
+[[nodiscard]] std::string render(O const& node, V const& vocabulary);
 
 namespace detail
 {
@@ -905,6 +931,54 @@ template <Dialect D, CumulativeDirection Direction, SeriesNode S, Vocabulary V>
         return "cumulative(" + inner + ", " + runsFrom + ")";
 }
 
+/// A sample's count renders as a call on its sample, `sample_count(m(i))`,
+/// and in LaTeX as `n({m}_{i})`. The count is one value and carries no series
+/// marker; its sample carries its own.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleCountNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "n(" + render<D>(node.sample, vocabulary) + ")";
+    else
+        return "sample_count(" + render<D>(node.sample, vocabulary) + ")";
+}
+
+/// A sample's mean renders as a call on its sample, `sample_mean(m(i))`, and
+/// in LaTeX as a bar over it, `\overline{{m}_{i}}`, which groups itself. The
+/// mean is one value and carries no series marker; its sample carries its own.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleMeanNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\overline{" + render<D>(node.sample, vocabulary) + "}";
+    else
+        return "sample_mean(" + render<D>(node.sample, vocabulary) + ")";
+}
+
+/// A sample's variance renders as a call on its sample,
+/// `sample_variance(m(i))`, and in LaTeX as `s^{2}({m}_{i})`, the spelling
+/// task 1 typeset clean. The variance is one value and carries no series
+/// marker; its sample carries its own.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleVarianceNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "s^{2}(" + render<D>(node.sample, vocabulary) + ")";
+    else
+        return "sample_variance(" + render<D>(node.sample, vocabulary) + ")";
+}
+
+/// A sample's range renders as a call on its sample, `sample_range(m(i))`,
+/// and in LaTeX as `\operatorname{range}({m}_{i})`.
+template <Dialect D, SampleSource S, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleRangeNode<S> const& node, V const& vocabulary)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{range}(" + render<D>(node.sample, vocabulary) + ")";
+    else
+        return "sample_range(" + render<D>(node.sample, vocabulary) + ")";
+}
+
 /// A sum renders as a call on its series, `sum(m_r(i))`, and in LaTeX as the
 /// large operator, `\sum {m_r}_{i}`, whose operand already carries the
 /// series marker -- the sum itself is one value and carries none. See
@@ -1058,6 +1132,30 @@ template <Dialect D, Unit U, SignificantDigits Digits, RoundingMode Mode, Node O
                + detail::unit_clause(",\\,", detail::latex_unit(unitSymbol)) + "}(" + inner + ")";
     else
         return "round(" + inner + ", to " + digitsText + " sf" + detail::unit_clause(" of ", unitSymbol) + ")";
+}
+
+/// A rounded square root renders as what it computes, a rounding of a root:
+/// `round(sqrt(<radicand>), to <places> dp of <unit>)`, and in LaTeX
+/// `RoundNode`'s subscripted `\operatorname{round}` around `\sqrt{}`. That it
+/// is one exact operation rather than two is how it is evaluated, not what it
+/// states; a reader checking it against a standard reads "the root, rounded to
+/// 0.01 g" either way. See `RoundNode`'s overload above for why the mode is
+/// left out, why the granularity is a comma-separated second argument, and why
+/// no `PrecedenceOf` override is needed: the call's own parentheses group it,
+/// so the primary template's `Atom` is right.
+template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand, Vocabulary V>
+[[nodiscard]] std::string render_node(RoundedRootNode<U, Places, Mode, Radicand> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.radicand, vocabulary);
+    constexpr Unit declaredUnit = U;
+    std::string const unitSymbol { view(declaredUnit.symbolText) };
+    std::string const placesText = std::to_string(Places.value);
+
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol))
+               + "}(\\sqrt{" + inner + "})";
+    else
+        return "round(sqrt(" + inner + "), to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
 }
 
 /// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,
@@ -1354,6 +1452,167 @@ template <Dialect D, CurveExpression C, Node At, Vocabulary V>
                                       + render<D>(node.at, vocabulary));
 }
 
+/// A critical-value lookup renders as `critical(<count>, at 3, 4, 5, 6, 8)`:
+/// the count, then every size the table declares, in full.
+///
+/// **The sizes and not the values.** The sizes are the table's structure and
+/// part of what the formula says -- which sample sizes it answers for, and so
+/// where it misses. The values are the author's data, supplied at runtime, as
+/// a lookup's corrections are; a critical value printed into a formula's text
+/// would put a table's contents on every page that quotes it.
+///
+/// The shape is `lookup_call`'s, for its reasons: the subject first, then one
+/// field per size, each a legal break point in LaTeX. `at` opens the list
+/// once, in words (`\mathrm{at\ }` in LaTeX, as a lookup's words are); the
+/// sizes stay numbers. A table of
+/// no sizes says so, as an empty lookup does.
+template <Dialect D, SampleSizeTable Sizes, Unit ResultUnit, Node Count, Vocabulary V>
+[[nodiscard]] std::string render_node(SampleSizeLookupNode<Sizes, ResultUnit, Count> const& node, V const& vocabulary)
+{
+    std::string rowsText;
+    for (std::size_t rowIndex = 0; rowIndex < Sizes.size(); ++rowIndex)
+        rowsText += detail::lookup_separator<D>()
+                    + (rowIndex == 0 ? detail::lookup_words_in_dialect<D>("at ") : std::string {})
+                    + std::to_string(Sizes[rowIndex]);
+
+    return detail::lookup_call<D>("critical", render<D>(node.count, vocabulary), rowsText);
+}
+
+/// An absolute value renders as `abs(<operand>)` in plain text and Markdown,
+/// and as `\left\lvert <operand>\right\rvert` in LaTeX.
+///
+/// **Never a `|`, in any dialect.** A bare vertical bar inside a Markdown table
+/// cell ends the cell, silently: task 1 measured a row whose formula held an
+/// absolute value in bars render as a one-cell row holding only the text
+/// before the first bar (python-markdown 3.10.3, pymdown-extensions 12.1). A
+/// formula is quoted in exactly such tables -- a symbol table, a gallery row,
+/// a `document()` page -- so the plain and Markdown spellings are a call, and
+/// LaTeX spells its bars `\lvert` and `\rvert`: a LaTeX rendering set in a
+/// cell holds no `|` either.
+/// Either way the operand is grouped, so no `PrecedenceOf` override is
+/// needed: the primary template's `Atom` is right.
+template <Dialect D, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(AbsoluteValueNode<Operand> const& node, V const& vocabulary)
+{
+    std::string const inner = render<D>(node.operand, vocabulary);
+    if constexpr (D == Dialect::LaTeX)
+        return "\\left\\lvert " + inner + "\\right\\rvert";
+    else
+        return "abs(" + inner + ")";
+}
+
+/// A precision limit's level renders as the word `level` -- `\text{level}`
+/// in LaTeX -- and never as a symbol. A symbol such as `L` could collide with
+/// an author's own quantity, and symbols are a jurisdiction's to choose; the
+/// word belongs to no quantity, and a vocabulary never renames it.
+template <Dialect D, Described Q, Vocabulary V>
+[[nodiscard]] std::string render_node(PrecisionLevelNode<Q> const&, V const&)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\text{level}";
+    else
+        return "level";
+}
+
+/// The current pass's mean renders as words, `pass mean`, and in LaTeX as
+/// `\bar{x}_{\text{pass}}`: a symbol could collide with an author's own
+/// quantity's (T11).
+template <Dialect D, Described Q, Vocabulary V>
+[[nodiscard]] std::string render_node(PassMeanNode<Q> const&, V const&)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "\\bar{x}_{\\text{pass}}";
+    else
+        return "pass mean";
+}
+
+/// The current pass's size renders as `pass n`, and in LaTeX as
+/// `n_{\text{pass}}`.
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(PassCountNode const&, V const&)
+{
+    if constexpr (D == Dialect::LaTeX)
+        return "n_{\\text{pass}}";
+    else
+        return "pass n";
+}
+
+/// A rejection renders with every parameter that shapes its result stated:
+/// `without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most
+/// extreme per pass; keep on limit; at most 2; keep at least 4)`. A rendering
+/// that left one out would state half the rule. A gap criterion reads `gap to
+/// range > critical(pass n, at 3, 4, 5, 6, 8) * 1/100`. The deviation is `abs(...)`,
+/// never bars, outside LaTeX: a bar inside a Markdown table cell ends the cell
+/// (T11); the Markdown guard checks it. In LaTeX the parentheses are plain,
+/// not `\left(`...`\right)`: TeX never breaks a line inside that pair, and
+/// the `\allowbreak` after each `;` is what lets so long a formula wrap.
+template <Dialect D,
+          PerPass P,
+          OnLimit L,
+          typename AtMostT,
+          typename KeepAtLeastT,
+          typename S,
+          typename Criterion,
+          Vocabulary V>
+[[nodiscard]] std::string render_node(RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& node,
+                                      V const& vocabulary)
+{
+    constexpr bool latex = D == Dialect::LaTeX;
+    constexpr bool inStddevs = Criterion::kind == CriterionKind::DeviationInStddevs;
+    std::string const deviationText =
+        latex ? std::string { "\\left\\lvert x - \\bar{x}_{\\text{pass}}\\right\\rvert" } : std::string { "abs(x - pass mean)" };
+    constexpr bool gapToRange = Criterion::kind == CriterionKind::GapToRange;
+    std::string const statisticText = gapToRange
+                                          ? (latex ? std::string { "\\text{gap to range}" } : std::string { "gap to range" })
+                                      : inStddevs ? (latex ? "\\frac{" + deviationText + "}{s}" : deviationText + " / s")
+                                                  : deviationText;
+    std::string const comparison = L == OnLimit::Keep ? " > " : (latex ? " \\geq " : " >= ");
+    std::string const between = latex ? ";\\allowbreak " : "; ";
+    auto const inWords = [](std::string_view phrase) {
+        return latex ? "\\text{" + std::string { phrase } + "}" : std::string { phrase };
+    };
+    std::string const perPass = inWords(P == PerPass::MostExtreme ? "most extreme per pass" : "every exceeding per pass");
+    std::string const onLimit = inWords(L == OnLimit::Keep ? "keep on limit" : "reject on limit");
+    std::string const atMost = latex ? "\\text{at most }" + std::to_string(detail::bound_value<AtMostT>)
+                                     : "at most " + std::to_string(detail::bound_value<AtMostT>);
+    std::string const keepAtLeast = latex ? "\\text{keep at least }" + std::to_string(detail::bound_value<KeepAtLeastT>)
+                                          : "keep at least " + std::to_string(detail::bound_value<KeepAtLeastT>);
+    std::string const inside = render<D>(node.sample, vocabulary) + between + statisticText + comparison
+                               + render<D>(node.criterion.limit, vocabulary) + between + perPass + between + onLimit
+                               + between + atMost + between + keepAtLeast;
+    if constexpr (latex)
+        return "\\operatorname{without\\ outliers}(" + inside + ")";
+    else
+        return "without outliers(" + inside + ")";
+}
+
+/// A precision limit renders as its symbol applied to its limit expression,
+/// with the level it is evaluated at stated beside it:
+/// `r(0.1 g + 1/50 * level; level = (x_A + x_B) / 2)`, `R(...)` for
+/// reproducibility, and in LaTeX
+/// `r\left(... \right)\Big\vert_{\text{level} = ...}`, the evaluation bar
+/// typeset clean under MathJax 3.2.2 and tectonic by task 1 -- spelt
+/// `\vert`, not `|`, so that no `|` reaches a Markdown table cell (see the
+/// absolute value's `render_node`).
+///
+/// **Both passes are on the page.** A reader must be able to see that the
+/// limit depends on the results it checks -- the level is written out, not
+/// named -- and which expression is the level, so that a rounding the
+/// author put on it is visible. `;` separates the two because a comma
+/// already separates a call's arguments, and a level expression may hold
+/// calls of its own.
+template <Dialect D, PrecisionKind K, Node Level, Node Limit, Vocabulary V>
+[[nodiscard]] std::string render_node(PrecisionLimitNode<K, Level, Limit> const& node, V const& vocabulary)
+{
+    std::string const symbolText { detail::precision_render_symbol(K) };
+    std::string const limitText = render<D>(node.limit, vocabulary);
+    std::string const levelText = render<D>(node.level, vocabulary);
+    if constexpr (D == Dialect::LaTeX)
+        return symbolText + "\\left(" + limitText + "\\right)\\Big\\vert_{\\text{level} = " + levelText + "}";
+    else
+        return symbolText + "(" + limitText + "; level = " + levelText + ")";
+}
+
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
 /// cannot go through `render_operand` -- its own operand context is computed
 /// directly from `PrecedenceOf<PredicateNode<...>>` instead, one rung above
@@ -1580,6 +1839,48 @@ template <Dialect D, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render(S const& node, V const& vocabulary)
 {
     return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the sample transformer @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, typename R, Vocabulary V>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the raw observations @p node in dialect @p D, writing symbols as
+/// @p vocabulary says.
+template <Dialect D, ObservationsNode O, Vocabulary V>
+[[nodiscard]] std::string render(O const& node, V const& vocabulary)
+{
+    return detail::render_in_vocabulary<D>(node, vocabulary);
+}
+
+/// Renders the sample transformer @p node as plain text, writing symbols as
+/// @p vocabulary says.
+template <typename R, Vocabulary V>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders the sample transformer @p node as plain text.
+template <typename R>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node)
+{
+    return render<Dialect::Plain>(node, DefaultVocabulary {});
+}
+
+/// Renders the sample transformer @p node in dialect @p D.
+template <Dialect D, typename R>
+    requires detail::is_sample_transformer<R>
+[[nodiscard]] std::string render(R const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
 }
 
 /// Renders the series @p node as plain text, writing symbols as

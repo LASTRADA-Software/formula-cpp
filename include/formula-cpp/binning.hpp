@@ -277,6 +277,11 @@ namespace detail
                     return std::unexpected { SeriesFailure { observationInSi.error(), at, FailureSite::InputObservation } };
                 inCoherentUnit.elements[at] = **observationInSi;
             }
+            // Every place past the count is written too, with zero: copying
+            // an unwritten `double` would read an indeterminate value, which
+            // no constant evaluation accepts.
+            for (std::size_t at = observed.size(); at < Capacity; ++at)
+                inCoherentUnit.elements[at] = Rep {};
             inCoherentUnit.count = observed.size();
             return inCoherentUnit;
         }();

@@ -319,6 +319,43 @@ TEST_CASE("a derivation renders a RoundSignificant step as round(..., to N sf of
              "2. round(#1, to 2 sf of mm) = 12 mm [nearest, ties away from zero]\n");
 }
 
+namespace
+{
+/// A gram squared, for a variance of masses in grams.
+inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1'000'000,
+                                             .symbolText = formula::symbol("g2"),
+                                             .decimals = 4 };
+struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
+{
+};
+} // namespace
+
+TEST_CASE("a derivation renders a RoundedRoot step as one rounding of a root, in its unit and mode", "[trace-render]")
+{
+    // Fixture A's variance, 427/125 g^2. Its root, 1.84824... g, appears on no
+    // line: the radicand's step is exact, and so is the rounded result. The
+    // two modes give 1.85 g and 1.84 g, and the suffix is the only text on the
+    // line that says why.
+    auto const traceOf = [](auto const& node) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(
+            node, formula::environment(formula::Measured<MassVariance> { formula::Rational { 427, 125 } }), sink);
+        return formula::render_trace(trace, { .maxSteps = 10 });
+    };
+
+    CHECK(traceOf(formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+              var<MassVariance>))
+          == "1. s2 = 427/125 g2\n"
+             "2. round(sqrt(#1), to 2 dp of g) = 37/20 g [nearest, ties away from zero]\n");
+    CHECK(traceOf(formula::rounded_sqrt<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
+              var<MassVariance>))
+          == "1. s2 = 427/125 g2\n"
+             "2. round(sqrt(#1), to 2 dp of g) = 46/25 g [toward negative infinity]\n");
+}
+
 TEST_CASE("a derivation names the rounding mode, which is the whole reason two runs differ",
           "[trace-render]")
 {
@@ -2317,4 +2354,158 @@ TEST_CASE("a series and a curve escape their symbols and units, as a scalar step
           == "1. P = 4 N\\] \\[x; 12 N\\] \\[x\n"
              "2. bin(#1) = argument outside the domain of the operation at observation 2 "
              "[12 N\\] \\[x in no class; the classes cover 127/100 to under 973/100 N\\] \\[x]\n");
+}
+
+namespace
+{
+struct Determinations: formula::Quantity<Determinations, "n", "number of determinations", unit::One>
+{
+};
+
+/// The shared fixtures' critical-value table. **Invented, and deliberately
+/// unrealistic -- no published table holds values like these -- so that
+/// nobody mistakes it for one or "corrects" it toward one.** No row for 7.
+inline constexpr formula::SampleSizeTable<5> DeviationSizes { 3, 4, 5, 6, 8 };
+
+/// A unit no conversion out of can fit: one of it is 2^63 - 1 coherent units.
+inline constexpr formula::Unit Enormous { .dimension = formula::dim::Scalar,
+                                          .magnitudeNumerator = 9'223'372'036'854'775'807,
+                                          .magnitudeDenominator = 1,
+                                          .symbolText = formula::symbol("E"),
+                                          .decimals = 0 };
+
+/// The critical value at @p countExpression, traced.
+template <formula::Unit ResultUnit = unit::One,
+          formula::SampleSizeTable Sizes = DeviationSizes,
+          typename Count,
+          typename Env>
+[[nodiscard]] formula::Trace<> criticalTraceOf(Count countExpression, Env const& countInputs)
+{
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    if constexpr (Sizes.size() == 5)
+        (void) formula::checked_evaluate_si<formula::Rational>(
+            formula::critical_value<Sizes, ResultUnit>(countExpression,
+                                                       { formula::Rational { 10 },
+                                                         formula::Rational { 30 },
+                                                         formula::Rational { 20 },
+                                                         formula::Rational { 50 },
+                                                         formula::Rational { 40 } }),
+            countInputs,
+            sink);
+    else
+        (void) formula::checked_evaluate_si<formula::Rational>(
+            formula::critical_value<Sizes, ResultUnit>(countExpression, {}), countInputs, sink);
+    return trace;
+}
+
+/// The trace of the table's critical value at @p count, or of an absent count
+/// when @p count is empty, rendered.
+[[nodiscard]] std::string criticalTraceAt(std::optional<formula::Rational> count)
+{
+    auto const measured =
+        count.has_value() ? formula::Measured<Determinations> { *count } : formula::Measured<Determinations>::absent();
+    return formula::render_trace(criticalTraceOf(var<Determinations>, formula::environment(measured)), { .maxSteps = 10 });
+}
+} // namespace
+
+TEST_CASE("a derivation names the sample size a critical value was read at", "[trace-render][critical-value]")
+{
+    CHECK(criticalTraceAt(formula::Rational { 6 })
+          == "1. n = 6\n"
+             "2. critical(#1) = 50 [critical value at n = 6]\n");
+}
+
+TEST_CASE("a derivation of a critical-value miss names the count and every size the table declares",
+          "[trace-render][critical-value]")
+{
+    // The hole at 7, and the table's whole list of sizes, so that the reader
+    // sees which counts would have hit rather than a bare domain error.
+    std::string const missed = criticalTraceAt(formula::Rational { 7 });
+    CHECK(missed.starts_with("1. n = 7\n2. critical(#1) = "));
+    CHECK(missed.ends_with(" [no row for n = 7 (declared: 3, 4, 5, 6, 8)]\n"));
+
+    // Zero is a whole, non-negative count that no row declares: a miss, and
+    // never called "not a whole, non-negative number".
+    CHECK(criticalTraceAt(formula::Rational { 0 }).ends_with(" [no row for n = 0 (declared: 3, 4, 5, 6, 8)]\n"));
+
+    // A count far above any row is still a count, and misses; it is never
+    // narrowed onto a row. 2^32 + 3 is the count that wraps onto the row for
+    // 3 wherever the table's size type is 32 bits wide.
+    CHECK(criticalTraceAt(formula::Rational { (std::int64_t { 1 } << 32) + 3 })
+              .ends_with(" [no row for n = 4294967299 (declared: 3, 4, 5, 6, 8)]\n"));
+
+    // A count that is no number of determinations names no row either, and
+    // the line says why, pointing at the step that holds the value.
+    std::string const fractional = criticalTraceAt(formula::Rational { 11, 2 });
+    CHECK(fractional.starts_with("1. n = 11/2\n2. critical(#1) = "));
+    CHECK(
+        fractional.ends_with(" [no row for n = #1, which is not a whole, non-negative number (declared: 3, 4, 5, 6, 8)]\n"));
+
+    // An absent count is not a miss and never reads n = 0.
+    std::string const absent = criticalTraceAt(std::nullopt);
+    CHECK(absent.find("n = 0") == std::string::npos);
+    CHECK(absent.find("no row") == std::string::npos);
+}
+
+TEST_CASE("a derivation of a critical value says whose failure it carries", "[trace-render][critical-value]")
+{
+    auto const sixSpecimens = formula::environment(formula::Measured<Determinations> { formula::Rational { 6 } });
+
+    // The count itself fails, dividing by zero: the lookup relays it and says
+    // so, never "no row".
+    std::string const relayed = formula::render_trace(
+        criticalTraceOf(var<Determinations> / (var<Determinations> - var<Determinations>), sixSpecimens),
+        { .maxSteps = 10 });
+    CHECK(relayed.ends_with(" [carried up from #5]\n"));
+
+    // The row is found, and converting its value out of the table's unit
+    // overflows: the lookup's own conversion, not a miss.
+    std::string const overflowed =
+        formula::render_trace(criticalTraceOf<Enormous>(var<Determinations>, sixSpecimens), { .maxSteps = 10 });
+    CHECK(overflowed.ends_with(" [this lookup's own unit conversion failed, not anything below it]\n"));
+
+    // A table of no sizes misses every count, and says it declares none.
+    std::string const empty = formula::render_trace(
+        criticalTraceOf<unit::One, formula::SampleSizeTable<0> {}>(var<Determinations>, sixSpecimens), { .maxSteps = 10 });
+    CHECK(empty.ends_with(" [no row for n = 6; the table declares no sizes]\n"));
+}
+
+TEST_CASE("a critical-value step records the count and whose failure it carries, and the trace keeps the sizes",
+          "[trace][critical-value]")
+{
+    auto const recordAt = [](formula::Rational count) {
+        return criticalTraceOf(var<Determinations>, formula::environment(formula::Measured<Determinations> { count }));
+    };
+
+    auto const hitTrace = recordAt(formula::Rational { 8 });
+    auto const& hit = hitTrace.steps.back();
+    CHECK(hit.kind == formula::StepKind::SampleSizeLookup);
+    CHECK(hit.lookupFailure == formula::LookupFailure::None);
+    CHECK(hit.lookupKey == 8);
+    // The declared sizes live in the trace's side table, keyed by the step's
+    // index (T10), and the step itself carries nothing for them.
+    REQUIRE(hitTrace.sampleSizeRecords.size() == 1);
+    CHECK(hitTrace.sampleSizeRecords[0].step == hitTrace.steps.size() - 1);
+    CHECK(hitTrace.sampleSizeRecords[0].declaredSizes == "3, 4, 5, 6, 8");
+
+    auto const missTrace = recordAt(formula::Rational { 2 });
+    CHECK(missTrace.steps.back().lookupFailure == formula::LookupFailure::Missed);
+    CHECK(missTrace.steps.back().lookupKey == 2);
+
+    auto const notACountTrace = recordAt(formula::Rational { -3 });
+    CHECK(notACountTrace.steps.back().lookupFailure == formula::LookupFailure::NotACount);
+    CHECK(notACountTrace.steps.back().lookupKey == 0);
+
+    auto const relayedTrace =
+        criticalTraceOf(var<Determinations> / (var<Determinations> - var<Determinations>),
+                        formula::environment(formula::Measured<Determinations> { formula::Rational { 6 } }));
+    CHECK(relayedTrace.steps.back().lookupFailure == formula::LookupFailure::Propagated);
+
+    // A hand-built trace whose record names another step: the line says the
+    // record is missing rather than print sizes it does not have.
+    auto forged = recordAt(formula::Rational { 7 });
+    forged.sampleSizeRecords[0].step = 0;
+    CHECK(formula::render_trace(forged, { .maxSteps = 10 })
+              .ends_with(" [no row for n = 7 (the table's sizes were not recorded)]\n"));
 }

@@ -6,6 +6,24 @@
 /// intrinsics. MSVC has no __builtin_*_overflow, and its <intrin.h> equivalents
 /// are not constexpr, so the checks are written in portable C++ and used on
 /// every compiler. Optimisers recognise these idioms.
+///
+/// **The overflow census.** This repository's own census programs are compiled
+/// with `FORMULA_OVERFLOW_CENSUS` defined. The macro is internal to them: it
+/// is not part of the library's contract, no consumer's build defines it,
+/// and it must be defined in all of a program's translation units or in
+/// none -- one of each gives the arithmetic below two definitions, which the
+/// linker would silently merge. cl and clang-cl refuse such a program at
+/// link time (`#pragma detect_mismatch`, below: LNK2038); an ELF linker has
+/// no such check.
+/// Then every integer these primitives form at run time -- and every
+/// numerator and denominator `Rational::make` is handed -- is reported to
+/// `census_record`, which the census program defines
+/// (`support/census_tally.cpp`), so that it can say how many of the 63 bits
+/// real formulas use (`docs/numeric-headroom.md`). A constant evaluation
+/// reports nothing. Without the macro -- every build but the census's --
+/// `FORMULA_CENSUS_NOTE` expands to nothing, its arguments are never
+/// evaluated, and none of the census's names exist: no call, no symbol, no
+/// cost.
 
 #include <cstdint>
 #include <optional>
@@ -17,6 +35,56 @@ using Int = std::int64_t;
 
 inline constexpr Int IntMax = 9223372036854775807LL;
 inline constexpr Int IntMin = -IntMax - 1;
+
+/// Absolute value as an unsigned quantity. Exists because `-IntMin` overflows
+/// but `magnitude(IntMin)` is an ordinary number.
+[[nodiscard]] constexpr std::uint64_t magnitude(Int operandValue) noexcept
+{
+    return operandValue < 0 ? ~static_cast<std::uint64_t>(operandValue) + 1U : static_cast<std::uint64_t>(operandValue);
+}
+
+#if defined(_MSC_VER)
+    #if defined(FORMULA_OVERFLOW_CENSUS)
+        #pragma detect_mismatch("formula_overflow_census", "on")
+    #else
+        #pragma detect_mismatch("formula_overflow_census", "off")
+    #endif
+#endif
+
+#if defined(FORMULA_OVERFLOW_CENSUS)
+/// What an integer the overflow census is told of was: a numerator or a
+/// denominator handed to `Rational::make`, any other signed intermediate, or
+/// an unsigned one (`rounded_sqrt`'s, which has 64 bits to use).
+enum class CensusRole : std::uint8_t
+{
+    Numerator,
+    Denominator,
+    Intermediate,
+    Unsigned,
+};
+
+/// Told the magnitude of an integer formed at run time. Declared here and
+/// defined only by the census program, never by the library.
+void census_record(CensusRole role, std::uint64_t magnitudeSeen) noexcept;
+
+/// Tells the overflow census of @p magnitudeSeen, unless this is a constant
+/// evaluation.
+constexpr void census_note(CensusRole role, std::uint64_t magnitudeSeen) noexcept
+{
+    if !consteval
+    {
+        census_record(role, magnitudeSeen);
+    }
+}
+
+    /// Tells the overflow census that an integer of @p magnitudeSeen was formed
+    /// in @p role (a `CensusRole` enumerator's name). See the file comment.
+    #define FORMULA_CENSUS_NOTE(role, magnitudeSeen) \
+        ::formula::detail::census_note(::formula::detail::CensusRole::role, (magnitudeSeen))
+#else
+    /// Nothing: this is not a census build. The arguments are not evaluated.
+    #define FORMULA_CENSUS_NOTE(role, magnitudeSeen) static_cast<void>(0)
+#endif
 
 /// True when `leftOperand + rightOperand` is not representable.
 [[nodiscard]] constexpr bool add_overflows(Int leftOperand, Int rightOperand) noexcept
@@ -51,6 +119,7 @@ inline constexpr Int IntMin = -IntMax - 1;
 {
     if (add_overflows(leftOperand, rightOperand))
         return std::nullopt;
+    FORMULA_CENSUS_NOTE(Intermediate, magnitude(leftOperand + rightOperand));
     return leftOperand + rightOperand;
 }
 
@@ -58,6 +127,7 @@ inline constexpr Int IntMin = -IntMax - 1;
 {
     if (sub_overflows(leftOperand, rightOperand))
         return std::nullopt;
+    FORMULA_CENSUS_NOTE(Intermediate, magnitude(leftOperand - rightOperand));
     return leftOperand - rightOperand;
 }
 
@@ -65,14 +135,8 @@ inline constexpr Int IntMin = -IntMax - 1;
 {
     if (mul_overflows(leftOperand, rightOperand))
         return std::nullopt;
+    FORMULA_CENSUS_NOTE(Intermediate, magnitude(leftOperand * rightOperand));
     return leftOperand * rightOperand;
-}
-
-/// Absolute value as an unsigned quantity. Exists because `-IntMin` overflows
-/// but `magnitude(IntMin)` is an ordinary number.
-[[nodiscard]] constexpr std::uint64_t magnitude(Int operandValue) noexcept
-{
-    return operandValue < 0 ? ~static_cast<std::uint64_t>(operandValue) + 1U : static_cast<std::uint64_t>(operandValue);
 }
 
 /// Greatest common divisor. `gcd(0, n) == n` and `gcd(0, 0) == 0`.

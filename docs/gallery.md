@@ -198,6 +198,64 @@ $$
 
 The measured strength less its size allowance, scaled by the mould factor and by the maturity factor -- one banded, one exact and one interpolating table inside a single expression.
 
+## Spread of repeated determinations
+
+```
+round(sqrt(sample_variance(m(i))), to 2 dp of g)
+```
+
+$$
+\operatorname{round}_{2\,\mathrm{g}}(\sqrt{s^{2}({m}_{i})})
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| m | mass of a determination | g |
+
+- Reference: Example Standard 5:2022
+- Section: 7.2
+
+The square root of the sample variance, rounded exactly to 0.01 g: never a rounded floating-point root.
+
+## Mean after rejecting outliers
+
+```
+sample_mean(without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most extreme per pass; keep on limit; at most 2; keep at least 4))
+```
+
+$$
+\overline{\operatorname{without\ outliers}({m}_{i};\allowbreak \left\lvert x - \bar{x}_{\text{pass}}\right\rvert > 3/50 \cdot \bar{x}_{\text{pass}};\allowbreak \text{most extreme per pass};\allowbreak \text{keep on limit};\allowbreak \text{at most }2;\allowbreak \text{keep at least }4)}
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| m | mass of a determination | g |
+
+- Reference: Example Standard 5:2022
+- Section: 7.4
+
+A determination more than 6 % of the mean from it is rejected, and the mean is taken again, until nothing more is rejected; a third rejection, or fewer than four left, is the author's verdict.
+
+## Repeatability of two determinations
+
+```
+require abs(x_A - x_B) <= r(1/10 g + 1/50 * level; level = (x_A + x_B) / 2)
+```
+
+$$
+\text{require } \left\lvert x_A - x_B\right\rvert \leq r\left(1/10\,\mathrm{g} + 1/50 \cdot \text{level}\right)\Big\vert_{\text{level} = \frac{x_A + x_B}{2}}
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| x_A | first determination | g |
+| x_B | second determination | g |
+
+- Reference: Example Standard 5:2022
+- Section: 8.1
+
+The two determinations agree when they differ by no more than r = 0.1 g + level / 50, the level being their mean.
+
 ## Worked evaluation: water/cement ratio
 
 `V_w` = 180 l, `V_c` = 300 l:
@@ -416,5 +474,107 @@ The fourth particle measured 331 m instead: the last class's high bound, in no c
 1. s = 103 m; 127 m; 163 m; 331 m; 113 m; 197 m; 241 m
 2. bin(#1) = argument outside the domain of the operation at observation 4 [331 m in no class; the classes cover 0 to under 331 m]
 3. / #2 = argument outside the domain of the operation
+```
+
+## Worked statistics: a mean with its spread, and the mean after rejecting outliers
+
+Six determinations, 40.2, 39.8, 40.5, 44.0, 40.0 and 43.3 g. Their mean:
+
+```
+sample_mean(m(i))
+```
+
+```
+1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
+2. sample_mean(#1) = 413/10 g
+```
+
+Their spread, reported exactly:
+
+```
+round(sqrt(sample_variance(m(i))), to 2 dp of g)
+```
+
+```
+1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
+2. sample_variance(#1) = 427/125000000
+3. round(sqrt(#2), to 2 dp of g) = 37/20 g [nearest, ties away from zero]
+4. #3 = 37/20 g [Spread of repeated determinations, Example Standard 5:2022, 7.2]
+```
+
+Their mean after rejecting outliers: 44.0 g goes in pass 1, 43.3 g in pass 2, and pass 3 settles:
+
+```
+sample_mean(without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most extreme per pass; keep on limit; at most 2; keep at least 4))
+```
+
+```
+1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
+2. 3/50
+3. pass mean = 413/10 g
+4. #2 * #3 = 1239/500000
+5. pass 1: 6 values, mean 413/10 g
+6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)
+7. 3/50
+8. pass mean = 1019/25 g
+9. #7 * #8 = 3057/1250000
+10. pass 2: 5 values, mean 1019/25 g
+11. rejected element 6 of 6 (433/10 g) in pass 2: abs(x - mean) = 127/50 g > 3057/1250 g (deviation from mean)
+12. 3/50
+13. pass mean = 321/8 g
+14. #12 * #13 = 963/400000
+15. pass 3: 4 values, mean 321/8 g
+16. settled: 2 rejected, 4 remain
+17. sample_mean(#16) = 321/8 g
+18. #17 = 321/8 g [Mean after rejecting outliers, Example Standard 5:2022, 7.4]
+```
+
+The same rule allowed one rejection: the second is one too many, and the author's verdict stands in place of a mean:
+
+```
+sample_mean(without outliers(m(i); abs(x - pass mean) > 3/50 * pass mean; most extreme per pass; keep on limit; at most 1; keep at least 4))
+```
+
+```
+1. m = 201/5 g; 199/5 g; 81/2 g; 44 g; 40 g; 433/10 g
+2. 3/50
+3. pass mean = 413/10 g
+4. #2 * #3 = 1239/500000
+5. pass 1: 6 values, mean 413/10 g
+6. rejected element 4 of 6 (44 g) in pass 1: abs(x - mean) = 27/10 g > 1239/500 g (deviation from mean)
+7. 3/50
+8. pass mean = 1019/25 g
+9. #7 * #8 = 3057/1250000
+10. pass 2: 5 values, mean 1019/25 g
+11. element 6 of 6 would be rejection 2 of at most 1: discard the determinations and repeat the test [Outliers, Example Standard 5:2022, 7.4]
+12. sample_mean(#11) = argument outside the domain of the operation
+```
+
+## Worked precision check: two determinations at their own level
+
+`x_A` = 40.0 g and `x_B` = 40.905 g, 0.905 g apart. The limit is evaluated at the level it checks -- their mean, 40.4525 g -- in two declared passes:
+
+```
+require abs(x_A - x_B) <= r(1/10 g + 1/50 * level; level = (x_A + x_B) / 2)
+```
+
+```
+1. x_A = 40 g
+2. x_B = 8181/200 g
+3. #1 - #2 = -181/200000
+4. abs(#3) = 181/200000
+5. x_A = 40 g
+6. x_B = 8181/200 g
+7. #5 + #6 = 16181/200000
+8. 2
+9. #7 / #8 = 16181/400000
+10. level (pass 1 of 2) = #9 = 16181/400 g
+11. 1/10 g
+12. 1/50
+13. level = 16181/400 g [bound by #16]
+14. #12 * #13 = 16181/20000000
+15. #11 + #14 = 18181/20000000
+16. r at level #10 (pass 2 of 2) = #15 = 18181/20000000
+17. require #4 <= #16 [satisfied]
 ```
 
