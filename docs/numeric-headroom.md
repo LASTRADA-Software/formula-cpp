@@ -30,23 +30,27 @@ their figures:
   overflows from 34 points, though not at every size above.
 
 The project's decision rule is: **any realistic case under 8 bits of headroom
-recommends wider intermediates** (follow-up G6: 128-bit intermediate
-products). These cases are under it, so the census recommends G6.
+recommends wider intermediates**: 128-bit intermediate arithmetic, computing
+each product and sum in 128 bits before reducing. These cases are under it,
+so the census recommends 128-bit intermediate arithmetic.
 
-**Whether G6 is enough depends on where the last conversion happens.** Wider
-intermediates help only when every value that is stored fits 64 bits. The
-evaluator works in coherent SI and converts to the result's declared unit
-last. For most of the variances that overflow at 6 decimal places, and for
-every cylinder strength that overflows, the exact value *in SI* (kg², Pa)
-needs 64 bits or more; in the declared unit (g², MPa) every one fits, in at
-most 45 bits (the exact sizes below). So G6 is enough only if the SI value is
-never stored: every node's `Evaluated<Rational>`, and every trace step's
+**Whether 128-bit intermediate arithmetic is enough depends on where the last
+conversion happens.** Wider intermediates help only when every value that is
+stored fits 64 bits. The evaluator works in coherent SI and converts to the
+result's declared unit last. For most of the variances that overflow at 6
+decimal places, and for every cylinder strength that overflows, the exact
+value *in SI* (kg², Pa) needs 64 bits or more; in the declared unit (g², MPa)
+every one fits, in at most 45 bits (the exact sizes below). So 128-bit
+intermediate arithmetic is enough only if the SI value is never stored:
+every node's `Evaluated<Rational>`, and every trace step's
 value, is the SI number, so the variance node's own result would have to be
 computed and recorded in the declared unit or a scaled one -- a change to the
 unit a node computes and records in, not only to the last conversion.
-Otherwise these cases need a wider `Rational` (G7). Which of these to build
-is a design decision, recorded for after phase 15; this page does not make
-it.
+Otherwise these cases need a wider stored representation: a fixed-width
+wide-integer `Rational` offered as a `Rep`. Which of these to build is a
+design decision, tracked in
+[issue #1](https://github.com/LASTRADA-Software/formula-cpp/issues/1); this
+page does not make it.
 
 **Headroom** here is `63` minus the bits used by the largest integer an
 evaluation formed -- numerators, denominators *and* the intermediates between
@@ -331,9 +335,11 @@ resolution of 0.1 g or coarser, or that do not square.
 
 ## What this does not decide
 
-The census builds neither follow-up. G6 would compute each product and sum
-in 128 bits before reducing; G7 would offer a fixed-width wide-integer
-representation. An arbitrary-precision integer is out of scope: it
+The census builds neither remedy. 128-bit intermediate arithmetic would
+compute each product and sum in 128 bits before reducing; a wider stored
+representation would offer a fixed-width wide-integer `Rational` as a `Rep`.
+[Issue #1](https://github.com/LASTRADA-Software/formula-cpp/issues/1) tracks
+the choice between them. An arbitrary-precision integer is out of scope: it
 allocates, which in `noexcept` code turns running out of memory into
 `std::terminate`, and it cannot run at compile time.
 
