@@ -1416,12 +1416,12 @@ template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
             listed += ", ";
         listed += detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator);
     }
-    std::string const points =
+    std::string const pointsText =
         detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{domain}(" + points + ")";
+        return "\\operatorname{domain}(" + pointsText + ")";
     else
-        return "domain(" + points + ")";
+        return "domain(" + pointsText + ")";
 }
 
 /// Raw observations render as their quantity's symbol, marked as a series is

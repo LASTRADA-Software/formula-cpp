@@ -116,20 +116,20 @@ template <typename Rep = Rational, Predicate P, Node Then, Node Else, typename E
 {
     sink.entered(node);
 
-    std::expected<std::optional<bool>, ArithmeticError> const verdict =
+    std::expected<std::optional<bool>, ArithmeticError> const predicateHeld =
         checked_evaluate_predicate<Rep>(node.predicate, environment, sink);
-    if (!verdict.has_value())
+    if (!predicateHeld.has_value())
     {
-        return detail::report_failure<Rep>(node, sink, verdict.error());
+        return detail::report_failure<Rep>(node, sink, predicateHeld.error());
     }
-    if (!verdict->has_value())
+    if (!predicateHeld->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
         return absent;
     }
 
-    bool const thenTaken = **verdict;
+    bool const thenTaken = **predicateHeld;
     Evaluated<Rep> const evaluated = thenTaken ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
                                              : detail::dispatch<Rep>(node.elseBranch, environment, sink);
     if constexpr (requires { sink.branch_taken(node, thenTaken); })

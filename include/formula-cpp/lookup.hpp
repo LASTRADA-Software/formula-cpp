@@ -806,7 +806,6 @@ struct BandedLookupNode: NodeBase
     static constexpr bool refused = detail::refused_already<Operand>();
 };
 
-
 /// Declares a banded lookup: `banded_lookup<unit::Millimetre, Bands,
 /// unit::One>(var<Diameter>, { rat(863, 1000), rat(1043, 1000), rat(1127, 1000) })`.
 ///
@@ -1692,12 +1691,12 @@ namespace detail
                                                   Segment { Points[located->low], Points[located->low] } };
 
         // Both reduced a moment ago, inside the scan.
-        std::expected<Rational, ArithmeticError> const previous = keyAt(located->low);
+        std::expected<Rational, ArithmeticError> const priorKey = keyAt(located->low);
         std::expected<Rational, ArithmeticError> const rowKey = keyAt(located->high);
-        if (!previous.has_value() || !rowKey.has_value())
+        if (!priorKey.has_value() || !rowKey.has_value())
             return std::unexpected { ArithmeticError::DomainError };
         std::expected<Rational, ArithmeticError> const answered =
-            interpolate_between(*previous, corrections[located->low], *rowKey, corrections[located->high], key);
+            interpolate_between(*priorKey, corrections[located->low], *rowKey, corrections[located->high], key);
         if (!answered.has_value())
             return std::unexpected { answered.error() };
         return std::pair<Rational, Segment> { *answered, Segment { Points[located->low], Points[located->high] } };

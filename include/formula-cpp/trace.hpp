@@ -2388,7 +2388,7 @@ namespace detail
             return;
         Step<Rational> const& firstOperand = steps[failedStep.operands.front()];
         Step<Rational> const& secondOperand = steps[failedStep.operands.back()];
-        std::vector<std::optional<Rational>> points;
+        std::vector<std::optional<Rational>> domainPoints;
         std::vector<std::optional<Rational>> pointValues;
         std::optional<CurveBreakAt> broken;
         if constexpr (CurveStepKindOf<C>::value == StepKind::CurvePairing)
@@ -2399,25 +2399,26 @@ namespace detail
             if (firstOperand.error.has_value() || firstOperand.elements.size() != C::length
                 || secondOperand.error.has_value())
                 return;
-            points = firstOperand.elements;
-            broken = judge_domain(points);
+            domainPoints = firstOperand.elements;
+            broken = judge_domain(domainPoints);
         }
         else
         {
             std::size_t const firstCount = firstOperand.domainElements.size();
             if (!whole(firstOperand, firstCount) || !whole(secondOperand, C::length - firstCount))
                 return;
-            points = firstOperand.domainElements;
-            points.insert(points.end(), secondOperand.domainElements.begin(), secondOperand.domainElements.end());
+            domainPoints = firstOperand.domainElements;
+            domainPoints.insert(
+                domainPoints.end(), secondOperand.domainElements.begin(), secondOperand.domainElements.end());
             pointValues = firstOperand.elements;
             pointValues.insert(pointValues.end(), secondOperand.elements.begin(), secondOperand.elements.end());
-            sort_by_domain(points, pointValues);
-            broken = judge_splice(points, pointValues, C::monotone);
+            sort_by_domain(domainPoints, pointValues);
+            broken = judge_splice(domainPoints, pointValues, C::monotone);
         }
         if (!broken.has_value())
             return;
         failedStep.curveBreak = broken->rule;
-        failedStep.domainElements = std::move(points);
+        failedStep.domainElements = std::move(domainPoints);
         failedStep.elements = std::move(pointValues);
     }
 
@@ -3819,9 +3820,7 @@ class RecordingSink
     /// there, and its error is on the failing side's step: the attempt step
     /// keeps its value alone, so a step never holds both. Its unit and symbol are
     /// the retry's result's, set by `retry_produced`, which knows it.
-    void attempt_produced(AttemptInfo const& attemptInfo,
-                          Evaluated<Rep> const& produced,
-                          AttemptJudgement judgement)
+    void attempt_produced(AttemptInfo const& attemptInfo, Evaluated<Rep> const& produced, AttemptJudgement judged)
     {
         // Told what a walk produced without having been told it began: see
         // `produced`.
@@ -3850,7 +3849,7 @@ class RecordingSink
         _trace->steps.push_back(std::move(attemptStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
         _trace->attemptSteps.push_back(AttemptStepData {
-            .step = _trace->steps.size() - 1, .attemptNumber = attemptInfo.attemptNumber, .judgement = judgement });
+            .step = _trace->steps.size() - 1, .attemptNumber = attemptInfo.attemptNumber, .judgement = judged });
     }
 
     /// Records one `RetryConcluded` step for the retry @p retryInfo

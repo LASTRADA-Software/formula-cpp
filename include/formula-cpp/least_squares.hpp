@@ -162,16 +162,16 @@ struct LinearLeastSquares
         if (spreadOfPoints == *zero)
             return std::unexpected { ArithmeticError::DomainError };
 
-        std::expected<Rep, ArithmeticError> const slope = Traits::divide(coSpread, spreadOfPoints);
-        if (!slope.has_value())
-            return std::unexpected { slope.error() };
-        std::expected<Rep, ArithmeticError> const rise = Traits::multiply(*slope, *meanPoint);
+        std::expected<Rep, ArithmeticError> const fittedSlope = Traits::divide(coSpread, spreadOfPoints);
+        if (!fittedSlope.has_value())
+            return std::unexpected { fittedSlope.error() };
+        std::expected<Rep, ArithmeticError> const rise = Traits::multiply(*fittedSlope, *meanPoint);
         if (!rise.has_value())
             return std::unexpected { rise.error() };
-        std::expected<Rep, ArithmeticError> const intercept = Traits::subtract(*meanValue, *rise);
-        if (!intercept.has_value())
-            return std::unexpected { intercept.error() };
-        return std::array { *intercept, *slope };
+        std::expected<Rep, ArithmeticError> const fittedIntercept = Traits::subtract(*meanValue, *rise);
+        if (!fittedIntercept.has_value())
+            return std::unexpected { fittedIntercept.error() };
+        return std::array { *fittedIntercept, *fittedSlope };
     }
 };
 

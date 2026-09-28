@@ -145,8 +145,9 @@ instead: `from_record<Role>(sum(series<Q, N>))`.
   `-Wunused-but-set-parameter` on the sink, in a consumer's own build under `-Werror`.
 - Locals and parameters in the public headers shared names with ordinary globals such as
   `result`, `value`, `index`, `here` and `origin`, so cl at `/W4 /WX` reported C4459 in a consumer
-  that declared one, and failed to build. They are renamed, and a test declares some 260 such globals
-  before every header.
+  that declared one, and failed to build. They are renamed, and a test declares some 270 such globals
+  before every header -- `points`, `slope`, `intercept`, `previous` and `verdict` among them, which
+  the least-squares example's own names found in the curve, lookup, snap and least-squares headers.
 - cl names an enumerator that is not one as a cast, `(enum Flag)true`; it was shown as a name, and
   is refused now.
 - The opt-in header include check was not portable across the compilers it claimed to run on.

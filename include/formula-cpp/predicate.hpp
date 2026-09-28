@@ -192,7 +192,7 @@ checked_evaluate_predicate(PredicateNode<Op, Left, Right> const& predicate, Env 
     if (!leftOperand->has_value() || !rightOperand->has_value())
         return std::optional<bool> {};
 
-    bool const verdict = [&] {
+    bool const holds = [&] {
         if constexpr (Op == Comparison::Less)
             return **leftOperand < **rightOperand;
         else if constexpr (Op == Comparison::LessOrEqual)
@@ -206,7 +206,7 @@ checked_evaluate_predicate(PredicateNode<Op, Left, Right> const& predicate, Env 
         else
             return **leftOperand != **rightOperand;
     }();
-    return std::optional<bool> { verdict };
+    return std::optional<bool> { holds };
 }
 
 } // namespace formula

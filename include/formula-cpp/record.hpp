@@ -252,16 +252,15 @@ namespace detail
             (displayed.front() >= 'A' && displayed.front() <= 'Z') || (displayed.front() >= 'a' && displayed.front() <= 'z');
         if (!startsWithLetter || displayed.back() == ' ')
             return false;
-        char previous = '\0';
+        char priorCharacter = '\0';
         for (char const nameCharacter: displayed)
         {
-            bool const allowed = (nameCharacter >= 'A' && nameCharacter <= 'Z')
-                                 || (nameCharacter >= 'a' && nameCharacter <= 'z')
-                                 || (nameCharacter >= '0' && nameCharacter <= '9') || nameCharacter == '_'
-                                 || nameCharacter == ' ';
-            if (!allowed || (nameCharacter == ' ' && previous == ' '))
+            bool const allowed =
+                (nameCharacter >= 'A' && nameCharacter <= 'Z') || (nameCharacter >= 'a' && nameCharacter <= 'z')
+                || (nameCharacter >= '0' && nameCharacter <= '9') || nameCharacter == '_' || nameCharacter == ' ';
+            if (!allowed || (nameCharacter == ' ' && priorCharacter == ' '))
                 return false;
-            previous = nameCharacter;
+            priorCharacter = nameCharacter;
         }
         return true;
     }

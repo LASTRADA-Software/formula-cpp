@@ -122,14 +122,14 @@ namespace detail
             return std::unexpected { located.error() };
 
         // Both reduced a moment ago, inside the scan.
-        std::expected<Rational, ArithmeticError> const previous = keyAt(located->low);
+        std::expected<Rational, ArithmeticError> const priorKey = keyAt(located->low);
         std::expected<Rational, ArithmeticError> const rowKey = keyAt(located->high);
-        if (!previous.has_value() || !rowKey.has_value())
+        if (!priorKey.has_value() || !rowKey.has_value())
             return std::unexpected { ArithmeticError::DomainError };
         if (located->low == located->high)
             return SnapAnswer { *rowKey, Segment { Permitted[located->low], Permitted[located->low] }, false };
 
-        std::expected<Rational, ArithmeticError> const belowDistance = checked_sub(key, *previous);
+        std::expected<Rational, ArithmeticError> const belowDistance = checked_sub(key, *priorKey);
         if (!belowDistance.has_value())
             return std::unexpected { belowDistance.error() };
         std::expected<Rational, ArithmeticError> const aboveDistance = checked_sub(*rowKey, key);
@@ -138,10 +138,10 @@ namespace detail
 
         Segment const neighbours { Permitted[located->low], Permitted[located->high] };
         if (*belowDistance < *aboveDistance)
-            return SnapAnswer { *previous, neighbours, false };
+            return SnapAnswer { *priorKey, neighbours, false };
         if (*aboveDistance < *belowDistance)
             return SnapAnswer { *rowKey, neighbours, false };
-        return SnapAnswer { Tie == SnapTie::TowardLower ? *previous : *rowKey, neighbours, true };
+        return SnapAnswer { Tie == SnapTie::TowardLower ? *priorKey : *rowKey, neighbours, true };
     }
 } // namespace detail
 

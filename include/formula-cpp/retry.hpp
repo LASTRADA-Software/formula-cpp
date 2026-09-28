@@ -838,15 +838,15 @@ namespace detail
 
     struct RetryOutcomeFactory;
 
-    /// Whether @p verdict holds anything but blanks: a retry that runs out of
+    /// Whether @p decision holds anything but blanks: a retry that runs out of
     /// attempts ends in its words, and a blank one would end in no decision
     /// at all. Blank is every character `std::isspace` counts in the "C"
     /// locale -- space, `\t`, `\n`, `\v`, `\f` and `\r` -- and the no-break
     /// space U+00A0, spelt in UTF-8 as the two bytes C2 A0. Spelt out,
     /// because `std::isspace` is neither `constexpr` nor locale-free.
-    [[nodiscard]] constexpr bool verdict_says_something(Verdict const& verdict) noexcept
+    [[nodiscard]] constexpr bool verdict_says_something(Verdict const& decision) noexcept
     {
-        std::string_view const verdictWords = verdict.label;
+        std::string_view const verdictWords = decision.label;
         for (std::size_t at = 0; at < verdictWords.size(); ++at)
         {
             char const spelt = verdictWords[at];
@@ -872,11 +872,11 @@ namespace detail
 
     /// Refuses a blank verdict where the retry is built, when that is a
     /// constant expression.
-    constexpr void require_verdict(Verdict const& verdict) noexcept
+    constexpr void require_verdict(Verdict const& decision) noexcept
     {
         if consteval
         {
-            if (!verdict_says_something(verdict))
+            if (!verdict_says_something(decision))
                 formula_retry_verdict_must_say_something();
         }
     }
@@ -1319,13 +1319,13 @@ namespace detail
                 sink.attempt_entered(attemptInfo);
             // Tells the sink how the attempt was judged, once, whichever way
             // the attempt ends.
-            auto const told = [&](Evaluated<Rep> const& produced, AttemptJudgement judgement) {
+            auto const told = [&](Evaluated<Rep> const& produced, AttemptJudgement judged) {
                 if constexpr (HearsAttempts<Sink, Rep>)
-                    sink.attempt_produced(attemptInfo, produced, judgement);
+                    sink.attempt_produced(attemptInfo, produced, judged);
                 else
                 {
                     (void) produced;
-                    (void) judgement;
+                    (void) judged;
                 }
             };
 
