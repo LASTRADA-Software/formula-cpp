@@ -254,7 +254,8 @@ Each guide has a matching runnable program under `examples/`.
 
 ## Status
 
-Usable for what is listed as shipped, and still growing. The public API may change until 1.0.
+0.1.0 is the first release ([CHANGELOG](CHANGELOG.md)). Usable for what is listed as shipped,
+and still growing. The public API may change until 1.0.
 
 | Area | State |
 |---|---|
@@ -268,7 +269,10 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Constraints, verdicts, checking a set without short-circuit | shipped |
 | Lookup tables: banded, exact and interpolating | shipped |
 | Methods: variants, rounding rules, constraints, jurisdiction overlays, vocabularies | shipped |
-| Series, statistics | planned |
+| Series and grading curves, binning | shipped |
+| Statistics, precision limits, outlier rejection | shipped |
+| Other samples and other tests: records, context, lineage | shipped |
+| Opaque operations (least squares), bounded retry | shipped |
 
 ## Requirements
 
