@@ -16,7 +16,7 @@ a table by hand.
 ## The answer
 
 **Not for every realistic case.** Most formulas leave a wide margin, 30 bits
-or more. Three kinds of realistic formula do not, and the tables below give
+or more. Four kinds of realistic formula do not, and the tables below give
 their figures:
 
 - the **sample variance** of masses near 40 g read to 5 or 6 decimal places
@@ -25,7 +25,9 @@ their figures:
   forms limit² × s² on top and runs out sooner;
 - a **cylinder's compressive strength**, 4F / (π d²), which overflows at many
   ordinary diameters -- 139 mm among them, while 135 mm fits, with only 5
-  bits to spare in the methods example.
+  bits to spare in the methods example;
+- a **least-squares line** through readings at 3 decimal places, which
+  overflows from 34 points, though not at every size above.
 
 The project's decision rule is: **any realistic case under 8 bits of headroom
 recommends wider intermediates** (follow-up G6: 128-bit intermediate
@@ -158,7 +160,8 @@ leaves.
 The fixtures are the shared fixtures of the statistics tests: masses of
 about 40 g read to 0.1 g. The spread is `rounded_sqrt` of the variance; its
 unsigned bits are out of 64. The 64-point curve reads invented screen
-openings from 101 to 461 mm.
+openings from 101 to 461 mm. The last two rows are phase 15's least-squares
+fit on its own test fixtures; the fit over every size is below.
 
 <!-- census:statistics -->
 
@@ -183,6 +186,8 @@ openings from 101 to 461 mm.
 | 20 masses at 3 dp: mean, variance, range | 25 | 45 | 45 | 0 | 18 |
 | 64-point grading curve: cumulative percentages, one reading | 26 | 24 | 26 | 0 | 37 |
 | 20 masses at 3 dp: spread at 3 dp | 25 | 45 | 48 | 40 | 15 |
+| least squares, task 4's 4-point fixture: slope and intercept | 11 | 17 | 17 | 0 | 46 |
+| least squares, 5 points on distinct denominators (stress control) | 21 | 20 | 21 | 0 | 42 |
 
 <!-- /census:statistics -->
 
@@ -278,17 +283,39 @@ These are asserted by the census program's own tests.
 | (2^40 / 3) × (3 / 2^20) = 2^20 | intermediates within 21 bits, because a product is cross-reduced before it is formed |
 | a sum evaluated at compile time | nothing reported |
 
-### To be added
+### Least squares (realistic, and one stress control)
 
-- **Least squares** at 3 decimal places from 34 points, which a phase 15
-  spike found to overflow: added to the census when phase 15 lands.
+`linear_least_squares` sums products of every pair of points, centred on
+their means. The data are the phase 15 spike's shapes, in seconds and
+newtons so that the fit sees them unconverted: readings at 1 decimal place;
+readings at 3 decimal places of a few thousand newtons, a load cell's; and a
+different denominator on every point, the stress control. Every size from 2
+to 128 points is fitted through `LinearLeastSquares::compute`, the fit the
+node calls, and the node itself is checked against it at 33 and 34 points.
+
+<!-- census:least-squares -->
+
+| data (invented) | sizes that overflow | first to overflow | least headroom otherwise |
+|---|---|---|---|
+| readings at 1 dp (realistic) | 0 of 127 | none | 29 |
+| readings at 3 dp near 2410 N, a load cell's (realistic) | 57 of 127 | 34 points | 0 |
+| a different denominator on every point (stress control) | 114 of 127 | 15 points | 2 |
+
+<!-- /census:least-squares -->
+
+**Overflow depends on the data far more than on the number of points.** At
+3 decimal places the first size to overflow is 34 points, but not every
+larger size does. So no number of points is safe to state; an overflowing
+fit is `Overflow`, never a line, and `double` is the fallback
+representation.
 
 ## Which cases decide
 
 Under 8 bits, and realistic: the **sample variance at 5 and 6 decimal
 places** of a gram, **rejection by standard deviations at 4, 5 and 6
 decimal places**, and **a cylinder's strength** at the diameters the table
-names, and in the methods example even at 135 mm, where it fits. A balance
+names, and in the methods example even at 135 mm, where it fits; and
+**a least-squares line through 3-decimal readings** from 34 points. A balance
 reading to 0.01 mg or 1 µg is ordinary laboratory equipment, and so is a
 139 mm cylinder, so these are not contrived. The
 cases with a wide margin are the ones that add or scale values at a
