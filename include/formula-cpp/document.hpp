@@ -503,8 +503,8 @@ namespace detail
     template <Vocabulary V, typename Operand>
     void collect(Walk<V>& walk, RefusedSeriesScope<Operand> const& node);
 
-    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs>
-    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& node);
+    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
+    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node);
 
     /// A distinct address per opaque call type, for `quantityIdentity`'s
     /// reason and in its writable form.
@@ -1070,8 +1070,8 @@ namespace detail
     /// An opaque output lists its call -- once per call, however many of its
     /// outputs are used: one call is one call type with one citation -- and
     /// walks the call's inputs, which name its variables.
-    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs>
-    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& node)
+    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
+    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node)
     {
         void const* const identity = &callIdentity<OpaqueCall<Op, Inputs...>>;
         bool metAlready = false;

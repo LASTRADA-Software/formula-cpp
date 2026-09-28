@@ -1661,8 +1661,8 @@ namespace detail
 /// (`RequireOpaqueNameReadable`), which every dialect shows as they are. The
 /// operation's name is its own text, like `numeric(...)`, and no vocabulary
 /// renames it; its inputs' symbols follow the vocabulary.
-template <Dialect D, std::size_t I, typename Op, typename... Inputs, Vocabulary V>
-[[nodiscard]] std::string render_node(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& node, V const& vocabulary)
+template <Dialect D, std::size_t I, typename Op, typename... Inputs, typename Origin, Vocabulary V>
+[[nodiscard]] std::string render_node(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node, V const& vocabulary)
 {
     std::string arguments;
     std::apply(
@@ -1671,7 +1671,7 @@ template <Dialect D, std::size_t I, typename Op, typename... Inputs, Vocabulary 
         },
         node.call.inputs);
     std::string const operationName { Op::name };
-    std::string const outputName { OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>::output };
+    std::string const outputName { OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>::output };
     if constexpr (D == Dialect::LaTeX)
         return "\\text{" + operationName + "}(" + arguments + ")_{\\text{" + outputName + "}}";
     else

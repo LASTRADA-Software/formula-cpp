@@ -69,10 +69,7 @@ struct StepLimit
     /// because GCC's `-Wshadow`, which this project's Linux CI leg runs with
     /// warnings as errors, flags a constructor parameter sharing a member's
     /// name even when it is used only in its own member-initialiser list.
-    constexpr StepLimit(std::size_t steps) noexcept:
-        value { steps }
-    {
-    }
+    constexpr StepLimit(std::size_t steps) noexcept: value { steps } {}
 
     /// The count itself.
     std::size_t value {};
@@ -120,9 +117,8 @@ namespace detail
     /// titled `replaced by jurisdiction overlay: ...` renders as a genuine
     /// replacement's clause does, and one titled `inside not shown` writes the
     /// opaque marker onto a step that is not opaque. The structured fields of a
-    /// `Step` -- `kind`,
-    /// the provenance enums, `variantPinned` and so on -- are what is
-    /// authoritative, and the method's author is trusted. Nor does it touch
+    /// `Step` -- `kind`, the provenance enums, `variantPinned` and so on -- are
+    /// what is authoritative, and the method's author is trusted. Nor does it touch
     /// anything but ASCII: a Unicode look-alike of a bracket (U+FF3B, U+FF3D)
     /// or the line separator U+2028 is written as it is, since it cannot
     /// break the ASCII structure the library writes.
@@ -2118,7 +2114,8 @@ namespace detail
                 return {};
             case OpaqueFailure::Own:
                 return " [the operation itself failed, not any input]";
-            case OpaqueFailure::Propagated: {
+            case OpaqueFailure::Propagated:
+            {
                 std::string relayed = " [carried up from ";
                 relayed += failedInput.has_value() ? operand_reference(*failedInput) : std::string { "an input" };
                 if (recorded.failedElement.has_value())

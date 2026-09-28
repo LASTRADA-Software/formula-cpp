@@ -841,19 +841,6 @@ TEST_CASE("an absent curve point makes the call absent, and compute is never cal
     CHECK(EndPoint::calls == 1);
 }
 
-TEST_CASE("an output built by hand past every position is refused at run time, never read past the end", "[opaque]")
-{
-    // The one position a hand-built output can hold that is not refused where
-    // it is built: the sentinel opaque_output uses for a name it did not find.
-    // Such a node is refused, and evaluating it is an error, not a read.
-    using Past = formula::OpaqueOutputNode<static_cast<std::size_t>(-1), std::remove_cv_t<decltype(span_call)>>;
-    STATIC_REQUIRE(Past::refused);
-    Past const past { {}, span_call };
-    auto const evaluated = formula::checked_evaluate_si(past, readings);
-    REQUIRE(!evaluated.has_value());
-    CHECK(evaluated.error() == formula::ArithmeticError::DomainError);
-}
-
 namespace
 {
 struct Warmth: formula::Quantity<Warmth, "t_w", "an invented temperature", unit::Celsius>
@@ -1057,4 +1044,66 @@ TEST_CASE("an output's marker is judged by its operand step's kind, not by a row
     overReading.steps = { reading, output };
     CHECK(formula::render_trace(overReading, { .maxSteps = 5 })
               .ends_with("2. output of #1 = (not measured) [inside not shown]\n"));
+}
+
+namespace
+{
+struct Gap: formula::Quantity<Gap, "g_p", "an invented gap", unit::Millimetre>
+{
+};
+struct Viscosity: formula::Quantity<Viscosity, "eta_i", "an invented viscosity", unit::MillipascalSecond>
+{
+};
+struct Portion: formula::Quantity<Portion, "p_s", "an invented portion", unit::Percent>
+{
+};
+
+// The first input over the second, in whatever dimensions they have.
+struct FirstOverSecond
+{
+    static constexpr std::string_view name = "first over second";
+    static constexpr std::array shapes { formula::InputShape::Single, formula::InputShape::Single };
+    static constexpr std::array<std::string_view, 1> outputs { "quotient" };
+
+    static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
+        std::array<formula::Dimension, 2> declared) noexcept
+    {
+        return std::array { declared[0] / declared[1] };
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(Rep over, Rep under) noexcept
+    {
+        std::expected<Rep, formula::ArithmeticError> const quotient = formula::RepTraits<Rep>::divide(over, under);
+        if (!quotient.has_value())
+            return std::unexpected { quotient.error() };
+        return std::array { *quotient };
+    }
+};
+} // namespace
+
+TEST_CASE("a borrowed quotient brackets a denominator of more than one unit word", "[opaque][trace]")
+{
+    // 1.27 mm over 2.41 mPa.s: 127/241 mm/(mPa.s). Unbracketed, mm/mPa.s would
+    // read (mm/mPa) s, another dimension.
+    constexpr auto fluidity =
+        formula::opaque_output<"quotient">(formula::opaque<FirstOverSecond>({}, formula::var<Gap>, formula::var<Viscosity>));
+    constexpr auto specimen =
+        formula::environment(formula::Measured<Gap> { rat(127, 100) }, formula::Measured<Viscosity> { rat(241, 100) });
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(fluidity, specimen, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 10 }).ends_with("4. quotient of #3 = 127/241 mm/(mPa.s)\n"));
+}
+
+TEST_CASE("a quotient never borrows a dimensionless unit", "[opaque][trace]")
+{
+    // 12.7 % over 1.03 mm is a per-length, in no percentage: 12700/103 1/m in
+    // the coherent unit, never 1270/103 %/mm.
+    constexpr auto perGap =
+        formula::opaque_output<"quotient">(formula::opaque<FirstOverSecond>({}, formula::var<Portion>, formula::var<Gap>));
+    constexpr auto specimen =
+        formula::environment(formula::Measured<Portion> { rat(127, 10) }, formula::Measured<Gap> { rat(103, 100) });
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(perGap, specimen, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 10 }).ends_with("4. quotient of #3 = 12700/103 1/m\n"));
 }

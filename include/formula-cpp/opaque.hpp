@@ -747,12 +747,28 @@ namespace detail
     /// node is refused and asks nothing more.
     inline constexpr std::size_t unknownOutput = static_cast<std::size_t>(-1);
 
+    /// Where an `OpaqueOutputNode` came from: `opaque_output` with a name the
+    /// operation declares (and by default, so also a node built by hand) ...
+    struct NamedOpaqueOutput
+    {
+    };
+
+    /// ... or `opaque_output` with a name it does not, which has been refused
+    /// in `RequireOpaqueOutputNamed`'s words already. Only this origin may
+    /// hold a position past every output: the same position built by hand,
+    /// over a sound call, is refused by `RequireOpaqueOutputPosition`, and
+    /// never silences the checks over it without a message.
+    struct UnnamedOpaqueOutput
+    {
+    };
+
     /// Fails to compile when an opaque output's position names none of its
-    /// operation's outputs -- reachable only by building the node by hand.
-    template <std::size_t I, typename Call>
+    /// operation's outputs -- reachable only by building the node by hand,
+    /// at any position past the last, the sentinel included.
+    template <std::size_t I, typename Call, typename Origin>
     struct RequireOpaqueOutputPosition
     {
-        static_assert(I == unknownOutput || I < Call::operation::outputs.size(),
+        static_assert(std::is_same_v<Origin, UnnamedOpaqueOutput> || I < Call::operation::outputs.size(),
                       "formula: this opaque output's position names no output of its operation; build an output with "
                       "opaque_output<\"name\">(call), which finds its position by name");
 
@@ -773,12 +789,14 @@ namespace detail
 } // namespace detail
 
 /// Output @p I of the opaque call @p Call: one value, and so a `Node`.
+/// @p Origin is `detail::`, and says whether `opaque_output` found the name
+/// (see `detail::UnnamedOpaqueOutput`); leave it to its default.
 ///
 /// No `{}` initialiser on `call`, deliberately (defect class 4).
-template <std::size_t I, typename Call>
+template <std::size_t I, typename Call, typename Origin = detail::NamedOpaqueOutput>
 struct OpaqueOutputNode: NodeBase
 {
-    static_assert(detail::RequireOpaqueOutputPosition<I, Call>::value);
+    static_assert(detail::RequireOpaqueOutputPosition<I, Call, Origin>::value);
 
     /// The call whose output this is. Evaluating this node evaluates it whole.
     Call call;
@@ -808,8 +826,10 @@ template <detail::FixedString Name, OpaqueOperation Op, typename... Inputs>
     static_assert(std::conditional_t<detail::opaque_operation_well_formed<Op>,
                                      detail::RequireOpaqueOutputNamed<Op, Name>,
                                      std::true_type>::value);
-    constexpr std::size_t chosen = namedAt < Op::outputs.size() ? namedAt : detail::unknownOutput;
-    return OpaqueOutputNode<chosen, Call> { {}, call };
+    if constexpr (namedAt < Op::outputs.size())
+        return OpaqueOutputNode<namedAt, Call> { {}, call };
+    else
+        return OpaqueOutputNode<detail::unknownOutput, Call, detail::UnnamedOpaqueOutput> { {}, call };
 }
 
 namespace detail
@@ -1036,12 +1056,12 @@ namespace detail
 /// gate, g++ 14.2 follows a refused `compute`'s one message with errors of
 /// its own (phase 15's spike, step 7), the behaviour
 /// `checked_evaluate_series` records for its refusal.
-template <typename Rep = Rational, std::size_t I, typename Op, typename... Inputs, typename Env, typename Sink = NullSink>
-[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& node,
+template <typename Rep = Rational, std::size_t I, typename Op, typename... Inputs, typename Origin, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node,
                                                            Env const& environment,
                                                            Sink sink = {}) noexcept
 {
-    if constexpr (OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>::refused)
+    if constexpr (OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>::refused)
         return std::unexpected { ArithmeticError::DomainError };
     else if constexpr (!detail::opaque_sound_for<Rep, Op, Inputs...>())
         return std::unexpected { ArithmeticError::DomainError };

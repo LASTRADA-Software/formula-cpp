@@ -1493,16 +1493,10 @@ struct Trace
     /// and the returned index names no step.
     ///
     /// @pre `steps` is not empty.
-    [[nodiscard]] std::size_t root() const noexcept
-    {
-        return steps.size() - 1;
-    }
+    [[nodiscard]] std::size_t root() const noexcept { return steps.size() - 1; }
 
     /// Whether anything was recorded.
-    [[nodiscard]] bool empty() const noexcept
-    {
-        return steps.empty();
-    }
+    [[nodiscard]] bool empty() const noexcept { return steps.empty(); }
 };
 
 /// What @p trace recorded for the opaque call whose step is at @p stepIndex,
@@ -1788,8 +1782,8 @@ namespace detail
         static constexpr StepKind value = StepKind::PassCount;
     };
 
-    template <std::size_t I, typename Call>
-    struct StepKindOf<OpaqueOutputNode<I, Call>>
+    template <std::size_t I, typename Call, typename Origin>
+    struct StepKindOf<OpaqueOutputNode<I, Call, Origin>>
     {
         static constexpr StepKind value = StepKind::OpaqueOutput;
     };
@@ -1980,9 +1974,10 @@ namespace detail
         if constexpr (Points.size() == 0)
             return std::nullopt;
         else
-            return LookupRange {
-                Points.front().numerator, Points.front().denominator, Points.back().numerator, Points.back().denominator
-            };
+            return LookupRange { Points.front().numerator,
+                                 Points.front().denominator,
+                                 Points.back().numerator,
+                                 Points.back().denominator };
     }
 
     /// Fills in a banded lookup step's `lookupFailure` and, on a hit, the
@@ -2062,7 +2057,9 @@ namespace detail
     /// is nothing below this step that could have failed, so every failure it
     /// reports is its own.
     template <typename Rep, KeyTable Keys, Unit ResultUnit>
-    void record_lookup(ExactLookupNode<Keys, ResultUnit> const& node, Step<Rep>& step, std::vector<Step<Rep>> const&)
+    void record_lookup(ExactLookupNode<Keys, ResultUnit> const& node,
+                       Step<Rep>& step,
+                       std::vector<Step<Rep>> const&)
     {
         using Underlying = std::underlying_type_t<KeyOf<Keys>>;
         step.lookupKeyName = key_name<Keys>(node.key);
@@ -2318,19 +2315,35 @@ namespace detail
         failedStep.elements = std::move(pointValues);
     }
 
+    /// Whether @p unitSymbol is more than one unit word -- `mPa.s`, `N m`,
+    /// `m^2` -- so that written after a slash it would read two ways:
+    /// `mm/mPa.s` is (mm/mPa) s read left to right.
+    [[nodiscard]] inline bool compound_unit_symbol(std::string_view unitSymbol) noexcept
+    {
+        return unitSymbol.find_first_of(".*^() ") != std::string_view::npos
+               || unitSymbol.find("\xc2\xb7") != std::string_view::npos       // U+00B7 middle dot
+               || unitSymbol.find("\xe2\x8b\x85") != std::string_view::npos; // U+22C5 dot operator
+    }
+
     /// The quotient of two units, `N/mm` from `N` and `mm`: its magnitude the
-    /// quotient of theirs and its symbol theirs joined by a slash. Empty when
-    /// either has an offset, has no symbol or already holds a slash (`m/s/s`
-    /// reads two ways), or when the symbol or the magnitude would not fit.
+    /// quotient of theirs and its symbol theirs joined by a slash, the
+    /// denominator bracketed when it is more than one unit word
+    /// (`mm/(mPa.s)`, `compound_unit_symbol`). Empty when either has an
+    /// offset, has no symbol, is dimensionless -- a ratio is not a percentage
+    /// because some input was one, as `opaque_output_unit` rules for a
+    /// dimensionless output -- or already holds a slash (`m/s/s` reads two
+    /// ways), or when the symbol or the magnitude would not fit.
     [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
     {
-        if (over.offsetNumerator != 0 || under.offsetNumerator != 0)
+        if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar
+            || under.dimension == dim::Scalar)
             return std::nullopt;
         std::string_view const overSymbol = view(over.symbolText);
         std::string_view const underSymbol = view(under.symbolText);
+        bool const bracketed = compound_unit_symbol(underSymbol);
         if (overSymbol.empty() || underSymbol.empty() || overSymbol.find('/') != std::string_view::npos
             || underSymbol.find('/') != std::string_view::npos
-            || overSymbol.size() + 1 + underSymbol.size() + 1 > SymbolCapacity)
+            || overSymbol.size() + 1 + underSymbol.size() + (bracketed ? 2 : 0) + 1 > SymbolCapacity)
             return std::nullopt;
         std::expected<Rational, ArithmeticError> const magnitude =
             RepTraits<Rational>::divide(Rational { over.magnitudeNumerator, over.magnitudeDenominator },
@@ -2345,8 +2358,12 @@ namespace detail
         for (char const spelt: overSymbol)
             quotientUnit.symbolText.characters[written++] = spelt;
         quotientUnit.symbolText.characters[written++] = '/';
+        if (bracketed)
+            quotientUnit.symbolText.characters[written++] = '(';
         for (char const spelt: underSymbol)
             quotientUnit.symbolText.characters[written++] = spelt;
+        if (bracketed)
+            quotientUnit.symbolText.characters[written++] = ')';
         return quotientUnit;
     }
 

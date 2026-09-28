@@ -1955,8 +1955,8 @@ namespace detail
     /// it a second time -- one mistake, two messages. Not known, every result
     /// check over it stays silent; the program is ill-formed already, and
     /// they have nothing true to add. `apply` returns it as it was.
-    template <typename Sub, std::size_t I, typename Op, typename... Inputs>
-    struct ConstantRewrite<Sub, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>>
+    template <typename Sub, std::size_t I, typename Op, typename... Inputs, typename Origin>
+    struct ConstantRewrite<Sub, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>
     {
         /// Whether the call was refused where it was written.
         static constexpr bool refusedCall = OpaqueCall<Op, Inputs...>::refused;
@@ -1970,11 +1970,11 @@ namespace detail
         /// The same output of the rewritten call; the output itself when the
         /// call was refused.
         using type =
-            std::conditional_t<refusedCall, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>, OpaqueOutputNode<I, Call>>;
+            std::conditional_t<refusedCall, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>, OpaqueOutputNode<I, Call, Origin>>;
 
         /// The output, of the call around the rewritten inputs, with its
         /// citation; the original when the call was refused.
-        [[nodiscard]] static constexpr type apply(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>> const& original,
+        [[nodiscard]] static constexpr type apply(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& original,
                                                   Sub const& overriding) noexcept
         {
             if constexpr (refusedCall)
@@ -2527,8 +2527,8 @@ namespace detail
         using type = SubstitutedInAll<Left, Right>;
     };
 
-    template <std::size_t I, typename Op, typename... Inputs>
-    struct SubstitutedIn<OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>>>
+    template <std::size_t I, typename Op, typename... Inputs, typename Origin>
+    struct SubstitutedIn<OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>
     {
         /// Whatever any of the call's inputs substitutes.
         using type = SubstitutedInAll<Inputs...>;

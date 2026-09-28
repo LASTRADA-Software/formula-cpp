@@ -2182,6 +2182,11 @@ formula_add_negative_test(opaque_curve_dimensions_declared
 formula_add_negative_test(opaque_forged_output_position
     "formula: this opaque output's position names no output of its operation"
     REJECT "subscript")
+# The sentinel position built by hand over a sound call: refused in its own
+# words, never silently.
+formula_add_negative_test(opaque_forged_sentinel_position
+    "formula: this opaque output's position names no output of its operation"
+    REJECT "subscript" "RequireAddendsAgree" "RequireResultDimension")
 # Overlays over opaque calls (task 5 review): a refused call is never rebuilt,
 # and a substitution inside a call is seen by every rule over the method.
 formula_add_negative_test(overlay_constant_inside_refused_opaque
