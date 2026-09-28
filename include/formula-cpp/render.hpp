@@ -47,6 +47,7 @@
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
@@ -152,6 +153,24 @@ namespace detail
     {
         static constexpr Precedence value = Precedence::Conditional;
     };
+
+    /// A read from another record, the lowest rung, so that as the operand of
+    /// anything it is bracketed: `f_c / (f_c of Reference)`. Without the
+    /// bracket, `a / f_c of Reference` could be read as `(a / f_c) of
+    /// Reference`, and the words would name the wrong computation.
+    template <typename Role, typename Requirement, Node Operand>
+    struct PrecedenceOf<RecordScopeNode<Role, Requirement, Operand>>
+    {
+        static constexpr Precedence value = Precedence::Conditional;
+    };
+
+    /// Whether @p N is a read from another record -- the one else branch a
+    /// conditional brackets; see `render_node(WhenNode)`.
+    template <typename N>
+    inline constexpr bool isRecordScope = false;
+
+    template <typename Role, typename Requirement, Node Operand>
+    inline constexpr bool isRecordScope<RecordScopeNode<Role, Requirement, Operand>> = true;
 
     /// Forwards the *type-level* precedence of what it wraps. That is correct
     /// as far as it goes, but it is not what makes a citation invisible to
@@ -1723,6 +1742,13 @@ template <Dialect D, Predicate P, Vocabulary V>
 /// LaTeX needs no bracket in either position: its `\begin{cases}` block is a
 /// visibly distinct construct nested inside a cell, not text a reader could
 /// mistake for a continuation of the outer one.
+///
+/// **One else branch is bracketed: a read from another record.** Its words
+/// `of <role>` trail it, and a reader of `if p then a else b of Reference`
+/// may attach them to the whole conditional -- the reading
+/// `(if p then a else b) of Reference`, which is a different formula, taking
+/// the predicate and the then branch from that record too. So it reads
+/// `if p then a else (b of Reference)`.
 template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
 [[nodiscard]] std::string render_node(WhenNode<P, Then, Else> const& node, V const& vocabulary)
 {
@@ -1730,13 +1756,57 @@ template <Dialect D, Predicate P, Node Then, Node Else, Vocabulary V>
     std::string const thenText = D == Dialect::LaTeX
                                      ? render<D>(node.thenBranch, vocabulary)
                                      : detail::render_operand<D>(node.thenBranch, detail::Precedence::Additive, vocabulary);
-    std::string const elseText = render<D>(node.elseBranch, vocabulary);
+    std::string const elseText = D != Dialect::LaTeX && detail::isRecordScope<Else>
+                                     ? "(" + render<D>(node.elseBranch, vocabulary) + ")"
+                                     : render<D>(node.elseBranch, vocabulary);
 
     if constexpr (D == Dialect::LaTeX)
         return "\\begin{cases} " + thenText + " & \\text{if } " + predicateText + " \\\\ " + elseText
                + " & \\text{otherwise} \\end{cases}";
     else
         return "if " + predicateText + " then " + thenText + " else " + elseText;
+}
+
+/// A read from another record renders as its operand and the words `of
+/// <role>`: `f_c of Reference`, and `(F / A) of Reference` when the operand is
+/// more than one symbol -- bracketed, `\left(...\right)` in LaTeX, so that
+/// the role is read as qualifying the whole computation.
+///
+/// The role's name is author text (`tag_name<Role>()`), and identifier-like:
+/// ASCII letters, digits, underscores and single spaces, or the scope is
+/// refused (`RequireIdentifierLikeRoleName`, `record.hpp`). Of those, only
+/// `_` and the space need anything, per dialect: as-is in Plain; through the
+/// author-words escaping lookup keys use in Markdown; and in LaTeX in math
+/// mode, `\ \text{of }\mathrm{...}`, through `detail::latex_math_words` --
+/// not inside `\text{}`, where the site's MathJax shows a text-mode escape
+/// literally (phase 14's X11 ruling).
+///
+/// A lineage requirement is not rendered: it gates whether the value is read,
+/// and the trace records every attribute it compared.
+template <Dialect D, typename Role, typename Requirement, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(RecordScopeNode<Role, Requirement, Operand> const& node, V const& vocabulary)
+{
+    std::string const operandText = render<D>(node.operand, vocabulary);
+    bool const bracketed = static_cast<int>(detail::precedence_of(node.operand))
+                           < static_cast<int>(detail::Precedence::Atom);
+    constexpr std::string_view roleName = tag_name<Role>();
+    if constexpr (D == Dialect::LaTeX)
+        return (bracketed ? "\\left(" + operandText + "\\right)" : operandText) + "\\ \\text{of }\\mathrm{"
+               + detail::latex_math_words(roleName) + "}";
+    else
+        return (bracketed ? "(" + operandText + ")" : operandText) + " of "
+               + detail::literal_words_in_dialect<D>(roleName);
+}
+
+/// A refused series-valued read from another record
+/// (`detail::RefusedSeriesScope`) renders as a refused series does, as
+/// nothing a reader could take for a formula. A program holding one never
+/// compiles; this only keeps a `render` of it from adding a second,
+/// compiler-worded error to the refusal.
+template <Dialect D, typename Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedSeriesScope<Operand> const&, V const&)
+{
+    return "(refused)";
 }
 
 namespace detail

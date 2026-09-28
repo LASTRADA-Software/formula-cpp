@@ -461,21 +461,67 @@ namespace detail
 /// Chosen over the `VarNode<Q>` overload in `evaluate.hpp` for every
 /// `OverriddenConstantNode<Q>`, because binding the node to its own type is an
 /// identity conversion and binding it to its base is not.
+///
+namespace detail
+{
+    /// Tells @p sink about the environment's entry for `Q` that @p node --
+    /// an overlay's fixed constant or derived quantity -- replaced, when the
+    /// environment holds one: whether it was measured or typed in, through
+    /// the optional hook `sink.replaced_entry_source(node, source)`, and when
+    /// it held no value, through `sink.replaced_entry_empty(node)`.
+    ///
+    /// A hook of its own rather than a variable's `input_source`: the source
+    /// is the replaced entry's, never the value the step shows, which is the
+    /// jurisdiction's. A sink reading `input_source` as "this value was typed
+    /// in" is therefore never told it for a constant. Each hook is asked for
+    /// only when the sink defines it, and the source only when the
+    /// environment can answer `Env::is_entered<Q>`.
+    template <Described Q, typename Env, typename ReplacingNode, typename Sink>
+    constexpr void report_replaced_entry(ReplacingNode const& node, Env const& environment, Sink& sink) noexcept
+    {
+        if constexpr (requires { Env::template provides<Q>; })
+            if constexpr (Env::template provides<Q>)
+            {
+                if constexpr (requires { sink.replaced_entry_source(node, ValueSource::Measured); }
+                              && requires { Env::template is_entered<Q>; })
+                    sink.replaced_entry_source(
+                        node, Env::template is_entered<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured);
+                if constexpr (requires { sink.replaced_entry_empty(node); })
+                    if (environment.template get<Q>().is_absent())
+                        sink.replaced_entry_empty(node);
+            }
+    }
+} // namespace detail
+
+/// When the environment does hold a value for `Q`, a sink that asks is told
+/// where that value came from -- the value the overlay's constant replaced
+/// -- and when it held none (`detail::report_replaced_entry`). So a trace can
+/// say that the overlay replaced a value a person typed in, rather than stay
+/// silent about it, and an entry left empty by hand is not traced as a value
+/// that was replaced.
 template <typename Rep = Rational, Described Q, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(OverriddenConstantNode<Q> const& node,
-                                                           Env const&,
+                                                           Env const& environment,
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
     Evaluated<Rep> const evaluated = detail::in_si<Rep>(node.value(), Describe<Q>::unit);
+    detail::report_replaced_entry<Q>(node, environment, sink);
     sink.produced(node, evaluated);
     return evaluated;
 }
 
 /// A derived quantity evaluates to its expression, against the same
-/// environment, and never asks the environment for `Q` -- see
+/// environment, and never reads the environment's value for `Q` -- see
 /// `DerivedQuantityNode`. The sink is told about the node as its own type, and
 /// the expression's own steps become its operands.
+///
+/// When the environment does hold an entry for `Q`, a sink that asks is told
+/// where it came from, and when it held no value, exactly as for a fixed
+/// constant (`detail::report_replaced_entry`): the typed value was not used,
+/// and the trace says so. Told after the expression, whose own steps each
+/// begin and end with the sink's pending source empty, and just before
+/// `produced`.
 ///
 /// Chosen over the `VarNode<Q>` overload for the reason the
 /// `OverriddenConstantNode` overload above is.
@@ -486,6 +532,7 @@ template <typename Rep = Rational, Described Q, Node Expr, typename Env, typenam
 {
     sink.entered(node);
     Evaluated<Rep> const evaluated = detail::dispatch<Rep>(node.expression(), environment, sink);
+    detail::report_replaced_entry<Q>(node, environment, sink);
     sink.produced(node, evaluated);
     return evaluated;
 }

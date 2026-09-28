@@ -831,6 +831,22 @@ namespace detail
         if constexpr (HearsSeries<Sink, S, Rep>)
             sink.series_produced(node, evaluated);
     }
+
+    /// `report_input_source`'s counterpart for a series (`evaluate.hpp`):
+    /// tells @p sink whether the series @p Env holds for `Q` was measured or
+    /// typed in, through the optional hook `sink.series_input_source(node,
+    /// source)` -- only when the sink defines it and the environment can
+    /// answer `Env::is_entered<Q>`, which is true for an entered series as
+    /// for an entered single value. Any other sink or environment still
+    /// evaluates, and its trace records no source rather than a guessed one.
+    template <Described Q, std::size_t N, typename Env, typename Sink>
+    constexpr void report_series_input_source(SeriesVarNode<Q, N> const& node, Sink& sink) noexcept
+    {
+        if constexpr (requires { sink.series_input_source(node, ValueSource::Measured); }
+                      && requires { Env::template is_entered<Q>; })
+            sink.series_input_source(node,
+                                     Env::template is_entered<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured);
+    }
 } // namespace detail
 
 /// Looks the series for `Q` up in `environment` and converts each present
@@ -842,7 +858,9 @@ namespace detail
 ///
 /// A sink hears about the series through `series_entered` and
 /// `series_produced` when it defines both (`detail::HearsSeries`), never
-/// through `entered` and `produced`, which are constrained on `Node`.
+/// through `entered` and `produced`, which are constrained on `Node`. Between
+/// the two, a sink that asks is told whether the series was measured or typed
+/// in -- see `detail::report_series_input_source`.
 template <typename Rep = Rational, Described Q, std::size_t N, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr EvaluatedSeries<Rep, N> checked_evaluate_series_si(SeriesVarNode<Q, N> const& node,
                                                                            Env const& environment,
@@ -864,6 +882,7 @@ template <typename Rep = Rational, Described Q, std::size_t N, typename Env, typ
         }
         return inCoherentUnit;
     }();
+    detail::report_series_input_source<Q, N, Env>(node, sink);
     detail::tell_series_produced<Rep>(sink, node, evaluated);
     return evaluated;
 }

@@ -25,6 +25,7 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
@@ -400,6 +401,29 @@ enum class StepKind : std::uint8_t
     /// A rejection whose limit was absent in a pass: no decision, and an
     /// absent result. Its operands are every step of the rejection.
     RejectionUndecided,
+    /// A read from another record (`RecordScopeNode`, `record.hpp`): its
+    /// operand is the derivation over that record's values, and
+    /// `Step::recordNumber` says which record (`origin_of`). With no record
+    /// bound to the role it has no operand, since nothing was read.
+    ///
+    /// Nothing in namespace `formula` is spelt `RecordScope` -- the node is
+    /// `RecordScopeNode` and the factory `from_record` -- so GCC's
+    /// `-Wshadow` has nothing to report; the gcc-release preset builds with
+    /// it.
+    RecordScope,
+    /// One attribute a lineage requirement compared before a scope read
+    /// (`lineage.hpp`): which attribute, against which record, and both keys,
+    /// in `Trace::lineageChecks` (`lineage_of`); the verdict in
+    /// `Step::outcome` -- satisfied, violated, or not checked when a key is
+    /// unknown. Recorded as the scope's first operands, in the order the
+    /// requirement names them, and without operands of its own.
+    ///
+    /// Recorded by `RecordingSink::lineage_checked`, not through
+    /// `detail::StepKindOf`: an attribute is not a `Node`. Nothing in
+    /// namespace `formula` is spelt `LineageChecked` -- the value is a
+    /// `LineageCheck` -- so GCC's `-Wshadow`, with which gcc-release builds,
+    /// has nothing to report.
+    LineageChecked,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1087,6 +1111,49 @@ struct Step
     /// selected variant; what it cited is in `citation`. `false` otherwise.
     bool variantPinned {};
 
+    /// For `Variable`: whether the value was measured or typed in by a
+    /// person, as the environment's entry says -- `Measured<Q>` or
+    /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant` and
+    /// `DerivedQuantity`: the same, of the environment's entry the overlay's
+    /// constant or definition replaced -- whether or not that entry held a
+    /// value, which `replacedEntryEmpty` says -- and empty when the
+    /// environment has no entry for the quantity at all. For
+    /// `SeriesVariable`: the same, of the whole series -- a measured series
+    /// or `entered(measured_series<Q>(...))`. Never
+    /// `Derived`: an input is not computed. Empty for every other kind, and
+    /// for an environment that cannot say (one without `is_entered`), which
+    /// is recorded as not known rather than guessed.
+    std::optional<ValueSource> inputSource {};
+
+    /// For `OverriddenConstant` and `DerivedQuantity`: true when the
+    /// environment's entry the overlay replaced held no value -- an entry
+    /// left empty, by hand or not -- so a trace says no value was replaced.
+    /// False for every other kind, and when the environment has no entry for
+    /// the quantity.
+    bool replacedEntryEmpty {};
+
+    /// Which record this step's value was read from, counted from one in its
+    /// trace's `Trace::origins`, and zero for a step of the record being
+    /// evaluated: set on **every** step recorded inside a `from_record` scope
+    /// -- a constant, a lookup or a conditional there as much as a variable
+    /// -- and on the scope's own step. A constant's value is the formula's
+    /// and not the record's, but it is part of the computation over that
+    /// record, and a consumer grouping steps by record finds it there. Every
+    /// step carries it, so that a consumer reading one step need not walk up
+    /// the operands to learn whose number it is; `origin_of(trace, step)`
+    /// answers the origin itself. `render_trace` prints it on the scope and
+    /// on the steps that name a quantity.
+    ///
+    /// A number rather than the origin, so that a step read from no other
+    /// record -- nearly every step of every trace -- pays four bytes, which
+    /// fit in padding `Step` had already, rather than an origin's
+    /// forty-eight; and a plain number with zero for none, rather than an
+    /// optional one, for the same four bytes. It means nothing without its
+    /// trace: a step copied out of one trace into another names whatever
+    /// that trace's table holds at the number. Only the library builds a
+    /// `RecordOrigin` -- see `record.hpp`.
+    std::uint32_t recordNumber {};
+
     /// Indices of the steps this one consumed, in evaluation order.
     ///
     /// **Not necessarily as many as the node kind suggests.** When an operand
@@ -1190,6 +1257,18 @@ struct ConformityLimits
     std::vector<LimitRow> rows;
 };
 
+/// The comparison one `LineageChecked` step recorded -- see
+/// `Trace::lineageChecks`.
+struct LineageRow
+{
+    /// The index, in `Trace::steps`, of the `LineageChecked` step.
+    std::size_t step;
+    /// The attribute compared, the record compared with, and both keys. Its
+    /// verdict is the step's `outcome`. Only the library builds a
+    /// `LineageCheck` -- see `record.hpp`.
+    LineageCheck check;
+};
+
 /// A recorded derivation: a flat arena of steps.
 template <typename Rep = Rational>
 struct Trace
@@ -1261,6 +1340,53 @@ struct Trace
 
     /// The rejections in progress, innermost last. Bookkeeping, as `marks` is.
     std::vector<detail::RejectionInProgress> rejectionsInProgress {};
+
+    /// Every record a `from_record` scope in this trace read from, one entry
+    /// per scope entered, in the order they were entered. `Step::recordNumber`
+    /// counts into it from one; `origin_of` reads it. Not bookkeeping: it is part of the
+    /// derivation, and a new walk over the same trace keeps it, as it keeps
+    /// the steps.
+    std::vector<RecordOrigin> origins {};
+
+    /// The comparison each `LineageChecked` step recorded -- the attribute,
+    /// the record compared with, and both keys -- keyed by its index in
+    /// `steps`, as `conformityLimits` is; `lineage_of` reads it. A side table
+    /// rather than a member of `Step`, for the same reason.
+    std::vector<LineageRow> lineageChecks {};
+
+    /// Where the variable being recorded read its value from, between its
+    /// `entered` and its `produced`: `RecordingSink::input_source` writes it
+    /// and `produced` moves it onto the `Variable` step. A series variable's
+    /// comes the same way, between `series_entered` and `series_produced`,
+    /// through `RecordingSink::series_input_source`.
+    ///
+    /// A single slot, not a stack as `branchStack` is: a variable has no
+    /// operands, so nothing can be entered between its own `entered` and
+    /// `produced` to need a slot of its own. `entered` empties it for every
+    /// node, and `produced` empties it for every kind, so it never carries
+    /// one variable's source onto another step.
+    ///
+    /// Bookkeeping, as `marks` is, and for the same reason.
+    std::optional<ValueSource> pendingInputSource {};
+
+    /// Whether the overridden constant being recorded replaced an empty
+    /// entry, between its `entered` and its `produced`:
+    /// `RecordingSink::replaced_entry_empty` sets it and `produced` moves it
+    /// onto the `OverriddenConstant` step. A single slot, emptied by
+    /// `entered` and `produced` for every node, for the reasons
+    /// `pendingInputSource` gives.
+    ///
+    /// Bookkeeping, as `marks` is, and for the same reason.
+    bool pendingReplacedEntryEmpty {};
+
+    /// The number, counted from one in `origins`, of each `from_record`
+    /// scope still open: `record_entered`
+    /// pushes one, and `produced` pops it with the scope's own step. A stack
+    /// by the shape `branchStack` has, though a scope cannot be nested in a
+    /// scope today (`record.hpp` refuses it).
+    ///
+    /// Bookkeeping, as `marks` is, and for the same reason.
+    std::vector<std::uint32_t> recordStack {};
 
     /// The index of the outermost step -- the one nothing else consumed.
     ///
@@ -1636,6 +1762,12 @@ namespace detail
         Unit const operandUnit = steps[operands.front()].unit;
         return operandUnit.dimension == dimension ? operandUnit : fallback;
     }
+
+    template <typename Role, typename Requirement, Node Operand>
+    struct StepKindOf<RecordScopeNode<Role, Requirement, Operand>>
+    {
+        static constexpr StepKind value = StepKind::RecordScope;
+    };
 
     /// Whether @p stepKind is one of the four lookup kinds. Written once because
     /// two surfaces ask it -- `RecordingSink::produced`, which dispatches to
@@ -2203,6 +2335,9 @@ class RecordingSink
         _trace->unclaimed.clear();
         _trace->branchStack.clear();
         _trace->rejectionsInProgress.clear();
+        _trace->pendingInputSource.reset();
+        _trace->pendingReplacedEntryEmpty = false;
+        _trace->recordStack.clear();
     }
 
     /// Remembers how much of the arena predates this node, so `produced` can
@@ -2217,8 +2352,96 @@ class RecordingSink
     void entered(N const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+        _trace->pendingInputSource.reset();
+        _trace->pendingReplacedEntryEmpty = false;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Conditional)
             _trace->branchStack.push_back(Branch::Neither);
+    }
+
+    /// Told, by the variable evaluator (`evaluate.hpp`), whether the value it
+    /// just read was measured or typed in; `produced` puts it on the step.
+    /// Optional, as `branch_taken` is: a sink without it pays nothing.
+    ///
+    /// Public, because the evaluator is not this class's friend. A caller
+    /// that calls it by hand, between a variable's own `entered` and
+    /// `produced`, states a source the library did not read -- the same
+    /// boundary `Trace::steps` has always had, since any code may edit a
+    /// recorded step. Called at any other time it is discarded: `entered`
+    /// empties the slot for every node.
+    template <Described Q>
+    void input_source(VarNode<Q> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
+    }
+
+    /// Told, by an overridden constant's or a derived quantity's evaluator
+    /// (`overlay.hpp`), whether the environment's entry it replaced was
+    /// measured or typed in; `produced` puts it on the step's `inputSource`.
+    /// The replaced entry's source, never the step's value's -- which is why
+    /// it is not `input_source`. Optional, and public, for the reasons
+    /// `input_source` gives, with the same boundary.
+    template <Described Q>
+    void replaced_entry_source(OverriddenConstantNode<Q> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
+    }
+
+    /// `replaced_entry_source` for a derived quantity.
+    template <Described Q, Node Expr>
+    void replaced_entry_source(DerivedQuantityNode<Q, Expr> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
+    }
+
+    /// Told, by the same evaluators, that the environment's entry the node
+    /// replaced held no value; `produced` puts it on the step. Optional, and
+    /// public, for the reasons `input_source` gives, with the same boundary.
+    template <Described Q>
+    void replaced_entry_empty(OverriddenConstantNode<Q> const&) noexcept
+    {
+        _trace->pendingReplacedEntryEmpty = true;
+    }
+
+    /// `replaced_entry_empty` for a derived quantity.
+    template <Described Q, Node Expr>
+    void replaced_entry_empty(DerivedQuantityNode<Q, Expr> const&) noexcept
+    {
+        _trace->pendingReplacedEntryEmpty = true;
+    }
+
+    /// Told, by a `from_record` scope's evaluator (`record.hpp`), right after
+    /// the scope was entered and before anything inside it, which record its
+    /// values are read from. Every step `produced` records from here until
+    /// the scope's own step is stamped with it.
+    ///
+    /// Public, for the reason `input_source` is. Handed a copy of an origin
+    /// by hand, it stamps that origin: the boundary `record.hpp`'s file
+    /// comment states.
+    void record_entered(RecordOrigin const& openedFrom)
+    {
+        _trace->origins.push_back(openedFrom);
+        _trace->recordStack.push_back(static_cast<std::uint32_t>(_trace->origins.size()));
+    }
+
+    /// Told, by a scope's evaluator, of one attribute its lineage requirement
+    /// compared, and the verdict, in the order the requirement names them --
+    /// after `record_entered` and before the operand is read. Records a step
+    /// with no operands of its own, which the scope's step then claims as an
+    /// operand, and stamps it with the scope's origin, as every step inside
+    /// the scope is.
+    ///
+    /// Public, for the reason `input_source` is: a caller handing it a copy
+    /// of a check by hand records that check, the boundary `record.hpp`'s file
+    /// comment states.
+    void lineage_checked(LineageCheck const& attributeCheck, ConstraintOutcome const& attributeOutcome)
+    {
+        Step<Rep> checkStep {};
+        checkStep.kind = StepKind::LineageChecked;
+        checkStep.outcome = attributeOutcome;
+        stamp_origin(checkStep);
+        _trace->lineageChecks.push_back(LineageRow { _trace->steps.size(), attributeCheck });
+        _trace->steps.push_back(std::move(checkStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
 
     /// Told which branch a `WhenNode` selected, right before it dispatches
@@ -2314,6 +2537,20 @@ class RecordingSink
 
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
+        // Only a variable reads an input, and only a fixed constant or a
+        // derived quantity replaces an entry. For every other kind the slot
+        // is already empty -- `entered` emptied it, and only those
+        // evaluators write it -- and it is emptied again regardless, so that
+        // nothing a caller wrote by hand outlives the step it was written
+        // during.
+        constexpr bool replacesEntry = detail::StepKindOf<N>::value == StepKind::OverriddenConstant
+                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable || replacesEntry)
+            nodeStep.inputSource = _trace->pendingInputSource;
+        _trace->pendingInputSource.reset();
+        if constexpr (replacesEntry)
+            nodeStep.replacedEntryEmpty = _trace->pendingReplacedEntryEmpty;
+        _trace->pendingReplacedEntryEmpty = false;
         if constexpr (detail::StepKindOf<N>::value == StepKind::Documented)
             nodeStep.citation = node.citation;
         // What an overlay cited for the value it fixed, the quantity it
@@ -2412,6 +2649,18 @@ class RecordingSink
                       || detail::StepKindOf<N>::value == StepKind::SampleRange)
             nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
 
+        // A read from another record is its operand's value, unchanged, so it
+        // reads in the unit its operand's line does: `4 MPa` after a variable
+        // or a rounding in MPa, and the coherent unit after a computation --
+        // never the same value in two scales on consecutive lines. The operand
+        // is the last step claimed that is not a lineage attribute; a scope
+        // over an unbound record claims none, reads nothing, and keeps the
+        // coherent unit.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::RecordScope)
+            for (std::size_t const claimed: nodeStep.operands)
+                if (_trace->steps[claimed].kind != StepKind::LineageChecked)
+                    nodeStep.unit = _trace->steps[claimed].unit;
+
         // After the operands are claimed, and not before: telling this
         // lookup's own failure apart from one it is merely relaying means
         // reading the operand step it just claimed, so the claim has to have
@@ -2458,6 +2707,17 @@ class RecordingSink
                                                                              .limitStep = limitIndex });
             }
         }
+
+        // Every step inside a scope, the scope's own included, says which
+        // record it was read from; the scope's own step then closes it. The
+        // pop is guarded: a consumer's own evaluator that reports a scope
+        // without `record_entered` leaves nothing to pop, and popping an
+        // empty vector would be undefined behaviour -- an abort under a
+        // checked standard library.
+        stamp_origin(nodeStep);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::RecordScope)
+            if (!_trace->recordStack.empty())
+                _trace->recordStack.pop_back();
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
@@ -2517,6 +2777,7 @@ class RecordingSink
         constraintStep.operands.assign(firstClaimed, _trace->unclaimed.end());
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
+        stamp_origin(constraintStep);
         _trace->steps.push_back(std::move(constraintStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -2590,6 +2851,7 @@ class RecordingSink
         else if (produced->has_value() && !selectionStep.operands.empty())
             selectionStep.value = **produced;
 
+        stamp_origin(selectionStep);
         _trace->steps.push_back(std::move(selectionStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -2801,6 +3063,7 @@ class RecordingSink
         _trace->precisionBindings.push_back(
             detail::PrecisionBinding { .kind = precisionKind, .levelStep = levelIndex, .pendingRecords = { recordIndex } });
 
+        stamp_origin(levelStep);
         _trace->steps.push_back(std::move(levelStep));
         _trace->unclaimed.push_back(levelIndex);
     }
@@ -2846,6 +3109,7 @@ class RecordingSink
             _trace->steps[verdictStep].citation = constraintOrigin.source();
         }
 
+        stamp_origin(acceptanceStep);
         _trace->steps.push_back(std::move(acceptanceStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -2860,6 +3124,22 @@ class RecordingSink
     void series_entered(S const&)
     {
         _trace->marks.push_back(_trace->steps.size());
+        _trace->pendingInputSource.reset();
+    }
+
+    /// Told, by a series variable's evaluator, whether the series it read was
+    /// measured or typed in; `series_produced` moves it onto the
+    /// `SeriesVariable` step, in `Step::inputSource`, as `produced` does for a
+    /// single value. The same single slot: nothing is entered between a series
+    /// variable's own `series_entered` and `series_produced`.
+    ///
+    /// Optional, and public, for the reasons `input_source` gives, with the
+    /// same boundary: `series_entered` empties the slot, and `series_produced`
+    /// empties it for every kind.
+    template <Described Q, std::size_t N>
+    void series_input_source(SeriesVarNode<Q, N> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
     }
 
     /// Records one step for the whole series @p node -- however long it is --
@@ -2885,6 +3165,7 @@ class RecordingSink
         {
             seriesStep.unit = Describe<typename S::quantity>::unit;
             seriesStep.symbol = symbol_of<typename S::quantity>(_vocabulary);
+            seriesStep.inputSource = _trace->pendingInputSource;
         }
         // A per-element constant is shown in the unit it was written in; a
         // computed series has no declared unit, as a computed scalar has
@@ -2905,6 +3186,9 @@ class RecordingSink
             for (DecimalPlaces const elementPlaces: S::places)
                 seriesStep.elementGranularities.push_back(elementPlaces.value);
         }
+        // Only a series variable reads an input; the slot is emptied for
+        // every kind, as `produced` empties it.
+        _trace->pendingInputSource.reset();
 
         // Everything unclaimed from `seriesMark` onwards belongs to this
         // series -- see `produced` above for why this is a `while`.
@@ -2937,6 +3221,7 @@ class RecordingSink
         else
             seriesStep.elements.assign(result->elements.begin(), result->elements.end());
 
+        stamp_origin(seriesStep);
         _trace->steps.push_back(std::move(seriesStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -2964,6 +3249,7 @@ class RecordingSink
             for (std::size_t at = 0; at < result->count; ++at)
                 observationsStep.elements.push_back(result->elements[at]);
 
+        stamp_origin(observationsStep);
         _trace->steps.push_back(std::move(observationsStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3040,6 +3326,7 @@ class RecordingSink
             curveStep.elements.assign(result->values.begin(), result->values.end());
         }
 
+        stamp_origin(curveStep);
         _trace->steps.push_back(std::move(curveStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
     }
@@ -3081,6 +3368,7 @@ class RecordingSink
         if (!conformityStep.operands.empty())
             conformityStep.elements = _trace->steps[conformityStep.operands.back()].elements;
 
+        stamp_origin(conformityStep);
         _trace->steps.push_back(std::move(conformityStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
         _trace->conformityLimits.push_back(ConformityLimits {
@@ -3123,8 +3411,29 @@ class RecordingSink
         std::size_t const stepIndex = _trace->steps.size();
         rejectionRecord.step = stepIndex;
         _trace->rejectionRecords.push_back(std::move(rejectionRecord));
+        stamp_origin(rejectionStep);
         _trace->steps.push_back(std::move(rejectionStep));
         _trace->unclaimed.push_back(stepIndex);
+    }
+
+    /// Stamps @p recorded with the origin of the scope still open, if one is:
+    /// every step recorded between a scope's `record_entered` and its own
+    /// step says which record it was read from. Called by every path that
+    /// records a step -- a node's, a lineage attribute's, a series', a
+    /// curve's, raw observations', a constraint's, a conformity check's, a
+    /// variant selection's, an acceptance check's, a precision level's first
+    /// pass and a rejection's passes, rejections and verdict -- so that a
+    /// recording path added later, as phase 12's series paths and phase 13's
+    /// statistics paths were, has one rule to follow rather than one to
+    /// forget. Outside every scope it sets nothing.
+    ///
+    /// **The rule for every recording path, present and future:** a path
+    /// that appends to `Trace::steps` calls this on its step first. A path
+    /// that does not traces a value read inside a scope as this record's.
+    void stamp_origin(Step<Rep>& recorded) const noexcept
+    {
+        if (!_trace->recordStack.empty())
+            recorded.recordNumber = _trace->recordStack.back();
     }
 
     Trace<Rep>* _trace;
@@ -3134,6 +3443,28 @@ class RecordingSink
 /// `RecordingSink { trace, vocabulary }` records in @p vocabulary's terms.
 template <typename Rep, Vocabulary V>
 RecordingSink(Trace<Rep>&, V) -> RecordingSink<Rep, V>;
+
+/// The record @p recorded, a step of @p trace, was read from; empty for a
+/// step of the record being evaluated, and for a number @p trace does not
+/// hold.
+template <typename Rep>
+[[nodiscard]] constexpr std::optional<RecordOrigin> origin_of(Trace<Rep> const& trace, Step<Rep> const& recorded) noexcept
+{
+    if (recorded.recordNumber == 0 || recorded.recordNumber > trace.origins.size())
+        return std::nullopt;
+    return trace.origins[recorded.recordNumber - 1];
+}
+
+/// The comparison the `LineageChecked` step at @p stepIndex of @p trace
+/// recorded; empty for any other step.
+template <typename Rep>
+[[nodiscard]] constexpr std::optional<LineageCheck> lineage_of(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (LineageRow const& kept: trace.lineageChecks)
+        if (kept.step == stepIndex)
+            return kept.check;
+    return std::nullopt;
+}
 
 /// An outcome together with the derivation that produced it.
 template <Described Result, typename Rep = Rational>
@@ -3219,6 +3550,57 @@ template <Described Result, SeriesNode S, typename Env, Vocabulary V = DefaultVo
     std::expected<SeriesOutcome<Result, S::length>, SeriesFailure> seriesOutcome =
         checked_evaluate_series<Result>(expression, environment, RecordingSink<Rational, V> { recorded, vocabulary });
     return ExplainedSeries<Result, S::length> { std::move(seriesOutcome), std::move(recorded) };
+}
+
+/// Why `checked_explain` has no outcome: the arithmetic error, and the
+/// derivation recorded up to it. A refusal without the steps that led to it
+/// -- which attribute of a lineage requirement disagreed, say -- would say
+/// that the number was refused and not why.
+///
+/// Not default-constructible: a failure with no error given would have to
+/// claim one -- the enumeration's first, `DivisionByZero` -- that nothing
+/// raised.
+template <typename Rep = Rational>
+struct CheckedExplainFailure
+{
+    /// The failure @p raised, with the trace @p recorded up to it.
+    CheckedExplainFailure(ArithmeticError raised, Trace<Rep> recorded) noexcept:
+        error { raised },
+        trace { std::move(recorded) }
+    {
+    }
+
+    /// What `checked_evaluate` returned instead of an outcome.
+    ArithmeticError error;
+    /// Every step recorded before the error, the failing step included.
+    Trace<Rep> trace;
+};
+
+/// Evaluates @p expression for @p Result and records how, without throwing:
+/// `explain`'s counterpart through `checked_evaluate` rather than the
+/// throwing `evaluate`.
+///
+/// On success, exactly what `explain` returns. On an arithmetic error --
+/// including a read another record's lineage refused -- the error together
+/// with the trace recorded up to it, where `explain` would throw and keep
+/// nothing. The same `Rep = Rational` restriction and vocabulary as
+/// `explain`, for the same reasons.
+template <Described Result, typename Rep = Rational, Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::expected<Explained<Result, Rep>, CheckedExplainFailure<Rep>>
+checked_explain(Expression const& expression, Env const& environment, V const& vocabulary = V {})
+{
+    static_assert(std::is_same_v<Rep, Rational>,
+                  "formula: checked_explain only supports Rep = Rational, for the reason explain gives -- call "
+                  "checked_evaluate_si<Rep> directly with your own RecordingSink<Rep> to trace a double "
+                  "computation.");
+
+    Trace<Rep> recorded {};
+    RecordingSink<Rep, V> recordingSink { recorded, vocabulary };
+    std::expected<Outcome<Result>, ArithmeticError> const checked =
+        checked_evaluate<Result>(expression, environment, recordingSink);
+    if (!checked.has_value())
+        return std::unexpected { CheckedExplainFailure<Rep> { checked.error(), std::move(recorded) } };
+    return Explained<Result, Rep> { *checked, std::move(recorded) };
 }
 
 } // namespace formula

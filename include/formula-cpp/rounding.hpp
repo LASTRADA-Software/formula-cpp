@@ -234,18 +234,18 @@ namespace detail
 /// `floor(log10(|value|))`: the exponent `e` with `10^e <= |value| < 10^(e+1)`.
 ///
 /// @return DomainError for zero, which has no decimal exponent.
-[[nodiscard]] constexpr std::expected<int, ArithmeticError> checked_decimal_exponent(Rational subject) noexcept
+[[nodiscard]] constexpr std::expected<int, ArithmeticError> checked_decimal_exponent(Rational examinedValue) noexcept
 {
-    if (subject.is_zero())
+    if (examinedValue.is_zero())
         return std::unexpected { ArithmeticError::DomainError };
 
-    std::uint64_t const magnitudeNumerator = detail::magnitude(subject.numerator());
-    auto const magnitudeDenominator = static_cast<std::uint64_t>(subject.denominator());
+    std::uint64_t const magnitudeNumerator = detail::magnitude(examinedValue.numerator());
+    auto const magnitudeDenominator = static_cast<std::uint64_t>(examinedValue.denominator());
 
     // The digit counts bracket the answer to within one: with dn digits in the
     // numerator and dd in the denominator, floor(log10(n/d)) is either
     // dn - dd or dn - dd - 1.
-    int exponent = detail::decimal_digits(subject.numerator()) - detail::decimal_digits(subject.denominator());
+    int exponent = detail::decimal_digits(examinedValue.numerator()) - detail::decimal_digits(examinedValue.denominator());
     if (!detail::at_least_pow10(magnitudeNumerator, magnitudeDenominator, exponent))
         --exponent;
     return exponent;

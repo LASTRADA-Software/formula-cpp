@@ -578,3 +578,35 @@ require abs(x_A - x_B) <= r(1/10 g + 1/50 * level; level = (x_A + x_B) / 2)
 17. require #4 <= #16 [satisfied]
 ```
 
+## Worked derivation: a strength relative to a reference specimen
+
+This specimen's `f` = 36 MPa over the reference specimen's strength, computed from the reference's own `F` = 579 630 N and `a` = 139 mm. Every step read from the reference says so, with its sample and test:
+
+```
+f / ((F / (a * a)) of ReferenceSpecimen)
+```
+
+```
+1. f = 36 MPa
+2. F = 579630 N, from record ReferenceSpecimen (sample 23, test 3)
+3. a = 139 mm, from record ReferenceSpecimen (sample 23, test 3)
+4. a = 139 mm, from record ReferenceSpecimen (sample 23, test 3)
+5. #3 * #4 = 19321/1000000
+6. #2 / #5 = 30000000
+7. #6 from record ReferenceSpecimen (sample 23, test 3) = 30000000
+8. #1 / #7 = 6/5
+```
+
+The same read, gated on the two specimens sharing a curing batch. The reference was cured in another batch, so the read is refused before the reference's values are used, and the trace says which attribute refused it, with both keys. The requirement does not change the formula on the page; the trace records every attribute it compared:
+
+```
+f / ((F / (a * a)) of ReferenceSpecimen)
+```
+
+```
+1. f = 36 MPa
+2. same CuringBatch as this record: 4411 for this record, 4412 for ReferenceSpecimen, violated
+3. from record ReferenceSpecimen (sample 23, test 3) = argument outside the domain of the operation
+4. #1 / #3 = argument outside the domain of the operation
+```
+

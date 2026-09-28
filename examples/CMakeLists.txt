@@ -188,3 +188,25 @@ add_test(NAME docs.series-snippets
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/series.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/series.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
+# docs/records.md quotes this program's output verbatim. Pinned here, in the
+# order the program prints them: the compound read's bracketed spelling, a
+# typed-in reference value with its record, a typed-in reference series with
+# its record (the `;` between its elements matched as `.`, since a `;` would
+# split the pattern into a list), the lineage gate's three outcomes, a record
+# not yet made, an entry left empty by hand, and a role spelt through TagName.
+formula_add_example(records records.cpp [==[\(F / \(x_m \* y_m\)\) of Reference = 20000000 Pa.*f_c = 20 MPa, from record Reference \(sample 23, test 3\), entered by hand.*m_r = 139 g. 197 g. 103 g, from record Reference \(sample 23, test 3\), entered by hand.*same TestMethod as this record: 12 for this record, 12 for Reference, satisfied.*same TestMethod as this record: 12 for this record, 13 for Reference, violated.*same MaterialBatch as this record: 4411 for this record, unknown for Reference, not checked.*same TestMethod as this record: 12 for this record, 13 for Reference, violated.*from record Reference \(no record bound\).*f_c = \(entered by hand as empty\), from record Reference.*f_c of second reference.*all checks passed: yes]==])
+
+# Every output block of docs/records.md must be a run of lines the example
+# really prints, and every code block must appear in its source.
+add_test(NAME docs.records-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-records>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/records.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+
+add_test(NAME docs.records-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/records.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/records.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")

@@ -117,6 +117,22 @@ struct SymbolEntry
     /// `N`, the most observations there can be, or one for a single value.
     std::size_t length = 1;
 
+    /// The role of the record this quantity is read from, as `tag_name`
+    /// spells it; empty for a quantity read from the record being evaluated.
+    ///
+    /// Rows are kept per (role, quantity): `f_c` read here and `f_c` read
+    /// from Reference are two inputs, and one merged row would tell a reader
+    /// to supply one value where the formula reads two. Set by the walk from
+    /// the scope it is inside, and by nothing else.
+    ///
+    /// Always empty for a row an overlay fixed or derived, wherever it was
+    /// met: the fixed value is the overlay's and the definition is one
+    /// definition, read from no record, so a constant used here and inside a
+    /// scope has one row, not a second labelled with the scope's record. The
+    /// quantities a definition reads are inputs like any other, and keyed by
+    /// the scope they are read in.
+    std::string_view record {};
+
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(SymbolEntry const&) const noexcept = default;
 };
@@ -225,6 +241,22 @@ namespace detail
     template <typename Q, std::size_t Capacity>
     inline bool observationsIdentity = false;
 
+    /// A distinct address per record role @p Role, for keying the symbol
+    /// table by role as well as by quantity. Writable, `inline` and not
+    /// `constexpr`, for exactly the reasons `quantityIdentity` gives. The
+    /// record being evaluated has no identity of its own: its rows are keyed
+    /// by a null role.
+    template <typename Role>
+    inline bool roleIdentity = false;
+
+    /// Which row a walk has already added: the role it was read from (null
+    /// for the record being evaluated) and the quantity.
+    struct SeenRow
+    {
+        void const* role;
+        void const* quantity;
+    };
+
     /// The walk's own state: the `Documentation` being assembled, plus which
     /// quantities have already contributed a row, tracked in parallel because
     /// a `std::vector<SymbolEntry>` holds no type to check against. Not part
@@ -240,11 +272,16 @@ namespace detail
     struct Walk
     {
         Documentation documentation {};
-        std::vector<void const*> seenQuantities {};
+        std::vector<SeenRow> seenQuantities {};
         /// The dialect `document()` was asked for, which a derived quantity's
         /// definition is rendered in.
         Dialect dialect = Dialect::Plain;
         V vocabulary;
+        /// While a `from_record` scope's operand is walked: that scope's role,
+        /// by name and by identity; empty and null otherwise. Every row added
+        /// meanwhile is that record's.
+        std::string_view role {};
+        void const* roleIdentity = nullptr;
     };
 
     /// @p node rendered in @p dialect, chosen at run time, and in
@@ -432,23 +469,38 @@ namespace detail
     template <Vocabulary V, CurveExpression C, Node At>
     void collect(Walk<V>& walk, InterpolateAlongNode<C, At> const& node);
 
+    template <Vocabulary V, typename Role, typename Requirement, Node Operand>
+    void collect(Walk<V>& walk, RecordScopeNode<Role, Requirement, Operand> const& node);
+
+    template <Vocabulary V, typename Operand>
+    void collect(Walk<V>& walk, RefusedSeriesScope<Operand> const& node);
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
-    /// Deduplicated by quantity type -- see `SymbolEntry`. `seenQuantities`
-    /// and `symbols` grow together, so one index names both.
+    /// Deduplicated by quantity type, and by the record it is read from --
+    /// see `SymbolEntry` and `SymbolEntry::record`. `seenQuantities` and
+    /// `symbols` grow together, so one index names both.
+    ///
+    /// @p readFromRecord is false for a row an overlay fixed or derived, which
+    /// is keyed as this record's wherever it is met -- see
+    /// `SymbolEntry::record`.
     template <Described Q, Vocabulary V>
-    bool add_row(Walk<V>& walk, std::size_t& row)
+    bool add_row(Walk<V>& walk, std::size_t& row, bool readFromRecord = true)
     {
         void const* const identity = &quantityIdentity<Q>;
+        void const* const rowRole = readFromRecord ? walk.roleIdentity : nullptr;
         row = 0;
-        while (row < walk.seenQuantities.size() && walk.seenQuantities[row] != identity)
+        while (row < walk.seenQuantities.size()
+               && (walk.seenQuantities[row].quantity != identity || walk.seenQuantities[row].role != rowRole))
             ++row;
         if (row < walk.seenQuantities.size())
             return false;
-        walk.seenQuantities.push_back(identity);
-        walk.documentation.symbols.push_back(SymbolEntry {
-            .symbol = symbol_of<Q>(walk.vocabulary), .description = Describe<Q>::description, .unit = Describe<Q>::unit });
+        walk.seenQuantities.push_back(SeenRow { .role = rowRole, .quantity = identity });
+        walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                                           .description = Describe<Q>::description,
+                                                           .unit = Describe<Q>::unit,
+                                                           .record = readFromRecord ? walk.role : std::string_view {} });
         return true;
     }
 
@@ -488,7 +540,7 @@ namespace detail
     void collect(Walk<V>& walk, OverriddenConstantNode<Q> const& node)
     {
         std::size_t symbolRow = 0;
-        bool const added = add_row<Q>(walk, symbolRow);
+        bool const added = add_row<Q>(walk, symbolRow, false);
         SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
         if (symbolEntry.fixedValue.has_value())
             return;
@@ -512,7 +564,7 @@ namespace detail
     void collect(Walk<V>& walk, DerivedQuantityNode<Q, Expr> const& node)
     {
         std::size_t symbolRow = 0;
-        bool const added = add_row<Q>(walk, symbolRow);
+        bool const added = add_row<Q>(walk, symbolRow, false);
         {
             SymbolEntry& symbolEntry = walk.documentation.symbols[symbolRow];
             if (!symbolEntry.derivedAs.has_value())
@@ -750,41 +802,46 @@ namespace detail
 
     /// A series variable contributes one row, marked as a series of @p N --
     /// unless the same quantity has already contributed a series row of that
-    /// length. Deduplicated on quantity, shape and length (`seriesIdentity`),
-    /// so a single value of the same quantity, or a series of it over another
-    /// length, is a row of its own.
+    /// length, from the same record. Deduplicated on quantity, shape and
+    /// length (`seriesIdentity`) and on the record it is read from, as a
+    /// variable is (`SymbolEntry::record`), so a single value of the same
+    /// quantity, a series of it over another length, or the same series read
+    /// from another record, is a row of its own.
     template <Vocabulary V, Described Q, std::size_t N>
     void collect(Walk<V>& walk, SeriesVarNode<Q, N> const&)
     {
         void const* const identity = &seriesIdentity<Q, N>;
-        for (void const* const seen: walk.seenQuantities)
-            if (seen == identity)
+        for (SeenRow const& seen: walk.seenQuantities)
+            if (seen.quantity == identity && seen.role == walk.roleIdentity)
                 return;
-        walk.seenQuantities.push_back(identity);
+        walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
         walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
                                                            .description = Describe<Q>::description,
                                                            .unit = Describe<Q>::unit,
                                                            .shape = ValueShape::Series,
-                                                           .length = N });
+                                                           .length = N,
+                                                           .record = walk.role });
     }
 
     /// Raw observations contribute one row, marked as observations of at
     /// most @p Capacity -- unless the same quantity has already contributed
-    /// such a row of that capacity. Deduplicated as a series variable is,
-    /// on quantity, shape and capacity (`observationsIdentity`).
+    /// such a row of that capacity, from the same record. Deduplicated as a
+    /// series variable is, on quantity, shape and capacity
+    /// (`observationsIdentity`) and on the record it is read from.
     template <Vocabulary V, Described Q, std::size_t Capacity>
     void collect(Walk<V>& walk, ObservationsVarNode<Q, Capacity> const&)
     {
         void const* const identity = &observationsIdentity<Q, Capacity>;
-        for (void const* const seen: walk.seenQuantities)
-            if (seen == identity)
+        for (SeenRow const& seen: walk.seenQuantities)
+            if (seen.quantity == identity && seen.role == walk.roleIdentity)
                 return;
-        walk.seenQuantities.push_back(identity);
+        walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
         walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
                                                            .description = Describe<Q>::description,
                                                            .unit = Describe<Q>::unit,
                                                            .shape = ValueShape::Observations,
-                                                           .length = Capacity });
+                                                           .length = Capacity,
+                                                           .record = walk.role });
     }
 
     /// Observations refused already name nothing.
@@ -949,6 +1006,29 @@ namespace detail
     {
         collect(walk, node.along);
         collect(walk, node.at);
+    }
+    /// A read from another record contributes its operand's rows, each keyed
+    /// by the scope's role as well as its quantity, so a quantity read both
+    /// here and there has a row for each. The walk's role is restored after,
+    /// for the rows that follow the scope.
+    template <Vocabulary V, typename Role, typename Requirement, Node Operand>
+    void collect(Walk<V>& walk, RecordScopeNode<Role, Requirement, Operand> const& node)
+    {
+        std::string_view const outerRole = walk.role;
+        void const* const outerRoleIdentity = walk.roleIdentity;
+        walk.role = tag_name<Role>();
+        walk.roleIdentity = &roleIdentity<Role>;
+        collect(walk, node.operand);
+        walk.role = outerRole;
+        walk.roleIdentity = outerRoleIdentity;
+    }
+
+    /// A refused series-valued read from another record names nothing, as a
+    /// refused series names nothing: it only keeps `document` from adding a
+    /// second error to the refusal that produced it.
+    template <Vocabulary V, typename Operand>
+    void collect(Walk<V>&, RefusedSeriesScope<Operand> const&)
+    {
     }
 } // namespace detail
 

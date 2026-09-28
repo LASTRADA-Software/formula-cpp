@@ -76,6 +76,14 @@ add_executable(formula-cpp-tests
     statistics_tests.cpp
     statistics_cross_tu_b.cpp
     rejection_tests.cpp
+    record_tests.cpp
+    record_scope_tests.cpp
+    record_trace_tests.cpp
+    lineage_tests.cpp
+    record_render_tests.cpp
+    record_join_tests.cpp
+    record_statistics_tests.cpp
+    record_cross_tu_b.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -147,12 +155,18 @@ function(formula_negative_test_quote out value)
 endfunction()
 
 function(formula_add_negative_test name expected)
-    cmake_parse_arguments(PARSE_ARGV 2 arg "" "" "REJECT")
+    cmake_parse_arguments(PARSE_ARGV 2 arg "" "EXPECT_COUNT" "REJECT")
     if(arg_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR
             "formula_add_negative_test(${name}): unexpected arguments after the expected text: "
             "${arg_UNPARSED_ARGUMENTS}\n"
-            "The only keyword accepted there is REJECT, followed by the text that must not appear.")
+            "The keywords accepted there are EXPECT_COUNT, followed by how many times the expected "
+            "text must appear, and REJECT, followed by the text that must not appear.")
+    endif()
+    if(DEFINED arg_EXPECT_COUNT AND NOT arg_EXPECT_COUNT MATCHES "^[1-9][0-9]*$")
+        message(FATAL_ERROR
+            "formula_add_negative_test(${name}): EXPECT_COUNT must be a positive whole number, "
+            "not '${arg_EXPECT_COUNT}'.")
     endif()
     if(arg_KEYWORDS_MISSING_VALUES)
         message(FATAL_ERROR
@@ -166,11 +180,28 @@ function(formula_add_negative_test name expected)
 
     formula_negative_test_quote(quoted "${expected}")
     set(content "set(EXPECT ${quoted})\n")
+    # How many times EXPECT must appear: one message per mistake, made a check
+    # that can fail. Not under cl, which stops at the first failed
+    # static_assert of an instantiation chain, so a count there cannot tell one
+    # message from several (measured on cl 19.51 with the task 8 review's L5
+    # case: 1 either way). clang-cl counts as clang++ does.
+    if(DEFINED arg_EXPECT_COUNT AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        string(APPEND content "set(EXPECT_COUNT ${arg_EXPECT_COUNT})\n")
+    endif()
     set(rejectCount 0)
     if(ARGC GREATER 2)
         math(EXPR lastArgument "${ARGC} - 1")
+        set(skipCountValue FALSE)
         foreach(index RANGE 2 ${lastArgument})
             set(value "${ARGV${index}}")
+            if(skipCountValue)
+                set(skipCountValue FALSE)
+                continue()
+            endif()
+            if(value STREQUAL "EXPECT_COUNT")
+                set(skipCountValue TRUE)
+                continue()
+            endif()
             if(value STREQUAL "REJECT")
                 continue()
             endif()
@@ -1401,6 +1432,39 @@ formula_add_negative_test(overlay_argument_not_an_operation
 # inside. The REJECT pins that the unused-quantity rule waits until every node
 # is known: the only use here is inside the unknown node, where it cannot be
 # seen, and "unused" would be false.
+# A role's displayed name must be identifier-like (the task 7 review's M2,
+# L1 and L2, and the lead's ruling): an operator character through a scope,
+# a template specialisation's own name through a record and a scope (one
+# message for both, counted by hand), and a control character through a
+# record alone.
+formula_add_negative_test(record_role_name_operator
+    "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_role_name_template_argument
+    "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_role_name_control_character
+    "formula: this record role's displayed name is not identifier-like")
+
+# A role's name must start with a letter, and must not read as "this
+# record", in any case (the lead's rulings on the task 9 review's L5 and M2).
+# The second is identifier-like, so the identifier rule must not also fire:
+# the REJECT. Through a record and a scope at once, it draws one message.
+formula_add_negative_test(record_role_name_leading_digit
+    "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_role_name_this_record
+    "formula: this record role is displayed as 'this record'"
+    EXPECT_COUNT 1
+    REJECT "formula: this record role's displayed name is not identifier-like")
+# The same, spelt as an identifier, and two roles displayed alike (the final
+# review's L4).
+formula_add_negative_test(record_role_name_this_record_identifier
+    "formula: this record role is displayed as 'this record'"
+    EXPECT_COUNT 1
+    REJECT "formula: this record role's displayed name is not identifier-like")
+formula_add_negative_test(record_context_roles_named_alike
+    "formula: this record_context binds two roles whose names are displayed alike"
+    EXPECT_COUNT 1
+    REJECT "formula: this record_context binds the same role to more than one record")
+
 formula_add_negative_test(overlay_constant_unknown_node
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
@@ -1411,6 +1475,16 @@ formula_add_negative_test(overlay_constant_unknown_node
 # applied to, not only on the one it produced.
 formula_add_negative_test(overlay_constant_unknown_node_then_pruned
     "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
+    REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
+
+# The same unseeable node inside three scope types. The overlay sees through
+# every scope, so the mistake is refused once, not once per scope type (the
+# task 3 review's L5): EXPECT_COUNT pins one message, and gives three with
+# the scope's rewrite deleted. Not counted under cl, which stops at the first
+# failed static_assert in this chain and so reads 1 either way.
+formula_add_negative_test(record_scope_overlay_one_refusal
+    "formula: this overlay overrides a constant in an expression holding a node kind it cannot see inside"
+    EXPECT_COUNT 1
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 # An overlay applied to a malformed method. The method is refused where it is
@@ -1768,6 +1842,225 @@ formula_add_negative_test(render_node_without_vocabulary
 # measured on CI's g++-14 or Apple clang. Deleting `consteval` makes the case
 # compile.
 formula_add_negative_test(vocabulary_symbol_not_static "a constant expression")
+
+# Phase 14: records and the context. Each case's own comment says why its
+# mistake is the only thing wrong with it.
+formula_add_negative_test(record_context_duplicate_role
+    "formula: this record_context binds the same role to more than one record"
+    REJECT "RequireThisRecordFirst" "RequirePlainRole")
+
+formula_add_negative_test(record_context_first_not_this_record
+    "formula: the first record of a record_context must be record<ThisRecord>(...)"
+    REJECT "RequireDistinctRoles" "RequirePlainRole")
+
+formula_add_negative_test(record_role_not_plain
+    "formula: this record role is not a plain class type")
+
+# A context is its own record's environment, so a quantity that record lacks
+# is refused as it is for the plain environment, by RequireProvided. Its
+# message is counted once by hand on cl, clang-cl, g++ 13 and clang++ 20.1.8
+# (see the phase 14 task 2 report); REJECT cannot refuse a second copy of it.
+formula_add_negative_test(record_context_missing_quantity
+    "formula: this environment provides no value for this quantity"
+    REJECT "RequireThisRecordFirst" "RequireDistinctRoles" "RequirePlainRole")
+
+# One mistake, a cv-qualified ThisRecord, must draw one message: the
+# first-record rule ignores cv-qualifiers so that only the role rule reports
+# it. Deleting that `remove_cv_t` makes the REJECT fire.
+formula_add_negative_test(record_context_this_record_not_plain
+    "formula: this record role is not a plain class type"
+    REJECT "RequireThisRecordFirst")
+
+# The compiler's own words, since the strong types are the guard and no
+# library static_assert fires (REJECT "formula: " holds every library message
+# to that). Measured: cl says "cannot convert argument 1 from
+# 'formula::TestId' to 'formula::SampleId'", g++ 13 "could not convert ... from
+# 'formula::TestId' to 'formula::SampleId'", clang++ 20.1.8 and clang-cl 22.1.3 "no
+# viable conversion from 'TestId' to 'SampleId'". Not "no matching function":
+# record_key is one non-template function, and none of the four words it that
+# way. g++-14 and Apple clang were not measured.
+# The qualifier differs, so the shared text stops at the second quote.
+formula_add_negative_test(record_key_swapped "TestId' to '" REJECT "formula: ")
+
+# What `explicit` on SampleId and TestId refuses, which the distinct types
+# alone do not: a bare integer for a key. One case per key, each with the
+# other key well formed, so that each `explicit` is the only thing refusing
+# its case: removing it makes that case compile. Again the compiler's own
+# words: cl says "cannot convert argument N from 'int' to
+# 'formula::SampleId'", g++ 13 "could not convert '17' from 'int' to
+# 'formula::SampleId'", clang++ 20.1.8 and clang-cl 22.1.3 "no viable
+# conversion from 'int' to 'SampleId'" (TestId likewise).
+formula_add_negative_test(record_key_sample_from_integer "'int' to '" REJECT "formula: ")
+formula_add_negative_test(record_key_test_from_integer "'int' to '" REJECT "formula: ")
+
+# Phase 14, task 3: reading from another record through from_record<Role>.
+# Each refusal is gated so that it is the only message: the evaluator does
+# not dispatch the operand after refusing, which each case's REJECT of
+# RequireProvided holds it to (each case's operand names a quantity the
+# environment it would fall back to does not hold). Messages counted by hand
+# are recorded in the phase 14 task 3 report. Removing any of the three gates
+# makes its cases fail on their REJECT under g++ 13 and clang++ 20.1.8;
+# cl-debug showed one message either way, so only those legs see a cascade.
+formula_add_negative_test(record_scope_plain_environment
+    "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
+    REJECT "RequireProvided" "RequireBoundRole" "RequireForeignRole")
+
+formula_add_negative_test(record_scope_role_not_bound
+    "formula: this record_context binds no record to this role"
+    REJECT "RequireProvided" "RequireRecordContext" "RequireForeignRole")
+
+# After the refusal record<Role>() returns this record, so the key read after
+# it draws nothing more. Without that fallback the tuple lookup adds errors
+# of its own ("tuple index must be in range" and a deleted `get` on g++ 13
+# and clang++ 20.1.8, tuple_element instantiations on cl); the "tuple"
+# REJECT catches them on all three, measured.
+formula_add_negative_test(record_context_role_not_bound
+    "formula: this record_context binds no record to this role"
+    REJECT "RequireThisRecordFirst" "RequireDistinctRoles" "tuple")
+
+formula_add_negative_test(record_scope_this_record
+    "formula: from_record<ThisRecord> reads this record as though it were another"
+    REJECT "RequireBoundRole" "RequireRecordContext" "RequireProvided")
+
+# One mistake, a cv-qualified ThisRecord in a scope, draws one message: the
+# evaluator returns at once for a role naming this record, so the bound-role
+# rule -- no context binds `ThisRecord const` -- is never asked.
+formula_add_negative_test(record_scope_this_record_const
+    "formula: from_record<ThisRecord> reads this record as though it were another"
+    REJECT "RequireBoundRole" "RequireRecordContext" "RequireProvided")
+
+# A RecordOrigin stated by hand. The refusing constructor is a template with
+# a defaulted placeholder parameter, so that its static_assert waits for a
+# call: RecordOrigin is not a template, and a non-dependent assertion would
+# fire at the header's own definition.
+formula_add_negative_test(record_origin_by_hand
+    "formula: a record origin is the library's to state, not an author's")
+
+# The same forgery by explicit specialisation, which compiled while the
+# refusing constructor was a member template. The compiler's own words, since
+# no library static_assert is involved; measured wording in the phase 14
+# task 5 report.
+formula_add_negative_test(record_origin_specialised "RecordOrigin" REJECT "formula: ")
+
+# Phase 14, task 6: lineage requirements. Each case's own comment says why
+# its mistake is the only thing wrong with it; messages counted by hand are
+# in the phase 14 task 6 report.
+formula_add_negative_test(lineage_requirement_empty
+    "formula: this lineage requirement names no attribute"
+    REJECT "RequireAttributesNamedOnce")
+
+formula_add_negative_test(lineage_attribute_twice
+    "formula: this lineage requirement names the same attribute more than once"
+    REJECT "RequireSomeAttribute")
+
+formula_add_negative_test(lineage_record_declares_twice
+    "formula: this record declares the same lineage attribute more than once"
+    REJECT "RequireLineageEntries" "RequirePlainRole")
+
+# The duplicate rule is gated on every entry being a lineage entry; without
+# the gate the non-entry would also draw it.
+formula_add_negative_test(lineage_record_entry_not_lineage
+    "formula: a record takes only lineage entries after its environment"
+    REJECT "RequireAttributesDeclaredOnce")
+
+formula_add_negative_test(lineage_against_own_role
+    "formula: this lineage requirement compares the record it reads with itself"
+    REJECT "RequireBoundRole" "RequireDeclaredAttribute")
+
+# An attribute neither record declares: one message, not one per record. The
+# compared record is asked only once the read record is known to declare the
+# attribute; without that gate g++ and clang++ report both.
+formula_add_negative_test(lineage_attribute_undeclared
+    "formula: this lineage requirement compares an attribute the record does not declare"
+    REJECT "RequireProvided" "RequireBoundRole")
+
+formula_add_negative_test(record_scope_requirement_not_lineage
+    "formula: a record scope's requirement is not a lineage requirement"
+    REJECT "RequireForeignRole" "RequireComparandNotSubject")
+
+# A sink defining only one of the two scope hooks. After the refusal the
+# evaluator reports to neither, so nothing else follows.
+formula_add_negative_test(record_scope_sink_one_hook
+    "formula: this sink defines only one of record_entered and lineage_checked"
+    REJECT "RequireProvided" "RequireBoundRole")
+
+formula_add_negative_test(record_scope_nested
+    "formula: this formula reads from another record, but was evaluated against an environment that holds only one"
+    REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")
+# The same nesting, put there by an overlay's add_derived: the refusal's words
+# name it, since the author did evaluate against a context (the final
+# review's L2).
+formula_add_negative_test(record_scope_nested_by_overlay
+    "a from_record sits inside another from_record, perhaps put there by an overlay's add_derived"
+    EXPECT_COUNT 1
+    REJECT "RequireBoundRole" "RequireProvided" "RequireForeignRole")
+
+formula_add_negative_test(record_unbound_this_record
+    "formula: the record being evaluated cannot be unbound"
+    REJECT "RequirePlainRole")
+
+# After this refusal `record()` returns a record over the context's own
+# record's environment, so that using it -- its key, or evaluating through
+# it -- draws nothing more. The message is counted once by hand on cl,
+# clang-cl, g++ 13 and clang++ 20.1.8 (see the phase 14 task 2 report); REJECT
+# cannot refuse a second copy of it, and REJECTs RequireProvided, the message
+# an evaluation through a record with no values would add.
+formula_add_negative_test(record_environment_is_context
+    "formula: a record holds its values in an environment(...), and this is not one"
+    REJECT "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles" "RequireProvided")
+
+# A bare Measured where environment(...) was meant, and a formula of three
+# quantities evaluated through a context over that record. One message: the
+# refused record holds detail::AbsentEnvironment, which answers every
+# quantity as absent without a RequireProvided of its own.
+# A read from another record over a series itself (F3): refused with one
+# message, the refused scope answered as absent so the formula it is used in
+# draws nothing more; and a series read through a record whose values were
+# refused, which AbsentEnvironment answers without a get_series error.
+formula_add_negative_test(record_scope_of_series
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1)
+formula_add_negative_test(record_series_through_refused_record
+    "formula: a record holds its values in an environment(...), and this is not one"
+    EXPECT_COUNT 1
+    REJECT "get_series")
+# The same refusal, rendered, documented and overlaid: every walk answers the
+# refused scope, as phase 12's walks answer a refused series, so each stays
+# one message. cl stops at the first failed static_assert, so only the
+# overlay's REJECT -- a library static_assert of its own -- can fire there;
+# g++, clang++ and clang-cl see all three.
+formula_add_negative_test(record_scope_of_series_rendered
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1
+    REJECT "render_node")
+formula_add_negative_test(record_scope_of_series_documented
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1
+    REJECT "render_node" "collect")
+formula_add_negative_test(record_scope_of_series_overlaid
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1
+    REJECT "cannot see inside")
+# The lineage form of the same refusal (the task 10 review's L2): without
+# its overload the call finds no from_record at all, and no library message.
+formula_add_negative_test(record_scope_of_series_with_lineage
+    "formula: from_record was given a series, raw observations or a curve"
+    EXPECT_COUNT 1)
+
+formula_add_negative_test(record_values_not_environment
+    "formula: a record holds its values in an environment(...), and this is not one"
+    REJECT "RequireProvided" "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
+
+# The same mistake one level up: a context given as this record's values,
+# and a formula then evaluated through the context built over it. One
+# message, and no RequireProvided for each quantity read. With the
+# context branch of `record()` removed, both this case and the one above
+# fail on their RequireProvided REJECT under g++ 13 and clang++ 20.1.8;
+# cl-debug showed one message either way, so only those two legs can see
+# that cascade.
+formula_add_negative_test(record_context_over_context
+    "formula: a record holds its values in an environment(...), and this is not one"
+    REJECT "RequireProvided" "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
 
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"

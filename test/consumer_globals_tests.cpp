@@ -43,8 +43,15 @@
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; and the four
-// table validators. A template it does not reach is not
-// guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
+// table validators; and `record_key`, `sample_id`, `test_id`,
+// `record`, `Record::unbound`, `record_context`, its `this_record`,
+// `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
+// and `explain` through a context, and `from_record`, over a bound and an
+// unbound record, untraced and traced into `render_trace`, gated on
+// `same_lineage` through `checked_explain`, rendered and documented, with
+// `lineage_of` and `origin_of` reading the trace's side tables, and under an
+// overlay's constant and derived quantity, traced. A
+// template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
 // Measured against the headers before their names were changed: cl 19.51
@@ -87,6 +94,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <type_traits>
 
 // clang-format off
 int result, value, text, step, mark, first, last, count, size, name, key, left, right, lhs, rhs, operand, outcome,
@@ -107,7 +115,7 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     type, types, u, unit, unitName, upper, v, valid, values, vector, view, volume, w, weight, what, when, where, who,
     why, word, words, x, y, z, variance, spread, deviation, deviations, gap, statistic, survivors, rejected, sampled,
     counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
-    statistics;
+    statistics, batch, lineage, role, gated, there, reference, scope, attribute, comparand, subject;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -131,6 +139,7 @@ int index;
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/lineage.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
@@ -140,6 +149,7 @@ int index;
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/rounded_root.hpp>
@@ -165,6 +175,15 @@ struct Cube
 {
 };
 struct Cylinder
+{
+};
+struct Reference
+{
+};
+struct MaterialBatch
+{
+};
+struct TestMethod
 {
 };
 
@@ -256,6 +275,21 @@ inline constexpr auto specimen = formula::environment(formula::Measured<Force> {
                                                       formula::Measured<EdgeX> { formula::Rational { 150 } },
                                                       formula::Measured<Factor> { formula::Rational { 1 } });
 
+inline constexpr auto elsewhere = formula::environment(formula::Measured<Force> { formula::Rational { 60'000 } },
+                                                       formula::Measured<EdgeX> { formula::Rational { 139 } },
+                                                       formula::Measured<Factor> { formula::Rational { 1 } });
+
+/// Records declaring lineage: the same batch, and a different method.
+inline constexpr auto lineageRecords = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), specimen,
+                                         formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(12)),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), elsewhere,
+                               formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(13)));
+
+inline constexpr auto boundRecords = formula::record_context(
+    formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), specimen),
+    formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), elsewhere));
+
 inline constexpr auto north = formula::vocabulary(formula::renames<Force>("P"));
 
 inline constexpr formula::BreakpointTable<3> EdgeSnapSet { formula::breakpoint(137),
@@ -284,6 +318,19 @@ inline constexpr auto seriesOverlaid =
     formula::apply(formula::overlay(formula::with_constant<Factor>(
                        formula::Rational { 3 }, formula::Citation { .reference = "Example Standard 12:2021 NA" })),
                    seriesMethod);
+
+/// A method reading its factor only from another record, so that an overlay
+/// must reach inside the scope, fixed and derived.
+inline constexpr auto acrossMethod = formula::method(
+    formula::variants(formula::variant<Cube>(var<Force> / formula::from_record<Reference>(var<Factor> * var<Force>))),
+    formula::rounding_rule<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+inline constexpr auto fixedAcross =
+    formula::apply(formula::overlay(formula::with_constant<Factor>(formula::Rational { 1, 2 },
+                                                                   formula::Citation { .reference = "Example Standard 3" })),
+                   acrossMethod);
+inline constexpr auto derivedAcross =
+    formula::apply(formula::overlay(formula::add_derived<Factor>(var<EdgeX> / var<EdgeX>, formula::Citation { .reference = "Example Standard 3" })), acrossMethod);
 
 /// A sink that asks for both pairs of method hooks, and nothing else of its
 /// own, so that `evaluate_method`'s and `check_method`'s hooked branches are
@@ -651,5 +698,118 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(formula::band_table_is_well_formed(Bands) && formula::key_table_is_well_formed(SpecimenFormKeys)
                            && formula::breakpoint_table_is_well_formed(Points)
                            && formula::sample_size_table_is_well_formed(Sizes));
+
+    // Records and a context, which is this record's environment.
+    auto const throughContext = formula::checked_evaluate<Strength>(everything, boundRecords);
+    auto const methodThroughContext = formula::evaluate_method<Cube>(baseMethod, boundRecords);
+    auto const explainedThroughContext = formula::explain<Strength>(everything, boundRecords, north);
+    probe.checks.push_back(throughContext == checked
+                           && methodThroughContext == formula::evaluate_method<Cube>(baseMethod, specimen));
+    probe.checks.push_back(explainedThroughContext.outcome == explained.outcome);
+    probe.checks.push_back(
+        boundRecords.this_record().key() == formula::record_key(formula::sample_id(17), formula::test_id(5))
+        && boundRecords.record<Reference>().key() == formula::record_key(formula::sample_id(23), formula::test_id(3)));
+    auto const unboundReference = formula::Record<Reference, std::remove_cvref_t<decltype(elsewhere)>>::unbound();
+    probe.checks.push_back(!unboundReference.is_bound() && !unboundReference.key().has_value()
+                           && unboundReference.environment().get<Force>().is_absent()
+                           && boundRecords.record<Reference>().is_bound());
+    probe.checks.push_back(decltype(boundRecords)::binds<Reference> && !decltype(boundRecords)::binds<Cube>);
+
+    // Reading from another record: 90 000 N here over 60 000 N there, and
+    // absent over a record not yet made.
+    auto const acrossRecords = formula::checked_evaluate_si<formula::Rational>(
+        var<Force> / formula::from_record<Reference>(var<Force>), boundRecords);
+    auto const notYetMade = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), specimen),
+        unboundReference);
+    auto const fromNothing =
+        formula::checked_evaluate_si<formula::Rational>(formula::from_record<Reference>(var<Force>), notYetMade);
+    probe.checks.push_back(acrossRecords.has_value() && **acrossRecords == formula::Rational { 3, 2 }
+                           && fromNothing.has_value() && !fromNothing->has_value());
+
+    // The same read, traced and rendered: each step inside the scope says
+    // which record it was read from.
+    formula::Trace<> recordTrace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(var<Force> / formula::from_record<Reference>(var<Force>),
+                                                           boundRecords, formula::RecordingSink { recordTrace, north });
+    probe.checks.push_back(formula::render_trace(recordTrace, { .maxSteps = 20 }).find(
+                               "from record Reference (sample 23, test 3)")
+                           != std::string::npos);
+
+    // A read gated on lineage: the batch agrees and the method does not, so
+    // the read is refused, and checked_explain keeps the trace that says why.
+    auto const gatedRead = formula::from_record<Reference>(var<Force>, formula::same_lineage<MaterialBatch, TestMethod>());
+    auto const refusedRead = formula::checked_explain<Force>(gatedRead, lineageRecords, north);
+    probe.checks.push_back(!refusedRead.has_value() && refusedRead.error().error == formula::ArithmeticError::DomainError);
+    auto const agreedRead = formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(var<Force>, formula::same_lineage<MaterialBatch>()), lineageRecords);
+    probe.checks.push_back(!refusedRead.has_value()
+                           && formula::render_trace(refusedRead.error().trace, { .maxSteps = 20 }).find(
+                                  "same TestMethod as this record: 12 for this record, 13 for Reference, violated")
+                                  != std::string::npos
+                           && agreedRead.has_value() && **agreedRead == formula::Rational { 60'000 }
+                           && lineageRecords.record<Reference>().lineage_of<MaterialBatch>() == std::uint64_t { 4411 });
+    // The trace's side tables, through their accessors: the comparison the
+    // refusing attribute recorded, and the record its step was read from.
+    probe.checks.push_back(!refusedRead.has_value() && refusedRead.error().trace.steps.size() > 1
+                           && formula::lineage_of(refusedRead.error().trace, 1).has_value()
+                           && formula::lineage_of(refusedRead.error().trace, 1)->attribute() == "TestMethod"
+                           && formula::origin_of(refusedRead.error().trace, refusedRead.error().trace.steps[1])
+                                      .has_value()
+                           && formula::origin_of(refusedRead.error().trace, refusedRead.error().trace.steps[1])->role()
+                                  == "Reference");
+
+    // The page of a formula that reads from another record, in every dialect:
+    // its words, and a row per (record, quantity).
+    auto const acrossPage = formula::document<formula::Dialect::LaTeX>(
+        var<Force> / formula::from_record<Reference>(var<Force>), north);
+    pages += formula::render<formula::Dialect::Markdown>(formula::from_record<Reference>(var<Force> / var<EdgeX>), north)
+             + formula::render(formula::from_record<Reference>(var<Force>));
+    probe.checks.push_back(acrossPage.symbols.size() == 2 && acrossPage.symbols[1].record == "Reference"
+                           && acrossPage.formula.find("\\mathrm{Reference}") != std::string::npos);
+
+    // An overlay reaching inside a scope: 90 000 N over 1/2 of 60 000 N is 3,
+    // traced with the fixed factor's record; and over a derived factor of 1,
+    // 1.5.
+    formula::Trace<> fixedAcrossTrace {};
+    auto const fixedAcrossValue =
+        formula::evaluate_method<Cube>(fixedAcross, boundRecords, formula::RecordingSink { fixedAcrossTrace, north });
+    probe.checks.push_back(fixedAcrossValue.has_value() && **fixedAcrossValue == formula::Rational { 3 }
+                           && formula::render_trace(fixedAcrossTrace, { .maxSteps = 20 })
+                                      .find("k = 1/2, from record Reference (sample 23, test 3) [fixed by")
+                                  != std::string::npos);
+    auto const derivedAcrossValue = formula::evaluate_method<Cube>(derivedAcross, boundRecords);
+    probe.checks.push_back(derivedAcrossValue.has_value() && **derivedAcrossValue == formula::Rational { 3, 2 });
+
+    // A series read from another record, reduced inside the scope: 150 mm
+    // and 103 mm there, 253 mm, and the series' own line names the record.
+    auto const seriesRecords = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), bothScreens),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), bothScreens));
+    formula::Trace<> seriesAcrossTrace {};
+    auto const seriesAcross = formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(formula::sum(formula::series<EdgeX, 2>)), seriesRecords,
+        formula::RecordingSink { seriesAcrossTrace, north });
+    probe.checks.push_back(seriesAcross.has_value() && **seriesAcross == formula::Rational { 253, 1000 }
+                           && formula::render_trace(seriesAcrossTrace, { .maxSteps = 20 })
+                                      .find("103 mm, from record Reference (sample 23, test 3)")
+                                  != std::string::npos);
+
+    // The same series typed in on the reference: the series variable's
+    // evaluator tells the sink (`series_input_source`), and the line says so
+    // after the record.
+    auto const typedScreens = formula::environment(
+        formula::entered(formula::measured_series<EdgeX>(edge, formula::Measured<EdgeX> { formula::Rational { 103 } })));
+    auto const typedSeriesRecords = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), bothScreens),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), typedScreens));
+    formula::Trace<> typedSeriesTrace {};
+    auto const typedSeries = formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(formula::sum(formula::series<EdgeX, 2>)), typedSeriesRecords,
+        formula::RecordingSink { typedSeriesTrace, north });
+    probe.checks.push_back(typedSeries.has_value() && **typedSeries == formula::Rational { 253, 1000 }
+                           && formula::render_trace(typedSeriesTrace, { .maxSteps = 20 })
+                                      .find("103 mm, from record Reference (sample 23, test 3), entered by hand\n")
+                                  != std::string::npos);
     return probe;
 }
