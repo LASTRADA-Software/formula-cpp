@@ -78,7 +78,7 @@ namespace detail
     template <Unit KeyUnit, typename Operand>
     struct RequireSnapKeyMatches
     {
-        static_assert(KeyUnit.dimension == Operand::dimension,
+        static_assert(refused_already<Operand>() || KeyUnit.dimension == Operand::dimension,
                       "formula: this snap's key unit does not measure the dimension of the expression it snaps; the "
                       "unit's dimension and the operand appear in this diagnostic as the template arguments of "
                       "RequireSnapKeyMatches");
@@ -122,14 +122,14 @@ namespace detail
             return std::unexpected { located.error() };
 
         // Both reduced a moment ago, inside the scan.
-        std::expected<Rational, ArithmeticError> const previous = keyAt(located->low);
+        std::expected<Rational, ArithmeticError> const priorKey = keyAt(located->low);
         std::expected<Rational, ArithmeticError> const rowKey = keyAt(located->high);
-        if (!previous.has_value() || !rowKey.has_value())
+        if (!priorKey.has_value() || !rowKey.has_value())
             return std::unexpected { ArithmeticError::DomainError };
         if (located->low == located->high)
             return SnapAnswer { *rowKey, Segment { Permitted[located->low], Permitted[located->low] }, false };
 
-        std::expected<Rational, ArithmeticError> const belowDistance = checked_sub(key, *previous);
+        std::expected<Rational, ArithmeticError> const belowDistance = checked_sub(key, *priorKey);
         if (!belowDistance.has_value())
             return std::unexpected { belowDistance.error() };
         std::expected<Rational, ArithmeticError> const aboveDistance = checked_sub(*rowKey, key);
@@ -138,10 +138,10 @@ namespace detail
 
         Segment const neighbours { Permitted[located->low], Permitted[located->high] };
         if (*belowDistance < *aboveDistance)
-            return SnapAnswer { *previous, neighbours, false };
+            return SnapAnswer { *priorKey, neighbours, false };
         if (*aboveDistance < *belowDistance)
             return SnapAnswer { *rowKey, neighbours, false };
-        return SnapAnswer { Tie == SnapTie::TowardLower ? *previous : *rowKey, neighbours, true };
+        return SnapAnswer { Tie == SnapTie::TowardLower ? *priorKey : *rowKey, neighbours, true };
     }
 } // namespace detail
 
@@ -179,6 +179,8 @@ struct SnapNode: NodeBase
     static constexpr SnapTie tie = Tie;
     /// A snapped value keeps its dimension: the key unit's.
     static constexpr Dimension dimension = KeyUnit.dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// `snapped<KeyUnit, Permitted, Tie>(operand)`: @p operand snapped to the

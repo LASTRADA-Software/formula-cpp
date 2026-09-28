@@ -275,20 +275,6 @@ namespace detail
     inline constexpr bool elementwise_dimensions_agree =
         (Op != BinaryOperator::Add && Op != BinaryOperator::Subtract) || Left::dimension == Right::dimension;
 
-    /// Whether @p T is a series node that has already been refused, or holds
-    /// one: its `refused`, where it declares one, and false for every other
-    /// operand (a scalar, or a leaf). A node over a refused operand asks no
-    /// question of its own -- the operand's length and dimension are
-    /// stand-ins taken after the refusal, and asking about them would report
-    /// the one mistake a second time (defect class 2).
-    template <typename T>
-    [[nodiscard]] consteval bool refused_already() noexcept
-    {
-        if constexpr (requires { T::refused; })
-            return T::refused;
-        else
-            return false;
-    }
 } // namespace detail
 
 /// A `UnaryOperator` applied to every element of a series: `-m_r(i)`.
@@ -306,7 +292,7 @@ struct ElementwiseUnaryNode: SeriesNodeBase
     /// As long as its operand.
     static constexpr std::size_t length = Operand::length;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<Operand>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// A `BinaryOperator` applied element by element: element i of the result is
@@ -338,8 +324,8 @@ struct ElementwiseBinaryNode: SeriesNodeBase
 
     /// Whether this node, or an operand of it, was refused: true once any
     /// check above failed, and read by every node built over this one.
-    static constexpr bool refused = operandRefused || !detail::series_lengths_agree<Left, Right>
-                                    || !detail::elementwise_dimensions_agree<Op, Left, Right>;
+    static constexpr detail::RefusedFlag refused = operandRefused || !detail::series_lengths_agree<Left, Right>
+                                                   || !detail::elementwise_dimensions_agree<Op, Left, Right>;
 
     /// The left-hand operand, a series or a scalar. No `{}` initialiser,
     /// deliberately: see `Corrections` (`lookup.hpp`).
@@ -524,7 +510,7 @@ struct ElementwiseRoundNode: SeriesNodeBase
     /// As long as its operand.
     static constexpr std::size_t length = S::length;
     /// Whether this node, or its operand, was refused.
-    static constexpr bool refused = operandRefused || !countMatches || !(U.dimension == S::dimension);
+    static constexpr detail::RefusedFlag refused = operandRefused || !countMatches || !(U.dimension == S::dimension);
 };
 
 /// @p seriesOperand rounded element by element, element i to `Places[i]`
@@ -617,7 +603,7 @@ struct CumulativeNode: SeriesNodeBase
     /// As long as its operand.
     static constexpr std::size_t length = S::length;
     /// Whether its operand was refused -- see `detail::refused_already`.
-    static constexpr bool refused = detail::refused_already<S>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<S>();
 };
 
 /// A running total along @p seriesOperand, from the end `D` names:
@@ -646,7 +632,7 @@ namespace detail
         /// One element, as the single value was.
         static constexpr std::size_t length = 1;
         /// Always refused.
-        static constexpr bool refused = true;
+        static constexpr detail::RefusedFlag refused = true;
     };
 } // namespace detail
 
@@ -706,7 +692,7 @@ struct SumNode: NodeBase
     static constexpr Dimension dimension = S::dimension;
     /// Whether its operand was refused -- see `detail::refused_already`. A
     /// sum broadcast back over a series is then asked nothing either.
-    static constexpr bool refused = detail::refused_already<S>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<S>();
 };
 
 /// The total of every element of @p seriesOperand: `sum(series<Retained, 5>)`.

@@ -512,7 +512,7 @@ namespace detail
     template <Unit KeyUnit, typename Operand>
     struct RequireLookupKeyMatches
     {
-        static_assert(KeyUnit.dimension == Operand::dimension,
+        static_assert(refused_already<Operand>() || KeyUnit.dimension == Operand::dimension,
                       "formula: this lookup table's key unit does not measure the dimension of the "
                       "expression whose value selects a row; the unit's dimension and the operand "
                       "appear in this diagnostic as the template arguments of RequireLookupKeyMatches");
@@ -802,8 +802,9 @@ struct BandedLookupNode: NodeBase
     /// pressure correction from a measured length, say -- a banded lookup
     /// node stands where a number of *this* dimension stands.
     static constexpr Dimension dimension = ResultUnit.dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
-
 
 /// Declares a banded lookup: `banded_lookup<unit::Millimetre, Bands,
 /// unit::One>(var<Diameter>, { rat(863, 1000), rat(1043, 1000), rat(1127, 1000) })`.
@@ -1690,12 +1691,12 @@ namespace detail
                                                   Segment { Points[located->low], Points[located->low] } };
 
         // Both reduced a moment ago, inside the scan.
-        std::expected<Rational, ArithmeticError> const previous = keyAt(located->low);
+        std::expected<Rational, ArithmeticError> const priorKey = keyAt(located->low);
         std::expected<Rational, ArithmeticError> const rowKey = keyAt(located->high);
-        if (!previous.has_value() || !rowKey.has_value())
+        if (!priorKey.has_value() || !rowKey.has_value())
             return std::unexpected { ArithmeticError::DomainError };
         std::expected<Rational, ArithmeticError> const answered =
-            interpolate_between(*previous, corrections[located->low], *rowKey, corrections[located->high], key);
+            interpolate_between(*priorKey, corrections[located->low], *rowKey, corrections[located->high], key);
         if (!answered.has_value())
             return std::unexpected { answered.error() };
         return std::pair<Rational, Segment> { *answered, Segment { Points[located->low], Points[located->high] } };
@@ -1767,6 +1768,8 @@ struct InterpolatingLookupNode: NodeBase
     /// The dimension of `unit`: what this node itself produces. Independent of
     /// `keyUnit`'s dimension on purpose, exactly as a banded lookup's is.
     static constexpr Dimension dimension = ResultUnit.dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// Declares an interpolating lookup: `interpolating_lookup<unit::Millimetre,

@@ -145,6 +145,7 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
@@ -1942,6 +1943,57 @@ namespace detail
     {
     };
 
+    /// An opaque output, rewritten **through its call's inputs**: an opaque
+    /// operation's `compute` receives evaluated input values and never the
+    /// environment (`opaque.hpp`), so its inputs are everything it reads, and
+    /// a quantity fixed or defined in them is fixed or defined for the whole
+    /// call. Known when every input is; the call is rebuilt around the
+    /// rewritten inputs with the **same** citation.
+    ///
+    /// **A refused call is never rebuilt**, and is not known: rebuilt around
+    /// new input types it would be a new call type, whose class body refuses
+    /// it a second time -- one mistake, two messages. Not known, every result
+    /// check over it stays silent; the program is ill-formed already, and
+    /// they have nothing true to add. `apply` returns it as it was.
+    template <typename Sub, std::size_t I, typename Op, typename... Inputs, typename Origin>
+    struct ConstantRewrite<Sub, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>
+    {
+        /// Whether the call was refused where it was written.
+        static constexpr bool refusedCall = OpaqueCall<Op, Inputs...>::refused;
+        /// Whether every input is a kind this header knows, all the way down,
+        /// and the call was not refused.
+        static constexpr bool known = !refusedCall && (ConstantRewriteOf<Sub, Inputs>::known && ...);
+        /// Whether any input uses `Q`.
+        static constexpr bool mentions = (ConstantRewriteOf<Sub, Inputs>::mentions || ...);
+        /// The call, around the rewritten inputs.
+        using Call = OpaqueCall<Op, typename ConstantRewriteOf<Sub, Inputs>::type...>;
+        /// The same output of the rewritten call; the output itself when the
+        /// call was refused.
+        using type =
+            std::conditional_t<refusedCall, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>, OpaqueOutputNode<I, Call, Origin>>;
+
+        /// The output, of the call around the rewritten inputs, with its
+        /// citation; the original when the call was refused.
+        [[nodiscard]] static constexpr type apply(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& original,
+                                                  Sub const& overriding) noexcept
+        {
+            if constexpr (refusedCall)
+            {
+                (void) overriding;
+                return original;
+            }
+            else
+                return type { {},
+                              Call { [&]<std::size_t... At>(std::index_sequence<At...>) {
+                                        return std::tuple<typename ConstantRewriteOf<Sub, Inputs>::type...> {
+                                            ConstantRewriteOf<Sub, Inputs>::apply(std::get<At>(original.call.inputs),
+                                                                                  overriding)...
+                                        };
+                                    }(std::index_sequence_for<Inputs...> {}),
+                                     original.call.citation } };
+        }
+    };
+
     template <typename Sub, UnaryOperator Op, SeriesNode Operand>
     struct ConstantRewrite<Sub, ElementwiseUnaryNode<Op, Operand>>:
         ConstantRewriteOperand<Sub, Operand, ElementwiseUnaryNode<Op, typename ConstantRewriteOf<Sub, Operand>::type>>
@@ -2475,6 +2527,13 @@ namespace detail
         using type = SubstitutedInAll<Left, Right>;
     };
 
+    template <std::size_t I, typename Op, typename... Inputs, typename Origin>
+    struct SubstitutedIn<OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>
+    {
+        /// Whatever any of the call's inputs substitutes.
+        using type = SubstitutedInAll<Inputs...>;
+    };
+
     /// Fails to compile when `with_constant<Q>` is applied to a method that
     /// never uses `Q`. Such an override changes nothing, and the likeliest
     /// reason is that it names the wrong quantity.
@@ -2769,7 +2828,7 @@ namespace detail
     template <typename Q, typename Expr>
     struct RequireDerivationMeasuresQuantity
     {
-        static_assert(Expr::dimension == Describe<Q>::dimension,
+        static_assert(refused_already<Expr>() || Expr::dimension == Describe<Q>::dimension,
                       "formula: this overlay derives a quantity from an expression of a different dimension; "
                       "every use of the quantity would evaluate to something it does not measure -- the "
                       "quantity and the expression appear in this diagnostic as the template arguments Q and "
@@ -2817,7 +2876,11 @@ struct QuantityDerivation
     /// inside -- see `detail::ConstantRewrite`.
     static constexpr bool known = detail::ConstantRewriteOf<detail::QuantityProbe<Q>, Expr>::known;
 
-    static_assert(std::conditional_t<known, std::true_type, detail::RequireDerivationSeesNode<Expr>>::value);
+    // Not asked of an expression refused already, such as one holding a
+    // refused opaque call: its one message has been given.
+    static_assert(std::conditional_t<known || detail::refused_already<Expr>(),
+                                     std::true_type,
+                                     detail::RequireDerivationSeesNode<Expr>>::value);
     static_assert(
         std::conditional_t<
             known,
@@ -3338,7 +3401,7 @@ namespace detail
                                          std::true_type>::value);
         static_assert(
             std::conditional_t<
-                declared,
+                declared && !refused_already<Expr>(),
                 RequireReplacementKeepsDimension<Tag, MethodDimensionIs<Input, Expr::dimension>::reported, Expr::dimension>,
                 std::true_type>::value);
         static_assert(

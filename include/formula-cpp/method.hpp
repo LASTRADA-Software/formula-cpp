@@ -186,6 +186,8 @@ struct VariantCase
     /// The dimension this variant reports. Every variant of one method must
     /// publish the same one -- see `detail::RequireVariantsAgree`.
     static constexpr Dimension dimension = Expr::dimension;
+    /// Whether its expression was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Expr>();
 };
 
 /// The spelling of one variant in a method: `variant<Cube>(expr)`. See the
@@ -307,7 +309,7 @@ namespace detail
     template <typename First, typename Other>
     struct RequireVariantsAgree
     {
-        static_assert(First::dimension == Other::dimension,
+        static_assert(refused_already<First>() || refused_already<Other>() || First::dimension == Other::dimension,
                       "formula: two variants of this method measure different dimensions; every "
                       "variant must report the same quantity, because a method reports one -- the "
                       "two offending variants appear in this diagnostic as the template arguments "
@@ -606,9 +608,9 @@ namespace detail
     /// injection, which names a `detail::` type without spelling `detail::`.
     /// Both were measured forging a rounding rule's provenance on all three
     /// compilers. The only supported customisation points are `TagName`,
-    /// `EnumeratorName`, `Describe`, `RepTraits` and the vocabulary;
-    /// specialising any other formula-cpp template or member is outside the
-    /// contract, and can make a trace say anything.
+    /// `EnumeratorName`, `Describe`, `RepTraits`, `OpaqueOperation` and the
+    /// vocabulary; specialising any other formula-cpp template or member is
+    /// outside the contract, and can make a trace say anything.
     struct ProvenanceStatedByAuthor
     {
     };
@@ -1455,6 +1457,9 @@ namespace detail
         /// The dimension of the first variant, which is every variant's when
         /// `known` holds.
         static constexpr Dimension dimension = Expr::dimension;
+        /// Whether any variant's expression was refused -- see
+        /// `detail::refused_already`.
+        static constexpr detail::RefusedFlag refused = refused_already<Expr>() || (refused_already<Exprs>() || ...);
     };
 
     /// Fails to compile when a method's rounding rule rounds in a unit that
@@ -1469,7 +1474,7 @@ namespace detail
     template <typename Vs, typename Rounding>
     struct RequireRoundingRuleMeasuresVariants
     {
-        static_assert(Rounding::unit.dimension == VariantsDimension<Vs>::dimension,
+        static_assert(refused_already<VariantsDimension<Vs>>() || Rounding::unit.dimension == VariantsDimension<Vs>::dimension,
                       "formula: this method's rounding rule rounds in a unit that does not measure the "
                       "dimension its variants report; the rule rounds whichever variant is selected, so "
                       "its unit must measure what every variant measures -- the variants and the "

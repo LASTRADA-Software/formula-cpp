@@ -71,6 +71,7 @@
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
@@ -310,7 +311,8 @@ namespace detail
     /// library ships, leaves included**, each saying `seen = true`. The kinds
     /// declared in headers this one cannot include specialise it there:
     /// `DerivedQuantityNode`, `OverriddenConstantNode` and
-    /// `ReplacedVariantNode` in `overlay.hpp`.
+    /// `ReplacedVariantNode` in `overlay.hpp`, and the retry's context nodes
+    /// in `retry.hpp`.
     ///
     /// The primary is a consumer's node kind, which cannot be seen inside: it
     /// answers no children and `seen = false`. **A library kind does not reach
@@ -644,6 +646,13 @@ namespace detail
 
     template <Unit KeyUnit, BandTable Classes, ObservationsNode Obs>
     struct LevelChildren<BinnedNode<KeyUnit, Classes, Obs>>: LevelParent<Obs>
+    {
+    };
+
+    /// An opaque output's children are its call's inputs: a level read
+    /// inside one is seen, although the operation's inside is not shown.
+    template <std::size_t I, typename Op, typename... Inputs, typename Origin>
+    struct LevelChildren<OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>: LevelParent<Inputs...>
     {
     };
 

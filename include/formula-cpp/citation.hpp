@@ -70,6 +70,9 @@ struct DocumentedNode: NodeBase
 
     /// Forwarded from `Inner` unchanged -- wrapping never alters the dimension.
     static constexpr Dimension dimension = Inner::dimension;
+    /// Whether the wrapped expression was refused -- see
+    /// `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Inner>();
 };
 
 /// Attaches a citation: `documented(var<A> / var<B>, { .title = "…" })`.

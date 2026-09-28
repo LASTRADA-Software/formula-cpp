@@ -117,6 +117,57 @@ enum class BinaryOperator : std::uint8_t
 
 namespace detail
 {
+    /// The type of a library node kind's `refused` member: whether the node
+    /// was refused already, or holds one that was (`refused_already`). A
+    /// `detail::` type, so that no consumer's node kind claims to be refused
+    /// by accident; converts to `bool` both ways. Borrowing it on purpose
+    /// (`decltype`) is outside the contract, as friend injection is.
+    struct RefusedFlag
+    {
+        bool value;
+
+        constexpr RefusedFlag(bool isRefused) noexcept:
+            value { isRefused }
+        {
+        }
+
+        constexpr operator bool() const noexcept
+        {
+            return value;
+        }
+    };
+
+    /// Whether @p T is a node that has already been refused, or holds one: its
+    /// `refused`, where it declares one, and false for every other operand (a
+    /// leaf, or a node kind that cannot be refused). A node over a refused
+    /// operand asks no question of its own -- the operand's length and
+    /// dimension are stand-ins taken after the refusal, and asking about them
+    /// would report the one mistake a second time (defect class 2).
+    ///
+    /// Declared here, beside `Node`, because every check that reads a node's
+    /// dimension asks it: a series refused already (`series.hpp`), a curve
+    /// (`curve.hpp`), an opaque call refused already or an output its
+    /// operation does not declare (`opaque.hpp`), and every node built over
+    /// one of those, which carries its operands' `refused` on.
+    ///
+    /// The flag is read only when it is a `RefusedFlag`: a consumer's node
+    /// kind with a `bool refused` of its own meaning is asked every question,
+    /// as any node is. One that borrows `RefusedFlag`'s type on purpose is
+    /// outside the contract, like the friend injection `method.hpp` names.
+    template <typename T>
+    [[nodiscard]] consteval bool refused_already() noexcept
+    {
+        if constexpr (requires { T::refused; })
+        {
+            if constexpr (std::is_same_v<std::remove_cvref_t<decltype(T::refused)>, RefusedFlag>)
+                return T::refused.value;
+            else
+                return false;
+        }
+        else
+            return false;
+    }
+
     /// Fails to compile when the two sides of an addition or subtraction measure
     /// different dimensions.
     ///
@@ -132,7 +183,7 @@ namespace detail
     template <typename Left, typename Right>
     struct RequireAddendsAgree
     {
-        static_assert(Left::dimension == Right::dimension,
+        static_assert(refused_already<Left>() || refused_already<Right>() || Left::dimension == Right::dimension,
                       "formula: the two sides of this addition or subtraction measure different "
                       "dimensions; the offending operands appear in this diagnostic as the "
                       "template arguments of RequireAddendsAgree");
@@ -182,6 +233,8 @@ struct UnaryNode: NodeBase
     static constexpr UnaryOperator op = Op;
     /// A unary operator never changes the dimension of its operand.
     static constexpr Dimension dimension = Operand::dimension;
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// A node built by applying one `BinaryOperator` to two children.
@@ -200,6 +253,8 @@ struct BinaryNode: NodeBase
     /// Add and subtract keep the (already agreeing) dimension; multiply and
     /// divide combine the two operands' dimensions.
     static constexpr Dimension dimension = detail::combined_dimension<Op, Left::dimension, Right::dimension>();
+    /// Whether either operand was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Left>() || detail::refused_already<Right>();
 };
 
 // ---------------------------------------------------------------- operators

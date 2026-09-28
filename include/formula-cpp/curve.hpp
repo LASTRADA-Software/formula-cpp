@@ -119,7 +119,7 @@ struct DomainNode: SeriesNodeBase
     static constexpr BreakpointTable<Points.size()> points = Points;
     /// Whether the table was refused -- see `detail::refused_already`. A
     /// curve over it asks nothing more of it.
-    static constexpr bool refused = Points.size() == 0 || !breakpoint_table_is_well_formed(Points);
+    static constexpr detail::RefusedFlag refused = Points.size() == 0 || !breakpoint_table_is_well_formed(Points);
 };
 
 /// A method's points, declared once: `domain<unit::Millimetre, Screens>`. A
@@ -183,7 +183,7 @@ struct CurveNode: CurveNodeBase
     /// The dimension of its values: what an interpolation along it produces.
     static constexpr Dimension dimension = V::dimension;
     /// Whether this curve was refused, or holds a refused series.
-    static constexpr bool refused = operandsRefused || D::length != V::length;
+    static constexpr detail::RefusedFlag refused = operandsRefused || D::length != V::length;
 };
 
 /// Pairs @p domainSeries with @p valueSeries: `curve(domain<unit::Millimetre,
@@ -347,7 +347,7 @@ struct SpliceNode: CurveNodeBase
     /// The dimension of the values.
     static constexpr Dimension dimension = A::dimension;
     /// Whether this splice was refused, or holds a refused curve.
-    static constexpr bool refused =
+    static constexpr detail::RefusedFlag refused =
         operandsRefused || !(A::domainDimension == B::domainDimension) || !(A::dimension == B::dimension);
 };
 
@@ -436,7 +436,7 @@ namespace detail
 template <CurveExpression C, Node At>
 struct InterpolateAlongNode: NodeBase
 {
-    static_assert(std::conditional_t<!detail::refused_already<C>(),
+    static_assert(std::conditional_t<!detail::refused_already<C>() && !detail::refused_already<At>(),
                                      detail::RequireInterpolationPointMatches<C, At>,
                                      std::true_type>::value);
 
@@ -448,7 +448,8 @@ struct InterpolateAlongNode: NodeBase
     /// The dimension of the curve's values.
     static constexpr Dimension dimension = C::dimension;
     /// Whether this interpolation was refused, or reads a refused curve.
-    static constexpr bool refused = detail::refused_already<C>() || !(C::domainDimension == At::dimension);
+    static constexpr detail::RefusedFlag refused =
+        detail::refused_already<C>() || detail::refused_already<At>() || !(C::domainDimension == At::dimension);
 };
 
 /// The value of @p curveExpression at @p at: `interpolate_at(curve(screens,
@@ -542,16 +543,18 @@ namespace detail
     /// Spans, as `interpolate_along`'s are, so that the evaluator and the
     /// trace judge with this one function.
     [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_domain(
-        std::span<std::optional<Rational> const> points) noexcept
+        std::span<std::optional<Rational> const> domainPoints) noexcept
     {
-        std::optional<Rational> previous;
-        for (std::size_t at = 0; at < points.size(); ++at)
+        std::optional<Rational> priorPoint;
+        for (std::size_t at = 0; at < domainPoints.size(); ++at)
         {
-            if (!points[at].has_value())
+            if (!domainPoints[at].has_value())
                 continue;
-            if (previous.has_value() && !(*previous < *points[at]))
-                return CurveBreakAt { at, *points[at] == *previous ? CurveBreak::DuplicatePoint : CurveBreak::NotAscending };
-            previous = points[at];
+            if (priorPoint.has_value() && !(*priorPoint < *domainPoints[at]))
+                return CurveBreakAt { at,
+                                      *domainPoints[at] == *priorPoint ? CurveBreak::DuplicatePoint
+                                                                       : CurveBreak::NotAscending };
+            priorPoint = domainPoints[at];
         }
         return std::nullopt;
     }
@@ -559,13 +562,13 @@ namespace detail
     /// Sorts a splice's points ascending, each value moving with its point:
     /// an insertion sort, since a method's curves are a few points each and
     /// nothing here may allocate. Every point must be present.
-    constexpr void sort_by_domain(std::span<std::optional<Rational>> points,
+    constexpr void sort_by_domain(std::span<std::optional<Rational>> domainPoints,
                                   std::span<std::optional<Rational>> pointValues) noexcept
     {
-        for (std::size_t placed = 1; placed < points.size(); ++placed)
-            for (std::size_t at = placed; at > 0 && *points[at] < *points[at - 1]; --at)
+        for (std::size_t placed = 1; placed < domainPoints.size(); ++placed)
+            for (std::size_t at = placed; at > 0 && *domainPoints[at] < *domainPoints[at - 1]; --at)
             {
-                std::swap(points[at], points[at - 1]);
+                std::swap(domainPoints[at], domainPoints[at - 1]);
                 std::swap(pointValues[at], pointValues[at - 1]);
             }
     }
@@ -576,12 +579,12 @@ namespace detail
     /// points in the order they were written, so a direction judged first
     /// would fail beside a duplicate at a position that depends on which
     /// curve came first. Every point and value must be present.
-    [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_splice(std::span<std::optional<Rational> const> points,
+    [[nodiscard]] constexpr std::optional<CurveBreakAt> judge_splice(std::span<std::optional<Rational> const> domainPoints,
                                                                      std::span<std::optional<Rational> const> pointValues,
                                                                      Monotone direction) noexcept
     {
-        for (std::size_t at = 1; at < points.size(); ++at)
-            if (*points[at] == *points[at - 1])
+        for (std::size_t at = 1; at < domainPoints.size(); ++at)
+            if (*domainPoints[at] == *domainPoints[at - 1])
                 return CurveBreakAt { at, CurveBreak::DuplicatePoint };
         for (std::size_t at = 1; at < pointValues.size(); ++at)
         {
@@ -594,7 +597,7 @@ namespace detail
     }
 
     /// The value along a curve at @p atKey, and where it sat: the curve's points
-    /// @p points and values @p values, every one present and the points
+    /// @p domainPoints and values @p values, every one present and the points
     /// strictly ascending, in the coherent SI unit. The one scan is
     /// `locate_key`, and the one formula `interpolate_between`, both an
     /// interpolating lookup's (`lookup.hpp`); a miss is `DomainError`.
@@ -602,24 +605,27 @@ namespace detail
     /// Spans, so that the evaluator's arrays and a trace step's vectors are
     /// read by this one function.
     [[nodiscard]] constexpr std::expected<std::pair<Rational, KeyPosition>, ArithmeticError> interpolate_along(
-        std::span<std::optional<Rational> const> points,
+        std::span<std::optional<Rational> const> domainPoints,
         std::span<std::optional<Rational> const> curveValues,
         Rational atKey) noexcept
     {
         auto const pointAt = [&](std::size_t at) -> std::expected<Rational, ArithmeticError> {
-            if (!points[at].has_value())
+            if (!domainPoints[at].has_value())
                 return std::unexpected { ArithmeticError::DomainError };
-            return *points[at];
+            return *domainPoints[at];
         };
-        std::expected<KeyPosition, ArithmeticError> const located = locate_key(points.size(), pointAt, atKey);
+        std::expected<KeyPosition, ArithmeticError> const located = locate_key(domainPoints.size(), pointAt, atKey);
         if (!located.has_value())
             return std::unexpected { located.error() };
         if (!curveValues[located->low].has_value() || !curveValues[located->high].has_value())
             return std::unexpected { ArithmeticError::DomainError };
         if (located->low == located->high)
             return std::pair<Rational, KeyPosition> { *curveValues[located->low], *located };
-        std::expected<Rational, ArithmeticError> const answered = interpolate_between(
-            *points[located->low], *curveValues[located->low], *points[located->high], *curveValues[located->high], atKey);
+        std::expected<Rational, ArithmeticError> const answered = interpolate_between(*domainPoints[located->low],
+                                                                                      *curveValues[located->low],
+                                                                                      *domainPoints[located->high],
+                                                                                      *curveValues[located->high],
+                                                                                      atKey);
         if (!answered.has_value())
             return std::unexpected { answered.error() };
         return std::pair<Rational, KeyPosition> { *answered, *located };
@@ -680,17 +686,17 @@ template <typename Rep = Rational, SeriesNode D, SeriesNode V, typename Env, typ
         if constexpr (detail::HearsCurve<Sink, CurveNode<D, V>, Rep>)
             sink.curve_entered(node);
         EvaluatedCurve<Rep, curveLength> const evaluated = [&]() -> EvaluatedCurve<Rep, curveLength> {
-            EvaluatedSeries<Rep, curveLength> const points =
+            EvaluatedSeries<Rep, curveLength> const domainPoints =
                 detail::dispatch_series<Rep>(node.domainSeries, environment, sink);
-            if (!points.has_value())
-                return std::unexpected { detail::relayed_failure(points) };
+            if (!domainPoints.has_value())
+                return std::unexpected { detail::relayed_failure(domainPoints) };
             EvaluatedSeries<Rep, curveLength> const pairedValues =
                 detail::dispatch_series<Rep>(node.valueSeries, environment, sink);
             if (!pairedValues.has_value())
                 return std::unexpected { detail::relayed_failure(pairedValues) };
 
             CurveValue<Rep, curveLength> paired;
-            paired.domain = points->elements;
+            paired.domain = domainPoints->elements;
             paired.values = pairedValues->elements;
             if (std::optional<detail::CurveBreakAt> const disorder = detail::judge_domain(paired.domain))
                 return std::unexpected { SeriesFailure { ArithmeticError::DomainError, disorder->at } };
@@ -812,10 +818,10 @@ class CurveOutcome
 {
   public:
     /// A curve's points and values.
-    [[nodiscard]] static constexpr CurveOutcome value(std::array<Measured<DomainResult>, N> points,
+    [[nodiscard]] static constexpr CurveOutcome value(std::array<Measured<DomainResult>, N> domainPoints,
                                                       std::array<Measured<ValueResult>, N> pointValues) noexcept
     {
-        return CurveOutcome { points, pointValues };
+        return CurveOutcome { domainPoints, pointValues };
     }
 
     /// Every point, in order.
@@ -840,9 +846,9 @@ class CurveOutcome
     [[nodiscard]] constexpr bool operator==(CurveOutcome const&) const noexcept = default;
 
   private:
-    constexpr CurveOutcome(std::array<Measured<DomainResult>, N> points,
+    constexpr CurveOutcome(std::array<Measured<DomainResult>, N> domainPoints,
                            std::array<Measured<ValueResult>, N> pointValues) noexcept:
-        _domain { points },
+        _domain { domainPoints },
         _values { pointValues }
     {
     }
@@ -909,13 +915,13 @@ checked_evaluate_curve(C const& expression, Env const& environment, Sink sink = 
             detail::dispatch_curve<Rational>(expression, environment, sink);
         if (!computed.has_value())
             return std::unexpected { computed.error() };
-        auto const points = detail::in_declared_unit<DomainResult>(computed->domain, C::domainDimension);
-        if (!points.has_value())
-            return std::unexpected { points.error() };
+        auto const domainPoints = detail::in_declared_unit<DomainResult>(computed->domain, C::domainDimension);
+        if (!domainPoints.has_value())
+            return std::unexpected { domainPoints.error() };
         auto const valuesInUnit = detail::in_declared_unit<ValueResult>(computed->values, C::dimension);
         if (!valuesInUnit.has_value())
             return std::unexpected { valuesInUnit.error() };
-        return CurveOutcome<DomainResult, ValueResult, curveLength>::value(*points, *valuesInUnit);
+        return CurveOutcome<DomainResult, ValueResult, curveLength>::value(*domainPoints, *valuesInUnit);
     }
 }
 

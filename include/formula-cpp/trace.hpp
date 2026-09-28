@@ -23,10 +23,12 @@
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -38,6 +40,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <initializer_list>
 #include <optional>
 #include <string_view>
 #include <type_traits>
@@ -424,6 +427,61 @@ enum class StepKind : std::uint8_t
     /// `LineageCheck` -- so GCC's `-Wshadow`, with which gcc-release builds,
     /// has nothing to report.
     LineageChecked,
+    /// An opaque operation's call (`OpaqueCall`, `opaque.hpp`): its inputs'
+    /// steps as its operands, the call's citation in `Step::citation`, and on
+    /// a relayed failure the input's element in `Step::failedElement`. The
+    /// operation's name, each output's name, dimension and value, and whose
+    /// failure it carries are in `Trace::opaqueSteps`, not on the `Step`.
+    /// Its line always ends by saying that the operation's inside is not
+    /// shown -- on this kind alone, which no field can switch off.
+    ///
+    /// The step's `dimension`, `unit` and `value` mean nothing for a call --
+    /// they are placeholders, `dim::Scalar`, `One` and empty -- since a call
+    /// has several outputs: those are in `Trace::opaqueSteps`, and a reader
+    /// such as an exporter takes them from there.
+    ///
+    /// Recorded by `RecordingSink::opaque_produced`: a call is not a `Node`.
+    /// **Each output an expression uses records the whole call again**, its
+    /// inputs included, and `compute` runs once per output used: a call is
+    /// evaluated where its output is, as every other subexpression is. Nothing
+    /// is wrong in the second copy, and `document()` lists the operation once.
+    /// A later memoisation would rely on the side tables' step keys staying
+    /// unique, which they do: steps are only ever appended.
+    ///
+    /// The concept `OpaqueOperation` is at namespace scope and this
+    /// enumerator in `StepKind`'s, so the two do not clash and GCC's
+    /// `-Wshadow` has nothing to report (checked with g++ 13.3).
+    OpaqueOperation,
+    /// One output of an opaque call (`OpaqueOutputNode`): a single-value step
+    /// whose operand is the call's step; which output, in
+    /// `Trace::opaqueOutputSteps`. The node is `OpaqueOutputNode` and its
+    /// factory `opaque_output`, so no name here is spelt `OpaqueOutput` twice.
+    OpaqueOutput,
+    /// One attempt of a retry (`retry.hpp`): its value, in `Step::value`, and
+    /// how it was judged. Its operands are the attempt's derivation and, when
+    /// it was judged, the acceptance's two sides, whose comparison is in
+    /// `Step::comparison`; its number and its judgement are in
+    /// `Trace::attemptSteps`. Recorded for an attempt that ran, and for none
+    /// that did not.
+    RetryAttempt,
+    /// How a retry ended: its value when an attempt was accepted, its error
+    /// when one failed, and its citation. Its operands are the starting
+    /// value's step, when there is one, and then every attempt's; how it
+    /// ended, the attempt limit and the verdict it would end in are in
+    /// `Trace::retrySteps`.
+    RetryConcluded,
+    /// The attempt's number, k (`attempt_number`).
+    AttemptNumber,
+    /// The previous attempt's value (`previous_attempt<R>`), or the starting
+    /// value's; at the first attempt of a retry with no starting value, its
+    /// own `DomainError`, which reads as none before attempt 1.
+    PreviousAttempt,
+    /// The value the attempt being judged produced (`this_attempt<R>`).
+    ThisAttempt,
+    /// The determination recorded for the attempt that is running
+    /// (`attempt_input<Q>`), in `Q`'s declared unit; absent when nobody
+    /// recorded it, which ends the retry `NotRecorded`.
+    AttemptInput,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1119,7 +1177,8 @@ struct Step
     /// value, which `replacedEntryEmpty` says -- and empty when the
     /// environment has no entry for the quantity at all. For
     /// `SeriesVariable`: the same, of the whole series -- a measured series
-    /// or `entered(measured_series<Q>(...))`. Never
+    /// or `entered(measured_series<Q>(...))`. For `AttemptInput`: the same, of
+    /// the series the attempt's determination was read from. Never
     /// `Derived`: an input is not computed. Empty for every other kind, and
     /// for an environment that cannot say (one without `is_entered`), which
     /// is recorded as not known rather than guessed.
@@ -1269,6 +1328,84 @@ struct LineageRow
     LineageCheck check;
 };
 
+/// One output of an opaque call, as its step recorded it.
+template <typename Rep = Rational>
+struct OpaqueOutputValue
+{
+    /// The output's name, as the operation declares it.
+    std::string_view name {};
+    /// The dimension the operation declares for it.
+    Dimension dimension {};
+    /// The unit it is shown in: the declared unit of the first input step of
+    /// its dimension, as a sum is shown in its series' unit, and the coherent
+    /// SI unit otherwise.
+    Unit unit {};
+    /// Its value, in the coherent SI unit of `dimension`; empty when the call
+    /// was absent or failed.
+    std::optional<Rep> value {};
+};
+
+/// What an `OpaqueOperation` step carries beyond its `Step`, keyed by its
+/// index in `Trace::steps`. A side table rather than members of `Step`, so
+/// that every other step pays nothing for them (`Trace::conformityLimits` is
+/// the precedent).
+template <typename Rep = Rational>
+struct OpaqueStepData
+{
+    /// The index, in `Trace::steps`, of the `OpaqueOperation` step.
+    std::size_t step {};
+    /// The operation's name, `Op::name`: static storage, so the view outlives
+    /// the trace.
+    std::string_view operationName {};
+    /// Every output, in the operation's declared order.
+    std::vector<OpaqueOutputValue<Rep>> outputs {};
+    /// Whose failure the step carries: `None`, the operation's `Own`, an
+    /// input's relayed (`Propagated`), or `Undetermined` when the call relayed
+    /// a failure no input step shows.
+    OpaqueFailure failure {};
+    /// For a relayed failure, how many of the call's inputs after the one
+    /// that failed were never evaluated (`OpaqueCallFailure::notEvaluated`),
+    /// so that its line lists every input the call declares.
+    std::size_t inputsNotEvaluated {};
+};
+
+/// Which output an `OpaqueOutput` step selected, keyed by its index in
+/// `Trace::steps`.
+struct OpaqueOutputStepData
+{
+    /// The index, in `Trace::steps`, of the `OpaqueOutput` step.
+    std::size_t step {};
+    /// The output's ZERO-BASED position among the operation's outputs.
+    std::size_t outputIndex {};
+};
+
+/// What a `RetryAttempt` step carries beyond its `Step`, keyed by its index
+/// in `Trace::steps`: 24 bytes, so that no other step pays for them.
+struct AttemptStepData
+{
+    /// The index, in `Trace::steps`, of the `RetryAttempt` step.
+    std::size_t step {};
+    /// The attempt's number, from 1.
+    std::size_t attemptNumber {};
+    /// How it was judged.
+    AttemptJudgement judgement {};
+};
+
+/// What a `RetryConcluded` step carries beyond its `Step`, keyed by its index
+/// in `Trace::steps`.
+struct RetryStepData
+{
+    /// The index, in `Trace::steps`, of the `RetryConcluded` step.
+    std::size_t step {};
+    /// The most attempts the retry allowed.
+    std::size_t attemptLimit {};
+    /// How it ended.
+    RetryEnd end {};
+    /// The verdict it ends in when no attempt is accepted: author text,
+    /// escaped where a line is rendered.
+    std::string_view verdictLabel {};
+};
+
 /// A recorded derivation: a flat arena of steps.
 template <typename Rep = Rational>
 struct Trace
@@ -1388,6 +1525,22 @@ struct Trace
     /// Bookkeeping, as `marks` is, and for the same reason.
     std::vector<std::uint32_t> recordStack {};
 
+    /// What each opaque call's step carries beyond its `Step`, keyed by its
+    /// index in `steps` -- see `OpaqueStepData`. Written by `RecordingSink`
+    /// alone; a `Trace` is plain data, so a caller may edit one by hand, as it
+    /// may edit any `Step`.
+    std::vector<OpaqueStepData<Rep>> opaqueSteps {};
+
+    /// Which output each opaque output's step selected, keyed as
+    /// `opaqueSteps` is.
+    std::vector<OpaqueOutputStepData> opaqueOutputSteps {};
+
+    /// Each retry attempt's number and judgement, keyed as `opaqueSteps` is.
+    std::vector<AttemptStepData> attemptSteps {};
+
+    /// How each retry ended, keyed as `opaqueSteps` is.
+    std::vector<RetryStepData> retrySteps {};
+
     /// The index of the outermost step -- the one nothing else consumed.
     ///
     /// A `Trace` may hold more than one walk's steps: constructing a
@@ -1409,6 +1562,50 @@ struct Trace
     /// Whether anything was recorded.
     [[nodiscard]] bool empty() const noexcept { return steps.empty(); }
 };
+
+/// What @p trace recorded for the opaque call whose step is at @p stepIndex,
+/// or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] OpaqueStepData<Rep> const* opaque_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (OpaqueStepData<Rep> const& kept: trace.opaqueSteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
+
+/// Which output the opaque output step at @p stepIndex of @p trace selected,
+/// or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] OpaqueOutputStepData const* opaque_output_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (OpaqueOutputStepData const& kept: trace.opaqueOutputSteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
+
+/// What @p trace recorded for the retry attempt whose step is at
+/// @p stepIndex, or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] AttemptStepData const* attempt_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (AttemptStepData const& kept: trace.attemptSteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
+
+/// What @p trace recorded for the retry whose concluding step is at
+/// @p stepIndex, or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] RetryStepData const* retry_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (RetryStepData const& kept: trace.retrySteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
 
 namespace detail
 {
@@ -1669,6 +1866,36 @@ namespace detail
     struct StepKindOf<PassCountNode>
     {
         static constexpr StepKind value = StepKind::PassCount;
+    };
+
+    template <std::size_t I, typename Call, typename Origin>
+    struct StepKindOf<OpaqueOutputNode<I, Call, Origin>>
+    {
+        static constexpr StepKind value = StepKind::OpaqueOutput;
+    };
+
+    template <>
+    struct StepKindOf<AttemptNumberNode>
+    {
+        static constexpr StepKind value = StepKind::AttemptNumber;
+    };
+
+    template <Described R>
+    struct StepKindOf<PreviousAttemptNode<R>>
+    {
+        static constexpr StepKind value = StepKind::PreviousAttempt;
+    };
+
+    template <Described R>
+    struct StepKindOf<ThisAttemptNode<R>>
+    {
+        static constexpr StepKind value = StepKind::ThisAttempt;
+    };
+
+    template <Described Q>
+    struct StepKindOf<AttemptInputNode<Q>>
+    {
+        static constexpr StepKind value = StepKind::AttemptInput;
     };
 
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
@@ -2165,7 +2392,7 @@ namespace detail
             return;
         Step<Rational> const& firstOperand = steps[failedStep.operands.front()];
         Step<Rational> const& secondOperand = steps[failedStep.operands.back()];
-        std::vector<std::optional<Rational>> points;
+        std::vector<std::optional<Rational>> domainPoints;
         std::vector<std::optional<Rational>> pointValues;
         std::optional<CurveBreakAt> broken;
         if constexpr (CurveStepKindOf<C>::value == StepKind::CurvePairing)
@@ -2176,28 +2403,135 @@ namespace detail
             if (firstOperand.error.has_value() || firstOperand.elements.size() != C::length
                 || secondOperand.error.has_value())
                 return;
-            points = firstOperand.elements;
-            broken = judge_domain(points);
+            domainPoints = firstOperand.elements;
+            broken = judge_domain(domainPoints);
         }
         else
         {
             std::size_t const firstCount = firstOperand.domainElements.size();
             if (!whole(firstOperand, firstCount) || !whole(secondOperand, C::length - firstCount))
                 return;
-            points = firstOperand.domainElements;
-            points.insert(points.end(), secondOperand.domainElements.begin(), secondOperand.domainElements.end());
+            domainPoints = firstOperand.domainElements;
+            domainPoints.insert(
+                domainPoints.end(), secondOperand.domainElements.begin(), secondOperand.domainElements.end());
             pointValues = firstOperand.elements;
             pointValues.insert(pointValues.end(), secondOperand.elements.begin(), secondOperand.elements.end());
-            sort_by_domain(points, pointValues);
-            broken = judge_splice(points, pointValues, C::monotone);
+            sort_by_domain(domainPoints, pointValues);
+            broken = judge_splice(domainPoints, pointValues, C::monotone);
         }
         if (!broken.has_value())
             return;
         failedStep.curveBreak = broken->rule;
-        failedStep.domainElements = std::move(points);
+        failedStep.domainElements = std::move(domainPoints);
         failedStep.elements = std::move(pointValues);
     }
 
+    /// Whether @p unitSymbol is more than one unit word -- `mPa.s`, `N m`,
+    /// `m^2` -- so that written after a slash it would read two ways:
+    /// `mm/mPa.s` is (mm/mPa) s read left to right.
+    [[nodiscard]] inline bool compound_unit_symbol(std::string_view unitSymbol) noexcept
+    {
+        return unitSymbol.find_first_of(".*^() ") != std::string_view::npos
+               || unitSymbol.find("\xc2\xb7") != std::string_view::npos       // U+00B7 middle dot
+               || unitSymbol.find("\xe2\x8b\x85") != std::string_view::npos; // U+22C5 dot operator
+    }
+
+    /// The quotient of two units, `N/mm` from `N` and `mm`: its magnitude the
+    /// quotient of theirs and its symbol theirs joined by a slash, the
+    /// denominator bracketed when it is more than one unit word
+    /// (`mm/(mPa.s)`, `compound_unit_symbol`). Empty when either has an
+    /// offset, has no symbol, is dimensionless -- a ratio is not a percentage
+    /// because some input was one, as `opaque_output_unit` rules for a
+    /// dimensionless output -- or already holds a slash (`m/s/s` reads two
+    /// ways), or when the symbol or the magnitude would not fit.
+    [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
+    {
+        if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar
+            || under.dimension == dim::Scalar)
+            return std::nullopt;
+        std::string_view const overSymbol = view(over.symbolText);
+        std::string_view const underSymbol = view(under.symbolText);
+        bool const bracketed = compound_unit_symbol(underSymbol);
+        if (overSymbol.empty() || underSymbol.empty() || overSymbol.find('/') != std::string_view::npos
+            || underSymbol.find('/') != std::string_view::npos
+            || overSymbol.size() + 1 + underSymbol.size() + (bracketed ? 2 : 0) + 1 > SymbolCapacity)
+            return std::nullopt;
+        std::expected<Rational, ArithmeticError> const magnitude =
+            RepTraits<Rational>::divide(Rational { over.magnitudeNumerator, over.magnitudeDenominator },
+                                        Rational { under.magnitudeNumerator, under.magnitudeDenominator });
+        if (!magnitude.has_value())
+            return std::nullopt;
+        Unit quotientUnit { .dimension = over.dimension / under.dimension,
+                            .magnitudeNumerator = magnitude->numerator(),
+                            .magnitudeDenominator = magnitude->denominator(),
+                            .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
+        std::size_t written = 0;
+        for (char const spelt: overSymbol)
+            quotientUnit.symbolText.characters[written++] = spelt;
+        quotientUnit.symbolText.characters[written++] = '/';
+        if (bracketed)
+            quotientUnit.symbolText.characters[written++] = '(';
+        for (char const spelt: underSymbol)
+            quotientUnit.symbolText.characters[written++] = spelt;
+        if (bracketed)
+            quotientUnit.symbolText.characters[written++] = ')';
+        return quotientUnit;
+    }
+
+    /// The unit an opaque output of @p dimension is shown in, from the units
+    /// its input steps are shown in -- a curve's values, then its points:
+    ///
+    ///  1. the first of those units of that dimension, as a sum reads in its
+    ///     series' unit;
+    ///  2. else the first quotient of two of them, either way up, of that
+    ///     dimension, so that a slope along a curve of millimetres over
+    ///     seconds reads `mm/s` (`unit_quotient`) -- at most one way up can
+    ///     match, since the output is not dimensionless;
+    ///  3. else the coherent SI unit, which the trace spells out
+    ///     (`coherent_unit_text`, `trace_render.hpp`).
+    ///
+    /// Three exceptions keep a borrowed unit honest. A unit with an offset is
+    /// never borrowed: an output of an input's dimension is not in general a
+    /// reading on its scale -- a span of Celsius readings is a difference, and
+    /// shown in degrees Celsius it would be off by the offset -- so it reads
+    /// in kelvin. A unit with no symbol is never borrowed: its value could
+    /// not say what scale it is on, and the trace spells a unit it cannot
+    /// name as the coherent one -- a consumer's unnamed thousandth of a
+    /// metre would read as metres, a thousand times too large. And a
+    /// dimensionless output borrows nothing: a ratio of two masses is not a
+    /// percentage because some input was one, and an operation declares no
+    /// unit for its outputs.
+    template <typename Rep>
+    [[nodiscard]] Unit opaque_output_unit(std::vector<Step<Rep>> const& steps,
+                                          std::vector<std::size_t> const& operands,
+                                          Dimension dimension)
+    {
+        if (dimension == dim::Scalar)
+            return coherent(dimension);
+        std::vector<Unit> shownIn;
+        for (std::size_t const operandIndex: operands)
+        {
+            Step<Rep> const& inputStep = steps[operandIndex];
+            auto const borrowable = [](Unit const& shownUnit) noexcept {
+                return shownUnit.offsetNumerator == 0 && !view(shownUnit.symbolText).empty();
+            };
+            if (borrowable(inputStep.unit))
+                shownIn.push_back(inputStep.unit);
+            if ((inputStep.kind == StepKind::CurvePairing || inputStep.kind == StepKind::CurveSplice)
+                && borrowable(inputStep.sourceUnit))
+                shownIn.push_back(inputStep.sourceUnit);
+        }
+        for (Unit const& candidate: shownIn)
+            if (candidate.dimension == dimension)
+                return candidate;
+        for (std::size_t earlier = 0; earlier < shownIn.size(); ++earlier)
+            for (std::size_t later = earlier + 1; later < shownIn.size(); ++later)
+                for (auto const& [over, under]: { std::pair { earlier, later }, std::pair { later, earlier } })
+                    if (std::optional<Unit> const quotientUnit = unit_quotient(shownIn[over], shownIn[under]);
+                        quotientUnit.has_value() && quotientUnit->dimension == dimension)
+                        return *quotientUnit;
+        return coherent(dimension);
+    }
     /// Fills in a binning step: the classes' unit and extent, from the node's
     /// type, and the observations it binned, off its operand's step -- in
     /// the coherent SI unit, as that step holds them. Nothing of the
@@ -2520,7 +2854,10 @@ class RecordingSink
         // `Q`'s declared unit.
         constexpr bool namesQuantity = detail::StepKindOf<N>::value == StepKind::Variable
                                        || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
-                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
+                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity
+                                       || detail::StepKindOf<N>::value == StepKind::PreviousAttempt
+                                       || detail::StepKindOf<N>::value == StepKind::ThisAttempt
+                                       || detail::StepKindOf<N>::value == StepKind::AttemptInput;
         nodeStep.unit = coherent(N::dimension);
         if constexpr (namesQuantity || detail::StepKindOf<N>::value == StepKind::PrecisionLevel)
             nodeStep.unit = Describe<typename N::quantity>::unit;
@@ -2537,15 +2874,16 @@ class RecordingSink
 
         if constexpr (namesQuantity)
             nodeStep.symbol = symbol_of<typename N::quantity>(_vocabulary);
-        // Only a variable reads an input, and only a fixed constant or a
-        // derived quantity replaces an entry. For every other kind the slot
+        // Only a variable and a retry's recorded determination read an input,
+        // and only a fixed constant or a derived quantity replaces an entry. For every other kind the slot
         // is already empty -- `entered` emptied it, and only those
         // evaluators write it -- and it is emptied again regardless, so that
         // nothing a caller wrote by hand outlives the step it was written
         // during.
         constexpr bool replacesEntry = detail::StepKindOf<N>::value == StepKind::OverriddenConstant
                                        || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
-        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable || replacesEntry)
+        if constexpr (detail::StepKindOf<N>::value == StepKind::Variable || replacesEntry
+                      || detail::StepKindOf<N>::value == StepKind::AttemptInput)
             nodeStep.inputSource = _trace->pendingInputSource;
         _trace->pendingInputSource.reset();
         if constexpr (replacesEntry)
@@ -2672,6 +3010,14 @@ class RecordingSink
             detail::record_snap(node, nodeStep, _trace->steps);
         if constexpr (detail::StepKindOf<N>::value == StepKind::CurveInterpolation)
             detail::record_curve_interpolation(node, nodeStep, _trace->steps);
+        // An opaque output is shown in the unit its call's step shows it in:
+        // the call's step is the one this node claimed.
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OpaqueOutput)
+            if (nodeStep.operands.size() == 1)
+                if (OpaqueStepData<Rep> const* const callRow = opaque_data(*_trace, nodeStep.operands.front());
+                    callRow != nullptr && N::index < callRow->outputs.size()
+                    && callRow->outputs[N::index].unit.dimension == nodeStep.dimension)
+                    nodeStep.unit = callRow->outputs[N::index].unit;
 
         if constexpr (detail::StepKindOf<N>::value == StepKind::SampleSizeLookup)
             _trace->sampleSizeRecords.push_back(detail::SampleSizeRecord {
@@ -2721,6 +3067,9 @@ class RecordingSink
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OpaqueOutput)
+            _trace->opaqueOutputSteps.push_back(
+                OpaqueOutputStepData { .step = _trace->steps.size() - 1, .outputIndex = N::index });
     }
 
     /// Told that a `Constraint` is about to be checked. Remembers where the
@@ -3142,6 +3491,17 @@ class RecordingSink
         _trace->pendingInputSource = source;
     }
 
+    /// `series_input_source` for the recorded determination a retry's
+    /// attempt reads (`attempt_input`, `retry.hpp`): whether the series it
+    /// came from was measured or typed in; `produced` puts it on the
+    /// `AttemptInput` step. Optional, and public, for the reasons
+    /// `input_source` gives, with the same boundary.
+    template <Described Q>
+    void series_input_source(AttemptInputNode<Q> const&, ValueSource source) noexcept
+    {
+        _trace->pendingInputSource = source;
+    }
+
     /// Records one step for the whole series @p node -- however long it is --
     /// carrying every element in `Step::elements`, and claims as its operands
     /// every step recorded since the matching `series_entered`.
@@ -3376,6 +3736,202 @@ class RecordingSink
             .rows = std::vector<LimitRow>(conformityCheck.envelope.rows.begin(), conformityCheck.envelope.rows.end()) });
     }
 
+    /// Told that an opaque call is about to evaluate its inputs. Remembers
+    /// where the arena stood, as `series_entered` does, so that
+    /// `opaque_produced` can claim the inputs' steps.
+    void opaque_entered(OpaqueCallInfo const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one `OpaqueOperation` step for the call @p callInfo describes,
+    /// claiming as its operands every step recorded since the matching
+    /// `opaque_entered` -- its inputs' -- and its operation's name, every
+    /// output and whose failure it carries in `Trace::opaqueSteps`.
+    ///
+    /// Whose failure is the evaluation's own answer (`OpaqueCallFailure::origin`),
+    /// never re-derived, with one exception: a relayed failure that no claimed
+    /// input step shows -- an input evaluated through a consumer's untraced
+    /// node -- is `Undetermined`, as `LookupFailure` records the same case.
+    template <std::size_t M>
+    void opaque_produced(OpaqueCallInfo const& callInfo, OpaqueEvaluated<Rep, M> const& result)
+    {
+        // Told what a walk produced without having been told it began: see
+        // `produced`.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const callMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> callStep {};
+        callStep.kind = StepKind::OpaqueOperation;
+        callStep.dimension = dim::Scalar;
+        callStep.unit = coherent(dim::Scalar);
+        callStep.citation = callInfo.citation;
+
+        // Everything unclaimed from `callMark` onwards belongs to this call
+        // -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < callMark)
+            ++firstClaimed;
+        callStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        OpaqueStepData<Rep> callRow {};
+        callRow.operationName = callInfo.name;
+        for (std::size_t outputAt = 0;
+             outputAt < M && outputAt < callInfo.outputs.size() && outputAt < callInfo.dimensions.size();
+             ++outputAt)
+        {
+            OpaqueOutputValue<Rep> recordedOutput {};
+            recordedOutput.name = callInfo.outputs[outputAt];
+            recordedOutput.dimension = callInfo.dimensions[outputAt];
+            recordedOutput.unit = detail::opaque_output_unit(_trace->steps, callStep.operands, recordedOutput.dimension);
+            if (result.has_value() && result->has_value())
+                recordedOutput.value = (**result)[outputAt];
+            callRow.outputs.push_back(recordedOutput);
+        }
+
+        if (!result.has_value())
+        {
+            callStep.error = result.error().error;
+            callStep.failedElement = result.error().element;
+            callRow.failure = result.error().origin;
+            if (callRow.failure == OpaqueFailure::Propagated && !detail::an_operand_failed(_trace->steps, callStep))
+                callRow.failure = OpaqueFailure::Undetermined;
+            callRow.inputsNotEvaluated = result.error().notEvaluated;
+        }
+
+        stamp_origin(callStep);
+        _trace->steps.push_back(std::move(callStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        callRow.step = _trace->steps.size() - 1;
+        _trace->opaqueSteps.push_back(std::move(callRow));
+    }
+
+    /// Told that a retry is about to evaluate its starting value. Remembers
+    /// where the arena stood, so that `retry_produced` claims the starting
+    /// value's step and every attempt's.
+    void retry_entered(RetryInfo const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Told that an attempt is about to run. Remembers where the arena stood,
+    /// so that `attempt_produced` claims the attempt's derivation and its
+    /// judgement's.
+    void attempt_entered(AttemptInfo const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one `RetryAttempt` step for the attempt @p attemptInfo
+    /// describes, claiming the steps recorded since the matching
+    /// `attempt_entered`: its value or its error, and how it was judged, in
+    /// `Trace::attemptSteps`. A judgement that failed is `JudgementFailed`
+    /// there, and its error is on the failing side's step: the attempt step
+    /// keeps its value alone, so a step never holds both. Its unit and symbol are
+    /// the retry's result's, set by `retry_produced`, which knows it.
+    void attempt_produced(AttemptInfo const& attemptInfo, Evaluated<Rep> const& produced, AttemptJudgement judged)
+    {
+        // Told what a walk produced without having been told it began: see
+        // `produced`.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const attemptMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> attemptStep {};
+        attemptStep.kind = StepKind::RetryAttempt;
+        attemptStep.comparison = attemptInfo.comparison;
+        if (!produced.has_value())
+            attemptStep.error = produced.error();
+        if (produced.has_value() && produced->has_value())
+            attemptStep.value = **produced;
+
+        // Everything unclaimed from `attemptMark` onwards belongs to this
+        // attempt -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < attemptMark)
+            ++firstClaimed;
+        attemptStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        stamp_origin(attemptStep);
+        _trace->steps.push_back(std::move(attemptStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        _trace->attemptSteps.push_back(AttemptStepData {
+            .step = _trace->steps.size() - 1, .attemptNumber = attemptInfo.attemptNumber, .judgement = judged });
+    }
+
+    /// Records one `RetryConcluded` step for the retry @p retryInfo
+    /// describes, claiming the starting value's step and every attempt's, from
+    /// what `checked_evaluate_retry` returned, @p ended, and nothing else:
+    /// how it ended, its value or its error, and its citation. Gives every
+    /// attempt step it claims the result's dimension, unit and symbol.
+    template <Described R>
+    void retry_produced(RetryInfo const& retryInfo, std::expected<RetryOutcome<R>, RetryFailure> const& ended)
+    {
+        // Told what a walk produced without having been told it began: see
+        // `produced`.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const retryMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> retryStep {};
+        retryStep.kind = StepKind::RetryConcluded;
+        retryStep.dimension = Describe<R>::dimension;
+        retryStep.unit = Describe<R>::unit;
+        retryStep.symbol = symbol_of<R>(_vocabulary);
+        retryStep.citation = retryInfo.citation;
+
+        RetryStepData retryRow { .attemptLimit = retryInfo.attemptLimit, .verdictLabel = retryInfo.verdictLabel };
+        if (!ended.has_value())
+        {
+            retryStep.error = ended.error().error;
+            retryRow.end = RetryEnd::Failed;
+        }
+        else
+        {
+            retryRow.end = ended->end();
+            Measured<R> const acceptedMeasurement = ended->outcome().measurement();
+            // The accepted value, back in the coherent unit every step holds.
+            // Reversing a conversion that just succeeded, it should not fail;
+            // if it did, the step states the failure, never "not measured"
+            // for an accepted retry.
+            if (ended->end() == RetryEnd::Accepted && acceptedMeasurement.has_value())
+            {
+                std::expected<Rational, ArithmeticError> const inCoherentUnit =
+                    checked_convert(acceptedMeasurement.value(), Describe<R>::unit, coherent(Describe<R>::dimension));
+                if (inCoherentUnit.has_value())
+                    retryStep.value = *inCoherentUnit;
+                else
+                    retryStep.error = inCoherentUnit.error();
+            }
+        }
+
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < retryMark)
+            ++firstClaimed;
+        retryStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        for (std::size_t const claimed: retryStep.operands)
+            if (_trace->steps[claimed].kind == StepKind::RetryAttempt)
+            {
+                _trace->steps[claimed].dimension = Describe<R>::dimension;
+                _trace->steps[claimed].unit = Describe<R>::unit;
+                _trace->steps[claimed].symbol = retryStep.symbol;
+            }
+
+        stamp_origin(retryStep);
+        _trace->steps.push_back(std::move(retryStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        retryRow.step = _trace->steps.size() - 1;
+        _trace->retrySteps.push_back(retryRow);
+    }
+
   private:
     /// A rejection step of @p stepKind, in the dimension and unit of the
     /// rejection's sample -- its own step's, once known -- so that a mean or
@@ -3603,4 +4159,40 @@ checked_explain(Expression const& expression, Env const& environment, V const& v
     return Explained<Result, Rep> { *checked, std::move(recorded) };
 }
 
+/// A retry's result together with every attempt that produced it.
+template <Described R>
+struct ExplainedRetry
+{
+    /// Exactly what `checked_evaluate_retry` returned, failure included.
+    std::expected<RetryOutcome<R>, RetryFailure> outcome;
+    /// How it was reached: the starting value, every attempt that ran with
+    /// its judgement, and how the retry ended -- **empty** when the result
+    /// was entered by a person, since no attempt ran. See `explain`'s comment
+    /// on the same case.
+    Trace<Rational> trace {};
+};
+
+/// Evaluates @p retrying and records how, writing every symbol as
+/// @p vocabulary says -- the retry counterpart of `explain`. The outcome is
+/// identical to `checked_evaluate_retry(retrying, environment)`: tracing
+/// observes, it does not participate.
+template <typename Rep = Rational,
+          Described R,
+          std::size_t Max,
+          FirstJudged J,
+          typename Start,
+          typename A,
+          typename P,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedRetry<R> explain_retry(Retry<R, Max, J, Start, A, P> const& retrying,
+                                              Env const& environment,
+                                              V const& vocabulary = V {})
+{
+    static_assert(detail::RequireExactRetry<Rep>::value);
+    Trace<Rational> recorded {};
+    std::expected<RetryOutcome<R>, RetryFailure> retryOutcome =
+        checked_evaluate_retry<Rational>(retrying, environment, RecordingSink<Rational, V> { recorded, vocabulary });
+    return ExplainedRetry<R> { std::move(retryOutcome), std::move(recorded) };
+}
 } // namespace formula

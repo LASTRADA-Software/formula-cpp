@@ -3,7 +3,7 @@
 # sits between `<!-- census:NAME -->` and `<!-- /census:NAME -->` and is
 # rebuilt here from what the census programs print --
 #
-#  - statistics, resolution, cylinder: formula-cpp-census-tests' own
+#  - statistics, resolution, cylinder, least-squares: formula-cpp-census-tests' own
 #    `@census:NAME:` lines, in order;
 #  - examples: the `overflow census:` line each census twin of an example,
 #    and of the gallery generator, prints when it exits;
@@ -69,6 +69,7 @@ endfunction()
 census_block(statistics statisticsTable)
 census_block(resolution resolutionTable)
 census_block(cylinder cylinderTable)
+census_block(least-squares leastSquaresTable)
 
 # ---- The census twins ---------------------------------------------------------------
 set(examplesTable "| program | numerator bits | denominator bits | intermediate bits | headroom |\n|---|---|---|---|---|\n")
@@ -180,6 +181,7 @@ endif()
 replace_block(statistics "${statisticsTable}")
 replace_block(resolution "${resolutionTable}")
 replace_block(cylinder "${cylinderTable}")
+replace_block(least-squares "${leastSquaresTable}")
 replace_block(examples "${examplesTable}")
 if(haveExact)
     replace_block(exact "${exactTable}")

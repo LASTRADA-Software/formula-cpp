@@ -42,7 +42,10 @@
 // a sample's count, mean, variance and range, and a rounded root of the
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
 // and under a mean, on the same surfaces, and one by gap to range; a mean
-// and a rejection of raw observations, on the same surfaces; and the four
+// and a rejection of raw observations, on the same surfaces; a consumer's
+// opaque operation's output, evaluated exactly and in double, traced,
+// rendered and documented; a least-squares fit; a retry over recorded
+// determinations, evaluated, traced, rendered and documented; and the four
 // table validators; and `record_key`, `sample_id`, `test_id`,
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
@@ -93,7 +96,11 @@
 
 #include <array>
 #include <cstdint>
+#include <expected>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <type_traits>
 
 // clang-format off
@@ -115,7 +122,8 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     type, types, u, unit, unitName, upper, v, valid, values, vector, view, volume, w, weight, what, when, where, who,
     why, word, words, x, y, z, variance, spread, deviation, deviations, gap, statistic, survivors, rejected, sampled,
     counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
-    statistics, batch, lineage, role, gated, there, reference, scope, attribute, comparand, subject;
+    statistics, batch, lineage, role, gated, there, reference, scope, attribute, comparand, subject, points, slope,
+    intercept, fit, attempt, attempts, verdict, previous, judgement, accepted, exhausted;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -139,10 +147,12 @@ int index;
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
+#include <formula-cpp/least_squares.hpp>
 #include <formula-cpp/lineage.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
@@ -152,6 +162,7 @@ int index;
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
@@ -208,6 +219,9 @@ struct Factor: formula::Quantity<Factor, "k", "a factor", unit::One>
 struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit::Megapascal>
 {
 };
+struct AgreedEdge: formula::Quantity<AgreedEdge, "x_a", "agreed edge", unit::Millimetre>
+{
+};
 
 inline constexpr formula::KeyTable<SpecimenForm, 2> SpecimenFormKeys { SpecimenForm::Square, SpecimenForm::Round };
 inline constexpr formula::BandTable<2> Bands { formula::band(0, 1, 277, 100), formula::band(277, 100, 613, 100) };
@@ -239,6 +253,38 @@ inline constexpr auto everything = formula::documented(
             formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))),
     formula::Citation { .title = "Everything", .reference = "Example Standard 1:2020", .section = "1" });
 
+/// A consumer's opaque operation: the span of a series, its highest element
+/// less its lowest.
+struct EdgeSpan
+{
+    static constexpr std::string_view name = "edge span";
+    static constexpr std::array shapes { formula::InputShape::Series };
+    static constexpr std::array<std::string_view, 1> outputs { "span" };
+
+    static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
+        std::array<formula::Dimension, 1> declared) noexcept
+    {
+        return std::array { declared[0] };
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(std::span<Rep const> edges) noexcept
+    {
+        Rep least = edges[0];
+        Rep most = edges[0];
+        for (Rep const& each: edges)
+        {
+            if (each < least)
+                least = each;
+            if (most < each)
+                most = each;
+        }
+        std::expected<Rep, formula::ArithmeticError> const edgeSpread = formula::RepTraits<Rep>::subtract(most, least);
+        if (!edgeSpread.has_value())
+            return std::unexpected { edgeSpread.error() };
+        return std::array { *edgeSpread };
+    }
+};
 inline constexpr auto forceLimit = formula::constraint(
     var<Force> >= formula::constant<unit::Newton>(formula::Rational { 1 }), formula::Verdict { "no load" });
 
@@ -689,6 +735,63 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::render(observedMean, north) == "sample_mean(x_m(i))"
         && formula::document(observedMean, north).symbols.front().shape == formula::ValueShape::Observations
         && formula::render_trace(observedTrace, { .maxSteps = 20 }).find("sample_mean(#1) = 169 mm") != std::string::npos);
+    // An opaque operation's output, evaluated exactly and in double: the span
+    // of 163 and 127 mm is 36 mm.
+    auto const edgeSpan = formula::opaque_output<"span">(
+        formula::opaque<EdgeSpan>({ .reference = "Example Standard 3" }, formula::series<EdgeX, 2>));
+    auto const spanEdges = formula::environment(formula::measured_series<EdgeX>(
+        formula::Measured<EdgeX> { formula::Rational { 163 } }, formula::Measured<EdgeX> { formula::Rational { 127 } }));
+    auto const spanValue = formula::checked_evaluate<EdgeX>(edgeSpan, spanEdges);
+    auto const spanInDouble = formula::checked_evaluate_si<double>(edgeSpan, spanEdges);
+    probe.checks.push_back(spanValue.has_value() && spanValue->measurement().value() == formula::Rational { 36 }
+                           && spanInDouble.has_value() && spanInDouble->has_value());
+    // ... and on every surface: traced, rendered in the three dialects and
+    // documented.
+    auto const explainedSpan = formula::explain<EdgeX>(edgeSpan, spanEdges, north);
+    probe.checks.push_back(
+        formula::render_trace(explainedSpan.trace, { .maxSteps = 20 }).find("[inside not shown]") != std::string::npos
+        && formula::render(edgeSpan, north) == "edge span(x_m(i)).span"
+        && formula::render<formula::Dialect::Markdown>(edgeSpan).find("edge span") != std::string::npos
+        && formula::render<formula::Dialect::LaTeX>(edgeSpan).find("\\text{edge span}") != std::string::npos
+        && formula::document(edgeSpan, north).opaqueOperations.size() == 1);
+    // A straight line fitted through the declared curve points 139 and
+    // 161 mm, at 13.7 and 28.3 mm: a slope of 14.6/22 = 73/110.
+    auto const edgeFit =
+        formula::linear_least_squares(formula::curve(formula::domain<unit::Millimetre, EdgeCurvePoints>,
+                                                     formula::series_constant<unit::Millimetre>(
+                                                         formula::Rational { 137, 10 }, formula::Rational { 283, 10 })),
+                                      { .reference = "Example Standard 3" });
+    auto const fitSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeFit), specimen);
+    probe.checks.push_back(fitSlope.has_value() && fitSlope->measurement().value() == formula::Rational { 73, 110 });
+    // A retry over the two recorded edges, evaluated, traced, rendered and
+    // documented in all three dialects.
+    constexpr auto edgesAgree = formula::when(formula::this_attempt<AgreedEdge> >= formula::previous_attempt<AgreedEdge>,
+                                              formula::this_attempt<AgreedEdge> - formula::previous_attempt<AgreedEdge>,
+                                              formula::previous_attempt<AgreedEdge> - formula::this_attempt<AgreedEdge>)
+                                <= formula::constant<unit::Millimetre>(formula::Rational { 53 });
+    // With a starting value, so that the starting branch and its environment
+    // are reached too; judged from the first attempt, whose previous value is
+    // the starting 139 mm: the span's first edge, 163 mm, is 24 mm from it, so the
+    // first is accepted.
+    constexpr auto recordedEdges = formula::retry<AgreedEdge, 2, formula::FirstJudged::AtFirstAttempt>(
+        formula::starting_from(formula::constant<unit::Millimetre>(formula::Rational { 139 })),
+        formula::attempt_input<EdgeX>,
+        edgesAgree,
+        formula::Verdict { "measure the edge again" },
+        { .reference = "Example Standard 3" });
+    auto const edgesRetried = formula::checked_evaluate_retry(recordedEdges, spanEdges);
+    auto const explainedEdges = formula::explain_retry(recordedEdges, spanEdges, north);
+    probe.checks.push_back(
+        edgesRetried.has_value() && edgesRetried->end() == formula::RetryEnd::Accepted
+        && edgesRetried->outcome().measurement().value() == formula::Rational { 163 }
+        && formula::render_trace(explainedEdges.trace, { .maxSteps = 20 }).find("accepted at attempt 1 of 2")
+               != std::string::npos
+        && formula::render(recordedEdges, north).find("x_m(k)") != std::string::npos
+        && formula::render<formula::Dialect::Markdown>(recordedEdges, north).find("`x_m(k)`") != std::string::npos
+        && formula::render<formula::Dialect::LaTeX>(recordedEdges, north).find("{x_m}_{k}") != std::string::npos
+        && formula::document(recordedEdges, north).symbols.size() == 2
+        && formula::document<formula::Dialect::Markdown>(recordedEdges, north).symbols.size() == 2
+        && formula::document<formula::Dialect::LaTeX>(recordedEdges, north).symbols.size() == 2);
     auto const enteredForce = formula::entered(formula::Measured<Force> { formula::Rational { 1 } });
     auto const enteredEnvironment = formula::environment(enteredForce);
     probe.checks.push_back(specimen.get<Force>().value() == formula::Rational { 90'000 });

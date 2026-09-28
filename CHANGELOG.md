@@ -122,6 +122,36 @@ observations read inside a read from another record are traced with that record,
 own row on the page; a read whose value would be a whole series is refused, and reduced inside
 instead: `from_record<Role>(sum(series<Q, N>))`.
 
+**Phase 15: opaque operations and bounded retry.** An opaque operation is a named computation a
+method relies on but does not spell out: a type the author declares with its name, the shape of
+each input, a name for each output and what each measures, and a `compute` that receives the
+inputs' values -- never the environment -- and returns the outputs. `opaque<Op>(citation, inputs...)`
+calls it, and each output, `opaque_output<"name">(call)`, is a node a formula uses like any other.
+Its trace line lists every output it produced and its citation and says `[inside not shown]`; the
+page lists the operation with its outputs. Using two outputs runs the operation twice, and the
+trace shows both runs. `linear_least_squares(curve, citation)` ships as one: exact in `Rational`,
+its own `DomainError` for fewer than two distinct points, and `Overflow`, never a wrong line, when
+its exact sums leave `Rational`'s range -- `docs/numeric-headroom.md` measures when, over 2 to 128
+points. A citation is required, and an empty one reads `(no citation given)`. An overlay rewrites
+through an operation's inputs, which are all it reads. `retry<R, Max, FirstJudged>(start, attempt,
+acceptance, verdict, citation)` repeats one attempt expression at most `Max` times, at most 64,
+until the acceptance holds; `previous_attempt<R>`, `this_attempt<R>`, `attempt_number` and
+`attempt_input<Q>` -- a new recorded determination at each attempt -- say where it is. It ends in
+exactly one of six ways (`RetryEnd`): accepted with that attempt's value; exhausted with the
+method's verdict, never a missing value; not judgeable; not recorded; failed, naming the attempt;
+or entered by a person, which no attempt replaces. Every attempt is traced with its judgement, then
+how the retry ended; the page marks the result as iterated. An opaque call read inside a read from
+another record carries its origin, and a retry's attempt can read from another record. An acceptance
+can compare with a `precision_limit` whose level is `this_attempt`. A retry whose starting value reads a
+context node is refused where it is written, and so is one whose attempt reads `this_attempt`. A
+concept asked of a retry, such as `std::equality_comparable`, answers no; comparing or adding one is
+refused. A failing starting value ends at `RetryFailure::atStartingValue`, never at the first
+attempt's position. An opaque call stopped at a failing input writes each input after it as
+`(not evaluated)`, and an output never borrows a unit that has no symbol. A precision limit can
+read a level inside an opaque output. `OpaqueOperation` joins the customisation points: its
+`compute` does its arithmetic through `RepTraits` and never throws.
+`docs/opaque-and-retry.md` is the guide, with `examples/opaque_and_retry.cpp` and gallery entries.
+
 ### Changed
 
 - Invented example numbers replaced so none resembles a published table: the band edges, lookup
@@ -145,8 +175,9 @@ instead: `from_record<Role>(sum(series<Q, N>))`.
   `-Wunused-but-set-parameter` on the sink, in a consumer's own build under `-Werror`.
 - Locals and parameters in the public headers shared names with ordinary globals such as
   `result`, `value`, `index`, `here` and `origin`, so cl at `/W4 /WX` reported C4459 in a consumer
-  that declared one, and failed to build. They are renamed, and a test declares some 260 such globals
-  before every header.
+  that declared one, and failed to build. They are renamed, and a test declares some 270 such globals
+  before every header -- `points`, `slope`, `intercept`, `previous` and `verdict` among them, which
+  the least-squares example's own names found in the curve, lookup, snap and least-squares headers.
 - cl names an enumerator that is not one as a cast, `(enum Flag)true`; it was shown as a name, and
   is refused now.
 - The opt-in header include check was not portable across the compilers it claimed to run on.

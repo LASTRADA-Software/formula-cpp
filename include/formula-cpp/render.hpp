@@ -43,12 +43,14 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -311,6 +313,25 @@ namespace detail
             return "`" + quantitySymbol + "(i)`";
         else
             return quantitySymbol + "(i)";
+    }
+
+    /// @p quantitySymbol -- already the jurisdiction's, through `symbol_of` --
+    /// marked as a retry's value at attempt @p attemptIndex (`k`, `k-1` or
+    /// `0`), in dialect @p D: `w(k-1)` in plain text, `` `w(k-1)` `` in
+    /// Markdown and `{w}_{k-1}` in LaTeX -- `series_marker`'s family, chosen
+    /// by phase 15's spike (step 9) for the same engines.
+    ///
+    /// **The one place the marker is spelled**, for the render, the document
+    /// and the trace (`trace_render.hpp`) alike.
+    template <Dialect D>
+    [[nodiscard]] std::string attempt_marker(std::string quantitySymbol, std::string_view attemptIndex)
+    {
+        if constexpr (D == Dialect::LaTeX)
+            return "{" + quantitySymbol + "}_{" + std::string { attemptIndex } + "}";
+        else if constexpr (D == Dialect::Markdown)
+            return "`" + quantitySymbol + "(" + std::string { attemptIndex } + ")`";
+        else
+            return quantitySymbol + "(" + std::string { attemptIndex } + ")";
     }
 
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
@@ -1395,12 +1416,12 @@ template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
             listed += ", ";
         listed += detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator);
     }
-    std::string const points =
+    std::string const pointsText =
         detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{domain}(" + points + ")";
+        return "\\operatorname{domain}(" + pointsText + ")";
     else
-        return "domain(" + points + ")";
+        return "domain(" + pointsText + ")";
 }
 
 /// Raw observations render as their quantity's symbol, marked as a series is
@@ -1630,6 +1651,86 @@ template <Dialect D, PrecisionKind K, Node Level, Node Limit, Vocabulary V>
         return symbolText + "\\left(" + limitText + "\\right)\\Big\\vert_{\\text{level} = " + levelText + "}";
     else
         return symbolText + "(" + limitText + "; level = " + levelText + ")";
+}
+
+namespace detail
+{
+    /// One input of an opaque call as its call writes it: a pairing curve as
+    /// its two series, points then values -- the two spans `compute` receives
+    /// -- and any other input as itself.
+    template <Dialect D, typename Input, Vocabulary V>
+    [[nodiscard]] std::string opaque_argument_text(Input const& input, V const& vocabulary)
+    {
+        if constexpr (requires { input.domainSeries; input.valueSeries; })
+            return render<D>(input.domainSeries, vocabulary) + ", " + render<D>(input.valueSeries, vocabulary);
+        else
+            return render<D>(input, vocabulary);
+    }
+} // namespace detail
+
+/// The attempt number renders as `k`, the method's own counter --
+/// backtick-quoted in Markdown, as a variable is.
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(AttemptNumberNode const&, V const&)
+{
+    if constexpr (D == Dialect::Markdown)
+        return "`k`";
+    else
+        return "k";
+}
+
+/// The previous attempt's value renders as the result's symbol under
+/// @p vocabulary, marked `k-1` (`detail::attempt_marker`): `w(k-1)`.
+template <Dialect D, Described R, Vocabulary V>
+[[nodiscard]] std::string render_node(PreviousAttemptNode<R> const&, V const& vocabulary)
+{
+    return detail::attempt_marker<D>(std::string { symbol_of<R>(vocabulary) }, "k-1");
+}
+
+/// This attempt's value renders as the result's symbol under @p vocabulary,
+/// marked `k` (`detail::attempt_marker`): `w(k)`.
+template <Dialect D, Described R, Vocabulary V>
+[[nodiscard]] std::string render_node(ThisAttemptNode<R> const&, V const& vocabulary)
+{
+    return detail::attempt_marker<D>(std::string { symbol_of<R>(vocabulary) }, "k");
+}
+
+/// The determination recorded for the attempt that is running renders as
+/// its quantity's symbol under @p vocabulary, marked `k` as this attempt's
+/// value is: `d(k)`, `{d}_{k}`.
+template <Dialect D, Described Q, Vocabulary V>
+[[nodiscard]] std::string render_node(AttemptInputNode<Q> const&, V const& vocabulary)
+{
+    return detail::attempt_marker<D>(std::string { symbol_of<Q>(vocabulary) }, "k");
+}
+/// An opaque output renders as a call to its operation, named as the
+/// operation names itself, selecting the output: `linear least squares(t(i),
+/// L(i)).slope` in plain text; in Markdown the same, each symbol in its own
+/// code span as a series marker writes it; and in LaTeX
+/// `\text{linear least squares}({t}_{i}, {L}_{i})_{\text{slope}}`.
+///
+/// The spellings are phase 15's spike's (step 9), measured under MathJax 3.2.2
+/// with the site's configuration, tectonic 0.17.0 with `[OT1]{fontenc}` and
+/// python-markdown 3.10.3. The names go in as written: an operation's name and
+/// output names hold only ASCII letters, digits and single spaces
+/// (`RequireOpaqueNameReadable`), which every dialect shows as they are. The
+/// operation's name is its own text, like `numeric(...)`, and no vocabulary
+/// renames it; its inputs' symbols follow the vocabulary.
+template <Dialect D, std::size_t I, typename Op, typename... Inputs, typename Origin, Vocabulary V>
+[[nodiscard]] std::string render_node(OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node, V const& vocabulary)
+{
+    std::string arguments;
+    std::apply(
+        [&](auto const&... inputs) {
+            ((arguments += (arguments.empty() ? "" : ", ") + detail::opaque_argument_text<D>(inputs, vocabulary)), ...);
+        },
+        node.call.inputs);
+    std::string const operationName { Op::name };
+    std::string const outputName { OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>::output };
+    if constexpr (D == Dialect::LaTeX)
+        return "\\text{" + operationName + "}(" + arguments + ")_{\\text{" + outputName + "}}";
+    else
+        return operationName + "(" + arguments + ")." + outputName;
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
@@ -2129,4 +2230,91 @@ template <Unit U, SeriesNode S>
     return render<Dialect::Plain>(node);
 }
 
+namespace detail
+{
+    /// @p sentence set word by word in LaTeX: each `\mathrm{...}`, escaped by
+    /// `latex_math_words`, and joined by `\ \allowbreak `, so that a line may
+    /// break between any two -- a whole sentence in one `\mathrm{...}` is one
+    /// atom, which never breaks. For a retry's words and its verdict.
+    [[nodiscard]] inline std::string latex_breakable_words(std::string_view sentence)
+    {
+        std::string brokenWords;
+        std::size_t wordStart = 0;
+        while (wordStart <= sentence.size())
+        {
+            std::size_t wordEnd = sentence.find(' ', wordStart);
+            if (wordEnd == std::string_view::npos)
+                wordEnd = sentence.size();
+            if (wordEnd > wordStart)
+                brokenWords += (brokenWords.empty() ? "" : "\\ \\allowbreak ") + std::string { "\\mathrm{" }
+                               + latex_math_words(sentence.substr(wordStart, wordEnd - wordStart)) + "}";
+            wordStart = wordEnd + 1;
+        }
+        return brokenWords;
+    }
+} // namespace detail
+/// Renders a retry in dialect @p D, writing symbols as @p vocabulary says:
+/// `up to 4 attempts: w(k) = 152/25 g + w(k-1) / 2, starting from w(0) = 0 g;
+/// accept when w(k-1) - w(k) >= -19/25 g; otherwise: repeat the
+/// determination`. The words are this library's, set in `\mathrm{...}` in
+/// LaTeX as a lookup's are; the verdict is author text, made literal in
+/// Markdown and escaped in LaTeX. A retry judged from its second attempt
+/// says so: `accept from attempt 2 when ...`.
+template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P, Vocabulary V>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& retrying, V const& vocabulary)
+{
+    std::string const resultSymbol { symbol_of<R>(vocabulary) };
+    auto const inDialect = [](std::string const& libraryWords) {
+        if constexpr (D == Dialect::LaTeX)
+            return detail::latex_breakable_words(libraryWords);
+        else
+            return libraryWords;
+    };
+    // `\allowbreak` after each clause, as `lookup_separator` gives a lookup's
+    // fields, and between words (`latex_breakable_words`): a sentence of
+    // `\mathrm{...}` atoms otherwise has no legal break. Measured with
+    // tectonic 0.17.0: a ten-word verdict overflowed the line by 152 pt, and
+    // the clauses by 11 pt, in one atom each; split, nothing overflows.
+    std::string const clauseSeparator = D == Dialect::LaTeX ? std::string { ";\\ \\allowbreak " } : std::string { "; " };
+    std::string renderedRetry = inDialect("up to " + std::to_string(Max) + (Max == 1 ? " attempt:" : " attempts:"))
+                                + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "k") + " = "
+                                + render<D>(retrying.attempt, vocabulary);
+    if constexpr (detail::StartTraits<Start>::states)
+        renderedRetry += (D == Dialect::LaTeX ? ",\\ \\allowbreak " : ", ") + inDialect("starting from")
+                         + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "0") + " = "
+                         + render<D>(retrying.start.expression, vocabulary);
+    renderedRetry += clauseSeparator
+                     + inDialect(J == FirstJudged::AtSecondAttempt ? std::string { "accept from attempt 2 when" }
+                                                                   : std::string { "accept when" })
+                     + (D == Dialect::LaTeX ? "\\ " : " ") + render<D>(retrying.accept, vocabulary);
+    std::string verdictText;
+    if constexpr (D == Dialect::LaTeX)
+        verdictText = detail::latex_breakable_words(retrying.onExhausted.label);
+    else if constexpr (D == Dialect::Markdown)
+        verdictText = detail::literal_words_in_dialect<D>(retrying.onExhausted.label);
+    else
+        verdictText = std::string { retrying.onExhausted.label };
+    return renderedRetry + clauseSeparator + inDialect("otherwise:") + (D == Dialect::LaTeX ? "\\ " : " ") + verdictText;
+}
+
+/// Renders a retry as plain text, writing symbols as @p vocabulary says.
+template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P, Vocabulary V>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders a retry in dialect @p D, in the default vocabulary.
+template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders a retry as plain text.
+template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& node)
+{
+    return render<Dialect::Plain>(node);
+}
 } // namespace formula

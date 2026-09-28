@@ -38,6 +38,8 @@ struct PowerNode: NodeBase
     static constexpr int exponent = Exponent;
     /// `operand`'s dimension, scaled by `exponent`.
     static constexpr Dimension dimension = power(Operand::dimension, Exponent);
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 namespace detail
@@ -72,6 +74,8 @@ struct RootNode: NodeBase
     static constexpr int degree = Degree;
     /// `operand`'s dimension, divided by `degree` -- possibly fractional.
     static constexpr Dimension dimension = nth_root(Operand::dimension, Degree);
+    /// Whether its operand was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
 };
 
 /// Pi, as a node, so that a formula containing it stays a formula.

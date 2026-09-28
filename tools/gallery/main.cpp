@@ -328,10 +328,9 @@ struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", unit::
 };
 
 constexpr auto cubeStrengthMethod = formula::method(
-    formula::variants(
-        formula::variant<Cube>(var<ShapeFactor> * var<FailureLoad> / formula::pow<2>(var<LoadedEdge>)),
-        formula::variant<Cylinder>(formula::constant<unit::One>(formula::Rational { 4 }) * var<FailureLoad>
-                                          / (formula::pi * formula::pow<2>(var<Diameter>)))),
+    formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<FailureLoad> / formula::pow<2>(var<LoadedEdge>)),
+                      formula::variant<Cylinder>(formula::constant<unit::One>(formula::Rational { 4 }) * var<FailureLoad>
+                                                 / (formula::pi * formula::pow<2>(var<Diameter>)))),
     formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
     formula::constraints(
         formula::constraint(var<FailureLoad> >= formula::constant<unit::Kilonewton>(formula::Rational { 163 }),
@@ -482,12 +481,45 @@ struct CuringBatch
 /// This specimen's crushing strength over the reference specimen's, computed
 /// from the reference's own load and edge.
 constexpr auto relativeStrength =
-    var<CrushingStrength> / formula::from_record<ReferenceSpecimen>(var<FailureLoad> / (var<LoadedEdge> * var<LoadedEdge>));
+    var<CrushingStrength> / formula::from_record<ReferenceSpecimen>(var<FailureLoad> / (var<LoadedEdge> * var<LoadedEdge>) );
 
 /// The same, read only when both specimens were cured in one batch.
 constexpr auto gatedRelativeStrength =
-    var<CrushingStrength> / formula::from_record<ReferenceSpecimen>(var<FailureLoad> / (var<LoadedEdge> * var<LoadedEdge>),
-                                                                    formula::same_lineage<CuringBatch>());
+    var<CrushingStrength>
+    / formula::from_record<ReferenceSpecimen>(var<FailureLoad> / (var<LoadedEdge> * var<LoadedEdge>),
+                                              formula::same_lineage<CuringBatch>());
+
+// ---- An opaque operation and a retry ---------------------------------------------
+//
+// A straight line fitted by least squares, whose sums the method names but
+// does not spell out, and an estimate repeated until it settles, at most four
+// times.
+
+struct SettlementTime: formula::Quantity<SettlementTime, "t", "time of a settlement reading", unit::Second>
+{
+};
+struct Settlement: formula::Quantity<Settlement, "L", "settlement read", unit::Millimetre>
+{
+};
+struct SettlementRate: formula::Quantity<SettlementRate, "v", "rate of settlement", unit::MillimetrePerMinute>
+{
+};
+struct IteratedEstimate: formula::Quantity<IteratedEstimate, "w", "an invented iterated estimate", unit::Gram>
+{
+};
+
+constexpr auto settlementSlope = formula::opaque_output<"slope">(
+    formula::linear_least_squares(formula::curve(formula::series<SettlementTime, 4>, formula::series<Settlement, 4>),
+                                  { .title = "Rate of settlement", .reference = "Example Standard 12", .section = "5.1" }));
+
+constexpr auto settledEstimate = formula::retry<IteratedEstimate, 4, formula::FirstJudged::AtFirstAttempt>(
+    formula::starting_from(formula::constant<unit::Gram>(formula::Rational { 0 })),
+    formula::constant<unit::Gram>(formula::Rational { 152, 25 })
+        + formula::previous_attempt<IteratedEstimate> / formula::Rational { 2 },
+    formula::previous_attempt<IteratedEstimate> - formula::this_attempt<IteratedEstimate>
+        >= formula::constant<unit::Gram>(formula::Rational { -19, 25 }),
+    formula::Verdict { "repeat the determination" },
+    { .title = "Settled estimate", .reference = "Example Standard 12", .section = "6" });
 
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
@@ -884,8 +916,8 @@ int main(int argc, char** argv)
     write_worked_formula(out, std::get<0>(overlaidStrengthMethod.variantSet.cases).expression);
 
     formula::Trace<> overlaidTrace {};
-    auto const overlaidStrength = formula::evaluate_method<Cube>(
-        overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidTrace });
+    auto const overlaidStrength =
+        formula::evaluate_method<Cube>(overlaidStrengthMethod, cubeSpecimen, formula::RecordingSink<> { overlaidTrace });
     if (!overlaidStrength.has_value() || !overlaidStrength->has_value())
     {
         std::fprintf(stderr, "formula-cpp-gallery: the worked overlaid method did not produce a value\n");
@@ -1136,18 +1168,19 @@ int main(int argc, char** argv)
     write_worked_formula(out, relativeStrength);
 
     auto const thisSpecimen = formula::environment(formula::Measured<CrushingStrength> { formula::Rational { 36 } });
-    auto const referenceSpecimen =
-        formula::environment(formula::Measured<FailureLoad> { formula::Rational { 579'630 } },
-                             formula::Measured<LoadedEdge> { formula::Rational { 139 } });
+    auto const referenceSpecimen = formula::environment(formula::Measured<FailureLoad> { formula::Rational { 579'630 } },
+                                                        formula::Measured<LoadedEdge> { formula::Rational { 139 } });
     auto const sameBatch = formula::record_context(
         formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)),
-                                             thisSpecimen, formula::lineage<CuringBatch>(4411)),
+                                             thisSpecimen,
+                                             formula::lineage<CuringBatch>(4411)),
         formula::record<ReferenceSpecimen>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
-                                           referenceSpecimen, formula::lineage<CuringBatch>(4411)));
+                                           referenceSpecimen,
+                                           formula::lineage<CuringBatch>(4411)));
 
     formula::Trace<> relativeTrace {};
-    auto const relative = formula::checked_evaluate_si<formula::Rational>(relativeStrength, sameBatch,
-                                                                          formula::RecordingSink<> { relativeTrace });
+    auto const relative = formula::checked_evaluate_si<formula::Rational>(
+        relativeStrength, sameBatch, formula::RecordingSink<> { relativeTrace });
     if (!relative.has_value() || !relative->has_value())
     {
         std::fprintf(stderr, "formula-cpp-gallery: the relative strength did not produce a value\n");
@@ -1167,13 +1200,15 @@ int main(int argc, char** argv)
 
     auto const otherBatch = formula::record_context(
         formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)),
-                                             thisSpecimen, formula::lineage<CuringBatch>(4411)),
+                                             thisSpecimen,
+                                             formula::lineage<CuringBatch>(4411)),
         formula::record<ReferenceSpecimen>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
-                                           referenceSpecimen, formula::lineage<CuringBatch>(4412)));
+                                           referenceSpecimen,
+                                           formula::lineage<CuringBatch>(4412)));
 
     formula::Trace<> gatedTrace {};
-    auto const gated = formula::checked_evaluate_si<formula::Rational>(gatedRelativeStrength, otherBatch,
-                                                                       formula::RecordingSink<> { gatedTrace });
+    auto const gated = formula::checked_evaluate_si<formula::Rational>(
+        gatedRelativeStrength, otherBatch, formula::RecordingSink<> { gatedTrace });
     if (gated.has_value() || gated.error() != formula::ArithmeticError::DomainError)
     {
         std::fprintf(stderr, "formula-cpp-gallery: the gated read was not refused\n");
@@ -1183,6 +1218,53 @@ int main(int argc, char** argv)
     out << "```\n";
     out << formula::render_trace(gatedTrace, { .maxSteps = 20 });
     out << "```\n\n";
+
+    // ---- An opaque operation, and a retry ----
+    //
+    // A fit's inside is not an expression tree the method states, so its step
+    // lists what it produced and says the inside is not shown. A retry's every
+    // attempt is traced, then how it ended.
+
+    out << "## Worked derivation: a straight line fitted by least squares\n\n";
+    out << "Settlement read at `t` = 1, 2, 4 and 7 s: `L` = 10.2, 10.9, 12.1 and 14.3 mm. The fit is an "
+           "opaque operation: its step lists the intercept and the slope it produced, exactly, and says "
+           "its inside is not shown:\n\n";
+
+    write_worked_formula(out, settlementSlope);
+
+    auto const settlementReadings = formula::environment(
+        formula::measured_series<SettlementTime>(formula::Measured<SettlementTime> { formula::Rational { 1 } },
+                                                 formula::Measured<SettlementTime> { formula::Rational { 2 } },
+                                                 formula::Measured<SettlementTime> { formula::Rational { 4 } },
+                                                 formula::Measured<SettlementTime> { formula::Rational { 7 } }),
+        formula::measured_series<Settlement>(formula::Measured<Settlement> { formula::Rational { 102, 10 } },
+                                             formula::Measured<Settlement> { formula::Rational { 109, 10 } },
+                                             formula::Measured<Settlement> { formula::Rational { 121, 10 } },
+                                             formula::Measured<Settlement> { formula::Rational { 143, 10 } }));
+    formula::Trace<> fitTrace {};
+    auto const fitted = formula::checked_evaluate_si<formula::Rational>(
+        settlementSlope, settlementReadings, formula::RecordingSink<> { fitTrace });
+    if (!fitted.has_value() || !fitted->has_value())
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the least-squares fit did not produce a slope\n");
+        return 1;
+    }
+    out << "```\n" << formula::render_trace(fitTrace, { .maxSteps = 20 }) << "```\n\n";
+
+    out << "## Worked retry: an estimate repeated until it settles\n\n";
+    out << "Each attempt halves the previous estimate and adds 6.08 g, from 0 g, and is accepted once it rose "
+           "by at most 0.76 g; after four attempts without that, the method's verdict. It settles at the "
+           "fourth:\n\n";
+
+    write_worked_formula(out, settledEstimate);
+
+    auto const settling = formula::explain_retry(settledEstimate, formula::environment());
+    if (!settling.outcome.has_value() || settling.outcome->end() != formula::RetryEnd::Accepted)
+    {
+        std::fprintf(stderr, "formula-cpp-gallery: the retry was not accepted\n");
+        return 1;
+    }
+    out << "```\n" << formula::render_trace(settling.trace, { .maxSteps = 60 }) << "```\n\n";
 
     out.flush();
     return out ? 0 : 1;

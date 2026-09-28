@@ -59,7 +59,7 @@ namespace detail
     template <Node Then, Node Else>
     struct RequireBranchesAgree
     {
-        static_assert(Then::dimension == Else::dimension,
+        static_assert(refused_already<Then>() || refused_already<Else>() || Then::dimension == Else::dimension,
                       "formula: the two branches of this when() measure different dimensions; the "
                       "offending branches appear in this diagnostic as the template arguments of "
                       "RequireBranchesAgree");
@@ -89,6 +89,10 @@ struct WhenNode: NodeBase
 
     /// The two branches already agree; this is that (shared) dimension.
     static constexpr Dimension dimension = Then::dimension;
+    /// Whether the condition or either branch was refused -- see
+    /// `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused =
+        detail::refused_already<P>() || detail::refused_already<Then>() || detail::refused_already<Else>();
 };
 
 /// `when(predicate, thenBranch, elseBranch)`: `thenBranch` where `predicate`
@@ -112,20 +116,20 @@ template <typename Rep = Rational, Predicate P, Node Then, Node Else, typename E
 {
     sink.entered(node);
 
-    std::expected<std::optional<bool>, ArithmeticError> const verdict =
+    std::expected<std::optional<bool>, ArithmeticError> const predicateHeld =
         checked_evaluate_predicate<Rep>(node.predicate, environment, sink);
-    if (!verdict.has_value())
+    if (!predicateHeld.has_value())
     {
-        return detail::report_failure<Rep>(node, sink, verdict.error());
+        return detail::report_failure<Rep>(node, sink, predicateHeld.error());
     }
-    if (!verdict->has_value())
+    if (!predicateHeld->has_value())
     {
         Evaluated<Rep> const absent = detail::nothing<Rep>();
         sink.produced(node, absent);
         return absent;
     }
 
-    bool const thenTaken = **verdict;
+    bool const thenTaken = **predicateHeld;
     Evaluated<Rep> const evaluated = thenTaken ? detail::dispatch<Rep>(node.thenBranch, environment, sink)
                                              : detail::dispatch<Rep>(node.elseBranch, environment, sink);
     if constexpr (requires { sink.branch_taken(node, thenTaken); })

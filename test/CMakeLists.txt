@@ -84,6 +84,10 @@ add_executable(formula-cpp-tests
     record_join_tests.cpp
     record_statistics_tests.cpp
     record_cross_tu_b.cpp
+    opaque_tests.cpp
+    opaque_cross_tu_b.cpp
+    least_squares_tests.cpp
+    retry_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -1688,15 +1692,15 @@ formula_add_negative_test(overlay_derived_after_its_variant_is_pruned
 
 formula_add_negative_test(overlay_derived_dimension_mismatch
     "formula: this overlay derives a quantity from an expression of a different dimension"
-    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_self_reference
     "formula: this overlay derives a quantity from an expression that reads the quantity itself"
-    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+    REJECT "formula: this method reads a quantity both where an overlay fixed or derived it" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_definition_unknown_node
     "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
-    REJECT "formula: this overlay derives a quantity from an expression that reads the quantity itself" "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
+    REJECT "formula: this overlay derives a quantity from an expression that reads the quantity itself" "formula: this method reads a quantity both where an overlay fixed or derived it" "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_derived_method_unknown_node
     "formula: this overlay derives a quantity in an expression holding a node kind it cannot see inside"
@@ -1707,7 +1711,7 @@ formula_add_negative_test(overlay_derived_method_unknown_node
 # The first definition's node is still there beside that plain use, so the
 # REJECT pins that this is not also reported as bypassed.
 formula_add_negative_test(overlay_derived_cycle
-    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "formula: this overlay derives a quantity, and an operation listed after the definition removed")
 
 # A refused replacement leaves the method without it, so the substitution
@@ -1737,11 +1741,11 @@ formula_add_negative_test(overlay_replacement_pruned_then_dimension
     REJECT "formula: this overlay replaces a variant that the method it produces does not hold")
 
 formula_add_negative_test(overlay_stacked_cycle
-    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "formula: this overlay derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_stacked_constant_read_again
-    "formula: this method reads a quantity both where an overlay fixed or derived it and, elsewhere, unsubstituted from the environment"
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "formula: this overlay overrides a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(overlay_constant_reintroduced
@@ -2062,6 +2066,254 @@ formula_add_negative_test(record_context_over_context
     "formula: a record holds its values in an environment(...), and this is not one"
     REJECT "RequireProvided" "RequirePlainRole" "RequireThisRecordFirst" "RequireDistinctRoles")
 
+# Opaque operations (`opaque.hpp`). Each refusal is gated on the ones before
+# it, so one mistake draws one message; every REJECT names the message the
+# next check down would add.
+formula_add_negative_test(opaque_blank_name
+    "formula: an opaque operation's name must say something; one that is empty or blank leaves the trace unable to say what ran"
+    REJECT "may hold only ASCII letters, digits and single spaces")
+formula_add_negative_test(opaque_unreadable_name
+    "formula: an opaque operation's name and output names may hold only ASCII letters, digits and single spaces, so that every dialect shows them as written"
+    REJECT "declares two outputs with the same name")
+formula_add_negative_test(opaque_duplicate_output
+    "formula: an opaque operation declares two outputs with the same name; opaque_output could not tell them apart"
+    REJECT "may hold only ASCII letters, digits and single spaces")
+formula_add_negative_test(opaque_no_outputs
+    "formula: an opaque operation declares no outputs; a call with nothing to use has nothing to trace"
+    REJECT "declares two outputs with the same name")
+formula_add_negative_test(opaque_unknown_output
+    "formula: this opaque operation has no output of that name; the operation and the name asked for appear in this diagnostic as the template arguments of RequireOpaqueOutputNamed"
+    REJECT "this result quantity does not measure the dimension")
+# g++ 14.2 followed the noexcept refusal with seven errors of its own when the
+# evaluator's body was not gated (phase 15's spike, step 7): the REJECTs.
+formula_add_negative_test(opaque_throwing_compute
+    "formula: an opaque operation's compute must be noexcept; evaluation cannot throw, and an exception escaping it would end the program"
+    REJECT "~expected" "flows off the end")
+formula_add_negative_test(opaque_wrong_arity
+    "formula: this opaque call passes a different number of inputs than the operation declares"
+    REJECT "passes an input of another shape" "does not accept inputs of these dimensions")
+formula_add_negative_test(opaque_wrong_shape
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "does not accept inputs of these dimensions" "compute cannot be called")
+formula_add_negative_test(opaque_series_lengths_differ
+    "formula: this opaque operation's series and curve inputs differ in length"
+    REJECT "does not accept inputs of these dimensions")
+formula_add_negative_test(opaque_dimensions_refused
+    "formula: this opaque operation does not accept inputs of these dimensions"
+    REJECT "compute cannot be called" "must be noexcept")
+formula_add_negative_test(opaque_compute_signature
+    "formula: this opaque operation's compute cannot be called with the values its declared inputs give"
+    REJECT "must be noexcept")
+formula_add_negative_test(opaque_output_as_series
+    "formula: an opaque call is not a value, since an operation may have several outputs; choose one with opaque_output<\"name\">(call)"
+    REJECT "this expression is a series, not a single value")
+# Least squares (`least_squares.hpp`): two loose series are refused in this
+# library's words, not the compiler's; a fit in double is refused once, in the
+# curve's words.
+formula_add_negative_test(least_squares_not_a_curve
+    "formula: linear_least_squares fits a curve; pair the domain and the values with curve(domain, values)"
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
+# A fit with no citation is refused in the library's words; a fit over a
+# refused curve says only the curve's.
+formula_add_negative_test(least_squares_uncited
+    "formula: linear_least_squares needs a citation, the reason the method fits a line here; pass {} when it gives none"
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
+formula_add_negative_test(least_squares_refused_curve
+    "formula: this curve pairs a domain and values of different lengths"
+    REJECT "RequireResultDimension" "output_dimensions" "compute cannot be called")
+formula_add_negative_test(least_squares_in_double
+    "formula: a curve can only be evaluated with Rep = Rational"
+    REJECT "must be noexcept" "compute cannot be called")
+# A constant for a quantity read as a series inside an opaque call: the
+# rewrite sees through the call to its inputs, so the series refusal is the
+# one message -- not "cannot see inside", and not "nobody reads it".
+formula_add_negative_test(overlay_constant_inside_opaque_series
+    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
+# A refused opaque call's output stands in with a dimensionless dimension;
+# every check over it is silent (`detail::refused_already`), so the one
+# mistake draws one message. Each REJECT names the check that would repeat it.
+formula_add_negative_test(opaque_refused_result_dimension
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this result quantity does not measure the dimension")
+formula_add_negative_test(opaque_refused_added
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "the two sides of this addition or subtraction measure different" "this result quantity does not measure the dimension")
+formula_add_negative_test(opaque_refused_compared
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "the two sides of this comparison measure different dimensions")
+formula_add_negative_test(opaque_refused_branch
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "the two branches of this when() measure different dimensions")
+formula_add_negative_test(opaque_refused_escape
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this numeric_value_of names a unit that does not measure")
+formula_add_negative_test(opaque_refused_lookup
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this lookup table's key unit does not measure")
+formula_add_negative_test(opaque_refused_rounded
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this rounding node names a unit that does not measure")
+formula_add_negative_test(opaque_refused_snapped
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this snap's key unit does not measure")
+formula_add_negative_test(opaque_refused_interpolation_point
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this curve is read at a point that does not measure")
+formula_add_negative_test(opaque_refused_variants
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "two variants of this method measure different dimensions")
+formula_add_negative_test(opaque_refused_rounding_rule
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this method's rounding rule rounds in a unit that does not measure")
+formula_add_negative_test(opaque_refused_replacement
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this overlay replaces a variant with a formula of a different dimension")
+formula_add_negative_test(opaque_refused_derivation
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "this overlay derives a quantity from an expression of a different dimension")
+
+# A curve operation whose output_dimensions takes one dimension, not two: refused
+# once in the library's words, not in the compiler's "no matching function".
+formula_add_negative_test(opaque_curve_dimensions_declared
+    "formula: this opaque operation's output_dimensions must be a static function taking std::array<Dimension, D>"
+    REJECT "no matching overloaded function" "no matching function" "may hold only ASCII letters")
+# An output node built by hand at a position its operation does not declare.
+formula_add_negative_test(opaque_forged_output_position
+    "formula: this opaque output's position names no output of its operation"
+    REJECT "subscript")
+# The sentinel position built by hand over a sound call: refused in its own
+# words, never silently.
+formula_add_negative_test(opaque_forged_sentinel_position
+    "formula: this opaque output's position names no output of its operation"
+    REJECT "subscript" "RequireAddendsAgree" "RequireResultDimension")
+# Overlays over opaque calls (task 5 review): a refused call is never rebuilt,
+# and a substitution inside a call is seen by every rule over the method.
+formula_add_negative_test(overlay_constant_inside_refused_opaque
+    "formula: this opaque operation does not accept inputs of these dimensions"
+    REJECT "no matching overloaded function" "no matching function" "cannot see inside")
+formula_add_negative_test(overlay_derivation_of_refused_opaque
+    "formula: this opaque operation does not accept inputs of these dimensions"
+    REJECT "no matching overloaded function" "no matching function" "cannot see inside")
+formula_add_negative_test(overlay_substitution_inside_opaque_across_overlays
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
+    REJECT "cannot see inside")
+formula_add_negative_test(overlay_constant_bypassed_inside_opaque
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
+    REJECT "cannot see inside")
+formula_add_negative_test(overlay_constant_before_derivation_inside_opaque
+    "formula: this overlay fixes a quantity that nothing read where the constant is listed"
+    REJECT "cannot see inside")
+
+# Bounded retry (`retry.hpp`): each refusal is gated on the ones before it,
+# so that one mistake draws one message.
+formula_add_negative_test(retry_zero_attempts
+    "formula: a retry allows no attempts at all; MaxAttempts must be at least one"
+    REJECT "allows at most 64 attempts" "second attempt allows only one attempt")
+formula_add_negative_test(retry_over_cap
+    "formula: a retry allows at most 64 attempts; the methods this shape exists for repeat a step a few times, and a larger count is almost always a typo"
+    REJECT "allows no attempts at all" "second attempt allows only one attempt")
+formula_add_negative_test(retry_second_attempt_of_one
+    "formula: a retry judged from its second attempt allows only one attempt, so its acceptance could never be judged"
+    REJECT "allows no attempts at all" "allows at most 64 attempts")
+formula_add_negative_test(retry_attempt_dimension
+    "formula: this retry's attempt expression does not compute the dimension of its result quantity"
+    REJECT "RequireResultDimension" "RequireComparandsAgree" "no matching")
+formula_add_negative_test(retry_starting_dimension
+    "formula: this retry's starting value does not compute the dimension of its result quantity"
+    REJECT "does not compute the dimension of its result quantity; each attempt" "no matching")
+formula_add_negative_test(retry_accept_not_predicate
+    "formula: a retry's acceptance is a comparison that holds or does not"
+    REJECT "no matching" "checked_evaluate_predicate")
+formula_add_negative_test(retry_attempt_not_node
+    "formula: a retry's attempt is one expression that produces one value"
+    REJECT "no matching" "does not compute the dimension")
+formula_add_negative_test(retry_this_attempt_in_attempt
+    "formula: this_attempt is the value an attempt produced, known only when judging it"
+    REJECT "only meaningful inside a retry" "no matching")
+formula_add_negative_test(retry_in_double
+    "formula: a retry can only be evaluated with Rep = Rational"
+    REJECT "no matching" "only meaningful inside a retry")
+formula_add_negative_test(retry_previous_outside
+    "formula: previous_attempt, this_attempt and attempt_number are only meaningful inside a retry"
+    REJECT "RequireProvided" "no matching")
+
+# Retry review fixes: a context node names the retry's own quantity and is
+# read inside an attempt; a retry is evaluated at the top; its start and verdict
+# are what they say.
+formula_add_negative_test(retry_previous_other_quantity
+    "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
+    EXPECT_COUNT 1
+    REJECT "only meaningful inside a retry" "does not compute the dimension" "template arguments of RequireRetriedQuantity")
+formula_add_negative_test(retry_previous_other_dimension
+    "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
+    EXPECT_COUNT 1
+    REJECT "only meaningful inside a retry" "does not compute the dimension" "template arguments of RequireRetriedQuantity")
+formula_add_negative_test(retry_context_in_starting_value
+    "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
+    EXPECT_COUNT 1
+    REJECT "only meaningful inside a retry" "no matching")
+formula_add_negative_test(retry_start_not_starting_value
+    "formula: a retry starts from starting_from(expression), or from nothing; this starting value is neither"
+    REJECT "no matching" "does not compute the dimension")
+formula_add_negative_test(retry_empty_verdict
+    "formula_retry_verdict_must_say_something"
+    REJECT "static assertion failed")
+formula_add_negative_test(retry_in_checked_evaluate
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching")
+formula_add_negative_test(retry_in_evaluate
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching")
+formula_add_negative_test(retry_as_variant
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching" "RequireVariantsAgree" "RequireRoundingRuleMeasuresVariants")
+formula_add_negative_test(retry_in_arithmetic
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
+formula_add_negative_test(retry_render_other_quantity
+    "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
+    EXPECT_COUNT 1
+    REJECT "template arguments of RequireRetriedQuantity" "does not compute the dimension")
+# Only this library's node kinds can claim to be refused already.
+formula_add_negative_test(consumer_refused_member
+    "formula: the two sides of this addition or subtraction measure different dimensions"
+    EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(retry_render_context_in_starting_value
+    "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
+    EXPECT_COUNT 1
+    REJECT "names another" "only meaningful inside a retry" "does not compute the dimension")
+formula_add_negative_test(retry_render_this_attempt_in_attempt
+    "formula: this_attempt is the value an attempt produced, known only when judging it"
+    EXPECT_COUNT 1
+    REJECT "only meaningful inside a retry" "names another" "does not compute the dimension")
+formula_add_negative_test(retry_previous_in_record_scope
+    "inside from_record<Role>(...) the other record's data is read, where no attempt runs"
+    EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(retry_attempt_input_in_record_scope
+    "inside from_record<Role>(...) the other record's data is read, where no attempt runs"
+    EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(retry_compared
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    EXPECT_COUNT 1
+    REJECT "no match for" "invalid operands" "no matching")
+formula_add_negative_test(retry_attempt_input_length
+    "this environment holds a series of a different length for this quantity than the one read"
+    EXPECT_COUNT 1
+    REJECT "provides no value for this quantity" "no matching")
+formula_add_negative_test(retry_attempt_input_outside
+    "formula: attempt_input reads the determination recorded for the attempt that is running"
+    REJECT "provides no value for this quantity" "no matching")
+formula_add_negative_test(retry_attempt_input_in_starting_value
+    "formula: a retry's starting value is evaluated before its first attempt, so there is no recorded determination"
+    REJECT "only meaningful inside a retry" "provides no value for this quantity" "no matching")
+formula_add_negative_test(retry_attempt_input_documented_outside
+    "formula: attempt_input reads the determination recorded for the attempt that is running"
+    EXPECT_COUNT 1
+    REJECT "provides no value for this quantity" "no matching")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

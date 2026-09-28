@@ -16,16 +16,19 @@
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/opaque.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -164,6 +167,25 @@ struct RejectionEntry
     [[nodiscard]] bool operator==(RejectionEntry const&) const = default;
 };
 
+/// One opaque operation a formula calls, as a documentation page lists it:
+/// what ran, why the method uses it there, and what it produces. Its inside
+/// is not shown, on the page or in the trace; what is shown is that it ran.
+struct OpaqueOperationEntry
+{
+    /// The operation's name, `Op::name`.
+    std::string_view name {};
+    /// What the call cited -- empty when it cited nothing, and still an entry.
+    Citation citation {};
+    /// The operation's output names, in its declared order.
+    std::vector<std::string_view> outputs {};
+    /// Each output's dimension, index for index with `outputs`, as the call's
+    /// inputs gave them: a page states what each output measures.
+    std::vector<Dimension> outputDimensions {};
+
+    /// Memberwise equality.
+    [[nodiscard]] bool operator==(OpaqueOperationEntry const&) const = default;
+};
+
 /// Everything a documentation page needs from a formula: the formula itself
 /// rendered to text, what it cites, and the symbol table for what it reads.
 struct Documentation
@@ -191,6 +213,11 @@ struct Documentation
     /// met (`RejectionEntry`). A cited rejection's citation also joins
     /// `citations`.
     std::vector<RejectionEntry> rejections {};
+    /// One entry per opaque call the formula makes (`opaque.hpp`), in the
+    /// order met, each call once however many of its outputs the formula
+    /// uses: an entry even for a call that cited nothing, for
+    /// `replacedBy`'s reason. A cited call's citation also joins `citations`.
+    std::vector<OpaqueOperationEntry> opaqueOperations {};
 };
 
 namespace detail
@@ -273,6 +300,9 @@ namespace detail
     {
         Documentation documentation {};
         std::vector<SeenRow> seenQuantities {};
+        /// Which call type each of `documentation.opaqueOperations` came from,
+        /// index for index, so that two outputs of one call are one entry.
+        std::vector<void const*> seenCalls {};
         /// The dialect `document()` was asked for, which a derived quantity's
         /// definition is rendered in.
         Dialect dialect = Dialect::Plain;
@@ -282,6 +312,9 @@ namespace detail
         /// meanwhile is that record's.
         std::string_view role {};
         void const* roleIdentity = nullptr;
+        /// While a retry is walked: the attempts it allows, the length of the
+        /// series `attempt_input` reads; 0 otherwise.
+        std::size_t attemptLimit = 0;
     };
 
     /// @p node rendered in @p dialect, chosen at run time, and in
@@ -342,6 +375,18 @@ namespace detail
 
     template <Vocabulary V>
     void collect(Walk<V>& walk, PiNode const& node);
+
+    template <Vocabulary V>
+    void collect(Walk<V>& walk, AttemptNumberNode const& node);
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>& walk, PreviousAttemptNode<R> const& node);
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>& walk, ThisAttemptNode<R> const& node);
+
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, AttemptInputNode<Q> const& node);
 
     template <Vocabulary V, UnaryOperator Op, Node Operand>
     void collect(Walk<V>& walk, UnaryNode<Op, Operand> const& node);
@@ -475,6 +520,14 @@ namespace detail
     template <Vocabulary V, typename Operand>
     void collect(Walk<V>& walk, RefusedSeriesScope<Operand> const& node);
 
+    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
+    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node);
+
+    /// A distinct address per opaque call type, for `quantityIdentity`'s
+    /// reason and in its writable form.
+    template <typename Call>
+    inline bool callIdentity = false;
+
     /// Finds @p Q's row in the symbol table, adding a plain one when @p Q has
     /// none yet; @p row is its index. True when the row was added now.
     ///
@@ -605,6 +658,82 @@ namespace detail
     {
     }
 
+    /// A retry's context nodes read no variable: the attempt number is the
+    /// method's own counter, and the result's row is the retry's own, added
+    /// first by `document()` for a retry and marked there as iterated.
+    template <Vocabulary V>
+    void collect(Walk<V>&, AttemptNumberNode const&)
+    {
+    }
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>&, PreviousAttemptNode<R> const&)
+    {
+    }
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>&, ThisAttemptNode<R> const&)
+    {
+    }
+
+    /// A distinct address per quantity @p Q read by `attempt_input`, for
+    /// `seriesIdentity`'s reason: its row is its own, whatever else reads `Q`.
+    template <typename Q>
+    inline bool attemptInputIdentity = false;
+
+    /// The determinations a retry reads, one per attempt, contribute one row:
+    /// a series of as many values as the retry allows attempts
+    /// (`Walk::attemptLimit`), which is what the environment must hold.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, AttemptInputNode<Q> const&)
+    {
+        // Outside a retry there is no series to name; `document()` refuses
+        // such a formula, so this only keeps a walk begun by hand honest.
+        if (walk.attemptLimit == 0)
+            return;
+        void const* const identity = &attemptInputIdentity<Q>;
+        for (SeenRow const& seen: walk.seenQuantities)
+            if (seen.quantity == identity && seen.role == walk.roleIdentity)
+                return;
+        // `series<Q, Max>` read too names the same entry of the environment:
+        // one row, not two.
+        for (SymbolEntry const& listed: walk.documentation.symbols)
+            if (listed.shape == ValueShape::Series && listed.length == walk.attemptLimit
+                && listed.symbol == symbol_of<Q>(walk.vocabulary) && listed.record == walk.role
+                && listed.unit == Describe<Q>::unit)
+                return;
+        walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
+        walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                                           .description = Describe<Q>::description,
+                                                           .unit = Describe<Q>::unit,
+                                                           .shape = ValueShape::Series,
+                                                           .length = walk.attemptLimit,
+                                                           .record = walk.role });
+    }
+
+    /// Words appended to a retry's result's description, so that its row says
+    /// the value is iterated. A description rather than a `ValueShape`: the
+    /// shape says what a quantity is read as, and an iterated result is still
+    /// one value.
+    inline constexpr std::string_view iteratedSuffix = " (iterated: the value of the attempt a retry accepted)";
+
+    /// @p R's description followed by `iteratedSuffix`, in static storage so
+    /// that the row's view outlives the page.
+    template <Described R>
+    struct IteratedDescription
+    {
+        static constexpr std::size_t length = Describe<R>::description.size() + iteratedSuffix.size();
+        static constexpr std::array<char, length> text = [] {
+            std::array<char, length> joined {};
+            std::size_t at = 0;
+            for (char const spelt: Describe<R>::description)
+                joined[at++] = spelt;
+            for (char const spelt: iteratedSuffix)
+                joined[at++] = spelt;
+            return joined;
+        }();
+        static constexpr std::string_view view { text.data(), length };
+    };
     template <Vocabulary V, UnaryOperator Op, Node Operand>
     void collect(Walk<V>& walk, UnaryNode<Op, Operand> const& node)
     {
@@ -812,8 +941,14 @@ namespace detail
     {
         void const* const identity = &seriesIdentity<Q, N>;
         for (SeenRow const& seen: walk.seenQuantities)
+        {
             if (seen.quantity == identity && seen.role == walk.roleIdentity)
                 return;
+            // The retry's recorded determinations of `Q`, one per attempt,
+            // are this series already: one row.
+            if (seen.quantity == &attemptInputIdentity<Q> && seen.role == walk.roleIdentity && walk.attemptLimit == N)
+                return;
+        }
         walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
         walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
                                                            .description = Describe<Q>::description,
@@ -1030,6 +1165,33 @@ namespace detail
     void collect(Walk<V>&, RefusedSeriesScope<Operand> const&)
     {
     }
+
+    /// An opaque output lists its call -- once per call, however many of its
+    /// outputs are used: one call is one call type with one citation -- and
+    /// walks the call's inputs, which name its variables.
+    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
+    void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node)
+    {
+        void const* const identity = &callIdentity<OpaqueCall<Op, Inputs...>>;
+        bool metAlready = false;
+        for (std::size_t entryAt = 0; entryAt < walk.seenCalls.size(); ++entryAt)
+            if (walk.seenCalls[entryAt] == identity
+                && walk.documentation.opaqueOperations[entryAt].citation == node.call.citation)
+                metAlready = true;
+        if (!metAlready)
+        {
+            walk.seenCalls.push_back(identity);
+            walk.documentation.opaqueOperations.push_back(OpaqueOperationEntry {
+                .name = Op::name,
+                .citation = node.call.citation,
+                .outputs = std::vector<std::string_view>(Op::outputs.begin(), Op::outputs.end()),
+                .outputDimensions = std::vector<Dimension>(OpaqueCall<Op, Inputs...>::output_dimensions.begin(),
+                                                           OpaqueCall<Op, Inputs...>::output_dimensions.end()) });
+            if (!(node.call.citation == Citation {}))
+                walk.documentation.citations.push_back(node.call.citation);
+        }
+        std::apply([&](auto const&... inputs) { (collect(walk, inputs), ...); }, node.call.inputs);
+    }
 } // namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
@@ -1042,6 +1204,9 @@ namespace detail
 template <Dialect D = Dialect::Plain, Node N, Vocabulary V>
 [[nodiscard]] Documentation document(N const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<N>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1065,6 +1230,9 @@ template <Dialect D = Dialect::Plain, Node N>
 template <Dialect D = Dialect::Plain, SeriesNode S, Vocabulary V>
 [[nodiscard]] Documentation document(S const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<S>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1087,6 +1255,9 @@ template <Dialect D = Dialect::Plain, SeriesNode S>
 template <Dialect D = Dialect::Plain, CurveExpression C, Vocabulary V>
 [[nodiscard]] Documentation document(C const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<C>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1127,6 +1298,9 @@ template <Dialect D = Dialect::Plain, CurveExpression C>
 template <Dialect D = Dialect::Plain, Predicate P, Vocabulary V>
 [[nodiscard]] Documentation document(Constraint<P> const& node, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<Constraint<P>>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(node, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
@@ -1142,6 +1316,45 @@ template <Dialect D = Dialect::Plain, Predicate P>
     return document<D>(node, DefaultVocabulary {});
 }
 
+/// Documents a retry: renders it in dialect @p D (`render()` for a retry),
+/// lists its citation, and gives its result the first symbol row, whose
+/// description says the value is iterated (`detail::IteratedDescription`);
+/// then the rows of what its starting value, its attempt and its acceptance
+/// read.
+template <Dialect D = Dialect::Plain,
+          Described R,
+          std::size_t Max,
+          FirstJudged J,
+          typename Start,
+          typename A,
+          typename P,
+          Vocabulary V>
+[[nodiscard]] Documentation document(Retry<R, Max, J, Start, A, P> const& retrying, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(retrying, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary,
+                           .attemptLimit = Max };
+    if (!(retrying.citation == Citation {}))
+        walk.documentation.citations.push_back(retrying.citation);
+    walk.seenQuantities.push_back(detail::SeenRow { .role = walk.roleIdentity, .quantity = &detail::quantityIdentity<R> });
+    walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<R>(vocabulary),
+                                                       .description = detail::IteratedDescription<R>::view,
+                                                       .unit = Describe<R>::unit });
+    if constexpr (detail::StartTraits<Start>::states)
+        detail::collect(walk, retrying.start.expression);
+    detail::collect(walk, retrying.attempt);
+    detail::collect(walk, retrying.accept);
+    return std::move(walk.documentation);
+}
+
+/// Documents a retry in the default vocabulary, which renames nothing.
+template <Dialect D = Dialect::Plain, Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+[[nodiscard]] Documentation document(Retry<R, Max, J, Start, A, P> const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
 /// Documents a conformity check: its rendering in dialect @p D, its citation
 /// when it has one -- the author's own, as a constraint's is -- and the
 /// symbol table of its subject.
@@ -1152,6 +1365,9 @@ template <Dialect D = Dialect::Plain, Predicate P>
 template <Dialect D = Dialect::Plain, Unit U, SeriesNode S, Vocabulary V>
 [[nodiscard]] Documentation document(Conformity<U, S> const& conformityCheck, V const& vocabulary)
 {
+    // A formula documented on its own is no retry's: see
+    // `detail::RequireAttemptInputOnlyInRetry`.
+    static_assert(detail::RequireAttemptInputOnlyInRetry<Conformity<U, S>>::value);
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(conformityCheck, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,

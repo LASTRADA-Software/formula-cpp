@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <span>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -309,6 +310,119 @@ template <int Places, typename Evaluate>
     return found;
 }
 
+// ---- Least squares (phase 15), the task 1 spike's data shapes ---------------------
+
+// Point k of each shape, in coherent SI -- seconds and newtons -- so the fit
+// sees exactly these numbers. Invented; the spike's offsets are replaced by
+// primes, the rest of its generator kept.
+struct FitPoint
+{
+    Rational x;
+    Rational y;
+};
+
+/// One decimal place: x = (13k + 7)/10 s, y = (29k + 3(k mod 5) + 101)/10 N.
+[[nodiscard]] FitPoint one_decimal_point(std::int64_t k)
+{
+    return { rat(13 * k + 7, 10), rat(29 * k + 3 * (k % 5) + 101, 10) };
+}
+
+/// Three decimal places at a magnitude of thousands, a load cell's reading:
+/// x = k + 0.241 s + (37k mod 1000) ms, y = 2410 N + (3217k + (7919k mod 997))
+/// mN.
+[[nodiscard]] FitPoint three_decimals_point(std::int64_t k)
+{
+    return { rat(1000 * k + 241 + (k * 37) % 1000, 1000), rat(2'410'000 + 3217 * k + (k * 7919) % 997, 1000) };
+}
+
+/// A different denominator on every point, task 4's overflow shape:
+/// ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) N).
+[[nodiscard]] FitPoint distinct_denominators_point(std::int64_t k)
+{
+    return { rat(k + 1, k + 2), rat(2 * k + 3, k + 3) };
+}
+
+/// The fit's two coefficients over the first @p count points of @p shape,
+/// through `LinearLeastSquares::compute`, and whether it overflowed.
+template <typename Shape>
+[[nodiscard]] bool fit_overflows(Shape shape, std::size_t count)
+{
+    std::vector<Rational> times;
+    std::vector<Rational> forces;
+    for (std::size_t at = 0; at < count; ++at)
+    {
+        FitPoint const point = shape(static_cast<std::int64_t>(at));
+        times.push_back(point.x);
+        forces.push_back(point.y);
+    }
+    auto const fitted = formula::LinearLeastSquares::compute<Rational>(std::span<Rational const> { times },
+                                                                       std::span<Rational const> { forces });
+    return !fitted.has_value() && fitted.error() == formula::ArithmeticError::Overflow;
+}
+
+/// Over every size from 2 to 128 points: which overflowed, and the least
+/// headroom any other left.
+struct FitScan
+{
+    std::vector<std::size_t> overflowing;
+    int leastHeadroom = 63;
+
+    [[nodiscard]] std::string row(char const* label) const
+    {
+        return "| " + std::string { label } + " | " + std::to_string(overflowing.size()) + " of 127 | "
+               + (overflowing.empty() ? std::string { "none" } : std::to_string(overflowing.front()) + " points") + " | "
+               + std::to_string(leastHeadroom) + " |";
+    }
+};
+
+template <typename Shape>
+[[nodiscard]] FitScan scan_fit(Shape shape)
+{
+    FitScan found;
+    for (std::size_t count = 2; count <= 128; ++count)
+    {
+        bool overflowed = false;
+        Used const used = census_of([&] { overflowed = fit_overflows(shape, count); });
+        if (overflowed)
+            found.overflowing.push_back(count);
+        else
+            found.leastHeadroom = std::min(found.leastHeadroom, used.headroom());
+    }
+    return found;
+}
+
+struct FitTime: formula::Quantity<FitTime, "t", "time of a reading", unit::Second>
+{
+};
+struct FitForce: formula::Quantity<FitForce, "F_r", "force read", unit::Newton>
+{
+};
+struct FitLength: formula::Quantity<FitLength, "L", "length read", unit::Millimetre>
+{
+};
+
+/// The slope of the first @p N three-decimal points through the node --
+/// `linear_least_squares` over a curve, as a formula states it -- and whether
+/// it overflowed.
+template <std::size_t N>
+[[nodiscard]] bool fit_node_overflows()
+{
+    std::array<formula::Measured<FitTime>, N> times;
+    std::array<formula::Measured<FitForce>, N> forces;
+    for (std::size_t at = 0; at < N; ++at)
+    {
+        FitPoint const point = three_decimals_point(static_cast<std::int64_t>(at));
+        times[at] = formula::Measured<FitTime> { point.x };
+        forces[at] = formula::Measured<FitForce> { point.y };
+    }
+    auto const inputs =
+        formula::environment(formula::MeasuredSeries<FitTime, N> { times }, formula::MeasuredSeries<FitForce, N> { forces });
+    constexpr auto fit = formula::linear_least_squares(
+        formula::curve(formula::series<FitTime, N>, formula::series<FitForce, N>), { .reference = "Example Standard 12" });
+    auto const slope = formula::checked_evaluate_si<Rational>(formula::opaque_output<"slope">(fit), inputs);
+    return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
+}
+
 /// The variance of a six-element sample, and whether it is a value.
 [[nodiscard]] bool variance_is_value(auto const& inputs)
 {
@@ -592,6 +706,61 @@ TEST_CASE("census: a cylinder's cross-section and its strength, for d from 101 t
     CHECK(strength.overflowing
           == std::vector<std::int64_t> { 101, 103, 107, 109, 113, 119, 121, 127, 131, 137, 139, 143, 149, 151, 157, 161, 163 });
     CHECK(strength.refusedAt == std::vector<std::string> { "4F / (pi * d^2)" });
+}
+
+TEST_CASE("census: least squares over 2 to 128 points", "[census]")
+{
+    // The task 1 spike's shapes, through the library's own fit: which sizes
+    // overflow, and what the others leave. An overflowing fit is the library's
+    // Overflow, never a line.
+    // Task 4's fixtures, through the node as a method states the fit: t = 1,
+    // 2, 4, 7 s against L = 10.2, 10.9, 12.1, 14.3 mm, whose lengths are
+    // converted to metres first; and five distinct denominators, the size
+    // below task 4's overflowing fifteen.
+    print_row(
+        "least squares, task 4's 4-point fixture: slope and intercept", census_of([] {
+            auto const inputs =
+                formula::environment(formula::measured_series<FitTime>(formula::Measured<FitTime> { rat(1) },
+                                                                       formula::Measured<FitTime> { rat(2) },
+                                                                       formula::Measured<FitTime> { rat(4) },
+                                                                       formula::Measured<FitTime> { rat(7) }),
+                                     formula::measured_series<FitLength>(formula::Measured<FitLength> { rat(102, 10) },
+                                                                         formula::Measured<FitLength> { rat(109, 10) },
+                                                                         formula::Measured<FitLength> { rat(121, 10) },
+                                                                         formula::Measured<FitLength> { rat(143, 10) }));
+            constexpr auto fit =
+                formula::linear_least_squares(formula::curve(formula::series<FitTime, 4>, formula::series<FitLength, 4>),
+                                              { .reference = "Example Standard 12" });
+            auto const slope = formula::checked_evaluate_si<Rational>(formula::opaque_output<"slope">(fit), inputs);
+            auto const intercept = formula::checked_evaluate_si<Rational>(formula::opaque_output<"intercept">(fit), inputs);
+            REQUIRE(slope.has_value());
+            REQUIRE(intercept.has_value());
+            CHECK(**slope == rat(19, 28'000)); // 19/28 mm/s
+        }));
+    print_row("least squares, 5 points on distinct denominators (stress control)",
+              census_of([] { REQUIRE(!fit_overflows(distinct_denominators_point, 5)); }));
+
+    FitScan const oneDecimal = scan_fit(one_decimal_point);
+    FitScan const threeDecimals = scan_fit(three_decimals_point);
+    FitScan const distinct = scan_fit(distinct_denominators_point);
+    emit("least-squares", "| data (invented) | sizes that overflow | first to overflow | least headroom otherwise |");
+    emit("least-squares", "|---|---|---|---|");
+    emit("least-squares", oneDecimal.row("readings at 1 dp (realistic)"));
+    emit("least-squares", threeDecimals.row("readings at 3 dp near 2410 N, a load cell's (realistic)"));
+    emit("least-squares", distinct.row("a different denominator on every point (stress control)"));
+
+    // What the page says, pinned: the spike's first failing sizes, 34 and 15
+    // points, hold through the library's fit, and one decimal place never
+    // overflows. The node agrees with the fit it calls on both sides of 34.
+    CHECK(oneDecimal.overflowing.empty());
+    REQUIRE(!threeDecimals.overflowing.empty());
+    CHECK(threeDecimals.overflowing.front() == 34);
+    CHECK(threeDecimals.overflowing.size() == 57);
+    REQUIRE(!distinct.overflowing.empty());
+    CHECK(distinct.overflowing.front() == 15);
+    CHECK(distinct.overflowing.size() == 114);
+    CHECK(!fit_node_overflows<33>());
+    CHECK(fit_node_overflows<34>());
 }
 
 TEST_CASE("the census draws the samples tools/census/exact_sizes.py draws", "[census]")

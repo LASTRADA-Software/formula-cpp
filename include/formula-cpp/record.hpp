@@ -80,8 +80,8 @@
 /// a value to a record it did not read it from.
 ///
 /// **Only the documented customization points are supported** -- `TagName`,
-/// `EnumeratorName`, `Describe` through `Quantity`, and the others each
-/// header names as one. Explicitly specialising any other library template
+/// `EnumeratorName`, `Describe` through `Quantity`, `OpaqueOperation`, and
+/// the others each header names as one. Explicitly specialising any other library template
 /// or member is outside the contract: it can make a trace say anything, and
 /// no library can prevent it. `RecordOrigin`'s refusing constructor is not a
 /// template, so that there is nothing there to specialise, but that is a
@@ -252,16 +252,15 @@ namespace detail
             (displayed.front() >= 'A' && displayed.front() <= 'Z') || (displayed.front() >= 'a' && displayed.front() <= 'z');
         if (!startsWithLetter || displayed.back() == ' ')
             return false;
-        char previous = '\0';
+        char priorCharacter = '\0';
         for (char const nameCharacter: displayed)
         {
-            bool const allowed = (nameCharacter >= 'A' && nameCharacter <= 'Z')
-                                 || (nameCharacter >= 'a' && nameCharacter <= 'z')
-                                 || (nameCharacter >= '0' && nameCharacter <= '9') || nameCharacter == '_'
-                                 || nameCharacter == ' ';
-            if (!allowed || (nameCharacter == ' ' && previous == ' '))
+            bool const allowed =
+                (nameCharacter >= 'A' && nameCharacter <= 'Z') || (nameCharacter >= 'a' && nameCharacter <= 'z')
+                || (nameCharacter >= '0' && nameCharacter <= '9') || nameCharacter == '_' || nameCharacter == ' ';
+            if (!allowed || (nameCharacter == ' ' && priorCharacter == ' '))
                 return false;
-            previous = nameCharacter;
+            priorCharacter = nameCharacter;
         }
         return true;
     }
@@ -1115,9 +1114,9 @@ namespace detail
     /// **Not a customisation point.** It is in `detail::`, and the header's
     /// contract excludes specialising anything there: a specialisation could
     /// hand a scope any record as the one it reads. Only the library's own
-    /// wrappers of a context specialise it -- the environment phase 15's
-    /// retry evaluates against, when it lands -- and until a wrapper does, a
-    /// scope evaluated against it is refused, which is safe.
+    /// wrappers of a context specialise it -- `detail::AttemptEnvironment`,
+    /// the environment a retry evaluates against (`retry.hpp`) -- and until a
+    /// wrapper does, a scope evaluated against it is refused, which is safe.
     template <typename Env>
     struct RecordContextOf
     {

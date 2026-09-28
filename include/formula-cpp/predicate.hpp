@@ -55,7 +55,7 @@ namespace detail
     template <Node Left, Node Right>
     struct RequireComparandsAgree
     {
-        static_assert(Left::dimension == Right::dimension,
+        static_assert(refused_already<Left>() || refused_already<Right>() || Left::dimension == Right::dimension,
                       "formula: the two sides of this comparison measure different dimensions; the "
                       "offending operands appear in this diagnostic as the template arguments of "
                       "RequireComparandsAgree");
@@ -84,6 +84,8 @@ struct PredicateNode
 
     /// Which comparison this is.
     static constexpr Comparison comparison = Op;
+    /// Whether either side was refused -- see `detail::refused_already`.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Left>() || detail::refused_already<Right>();
 };
 
 namespace detail
@@ -190,7 +192,7 @@ checked_evaluate_predicate(PredicateNode<Op, Left, Right> const& predicate, Env 
     if (!leftOperand->has_value() || !rightOperand->has_value())
         return std::optional<bool> {};
 
-    bool const verdict = [&] {
+    bool const holds = [&] {
         if constexpr (Op == Comparison::Less)
             return **leftOperand < **rightOperand;
         else if constexpr (Op == Comparison::LessOrEqual)
@@ -204,7 +206,7 @@ checked_evaluate_predicate(PredicateNode<Op, Left, Right> const& predicate, Env 
         else
             return **leftOperand != **rightOperand;
     }();
-    return std::optional<bool> { verdict };
+    return std::optional<bool> { holds };
 }
 
 } // namespace formula

@@ -215,7 +215,7 @@ struct SampleCountNode: NodeBase
     /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
     /// first one that does -- a rejection over a statistic, say -- is gated
     /// without another change here.
-    static constexpr bool refused = detail::refused_already<S>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<S>();
 };
 
 /// The mean of a sample: the total of its determinations over their count,
@@ -234,7 +234,7 @@ struct SampleMeanNode: NodeBase
     /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
     /// first one that does -- a rejection over a statistic, say -- is gated
     /// without another change here.
-    static constexpr bool refused = detail::refused_already<S>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<S>();
 };
 
 /// How many determinations @p sampleSource holds: `sample_count(series<Mass, 6>)`.
@@ -290,7 +290,7 @@ struct SampleVarianceNode: NodeBase
     /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
     /// first one that does -- a rejection over a statistic, say -- is gated
     /// without another change here.
-    static constexpr bool refused = detail::refused_already<S>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<S>();
 };
 
 /// The range of a sample: its largest determination less its smallest, in
@@ -310,7 +310,7 @@ struct SampleRangeNode: NodeBase
     /// sample stands in for. Kept, as `SumNode` keeps its own, so that the
     /// first one that does -- a rejection over a statistic, say -- is gated
     /// without another change here.
-    static constexpr bool refused = detail::refused_already<S>();
+    static constexpr detail::RefusedFlag refused = detail::refused_already<S>();
 };
 
 /// The sample variance of @p sampleSource: `sample_variance(series<Mass, 6>)`.

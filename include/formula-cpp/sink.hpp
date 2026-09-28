@@ -95,11 +95,29 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 ///
 /// **A sink that records steps** must say, of every step recorded between a
 /// `record_entered` and the scope's own `produced`, that it was read from that
-/// record -- on every path that records one, a series', a curve's and a
-/// conformity check's included. `RecordingSink` does it in one place
+/// record -- on every path that records one, a series', a curve's, a
+/// conformity check's, an opaque call's, and a retry's and each of its
+/// attempts' included. `RecordingSink` does it in one place
 /// (`stamp_origin`), which every path that appends to `Trace::steps` calls;
 /// a path added later that does not traces a value read from another record as
 /// this record's.
+///
+/// **An opaque call (`opaque.hpp`) reaches a sink the same way**, through
+/// `opaque_entered(info)` before its first input is evaluated and
+/// `opaque_produced(info, result)` after `compute`, asked for together
+/// (`detail::HearsOpaque`); `info` is an `OpaqueCallInfo`, plain data. Each
+/// output used is a `Node`, and is told through `entered` and `produced`.
+///
+/// **A retry (`retry.hpp`) reaches a sink the same way**, through two optional
+/// pairs, each asked for together: `retry_entered(info)` before its starting
+/// value and `retry_produced(info, ended)` after its last attempt, with what
+/// `checked_evaluate_retry` returns (`detail::HearsRetry`); and
+/// `attempt_entered(info)` and `attempt_produced(info, produced, judgement)`
+/// around each attempt that runs (`detail::HearsAttempts`); a judgement that
+/// failed is `AttemptJudgement::JudgementFailed`, with its error on the
+/// failing side's step. `info`
+/// is a `RetryInfo` or an `AttemptInfo`, plain data. The attempt's nodes are
+/// told through `entered` and `produced`.
 struct NullSink
 {
     /// Told that a node is about to be evaluated, and does nothing with it.

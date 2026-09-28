@@ -36,6 +36,7 @@
 #include <formula-cpp/unit.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -114,9 +115,10 @@ namespace detail
     /// **What it does not do.** It stops author text from breaking a line's
     /// structure, not from holding a clause's words: a `documented()` citation
     /// titled `replaced by jurisdiction overlay: ...` renders as a genuine
-    /// replacement's clause does. The structured fields of a `Step` -- `kind`,
-    /// the provenance enums, `variantPinned` and so on -- are what is
-    /// authoritative, and the method's author is trusted. Nor does it touch
+    /// replacement's clause does, and one titled `inside not shown` writes the
+    /// opaque marker onto a step that is not opaque. The structured fields of a
+    /// `Step` -- `kind`, the provenance enums, `variantPinned` and so on -- are
+    /// what is authoritative, and the method's author is trusted. Nor does it touch
     /// anything but ASCII: a Unicode look-alike of a bracket (U+FF3B, U+FF3D)
     /// or the line separator U+2028 is written as it is, since it cannot
     /// break the ASCII structure the library writes.
@@ -1014,6 +1016,28 @@ namespace detail
                                                       : sole_operand(shownStep) + " from another record";
                 return shownStep.operands.empty() ? record_origin_text(*shownStep.readFrom)
                                                   : sole_operand(shownStep) + " " + record_origin_text(*shownStep.readFrom);
+            // The operation's name is in `Trace::opaqueSteps`, which the line
+            // is rendered with (`opaque_call_line`); a step without its row --
+            // one built by hand -- still reads as a call on its inputs.
+            case StepKind::OpaqueOperation:
+                return "opaque(" + operands_text(shownStep) + ")";
+            case StepKind::OpaqueOutput:
+                return shownStep.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(shownStep);
+            // A retry's steps name its result as `render()` does, `w(k)` for
+            // an attempt's value and `w(k-1)` for the one before; the
+            // attempt's and the retry's own lines are `retry_attempt_line` and
+            // `retry_concluded_line`, which begin with these. A recorded
+            // determination is `d(k)`, as `render()` writes it.
+            case StepKind::RetryAttempt:
+            case StepKind::ThisAttempt:
+            case StepKind::AttemptInput:
+                return attempt_marker<Dialect::Plain>(std::string { shownStep.symbol }, "k");
+            case StepKind::PreviousAttempt:
+                return attempt_marker<Dialect::Plain>(std::string { shownStep.symbol }, "k-1");
+            case StepKind::AttemptNumber:
+                return "k";
+            case StepKind::RetryConcluded:
+                return std::string { shownStep.symbol };
         }
         return "unknown step kind";
     }
@@ -2009,6 +2033,375 @@ namespace detail
         return step_expression(recorded);
     }
 
+    /// What `render_trace` found in a trace for an opaque step: the call's
+    /// row -- the step's own for an `OpaqueOperation` step, and the row of the
+    /// call it claimed for an `OpaqueOutput` step -- and, for the latter,
+    /// which output it selected and whether its operand **is** a call's step.
+    /// For a failed call, which input's step carries the error. Null and
+    /// empty for every other step, and for a step built by hand.
+    struct OpaqueLine
+    {
+        OpaqueStepData<Rational> const* call = nullptr;
+        std::optional<std::size_t> outputIndex {};
+        /// For an `OpaqueOutput` step: whether its sole operand is an
+        /// `OpaqueOperation` step, judged by that step's kind -- the step that
+        /// says the operation's inside is not shown. False when a sink that
+        /// does not hear the opaque hooks recorded the output over the call's
+        /// inputs directly, and for a step built by hand.
+        bool overCall = false;
+        /// For an `OpaqueOperation` step that relayed a failure: the index of
+        /// the input step that carries it -- the last operand, since the call
+        /// stops at the first input that fails -- or empty when no operand
+        /// step carries an error.
+        std::optional<std::size_t> failedInput {};
+    };
+
+    /// The coherent SI unit of @p dimension, spelt from its base units:
+    /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
+    /// one. For an opaque output shown in no input's unit, so that a slope in
+    /// metres per second does not read as a pure number.
+    [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
+    {
+        struct BaseUnit
+        {
+            std::string_view symbol;
+            Exponent exponent;
+        };
+        std::array<BaseUnit, 7> const bases { BaseUnit { "m", dimension.length },      BaseUnit { "kg", dimension.mass },
+                                              BaseUnit { "s", dimension.time },        BaseUnit { "A", dimension.current },
+                                              BaseUnit { "K", dimension.temperature }, BaseUnit { "mol", dimension.amount },
+                                              BaseUnit { "cd", dimension.luminosity } };
+        auto const unitPower = [](std::string_view symbolText, std::int32_t numeratorPart, std::int32_t denominatorPart) {
+            std::string factorText { symbolText };
+            if (denominatorPart != 1)
+                factorText += "^(" + std::to_string(numeratorPart) + "/" + std::to_string(denominatorPart) + ")";
+            else if (numeratorPart != 1)
+                factorText += "^" + std::to_string(numeratorPart);
+            return factorText;
+        };
+        std::string above;
+        std::string below;
+        std::size_t belowCount = 0;
+        for (BaseUnit const& base: bases)
+        {
+            if (base.exponent.numerator > 0)
+                above +=
+                    (above.empty() ? "" : " ") + unitPower(base.symbol, base.exponent.numerator, base.exponent.denominator);
+            else if (base.exponent.numerator < 0)
+            {
+                below +=
+                    (below.empty() ? "" : " ") + unitPower(base.symbol, -base.exponent.numerator, base.exponent.denominator);
+                ++belowCount;
+            }
+        }
+        if (below.empty())
+            return above;
+        return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
+    }
+
+    /// @p storedValue in @p shownUnit, and -- when that unit has no symbol of
+    /// its own but a dimension -- followed by the coherent unit's spelling
+    /// (`coherent_unit_text`), for an opaque output.
+    [[nodiscard]] inline std::string opaque_value_text(Dimension dimension,
+                                                       Unit shownUnit,
+                                                       std::optional<Rational> const& storedValue)
+    {
+        Step<Rational> outputShape {};
+        outputShape.dimension = dimension;
+        outputShape.unit = shownUnit;
+        std::string valueText = value_in_declared_unit(outputShape, storedValue);
+        if (storedValue.has_value() && view(shownUnit.symbolText).empty() && !(dimension == dim::Scalar))
+            valueText += " " + coherent_unit_text(dimension);
+        return valueText;
+    }
+
+    /// What an opaque call's line says of whose failure it carries, bracketed:
+    /// the operation's own, relayed from the one input that failed -- named,
+    /// with its element counted from one when the failure had one -- or
+    /// undetermined.
+    [[nodiscard]] inline std::string opaque_failure_suffix(Step<Rational> const& recorded,
+                                                           OpaqueFailure carried,
+                                                           std::optional<std::size_t> failedInput)
+    {
+        switch (carried)
+        {
+            case OpaqueFailure::None:
+                return {};
+            case OpaqueFailure::Own:
+                return " [the operation itself failed, not any input]";
+            case OpaqueFailure::Propagated:
+            {
+                std::string relayed = " [carried up from ";
+                relayed += failedInput.has_value() ? operand_reference(*failedInput) : std::string { "an input" };
+                if (recorded.failedElement.has_value())
+                    relayed += ", at element " + std::to_string(*recorded.failedElement + 1);
+                return relayed + "]";
+            }
+            case OpaqueFailure::Undetermined:
+                return " [this operation or an input: an input recorded no step]";
+        }
+        return " [unknown failure]";
+    }
+
+    /// An opaque call's line, without its number: `series span(#1) = lowest
+    /// = 103 g; highest = 191 g; span = 88 g [inside not shown] [Spread of
+    /// readings, Example Standard 12, 4.2]`.
+    ///
+    /// Each output shown spends one unit of @p budget, as a series' elements
+    /// do, and a list cut short ends `... k more`. A failed call shows its
+    /// error and whose it is (`opaque_failure_suffix`); an absent one,
+    /// `(not measured)`. A call stopped at a failing input writes each
+    /// input after it, never evaluated, as `(not evaluated)`.
+    ///
+    /// **`[inside not shown]` depends on the step's kind alone**: it is
+    /// written for every `OpaqueOperation` step, with or without its row, and
+    /// nothing a step or an operation holds can switch it off. The citation
+    /// clause is always written too, `(no citation given)` when the call
+    /// cited nothing, so that an uncited call never reads as a cited one.
+    ///
+    /// @p recorded has had its author text escaped already (`step_line`); the
+    /// row's names are escaped here, with the same function.
+    [[nodiscard]] inline std::string opaque_call_line(ShownStep const& recorded,
+                                                      OpaqueLine const& opaqueLine,
+                                                      std::size_t& budget)
+    {
+        OpaqueStepData<Rational> const* const callRow = opaqueLine.call;
+        std::string lineText = step_expression(recorded);
+        if (callRow != nullptr)
+        {
+            // A call stopped at a failing input lists the inputs after it
+            // too, so that it never reads as a call of fewer arguments.
+            std::string arguments = operands_text(recorded);
+            for (std::size_t skipped = 0; skipped < callRow->inputsNotEvaluated; ++skipped)
+                arguments += std::string { arguments.empty() ? "" : ", " } + "(not evaluated)";
+            lineText = escaped_author_text(callRow->operationName) + "(" + arguments + ")";
+        }
+        lineText += " = ";
+        if (recorded.error.has_value())
+            lineText += describe(*recorded.error);
+        else if (callRow == nullptr || callRow->outputs.empty() || !callRow->outputs.front().value.has_value())
+            lineText += "(not measured)";
+        else
+        {
+            std::size_t const outputCount = callRow->outputs.size();
+            std::size_t const listed = budget < outputCount ? budget : outputCount;
+            budget -= listed;
+            for (std::size_t at = 0; at < listed; ++at)
+            {
+                OpaqueOutputValue<Rational> const& shownOutput = callRow->outputs[at];
+                if (at > 0)
+                    lineText += "; ";
+                lineText += escaped_author_text(shownOutput.name) + " = "
+                            + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value);
+            }
+            if (listed < outputCount)
+                lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outputCount - listed) + " more";
+        }
+        lineText += " [inside not shown]";
+        if (callRow != nullptr)
+            lineText += opaque_failure_suffix(recorded, callRow->failure, opaqueLine.failedInput);
+        std::string const cited = citation_text(recorded.citation);
+        lineText += cited.empty() ? " " + std::string { noCitationGiven } : " [" + cited + "]";
+        return lineText;
+    }
+
+    /// What `render_trace` found in a trace's side tables for a retry's step:
+    /// an attempt's number and judgement, or how the retry ended and the
+    /// number of its last attempt. Null and empty for every other step, and
+    /// for a step built by hand.
+    struct RetryLine
+    {
+        AttemptStepData const* attempt = nullptr;
+        RetryStepData const* retry = nullptr;
+        /// For a `RetryConcluded` step: the number of the last attempt it
+        /// claimed, or empty when none ran.
+        std::optional<std::size_t> lastAttempt {};
+        /// For an attempt whose judgement failed: the failing side's error,
+        /// read off that step -- the attempt's last operand.
+        std::optional<ArithmeticError> judgementError {};
+    };
+
+    /// A retry attempt's line, without its number: `attempt 4: w(k) = #20 =
+    /// 57/5 g; judged #21 >= #23: accepted`. The attempt's value, or its
+    /// error; then how it was judged, naming the acceptance's two sides --
+    /// or, when one side failed before the other was evaluated, the one that
+    /// failed -- and `rejected`, `cannot be judged`, the failing side's error,
+    /// or `not judged`.
+    [[nodiscard]] inline std::string retry_attempt_line(ShownStep const& recorded, RetryLine const& retryLine)
+    {
+        std::string lineText = retryLine.attempt == nullptr
+                                   ? std::string { "attempt: " }
+                                   : "attempt " + std::to_string(retryLine.attempt->attemptNumber) + ": ";
+        lineText += step_expression(recorded);
+        if (!recorded.operands.empty())
+            lineText += " = " + operand_reference(recorded.operands.front());
+        // An attempt that read a determination nobody recorded says so once:
+        // as its value when it has none -- the determination's own line reads
+        // the same -- and after its value when only its judgement read one.
+        bool const notRecorded = retryLine.attempt != nullptr && !recorded.error.has_value()
+                                 && retryLine.attempt->judgement == AttemptJudgement::NotRecorded;
+        if (notRecorded && !recorded.value.has_value())
+            return lineText + " = (not recorded)";
+        lineText += " = " + step_value_text(recorded);
+        if (retryLine.attempt == nullptr || recorded.error.has_value())
+            return lineText;
+        AttemptJudgement const judged = retryLine.attempt->judgement;
+        if (judged == AttemptJudgement::NotJudged)
+            return lineText + "; not judged";
+        // Before an absent value's "cannot be judged": what was missing is a
+        // recorded determination, not a comparison.
+        if (notRecorded)
+            return lineText + "; not recorded";
+        // An absent value: nothing was compared.
+        if (!recorded.value.has_value())
+            return lineText + "; cannot be judged";
+        lineText += "; judged";
+        // The step's own comparison, not the lineage check ShownStep adds.
+        if (recorded.operands.size() >= 3)
+            lineText += " " + operand_reference(recorded.operands[1]) + " "
+                        + std::string { comparison_symbol(recorded.Step<Rational>::comparison) } + " "
+                        + operand_reference(recorded.operands[2]);
+        else if (recorded.operands.size() == 2)
+            lineText += " " + operand_reference(recorded.operands[1]);
+        lineText += ": ";
+        switch (judged)
+        {
+            case AttemptJudgement::Accepted:
+                return lineText + "accepted";
+            case AttemptJudgement::Rejected:
+                return lineText + "rejected";
+            case AttemptJudgement::JudgementFailed:
+                return lineText
+                       + (retryLine.judgementError.has_value() ? std::string { describe(*retryLine.judgementError) }
+                                                               : std::string { "failed" });
+            case AttemptJudgement::NotJudgeable:
+            case AttemptJudgement::NotJudged:
+            case AttemptJudgement::NotRecorded:
+                break;
+        }
+        return lineText + "cannot be judged";
+    }
+    /// How a retry ended, its line without its number: `w = retry: accepted
+    /// at attempt 4 of 4 = 57/5 g`, `w = retry: exhausted after 3 of 3:
+    /// repeat the determination`, `w = retry: failed at attempt 2: division
+    /// by zero`, `d_a = retry: attempt 3 not recorded` -- and always its citation, `(no citation given)` when it
+    /// cited nothing. The verdict is author text, escaped here, as
+    /// `step_line` escapes what a `Step` holds.
+    [[nodiscard]] inline std::string retry_concluded_line(ShownStep const& recorded, RetryLine const& retryLine)
+    {
+        std::string lineText = step_expression(recorded) + " = retry";
+        std::string const attemptWords =
+            retryLine.lastAttempt.has_value() ? "attempt " + std::to_string(*retryLine.lastAttempt) : std::string {};
+        if (retryLine.retry == nullptr)
+            lineText += " = " + step_value_text(recorded);
+        else
+            switch (retryLine.retry->end)
+            {
+                case RetryEnd::Accepted:
+                    lineText += ": accepted at " + attemptWords + " of " + std::to_string(retryLine.retry->attemptLimit)
+                                + " = " + step_value_text(recorded);
+                    break;
+                // The attempts it claimed, not the limit: a trace that shows
+                // fewer never says more ran.
+                case RetryEnd::Exhausted:
+                    lineText += ": exhausted after " + std::to_string(retryLine.lastAttempt.value_or(0)) + " of "
+                                + std::to_string(retryLine.retry->attemptLimit) + ": "
+                                + escaped_author_text(retryLine.retry->verdictLabel);
+                    break;
+                case RetryEnd::NotJudgeable:
+                    lineText += ": not judgeable at " + attemptWords;
+                    break;
+                case RetryEnd::NotRecorded:
+                    lineText +=
+                        ": " + (attemptWords.empty() ? std::string { "an attempt" } : attemptWords) + " not recorded";
+                    break;
+                case RetryEnd::Failed:
+                    lineText += retryLine.lastAttempt.has_value() ? ": failed at " + attemptWords
+                                                                  : std::string { ": failed at its starting value" };
+                    lineText += ": " + step_value_text(recorded);
+                    break;
+                // The recorder never writes this end -- an entered result
+                // leaves the trace empty -- but a row built by hand may.
+                case RetryEnd::ManuallyEntered:
+                    lineText += ": entered by a person";
+                    break;
+            }
+        std::string const cited = citation_text(recorded.citation);
+        return lineText + (cited.empty() ? " " + std::string { noCitationGiven } : " [" + cited + "]");
+    }
+
+    /// An opaque output's line, without its number: `span of #2 = 88 g`, the
+    /// output named from its call's row; `output of #2` without one.
+    ///
+    /// Ends `[inside not shown]` unless its operand is the call's own step,
+    /// whose line says so: an output recorded by a sink that does not hear the
+    /// opaque hooks sits straight over the call's inputs, and without the
+    /// clause its line would read as though an input were passed on
+    /// unchanged. Judged by the operand step's kind (`OpaqueLine::overCall`),
+    /// never by the presence of a row.
+    [[nodiscard]] inline std::string opaque_output_line(ShownStep const& recorded, OpaqueLine const& opaqueLine)
+    {
+        std::string outputText = step_expression(recorded);
+        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
+            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
+            outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
+                         + sole_operand(recorded);
+        std::string const valueText = recorded.error.has_value()
+                                          ? std::string { describe(*recorded.error) }
+                                          : opaque_value_text(recorded.dimension, recorded.unit, recorded.value);
+        return outputText + " = " + valueText + (opaqueLine.overCall ? "" : " [inside not shown]");
+    }
+
+    /// What @p trace's side tables hold for the retry step at @p stepIndex
+    /// (`RetryLine`).
+    [[nodiscard]] inline RetryLine retry_line_of(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        Step<Rational> const& recorded = trace.steps[stepIndex];
+        if (recorded.kind == StepKind::RetryAttempt)
+        {
+            RetryLine attemptLine { .attempt = attempt_data(trace, stepIndex) };
+            if (attemptLine.attempt != nullptr && attemptLine.attempt->judgement == AttemptJudgement::JudgementFailed
+                && !recorded.operands.empty() && recorded.operands.back() < trace.steps.size())
+                attemptLine.judgementError = trace.steps[recorded.operands.back()].error;
+            return attemptLine;
+        }
+        if (recorded.kind != StepKind::RetryConcluded)
+            return {};
+        RetryLine concludedLine { .retry = retry_data(trace, stepIndex) };
+        for (std::size_t const operandIndex: recorded.operands)
+            if (AttemptStepData const* const claimed = attempt_data(trace, operandIndex); claimed != nullptr)
+                concludedLine.lastAttempt = claimed->attemptNumber;
+        return concludedLine;
+    }
+
+    /// What @p trace's side tables hold for the opaque step at @p stepIndex:
+    /// its own row, or the row of the call an output claimed and which output
+    /// it selected (`OpaqueLine`).
+    [[nodiscard]] inline OpaqueLine opaque_line_of(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        Step<Rational> const& recorded = trace.steps[stepIndex];
+        if (recorded.kind == StepKind::OpaqueOperation)
+        {
+            OpaqueLine callLine { .call = opaque_data(trace, stepIndex) };
+            for (std::size_t const operandIndex: recorded.operands)
+                if (operandIndex < trace.steps.size() && trace.steps[operandIndex].error.has_value())
+                    callLine.failedInput = operandIndex;
+            return callLine;
+        }
+        if (recorded.kind != StepKind::OpaqueOutput)
+            return {};
+        OpaqueLine outputLine {};
+        if (OpaqueOutputStepData const* const chosenOutput = opaque_output_data(trace, stepIndex); chosenOutput != nullptr)
+            outputLine.outputIndex = chosenOutput->outputIndex;
+        if (recorded.operands.size() == 1 && recorded.operands.front() < trace.steps.size()
+            && trace.steps[recorded.operands.front()].kind == StepKind::OpaqueOperation)
+        {
+            outputLine.overCall = true;
+            outputLine.call = opaque_data(trace, recorded.operands.front());
+        }
+        return outputLine;
+    }
+
     /// One step's line, without its number: the expression, an `=`, the value,
     /// and a trailing clause for the kinds that need one -- a citation for
     /// `Documented`, the variant and its discriminator for `VariantSelected`,
@@ -2046,6 +2439,32 @@ namespace detail
                                                        std::size_t& budget,
                                                        std::span<LimitRow const> limits)
     {
+        // A retry's attempt and its conclusion read their side tables.
+        if (recorded.kind == StepKind::RetryAttempt || recorded.kind == StepKind::RetryConcluded)
+        {
+            RetryLine const retryLine = retry_line_of(trace, stepIndex);
+            return recorded.kind == StepKind::RetryAttempt ? retry_attempt_line(recorded, retryLine)
+                                                           : retry_concluded_line(recorded, retryLine);
+        }
+        // The previous attempt at the first attempt of a retry with no
+        // starting value: the author's mistake, which says so.
+        if (recorded.kind == StepKind::PreviousAttempt && recorded.error == ArithmeticError::DomainError)
+            return step_expression(recorded) + " = previous attempt: none before attempt 1";
+        // A determination nobody recorded: not "not measured", which would
+        // say a measurement was due and missed rather than never entered --
+        // unless a person typed the series in and left it empty, which reads
+        // as a variable typed in empty does.
+        if (recorded.kind == StepKind::AttemptInput && !recorded.error.has_value() && !recorded.value.has_value())
+            return step_expression(recorded)
+                   + (recorded.inputSource == ValueSource::ManuallyEntered ? " = (entered by hand as empty)"
+                                                                           : " = (not recorded)");
+        OpaqueLine const opaqueLine = opaque_line_of(trace, stepIndex);
+        // An opaque call's line is its outputs, and ends saying its inside is
+        // not shown; an output's names the output.
+        if (recorded.kind == StepKind::OpaqueOperation)
+            return opaque_call_line(recorded, opaqueLine, budget);
+        if (recorded.kind == StepKind::OpaqueOutput)
+            return opaque_output_line(recorded, opaqueLine);
         // A series first, before anything reads `value`: its values are its
         // elements.
         // A per-element rounding ends with its mode, as a scalar rounding
@@ -2137,8 +2556,8 @@ namespace detail
         // measured is what an input is unless told otherwise. After a comma,
         // not in a bracket: it is a plain statement about where the number
         // came from, not a clause qualifying how it was computed.
-        else if (recorded.kind == StepKind::Variable && recorded.inputSource == ValueSource::ManuallyEntered
-                 && !enteredButEmpty)
+        else if ((recorded.kind == StepKind::Variable || recorded.kind == StepKind::AttemptInput)
+                 && recorded.inputSource == ValueSource::ManuallyEntered && !enteredButEmpty)
             annotation = ", entered by hand";
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
