@@ -2206,12 +2206,17 @@ namespace detail
         /// For a `RetryConcluded` step: the number of the last attempt it
         /// claimed, or empty when none ran.
         std::optional<std::size_t> lastAttempt {};
+        /// For an attempt whose judgement failed: the failing side's error,
+        /// read off that step -- the attempt's last operand.
+        std::optional<ArithmeticError> judgementError {};
     };
 
     /// A retry attempt's line, without its number: `attempt 4: w(k) = #20 =
     /// 57/5 g; judged #21 >= #23: accepted`. The attempt's value, or its
     /// error; then how it was judged, naming the acceptance's two sides --
-    /// or its error, when the judgement failed.
+    /// or, when one side failed before the other was evaluated, the one that
+    /// failed -- and `rejected`, `cannot be judged`, the failing side's error,
+    /// or `not judged`.
     [[nodiscard]] inline std::string retry_attempt_line(ShownStep const& recorded, RetryLine const& retryLine)
     {
         std::string lineText = retryLine.attempt == nullptr
@@ -2220,37 +2225,40 @@ namespace detail
         lineText += step_expression(recorded);
         if (!recorded.operands.empty())
             lineText += " = " + operand_reference(recorded.operands.front());
-        bool const judgementFailed = recorded.error.has_value() && recorded.value.has_value();
-        lineText += " = ";
-        lineText += judgementFailed ? value_in_declared_unit(recorded, recorded.value) : step_value_text(recorded);
-        if (retryLine.attempt == nullptr)
+        lineText += " = " + step_value_text(recorded);
+        if (retryLine.attempt == nullptr || recorded.error.has_value())
             return lineText;
-        if (retryLine.attempt->judgement == AttemptJudgement::NotJudged)
-            return lineText + (recorded.error.has_value() ? "" : "; not judged");
+        AttemptJudgement const judged = retryLine.attempt->judgement;
+        if (judged == AttemptJudgement::NotJudged)
+            return lineText + "; not judged";
+        // An absent value: nothing was compared.
         if (!recorded.value.has_value())
-            return lineText;
+            return lineText + "; cannot be judged";
         lineText += "; judged";
         // The step's own comparison, not the lineage check ShownStep adds.
         if (recorded.operands.size() >= 3)
             lineText += " " + operand_reference(recorded.operands[1]) + " "
                         + std::string { comparison_symbol(recorded.Step<Rational>::comparison) } + " "
                         + operand_reference(recorded.operands[2]);
+        else if (recorded.operands.size() == 2)
+            lineText += " " + operand_reference(recorded.operands[1]);
         lineText += ": ";
-        if (judgementFailed)
-            return lineText + std::string { describe(*recorded.error) };
-        switch (retryLine.attempt->judgement)
+        switch (judged)
         {
             case AttemptJudgement::Accepted:
                 return lineText + "accepted";
             case AttemptJudgement::Rejected:
                 return lineText + "rejected";
+            case AttemptJudgement::JudgementFailed:
+                return lineText
+                       + (retryLine.judgementError.has_value() ? std::string { describe(*retryLine.judgementError) }
+                                                               : std::string { "failed" });
             case AttemptJudgement::NotJudgeable:
             case AttemptJudgement::NotJudged:
                 break;
         }
         return lineText + "cannot be judged";
     }
-
     /// How a retry ended, its line without its number: `w = retry: accepted
     /// at attempt 4 of 4 = 57/5 g`, `w = retry: exhausted after 3 of 3:
     /// repeat the determination`, `w = retry: failed at attempt 2: division
@@ -2271,8 +2279,10 @@ namespace detail
                     lineText += ": accepted at " + attemptWords + " of " + std::to_string(retryLine.retry->attemptLimit)
                                 + " = " + step_value_text(recorded);
                     break;
+                // The attempts it claimed, not the limit: a trace that shows
+                // fewer never says more ran.
                 case RetryEnd::Exhausted:
-                    lineText += ": exhausted after " + std::to_string(retryLine.retry->attemptLimit) + " of "
+                    lineText += ": exhausted after " + std::to_string(retryLine.lastAttempt.value_or(0)) + " of "
                                 + std::to_string(retryLine.retry->attemptLimit) + ": "
                                 + escaped_author_text(retryLine.retry->verdictLabel);
                     break;
@@ -2287,6 +2297,8 @@ namespace detail
                                                                   : std::string { ": failed at its starting value" };
                     lineText += ": " + step_value_text(recorded);
                     break;
+                // The recorder never writes this end -- an entered result
+                // leaves the trace empty -- but a row built by hand may.
                 case RetryEnd::ManuallyEntered:
                     lineText += ": entered by a person";
                     break;
@@ -2294,6 +2306,7 @@ namespace detail
         std::string const cited = citation_text(recorded.citation);
         return lineText + (cited.empty() ? " " + std::string { noCitationGiven } : " [" + cited + "]");
     }
+
     /// An opaque output's line, without its number: `span of #2 = 88 g`, the
     /// output named from its call's row; `output of #2` without one.
     ///
@@ -2322,7 +2335,13 @@ namespace detail
     {
         Step<Rational> const& recorded = trace.steps[stepIndex];
         if (recorded.kind == StepKind::RetryAttempt)
-            return RetryLine { .attempt = attempt_data(trace, stepIndex) };
+        {
+            RetryLine attemptLine { .attempt = attempt_data(trace, stepIndex) };
+            if (attemptLine.attempt != nullptr && attemptLine.attempt->judgement == AttemptJudgement::JudgementFailed
+                && !recorded.operands.empty() && recorded.operands.back() < trace.steps.size())
+                attemptLine.judgementError = trace.steps[recorded.operands.back()].error;
+            return attemptLine;
+        }
         if (recorded.kind != StepKind::RetryConcluded)
             return {};
         RetryLine concludedLine { .retry = retry_data(trace, stepIndex) };

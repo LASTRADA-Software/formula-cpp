@@ -2221,6 +2221,29 @@ template <Unit U, SeriesNode S>
     return render<Dialect::Plain>(node);
 }
 
+namespace detail
+{
+    /// @p sentence set word by word in LaTeX: each `\mathrm{...}`, escaped by
+    /// `latex_math_words`, and joined by `\ \allowbreak `, so that a line may
+    /// break between any two -- a whole sentence in one `\mathrm{...}` is one
+    /// atom, which never breaks. For a retry's words and its verdict.
+    [[nodiscard]] inline std::string latex_breakable_words(std::string_view sentence)
+    {
+        std::string brokenWords;
+        std::size_t wordStart = 0;
+        while (wordStart <= sentence.size())
+        {
+            std::size_t wordEnd = sentence.find(' ', wordStart);
+            if (wordEnd == std::string_view::npos)
+                wordEnd = sentence.size();
+            if (wordEnd > wordStart)
+                brokenWords += (brokenWords.empty() ? "" : "\\ \\allowbreak ") + std::string { "\\mathrm{" }
+                               + latex_math_words(sentence.substr(wordStart, wordEnd - wordStart)) + "}";
+            wordStart = wordEnd + 1;
+        }
+        return brokenWords;
+    }
+} // namespace detail
 /// Renders a retry in dialect @p D, writing symbols as @p vocabulary says:
 /// `up to 4 attempts: w(k) = 152/25 g + w(k-1) / 2, starting from w(0) = 0 g;
 /// accept when w(k-1) - w(k) >= -19/25 g; otherwise: repeat the
@@ -2232,27 +2255,37 @@ template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start
 [[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& retrying, V const& vocabulary)
 {
     std::string const resultSymbol { symbol_of<R>(vocabulary) };
-    auto const words = [](std::string const& libraryWords) { return detail::lookup_words_in_dialect<D>(libraryWords); };
-    std::string const separator = D == Dialect::LaTeX ? std::string { ";\\ " } : std::string { "; " };
-    std::string renderedRetry = words("up to " + std::to_string(Max) + (Max == 1 ? " attempt:" : " attempts:"))
-                                + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "k")
-                                + " = " + render<D>(retrying.attempt, vocabulary);
+    auto const inDialect = [](std::string const& libraryWords) {
+        if constexpr (D == Dialect::LaTeX)
+            return detail::latex_breakable_words(libraryWords);
+        else
+            return libraryWords;
+    };
+    // `\allowbreak` after each clause, as `lookup_separator` gives a lookup's
+    // fields, and between words (`latex_breakable_words`): a sentence of
+    // `\mathrm{...}` atoms otherwise has no legal break. Measured with
+    // tectonic 0.17.0: a ten-word verdict overflowed the line by 152 pt, and
+    // the clauses by 11 pt, in one atom each; split, nothing overflows.
+    std::string const separator = D == Dialect::LaTeX ? std::string { ";\\ \\allowbreak " } : std::string { "; " };
+    std::string renderedRetry = inDialect("up to " + std::to_string(Max) + (Max == 1 ? " attempt:" : " attempts:"))
+                                + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "k") + " = "
+                                + render<D>(retrying.attempt, vocabulary);
     if constexpr (detail::StartTraits<Start>::states)
-        renderedRetry += (D == Dialect::LaTeX ? ",\\ " : ", ") + words("starting from")
+        renderedRetry += (D == Dialect::LaTeX ? ",\\ \\allowbreak " : ", ") + inDialect("starting from")
                          + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "0") + " = "
                          + render<D>(retrying.start.expression, vocabulary);
     renderedRetry += separator
-                     + words(J == FirstJudged::AtSecondAttempt ? std::string { "accept from attempt 2 when" }
-                                                               : std::string { "accept when" })
+                     + inDialect(J == FirstJudged::AtSecondAttempt ? std::string { "accept from attempt 2 when" }
+                                                                   : std::string { "accept when" })
                      + (D == Dialect::LaTeX ? "\\ " : " ") + render<D>(retrying.accept, vocabulary);
     std::string verdictText;
     if constexpr (D == Dialect::LaTeX)
-        verdictText = "\\mathrm{" + detail::latex_math_words(retrying.onExhausted.label) + "}";
+        verdictText = detail::latex_breakable_words(retrying.onExhausted.label);
     else if constexpr (D == Dialect::Markdown)
         verdictText = detail::literal_words_in_dialect<D>(retrying.onExhausted.label);
     else
         verdictText = std::string { retrying.onExhausted.label };
-    return renderedRetry + separator + words("otherwise:") + (D == Dialect::LaTeX ? "\\ " : " ") + verdictText;
+    return renderedRetry + separator + inDialect("otherwise:") + (D == Dialect::LaTeX ? "\\ " : " ") + verdictText;
 }
 
 /// Renders a retry as plain text, writing symbols as @p vocabulary says.

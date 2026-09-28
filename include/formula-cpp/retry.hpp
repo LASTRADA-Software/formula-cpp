@@ -664,9 +664,12 @@ enum class AttemptJudgement : std::uint8_t
     Accepted,
     /// The acceptance did not hold: the next attempt runs, if one is allowed.
     Rejected,
-    /// The attempt's value, or its judgement, was absent -- or the judgement
-    /// failed: the retry ends here.
+    /// The attempt's value, or its judgement, was absent: the retry ends here.
     NotJudgeable,
+    /// The judgement failed arithmetically: the retry ends here, failed. The
+    /// error is the failing side's, which the attempt step's last operand
+    /// holds; the attempt step itself keeps only its value.
+    JudgementFailed,
 };
 
 template <Described R>
@@ -709,17 +712,14 @@ namespace detail
         };
 
     /// Whether @p Sink hears each attempt: `attempt_entered(info)` before it
-    /// runs, and `attempt_produced(info, produced, judgement, failure)` once
-    /// it has been judged -- or not.
+    /// runs, and `attempt_produced(info, produced, judgement)` once it has
+    /// been judged -- or not.
     template <typename Sink, typename Rep>
-    concept HearsAttempts = requires(Sink sink,
-                                     AttemptInfo const& info,
-                                     Evaluated<Rep> const& produced,
-                                     AttemptJudgement judgement,
-                                     std::optional<ArithmeticError> failure) {
-        sink.attempt_entered(info);
-        sink.attempt_produced(info, produced, judgement, failure);
-    };
+    concept HearsAttempts =
+        requires(Sink sink, AttemptInfo const& info, Evaluated<Rep> const& produced, AttemptJudgement judgement) {
+            sink.attempt_entered(info);
+            sink.attempt_produced(info, produced, judgement);
+        };
 } // namespace detail
 /// How a retry ended, and in what. Built only by `checked_evaluate_retry`: no
 /// public constructor and no setters, so how it ended and where it was
@@ -944,16 +944,13 @@ namespace detail
                 sink.attempt_entered(attemptInfo);
             // Tells the sink how the attempt was judged, once, whichever way
             // the attempt ends.
-            auto const told = [&](Evaluated<Rep> const& produced,
-                                  AttemptJudgement judgement,
-                                  std::optional<ArithmeticError> judgementFailure) {
+            auto const told = [&](Evaluated<Rep> const& produced, AttemptJudgement judgement) {
                 if constexpr (HearsAttempts<Sink, Rep>)
-                    sink.attempt_produced(attemptInfo, produced, judgement, judgementFailure);
+                    sink.attempt_produced(attemptInfo, produced, judgement);
                 else
                 {
                     (void) produced;
                     (void) judgement;
-                    (void) judgementFailure;
                 }
             };
 
@@ -961,12 +958,12 @@ namespace detail
             Evaluated<Rep> const produced = dispatch<Rep>(retrying.attempt, attempting, sink);
             if (!produced.has_value())
             {
-                told(produced, AttemptJudgement::NotJudged, std::nullopt);
+                told(produced, AttemptJudgement::NotJudged);
                 return std::unexpected { RetryFailure { produced.error(), k - 1 } };
             }
             if (!produced->has_value())
             {
-                told(produced, AttemptJudgement::NotJudgeable, std::nullopt);
+                told(produced, AttemptJudgement::NotJudgeable);
                 return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
             }
 
@@ -974,7 +971,7 @@ namespace detail
             // intermediate; the first attempt of a retry judged from the
             // second is not judged, which is not a rejection.
             if (J == FirstJudged::AtSecondAttempt && k == 1)
-                told(produced, AttemptJudgement::NotJudged, std::nullopt);
+                told(produced, AttemptJudgement::NotJudged);
             else
             {
                 AttemptEnvironment<Env, Rep, R, AttemptPhase::Judging> const judging { environment, k, before, **produced };
@@ -982,15 +979,15 @@ namespace detail
                     checked_evaluate_predicate<Rep>(retrying.accept, judging, sink);
                 if (!held.has_value())
                 {
-                    told(produced, AttemptJudgement::NotJudgeable, held.error());
+                    told(produced, AttemptJudgement::JudgementFailed);
                     return std::unexpected { RetryFailure { held.error(), k - 1 } };
                 }
                 if (!held->has_value())
                 {
-                    told(produced, AttemptJudgement::NotJudgeable, std::nullopt);
+                    told(produced, AttemptJudgement::NotJudgeable);
                     return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
                 }
-                told(produced, **held ? AttemptJudgement::Accepted : AttemptJudgement::Rejected, std::nullopt);
+                told(produced, **held ? AttemptJudgement::Accepted : AttemptJudgement::Rejected);
                 if (**held)
                 {
                     std::expected<Rational, ArithmeticError> const inDeclaredUnit =

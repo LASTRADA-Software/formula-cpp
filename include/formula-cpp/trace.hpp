@@ -3789,13 +3789,14 @@ class RecordingSink
 
     /// Records one `RetryAttempt` step for the attempt @p attemptInfo
     /// describes, claiming the steps recorded since the matching
-    /// `attempt_entered`: its value, or its error or its judgement's, and
-    /// how it was judged, in `Trace::attemptSteps`. Its unit and symbol are
+    /// `attempt_entered`: its value or its error, and how it was judged, in
+    /// `Trace::attemptSteps`. A judgement that failed is `JudgementFailed`
+    /// there, and its error is on the failing side's step: the attempt step
+    /// keeps its value alone, so a step never holds both. Its unit and symbol are
     /// the retry's result's, set by `retry_produced`, which knows it.
     void attempt_produced(AttemptInfo const& attemptInfo,
                           Evaluated<Rep> const& produced,
-                          AttemptJudgement judgement,
-                          std::optional<ArithmeticError> judgementFailure)
+                          AttemptJudgement judgement)
     {
         // Told what a walk produced without having been told it began: see
         // `produced`.
@@ -3809,8 +3810,6 @@ class RecordingSink
         attemptStep.comparison = attemptInfo.comparison;
         if (!produced.has_value())
             attemptStep.error = produced.error();
-        else if (judgementFailure.has_value())
-            attemptStep.error = *judgementFailure;
         if (produced.has_value() && produced->has_value())
             attemptStep.value = **produced;
 
@@ -3860,11 +3859,19 @@ class RecordingSink
         {
             retryRow.end = ended->end();
             Measured<R> const measurement = ended->outcome().measurement();
+            // The accepted value, back in the coherent unit every step holds.
+            // Reversing a conversion that just succeeded, it should not fail;
+            // if it did, the step states the failure, never "not measured"
+            // for an accepted retry.
             if (ended->end() == RetryEnd::Accepted && measurement.has_value())
-                if (std::expected<Rational, ArithmeticError> const inCoherentUnit =
-                        checked_convert(measurement.value(), Describe<R>::unit, coherent(Describe<R>::dimension));
-                    inCoherentUnit.has_value())
+            {
+                std::expected<Rational, ArithmeticError> const inCoherentUnit =
+                    checked_convert(measurement.value(), Describe<R>::unit, coherent(Describe<R>::dimension));
+                if (inCoherentUnit.has_value())
                     retryStep.value = *inCoherentUnit;
+                else
+                    retryStep.error = inCoherentUnit.error();
+            }
         }
 
         auto firstClaimed = _trace->unclaimed.begin();

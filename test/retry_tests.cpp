@@ -561,10 +561,14 @@ TEST_CASE("a retry renders its attempt, starting value, acceptance and verdict i
     CHECK(formula::render<formula::Dialect::Markdown>(fourAttempts)
           == "up to 4 attempts: `w(k)` = 152/25 g + `w(k-1)` / 2, starting from `w(0)` = 0 g; accept when `w(k-1)` - "
              "`w(k)` >= -19/25 g; otherwise: repeat the determination");
-    CHECK(formula::render<formula::Dialect::LaTeX>(fourAttempts)
-          == "\\mathrm{up\\ to\\ 4\\ attempts:}\\ {w}_{k} = 152/25\\,\\mathrm{g} + \\frac{{w}_{k-1}}{2},\\ "
-             "\\mathrm{starting\\ from}\\ {w}_{0} = 0\\,\\mathrm{g};\\ \\mathrm{accept\\ when}\\ {w}_{k-1} - {w}_{k} "
-             "\\geq -19/25\\,\\mathrm{g};\\ \\mathrm{otherwise:}\\ \\mathrm{repeat\\ the\\ determination}");
+    CHECK(
+        formula::render<formula::Dialect::LaTeX>(fourAttempts)
+        == "\\mathrm{up}\\ \\allowbreak \\mathrm{to}\\ \\allowbreak \\mathrm{4}\\ \\allowbreak "
+           "\\mathrm{attempts:}\\ {w}_{k} = 152/25\\,\\mathrm{g} + \\frac{{w}_{k-1}}{2},\\ \\allowbreak "
+           "\\mathrm{starting}\\ \\allowbreak \\mathrm{from}\\ {w}_{0} = 0\\,\\mathrm{g};\\ \\allowbreak "
+           "\\mathrm{accept}\\ \\allowbreak \\mathrm{when}\\ {w}_{k-1} - {w}_{k} \\geq -19/25\\,\\mathrm{g};\\ "
+           "\\allowbreak \\mathrm{otherwise:}\\ \\mathrm{repeat}\\ \\allowbreak \\mathrm{the}\\ \\allowbreak "
+           "\\mathrm{determination}");
     // Judged from the second attempt, with no starting value, it says so.
     constexpr auto fromSecond =
         formula::retry<Estimate, 3, formula::FirstJudged::AtSecondAttempt>(halving, settled, repeat, cite);
@@ -606,4 +610,130 @@ TEST_CASE("a scoped vocabulary renames a retry's result in the trace, the render
     formula::Documentation const page = formula::document(fourAttempts, north);
     CHECK(page.symbols[0].symbol == "m");
     CHECK(page.formula.find("w(") == std::string::npos);
+}
+
+TEST_CASE("an absent attempt ends the trace not judgeable, and never accepted", "[retry][trace]")
+{
+    constexpr auto unmeasured = formula::environment(formula::Measured<Tolerance>::absent());
+    constexpr auto absentStep = formula::var<Tolerance> + formula::previous_attempt<Estimate> / rat(2);
+    auto const ran = formula::explain_retry(
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, absentStep, settled, repeat, cite),
+        unmeasured);
+    CHECK(judgements(ran.trace) == std::vector<formula::AttemptJudgement> { formula::AttemptJudgement::NotJudgeable });
+    CHECK(formula::render_trace(ran.trace, { .maxSteps = 100 })
+          == "1. 0 g\n"
+             "2. t_w = (not measured)\n"
+             "3. w(k-1) = 0 g\n"
+             "4. 2\n"
+             "5. #3 / #4 = 0\n"
+             "6. #2 + #5 = (not measured)\n"
+             "7. attempt 1: w(k) = #6 = (not measured); cannot be judged\n"
+             "8. w = retry: not judgeable at attempt 1 [Settled estimate, Example Standard 12, 6]\n");
+}
+
+TEST_CASE("an absent judgement ends the trace not judgeable, naming the sides it could not compare", "[retry][trace]")
+{
+    constexpr auto unmeasured = formula::environment(formula::Measured<Tolerance>::absent());
+    constexpr auto againstAbsent = formula::this_attempt<Estimate> >= formula::var<Tolerance>;
+    auto const ran = formula::explain_retry(
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, againstAbsent, repeat, cite),
+        unmeasured);
+    CHECK(judgements(ran.trace) == std::vector<formula::AttemptJudgement> { formula::AttemptJudgement::NotJudgeable });
+    CHECK(formula::render_trace(ran.trace, { .maxSteps = 100 })
+          == "1. 0 g\n"
+             "2. 152/25 g\n"
+             "3. w(k-1) = 0 g\n"
+             "4. 2\n"
+             "5. #3 / #4 = 0\n"
+             "6. #2 + #5 = 19/3125\n"
+             "7. w(k) = 152/25 g\n"
+             "8. t_w = (not measured)\n"
+             "9. attempt 1: w(k) = #6 = 152/25 g; judged #7 >= #8: cannot be judged\n"
+             "10. w = retry: not judgeable at attempt 1 [Settled estimate, Example Standard 12, 6]\n");
+}
+
+TEST_CASE("a judgement that fails names the failing side, and the attempt keeps only its value", "[retry][trace]")
+{
+    // The right side divides by (k - 1): zero at the first attempt.
+    constexpr auto rightFails =
+        formula::this_attempt<Estimate> >= formula::constant<unit::Gram>(rat(1)) / (formula::attempt_number - rat(1));
+    auto const right = formula::explain_retry(
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, rightFails, repeat, cite),
+        nothing);
+    CHECK(judgements(right.trace) == std::vector<formula::AttemptJudgement> { formula::AttemptJudgement::JudgementFailed });
+    CHECK(formula::render_trace(right.trace, { .maxSteps = 100 })
+          == "1. 0 g\n"
+             "2. 152/25 g\n"
+             "3. w(k-1) = 0 g\n"
+             "4. 2\n"
+             "5. #3 / #4 = 0\n"
+             "6. #2 + #5 = 19/3125\n"
+             "7. w(k) = 152/25 g\n"
+             "8. 1 g\n"
+             "9. k = 1\n"
+             "10. 1\n"
+             "11. #9 - #10 = 0\n"
+             "12. #8 / #11 = division by zero\n"
+             "13. attempt 1: w(k) = #6 = 152/25 g; judged #7 >= #12: division by zero\n"
+             "14. w = retry: failed at attempt 1: division by zero [Settled estimate, Example Standard 12, 6]\n");
+    // A step holds a value or an error, never both: the error is the side's.
+    formula::Step<> const& attemptStep = right.trace.steps[12];
+    CHECK(attemptStep.value.has_value());
+    CHECK(!attemptStep.error.has_value());
+
+    // The left side fails first: the right is never evaluated, and the line
+    // names the side that failed.
+    constexpr auto leftFails =
+        formula::this_attempt<Estimate> / (formula::attempt_number - rat(1)) >= formula::constant<unit::Gram>(rat(1));
+    auto const left = formula::explain_retry(
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, leftFails, repeat, cite),
+        nothing);
+    std::string const leftText = formula::render_trace(left.trace, { .maxSteps = 100 });
+    CHECK(leftText.find("12. attempt 1: w(k) = #6 = 152/25 g; judged #11: division by zero\n") != std::string::npos);
+    CHECK(leftText.ends_with("13. w = retry: failed at attempt 1: division by zero [Settled estimate, Example "
+                             "Standard 12, 6]\n"));
+}
+
+TEST_CASE("the first attempt of a retry judged from the second reads not judged, not rejected", "[retry][trace]")
+{
+    auto const ran = formula::explain_retry(
+        formula::retry<Estimate, 5, formula::FirstJudged::AtSecondAttempt>(fromZero, halving, settled, repeat, cite),
+        nothing);
+    CHECK(judgements(ran.trace)
+          == std::vector<formula::AttemptJudgement> { formula::AttemptJudgement::NotJudged,
+                                                      formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Accepted });
+    std::string const text = formula::render_trace(ran.trace, { .maxSteps = 100 });
+    CHECK(text.find("7. attempt 1: w(k) = #6 = 152/25 g; not judged\n") != std::string::npos);
+    CHECK(text.find("17. attempt 2: w(k) = #12 = 228/25 g; judged #15 >= #16: rejected\n") != std::string::npos);
+    CHECK(text.find("37. attempt 4: w(k) = #32 = 57/5 g; judged #35 >= #36: accepted\n") != std::string::npos);
+    CHECK(text.ends_with("38. w = retry: accepted at attempt 4 of 5 = 57/5 g [Settled estimate, Example Standard "
+                         "12, 6]\n"));
+}
+
+TEST_CASE("a starting value that fails ends the trace before any attempt", "[retry][trace]")
+{
+    auto const ran = formula::explain_retry(
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(
+            formula::starting_from(formula::constant<unit::Gram>(rat(1)) / rat(0)), halving, settled, repeat, cite),
+        nothing);
+    CHECK(ran.trace.attemptSteps.empty());
+    CHECK(formula::render_trace(ran.trace, { .maxSteps = 100 })
+          == "1. 1 g\n"
+             "2. 0\n"
+             "3. #1 / #2 = division by zero\n"
+             "4. w = retry: failed at its starting value: division by zero [Settled estimate, Example Standard 12, "
+             "6]\n");
+}
+
+TEST_CASE("an exhausted retry counts the attempts it shows, not its limit", "[retry][trace]")
+{
+    // A trace that lost its last attempt -- edited by hand, or recorded by a
+    // sink that dropped one -- says two ran, not three.
+    auto exhausted = formula::explain_retry(threeAttempts, nothing);
+    exhausted.trace.attemptSteps.pop_back();
+    CHECK(formula::render_trace(exhausted.trace, { .maxSteps = 100 })
+              .ends_with("w = retry: exhausted after 2 of 3: repeat the determination [Settled estimate, Example "
+                         "Standard 12, 6]\n"));
 }
