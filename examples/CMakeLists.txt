@@ -210,3 +210,26 @@ add_test(NAME docs.records-snippets
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/records.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/records.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
+# docs/opaque-and-retry.md quotes this program's output verbatim. Pinned here,
+# in the order the program prints them: an opaque call's line saying its
+# inside is not shown, with its citation; the page's operation entry; two
+# outputs as two runs; the exact slope; a degenerate fit's and an overflowing
+# fit's refusals; an uncited call; the retry's rendering; its six endings,
+# each by its concluded line; the attempt-1 mistake; and the two-sided
+# agreement accepted at the third attempt. No literal `;`:
+# PASS_REGULAR_EXPRESSION is a list property (see the lookup_tables entry).
+formula_add_example(opaque_and_retry opaque_and_retry.cpp [==[series span\(r\(i\)\)\.span.*span = 88 g \[inside not shown\] \[Spread of readings, Example Standard 12, 4\.2\].*operation: series span, outputs: lowest highest span.*operation runs: 2.*slope = 19/28 mm/s \[inside not shown\].*one point: argument outside the domain of the operation.*fifteen distinct denominators: overflow in exact arithmetic.*\[inside not shown\] \(no citation given\).*up to 4 attempts: w\(k\) = 152/25 g \+ w\(k-1\) / 2, starting from w\(0\) = 0 g.*accepted at attempt 4 of 4 = 57/5 g.*exhausted after 3 of 3: repeat the determination.*not judgeable at attempt 1.*d_a = retry: attempt 3 not recorded.*failed at attempt 1: division by zero.*ManuallyEntered after 0 attempt\(s\).*w\(k-1\) = previous attempt: none before attempt 1.*accept from attempt 2 when \(if d_a\(k\) >= d_a\(k-1\).*accepted at attempt 3 of 4 = 427/10 g.*all checks passed: yes]==])
+
+# Every output block of docs/opaque-and-retry.md must be a run of lines the
+# example really prints, and every code block must appear in its source.
+add_test(NAME docs.opaque-and-retry-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-opaque_and_retry>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/opaque-and-retry.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.opaque-and-retry-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/opaque_and_retry.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/opaque-and-retry.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")

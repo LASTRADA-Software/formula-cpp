@@ -610,3 +610,72 @@ f / ((F / (a * a)) of ReferenceSpecimen)
 4. #1 / #3 = argument outside the domain of the operation
 ```
 
+## Worked derivation: a straight line fitted by least squares
+
+Settlement read at `t` = 1, 2, 4 and 7 s: `L` = 10.2, 10.9, 12.1 and 14.3 mm. The fit is an opaque operation: its step lists the intercept and the slope it produced, exactly, and says its inside is not shown:
+
+```
+linear least squares(t(i), L(i)).slope
+```
+
+```
+1. t = 1 s; 2 s; 4 s; 7 s
+2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm
+3. curve(#1, #2) = 1 s: 51/5 mm; 2 s: 109/10 mm; 4 s: 121/10 mm; 7 s: 143/10 mm
+4. linear least squares(#3) = intercept = 19/2 mm; slope = 19/28 mm/s [inside not shown] [Rate of settlement, Example Standard 12, 5.1]
+5. slope of #4 = 19/28 mm/s
+```
+
+## Worked retry: an estimate repeated until it settles
+
+Each attempt halves the previous estimate and adds 6.08 g, from 0 g, and is accepted once it rose by at most 0.76 g; after four attempts without that, the method's verdict. It settles at the fourth:
+
+```
+up to 4 attempts: w(k) = 152/25 g + w(k-1) / 2, starting from w(0) = 0 g; accept when w(k-1) - w(k) >= -19/25 g; otherwise: repeat the determination
+```
+
+```
+1. 0 g
+2. 152/25 g
+3. w(k-1) = 0 g
+4. 2
+5. #3 / #4 = 0
+6. #2 + #5 = 19/3125
+7. w(k-1) = 0 g
+8. w(k) = 152/25 g
+9. #7 - #8 = -19/3125
+10. -19/25 g
+11. attempt 1: w(k) = #6 = 152/25 g; judged #9 >= #10: rejected
+12. 152/25 g
+13. w(k-1) = 152/25 g
+14. 2
+15. #13 / #14 = 19/6250
+16. #12 + #15 = 57/6250
+17. w(k-1) = 152/25 g
+18. w(k) = 228/25 g
+19. #17 - #18 = -19/6250
+20. -19/25 g
+21. attempt 2: w(k) = #16 = 228/25 g; judged #19 >= #20: rejected
+22. 152/25 g
+23. w(k-1) = 228/25 g
+24. 2
+25. #23 / #24 = 57/12500
+26. #22 + #25 = 133/12500
+27. w(k-1) = 228/25 g
+28. w(k) = 266/25 g
+29. #27 - #28 = -19/12500
+30. -19/25 g
+31. attempt 3: w(k) = #26 = 266/25 g; judged #29 >= #30: rejected
+32. 152/25 g
+33. w(k-1) = 266/25 g
+34. 2
+35. #33 / #34 = 133/25000
+36. #32 + #35 = 57/5000
+37. w(k-1) = 266/25 g
+38. w(k) = 57/5 g
+39. #37 - #38 = -19/25000
+40. -19/25 g
+41. attempt 4: w(k) = #36 = 57/5 g; judged #39 >= #40: accepted
+42. w = retry: accepted at attempt 4 of 4 = 57/5 g [Settled estimate, Example Standard 12, 6]
+```
+

@@ -44,6 +44,7 @@ nav:
   - Series and grading curves: series.md
   - Statistics, outliers and precision: statistics.md
   - Other samples and other tests: records.md
+  - Opaque operations and bounded retry: opaque-and-retry.md
   - Gallery: gallery.md
   # Doxygen output, dropped into the built site's api/ directory by
   # .github/workflows/pages.yml after `mkdocs build` runs -- not a page

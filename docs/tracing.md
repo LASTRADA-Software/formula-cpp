@@ -789,7 +789,10 @@ node cannot appear in a recorded trace at all. What does compile is a
 three-parameter overload that only hands the sink on to its operands'
 `detail::dispatch` and reports nothing of its own: its operands are traced,
 and it is not -- measured on the same two compilers. Opening the registry to consumers is a separate change from
-anything this guide describes.
+anything this guide describes. A computation of a consumer's own that the page need not
+spell out can be traced today as an opaque operation instead: its inputs and outputs are
+traced, and its line says its inside is not shown -- see
+[Opaque operations and bounded retry](opaque-and-retry.md).
 
 ## Every citation here is invented
 

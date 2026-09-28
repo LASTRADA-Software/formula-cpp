@@ -143,11 +143,15 @@ Each program's largest integers over everything it evaluates at run time.
 | example `statistics` | 20 | 35 | 35 | 28 |
 | example `series` | 15 | 15 | 15 | 48 |
 | example `records` | 25 | 25 | 25 | 38 |
+| example `opaque_and_retry` | 48 | 60 | 60 | 3 |
 | the gallery generator | 29 | 27 | 29 | 34 |
 
 <!-- /census:examples -->
 
-The lowest is `methods_and_overlays`, under the 8-bit line: its cylinder
+The lowest is `opaque_and_retry`, at 3 bits, on purpose: it fits fifteen points on
+distinct denominators to show a least-squares fit refusing with `Overflow`, and the census
+counts the integers the fit formed before it was refused (see [Least squares](#least-squares-realistic-and-one-stress-control)). Of the examples that
+compute only results, the lowest is `methods_and_overlays`, under the 8-bit line: its cylinder
 variant divides a force of 89.3 kN by the library's rational π,
 245850922/78256779, times a squared diameter of 135 mm, and a jurisdiction's
 replacement of that variant divides it by 1127/1000 times the squared
