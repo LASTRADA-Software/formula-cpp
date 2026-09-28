@@ -984,6 +984,30 @@ TEST_CASE("a relayed failure names the one input that failed, not every input", 
              "6. shifted of #5 = division by zero\n");
 }
 
+TEST_CASE("an opaque call stopped at a failing input lists the inputs it never evaluated", "[opaque][trace]")
+{
+    // The series, divided by zero, fails first: the shift after it is never
+    // evaluated, and the line still reads as a call of two inputs.
+    constexpr auto shifted = formula::opaque_output<"shifted">(formula::opaque<ShiftedLowest>(
+        { .reference = "Example Standard 12" }, formula::series<Reading, 4> / formula::var<Divisor>, formula::var<Shift>));
+    auto const zero = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(127) },
+                                                                             formula::Measured<Reading> { rat(103) },
+                                                                             formula::Measured<Reading> { rat(191) },
+                                                                             formula::Measured<Reading> { rat(139) }),
+                                           formula::Measured<Shift> { rat(163) },
+                                           formula::Measured<Divisor> { rat(0) });
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(shifted, zero, formula::RecordingSink { recorded });
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 20 });
+    INFO(text);
+    CHECK(
+        text.find(
+            "4. shifted lowest(#3, (not evaluated)) = division by zero [inside not shown] [carried up from #3, at element 1]")
+        != std::string::npos);
+    REQUIRE(formula::opaque_data(recorded, 3) != nullptr);
+    CHECK(formula::opaque_data(recorded, 3)->inputsNotEvaluated == 1);
+}
+
 TEST_CASE("an opaque call built as an aggregate, citing nothing, says so", "[opaque][trace]")
 {
     using Readings = std::remove_cv_t<decltype(formula::series<Reading, 4>)>;

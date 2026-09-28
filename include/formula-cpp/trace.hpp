@@ -1363,6 +1363,10 @@ struct OpaqueStepData
     /// input's relayed (`Propagated`), or `Undetermined` when the call relayed
     /// a failure no input step shows.
     OpaqueFailure failure {};
+    /// For a relayed failure, how many of the call's inputs after the one
+    /// that failed were never evaluated (`OpaqueCallFailure::notEvaluated`),
+    /// so that its line lists every input the call declares.
+    std::size_t inputsNotEvaluated {};
 };
 
 /// Which output an `OpaqueOutput` step selected, keyed by its index in
@@ -3795,6 +3799,7 @@ class RecordingSink
             callRow.failure = result.error().origin;
             if (callRow.failure == OpaqueFailure::Propagated && !detail::an_operand_failed(_trace->steps, callStep))
                 callRow.failure = OpaqueFailure::Undetermined;
+            callRow.inputsNotEvaluated = result.error().notEvaluated;
         }
 
         stamp_origin(callStep);

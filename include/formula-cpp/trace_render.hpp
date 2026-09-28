@@ -2150,7 +2150,8 @@ namespace detail
     /// Each output shown spends one unit of @p budget, as a series' elements
     /// do, and a list cut short ends `... k more`. A failed call shows its
     /// error and whose it is (`opaque_failure_suffix`); an absent one,
-    /// `(not measured)`.
+    /// `(not measured)`. A call stopped at a failing input writes each
+    /// input after it, never evaluated, as `(not evaluated)`.
     ///
     /// **`[inside not shown]` depends on the step's kind alone**: it is
     /// written for every `OpaqueOperation` step, with or without its row, and
@@ -2165,9 +2166,16 @@ namespace detail
                                                       std::size_t& budget)
     {
         OpaqueStepData<Rational> const* const callRow = opaqueLine.call;
-        std::string lineText = callRow == nullptr
-                                   ? step_expression(recorded)
-                                   : escaped_author_text(callRow->operationName) + "(" + operands_text(recorded) + ")";
+        std::string lineText = step_expression(recorded);
+        if (callRow != nullptr)
+        {
+            // A call stopped at a failing input lists the inputs after it
+            // too, so that it never reads as a call of fewer arguments.
+            std::string arguments = operands_text(recorded);
+            for (std::size_t skipped = 0; skipped < callRow->inputsNotEvaluated; ++skipped)
+                arguments += std::string { arguments.empty() ? "" : ", " } + "(not evaluated)";
+            lineText = escaped_author_text(callRow->operationName) + "(" + arguments + ")";
+        }
         lineText += " = ";
         if (recorded.error.has_value())
             lineText += describe(*recorded.error);

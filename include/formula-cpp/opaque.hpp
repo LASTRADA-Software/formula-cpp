@@ -115,6 +115,10 @@ struct OpaqueCallFailure
     /// that element's ZERO-BASED position, relayed as `detail::relayed_failure`
     /// relays one (`series.hpp`); empty otherwise.
     std::optional<std::size_t> element;
+    /// For a relayed failure, how many of the call's inputs after the one
+    /// that failed were never evaluated -- the call stops at the first input
+    /// that fails; 0 otherwise.
+    std::size_t notEvaluated = 0;
 
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(OpaqueCallFailure const&) const noexcept = default;
@@ -992,7 +996,11 @@ namespace detail
         {
             auto const evaluatedInput = evaluate_opaque_input<Rep>(std::get<At>(call.inputs), environment, sink);
             if (!evaluatedInput.has_value())
-                return std::unexpected { opaque_input_failure(evaluatedInput) };
+            {
+                OpaqueCallFailure stopped = opaque_input_failure(evaluatedInput);
+                stopped.notEvaluated = sizeof...(Inputs) - At - 1;
+                return std::unexpected { stopped };
+            }
             return evaluate_opaque_from<Rep, At + 1>(call, environment, sink, evaluatedSoFar..., *evaluatedInput);
         }
     }
