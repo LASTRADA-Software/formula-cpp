@@ -50,6 +50,7 @@
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -312,6 +313,25 @@ namespace detail
             return "`" + quantitySymbol + "(i)`";
         else
             return quantitySymbol + "(i)";
+    }
+
+    /// @p quantitySymbol -- already the jurisdiction's, through `symbol_of` --
+    /// marked as a retry's value at attempt @p attemptIndex (`k`, `k-1` or
+    /// `0`), in dialect @p D: `w(k-1)` in plain text, `` `w(k-1)` `` in
+    /// Markdown and `{w}_{k-1}` in LaTeX -- `series_marker`'s family, chosen
+    /// by phase 15's spike (step 9) for the same engines.
+    ///
+    /// **The one place the marker is spelled**, for the render, the document
+    /// and the trace (`trace_render.hpp`) alike.
+    template <Dialect D>
+    [[nodiscard]] std::string attempt_marker(std::string quantitySymbol, std::string_view attemptIndex)
+    {
+        if constexpr (D == Dialect::LaTeX)
+            return "{" + quantitySymbol + "}_{" + std::string { attemptIndex } + "}";
+        else if constexpr (D == Dialect::Markdown)
+            return "`" + quantitySymbol + "(" + std::string { attemptIndex } + ")`";
+        else
+            return quantitySymbol + "(" + std::string { attemptIndex } + ")";
     }
 
     /// An exact rational as text: `4`, or `1/4` when it is not whole.
@@ -1648,6 +1668,32 @@ namespace detail
     }
 } // namespace detail
 
+/// The attempt number renders as `k`, the method's own counter --
+/// backtick-quoted in Markdown, as a variable is.
+template <Dialect D, Vocabulary V>
+[[nodiscard]] std::string render_node(AttemptNumberNode const&, V const&)
+{
+    if constexpr (D == Dialect::Markdown)
+        return "`k`";
+    else
+        return "k";
+}
+
+/// The previous attempt's value renders as the result's symbol under
+/// @p vocabulary, marked `k-1` (`detail::attempt_marker`): `w(k-1)`.
+template <Dialect D, Described R, Vocabulary V>
+[[nodiscard]] std::string render_node(PreviousAttemptNode<R> const&, V const& vocabulary)
+{
+    return detail::attempt_marker<D>(std::string { symbol_of<R>(vocabulary) }, "k-1");
+}
+
+/// This attempt's value renders as the result's symbol under @p vocabulary,
+/// marked `k` (`detail::attempt_marker`): `w(k)`.
+template <Dialect D, Described R, Vocabulary V>
+[[nodiscard]] std::string render_node(ThisAttemptNode<R> const&, V const& vocabulary)
+{
+    return detail::attempt_marker<D>(std::string { symbol_of<R>(vocabulary) }, "k");
+}
 /// An opaque output renders as a call to its operation, named as the
 /// operation names itself, selecting the output: `linear least squares(t(i),
 /// L(i)).slope` in plain text; in Markdown the same, each symbol in its own
@@ -2175,4 +2221,58 @@ template <Unit U, SeriesNode S>
     return render<Dialect::Plain>(node);
 }
 
+/// Renders a retry in dialect @p D, writing symbols as @p vocabulary says:
+/// `up to 4 attempts: w(k) = 152/25 g + w(k-1) / 2, starting from w(0) = 0 g;
+/// accept when w(k-1) - w(k) >= -19/25 g; otherwise: repeat the
+/// determination`. The words are this library's, set in `\mathrm{...}` in
+/// LaTeX as a lookup's are; the verdict is author text, made literal in
+/// Markdown and escaped in LaTeX. A retry judged from its second attempt
+/// says so: `accept from attempt 2 when ...`.
+template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P, Vocabulary V>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& retrying, V const& vocabulary)
+{
+    std::string const resultSymbol { symbol_of<R>(vocabulary) };
+    auto const words = [](std::string const& libraryWords) { return detail::lookup_words_in_dialect<D>(libraryWords); };
+    std::string const separator = D == Dialect::LaTeX ? std::string { ";\\ " } : std::string { "; " };
+    std::string renderedRetry = words("up to " + std::to_string(Max) + (Max == 1 ? " attempt:" : " attempts:"))
+                                + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "k")
+                                + " = " + render<D>(retrying.attempt, vocabulary);
+    if constexpr (detail::StartTraits<Start>::states)
+        renderedRetry += (D == Dialect::LaTeX ? ",\\ " : ", ") + words("starting from")
+                         + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "0") + " = "
+                         + render<D>(retrying.start.expression, vocabulary);
+    renderedRetry += separator
+                     + words(J == FirstJudged::AtSecondAttempt ? std::string { "accept from attempt 2 when" }
+                                                               : std::string { "accept when" })
+                     + (D == Dialect::LaTeX ? "\\ " : " ") + render<D>(retrying.accept, vocabulary);
+    std::string verdictText;
+    if constexpr (D == Dialect::LaTeX)
+        verdictText = "\\mathrm{" + detail::latex_math_words(retrying.onExhausted.label) + "}";
+    else if constexpr (D == Dialect::Markdown)
+        verdictText = detail::literal_words_in_dialect<D>(retrying.onExhausted.label);
+    else
+        verdictText = std::string { retrying.onExhausted.label };
+    return renderedRetry + separator + words("otherwise:") + (D == Dialect::LaTeX ? "\\ " : " ") + verdictText;
+}
+
+/// Renders a retry as plain text, writing symbols as @p vocabulary says.
+template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P, Vocabulary V>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders a retry in dialect @p D, in the default vocabulary.
+template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders a retry as plain text.
+template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+[[nodiscard]] std::string render(Retry<R, Max, J, Start, A, P> const& node)
+{
+    return render<Dialect::Plain>(node);
+}
 } // namespace formula

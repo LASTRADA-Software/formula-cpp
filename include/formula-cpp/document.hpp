@@ -22,11 +22,13 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -371,6 +373,15 @@ namespace detail
     template <Vocabulary V>
     void collect(Walk<V>& walk, PiNode const& node);
 
+    template <Vocabulary V>
+    void collect(Walk<V>& walk, AttemptNumberNode const& node);
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>& walk, PreviousAttemptNode<R> const& node);
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>& walk, ThisAttemptNode<R> const& node);
+
     template <Vocabulary V, UnaryOperator Op, Node Operand>
     void collect(Walk<V>& walk, UnaryNode<Op, Operand> const& node);
 
@@ -641,6 +652,47 @@ namespace detail
     {
     }
 
+    /// A retry's context nodes read no variable: the attempt number is the
+    /// method's own counter, and the result's row is the retry's own, added
+    /// first by `document()` for a retry and marked there as iterated.
+    template <Vocabulary V>
+    void collect(Walk<V>&, AttemptNumberNode const&)
+    {
+    }
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>&, PreviousAttemptNode<R> const&)
+    {
+    }
+
+    template <Vocabulary V, Described R>
+    void collect(Walk<V>&, ThisAttemptNode<R> const&)
+    {
+    }
+
+    /// Words appended to a retry's result's description, so that its row says
+    /// the value is iterated. A description rather than a `ValueShape`: the
+    /// shape says what a quantity is read as, and an iterated result is still
+    /// one value.
+    inline constexpr std::string_view iteratedSuffix = " (iterated: the value of the attempt a retry accepted)";
+
+    /// @p R's description followed by `iteratedSuffix`, in static storage so
+    /// that the row's view outlives the page.
+    template <Described R>
+    struct IteratedDescription
+    {
+        static constexpr std::size_t length = Describe<R>::description.size() + iteratedSuffix.size();
+        static constexpr std::array<char, length> text = [] {
+            std::array<char, length> joined {};
+            std::size_t at = 0;
+            for (char const spelt: Describe<R>::description)
+                joined[at++] = spelt;
+            for (char const spelt: iteratedSuffix)
+                joined[at++] = spelt;
+            return joined;
+        }();
+        static constexpr std::string_view view { text.data(), length };
+    };
     template <Vocabulary V, UnaryOperator Op, Node Operand>
     void collect(Walk<V>& walk, UnaryNode<Op, Operand> const& node)
     {
@@ -1205,6 +1257,44 @@ template <Dialect D = Dialect::Plain, Predicate P>
     return document<D>(node, DefaultVocabulary {});
 }
 
+/// Documents a retry: renders it in dialect @p D (`render()` for a retry),
+/// lists its citation, and gives its result the first symbol row, whose
+/// description says the value is iterated (`detail::IteratedDescription`);
+/// then the rows of what its starting value, its attempt and its acceptance
+/// read.
+template <Dialect D = Dialect::Plain,
+          Described R,
+          std::size_t Max,
+          FirstJudged J,
+          typename Start,
+          typename A,
+          typename P,
+          Vocabulary V>
+[[nodiscard]] Documentation document(Retry<R, Max, J, Start, A, P> const& retrying, V const& vocabulary)
+{
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(retrying, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    if (!(retrying.citation == Citation {}))
+        walk.documentation.citations.push_back(retrying.citation);
+    walk.seenQuantities.push_back(detail::SeenRow { .role = walk.roleIdentity, .quantity = &detail::quantityIdentity<R> });
+    walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<R>(vocabulary),
+                                                       .description = detail::IteratedDescription<R>::view,
+                                                       .unit = Describe<R>::unit });
+    if constexpr (detail::StartTraits<Start>::states)
+        detail::collect(walk, retrying.start.expression);
+    detail::collect(walk, retrying.attempt);
+    detail::collect(walk, retrying.accept);
+    return std::move(walk.documentation);
+}
+
+/// Documents a retry in the default vocabulary, which renames nothing.
+template <Dialect D = Dialect::Plain, Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+[[nodiscard]] Documentation document(Retry<R, Max, J, Start, A, P> const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
 /// Documents a conformity check: its rendering in dialect @p D, its citation
 /// when it has one -- the author's own, as a constraint's is -- and the
 /// symbol table of its subject.

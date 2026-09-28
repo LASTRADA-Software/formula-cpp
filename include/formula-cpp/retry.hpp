@@ -54,6 +54,7 @@
 #include <cstdint>
 #include <expected>
 #include <optional>
+#include <string_view>
 #include <type_traits>
 
 namespace formula
@@ -532,6 +533,73 @@ struct RetryFailure
     [[nodiscard]] constexpr bool operator==(RetryFailure const&) const noexcept = default;
 };
 
+/// How one attempt was judged, as a trace records it.
+enum class AttemptJudgement : std::uint8_t
+{
+    /// Not judged: the first attempt of a retry judged from the second, or
+    /// an attempt whose value failed.
+    NotJudged,
+    /// The acceptance held: the retry ends here with this attempt's value.
+    Accepted,
+    /// The acceptance did not hold: the next attempt runs, if one is allowed.
+    Rejected,
+    /// The attempt's value, or its judgement, was absent -- or the judgement
+    /// failed: the retry ends here.
+    NotJudgeable,
+};
+
+template <Described R>
+class RetryOutcome;
+
+/// What a sink that hears retries is told of one: plain data, so that a
+/// sink need know nothing of the retry's types.
+struct RetryInfo
+{
+    /// The most attempts it runs.
+    std::size_t attemptLimit;
+    /// From which attempt on it is judged.
+    FirstJudged firstJudged;
+    /// Why the method repeats here.
+    Citation citation;
+    /// The verdict it ends in when no attempt is accepted: author text.
+    std::string_view verdictLabel;
+};
+
+/// What a sink that hears attempts is told of one.
+struct AttemptInfo
+{
+    /// The attempt's number, from 1.
+    std::size_t attemptNumber;
+    /// The comparison the acceptance makes.
+    Comparison comparison;
+};
+
+namespace detail
+{
+    /// Whether @p Sink hears a retry: `retry_entered(info)` before the
+    /// starting value is evaluated, and `retry_produced(info, ended)` after
+    /// the last attempt, with what `checked_evaluate_retry` returns. Asked
+    /// for together, as a series' hooks are (`sink.hpp`).
+    template <typename Sink, typename R>
+    concept HearsRetry =
+        requires(Sink sink, RetryInfo const& info, std::expected<RetryOutcome<R>, RetryFailure> const& ended) {
+            sink.retry_entered(info);
+            sink.retry_produced(info, ended);
+        };
+
+    /// Whether @p Sink hears each attempt: `attempt_entered(info)` before it
+    /// runs, and `attempt_produced(info, produced, judgement, failure)` once
+    /// it has been judged -- or not.
+    template <typename Sink, typename Rep>
+    concept HearsAttempts = requires(Sink sink,
+                                     AttemptInfo const& info,
+                                     Evaluated<Rep> const& produced,
+                                     AttemptJudgement judgement,
+                                     std::optional<ArithmeticError> failure) {
+        sink.attempt_entered(info);
+        sink.attempt_produced(info, produced, judgement, failure);
+    };
+} // namespace detail
 /// How a retry ended, and in what. Built only by `checked_evaluate_retry`: no
 /// public constructor and no setters, so how it ended and where it was
 /// accepted are the library's to state (defect class 3).
@@ -689,6 +757,108 @@ template <typename Rep = Rational, Described R, typename Env, typename Sink = Nu
     return produced;
 }
 
+namespace detail
+{
+    /// The attempts themselves, for `checked_evaluate_retry`, which tells a
+    /// sink that hears retries (`HearsRetry`) before and after. A sink that
+    /// hears attempts (`HearsAttempts`) is told of each attempt that runs --
+    /// and of none that does not.
+    template <typename Rep,
+              typename R,
+              std::size_t Max,
+              FirstJudged J,
+              typename Start,
+              typename A,
+              typename P,
+              typename Env,
+              typename Sink>
+    [[nodiscard]] constexpr std::expected<RetryOutcome<R>, RetryFailure> run_retry(
+        Retry<R, Max, J, Start, A, P> const& retrying, Env const& environment, Sink& sink) noexcept
+    {
+        using Factory = RetryOutcomeFactory;
+
+        // No starting value: reading one at the first attempt is the
+        // author's mistake (R4), and says so.
+        Evaluated<Rep> before = std::unexpected { ArithmeticError::DomainError };
+        if constexpr (StartTraits<Start>::states)
+        {
+            before = dispatch<Rep>(retrying.start.expression, environment, sink);
+            if (!before.has_value())
+                return std::unexpected { RetryFailure { before.error(), 0 } };
+        }
+
+        // The one loop: at most Max attempts, and no other bound.
+        for (std::size_t k = 1; k <= Max; ++k)
+        {
+            AttemptInfo const attemptInfo { .attemptNumber = k, .comparison = P::comparison };
+            if constexpr (HearsAttempts<Sink, Rep>)
+                sink.attempt_entered(attemptInfo);
+            // Tells the sink how the attempt was judged, once, whichever way
+            // the attempt ends.
+            auto const told = [&](Evaluated<Rep> const& produced,
+                                  AttemptJudgement judgement,
+                                  std::optional<ArithmeticError> judgementFailure) {
+                if constexpr (HearsAttempts<Sink, Rep>)
+                    sink.attempt_produced(attemptInfo, produced, judgement, judgementFailure);
+                else
+                {
+                    (void) produced;
+                    (void) judgement;
+                    (void) judgementFailure;
+                }
+            };
+
+            AttemptEnvironment<Env, Rep, AttemptPhase::Attempting> const attempting { environment, k, before };
+            Evaluated<Rep> const produced = dispatch<Rep>(retrying.attempt, attempting, sink);
+            if (!produced.has_value())
+            {
+                told(produced, AttemptJudgement::NotJudged, std::nullopt);
+                return std::unexpected { RetryFailure { produced.error(), k - 1 } };
+            }
+            if (!produced->has_value())
+            {
+                told(produced, AttemptJudgement::NotJudgeable, std::nullopt);
+                return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
+            }
+
+            // Judged on the value the attempt produced, never on an
+            // intermediate; the first attempt of a retry judged from the
+            // second is not judged, which is not a rejection.
+            if (J == FirstJudged::AtSecondAttempt && k == 1)
+                told(produced, AttemptJudgement::NotJudged, std::nullopt);
+            else
+            {
+                AttemptEnvironment<Env, Rep, AttemptPhase::Judging> const judging { environment, k, before, **produced };
+                std::expected<std::optional<bool>, ArithmeticError> const held =
+                    checked_evaluate_predicate<Rep>(retrying.accept, judging, sink);
+                if (!held.has_value())
+                {
+                    told(produced, AttemptJudgement::NotJudgeable, held.error());
+                    return std::unexpected { RetryFailure { held.error(), k - 1 } };
+                }
+                if (!held->has_value())
+                {
+                    told(produced, AttemptJudgement::NotJudgeable, std::nullopt);
+                    return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
+                }
+                told(produced, **held ? AttemptJudgement::Accepted : AttemptJudgement::Rejected, std::nullopt);
+                if (**held)
+                {
+                    std::expected<Rational, ArithmeticError> const inDeclaredUnit =
+                        checked_convert(**produced, coherent(A::dimension), Describe<R>::unit);
+                    if (!inDeclaredUnit.has_value())
+                        return std::unexpected { RetryFailure { inDeclaredUnit.error(), k - 1 } };
+                    return Factory::make<R>(Outcome<R>::value(Measured<R> { *inDeclaredUnit }, ValueSource::Derived),
+                                            RetryEnd::Accepted,
+                                            k,
+                                            k - 1);
+                }
+            }
+            before = produced;
+        }
+        return Factory::make<R>(Outcome<R>::verdict(retrying.onExhausted), RetryEnd::Exhausted, Max, std::nullopt);
+    }
+} // namespace detail
 /// Runs @p retrying over @p environment: the starting value once, then
 /// attempt after attempt -- each judged from the attempt `J` says -- until
 /// one is accepted or the last allowed has run. See `RetryEnd` for the six
@@ -721,56 +891,16 @@ template <typename Rep = Rational,
                                 std::nullopt);
     else
     {
-        // No starting value: reading one at the first attempt is the
-        // author's mistake (R4), and says so.
-        Evaluated<Rep> before = std::unexpected { ArithmeticError::DomainError };
-        if constexpr (detail::StartTraits<Start>::states)
-        {
-            before = detail::dispatch<Rep>(retrying.start.expression, environment, sink);
-            if (!before.has_value())
-                return std::unexpected { RetryFailure { before.error(), 0 } };
-        }
-
-        // The one loop: at most Max attempts, and no other bound.
-        for (std::size_t k = 1; k <= Max; ++k)
-        {
-            detail::AttemptEnvironment<Env, Rep, AttemptPhase::Attempting> const attempting { environment, k, before };
-            Evaluated<Rep> const produced = detail::dispatch<Rep>(retrying.attempt, attempting, sink);
-            if (!produced.has_value())
-                return std::unexpected { RetryFailure { produced.error(), k - 1 } };
-            if (!produced->has_value())
-                return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
-
-            // Judged on the value the attempt produced, never on an
-            // intermediate; the first attempt of a retry judged from the
-            // second is not judged, which is not a rejection.
-            if (J == FirstJudged::AtFirstAttempt || k > 1)
-            {
-                detail::AttemptEnvironment<Env, Rep, AttemptPhase::Judging> const judging {
-                    environment, k, before, **produced
-                };
-                std::expected<std::optional<bool>, ArithmeticError> const held =
-                    checked_evaluate_predicate<Rep>(retrying.accept, judging, sink);
-                if (!held.has_value())
-                    return std::unexpected { RetryFailure { held.error(), k - 1 } };
-                if (!held->has_value())
-                    return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
-                if (**held)
-                {
-                    std::expected<Rational, ArithmeticError> const inDeclaredUnit =
-                        checked_convert(**produced, coherent(A::dimension), Describe<R>::unit);
-                    if (!inDeclaredUnit.has_value())
-                        return std::unexpected { RetryFailure { inDeclaredUnit.error(), k - 1 } };
-                    return Factory::make<R>(Outcome<R>::value(Measured<R> { *inDeclaredUnit }, ValueSource::Derived),
-                                            RetryEnd::Accepted,
-                                            k,
-                                            k - 1);
-                }
-            }
-            before = produced;
-        }
-        return Factory::make<R>(Outcome<R>::verdict(retrying.onExhausted), RetryEnd::Exhausted, Max, std::nullopt);
+        RetryInfo const retryInfo {
+            .attemptLimit = Max, .firstJudged = J, .citation = retrying.citation, .verdictLabel = retrying.onExhausted.label
+        };
+        if constexpr (detail::HearsRetry<Sink, R>)
+            sink.retry_entered(retryInfo);
+        std::expected<RetryOutcome<R>, RetryFailure> const ended =
+            detail::run_retry<Rep, R, Max, J, Start, A, P>(retrying, environment, sink);
+        if constexpr (detail::HearsRetry<Sink, R>)
+            sink.retry_produced(retryInfo, ended);
+        return ended;
     }
 }
-
 } // namespace formula

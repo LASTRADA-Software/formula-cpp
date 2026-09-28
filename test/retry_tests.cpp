@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/document.hpp>
+#include <formula-cpp/render.hpp>
 #include <formula-cpp/retry.hpp>
+#include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -7,6 +11,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace
 {
@@ -251,4 +258,236 @@ TEST_CASE("the attempt's environment answers every member of Environment", "[ret
     STATIC_REQUIRE(Attempting::provides<Reading> && !Attempting::is_entered<Reading>);
     STATIC_REQUIRE(wrapped.get<Reading>().value() == rat(127));
     STATIC_REQUIRE(wrapped.source_of<Reading>() == specimen.source_of<Reading>());
+}
+
+namespace
+{
+constexpr auto fourAttempts =
+    formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, settled, repeat, cite);
+constexpr auto threeAttempts =
+    formula::retry<Estimate, 3, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, settled, repeat, cite);
+
+std::size_t count_kind(formula::Trace<> const& recorded, formula::StepKind wanted)
+{
+    std::size_t found = 0;
+    for (formula::Step<> const& each: recorded.steps)
+        if (each.kind == wanted)
+            ++found;
+    return found;
+}
+
+std::vector<formula::AttemptJudgement> judgements(formula::Trace<> const& recorded)
+{
+    std::vector<formula::AttemptJudgement> judged;
+    for (formula::AttemptStepData const& row: recorded.attemptSteps)
+        judged.push_back(row.judgement);
+    return judged;
+}
+
+// The first three attempts of the fixpoint, as the trace shows them: the same
+// for the four-attempt retry and the three-attempt one. Computed steps read in
+// the coherent unit, as everywhere in a trace.
+constexpr std::string_view firstThreeAttempts = "1. 0 g\n"
+                                                "2. 152/25 g\n"
+                                                "3. w(k-1) = 0 g\n"
+                                                "4. 2\n"
+                                                "5. #3 / #4 = 0\n"
+                                                "6. #2 + #5 = 19/3125\n"
+                                                "7. w(k-1) = 0 g\n"
+                                                "8. w(k) = 152/25 g\n"
+                                                "9. #7 - #8 = -19/3125\n"
+                                                "10. -19/25 g\n"
+                                                "11. attempt 1: w(k) = #6 = 152/25 g; judged #9 >= #10: rejected\n"
+                                                "12. 152/25 g\n"
+                                                "13. w(k-1) = 152/25 g\n"
+                                                "14. 2\n"
+                                                "15. #13 / #14 = 19/6250\n"
+                                                "16. #12 + #15 = 57/6250\n"
+                                                "17. w(k-1) = 152/25 g\n"
+                                                "18. w(k) = 228/25 g\n"
+                                                "19. #17 - #18 = -19/6250\n"
+                                                "20. -19/25 g\n"
+                                                "21. attempt 2: w(k) = #16 = 228/25 g; judged #19 >= #20: rejected\n"
+                                                "22. 152/25 g\n"
+                                                "23. w(k-1) = 228/25 g\n"
+                                                "24. 2\n"
+                                                "25. #23 / #24 = 57/12500\n"
+                                                "26. #22 + #25 = 133/12500\n"
+                                                "27. w(k-1) = 228/25 g\n"
+                                                "28. w(k) = 266/25 g\n"
+                                                "29. #27 - #28 = -19/12500\n"
+                                                "30. -19/25 g\n"
+                                                "31. attempt 3: w(k) = #26 = 266/25 g; judged #29 >= #30: rejected\n";
+} // namespace
+
+TEST_CASE("every attempt of an accepted retry is in the trace, and how it ended", "[retry][trace]")
+{
+    auto const accepted = formula::explain_retry(fourAttempts, nothing);
+    REQUIRE(accepted.outcome.has_value());
+    CHECK(accepted.outcome->end() == formula::RetryEnd::Accepted);
+    // Exactly four attempts: three rejected, the fourth accepted -- accepted
+    // because it was, as the exhausted retry below, whose last attempt is
+    // rejected, shows.
+    CHECK(count_kind(accepted.trace, formula::StepKind::RetryAttempt) == 4);
+    CHECK(count_kind(accepted.trace, formula::StepKind::RetryConcluded) == 1);
+    CHECK(judgements(accepted.trace)
+          == std::vector<formula::AttemptJudgement> { formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Accepted });
+    CHECK(formula::render_trace(accepted.trace, { .maxSteps = 100 })
+          == std::string { firstThreeAttempts }
+                 + "32. 152/25 g\n"
+                   "33. w(k-1) = 266/25 g\n"
+                   "34. 2\n"
+                   "35. #33 / #34 = 133/25000\n"
+                   "36. #32 + #35 = 57/5000\n"
+                   "37. w(k-1) = 266/25 g\n"
+                   "38. w(k) = 57/5 g\n"
+                   "39. #37 - #38 = -19/25000\n"
+                   "40. -19/25 g\n"
+                   "41. attempt 4: w(k) = #36 = 57/5 g; judged #39 >= #40: accepted\n"
+                   "42. w = retry: accepted at attempt 4 of 4 = 57/5 g [Settled estimate, Example Standard 12, 6]\n");
+    // The retry's step claims the starting value and the four attempts.
+    formula::RetryStepData const* const concluded = formula::retry_data(accepted.trace, accepted.trace.root());
+    REQUIRE(concluded != nullptr);
+    CHECK(concluded->end == formula::RetryEnd::Accepted);
+    CHECK(concluded->attemptLimit == 4);
+    CHECK(accepted.trace.steps[accepted.trace.root()].operands == std::vector<std::size_t> { 0, 10, 20, 30, 40 });
+}
+
+TEST_CASE("an exhausted retry shows every attempt rejected, and its verdict", "[retry][trace]")
+{
+    auto const exhausted = formula::explain_retry(threeAttempts, nothing);
+    CHECK(count_kind(exhausted.trace, formula::StepKind::RetryAttempt) == 3);
+    CHECK(judgements(exhausted.trace)
+          == std::vector<formula::AttemptJudgement> { formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Rejected });
+    CHECK(formula::render_trace(exhausted.trace, { .maxSteps = 100 })
+          == std::string { firstThreeAttempts }
+                 + "32. w = retry: exhausted after 3 of 3: repeat the determination [Settled estimate, Example "
+                   "Standard 12, 6]\n");
+}
+
+TEST_CASE("a failed attempt ends the trace: no step for an attempt that did not run", "[retry][trace]")
+{
+    constexpr auto dividing = formula::constant<unit::Gram>(rat(152, 25)) / (formula::attempt_number - rat(2));
+    constexpr auto never = formula::this_attempt<Estimate> > formula::constant<unit::Gram>(rat(100'000));
+    auto const failed = formula::explain_retry(
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(dividing, never, repeat, cite), nothing);
+    REQUIRE(!failed.outcome.has_value());
+    CHECK(count_kind(failed.trace, formula::StepKind::RetryAttempt) == 2);
+    for (formula::AttemptStepData const& row: failed.trace.attemptSteps)
+        CHECK(row.attemptNumber <= 2);
+    CHECK(formula::render_trace(failed.trace, { .maxSteps = 100 })
+          == "1. 152/25 g\n"
+             "2. k = 1\n"
+             "3. 2\n"
+             "4. #2 - #3 = -1\n"
+             "5. #1 / #4 = -19/3125\n"
+             "6. w(k) = -152/25 g\n"
+             "7. 100000 g\n"
+             "8. attempt 1: w(k) = #5 = -152/25 g; judged #6 > #7: rejected\n"
+             "9. 152/25 g\n"
+             "10. k = 2\n"
+             "11. 2\n"
+             "12. #10 - #11 = 0\n"
+             "13. #9 / #12 = division by zero\n"
+             "14. attempt 2: w(k) = #13 = division by zero\n"
+             "15. w = retry: failed at attempt 2: division by zero [Settled estimate, Example Standard 12, 6]\n");
+}
+
+TEST_CASE("a previous attempt read with nothing before it says so in the trace", "[retry][trace]")
+{
+    auto const noStart = formula::explain_retry(
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(halving, settled, repeat, cite), nothing);
+    std::string const text = formula::render_trace(noStart.trace, { .maxSteps = 100 });
+    CHECK(text.find("2. w(k-1) = previous attempt: none before attempt 1\n") != std::string::npos);
+    CHECK(text.ends_with("w = retry: failed at attempt 1: argument outside the domain of the operation "
+                         "[Settled estimate, Example Standard 12, 6]\n"));
+}
+
+TEST_CASE("a retry longer than the render budget says how much was cut, and the trace keeps every attempt", "[retry][trace]")
+{
+    // Rising by less each time, but always rising: never accepted.
+    constexpr auto flat =
+        formula::previous_attempt<Estimate> - formula::this_attempt<Estimate> >= formula::constant<unit::Gram>(rat(0));
+    constexpr auto sixteen =
+        formula::retry<Estimate, 16, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, flat, repeat, cite);
+    auto const longRun = formula::explain_retry(sixteen, nothing);
+    REQUIRE(longRun.outcome.has_value());
+    CHECK(longRun.outcome->end() == formula::RetryEnd::Exhausted);
+    CHECK(count_kind(longRun.trace, formula::StepKind::RetryAttempt) == 16);
+    std::string const text = formula::render_trace(longRun.trace, { .maxSteps = 10 });
+    std::size_t lineCount = 0;
+    for (char const each: text)
+        if (each == '\n')
+            ++lineCount;
+    CHECK(lineCount == 11); // ten steps and the footer
+    CHECK(text.ends_with("... " + std::to_string(longRun.trace.steps.size() - 10) + " further steps not shown\n"));
+}
+
+TEST_CASE("a result entered by a person leaves the retry's trace empty", "[retry][trace]")
+{
+    constexpr auto typedIn = formula::environment(formula::entered(formula::Measured<Estimate> { rat(113, 10) }));
+    auto const entered = formula::explain_retry(fourAttempts, typedIn);
+    REQUIRE(entered.outcome.has_value());
+    CHECK(entered.outcome->end() == formula::RetryEnd::ManuallyEntered);
+    CHECK(entered.trace.empty());
+}
+
+TEST_CASE("a retry renders its attempt, starting value, acceptance and verdict in every dialect", "[retry][render]")
+{
+    CHECK(formula::render(fourAttempts)
+          == "up to 4 attempts: w(k) = 152/25 g + w(k-1) / 2, starting from w(0) = 0 g; accept when w(k-1) - w(k) "
+             ">= -19/25 g; otherwise: repeat the determination");
+    CHECK(formula::render<formula::Dialect::Markdown>(fourAttempts)
+          == "up to 4 attempts: `w(k)` = 152/25 g + `w(k-1)` / 2, starting from `w(0)` = 0 g; accept when `w(k-1)` - "
+             "`w(k)` >= -19/25 g; otherwise: repeat the determination");
+    CHECK(formula::render<formula::Dialect::LaTeX>(fourAttempts)
+          == "\\mathrm{up\\ to\\ 4\\ attempts:}\\ {w}_{k} = 152/25\\,\\mathrm{g} + \\frac{{w}_{k-1}}{2},\\ "
+             "\\mathrm{starting\\ from}\\ {w}_{0} = 0\\,\\mathrm{g};\\ \\mathrm{accept\\ when}\\ {w}_{k-1} - {w}_{k} "
+             "\\geq -19/25\\,\\mathrm{g};\\ \\mathrm{otherwise:}\\ \\mathrm{repeat\\ the\\ determination}");
+    // Judged from the second attempt, with no starting value, it says so.
+    constexpr auto fromSecond =
+        formula::retry<Estimate, 3, formula::FirstJudged::AtSecondAttempt>(halving, settled, repeat, cite);
+    CHECK(formula::render(fromSecond)
+          == "up to 3 attempts: w(k) = 152/25 g + w(k-1) / 2; accept from attempt 2 when w(k-1) - w(k) >= -19/25 g; "
+             "otherwise: repeat the determination");
+    CHECK(formula::render(formula::attempt_number * rat(2)) == "k * 2");
+}
+
+TEST_CASE("a retry's page lists its citation and its result as iterated", "[retry][document]")
+{
+    constexpr auto measuredStep = formula::var<StepSize> + formula::previous_attempt<Estimate> / rat(2);
+    constexpr auto stepped =
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, measuredStep, settled, repeat, cite);
+    formula::Documentation const page = formula::document(stepped);
+    REQUIRE(page.citations.size() == 1);
+    CHECK(page.citations[0].reference == "Example Standard 12");
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "w");
+    CHECK(page.symbols[0].description
+          == "an invented iterated estimate (iterated: the value of the attempt a retry accepted)");
+    CHECK(page.symbols[0].shape == formula::ValueShape::Single);
+    CHECK(page.symbols[1].symbol == "s_w");
+    CHECK(page.symbols[1].description == "an invented step");
+    CHECK(page.formula == formula::render(stepped));
+}
+
+TEST_CASE("a scoped vocabulary renames a retry's result in the trace, the render and the page", "[retry][vocabulary]")
+{
+    constexpr auto north = formula::vocabulary(formula::renames<Estimate>("m"));
+    auto const renamed = formula::explain_retry(fourAttempts, nothing, north);
+    std::string const text = formula::render_trace(renamed.trace, { .maxSteps = 100 });
+    CHECK(text.find("w(") == std::string::npos);
+    CHECK(text.find("w =") == std::string::npos);
+    CHECK(text.find("41. attempt 4: m(k) = #36 = 57/5 g; judged #39 >= #40: accepted\n") != std::string::npos);
+    CHECK(text.find("42. m = retry: accepted at attempt 4 of 4") != std::string::npos);
+    CHECK(formula::render(fourAttempts, north).find("m(k) = 152/25 g + m(k-1) / 2, starting from m(0) = 0 g")
+          != std::string::npos);
+    formula::Documentation const page = formula::document(fourAttempts, north);
+    CHECK(page.symbols[0].symbol == "m");
+    CHECK(page.formula.find("w(") == std::string::npos);
 }

@@ -106,6 +106,15 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 /// `opaque_produced(info, result)` after `compute`, asked for together
 /// (`detail::HearsOpaque`); `info` is an `OpaqueCallInfo`, plain data. Each
 /// output used is a `Node`, and is told through `entered` and `produced`.
+///
+/// **A retry (`retry.hpp`) reaches a sink the same way**, through two optional
+/// pairs, each asked for together: `retry_entered(info)` before its starting
+/// value and `retry_produced(info, ended)` after its last attempt, with what
+/// `checked_evaluate_retry` returns (`detail::HearsRetry`); and
+/// `attempt_entered(info)` and `attempt_produced(info, produced, judgement,
+/// failure)` around each attempt that runs (`detail::HearsAttempts`). `info`
+/// is a `RetryInfo` or an `AttemptInfo`, plain data. The attempt's nodes are
+/// told through `entered` and `produced`.
 struct NullSink
 {
     /// Told that a node is about to be evaluated, and does nothing with it.

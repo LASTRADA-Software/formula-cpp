@@ -24,6 +24,7 @@
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/opaque.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/record.hpp>
@@ -456,6 +457,27 @@ enum class StepKind : std::uint8_t
     /// `Trace::opaqueOutputSteps`. The node is `OpaqueOutputNode` and its
     /// factory `opaque_output`, so no name here is spelt `OpaqueOutput` twice.
     OpaqueOutput,
+    /// One attempt of a retry (`retry.hpp`): its value, in `Step::value`, and
+    /// how it was judged. Its operands are the attempt's derivation and, when
+    /// it was judged, the acceptance's two sides, whose comparison is in
+    /// `Step::comparison`; its number and its judgement are in
+    /// `Trace::attemptSteps`. Recorded for an attempt that ran, and for none
+    /// that did not.
+    RetryAttempt,
+    /// How a retry ended: its value when an attempt was accepted, its error
+    /// when one failed, and its citation. Its operands are the starting
+    /// value's step, when there is one, and then every attempt's; how it
+    /// ended, the attempt limit and the verdict it would end in are in
+    /// `Trace::retrySteps`.
+    RetryConcluded,
+    /// The attempt's number, k (`attempt_number`).
+    AttemptNumber,
+    /// The previous attempt's value (`previous_attempt<R>`), or the starting
+    /// value's; at the first attempt of a retry with no starting value, its
+    /// own `DomainError`, which reads as none before attempt 1.
+    PreviousAttempt,
+    /// The value the attempt being judged produced (`this_attempt<R>`).
+    ThisAttempt,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1348,6 +1370,33 @@ struct OpaqueOutputStepData
     std::size_t outputIndex {};
 };
 
+/// What a `RetryAttempt` step carries beyond its `Step`, keyed by its index
+/// in `Trace::steps`: 24 bytes, so that no other step pays for them.
+struct AttemptStepData
+{
+    /// The index, in `Trace::steps`, of the `RetryAttempt` step.
+    std::size_t step {};
+    /// The attempt's number, from 1.
+    std::size_t attemptNumber {};
+    /// How it was judged.
+    AttemptJudgement judgement {};
+};
+
+/// What a `RetryConcluded` step carries beyond its `Step`, keyed by its index
+/// in `Trace::steps`.
+struct RetryStepData
+{
+    /// The index, in `Trace::steps`, of the `RetryConcluded` step.
+    std::size_t step {};
+    /// The most attempts the retry allowed.
+    std::size_t attemptLimit {};
+    /// How it ended.
+    RetryEnd end {};
+    /// The verdict it ends in when no attempt is accepted: author text,
+    /// escaped where a line is rendered.
+    std::string_view verdictLabel {};
+};
+
 /// A recorded derivation: a flat arena of steps.
 template <typename Rep = Rational>
 struct Trace
@@ -1477,6 +1526,12 @@ struct Trace
     /// `opaqueSteps` is.
     std::vector<OpaqueOutputStepData> opaqueOutputSteps {};
 
+    /// Each retry attempt's number and judgement, keyed as `opaqueSteps` is.
+    std::vector<AttemptStepData> attemptSteps {};
+
+    /// How each retry ended, keyed as `opaqueSteps` is.
+    std::vector<RetryStepData> retrySteps {};
+
     /// The index of the outermost step -- the one nothing else consumed.
     ///
     /// A `Trace` may hold more than one walk's steps: constructing a
@@ -1516,6 +1571,28 @@ template <typename Rep>
 [[nodiscard]] OpaqueOutputStepData const* opaque_output_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
 {
     for (OpaqueOutputStepData const& kept: trace.opaqueOutputSteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
+
+/// What @p trace recorded for the retry attempt whose step is at
+/// @p stepIndex, or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] AttemptStepData const* attempt_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (AttemptStepData const& kept: trace.attemptSteps)
+        if (kept.step == stepIndex)
+            return &kept;
+    return nullptr;
+}
+
+/// What @p trace recorded for the retry whose concluding step is at
+/// @p stepIndex, or null when that step is not one.
+template <typename Rep>
+[[nodiscard]] RetryStepData const* retry_data(Trace<Rep> const& trace, std::size_t stepIndex) noexcept
+{
+    for (RetryStepData const& kept: trace.retrySteps)
         if (kept.step == stepIndex)
             return &kept;
     return nullptr;
@@ -1786,6 +1863,24 @@ namespace detail
     struct StepKindOf<OpaqueOutputNode<I, Call, Origin>>
     {
         static constexpr StepKind value = StepKind::OpaqueOutput;
+    };
+
+    template <>
+    struct StepKindOf<AttemptNumberNode>
+    {
+        static constexpr StepKind value = StepKind::AttemptNumber;
+    };
+
+    template <Described R>
+    struct StepKindOf<PreviousAttemptNode<R>>
+    {
+        static constexpr StepKind value = StepKind::PreviousAttempt;
+    };
+
+    template <Described R>
+    struct StepKindOf<ThisAttemptNode<R>>
+    {
+        static constexpr StepKind value = StepKind::ThisAttempt;
     };
 
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
@@ -2736,7 +2831,9 @@ class RecordingSink
         // `Q`'s declared unit.
         constexpr bool namesQuantity = detail::StepKindOf<N>::value == StepKind::Variable
                                        || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
-                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity;
+                                       || detail::StepKindOf<N>::value == StepKind::DerivedQuantity
+                                       || detail::StepKindOf<N>::value == StepKind::PreviousAttempt
+                                       || detail::StepKindOf<N>::value == StepKind::ThisAttempt;
         nodeStep.unit = coherent(N::dimension);
         if constexpr (namesQuantity || detail::StepKindOf<N>::value == StepKind::PrecisionLevel)
             nodeStep.unit = Describe<typename N::quantity>::unit;
@@ -3674,6 +3771,122 @@ class RecordingSink
         _trace->opaqueSteps.push_back(std::move(callRow));
     }
 
+    /// Told that a retry is about to evaluate its starting value. Remembers
+    /// where the arena stood, so that `retry_produced` claims the starting
+    /// value's step and every attempt's.
+    void retry_entered(RetryInfo const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Told that an attempt is about to run. Remembers where the arena stood,
+    /// so that `attempt_produced` claims the attempt's derivation and its
+    /// judgement's.
+    void attempt_entered(AttemptInfo const&)
+    {
+        _trace->marks.push_back(_trace->steps.size());
+    }
+
+    /// Records one `RetryAttempt` step for the attempt @p attemptInfo
+    /// describes, claiming the steps recorded since the matching
+    /// `attempt_entered`: its value, or its error or its judgement's, and
+    /// how it was judged, in `Trace::attemptSteps`. Its unit and symbol are
+    /// the retry's result's, set by `retry_produced`, which knows it.
+    void attempt_produced(AttemptInfo const& attemptInfo,
+                          Evaluated<Rep> const& produced,
+                          AttemptJudgement judgement,
+                          std::optional<ArithmeticError> judgementFailure)
+    {
+        // Told what a walk produced without having been told it began: see
+        // `produced`.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const attemptMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> attemptStep {};
+        attemptStep.kind = StepKind::RetryAttempt;
+        attemptStep.comparison = attemptInfo.comparison;
+        if (!produced.has_value())
+            attemptStep.error = produced.error();
+        else if (judgementFailure.has_value())
+            attemptStep.error = *judgementFailure;
+        if (produced.has_value() && produced->has_value())
+            attemptStep.value = **produced;
+
+        // Everything unclaimed from `attemptMark` onwards belongs to this
+        // attempt -- see `produced` above for why this is a `while`.
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < attemptMark)
+            ++firstClaimed;
+        attemptStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        _trace->steps.push_back(std::move(attemptStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        _trace->attemptSteps.push_back(AttemptStepData {
+            .step = _trace->steps.size() - 1, .attemptNumber = attemptInfo.attemptNumber, .judgement = judgement });
+    }
+
+    /// Records one `RetryConcluded` step for the retry @p retryInfo
+    /// describes, claiming the starting value's step and every attempt's, from
+    /// what `checked_evaluate_retry` returned, @p ended, and nothing else:
+    /// how it ended, its value or its error, and its citation. Gives every
+    /// attempt step it claims the result's dimension, unit and symbol.
+    template <Described R>
+    void retry_produced(RetryInfo const& retryInfo, std::expected<RetryOutcome<R>, RetryFailure> const& ended)
+    {
+        // Told what a walk produced without having been told it began: see
+        // `produced`.
+        if (_trace->marks.empty())
+            return;
+        std::size_t const retryMark = _trace->marks.back();
+        _trace->marks.pop_back();
+
+        Step<Rep> retryStep {};
+        retryStep.kind = StepKind::RetryConcluded;
+        retryStep.dimension = Describe<R>::dimension;
+        retryStep.unit = Describe<R>::unit;
+        retryStep.symbol = symbol_of<R>(_vocabulary);
+        retryStep.citation = retryInfo.citation;
+
+        RetryStepData retryRow { .attemptLimit = retryInfo.attemptLimit, .verdictLabel = retryInfo.verdictLabel };
+        if (!ended.has_value())
+        {
+            retryStep.error = ended.error().error;
+            retryRow.end = RetryEnd::Failed;
+        }
+        else
+        {
+            retryRow.end = ended->end();
+            Measured<R> const measurement = ended->outcome().measurement();
+            if (ended->end() == RetryEnd::Accepted && measurement.has_value())
+                if (std::expected<Rational, ArithmeticError> const inCoherentUnit =
+                        checked_convert(measurement.value(), Describe<R>::unit, coherent(Describe<R>::dimension));
+                    inCoherentUnit.has_value())
+                    retryStep.value = *inCoherentUnit;
+        }
+
+        auto firstClaimed = _trace->unclaimed.begin();
+        while (firstClaimed != _trace->unclaimed.end() && *firstClaimed < retryMark)
+            ++firstClaimed;
+        retryStep.operands.assign(firstClaimed, _trace->unclaimed.end());
+        _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
+
+        for (std::size_t const claimed: retryStep.operands)
+            if (_trace->steps[claimed].kind == StepKind::RetryAttempt)
+            {
+                _trace->steps[claimed].dimension = Describe<R>::dimension;
+                _trace->steps[claimed].unit = Describe<R>::unit;
+                _trace->steps[claimed].symbol = retryStep.symbol;
+            }
+
+        _trace->steps.push_back(std::move(retryStep));
+        _trace->unclaimed.push_back(_trace->steps.size() - 1);
+        retryRow.step = _trace->steps.size() - 1;
+        _trace->retrySteps.push_back(retryRow);
+    }
+
   private:
     /// A rejection step of @p stepKind, in the dimension and unit of the
     /// rejection's sample -- its own step's, once known -- so that a mean or
@@ -3901,4 +4114,40 @@ checked_explain(Expression const& expression, Env const& environment, V const& v
     return Explained<Result, Rep> { *checked, std::move(recorded) };
 }
 
+/// A retry's result together with every attempt that produced it.
+template <Described R>
+struct ExplainedRetry
+{
+    /// Exactly what `checked_evaluate_retry` returned, failure included.
+    std::expected<RetryOutcome<R>, RetryFailure> outcome;
+    /// How it was reached: the starting value, every attempt that ran with
+    /// its judgement, and how the retry ended -- **empty** when the result
+    /// was entered by a person, since no attempt ran. See `explain`'s comment
+    /// on the same case.
+    Trace<Rational> trace {};
+};
+
+/// Evaluates @p retrying and records how, writing every symbol as
+/// @p vocabulary says -- the retry counterpart of `explain`. The outcome is
+/// identical to `checked_evaluate_retry(retrying, environment)`: tracing
+/// observes, it does not participate.
+template <typename Rep = Rational,
+          Described R,
+          std::size_t Max,
+          FirstJudged J,
+          typename Start,
+          typename A,
+          typename P,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedRetry<R> explain_retry(Retry<R, Max, J, Start, A, P> const& retrying,
+                                              Env const& environment,
+                                              V const& vocabulary = V {})
+{
+    static_assert(detail::RequireExactRetry<Rep>::value);
+    Trace<Rational> recorded {};
+    std::expected<RetryOutcome<R>, RetryFailure> retryOutcome =
+        checked_evaluate_retry<Rational>(retrying, environment, RecordingSink<Rational, V> { recorded, vocabulary });
+    return ExplainedRetry<R> { std::move(retryOutcome), std::move(recorded) };
+}
 } // namespace formula
