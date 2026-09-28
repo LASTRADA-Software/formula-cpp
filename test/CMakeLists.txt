@@ -82,6 +82,7 @@ add_executable(formula-cpp-tests
     lineage_tests.cpp
     record_render_tests.cpp
     record_join_tests.cpp
+    record_statistics_tests.cpp
     record_cross_tu_b.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)

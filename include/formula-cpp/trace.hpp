@@ -3063,6 +3063,7 @@ class RecordingSink
         _trace->precisionBindings.push_back(
             detail::PrecisionBinding { .kind = precisionKind, .levelStep = levelIndex, .pendingRecords = { recordIndex } });
 
+        stamp_origin(levelStep);
         _trace->steps.push_back(std::move(levelStep));
         _trace->unclaimed.push_back(levelIndex);
     }
@@ -3410,6 +3411,7 @@ class RecordingSink
         std::size_t const stepIndex = _trace->steps.size();
         rejectionRecord.step = stepIndex;
         _trace->rejectionRecords.push_back(std::move(rejectionRecord));
+        stamp_origin(rejectionStep);
         _trace->steps.push_back(std::move(rejectionStep));
         _trace->unclaimed.push_back(stepIndex);
     }
@@ -3419,9 +3421,11 @@ class RecordingSink
     /// step says which record it was read from. Called by every path that
     /// records a step -- a node's, a lineage attribute's, a series', a
     /// curve's, raw observations', a constraint's, a conformity check's, a
-    /// variant selection's and an acceptance check's -- so that a recording
-    /// path added later, as phase 12's series paths were, has one rule to
-    /// follow rather than one to forget. Outside every scope it sets nothing.
+    /// variant selection's, an acceptance check's, a precision level's first
+    /// pass and a rejection's passes, rejections and verdict -- so that a
+    /// recording path added later, as phase 12's series paths and phase 13's
+    /// statistics paths were, has one rule to follow rather than one to
+    /// forget. Outside every scope it sets nothing.
     ///
     /// **The rule for every recording path, present and future:** a path
     /// that appends to `Trace::steps` calls this on its step first. A path
