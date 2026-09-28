@@ -40,6 +40,8 @@ add_executable(formula-cpp-tests
     fixed_string_tests.cpp
     quantity_tests.cpp
     quantity_cross_tu_b.cpp
+    quantity_alias_tests.cpp
+    quantity_alias_cross_tu_b.cpp
     measured_tests.cpp
     outcome_tests.cpp
     environment_tests.cpp
@@ -322,6 +324,16 @@ formula_add_negative_test(environment_duplicate_quantity
     "supplies the same quantity more than once")
 
 formula_add_negative_test(environment_missing_quantity
+    "provides no value for this quantity")
+
+# The two refusals above, for quantities declared by alias
+# (`using Q = formula::Quantity<struct QTag, ...>`). The message is the
+# library's either way; what the compiler prints around it differs -- cl
+# usually keeps the alias's name, g++ and clang print the specialisation, tag
+# first. See `quantity.hpp`.
+formula_add_negative_test(quantity_alias_add_dimension_mismatch
+    "the two sides of this addition or subtraction measure different")
+formula_add_negative_test(quantity_alias_environment_missing
     "provides no value for this quantity")
 
 formula_add_negative_test(evaluate_result_dimension_mismatch
