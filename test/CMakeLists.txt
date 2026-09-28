@@ -2243,10 +2243,12 @@ formula_add_negative_test(retry_previous_outside
 # are what they say.
 formula_add_negative_test(retry_previous_other_quantity
     "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
-    REJECT "only meaningful inside a retry" "does not compute the dimension")
+    EXPECT_COUNT 1
+    REJECT "only meaningful inside a retry" "does not compute the dimension" "template arguments of RequireRetriedQuantity")
 formula_add_negative_test(retry_previous_other_dimension
     "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
-    REJECT "only meaningful inside a retry" "does not compute the dimension")
+    EXPECT_COUNT 1
+    REJECT "only meaningful inside a retry" "does not compute the dimension" "template arguments of RequireRetriedQuantity")
 formula_add_negative_test(retry_context_in_starting_value
     "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
     REJECT "only meaningful inside a retry" "no matching")
@@ -2268,7 +2270,14 @@ formula_add_negative_test(retry_as_variant
 formula_add_negative_test(retry_in_arithmetic
     "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
     REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
-
+formula_add_negative_test(retry_render_other_quantity
+    "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
+    EXPECT_COUNT 1
+    REJECT "template arguments of RequireRetriedQuantity" "does not compute the dimension")
+formula_add_negative_test(retry_compared
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    EXPECT_COUNT 1
+    REJECT "no match for" "invalid operands" "no matching")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

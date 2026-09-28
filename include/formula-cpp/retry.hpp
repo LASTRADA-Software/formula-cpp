@@ -385,7 +385,7 @@ namespace detail
     template <typename Q, typename Env>
     struct RequireRetriedQuantity
     {
-        static_assert(std::is_same_v<Q, typename AttemptEnvironmentTraits<Env>::retried>,
+        static_assert(std::is_same_v<std::remove_cv_t<Q>, std::remove_cv_t<typename AttemptEnvironmentTraits<Env>::retried>>,
                       "formula: previous_attempt and this_attempt name the retry's own result quantity; this one "
                       "names another -- both appear in this diagnostic as the template arguments of "
                       "RequireRetriedQuantity");
@@ -526,6 +526,88 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// Whether the type @p T -- a node, or any type a node is built from --
+    /// holds a `previous_attempt<Q>` or a `this_attempt<Q>` whose `Q` is not
+    /// @p R, cv-qualification aside. A walk over types, not values, so that
+    /// a retry is refused where it is written, and `render` and `document`
+    /// never print another quantity's label for the retry's own value.
+    ///
+    /// Structural: it looks into every type argument of a class template
+    /// whose parameters are types, or a few values followed by types, or a
+    /// type followed by values -- every shape a node of this library has --
+    /// and stops at anything else. It knows no node kind but the two context
+    /// nodes, so a node added later is walked without an entry here. One
+    /// whose parameters take another shape is not looked into, and a
+    /// misnamed context node inside it is still refused where it is
+    /// evaluated (`RequireRetriedQuantity`).
+    template <typename R, typename T>
+    struct NamesAnotherQuantity: std::false_type
+    {
+    };
+
+    /// Whether @p T itself is a context node naming a quantity other than
+    /// @p R. Asked by the walk's own specialisation below, rather than being
+    /// one of its own, so that exactly one specialisation of the walk matches
+    /// any type: `PreviousAttemptNode<Q>` is also a `T<Args...>`.
+    template <typename R, typename T>
+    inline constexpr bool isMisnamedContextNode = false;
+
+    template <typename R, typename Q>
+    inline constexpr bool isMisnamedContextNode<R, PreviousAttemptNode<Q>> =
+        !std::is_same_v<std::remove_cv_t<Q>, std::remove_cv_t<R>>;
+
+    template <typename R, typename Q>
+    inline constexpr bool isMisnamedContextNode<R, ThisAttemptNode<Q>> =
+        !std::is_same_v<std::remove_cv_t<Q>, std::remove_cv_t<R>>;
+
+    template <typename R, template <typename...> class T, typename... Args>
+    struct NamesAnotherQuantity<R, T<Args...>>:
+        std::bool_constant<isMisnamedContextNode<R, T<Args...>>
+                           || (NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    template <typename R, template <auto, typename...> class T, auto V, typename... Args>
+    struct NamesAnotherQuantity<R, T<V, Args...>>:
+        std::bool_constant<(NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    template <typename R, template <auto, auto, typename...> class T, auto V, auto W, typename... Args>
+    struct NamesAnotherQuantity<R, T<V, W, Args...>>:
+        std::bool_constant<(NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    template <typename R, template <auto, auto, auto, typename...> class T, auto V, auto W, auto X, typename... Args>
+    struct NamesAnotherQuantity<R, T<V, W, X, Args...>>:
+        std::bool_constant<(NamesAnotherQuantity<R, std::remove_cv_t<Args>>::value || ...)>
+    {
+    };
+
+    // At least one value: with none, `T<Arg>` would also match `T<Args...>`
+    // above, and clang finds the two ambiguous.
+    template <typename R, template <typename, auto, auto...> class T, typename Arg, auto Value, auto... Values>
+    struct NamesAnotherQuantity<R, T<Arg, Value, Values...>>: NamesAnotherQuantity<R, std::remove_cv_t<Arg>>
+    {
+    };
+
+    /// Fails to compile when a retry's attempt or acceptance reads
+    /// `previous_attempt<Q>` or `this_attempt<Q>` for a `Q` that is not its
+    /// result quantity, where the retry is built -- so that `render` and
+    /// `document`, which never evaluate it, are refused too. Named so the
+    /// quantity and the part that names another print.
+    template <typename R, typename Part>
+    struct RequireOnlyRetriedQuantity
+    {
+        static_assert(!NamesAnotherQuantity<R, std::remove_cv_t<Part>>::value,
+                      "formula: previous_attempt and this_attempt name the retry's own result quantity; this one "
+                      "names another -- the retry's result quantity and the attempt or acceptance that names "
+                      "another appear in this diagnostic as the template arguments of RequireOnlyRetriedQuantity");
+
+        static constexpr bool value = true;
+    };
+
     /// Every check of a retry, staged so that each mistake draws one message.
     template <typename R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
     struct RequireRetryValid
@@ -564,20 +646,53 @@ namespace detail
         static constexpr bool acceptOk = Predicate<P>;
         static_assert(std::conditional_t<attemptOk && startOk, RequireAcceptancePredicate<P>, std::true_type>::value);
 
+        // Last: the shape of every part is known to be right, so the walk
+        // only asks which quantities the context nodes name -- and is not
+        // taken at all over a part already refused.
+        static constexpr bool shapesOk = attemptOk && startOk && acceptOk;
+
+        template <typename Part, bool Ask>
+        [[nodiscard]] static consteval bool names_only_result() noexcept
+        {
+            if constexpr (Ask)
+                return !NamesAnotherQuantity<R, std::remove_cv_t<Part>>::value;
+            else
+                return true;
+        }
+
+        static constexpr bool attemptNamesOk = names_only_result<A, shapesOk>();
+        static_assert(std::conditional_t<shapesOk, RequireOnlyRetriedQuantity<R, A>, std::true_type>::value);
+        static constexpr bool acceptNamesOk = names_only_result<P, shapesOk && attemptNamesOk>();
+        static_assert(
+            std::conditional_t<shapesOk && attemptNamesOk, RequireOnlyRetriedQuantity<R, P>, std::true_type>::value);
+
         /// Whether every check passed.
-        static constexpr bool value = boundOk && attemptOk && startOk && acceptOk;
+        static constexpr bool value = shapesOk && attemptNamesOk && acceptNamesOk;
     };
 
     struct RetryOutcomeFactory;
 
     /// Whether @p verdict holds anything but blanks: a retry that runs out of
     /// attempts ends in its words, and a blank one would end in no decision
-    /// at all.
+    /// at all. Blank is every character `std::isspace` counts in the "C"
+    /// locale -- space, `\t`, `\n`, `\v`, `\f` and `\r` -- and the no-break
+    /// space U+00A0, spelt in UTF-8 as the two bytes C2 A0. Spelt out,
+    /// because `std::isspace` is neither `constexpr` nor locale-free.
     [[nodiscard]] constexpr bool verdict_says_something(Verdict const& verdict) noexcept
     {
-        for (char const spelt: verdict.label)
-            if (spelt != ' ' && spelt != '\t' && spelt != '\n' && spelt != '\r')
-                return true;
+        std::string_view const verdictWords = verdict.label;
+        for (std::size_t at = 0; at < verdictWords.size(); ++at)
+        {
+            char const spelt = verdictWords[at];
+            if (spelt == ' ' || spelt == '\t' || spelt == '\n' || spelt == '\v' || spelt == '\f' || spelt == '\r')
+                continue;
+            if (spelt == '\xC2' && at + 1 < verdictWords.size() && verdictWords[at + 1] == '\xA0')
+            {
+                ++at;
+                continue;
+            }
+            return true;
+        }
         return false;
     }
 
@@ -644,7 +759,9 @@ struct Retry
 /// The verdict must say something (`detail::verdict_says_something`): a
 /// retry built in a constant expression with a blank one fails to compile,
 /// naming `formula_retry_verdict_must_say_something`, and one built at run
-/// time fails to evaluate (`checked_evaluate_retry`).
+/// time fails to evaluate (`checked_evaluate_retry`), with
+/// `RetryFailure { DomainError, RetryFailure::refusedBeforeStart }` -- even
+/// when the environment holds an entered result.
 template <Described R, std::size_t Max, FirstJudged J, Node E, typename A, typename P>
 [[nodiscard]] constexpr auto retry(
     StartingValue<E> start, A attemptExpression, P accept, Verdict onExhausted, Citation citation) noexcept
@@ -668,9 +785,16 @@ template <Described R, std::size_t Max, FirstJudged J, typename A, typename P>
 /// `1`. Every text the library writes says attempts one-based.
 struct RetryFailure
 {
+    /// The `attempt` of a retry refused before anything of it ran: built at
+    /// run time with a blank verdict (`checked_evaluate_retry`). No attempt
+    /// has this position, so it is never a starting value's failure or an
+    /// attempt's.
+    static constexpr std::size_t refusedBeforeStart = static_cast<std::size_t>(-1);
+
     /// What went wrong.
     ArithmeticError error;
-    /// At which attempt, from 0: the starting value's failure is at 0 too.
+    /// At which attempt, from 0: the starting value's failure is at 0 too;
+    /// `refusedBeforeStart` when nothing ran.
     std::size_t attempt;
 
     /// Memberwise equality.
@@ -844,8 +968,11 @@ namespace detail
         static constexpr bool attemptStarted = Traits::isAttempt && !Traits::isStarting;
         static_assert(std::conditional_t<Traits::isAttempt, RequireNotInStartingValue<Env>, std::true_type>::value);
 
+        // `Estimate const` and `Estimate` are one quantity, one dimension and
+        // one label: the retry's own, however either is spelt.
         static constexpr bool quantityOk =
-            attemptStarted && (std::is_void_v<Q> || std::is_same_v<Q, typename Traits::retried>);
+            attemptStarted
+            && (std::is_void_v<Q> || std::is_same_v<std::remove_cv_t<Q>, std::remove_cv_t<typename Traits::retried>>);
         static_assert(
             std::conditional_t<attemptStarted && !std::is_void_v<Q>, RequireRetriedQuantity<Q, Env>, std::true_type>::value);
         static_assert(
@@ -1036,6 +1163,11 @@ namespace detail
 /// When the environment holds an `entered` value for `R`, that value is
 /// returned, `ManuallyEntered`, and no attempt runs: what a person typed in
 /// is never replaced by a computation, as in `checked_evaluate`.
+///
+/// A retry built at run time with a blank verdict is refused first, before
+/// the entered value is looked at: `RetryFailure { DomainError,
+/// RetryFailure::refusedBeforeStart }`, a position no attempt has, so that it
+/// is never read as a starting value that failed. Nothing is traced for it.
 template <typename Rep = Rational,
           Described R,
           std::size_t Max,
@@ -1055,9 +1187,12 @@ template <typename Rep = Rational,
         return std::unexpected { RetryFailure { ArithmeticError::DomainError, 0 } };
     // A retry built at run time with a blank verdict: `retry()` could not
     // refuse it where it was built, so it is refused here, before any
-    // attempt, rather than ending exhausted in no decision.
+    // attempt, rather than ending exhausted in no decision -- at
+    // `refusedBeforeStart`, so that it is never taken for a starting value
+    // that failed. Before an entered result, too: the retry as written is
+    // refused, whatever the environment holds.
     else if (!detail::verdict_says_something(retrying.onExhausted))
-        return std::unexpected { RetryFailure { ArithmeticError::DomainError, 0 } };
+        return std::unexpected { RetryFailure { ArithmeticError::DomainError, RetryFailure::refusedBeforeStart } };
     else if constexpr (Env::template is_entered<R>)
         return Factory::make<R>(Outcome<R>::value(environment.template get<R>(), ValueSource::ManuallyEntered),
                                 RetryEnd::ManuallyEntered,
@@ -1097,7 +1232,8 @@ namespace detail
     }
 
     /// Fails to compile when a retry is handed where a formula belongs: to
-    /// `checked_evaluate`, `evaluate`, `variant<Tag>` or arithmetic. Named so
+    /// `checked_evaluate`, `evaluate`, `variant<Tag>`, arithmetic or a
+    /// comparison. Named so
     /// the retry prints.
     template <typename Misplaced>
     struct RequireRetryAtTop
@@ -1225,4 +1361,78 @@ template <typename Operand>
     static_assert(detail::RequireRetryAtTop<Operand>::value);
     return detail::RefusedRetryValue<Describe<typename Operand::quantity>::dimension> {};
 }
+
+namespace detail
+{
+    /// What comparing a retry gives, once refused: a comparison of two
+    /// refused values of the retry's result's dimension, so that nothing it
+    /// is used in -- an acceptance, a constraint -- asks again.
+    ///
+    /// A function, not an alias template: g++ 13.3 crashes (a segmentation
+    /// fault in `coerce_template_parms`) substituting a `Dimension` into such
+    /// an alias from these operators.
+    template <Comparison Op, typename L, typename Rt>
+    [[nodiscard]] constexpr auto refused_retry_comparison() noexcept
+    {
+        constexpr Dimension retriedDimension = retried_dimension<L, Rt>();
+        return PredicateNode<Op, RefusedRetryValue<retriedDimension>, RefusedRetryValue<retriedDimension>> { {}, {} };
+    }
+} // namespace detail
+
+/// A retry compared, on either side of `<`, `<=`, `>`, `>=`, `==` or `!=`:
+/// refused in this library's words, as arithmetic over a retry is -- an
+/// acceptance is a comparison, so this is the likeliest place to write one.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator<(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::refused_retry_comparison<Comparison::Less, L, Rt>();
+}
+
+/// See `operator<` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator<=(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::refused_retry_comparison<Comparison::LessOrEqual, L, Rt>();
+}
+
+/// See `operator<` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator>(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::refused_retry_comparison<Comparison::Greater, L, Rt>();
+}
+
+/// See `operator<` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator>=(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::refused_retry_comparison<Comparison::GreaterOrEqual, L, Rt>();
+}
+
+/// See `operator<` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator==(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::refused_retry_comparison<Comparison::Equal, L, Rt>();
+}
+
+/// See `operator<` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator!=(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::refused_retry_comparison<Comparison::NotEqual, L, Rt>();
+}
+
 } // namespace formula

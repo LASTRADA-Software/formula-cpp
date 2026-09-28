@@ -281,7 +281,48 @@ TEST_CASE("a retry built at run time with a blank verdict is refused before any 
         formula::retry<Estimate, 3, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, settled, blank, cite);
     auto const ran = formula::checked_evaluate_retry(unsaid, nothing);
     REQUIRE(!ran.has_value());
-    CHECK(ran.error() == formula::RetryFailure { formula::ArithmeticError::DomainError, 0 });
+    // Not { DomainError, 0 }, which a starting value that failed gives: no
+    // attempt has this position.
+    CHECK(ran.error()
+          == formula::RetryFailure { formula::ArithmeticError::DomainError, formula::RetryFailure::refusedBeforeStart });
+    CHECK(ran.error().attempt != 0);
+
+    // Every character std::isspace counts, and the no-break space in UTF-8,
+    // is blank; one printable character is not.
+    for (std::string_view const blankLabel: { std::string_view { "\v\f" },
+                                              std::string_view { "\t\n\r " },
+                                              std::string_view { "\xC2\xA0" },
+                                              std::string_view { " \xC2\xA0\v" } })
+    {
+        INFO("label of " << blankLabel.size() << " bytes");
+        auto const blankRetry = formula::retry<Estimate, 3, formula::FirstJudged::AtFirstAttempt>(
+            fromZero, halving, settled, formula::Verdict { blankLabel }, cite);
+        auto const refused = formula::checked_evaluate_retry(blankRetry, nothing);
+        REQUIRE(!refused.has_value());
+        CHECK(refused.error().attempt == formula::RetryFailure::refusedBeforeStart);
+    }
+    auto const said = formula::retry<Estimate, 3, formula::FirstJudged::AtFirstAttempt>(
+        fromZero, halving, settled, formula::Verdict { "\xC2\xA0x" }, cite);
+    CHECK(formula::checked_evaluate_retry(said, nothing).has_value());
+
+    // An entered result does not rescue it: the retry as written is refused,
+    // whatever the environment holds.
+    constexpr auto typedIn = formula::environment(formula::entered(formula::Measured<Estimate> { rat(163) }));
+    auto const enteredButBlank = formula::checked_evaluate_retry(unsaid, typedIn);
+    REQUIRE(!enteredButBlank.has_value());
+    CHECK(enteredButBlank.error().attempt == formula::RetryFailure::refusedBeforeStart);
+}
+
+TEST_CASE("a retry of a cv-qualified result quantity reads its own value under either spelling", "[retry]")
+{
+    // `Estimate const` is Estimate: the same quantity, dimension and label.
+    constexpr auto constFour =
+        formula::retry<Estimate const, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, halving, settled, repeat, cite);
+    constexpr auto ran = formula::checked_evaluate_retry(constFour, nothing);
+    STATIC_REQUIRE(ran.has_value());
+    STATIC_REQUIRE(ran->end() == formula::RetryEnd::Accepted);
+    STATIC_REQUIRE(ran->outcome().measurement().value() == rat(57, 5));
+    CHECK(formula::render(constFour).find("w(k) = 152/25 g + w(k-1) / 2") != std::string::npos);
 }
 TEST_CASE("the retry reads the specimen's data through the attempt's environment", "[retry]")
 {
@@ -831,4 +872,33 @@ TEST_CASE("an attempt and a retry recorded inside a record's scope say which rec
         REQUIRE(formula::origin_of(trace, trace.steps[inside]).has_value());
         CHECK(formula::origin_of(trace, trace.steps[inside])->role() == "ReferenceRecord");
     }
+}
+
+TEST_CASE("the walk behind a retry's quantity check sees a context node inside every kind of node", "[retry]")
+{
+    // The check that refuses a misnamed previous_attempt where the retry is
+    // built (RequireOnlyRetriedQuantity) is only as good as this walk: it must
+    // find the node however deep, and through every template shape a node has
+    // -- types only (when, documented), a value then types (arithmetic, a
+    // comparison), several values then types (a rounding).
+    using formula::detail::NamesAnotherQuantity;
+    constexpr auto misnamed = formula::previous_attempt<Tolerance>;
+    constexpr auto own = formula::previous_attempt<Estimate>;
+    constexpr auto gram = formula::constant<unit::Gram>(rat(1));
+    STATIC_REQUIRE(NamesAnotherQuantity<Estimate, std::remove_cv_t<decltype(misnamed)>>::value);
+    STATIC_REQUIRE(!NamesAnotherQuantity<Estimate, std::remove_cv_t<decltype(own)>>::value);
+    STATIC_REQUIRE(NamesAnotherQuantity<Estimate, std::remove_cv_t<decltype(gram + misnamed / rat(2))>>::value);
+    STATIC_REQUIRE(!NamesAnotherQuantity<Estimate, std::remove_cv_t<decltype(gram + own / rat(2))>>::value);
+    constexpr auto nested = formula::documented(
+        formula::when(own >= gram,
+                      formula::rounded<unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                          gram - misnamed),
+                      gram),
+        { .reference = "Example Standard 12" });
+    STATIC_REQUIRE(NamesAnotherQuantity<Estimate, std::remove_cv_t<decltype(nested)>>::value);
+    STATIC_REQUIRE(
+        NamesAnotherQuantity<Estimate, std::remove_cv_t<decltype(formula::this_attempt<Tolerance> >= gram)>>::value);
+    // cv-qualification aside, the retry's own quantity is its own.
+    STATIC_REQUIRE(!NamesAnotherQuantity<Estimate const, std::remove_cv_t<decltype(own)>>::value);
+    STATIC_REQUIRE(!NamesAnotherQuantity<Estimate, formula::PreviousAttemptNode<Estimate const>>::value);
 }
