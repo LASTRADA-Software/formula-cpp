@@ -30,7 +30,7 @@ static_assert(WaterVolume::symbol == std::string_view { "V_w" });
 static_assert(WaterVolume::description == std::string_view { "volume of the effective mixing water" });
 static_assert(WaterVolume::unit == unit::Litre);
 
-// Ruling A: the dimension is DERIVED from the unit, never declared beside it, so
+// The dimension is DERIVED from the unit, never declared beside it, so
 // there is no second place for it to disagree with.
 static_assert(WaterVolume::dimension == dim::Volume);
 static_assert(SpecimenMass::dimension == dim::Mass);
