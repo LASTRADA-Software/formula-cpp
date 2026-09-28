@@ -152,6 +152,12 @@ read a level inside an opaque output. `OpaqueOperation` joins the customisation 
 `compute` does its arithmetic through `RepTraits` and never throws.
 `docs/opaque-and-retry.md` is the guide, with `examples/opaque_and_retry.cpp` and gallery entries.
 
+**Quantities declared by alias.** `using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w",
+"effective water content", unit::Litre>;` is supported beside the struct form, everywhere a
+quantity is named, and the two mix in one formula; the guides, the examples and the gallery now
+lead with it. An alias cannot be forward-declared, and two aliases with all four arguments equal
+are one type; `docs/quantities.md` sets out what each spelling costs.
+
 ### Changed
 
 - Invented example numbers replaced so none resembles a published table: the band edges, lookup

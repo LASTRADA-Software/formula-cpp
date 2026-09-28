@@ -141,25 +141,26 @@ struct Length: formula::Quantity<Length, "L", "a length", formula::unit::Metre>
 inline constexpr auto broken = formula::documented(formula::var<Volume>, { .title = "A volume" }) + formula::var<Length>;
 ```
 
-which gives, verbatim, on MSVC's `cl.exe` (19.51, `cl-debug` preset):
+which gives, verbatim but for the paths, shown relative to the repository,
+on MSVC's `cl.exe` (19.51, `cl-debug` preset):
 
 ```
-D:\formula-cpp\include\formula-cpp/expression.hpp(186): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
-D:\formula-cpp\include\formula-cpp/expression.hpp(186): note: the template instantiation context (the oldest one first) is
-D:\formula-cpp\test\negative\documented_dimension_mismatch.cpp(14): note: see reference to function template instantiation 'auto formula::operator +<formula::DocumentedNode<formula::VarNode<Volume>>,formula::VarNode<Length>>(Left,Right) noexcept' being compiled
+include\formula-cpp/expression.hpp(186): error C2338: static assertion failed: 'formula: the two sides of this addition or subtraction measure different dimensions; the offending operands appear in this diagnostic as the template arguments of RequireAddendsAgree'
+include\formula-cpp/expression.hpp(186): note: the template instantiation context (the oldest one first) is
+test\negative\documented_dimension_mismatch.cpp(14): note: see reference to function template instantiation 'auto formula::operator +<formula::DocumentedNode<formula::VarNode<Volume>>,formula::VarNode<Length>>(Left,Right) noexcept' being compiled
         with
         [
             Left=formula::DocumentedNode<formula::VarNode<Volume>>,
             Right=formula::VarNode<Length>
         ]
-D:\formula-cpp\include\formula-cpp/expression.hpp(271): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::DocumentedNode<formula::VarNode<Volume>>,formula::VarNode<Length>>' being compiled
-D:\formula-cpp\include\formula-cpp/expression.hpp(244): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
+include\formula-cpp/expression.hpp(271): note: see reference to class template instantiation 'formula::BinaryNode<formula::BinaryOperator::Add,formula::DocumentedNode<formula::VarNode<Volume>>,formula::VarNode<Length>>' being compiled
+include\formula-cpp/expression.hpp(244): note: see reference to class template instantiation 'formula::detail::AdditiveDimensionsAgree<formula::BinaryOperator::Add,Left,Right>' being compiled
         with
         [
             Left=formula::DocumentedNode<formula::VarNode<Volume>>,
             Right=formula::VarNode<Length>
         ]
-D:\formula-cpp\include\formula-cpp/expression.hpp(203): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
+include\formula-cpp/expression.hpp(203): note: see reference to class template instantiation 'formula::detail::RequireAddendsAgree<Left,Right>' being compiled
         with
         [
             Left=formula::DocumentedNode<formula::VarNode<Volume>>,

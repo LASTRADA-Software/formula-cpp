@@ -13,10 +13,10 @@ documentation page — from the same declaration.
 namespace unit = formula::unit;
 using formula::var;
 
-// A quantity carries its own symbol, description and unit.
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", unit::Litre> {};
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", unit::Litre> {};
-struct WaterCementRatio: formula::Quantity<WaterCementRatio, "w/c", "ratio of water to cement", unit::One> {};
+// A quantity carries its own symbol, description and unit, and its tag makes it a type of its own.
+using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
+using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
+using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
 
 // The formula, and where it comes from, declared together.
 constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
@@ -42,6 +42,11 @@ formula::evaluate<WaterCementRatio>(ratio, environment);   // 0.6, and it knows 
 ```
 
 The output above is what `examples/citations.cpp` actually prints.
+
+A quantity can also be declared as a struct deriving from `formula::Quantity`,
+`struct WaterVolume: formula::Quantity<WaterVolume, ...> {};`. Both spellings
+are supported, and mix in one formula; [the quantities
+guide](docs/quantities.md#declaring-a-quantity) says what each costs.
 
 ## See it work
 
