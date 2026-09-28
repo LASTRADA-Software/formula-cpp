@@ -2278,6 +2278,16 @@ formula_add_negative_test(retry_compared
     "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
     EXPECT_COUNT 1
     REJECT "no match for" "invalid operands" "no matching")
+formula_add_negative_test(retry_attempt_input_length
+    "this environment holds a series of a different length for this quantity than the one read"
+    EXPECT_COUNT 1
+    REJECT "provides no value for this quantity" "no matching")
+formula_add_negative_test(retry_attempt_input_outside
+    "formula: attempt_input reads the determination recorded for the attempt that is running"
+    REJECT "provides no value for this quantity" "no matching")
+formula_add_negative_test(retry_attempt_input_in_starting_value
+    "formula: a retry's starting value is evaluated before its first attempt, so there is no recorded determination"
+    REJECT "only meaningful inside a retry" "provides no value for this quantity" "no matching")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

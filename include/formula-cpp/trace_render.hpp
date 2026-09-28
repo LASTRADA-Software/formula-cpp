@@ -1026,9 +1026,11 @@ namespace detail
             // A retry's steps name its result as `render()` does, `w(k)` for
             // an attempt's value and `w(k-1)` for the one before; the
             // attempt's and the retry's own lines are `retry_attempt_line` and
-            // `retry_concluded_line`, which begin with these.
+            // `retry_concluded_line`, which begin with these. A recorded
+            // determination is `d(k)`, as `render()` writes it.
             case StepKind::RetryAttempt:
             case StepKind::ThisAttempt:
+            case StepKind::AttemptInput:
                 return attempt_marker<Dialect::Plain>(std::string { shownStep.symbol }, "k");
             case StepKind::PreviousAttempt:
                 return attempt_marker<Dialect::Plain>(std::string { shownStep.symbol }, "k-1");
@@ -2231,6 +2233,10 @@ namespace detail
         AttemptJudgement const judged = retryLine.attempt->judgement;
         if (judged == AttemptJudgement::NotJudged)
             return lineText + "; not judged";
+        // Before an absent value's "cannot be judged": what was missing is a
+        // recorded determination, not a comparison.
+        if (judged == AttemptJudgement::NotRecorded)
+            return lineText + "; not recorded";
         // An absent value: nothing was compared.
         if (!recorded.value.has_value())
             return lineText + "; cannot be judged";
@@ -2255,6 +2261,7 @@ namespace detail
                                                                : std::string { "failed" });
             case AttemptJudgement::NotJudgeable:
             case AttemptJudgement::NotJudged:
+            case AttemptJudgement::NotRecorded:
                 break;
         }
         return lineText + "cannot be judged";
@@ -2262,7 +2269,7 @@ namespace detail
     /// How a retry ended, its line without its number: `w = retry: accepted
     /// at attempt 4 of 4 = 57/5 g`, `w = retry: exhausted after 3 of 3:
     /// repeat the determination`, `w = retry: failed at attempt 2: division
-    /// by zero` -- and always its citation, `(no citation given)` when it
+    /// by zero`, `d_a = retry: attempt 3 not recorded` -- and always its citation, `(no citation given)` when it
     /// cited nothing. The verdict is author text, escaped here, as
     /// `step_line` escapes what a `Step` holds.
     [[nodiscard]] inline std::string retry_concluded_line(ShownStep const& recorded, RetryLine const& retryLine)
@@ -2290,7 +2297,8 @@ namespace detail
                     lineText += ": not judgeable at " + attemptWords;
                     break;
                 case RetryEnd::NotRecorded:
-                    lineText += ": not recorded at " + attemptWords;
+                    lineText +=
+                        ": " + (attemptWords.empty() ? std::string { "an attempt" } : attemptWords) + " not recorded";
                     break;
                 case RetryEnd::Failed:
                     lineText += retryLine.lastAttempt.has_value() ? ": failed at " + attemptWords
@@ -2427,6 +2435,10 @@ namespace detail
         // starting value: the author's mistake, which says so.
         if (recorded.kind == StepKind::PreviousAttempt && recorded.error == ArithmeticError::DomainError)
             return step_expression(recorded) + " = previous attempt: none before attempt 1";
+        // A determination nobody recorded: not "not measured", which would
+        // say a measurement was due and missed rather than never entered.
+        if (recorded.kind == StepKind::AttemptInput && !recorded.error.has_value() && !recorded.value.has_value())
+            return step_expression(recorded) + " = (not recorded)";
         OpaqueLine const opaqueLine = opaque_line_of(trace, stepIndex);
         // An opaque call's line is its outputs, and ends saying its inside is
         // not shown; an output's names the output.

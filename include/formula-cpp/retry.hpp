@@ -17,7 +17,9 @@
 /// `attempt_number` (dimensionless, the method's own 1-based k),
 /// `previous_attempt<R>` (the attempt before, or the starting value at the
 /// first) and, in the acceptance only, `this_attempt<R>` (the value just
-/// produced). Outside a retry each is refused where it is evaluated.
+/// produced). A fourth, `attempt_input<Q>`, reads the determination of `Q`
+/// recorded for the attempt that is running, from a series of one per attempt
+/// allowed. Outside a retry each is refused where it is evaluated.
 ///
 /// **Termination is structural.** The number of attempts is a template
 /// argument, capped at 64 where the retry is written, and the loop is a `for`
@@ -29,7 +31,7 @@
 /// attempt, with that attempt's value; exhausted, with the method's verdict
 /// and no value; not judgeable, empty, when an attempt or its judgement was
 /// absent -- an absent comparison is "cannot tell", never "try again"; not
-/// recorded (bounded retry over recorded determinations, not yet shipped);
+/// recorded, empty, when a determination an attempt read was never recorded;
 /// failed, as a `RetryFailure` naming the attempt, when an attempt or its
 /// judgement failed arithmetically; and manually entered, when a person typed
 /// the result in, which no attempt then replaces.
@@ -74,7 +76,8 @@ enum class FirstJudged : std::uint8_t
     /// not the same as rejected. A first attempt whose value is absent still
     /// ends the retry, `NotJudgeable`, though no judgement was due: the
     /// second attempt's judgement would compare against that absent value,
-    /// and an absent comparison is "cannot tell", not "try again".
+    /// and an absent comparison is "cannot tell", not "try again". One
+    /// whose recorded determination is missing ends it `NotRecorded`.
     AtSecondAttempt,
 };
 
@@ -82,7 +85,6 @@ enum class FirstJudged : std::uint8_t
 /// reports every one but `Failed`: a failed retry has no outcome, and
 /// `checked_evaluate_retry` returns its `RetryFailure` instead. `Failed` is
 /// how a trace records that end (`RetryStepData::end`, `trace.hpp`).
-/// `NotRecorded` is declared for recorded attempts, which no retry reads yet.
 enum class RetryEnd : std::uint8_t
 {
     /// The acceptance held after an attempt; the outcome is that attempt's
@@ -94,8 +96,10 @@ enum class RetryEnd : std::uint8_t
     /// An attempt's value, or its judgement, was absent; the outcome is
     /// empty. The retry stops: an absent comparison is not "not yet".
     NotJudgeable,
-    /// An attempt needed a recorded determination that is absent; the outcome
-    /// is empty. Declared for recorded attempts, which no retry here reads yet.
+    /// An attempt, or its acceptance, read a recorded determination
+    /// (`attempt_input`) that is absent; the outcome is empty. Not
+    /// `NotJudgeable`: nothing was compared -- the method needed a
+    /// determination nobody recorded.
     NotRecorded,
     /// An attempt, or its judgement, failed arithmetically; there is no
     /// outcome, only the `RetryFailure` -- never `RetryOutcome::end()`.
@@ -190,6 +194,27 @@ struct ThisAttemptNode: NodeBase
 template <Described R>
 inline constexpr ThisAttemptNode<R> this_attempt {};
 
+/// The determination of @p Q recorded for the attempt that is running:
+/// element k - 1 of the series of @p Q the environment holds, one per attempt
+/// the retry allows -- so a retry of at most 4 attempts reads a
+/// `series<Q, 4>`, and its third attempt reads the third element.
+/// Meaningful only in a retry's attempt and its acceptance.
+///
+/// An absent element ends the retry `NotRecorded` at that attempt, not
+/// `NotJudgeable`; one after the attempt that ends it is never read.
+template <Described Q>
+struct AttemptInputNode: NodeBase
+{
+    /// The recorded quantity.
+    using quantity = Q;
+    /// Its dimension.
+    static constexpr Dimension dimension = Describe<Q>::dimension;
+};
+
+/// The determination of @p Q recorded for the attempt that is running.
+template <Described Q>
+inline constexpr AttemptInputNode<Q> attempt_input {};
+
 namespace detail
 {
     /// The environment an attempt is evaluated in: the caller's, and where
@@ -205,8 +230,9 @@ namespace detail
     ///
     /// Values are in the coherent SI unit, in @p Rep, as every evaluator's.
     /// @p R is the retry's result quantity, the only one `previous_attempt`
-    /// and `this_attempt` may name (`RequireRetriedQuantity`).
-    template <typename Env, typename Rep, typename R, AttemptPhase P>
+    /// and `this_attempt` may name (`RequireRetriedQuantity`); @p Max the
+    /// attempts it allows, the length of the series `attempt_input` reads.
+    template <typename Env, typename Rep, typename R, AttemptPhase P, std::size_t Max>
     class AttemptEnvironment
     {
       public:
@@ -228,24 +254,35 @@ namespace detail
         /// Attempt @p attemptAt (from 1) of a retry over @p inner, after
         /// @p before: the previous attempt's value, the starting value, or
         /// the error reading it is -- `DomainError` with no starting value.
-        constexpr AttemptEnvironment(Env const& inner, std::size_t attemptAt, Evaluated<Rep> before) noexcept
+        /// An absent determination `attempt_input` reads is marked in
+        /// @p unrecorded, which the retry's loop reads.
+        constexpr AttemptEnvironment(Env const& inner,
+                                     std::size_t attemptAt,
+                                     Evaluated<Rep> before,
+                                     bool* unrecorded = nullptr) noexcept
             requires(P == AttemptPhase::Attempting)
             :
             _inner { &inner },
             _attemptAt { attemptAt },
             _before { before },
-            _produced {}
+            _produced {},
+            _unrecorded { unrecorded }
         {
         }
 
         /// The same, judging @p produced, the value the attempt produced.
-        constexpr AttemptEnvironment(Env const& inner, std::size_t attemptAt, Evaluated<Rep> before, Rep produced) noexcept
+        constexpr AttemptEnvironment(Env const& inner,
+                                     std::size_t attemptAt,
+                                     Evaluated<Rep> before,
+                                     Rep produced,
+                                     bool* unrecorded = nullptr) noexcept
             requires(P == AttemptPhase::Judging)
             :
             _inner { &inner },
             _attemptAt { attemptAt },
             _before { before },
-            _produced { produced }
+            _produced { produced },
+            _unrecorded { unrecorded }
         {
         }
 
@@ -307,6 +344,15 @@ namespace detail
             return _produced;
         }
 
+        /// Says that a determination this attempt needed is absent: the
+        /// retry ends `NotRecorded` once the attempt, or its judgement, is
+        /// done.
+        constexpr void mark_not_recorded() const noexcept
+        {
+            if (_unrecorded != nullptr)
+                *_unrecorded = true;
+        }
+
       private:
         template <typename>
         friend struct RecordContextOf;
@@ -315,6 +361,7 @@ namespace detail
         std::size_t _attemptAt;
         Evaluated<Rep> _before;
         Rep _produced;
+        bool* _unrecorded = nullptr;
     };
 
     /// Whether @p E is an attempt's environment, and in which phase.
@@ -325,15 +372,17 @@ namespace detail
         static constexpr bool isStarting = false;
         static constexpr bool isJudging = false;
         using retried = void;
+        static constexpr std::size_t attemptLimit = 0;
     };
 
-    template <typename Env, typename Rep, typename R, AttemptPhase P>
-    struct AttemptEnvironmentTraits<AttemptEnvironment<Env, Rep, R, P>>
+    template <typename Env, typename Rep, typename R, AttemptPhase P, std::size_t Max>
+    struct AttemptEnvironmentTraits<AttemptEnvironment<Env, Rep, R, P, Max>>
     {
         static constexpr bool isAttempt = true;
         static constexpr bool isStarting = P == AttemptPhase::Starting;
         static constexpr bool isJudging = P == AttemptPhase::Judging;
         using retried = R;
+        static constexpr std::size_t attemptLimit = Max;
     };
 
     /// An attempt's environment reaches the `RecordContext` its caller's
@@ -342,15 +391,16 @@ namespace detail
     /// starting value or its acceptance as it would outside the retry. Over an
     /// environment that reaches none, nothing, so a scope there is refused in
     /// `RequireRecordContext`'s words, as it is outside a retry.
-    template <typename Env, typename Rep, typename R, AttemptPhase P>
+    template <typename Env, typename Rep, typename R, AttemptPhase P, std::size_t Max>
         requires reachesRecordContext<Env>
-    struct RecordContextOf<AttemptEnvironment<Env, Rep, R, P>>
+    struct RecordContextOf<AttemptEnvironment<Env, Rep, R, P, Max>>
     {
         /// The context the caller's environment reaches.
         using type = typename RecordContextOf<Env>::type;
 
         /// The context @p attemptEnvironment's inner environment reaches.
-        [[nodiscard]] static constexpr type const& of(AttemptEnvironment<Env, Rep, R, P> const& attemptEnvironment) noexcept
+        [[nodiscard]] static constexpr type const& of(
+            AttemptEnvironment<Env, Rep, R, P, Max> const& attemptEnvironment) noexcept
         {
             return RecordContextOf<Env>::of(*attemptEnvironment._inner);
         }
@@ -403,6 +453,44 @@ namespace detail
                       "the attempt expression itself it would be circular -- use previous_attempt there");
 
         static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `attempt_input` is evaluated outside any retry.
+    template <typename Env>
+    struct RequireAttemptInputInsideRetry
+    {
+        static_assert(AttemptEnvironmentTraits<Env>::isAttempt,
+                      "formula: attempt_input reads the determination recorded for the attempt that is running, so "
+                      "it is only meaningful inside a retry's attempt or its acceptance");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `attempt_input` is read in a retry's starting
+    /// value, before any attempt has a determination.
+    template <typename Env>
+    struct RequireAttemptInputAfterStart
+    {
+        static_assert(!AttemptEnvironmentTraits<Env>::isStarting,
+                      "formula: a retry's starting value is evaluated before its first attempt, so there is no "
+                      "recorded determination for attempt_input to read in it");
+
+        static constexpr bool value = true;
+    };
+
+    /// Both checks of `attempt_input`, staged so that each mistake draws one
+    /// message; `value` says whether the node has anything to read. The
+    /// refusals sit in their own structs, as `RequireContextReadable`'s do,
+    /// so that this one stays a valid class whose `value` is false.
+    template <typename Env>
+    struct RequireAttemptInputReadable
+    {
+        using Traits = AttemptEnvironmentTraits<Env>;
+
+        static_assert(RequireAttemptInputInsideRetry<Env>::value);
+        static_assert(std::conditional_t<Traits::isAttempt, RequireAttemptInputAfterStart<Env>, std::true_type>::value);
+
+        static constexpr bool value = Traits::isAttempt && !Traits::isStarting;
     };
 
     /// Fails to compile when a retry allows no attempts, more than the cap,
@@ -817,6 +905,9 @@ enum class AttemptJudgement : std::uint8_t
     /// error is the failing side's, which the attempt step's last operand
     /// holds; the attempt step itself keeps only its value.
     JudgementFailed,
+    /// The attempt, or its judgement, read a recorded determination that is
+    /// absent (`attempt_input`): the retry ends here, `NotRecorded`.
+    NotRecorded,
 };
 
 template <Described R>
@@ -1055,6 +1146,52 @@ template <typename Rep = Rational, Described R, typename Env, typename Sink = Nu
     sink.produced(node, produced);
     return produced;
 }
+
+namespace detail
+{
+    /// What `attempt_input<Q>` reads in @p environment, an attempt's: see its
+    /// evaluator below, which calls this only once the node's checks passed.
+    template <typename Rep, Described Q, typename Env>
+    [[nodiscard]] constexpr Evaluated<Rep> read_attempt_input(Env const& environment) noexcept
+    {
+        constexpr std::size_t attemptLimit = AttemptEnvironmentTraits<Env>::attemptLimit;
+        MeasuredSeries<Q, attemptLimit> const recorded = environment.template get_series<Q, attemptLimit>();
+        Measured<Q> const recordedDetermination = recorded.element(environment.attempt() - 1);
+        if (recordedDetermination.is_absent())
+        {
+            environment.mark_not_recorded();
+            return nothing<Rep>();
+        }
+        return in_si<Rep>(*recordedDetermination.stored(), Describe<Q>::unit);
+    }
+} // namespace detail
+
+/// The determination of @p Q recorded for the attempt that is running:
+/// element `attempt() - 1` of the environment's series of @p Q, whose length
+/// is the retry's attempt limit, in the coherent SI unit. An absent element
+/// is absent here, and marked on the attempt's environment, so that the
+/// retry ends `NotRecorded` rather than `NotJudgeable`. A series of another
+/// length draws the environment's own message, naming both lengths, once.
+template <typename Rep = Rational, Described Q, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(AttemptInputNode<Q> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    constexpr bool readable = detail::RequireAttemptInputReadable<Env>::value;
+    sink.entered(node);
+    Evaluated<Rep> const read = [&]() -> Evaluated<Rep> {
+        if constexpr (readable)
+            return detail::read_attempt_input<Rep, Q>(environment);
+        else
+        {
+            (void) environment;
+            return detail::nothing<Rep>();
+        }
+    }();
+    sink.produced(node, read);
+    return read;
+}
+
 namespace detail
 {
     /// The attempts themselves, for `checked_evaluate_retry`, which tells a
@@ -1080,16 +1217,16 @@ namespace detail
         Evaluated<Rep> before = std::unexpected { ArithmeticError::DomainError };
         if constexpr (StartTraits<Start>::states)
         {
-            AttemptEnvironment<Env, Rep, R, AttemptPhase::Starting> const starting { environment };
+            AttemptEnvironment<Env, Rep, R, AttemptPhase::Starting, Max> const starting { environment };
             before = dispatch<Rep>(retrying.start.expression, starting, sink);
             if (!before.has_value())
                 return std::unexpected { RetryFailure { before.error(), 0 } };
         }
 
         // The one loop: at most Max attempts, and no other bound.
-        for (std::size_t k = 1; k <= Max; ++k)
+        for (std::size_t attemptAt = 1; attemptAt <= Max; ++attemptAt)
         {
-            AttemptInfo const attemptInfo { .attemptNumber = k, .comparison = P::comparison };
+            AttemptInfo const attemptInfo { .attemptNumber = attemptAt, .comparison = P::comparison };
             if constexpr (HearsAttempts<Sink, Rep>)
                 sink.attempt_entered(attemptInfo);
             // Tells the sink how the attempt was judged, once, whichever way
@@ -1104,38 +1241,57 @@ namespace detail
                 }
             };
 
-            AttemptEnvironment<Env, Rep, R, AttemptPhase::Attempting> const attempting { environment, k, before };
+            // Set by `attempt_input` when the determination it reads is
+            // absent, in the attempt or in its judgement.
+            bool unrecorded = false;
+            AttemptEnvironment<Env, Rep, R, AttemptPhase::Attempting, Max> const attempting {
+                environment, attemptAt, before, &unrecorded
+            };
             Evaluated<Rep> const produced = dispatch<Rep>(retrying.attempt, attempting, sink);
             if (!produced.has_value())
             {
                 told(produced, AttemptJudgement::NotJudged);
-                return std::unexpected { RetryFailure { produced.error(), k - 1 } };
+                return std::unexpected { RetryFailure { produced.error(), attemptAt - 1 } };
+            }
+            // Before "not judgeable": the determination is missing, not the
+            // comparison -- whatever the attempt made of its absence.
+            if (unrecorded)
+            {
+                told(produced, AttemptJudgement::NotRecorded);
+                return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotRecorded, attemptAt, std::nullopt);
             }
             if (!produced->has_value())
             {
                 told(produced, AttemptJudgement::NotJudgeable);
-                return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
+                return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, attemptAt, std::nullopt);
             }
 
             // Judged on the value the attempt produced, never on an
             // intermediate; the first attempt of a retry judged from the
             // second is not judged, which is not a rejection.
-            if (J == FirstJudged::AtSecondAttempt && k == 1)
+            if (J == FirstJudged::AtSecondAttempt && attemptAt == 1)
                 told(produced, AttemptJudgement::NotJudged);
             else
             {
-                AttemptEnvironment<Env, Rep, R, AttemptPhase::Judging> const judging { environment, k, before, **produced };
+                AttemptEnvironment<Env, Rep, R, AttemptPhase::Judging, Max> const judging {
+                    environment, attemptAt, before, **produced, &unrecorded
+                };
                 std::expected<std::optional<bool>, ArithmeticError> const held =
                     checked_evaluate_predicate<Rep>(retrying.accept, judging, sink);
                 if (!held.has_value())
                 {
                     told(produced, AttemptJudgement::JudgementFailed);
-                    return std::unexpected { RetryFailure { held.error(), k - 1 } };
+                    return std::unexpected { RetryFailure { held.error(), attemptAt - 1 } };
+                }
+                if (unrecorded)
+                {
+                    told(produced, AttemptJudgement::NotRecorded);
+                    return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotRecorded, attemptAt, std::nullopt);
                 }
                 if (!held->has_value())
                 {
                     told(produced, AttemptJudgement::NotJudgeable);
-                    return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, k, std::nullopt);
+                    return Factory::make<R>(Outcome<R>::empty(), RetryEnd::NotJudgeable, attemptAt, std::nullopt);
                 }
                 told(produced, **held ? AttemptJudgement::Accepted : AttemptJudgement::Rejected);
                 if (**held)
@@ -1143,11 +1299,11 @@ namespace detail
                     std::expected<Rational, ArithmeticError> const inDeclaredUnit =
                         checked_convert(**produced, coherent(A::dimension), Describe<R>::unit);
                     if (!inDeclaredUnit.has_value())
-                        return std::unexpected { RetryFailure { inDeclaredUnit.error(), k - 1 } };
+                        return std::unexpected { RetryFailure { inDeclaredUnit.error(), attemptAt - 1 } };
                     return Factory::make<R>(Outcome<R>::value(Measured<R> { *inDeclaredUnit }, ValueSource::Derived),
                                             RetryEnd::Accepted,
-                                            k,
-                                            k - 1);
+                                            attemptAt,
+                                            attemptAt - 1);
                 }
             }
             before = produced;

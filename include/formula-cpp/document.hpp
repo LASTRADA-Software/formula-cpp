@@ -312,6 +312,9 @@ namespace detail
         /// meanwhile is that record's.
         std::string_view role {};
         void const* roleIdentity = nullptr;
+        /// While a retry is walked: the attempts it allows, the length of the
+        /// series `attempt_input` reads; 0 otherwise.
+        std::size_t attemptLimit = 0;
     };
 
     /// @p node rendered in @p dialect, chosen at run time, and in
@@ -381,6 +384,9 @@ namespace detail
 
     template <Vocabulary V, Described R>
     void collect(Walk<V>& walk, ThisAttemptNode<R> const& node);
+
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, AttemptInputNode<Q> const& node);
 
     template <Vocabulary V, UnaryOperator Op, Node Operand>
     void collect(Walk<V>& walk, UnaryNode<Op, Operand> const& node);
@@ -668,6 +674,30 @@ namespace detail
     template <Vocabulary V, Described R>
     void collect(Walk<V>&, ThisAttemptNode<R> const&)
     {
+    }
+
+    /// A distinct address per quantity @p Q read by `attempt_input`, for
+    /// `seriesIdentity`'s reason: its row is its own, whatever else reads `Q`.
+    template <typename Q>
+    inline bool attemptInputIdentity = false;
+
+    /// The determinations a retry reads, one per attempt, contribute one row:
+    /// a series of as many values as the retry allows attempts
+    /// (`Walk::attemptLimit`), which is what the environment must hold.
+    template <Vocabulary V, Described Q>
+    void collect(Walk<V>& walk, AttemptInputNode<Q> const&)
+    {
+        void const* const identity = &attemptInputIdentity<Q>;
+        for (SeenRow const& seen: walk.seenQuantities)
+            if (seen.quantity == identity && seen.role == walk.roleIdentity)
+                return;
+        walk.seenQuantities.push_back(SeenRow { .role = walk.roleIdentity, .quantity = identity });
+        walk.documentation.symbols.push_back(SymbolEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                                           .description = Describe<Q>::description,
+                                                           .unit = Describe<Q>::unit,
+                                                           .shape = ValueShape::Series,
+                                                           .length = walk.attemptLimit,
+                                                           .record = walk.role });
     }
 
     /// Words appended to a retry's result's description, so that its row says
@@ -1275,7 +1305,8 @@ template <Dialect D = Dialect::Plain,
     detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(retrying, vocabulary) },
                            .seenQuantities = {},
                            .dialect = D,
-                           .vocabulary = vocabulary };
+                           .vocabulary = vocabulary,
+                           .attemptLimit = Max };
     if (!(retrying.citation == Citation {}))
         walk.documentation.citations.push_back(retrying.citation);
     walk.seenQuantities.push_back(detail::SeenRow { .role = walk.roleIdentity, .quantity = &detail::quantityIdentity<R> });

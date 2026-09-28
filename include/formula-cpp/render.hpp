@@ -1694,6 +1694,15 @@ template <Dialect D, Described R, Vocabulary V>
 {
     return detail::attempt_marker<D>(std::string { symbol_of<R>(vocabulary) }, "k");
 }
+
+/// The determination recorded for the attempt that is running renders as
+/// its quantity's symbol under @p vocabulary, marked `k` as this attempt's
+/// value is: `d(k)`, `{d}_{k}`.
+template <Dialect D, Described Q, Vocabulary V>
+[[nodiscard]] std::string render_node(AttemptInputNode<Q> const&, V const& vocabulary)
+{
+    return detail::attempt_marker<D>(std::string { symbol_of<Q>(vocabulary) }, "k");
+}
 /// An opaque output renders as a call to its operation, named as the
 /// operation names itself, selecting the output: `linear least squares(t(i),
 /// L(i)).slope` in plain text; in Markdown the same, each symbol in its own
@@ -2266,7 +2275,7 @@ template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start
     // `\mathrm{...}` atoms otherwise has no legal break. Measured with
     // tectonic 0.17.0: a ten-word verdict overflowed the line by 152 pt, and
     // the clauses by 11 pt, in one atom each; split, nothing overflows.
-    std::string const separator = D == Dialect::LaTeX ? std::string { ";\\ \\allowbreak " } : std::string { "; " };
+    std::string const clauseSeparator = D == Dialect::LaTeX ? std::string { ";\\ \\allowbreak " } : std::string { "; " };
     std::string renderedRetry = inDialect("up to " + std::to_string(Max) + (Max == 1 ? " attempt:" : " attempts:"))
                                 + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "k") + " = "
                                 + render<D>(retrying.attempt, vocabulary);
@@ -2274,7 +2283,7 @@ template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start
         renderedRetry += (D == Dialect::LaTeX ? ",\\ \\allowbreak " : ", ") + inDialect("starting from")
                          + (D == Dialect::LaTeX ? "\\ " : " ") + detail::attempt_marker<D>(resultSymbol, "0") + " = "
                          + render<D>(retrying.start.expression, vocabulary);
-    renderedRetry += separator
+    renderedRetry += clauseSeparator
                      + inDialect(J == FirstJudged::AtSecondAttempt ? std::string { "accept from attempt 2 when" }
                                                                    : std::string { "accept when" })
                      + (D == Dialect::LaTeX ? "\\ " : " ") + render<D>(retrying.accept, vocabulary);
@@ -2285,7 +2294,7 @@ template <Dialect D, Described R, std::size_t Max, FirstJudged J, typename Start
         verdictText = detail::literal_words_in_dialect<D>(retrying.onExhausted.label);
     else
         verdictText = std::string { retrying.onExhausted.label };
-    return renderedRetry + separator + inDialect("otherwise:") + (D == Dialect::LaTeX ? "\\ " : " ") + verdictText;
+    return renderedRetry + clauseSeparator + inDialect("otherwise:") + (D == Dialect::LaTeX ? "\\ " : " ") + verdictText;
 }
 
 /// Renders a retry as plain text, writing symbols as @p vocabulary says.

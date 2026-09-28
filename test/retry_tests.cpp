@@ -399,11 +399,11 @@ constexpr bool answers_as_the_environment(AE const& wrapped)
 TEST_CASE("the attempt's environment answers every member of Environment", "[retry]")
 {
     using Starting =
-        formula::detail::AttemptEnvironment<Specimen, formula::Rational, Estimate, formula::AttemptPhase::Starting>;
+        formula::detail::AttemptEnvironment<Specimen, formula::Rational, Estimate, formula::AttemptPhase::Starting, 4>;
     using Attempting =
-        formula::detail::AttemptEnvironment<Specimen, formula::Rational, Estimate, formula::AttemptPhase::Attempting>;
+        formula::detail::AttemptEnvironment<Specimen, formula::Rational, Estimate, formula::AttemptPhase::Attempting, 4>;
     using Judging =
-        formula::detail::AttemptEnvironment<Specimen, formula::Rational, Estimate, formula::AttemptPhase::Judging>;
+        formula::detail::AttemptEnvironment<Specimen, formula::Rational, Estimate, formula::AttemptPhase::Judging, 4>;
     STATIC_REQUIRE(answers_every_environment_member<Specimen, Reading>()); // the list itself is right
     STATIC_REQUIRE(answers_every_environment_member<Starting, Reading>());
     STATIC_REQUIRE(answers_every_environment_member<Attempting, Reading>());
@@ -901,4 +901,156 @@ TEST_CASE("the walk behind a retry's quantity check sees a context node inside e
     // cv-qualification aside, the retry's own quantity is its own.
     STATIC_REQUIRE(!NamesAnotherQuantity<Estimate const, std::remove_cv_t<decltype(own)>>::value);
     STATIC_REQUIRE(!NamesAnotherQuantity<Estimate, formula::PreviousAttemptNode<Estimate const>>::value);
+}
+
+namespace
+{
+// Recorded attempts (plan, task 8): attempt k's result is determination k,
+// accepted from the second attempt when two successive results agree within
+// 1.27 g. 41.3, 43.9, 42.7, 45.7 g: |43.9 - 41.3| = 2.6, not accepted at 2;
+// |42.7 - 43.9| = 1.2, accepted at 3 with 42.7 g. Never stopping would give
+// 45.7, the earlier of the agreeing pair 43.9, and judging at attempt 1
+// against an absent previous would fail.
+struct Determination: formula::Quantity<Determination, "d", "an invented determination", unit::Gram>
+{
+};
+struct Agreed: formula::Quantity<Agreed, "d_a", "an invented agreed determination", unit::Gram>
+{
+};
+
+constexpr auto agree = formula::when(formula::this_attempt<Agreed> >= formula::previous_attempt<Agreed>,
+                                     formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>,
+                                     formula::previous_attempt<Agreed> - formula::this_attempt<Agreed>)
+                       <= formula::constant<unit::Gram>(rat(127, 100));
+
+constexpr auto successive = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
+    formula::attempt_input<Determination>,
+    agree,
+    formula::Verdict { "repeat the test" },
+    { .title = "Agreed determination", .reference = "Example Standard 12", .section = "7" });
+
+constexpr auto recorded_as(formula::Measured<Determination> first,
+                           formula::Measured<Determination> second,
+                           formula::Measured<Determination> third,
+                           formula::Measured<Determination> fourth)
+{
+    return formula::environment(formula::measured_series<Determination>(first, second, third, fourth));
+}
+
+constexpr formula::Measured<Determination> grams(std::int64_t tenths)
+{
+    return formula::Measured<Determination> { rat(tenths, 10) };
+}
+
+constexpr auto allFour = recorded_as(grams(413), grams(439), grams(427), grams(457));
+} // namespace
+
+TEST_CASE("a retry over recorded determinations stops at the first pair that agrees", "[retry][recorded]")
+{
+    constexpr auto ran = formula::checked_evaluate_retry(successive, allFour);
+    STATIC_REQUIRE(ran.has_value());
+    STATIC_REQUIRE(ran->end() == formula::RetryEnd::Accepted);
+    STATIC_REQUIRE(ran->accepted_at() == std::optional<std::size_t> { 2 }); // the 3rd attempt, zero-based
+    STATIC_REQUIRE(ran->attempts_made() == 3);
+    STATIC_REQUIRE(ran->outcome().measurement().value() == rat(427, 10)); // 42.7, not 45.7 nor 43.9
+}
+
+TEST_CASE("a determination the method needed but nobody recorded ends the retry as not recorded", "[retry][recorded]")
+{
+    // Element 3 absent: the third attempt needs it, and the retry ends there,
+    // not recorded -- not "not judgeable", which says a comparison could not
+    // tell, and not an empty value quietly accepted or rejected.
+    constexpr auto thirdMissing =
+        recorded_as(grams(413), grams(439), formula::Measured<Determination>::absent(), grams(457));
+    constexpr auto missing = formula::checked_evaluate_retry(successive, thirdMissing);
+    STATIC_REQUIRE(missing.has_value());
+    STATIC_REQUIRE(missing->end() == formula::RetryEnd::NotRecorded);
+    STATIC_REQUIRE(missing->attempts_made() == 3);
+    STATIC_REQUIRE(!missing->accepted_at().has_value());
+    STATIC_REQUIRE(missing->outcome().is_empty());
+
+    // Element 4 absent: the retry is accepted at the third attempt and never
+    // reads it.
+    constexpr auto fourthMissing =
+        recorded_as(grams(413), grams(439), grams(427), formula::Measured<Determination>::absent());
+    constexpr auto accepted = formula::checked_evaluate_retry(successive, fourthMissing);
+    STATIC_REQUIRE(accepted.has_value());
+    STATIC_REQUIRE(accepted->end() == formula::RetryEnd::Accepted);
+    STATIC_REQUIRE(accepted->accepted_at() == std::optional<std::size_t> { 2 });
+    STATIC_REQUIRE(accepted->outcome().measurement().value() == rat(427, 10));
+
+    // The first missing: not recorded at attempt 1, although attempt 1 is not
+    // judged.
+    constexpr auto firstMissing =
+        recorded_as(formula::Measured<Determination>::absent(), grams(439), grams(427), grams(457));
+    constexpr auto atFirst = formula::checked_evaluate_retry(successive, firstMissing);
+    STATIC_REQUIRE(atFirst->end() == formula::RetryEnd::NotRecorded);
+    STATIC_REQUIRE(atFirst->attempts_made() == 1);
+}
+
+TEST_CASE("a determination read only by the acceptance, and missing, is not recorded either", "[retry][recorded]")
+{
+    // The attempt reads the previous value; the acceptance compares it with
+    // the recorded determination. A missing one is still "not recorded".
+    constexpr auto closeTo = formula::attempt_input<Determination> - formula::this_attempt<Agreed>
+                             <= formula::constant<unit::Gram>(rat(127, 100));
+    constexpr auto follows = formula::retry<Agreed, 4, formula::FirstJudged::AtFirstAttempt>(
+        formula::starting_from(formula::constant<unit::Gram>(rat(413, 10))),
+        formula::previous_attempt<Agreed> + formula::constant<unit::Gram>(rat(0)),
+        closeTo,
+        formula::Verdict { "repeat the test" },
+        { .reference = "Example Standard 12", .section = "7" });
+    constexpr auto secondMissing =
+        recorded_as(grams(457), formula::Measured<Determination>::absent(), grams(427), grams(413));
+    constexpr auto ran = formula::checked_evaluate_retry(follows, secondMissing);
+    // Attempt 1: 45.7 - 41.3 = 4.4 g, rejected; attempt 2 reads nothing.
+    STATIC_REQUIRE(ran->end() == formula::RetryEnd::NotRecorded);
+    STATIC_REQUIRE(ran->attempts_made() == 2);
+}
+
+TEST_CASE("a recorded attempt reads as the determination in the trace, the render and the page",
+          "[retry][recorded][trace][render][document]")
+{
+    auto const accepted = formula::explain_retry(successive, allFour);
+    REQUIRE(accepted.outcome.has_value());
+    std::string const text = formula::render_trace(accepted.trace, { .maxSteps = 100 });
+    INFO(text);
+    CHECK(text.find("1. d(k) = 413/10 g\n") != std::string::npos);
+    CHECK(text.find("2. attempt 1: d_a(k) = #1 = 413/10 g; not judged\n") != std::string::npos);
+    CHECK(text.find("d_a = retry: accepted at attempt 3 of 4 = 427/10 g [Agreed determination, Example Standard 12, 7]")
+          != std::string::npos);
+    std::vector<formula::AttemptJudgement> const judged = judgements(accepted.trace);
+    CHECK(judged
+          == std::vector<formula::AttemptJudgement> { formula::AttemptJudgement::NotJudged,
+                                                      formula::AttemptJudgement::Rejected,
+                                                      formula::AttemptJudgement::Accepted });
+    CHECK(count_kind(accepted.trace, formula::StepKind::AttemptInput) == 3);
+
+    constexpr auto thirdMissing =
+        recorded_as(grams(413), grams(439), formula::Measured<Determination>::absent(), grams(457));
+    auto const missing = formula::explain_retry(successive, thirdMissing);
+    REQUIRE(missing.outcome.has_value());
+    std::string const missingText = formula::render_trace(missing.trace, { .maxSteps = 100 });
+    INFO(missingText);
+    CHECK(missingText.find("d(k) = (not recorded)\n") != std::string::npos);
+    CHECK(missingText.find("attempt 3: d_a(k) = #") != std::string::npos);
+    CHECK(missingText.find("; not recorded\n") != std::string::npos);
+    CHECK(missingText.find("d_a = retry: attempt 3 not recorded [Agreed determination, Example Standard 12, 7]")
+          != std::string::npos);
+    CHECK(judgements(missing.trace).back() == formula::AttemptJudgement::NotRecorded);
+
+    CHECK(formula::render(successive).find("up to 4 attempts: d_a(k) = d(k); accept from attempt 2 when")
+          != std::string::npos);
+    CHECK(formula::render<formula::Dialect::Markdown>(successive).find("`d_a(k)` = `d(k)`") != std::string::npos);
+    CHECK(formula::render<formula::Dialect::LaTeX>(successive).find("{d_a}_{k} = {d}_{k}") != std::string::npos);
+
+    // The page: the result, iterated, then the determinations, a series of
+    // one per attempt allowed.
+    formula::Documentation const page = formula::document(successive);
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "d_a");
+    CHECK(page.symbols[1].symbol == "d");
+    CHECK(page.symbols[1].description == "an invented determination");
+    CHECK(page.symbols[1].shape == formula::ValueShape::Series);
+    CHECK(page.symbols[1].length == 4);
 }

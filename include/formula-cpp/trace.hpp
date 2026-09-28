@@ -478,6 +478,10 @@ enum class StepKind : std::uint8_t
     PreviousAttempt,
     /// The value the attempt being judged produced (`this_attempt<R>`).
     ThisAttempt,
+    /// The determination recorded for the attempt that is running
+    /// (`attempt_input<Q>`), in `Q`'s declared unit; absent when nobody
+    /// recorded it, which ends the retry `NotRecorded`.
+    AttemptInput,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1883,6 +1887,12 @@ namespace detail
         static constexpr StepKind value = StepKind::ThisAttempt;
     };
 
+    template <Described Q>
+    struct StepKindOf<AttemptInputNode<Q>>
+    {
+        static constexpr StepKind value = StepKind::AttemptInput;
+    };
+
     /// The `StepKind` a series node maps to: `StepKindOf`'s counterpart for a
     /// `SeriesNode`, and closed the same way. The primary template is left
     /// undefined, so a series node kind added without an entry here fails to
@@ -2833,7 +2843,8 @@ class RecordingSink
                                        || detail::StepKindOf<N>::value == StepKind::OverriddenConstant
                                        || detail::StepKindOf<N>::value == StepKind::DerivedQuantity
                                        || detail::StepKindOf<N>::value == StepKind::PreviousAttempt
-                                       || detail::StepKindOf<N>::value == StepKind::ThisAttempt;
+                                       || detail::StepKindOf<N>::value == StepKind::ThisAttempt
+                                       || detail::StepKindOf<N>::value == StepKind::AttemptInput;
         nodeStep.unit = coherent(N::dimension);
         if constexpr (namesQuantity || detail::StepKindOf<N>::value == StepKind::PrecisionLevel)
             nodeStep.unit = Describe<typename N::quantity>::unit;
@@ -3860,15 +3871,15 @@ class RecordingSink
         else
         {
             retryRow.end = ended->end();
-            Measured<R> const measurement = ended->outcome().measurement();
+            Measured<R> const acceptedMeasurement = ended->outcome().measurement();
             // The accepted value, back in the coherent unit every step holds.
             // Reversing a conversion that just succeeded, it should not fail;
             // if it did, the step states the failure, never "not measured"
             // for an accepted retry.
-            if (ended->end() == RetryEnd::Accepted && measurement.has_value())
+            if (ended->end() == RetryEnd::Accepted && acceptedMeasurement.has_value())
             {
                 std::expected<Rational, ArithmeticError> const inCoherentUnit =
-                    checked_convert(measurement.value(), Describe<R>::unit, coherent(Describe<R>::dimension));
+                    checked_convert(acceptedMeasurement.value(), Describe<R>::unit, coherent(Describe<R>::dimension));
                 if (inCoherentUnit.has_value())
                     retryStep.value = *inCoherentUnit;
                 else
