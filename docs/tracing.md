@@ -279,7 +279,10 @@ whatever its dimension: a computed *mass* prints no `kg` either, nor a
 computed length its `m`. A compound dimension is simply the case where the
 absence is most obvious, since there is no everyday symbol to miss; the
 behaviour itself applies uniformly to anything the evaluator computed rather
-than declared.
+than declared. The exceptions are the steps whose value is still on their
+series' scale -- a sum, a range, a running total -- which read in that series'
+unit when it has a symbol and no offset
+([Series and grading curves](series.md)).
 
 A citation computes nothing, so a documented step states its value exactly as
 the line it names does -- the same number, in the same unit and spelling. Over

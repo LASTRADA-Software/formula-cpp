@@ -1855,6 +1855,22 @@ namespace detail
         return valueText;
     }
 
+    /// A deviation from the mean or its limit, @p si, as `rejection_value_text`
+    /// shows it -- in the sample's unit when a difference can be shown in it
+    /// (`detail::borrowable`), and otherwise in the coherent one: a deviation
+    /// of Celsius readings is a difference, 106/25 kelvin, and in degrees
+    /// Celsius it would read as a reading, off by the offset. Squared, in the
+    /// coherent unit's square likewise, as the deviation beside it is.
+    [[nodiscard]] inline std::string deviation_text(Step<Rational> const& recorded, Rational si, bool squared)
+    {
+        if (detail::borrowable(recorded.unit))
+            return rejection_value_text(recorded, si, squared);
+        Step<Rational> differenceShape {};
+        differenceShape.dimension = recorded.dimension;
+        differenceShape.unit = coherent(recorded.dimension);
+        return rejection_value_text(differenceShape, si, squared);
+    }
+
     /// `element 4 of 6`, or `elements 4 and 6 of 6`, or `elements 2, 4 and 6
     /// of 6` -- positions counted from one, as every text shows them; with
     /// @p ofObservations, `observation 4 of 6` and the rest.
@@ -1934,11 +1950,11 @@ namespace detail
                         ? "gap / range = " + number_text(*rejectionRecord->statistic) + comparison
                               + number_text(*rejectionRecord->limit) + " (gap to range)"
                     : rejectionRecord->squared
-                        ? "(x - mean)^2 = " + rejection_value_text(recorded, *rejectionRecord->statistic, true) + comparison
-                              + "limit^2 * s^2 = " + rejection_value_text(recorded, *rejectionRecord->limit, true)
+                        ? "(x - mean)^2 = " + deviation_text(recorded, *rejectionRecord->statistic, true) + comparison
+                              + "limit^2 * s^2 = " + deviation_text(recorded, *rejectionRecord->limit, true)
                               + " (deviation in standard deviations)"
-                        : "abs(x - mean) = " + rejection_value_text(recorded, *rejectionRecord->statistic, false)
-                              + comparison + rejection_value_text(recorded, *rejectionRecord->limit, false)
+                        : "abs(x - mean) = " + deviation_text(recorded, *rejectionRecord->statistic, false)
+                              + comparison + deviation_text(recorded, *rejectionRecord->limit, false)
                               + " (deviation from mean)";
                 return "rejected "
                        + elements_text({ *rejectionRecord->position },

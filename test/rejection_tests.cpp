@@ -37,6 +37,20 @@ struct Determinations: formula::Quantity<Determinations, "n", "number of determi
 struct Tolerance: formula::Quantity<Tolerance, "t", "relative tolerance", unit::One>
 {
 };
+/// A temperature reading, on the Celsius scale's offset.
+struct Reading: formula::Quantity<Reading, "T", "temperature reading", unit::Celsius>
+{
+};
+/// A thousandth of a kilogram the author gave no symbol.
+inline constexpr formula::Unit UnnamedGram { .dimension = formula::dim::Mass,
+                                             .magnitudeNumerator = 1,
+                                             .magnitudeDenominator = 1000,
+                                             .decimals = 1 };
+/// A determination in that unit: a value shown in it could not say what
+/// scale it is on.
+struct UnnamedMass: formula::Quantity<UnnamedMass, "m_u", "mass in an unnamed unit", UnnamedGram>
+{
+};
 /// A determination in kilograms, for sums that leave 64 bits.
 struct Heavy: formula::Quantity<Heavy, "m_h", "heavy mass", unit::Kilogram>
 {
@@ -337,6 +351,80 @@ TEST_CASE("pass n reads the current pass's size", "[rejection]")
              "10. pass 2: 5 values, mean 1977/50 g\n"
              "11. element 6 of 6 would be rejection 2 of at most 1: discard the determinations and repeat the test [Example "
              "Standard, 7.4]\n");
+}
+
+TEST_CASE("a deviation from the mean of Celsius readings reads in the coherent unit, not as a reading",
+          "[rejection][trace-render]")
+{
+    // 23.7, 24.1, 29.3, 23.9 and 24.3 degC, against 3 K either side of the
+    // mean. The determinations and the means are points on the Celsius scale;
+    // a deviation is a difference, 4.24 K, which shown in degrees Celsius
+    // would read -268.91 degC, off by the offset.
+    constexpr auto readings = formula::environment(formula::measured_series<Reading>(
+        formula::Measured<Reading> { rat(237, 10) },
+        formula::Measured<Reading> { rat(241, 10) },
+        formula::Measured<Reading> { rat(293, 10) },
+        formula::Measured<Reading> { rat(239, 10) },
+        formula::Measured<Reading> { rat(243, 10) }));
+    constexpr auto threeKelvin = formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<3>>(
+        formula::series<Reading, 5>,
+        formula::deviation_from_mean(formula::constant<unit::Kelvin>(rat(3))),
+        repeatTest,
+        exampleCited);
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_rejection<Reading>(threeKelvin, readings, formula::RecordingSink<> { trace });
+    std::string const degreesCelsius = "\xc2\xb0" "C";
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. T = 237/10 " + degreesCelsius + "; 241/10 " + degreesCelsius + "; 293/10 " + degreesCelsius + "; 239/10 "
+                 + degreesCelsius + "; 243/10 " + degreesCelsius + "\n"
+                 + "2. 3 K\n"
+                   "3. pass 1: 5 values, mean 1253/50 " + degreesCelsius + "\n"
+                 + "4. rejected element 3 of 5 (293/10 " + degreesCelsius
+                 + ") in pass 1: abs(x - mean) = 106/25 > 3 (deviation from mean)\n"
+                   "5. 3 K\n"
+                   "6. pass 2: 4 values, mean 24 " + degreesCelsius + "\n"
+                 + "7. settled: 1 rejected, 4 remain\n");
+
+    // Squared, as deviation_in_stddevs compares them: 17.9776 K2 against
+    // (7/4)^2 * 5.668 K2, in the coherent unit's square as the deviation is.
+    formula::Trace<> squared {};
+    (void) formula::checked_evaluate_rejection<Reading>(
+        formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<3>>(
+            formula::series<Reading, 5>, sevenQuarters, repeatTest, exampleCited),
+        readings,
+        formula::RecordingSink<> { squared });
+    CHECK(formula::render_trace(squared, { .maxSteps = 40 }).find(
+              "4. rejected element 3 of 5 (293/10 " + degreesCelsius
+              + ") in pass 1: (x - mean)^2 = 11236/625 > limit^2 * s^2 = 69433/4000 (deviation in standard deviations)\n")
+          != std::string::npos);
+}
+
+TEST_CASE("a rejection over a unit with no symbol reads its means and deviations in the coherent unit",
+          "[rejection][trace-render]")
+{
+    // 40.2, 39.8, 40.5 and 44 thousandths of a kilogram, against 2 g either
+    // side of the mean. A mean, a rejected value and a deviation borrow no
+    // unit that could not say what scale it is on: each reads in kilograms.
+    constexpr auto unnamed = formula::environment(formula::measured_series<UnnamedMass>(
+        formula::Measured<UnnamedMass> { rat(402, 10) },
+        formula::Measured<UnnamedMass> { rat(398, 10) },
+        formula::Measured<UnnamedMass> { rat(405, 10) },
+        formula::Measured<UnnamedMass> { rat(44) }));
+    constexpr auto twoGrams = formula::without_outliers<MostExtreme, Keep, formula::AtMost<1>, formula::KeepAtLeast<3>>(
+        formula::series<UnnamedMass, 4>,
+        formula::deviation_from_mean(formula::constant<unit::Gram>(rat(2))),
+        repeatTest,
+        exampleCited);
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_rejection<UnnamedMass>(twoGrams, unnamed, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 })
+          == "1. m_u = 201/5; 199/5; 81/2; 44\n"
+             "2. 2 g\n"
+             "3. pass 1: 4 values, mean 329/8000\n"
+             "4. rejected element 4 of 4 (11/250) in pass 1: abs(x - mean) = 23/8000 > 1/500 (deviation from mean)\n"
+             "5. 2 g\n"
+             "6. pass 2: 3 values, mean 241/6000\n"
+             "7. settled: 1 rejected, 3 remain\n");
 }
 
 TEST_CASE("only the library builds a RejectionOutcome", "[rejection]")

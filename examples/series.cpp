@@ -6,6 +6,7 @@
 //
 //   1. A series is not a single value. It is marked in the formula, and a
 //      reduction -- `sum` or `interpolate_at` -- brings it back to one value.
+//      A sum and a range read in the series' unit, unless it has an offset.
 //   2. "Map" is elementwise arithmetic: one trace step per operation, the
 //      broadcast scalar read once.
 //   3. Absence is decided at the size of what is produced: every row of the
@@ -54,6 +55,8 @@ using Share = formula::Quantity<struct ShareTag, "s_r", "share of the total reta
 using Opening = formula::Quantity<struct OpeningTag, "d", "screen opening", unit::Metre>;
 using ParticleSize = formula::Quantity<struct ParticleSizeTag, "s", "particle size", unit::Metre>;
 using Count = formula::Quantity<struct CountTag, "n", "particles in a class", unit::One>;
+using Reading = formula::Quantity<struct ReadingTag, "T_r", "a temperature reading", unit::Celsius>;
+using Kelvins = formula::Quantity<struct KelvinsTag, "T_k", "a temperature in kelvins", unit::Kelvin>;
 
 template <typename Q>
 [[nodiscard]] constexpr formula::Measured<Q> m(std::int64_t numerator, std::int64_t denominator = 1)
@@ -235,6 +238,25 @@ int main()
                     row.shape == formula::ValueShape::Series ? "series" : "single value",
                     row.length);
     std::printf("\n");
+
+    // Celsius readings: a sum and a range are no readings, and read in the
+    // coherent unit; a mean is one, and reads in degrees Celsius.
+    auto const readings = formula::environment(
+        formula::measured_series<Reading>(m<Reading>(237, 10), m<Reading>(413, 10), m<Reading>(379, 10)));
+    constexpr auto threeReadings = formula::series<Reading, 3>;
+    std::string const sumTrace = value_trace<Kelvins>(formula::sum(threeReadings), readings);
+    std::string const readingsLine = sumTrace.substr(0, sumTrace.find('\n'));
+    std::string const sumLine = last_line(sumTrace);
+    std::string const rangeLine = last_line(value_trace<Kelvins>(formula::sample_range(threeReadings), readings));
+    std::string const meanLine = last_line(value_trace<Reading>(formula::sample_mean(threeReadings), readings));
+    std::printf("the readings: %s\ntheir sum: %s\ntheir range: %s\ntheir mean: %s\n\n",
+                readingsLine.c_str(),
+                sumLine.c_str(),
+                rangeLine.c_str(),
+                meanLine.c_str());
+    check(sumLine == "2. sum(#1) = 18447/20", "922.35 K, no reading");
+    check(rangeLine == "2. sample_range(#1) = 88/5", "17.6 K, no reading");
+    check(meanLine == "2. sample_mean(#1) = 343/10 \xc2\xb0" "C", "a mean of readings is a reading, 34.3 degC");
 
     std::printf("== 2. Elementwise arithmetic: one step per operation ==\n\n");
     std::string const passingTrace = series_trace<Passing>(passing, analysis);

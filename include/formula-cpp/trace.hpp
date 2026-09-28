@@ -1972,11 +1972,34 @@ namespace detail
         static constexpr StepKind value = StepKind::CurveSplice;
     };
 
-    /// The unit a total is shown in: its operand step's, when it claimed one
-    /// of its own dimension -- a total of grams reads in grams, as the masses
-    /// summed do -- and @p fallback otherwise. Read off the operand's step,
-    /// never off a type, so a computed operand's coherent unit carries over
-    /// too.
+    /// Whether a value computed from values shown in @p shownUnit -- a sum, a
+    /// range, a product by a pure number -- may be shown in it too. Not when
+    /// it has an offset: such a value is no point on the unit's scale -- the
+    /// sum of three Celsius readings is no reading, nor is their range -- and
+    /// shown in degrees Celsius it would be off by the offset. Not when it has
+    /// no symbol: the value could not say what scale it is on, and would read
+    /// as the coherent unit every unlabelled computed value is shown in. The
+    /// value then reads in the coherent unit, as every computed value does.
+    [[nodiscard]] constexpr bool borrowable(Unit const& shownUnit) noexcept
+    {
+        return shownUnit.offsetNumerator == 0 && !view(shownUnit.symbolText).empty();
+    }
+
+    /// Whether a value that is a point on @p shownUnit's scale -- a mean of
+    /// values shown in it, or one of them -- may be shown in it too: when it
+    /// has a symbol, offset or not. A mean of Celsius readings is a Celsius
+    /// reading; a value in a unit with no symbol could not say what scale it
+    /// is on, and reads in the coherent unit, as `borrowable` rules.
+    [[nodiscard]] constexpr bool borrowable_for_a_point(Unit const& shownUnit) noexcept
+    {
+        return !view(shownUnit.symbolText).empty();
+    }
+
+    /// The unit a total or a range is shown in: its operand step's, when it
+    /// claimed one of its own dimension that is `borrowable` -- a total of
+    /// grams reads in grams, as the masses summed do -- and @p fallback
+    /// otherwise. Read off the operand's step, never off a type, so what
+    /// that step shows is what carries over.
     template <typename Rep>
     [[nodiscard]] constexpr Unit operand_unit_or(std::vector<Step<Rep>> const& steps,
                                                  std::vector<std::size_t> const& operands,
@@ -1986,7 +2009,7 @@ namespace detail
         if (operands.size() != 1)
             return fallback;
         Unit const operandUnit = steps[operands.front()].unit;
-        return operandUnit.dimension == dimension ? operandUnit : fallback;
+        return operandUnit.dimension == dimension && borrowable(operandUnit) ? operandUnit : fallback;
     }
 
     template <typename Role, typename Requirement, Node Operand>
@@ -2511,9 +2534,6 @@ namespace detail
         for (std::size_t const operandIndex: operands)
         {
             Step<Rep> const& inputStep = steps[operandIndex];
-            auto const borrowable = [](Unit const& shownUnit) noexcept {
-                return shownUnit.offsetNumerator == 0 && !view(shownUnit.symbolText).empty();
-            };
             if (borrowable(inputStep.unit))
                 shownIn.push_back(inputStep.unit);
             if ((inputStep.kind == StepKind::CurvePairing || inputStep.kind == StepKind::CurveSplice)
@@ -2863,12 +2883,14 @@ class RecordingSink
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             nodeStep.unit = N::unit;
         // A pass's mean reads in its sample's unit, as the pass line beside it
-        // does: grams for a series of masses, bare SI for a computed series.
+        // does: grams for a series of masses, bare SI for a computed series,
+        // and bare SI for a unit with no symbol (`detail::borrowable_for_a_point`).
         // The innermost rejection in progress is the one it is bound to.
         if constexpr (detail::StepKindOf<N>::value == StepKind::PassMean)
             if (!_trace->rejectionsInProgress.empty())
                 if (std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
-                    sampleStep.has_value() && *sampleStep < _trace->steps.size())
+                    sampleStep.has_value() && *sampleStep < _trace->steps.size()
+                    && detail::borrowable_for_a_point(_trace->steps[*sampleStep].unit))
                     nodeStep.unit = _trace->steps[*sampleStep].unit;
 
         if constexpr (namesQuantity)
@@ -2979,12 +3001,20 @@ class RecordingSink
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
                 nodeStep.unit = _trace->steps[nodeStep.operands.front()].unit;
 
-        // A sum, a mean and a range read in their series' unit, which only
-        // the claimed operand step knows.
+        // A sum and a range read in their series' unit, which only the
+        // claimed operand step knows -- when it is one a sum or a difference
+        // can be shown in (`detail::borrowable`). A mean is a point on its
+        // series' scale, however that scale is offset, so it reads in the
+        // series' unit as the determinations do: a mean of Celsius readings
+        // is a Celsius reading, as a pass's mean is.
         if constexpr (detail::StepKindOf<N>::value == StepKind::SeriesSum
-                      || detail::StepKindOf<N>::value == StepKind::SampleMean
                       || detail::StepKindOf<N>::value == StepKind::SampleRange)
             nodeStep.unit = detail::operand_unit_or(_trace->steps, nodeStep.operands, nodeStep.dimension, nodeStep.unit);
+        else if constexpr (detail::StepKindOf<N>::value == StepKind::SampleMean)
+            if (nodeStep.operands.size() == 1)
+                if (Unit const sampleUnit = _trace->steps[nodeStep.operands.front()].unit;
+                    sampleUnit.dimension == nodeStep.dimension && detail::borrowable_for_a_point(sampleUnit))
+                    nodeStep.unit = sampleUnit;
 
         // A read from another record is its operand's value, unchanged, so it
         // reads in the unit its operand's line does: `4 MPa` after a variable
@@ -3934,7 +3964,8 @@ class RecordingSink
   private:
     /// A rejection step of @p stepKind, in the dimension and unit of the
     /// rejection's sample -- its own step's, once known -- so that a mean or
-    /// a rejected value reads as the determinations do.
+    /// a rejected value reads as the determinations do; in the coherent unit
+    /// when the sample's has no symbol (`detail::borrowable_for_a_point`).
     [[nodiscard]] Step<Rep> rejection_step(StepKind stepKind) const
     {
         Step<Rep> rejectionStep {};
@@ -3946,8 +3977,10 @@ class RecordingSink
             std::optional<std::size_t> const sampleStep = _trace->rejectionsInProgress.back().sampleStep;
             if (sampleStep.has_value() && *sampleStep < _trace->steps.size())
             {
+                Unit const sampleUnit = _trace->steps[*sampleStep].unit;
                 rejectionStep.dimension = _trace->steps[*sampleStep].dimension;
-                rejectionStep.unit = _trace->steps[*sampleStep].unit;
+                rejectionStep.unit =
+                    detail::borrowable_for_a_point(sampleUnit) ? sampleUnit : coherent(rejectionStep.dimension);
             }
         }
         return rejectionStep;

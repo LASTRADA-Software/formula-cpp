@@ -1934,11 +1934,31 @@ namespace series_trace
     struct Stockpile: formula::Quantity<Stockpile, "m_p", "stockpile mass", unit::Tonne>
     {
     };
+    /// A reading on an offset scale: each is a point on the Celsius scale,
+    /// while a sum or a difference of them is none.
+    struct Reading: formula::Quantity<Reading, "T_r", "a temperature reading", unit::Celsius>
+    {
+    };
+    /// A thousandth of a metre the author gave no symbol: a value shown in it
+    /// could not say what scale it is on.
+    inline constexpr formula::Unit UnnamedMillimetre { .dimension = formula::dim::Length,
+                                                       .magnitudeNumerator = 1,
+                                                       .magnitudeDenominator = 1000,
+                                                       .decimals = 1 };
+    struct Gap: formula::Quantity<Gap, "w", "a gap in an unnamed unit", UnnamedMillimetre>
+    {
+    };
 
     [[nodiscard]] constexpr formula::Measured<Retained> retained(std::int64_t grams)
     {
         return formula::Measured<Retained> { formula::Rational { grams } };
     }
+
+    /// 23.7, 41.3 and 37.9 degrees Celsius.
+    inline constexpr auto readings = formula::environment(
+        formula::measured_series<Reading>(formula::Measured<Reading> { formula::Rational { 237, 10 } },
+                                          formula::Measured<Reading> { formula::Rational { 413, 10 } },
+                                          formula::Measured<Reading> { formula::Rational { 379, 10 } }));
 
     inline constexpr auto inputs = formula::environment(
         formula::measured_series<Retained>(
@@ -2185,6 +2205,51 @@ TEST_CASE("a sum is a single-value step whose operand is the series step", "[ser
     CHECK(explained.trace.steps[1].value == formula::Rational { 803, 1000 }); // one value, in coherent SI
     CHECK(explained.trace.steps[1].elements.empty());
     CHECK(explained.trace.steps[1].operands == std::vector<std::size_t> { 0 });
+}
+
+TEST_CASE("a sum, a range and a running total of Celsius readings read in the coherent unit, not as readings",
+          "[series][trace]")
+{
+    // 296.85, 314.45 and 311.05 K. Their sum, 922.35 K, and their range,
+    // 17.6 K, are no points on the Celsius scale: shown in degrees Celsius
+    // they would read 649.2 and -255.55 degC, each off by the offset. A mean
+    // is a point on the scale, 307.45 K, and reads as the readings do.
+    std::string const degreesCelsius = "\xc2\xb0" "C";
+    std::string const readingsLine = "1. T_r = 237/10 " + degreesCelsius + "; 413/10 " + degreesCelsius + "; 379/10 "
+                                     + degreesCelsius + "\n";
+    constexpr auto readings = formula::series<series_trace::Reading, 3>;
+    CHECK(derivationOf(formula::sum(readings), series_trace::readings) == readingsLine + "2. sum(#1) = 18447/20\n");
+    CHECK(derivationOf(formula::sample_range(readings), series_trace::readings)
+          == readingsLine + "2. sample_range(#1) = 88/5\n");
+    CHECK(derivationOf(formula::sample_mean(readings), series_trace::readings)
+          == readingsLine + "2. sample_mean(#1) = 343/10 " + degreesCelsius + "\n");
+
+    formula::Trace<> running {};
+    (void) formula::detail::dispatch_series<formula::Rational>(
+        formula::cumulative<formula::CumulativeDirection::FromFirst>(readings),
+        series_trace::readings,
+        formula::RecordingSink<> { running });
+    CHECK(formula::render_trace(running, { .maxSteps = 30 })
+          == readingsLine + "2. cumulative(#1, from first) = 5937/20; 6113/10; 18447/20\n");
+    REQUIRE(running.steps.size() == 2);
+    CHECK(running.steps[1].unit.offsetNumerator == 0);
+}
+
+TEST_CASE("a sum and a mean of a series in a unit with no symbol read in the coherent unit", "[series][trace]")
+{
+    // 0.137 and 0.263 m, entered as 137 and 263 of an unnamed thousandth of
+    // a metre. The sum borrows no unit it cannot name: 0.4 m, in the coherent
+    // unit every unlabelled computed value is shown in.
+    constexpr auto gaps = formula::environment(
+        formula::measured_series<series_trace::Gap>(formula::Measured<series_trace::Gap> { formula::Rational { 137 } },
+                                                    formula::Measured<series_trace::Gap> { formula::Rational { 263 } }));
+    CHECK(derivationOf(formula::sum(formula::series<series_trace::Gap, 2>), gaps)
+          == "1. w = 137; 263\n"
+             "2. sum(#1) = 2/5\n");
+    // Nor does a mean, which would borrow an offset unit: 0.2 m.
+    CHECK(derivationOf(formula::sample_mean(formula::series<series_trace::Gap, 2>), gaps)
+          == "1. w = 137; 263\n"
+             "2. sample_mean(#1) = 1/5\n");
 }
 
 TEST_CASE("a series with nothing measured traces as absence at every element, and never as zero", "[series][trace]")

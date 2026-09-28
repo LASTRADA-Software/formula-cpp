@@ -199,3 +199,11 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   order drew up to five errors on clang++, one the library's message and the rest the compiler
   reading the failed check. Each now draws the one message on cl, clang-cl, clang++ and g++, the
   compilers the library is built and tested with.
+- A trace stated a sum, a range or a running total of readings in a unit with an offset in that
+  unit, as if it were a reading: the sum of 23.7, 41.3 and 37.9 °C read `3246/5 °C` and their
+  range `-5111/20 °C`, each off by the offset. A rejection's deviation from the mean did the same,
+  `abs(x - mean) = -26891/100 °C` for a deviation of 4.24 K. Each now reads in the coherent unit,
+  `18447/20`, `88/5` and `106/25` kelvin, as a difference of two readings does; a mean, which is a
+  reading, stays in degrees Celsius. A sum or a range no longer borrows a unit without a symbol
+  either, and the mean and a rejection's lines -- a pass's mean, a rejected value, a deviation --
+  follow the same rule: in a unit with no symbol they read in the coherent unit.
