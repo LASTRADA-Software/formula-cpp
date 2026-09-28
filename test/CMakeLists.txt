@@ -2238,6 +2238,37 @@ formula_add_negative_test(retry_previous_outside
     "formula: previous_attempt, this_attempt and attempt_number are only meaningful inside a retry"
     REJECT "RequireProvided" "no matching")
 
+# Retry review fixes: a context node names the retry's own quantity and is
+# read inside an attempt; a retry is evaluated at the top; its start and verdict
+# are what they say.
+formula_add_negative_test(retry_previous_other_quantity
+    "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
+    REJECT "only meaningful inside a retry" "does not compute the dimension")
+formula_add_negative_test(retry_previous_other_dimension
+    "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
+    REJECT "only meaningful inside a retry" "does not compute the dimension")
+formula_add_negative_test(retry_context_in_starting_value
+    "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
+    REJECT "only meaningful inside a retry" "no matching")
+formula_add_negative_test(retry_start_not_starting_value
+    "formula: a retry starts from starting_from(expression), or from nothing; this starting value is neither"
+    REJECT "no matching" "does not compute the dimension")
+formula_add_negative_test(retry_empty_verdict
+    "formula_retry_verdict_must_say_something"
+    REJECT "static assertion failed")
+formula_add_negative_test(retry_in_checked_evaluate
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching")
+formula_add_negative_test(retry_in_evaluate
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching")
+formula_add_negative_test(retry_as_variant
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching" "RequireVariantsAgree" "RequireRoundingRuleMeasuresVariants")
+formula_add_negative_test(retry_in_arithmetic
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
+
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

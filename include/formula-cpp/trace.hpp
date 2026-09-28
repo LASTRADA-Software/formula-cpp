@@ -24,11 +24,11 @@
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/opaque.hpp>
-#include <formula-cpp/retry.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/rejection.hpp>
+#include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>

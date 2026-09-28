@@ -44,6 +44,7 @@
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/method.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
@@ -69,11 +70,18 @@ enum class FirstJudged : std::uint8_t
     /// Judged after every attempt, the first included.
     AtFirstAttempt,
     /// Judged from the second attempt on; the first is not judged, which is
-    /// not the same as rejected.
+    /// not the same as rejected. A first attempt whose value is absent still
+    /// ends the retry, `NotJudgeable`, though no judgement was due: the
+    /// second attempt's judgement would compare against that absent value,
+    /// and an absent comparison is "cannot tell", not "try again".
     AtSecondAttempt,
 };
 
-/// How a retry ended: exactly one of these, always.
+/// How a retry ended: exactly one of these, always. `RetryOutcome::end()`
+/// reports every one but `Failed`: a failed retry has no outcome, and
+/// `checked_evaluate_retry` returns its `RetryFailure` instead. `Failed` is
+/// how a trace records that end (`RetryStepData::end`, `trace.hpp`).
+/// `NotRecorded` is declared for recorded attempts, which no retry reads yet.
 enum class RetryEnd : std::uint8_t
 {
     /// The acceptance held after an attempt; the outcome is that attempt's
@@ -89,7 +97,7 @@ enum class RetryEnd : std::uint8_t
     /// is empty. Declared for recorded attempts, which no retry here reads yet.
     NotRecorded,
     /// An attempt, or its judgement, failed arithmetically; there is no
-    /// outcome, only the `RetryFailure`.
+    /// outcome, only the `RetryFailure` -- never `RetryOutcome::end()`.
     Failed,
     /// A person entered the result; no attempt ran.
     ManuallyEntered,
@@ -97,8 +105,14 @@ enum class RetryEnd : std::uint8_t
 
 /// The most attempts a retry may allow. The methods this shape exists for
 /// repeat a step a few times; a larger count is almost always a typo, and 64
-/// attempts of a small expression fit one constant evaluation on every
-/// compiler this library supports (measured in phase 15's spike).
+/// attempts of a five-node attempt with a four-node judgement fit one
+/// constant evaluation on cl 19.51, clang-cl and clang++ 22.1.3, g++ 13.3 and
+/// g++ 14.2 (measured in phase 15's spike, step 5).
+///
+/// The cap bounds the count, not the numbers: an exact fixpoint as simple as
+/// `6.08 g + w(k-1) / 2` doubles its denominator every attempt and passes
+/// `Rational`'s range at attempt 53 of 64. That is reported, `Failed` with
+/// `Overflow`, never a wrapped value.
 inline constexpr std::size_t retryAttemptCap = 64;
 
 /// Attempt 0's value: what `previous_attempt` reads at the first attempt.
@@ -125,10 +139,11 @@ template <Node E>
     return StartingValue<E> { expression };
 }
 
-/// Which part of an attempt is being evaluated: the attempt expression, or
-/// the acceptance over what it produced.
+/// Which part of a retry is being evaluated: its starting value, before any
+/// attempt; an attempt expression; or the acceptance over what it produced.
 enum class AttemptPhase : std::uint8_t
 {
+    Starting,
     Attempting,
     Judging,
 };
@@ -188,10 +203,27 @@ namespace detail
     /// and fails for one that is not.
     ///
     /// Values are in the coherent SI unit, in @p Rep, as every evaluator's.
-    template <typename Env, typename Rep, AttemptPhase P>
+    /// @p R is the retry's result quantity, the only one `previous_attempt`
+    /// and `this_attempt` may name (`RequireRetriedQuantity`).
+    template <typename Env, typename Rep, typename R, AttemptPhase P>
     class AttemptEnvironment
     {
       public:
+        /// The retry's result quantity.
+        using retried = R;
+
+        /// The starting value's environment: @p inner alone, before any
+        /// attempt, where no context node has anything to read.
+        constexpr explicit AttemptEnvironment(Env const& inner) noexcept
+            requires(P == AttemptPhase::Starting)
+            :
+            _inner { &inner },
+            _attemptAt { 0 },
+            _before { std::unexpected { ArithmeticError::DomainError } },
+            _produced {}
+        {
+        }
+
         /// Attempt @p attemptAt (from 1) of a retry over @p inner, after
         /// @p before: the previous attempt's value, the starting value, or
         /// the error reading it is -- `DomainError` with no starting value.
@@ -286,14 +318,18 @@ namespace detail
     struct AttemptEnvironmentTraits
     {
         static constexpr bool isAttempt = false;
+        static constexpr bool isStarting = false;
         static constexpr bool isJudging = false;
+        using retried = void;
     };
 
-    template <typename Env, typename Rep, AttemptPhase P>
-    struct AttemptEnvironmentTraits<AttemptEnvironment<Env, Rep, P>>
+    template <typename Env, typename Rep, typename R, AttemptPhase P>
+    struct AttemptEnvironmentTraits<AttemptEnvironment<Env, Rep, R, P>>
     {
         static constexpr bool isAttempt = true;
+        static constexpr bool isStarting = P == AttemptPhase::Starting;
         static constexpr bool isJudging = P == AttemptPhase::Judging;
+        using retried = R;
     };
 
     /// Fails to compile when a retry's context node is evaluated outside any
@@ -303,6 +339,33 @@ namespace detail
     {
         static_assert(AttemptEnvironmentTraits<Env>::isAttempt,
                       "formula: previous_attempt, this_attempt and attempt_number are only meaningful inside a retry");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a context node is read in a retry's starting
+    /// value, which is evaluated before the first attempt.
+    template <typename Env>
+    struct RequireNotInStartingValue
+    {
+        static_assert(!AttemptEnvironmentTraits<Env>::isStarting,
+                      "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists "
+                      "yet; previous_attempt, this_attempt and attempt_number cannot be read in it");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `previous_attempt<Q>` or `this_attempt<Q>` names
+    /// a quantity that is not the retry's own result: it would read the
+    /// retry's value under another quantity's name -- and, with another
+    /// dimension, as another kind of value. Named so both print.
+    template <typename Q, typename Env>
+    struct RequireRetriedQuantity
+    {
+        static_assert(std::is_same_v<Q, typename AttemptEnvironmentTraits<Env>::retried>,
+                      "formula: previous_attempt and this_attempt name the retry's own result quantity; this one "
+                      "names another -- both appear in this diagnostic as the template arguments of "
+                      "RequireRetriedQuantity");
 
         static constexpr bool value = true;
     };
@@ -350,7 +413,7 @@ namespace detail
     {
         static_assert(Node<A>,
                       "formula: a retry's attempt is one expression that produces one value, such as "
-                      "constant<unit::Gram>(6) + previous_attempt<R> / 2; a series or a comparison is not one");
+                      "constant<unit::Gram>(c) + previous_attempt<R> / 2; a series or a comparison is not one");
 
         static constexpr bool value = true;
     };
@@ -389,7 +452,7 @@ namespace detail
     {
         static_assert(Predicate<P>,
                       "formula: a retry's acceptance is a comparison that holds or does not, such as "
-                      "this_attempt<R> <= constant<unit::Gram>(7); an expression that computes a value is not one");
+                      "this_attempt<R> <= constant<unit::Gram>(t); an expression that computes a value is not one");
 
         static constexpr bool value = true;
     };
@@ -422,11 +485,31 @@ namespace detail
         static constexpr bool value = RequireStartingValueDimension<R, E>::value;
     };
 
+    /// Whether @p Start is a starting value or none: the two things a retry's
+    /// first part may be.
+    template <typename Start>
+    inline constexpr bool isStartShape = StartTraits<Start>::states || std::is_same_v<Start, NoStartingValue>;
+
+    /// Fails to compile when a retry's starting value is neither
+    /// `starting_from(...)` nor `NoStartingValue` -- reachable only by
+    /// building the retry as an aggregate. Named so the type prints.
+    template <typename Start>
+    struct RequireStartShape
+    {
+        static_assert(isStartShape<Start>,
+                      "formula: a retry starts from starting_from(expression), or from nothing; this starting value "
+                      "is neither -- it appears in this diagnostic as the template argument of RequireStartShape");
+
+        static constexpr bool value = true;
+    };
+
     /// Every check of a retry, staged so that each mistake draws one message.
     template <typename R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
     struct RequireRetryValid
     {
-        static constexpr bool boundOk = RequireRetryBound<Max, J>::value;
+        static constexpr bool boundsOk = RequireRetryBound<Max, J>::value;
+        static_assert(std::conditional_t<boundsOk, RequireStartShape<Start>, std::true_type>::value);
+        static constexpr bool boundOk = boundsOk && isStartShape<Start>;
 
         static constexpr bool attemptIsNode = Node<A>;
         static_assert(std::conditional_t<boundOk, RequireAttemptExpression<A>, std::true_type>::value);
@@ -463,6 +546,36 @@ namespace detail
     };
 
     struct RetryOutcomeFactory;
+
+    /// Whether @p verdict holds anything but blanks: a retry that runs out of
+    /// attempts ends in its words, and a blank one would end in no decision
+    /// at all.
+    [[nodiscard]] constexpr bool verdict_says_something(Verdict const& verdict) noexcept
+    {
+        for (char const spelt: verdict.label)
+            if (spelt != ' ' && spelt != '\t' && spelt != '\n' && spelt != '\r')
+                return true;
+        return false;
+    }
+
+    /// Deliberately NOT `constexpr`, and deliberately harmless at run time.
+    /// Called while a retry is built in a constant expression, it makes that
+    /// expression non-constant, so a blank verdict is a compile error whose
+    /// diagnostic names this function -- which is why the name is a sentence,
+    /// as `formula_exponent_denominator_must_not_be_zero`'s is. At run time it
+    /// does nothing: `checked_evaluate_retry` then refuses the retry instead.
+    inline void formula_retry_verdict_must_say_something() noexcept {}
+
+    /// Refuses a blank verdict where the retry is built, when that is a
+    /// constant expression.
+    constexpr void require_verdict(Verdict const& verdict) noexcept
+    {
+        if consteval
+        {
+            if (!verdict_says_something(verdict))
+                formula_retry_verdict_must_say_something();
+        }
+    }
 } // namespace detail
 
 /// A retry of @p A, at most @p Max times, for result quantity @p R, judged by
@@ -504,18 +617,26 @@ struct Retry
 /// A retry of @p attemptExpression starting from @p start: at most @p Max
 /// attempts for @p R, each judged by @p accept from the attempt @p J says;
 /// @p onExhausted when none is accepted.
+///
+/// The verdict must say something (`detail::verdict_says_something`): a
+/// retry built in a constant expression with a blank one fails to compile,
+/// naming `formula_retry_verdict_must_say_something`, and one built at run
+/// time fails to evaluate (`checked_evaluate_retry`).
 template <Described R, std::size_t Max, FirstJudged J, Node E, typename A, typename P>
 [[nodiscard]] constexpr auto retry(
     StartingValue<E> start, A attemptExpression, P accept, Verdict onExhausted, Citation citation) noexcept
 {
+    detail::require_verdict(onExhausted);
     return Retry<R, Max, J, StartingValue<E>, A, P> { start, attemptExpression, accept, onExhausted, citation };
 }
 
 /// A retry with no starting value: `previous_attempt` at the first attempt
-/// is then the author's mistake, and fails with `DomainError`.
+/// is then the author's mistake, and fails with `DomainError`. The verdict
+/// must say something, as above.
 template <Described R, std::size_t Max, FirstJudged J, typename A, typename P>
 [[nodiscard]] constexpr auto retry(A attemptExpression, P accept, Verdict onExhausted, Citation citation) noexcept
 {
+    detail::require_verdict(onExhausted);
     return Retry<R, Max, J, NoStartingValue, A, P> { NoStartingValue {}, attemptExpression, accept, onExhausted, citation };
 }
 
@@ -684,16 +805,44 @@ namespace detail
     };
 } // namespace detail
 
+namespace detail
+{
+    /// Every check of a context node read in @p Env, staged so that one
+    /// mistake draws one message: outside any retry; in a starting value; a
+    /// quantity that is not the retry's (@p Q, `void` for `attempt_number`);
+    /// and, for `this_attempt` (@p ReadsThisAttempt), anywhere but the
+    /// acceptance. `value` says whether the node has anything to read.
+    template <typename Env, typename Q, bool ReadsThisAttempt>
+    struct RequireContextReadable
+    {
+        using Traits = AttemptEnvironmentTraits<Env>;
+
+        static_assert(RequireInsideRetry<Env>::value);
+        static constexpr bool attemptStarted = Traits::isAttempt && !Traits::isStarting;
+        static_assert(std::conditional_t<Traits::isAttempt, RequireNotInStartingValue<Env>, std::true_type>::value);
+
+        static constexpr bool quantityOk =
+            attemptStarted && (std::is_void_v<Q> || std::is_same_v<Q, typename Traits::retried>);
+        static_assert(
+            std::conditional_t<attemptStarted && !std::is_void_v<Q>, RequireRetriedQuantity<Q, Env>, std::true_type>::value);
+        static_assert(
+            std::conditional_t<ReadsThisAttempt && quantityOk, RequireThisAttemptInJudgement<Env>, std::true_type>::value);
+
+        /// Whether the node reads anything: every check above passed.
+        static constexpr bool value = quantityOk && (!ReadsThisAttempt || Traits::isJudging);
+    };
+} // namespace detail
+
 /// The attempt number, from 1, inside a retry.
 template <typename Rep = Rational, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(AttemptNumberNode const& node,
                                                            Env const& environment,
                                                            Sink sink = {}) noexcept
 {
-    static_assert(detail::RequireInsideRetry<Env>::value);
+    constexpr bool readable = detail::RequireContextReadable<Env, void, false>::value;
     sink.entered(node);
     Evaluated<Rep> const numbered = [&]() -> Evaluated<Rep> {
-        if constexpr (detail::AttemptEnvironmentTraits<Env>::isAttempt)
+        if constexpr (readable)
         {
             std::expected<Rep, ArithmeticError> const counted =
                 RepTraits<Rep>::from(Rational { static_cast<std::int64_t>(environment.attempt()) });
@@ -713,16 +862,17 @@ template <typename Rep = Rational, typename Env, typename Sink = NullSink>
 
 /// The previous attempt's value, or the starting value, inside a retry; the
 /// author's `DomainError` at the first attempt of a retry with no starting
-/// value -- never absence, which would read as "not measured".
+/// value -- never absence, which would read as "not measured". Refused for a
+/// quantity that is not the retry's own (`detail::RequireRetriedQuantity`).
 template <typename Rep = Rational, Described R, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(PreviousAttemptNode<R> const& node,
                                                            Env const& environment,
                                                            Sink sink = {}) noexcept
 {
-    static_assert(detail::RequireInsideRetry<Env>::value);
+    constexpr bool readable = detail::RequireContextReadable<Env, R, false>::value;
     sink.entered(node);
     Evaluated<Rep> const before = [&]() -> Evaluated<Rep> {
-        if constexpr (detail::AttemptEnvironmentTraits<Env>::isAttempt)
+        if constexpr (readable)
             return environment.previous();
         else
         {
@@ -734,18 +884,17 @@ template <typename Rep = Rational, Described R, typename Env, typename Sink = Nu
     return before;
 }
 
-/// The value this attempt produced, in a retry's acceptance.
+/// The value this attempt produced, in a retry's acceptance. Refused for a
+/// quantity that is not the retry's own, as `previous_attempt` is.
 template <typename Rep = Rational, Described R, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ThisAttemptNode<R> const& node,
                                                            Env const& environment,
                                                            Sink sink = {}) noexcept
 {
-    static_assert(detail::RequireInsideRetry<Env>::value);
-    if constexpr (detail::AttemptEnvironmentTraits<Env>::isAttempt)
-        static_assert(detail::RequireThisAttemptInJudgement<Env>::value);
+    constexpr bool readable = detail::RequireContextReadable<Env, R, true>::value;
     sink.entered(node);
     Evaluated<Rep> const produced = [&]() -> Evaluated<Rep> {
-        if constexpr (detail::AttemptEnvironmentTraits<Env>::isJudging)
+        if constexpr (readable)
             return detail::present<Rep>(environment.current());
         else
         {
@@ -756,7 +905,6 @@ template <typename Rep = Rational, Described R, typename Env, typename Sink = Nu
     sink.produced(node, produced);
     return produced;
 }
-
 namespace detail
 {
     /// The attempts themselves, for `checked_evaluate_retry`, which tells a
@@ -782,7 +930,8 @@ namespace detail
         Evaluated<Rep> before = std::unexpected { ArithmeticError::DomainError };
         if constexpr (StartTraits<Start>::states)
         {
-            before = dispatch<Rep>(retrying.start.expression, environment, sink);
+            AttemptEnvironment<Env, Rep, R, AttemptPhase::Starting> const starting { environment };
+            before = dispatch<Rep>(retrying.start.expression, starting, sink);
             if (!before.has_value())
                 return std::unexpected { RetryFailure { before.error(), 0 } };
         }
@@ -808,7 +957,7 @@ namespace detail
                 }
             };
 
-            AttemptEnvironment<Env, Rep, AttemptPhase::Attempting> const attempting { environment, k, before };
+            AttemptEnvironment<Env, Rep, R, AttemptPhase::Attempting> const attempting { environment, k, before };
             Evaluated<Rep> const produced = dispatch<Rep>(retrying.attempt, attempting, sink);
             if (!produced.has_value())
             {
@@ -828,7 +977,7 @@ namespace detail
                 told(produced, AttemptJudgement::NotJudged, std::nullopt);
             else
             {
-                AttemptEnvironment<Env, Rep, AttemptPhase::Judging> const judging { environment, k, before, **produced };
+                AttemptEnvironment<Env, Rep, R, AttemptPhase::Judging> const judging { environment, k, before, **produced };
                 std::expected<std::optional<bool>, ArithmeticError> const held =
                     checked_evaluate_predicate<Rep>(retrying.accept, judging, sink);
                 if (!held.has_value())
@@ -884,6 +1033,11 @@ template <typename Rep = Rational,
 
     if constexpr (Retry<R, Max, J, Start, A, P>::refused || !std::is_same_v<Rep, Rational>)
         return std::unexpected { RetryFailure { ArithmeticError::DomainError, 0 } };
+    // A retry built at run time with a blank verdict: `retry()` could not
+    // refuse it where it was built, so it is refused here, before any
+    // attempt, rather than ending exhausted in no decision.
+    else if (!detail::verdict_says_something(retrying.onExhausted))
+        return std::unexpected { RetryFailure { ArithmeticError::DomainError, 0 } };
     else if constexpr (Env::template is_entered<R>)
         return Factory::make<R>(Outcome<R>::value(environment.template get<R>(), ValueSource::ManuallyEntered),
                                 RetryEnd::ManuallyEntered,
@@ -902,5 +1056,153 @@ template <typename Rep = Rational,
             sink.retry_produced(retryInfo, ended);
         return ended;
     }
+}
+namespace detail
+{
+    /// Whether @p T is a retry.
+    template <typename T>
+    inline constexpr bool isRetry = false;
+
+    template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+    inline constexpr bool isRetry<Retry<R, Max, J, Start, A, P>> = true;
+
+    /// The dimension of whichever of @p L and @p Rt is a retry: its result's.
+    template <typename L, typename Rt>
+    [[nodiscard]] consteval Dimension retried_dimension() noexcept
+    {
+        if constexpr (isRetry<L>)
+            return Describe<typename L::quantity>::dimension;
+        else
+            return Describe<typename Rt::quantity>::dimension;
+    }
+
+    /// Fails to compile when a retry is handed where a formula belongs: to
+    /// `checked_evaluate`, `evaluate`, `variant<Tag>` or arithmetic. Named so
+    /// the retry prints.
+    template <typename Misplaced>
+    struct RequireRetryAtTop
+    {
+        static_assert(sizeof(Misplaced) == 0,
+                      "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a "
+                      "formula or be a method's variant -- running out of attempts ends in a verdict, which no "
+                      "value can carry");
+
+        static constexpr bool value = true;
+    };
+
+    /// What arithmetic over a retry gives, once refused: a node of the
+    /// retry's result's dimension that is refused already
+    /// (`refused_already`), so nothing over it asks again, and that is never
+    /// evaluated but to a `DomainError`.
+    template <Dimension D>
+    struct RefusedRetryValue: NodeBase
+    {
+        static constexpr Dimension dimension = D;
+        static constexpr bool refused = true;
+    };
+} // namespace detail
+
+/// A refused retry value evaluates to nothing but `DomainError`; a program
+/// holding one never compiles, so this is never seen.
+template <typename Rep = Rational, Dimension D, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(detail::RefusedRetryValue<D> const&,
+                                                           Env const&,
+                                                           Sink = {}) noexcept
+{
+    return Evaluated<Rep> { std::unexpected { ArithmeticError::DomainError } };
+}
+
+/// A retry handed to `checked_evaluate`: refused in this library's words,
+/// pointing at `checked_evaluate_retry`.
+template <Described Result,
+          Described R,
+          std::size_t Max,
+          FirstJudged J,
+          typename Start,
+          typename A,
+          typename P,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<Outcome<Result>, ArithmeticError> checked_evaluate(
+    Retry<R, Max, J, Start, A, P> const&, Env const&, Sink = {}) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<Retry<R, Max, J, Start, A, P>>::value);
+    return Outcome<Result>::empty();
+}
+
+/// A retry handed to `evaluate`: refused as `checked_evaluate` refuses it.
+template <Described Result,
+          Described R,
+          std::size_t Max,
+          FirstJudged J,
+          typename Start,
+          typename A,
+          typename P,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr Outcome<Result> evaluate(Retry<R, Max, J, Start, A, P> const&, Env const&, Sink = {}) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<Retry<R, Max, J, Start, A, P>>::value);
+    return Outcome<Result>::empty();
+}
+
+/// A retry handed to `variant<Tag>`: refused, and a placeholder constant of
+/// its result's dimension returned, so that `variants(...)` and `method(...)`
+/// around the call find nothing further to refuse -- as a series handed there
+/// is (`method.hpp`).
+template <typename Tag, Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+[[nodiscard]] constexpr VariantCase<Tag, ConstantNode<coherent(Describe<R>::dimension)>> variant(
+    Retry<R, Max, J, Start, A, P>) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<Retry<R, Max, J, Start, A, P>>::value);
+    return VariantCase<Tag, ConstantNode<coherent(Describe<R>::dimension)>> {
+        ConstantNode<coherent(Describe<R>::dimension)> {}
+    };
+}
+
+/// A retry in arithmetic, on either side of `+`, `-`, `*` or `/`, or negated:
+/// refused in this library's words, giving a node refused already.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator+(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+}
+
+/// See `operator+` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator-(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+}
+
+/// See `operator+` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator*(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+}
+
+/// See `operator+` over a retry.
+template <typename L, typename Rt>
+    requires(detail::isRetry<L> || detail::isRetry<Rt>)
+[[nodiscard]] constexpr auto operator/(L, Rt) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<std::conditional_t<detail::isRetry<L>, L, Rt>>::value);
+    return detail::RefusedRetryValue<detail::retried_dimension<L, Rt>()> {};
+}
+
+/// See `operator+` over a retry.
+template <typename Operand>
+    requires(detail::isRetry<Operand>)
+[[nodiscard]] constexpr auto operator-(Operand) noexcept
+{
+    static_assert(detail::RequireRetryAtTop<Operand>::value);
+    return detail::RefusedRetryValue<Describe<typename Operand::quantity>::dimension> {};
 }
 } // namespace formula
