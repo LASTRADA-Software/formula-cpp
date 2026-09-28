@@ -6,8 +6,9 @@
 /// points and values, as a named opaque operation (`opaque.hpp`) whose two
 /// outputs, `intercept` and `slope`, are ordinary nodes.
 ///
-/// A fit is not an expression tree: its coefficients come from sums over
-/// every pair of points, which no node of this library states. So it is an
+/// A fit is not an expression tree: its coefficients come from sums, over the
+/// points, of squares and products of each point's coordinates about their
+/// means, which no node of this library states. So it is an
 /// opaque operation, and the trace says its inside is not shown. What the
 /// trace does show is what went in -- the curve, point by point -- and both
 /// coefficients that came out.
@@ -16,11 +17,12 @@
 /// the centred sums, `S_xx = sum (x - mean x)^2` and `S_xy = sum (x - mean
 /// x)(y - mean y)`: phase 15's spike (step 3) measured them overflowing at
 /// the same first size as the uncentred sums on every data shape it tried,
-/// and at fewer sizes (60 against 63 of the 127 from 2 to 128 points, for
-/// three-decimal readings of a few thousand) -- the same counts on cl 19.51,
-/// clang-cl and clang++ 22.1.3, g++ 13.3 and g++ 14.2. **Overflow depends on
-/// the data far more than on the number of points**, and is not monotone in
-/// it: the same shape of readings passed at 64 points and failed at 34. An
+/// and at fewer sizes. `docs/numeric-headroom.md` ("Least squares") carries
+/// the census, regenerated with every build: for three-decimal readings near
+/// 2410 N, 57 of the 127 sizes from 2 to 128 points overflow, the first at
+/// 34. **Overflow depends on the data far more than on the number of
+/// points**, and is not monotone in it: the same shape of readings passes at
+/// some sizes above 34 and fails at others. An
 /// intermediate beyond `Rational`'s range returns `Overflow`, never a wrong
 /// number.
 ///

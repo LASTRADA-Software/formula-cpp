@@ -608,9 +608,9 @@ namespace detail
     /// injection, which names a `detail::` type without spelling `detail::`.
     /// Both were measured forging a rounding rule's provenance on all three
     /// compilers. The only supported customisation points are `TagName`,
-    /// `EnumeratorName`, `Describe`, `RepTraits` and the vocabulary;
-    /// specialising any other formula-cpp template or member is outside the
-    /// contract, and can make a trace say anything.
+    /// `EnumeratorName`, `Describe`, `RepTraits`, `OpaqueOperation` and the
+    /// vocabulary; specialising any other formula-cpp template or member is
+    /// outside the contract, and can make a trace say anything.
     struct ProvenanceStatedByAuthor
     {
     };

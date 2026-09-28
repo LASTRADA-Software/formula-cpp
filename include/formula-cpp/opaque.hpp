@@ -9,8 +9,11 @@
 /// recognised by `OpaqueOperation`. It states its name, the shape of each
 /// input, the name of each output, which input dimensions it accepts and what
 /// dimension each output then has, and a `noexcept` `compute`. All of that is
-/// static, so nothing about an operation can be set or changed per call, and
-/// a trace that names one names what really ran.
+/// static, so nothing about an operation can be set or changed per call. A
+/// name is the author's label, not an identity: the trace names an operation
+/// as its type names itself, and two operations may declare one name -- a
+/// consumer's operation named "linear least squares" reads as the library's
+/// fit. The citation says which computation a method means.
 ///
 /// `opaque<Op>(citation, inputs...)` builds an `OpaqueCall`. A call is **not**
 /// a `Node`, because it has several outputs; `opaque_output<"slope">(call)` is
@@ -227,6 +230,16 @@ namespace detail
 /// exactly what an opaque operation exists to rule out -- so an operation
 /// that needs a value takes it as an input.
 ///
+/// **`compute` does its arithmetic through `RepTraits<Rep>`'s checked
+/// operations, returns their error as its own, and never throws.**
+/// `Rational`'s own `+`, `-`, `*` and `/` throw `ArithmeticException` on
+/// overflow, and a throw out of `compute`, which is `noexcept`, calls
+/// `std::terminate` -- ending the program, in a debug build with an abort
+/// dialog -- where the library's contract is an `Overflow` on the trace.
+/// Comparing and copying values never throw. The library checks the
+/// `noexcept`; it cannot check the body, so this rule is the operation
+/// author's part of the contract, as it is `LinearLeastSquares`'.
+///
 /// This concept checks only that the three data members exist in their
 /// declared types. Everything else -- `output_dimensions` declared with the
 /// right parameter and return, a name that says something, readable and
@@ -238,7 +251,10 @@ namespace detail
 /// consumer's own `Node` kind cannot appear in a recorded trace
 /// (`detail::dispatch`, `sink.hpp`); an opaque operation's step is recorded by
 /// the library, which is also why nothing about the operation beyond these
-/// members is part of the contract.
+/// members is part of the contract. It is one of the library's customisation
+/// points, beside `TagName`, `EnumeratorName`, `Describe`, `RepTraits` and
+/// the vocabulary; specialising a `detail::` template instead, such as
+/// `ConstantRewrite` or `StepKindOf`, is outside the contract.
 template <typename Op>
 concept OpaqueOperation = requires {
     { Op::name } -> std::convertible_to<std::string_view>;

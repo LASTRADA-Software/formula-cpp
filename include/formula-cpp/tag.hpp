@@ -108,8 +108,8 @@ namespace detail
 /// it cannot break the ASCII structure a trace line has (`docs/tracing.md`).
 ///
 /// **One of the library's few customisation points.** `TagName`,
-/// `EnumeratorName`, `Describe`, `RepTraits` and the vocabulary are the only
-/// ones. Explicitly specialising any other formula-cpp template or member is
+/// `EnumeratorName`, `Describe`, `RepTraits`, `OpaqueOperation` and the
+/// vocabulary are the only ones. Explicitly specialising any other formula-cpp template or member is
 /// outside the contract, and can make a trace say anything.
 template <typename Tag>
 struct TagName: detail::TagNameNotCustomized

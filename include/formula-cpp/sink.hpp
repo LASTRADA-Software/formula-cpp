@@ -112,8 +112,10 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 /// pairs, each asked for together: `retry_entered(info)` before its starting
 /// value and `retry_produced(info, ended)` after its last attempt, with what
 /// `checked_evaluate_retry` returns (`detail::HearsRetry`); and
-/// `attempt_entered(info)` and `attempt_produced(info, produced, judgement,
-/// failure)` around each attempt that runs (`detail::HearsAttempts`). `info`
+/// `attempt_entered(info)` and `attempt_produced(info, produced, judgement)`
+/// around each attempt that runs (`detail::HearsAttempts`); a judgement that
+/// failed is `AttemptJudgement::JudgementFailed`, with its error on the
+/// failing side's step. `info`
 /// is a `RetryInfo` or an `AttemptInfo`, plain data. The attempt's nodes are
 /// told through `entered` and `produced`.
 struct NullSink

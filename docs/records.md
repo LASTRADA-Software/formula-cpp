@@ -237,8 +237,8 @@ What no library can prevent, stated plainly:
   are the caller's statement about its own data, recorded as stated.
 - Explicitly specialising a library template or member is outside the
   contract. The supported customisation points are `TagName`,
-  `EnumeratorName`, `Describe`, `RepTraits` and the vocabulary; a
-  specialisation of anything else can make a trace say anything.
+  `EnumeratorName`, `Describe`, `RepTraits`, `OpaqueOperation` and the
+  vocabulary; a specialisation of anything else can make a trace say anything.
 
 The structured fields of each step -- its kind, and its origin and lineage
 comparison as its trace holds them (`origin_of`, `lineage_of`) -- are what is

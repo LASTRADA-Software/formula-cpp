@@ -598,8 +598,11 @@ These routes remain, and no type can close them:
   without spelling `detail::`. Both were measured making a method no overlay
   touched trace a jurisdiction's rounding rule. The only supported
   customisation points are `TagName`, `EnumeratorName`, `Describe`,
-  `RepTraits` and the vocabulary. Specialising any other formula-cpp template
-  or member is outside the contract, and can make the trace say anything.
+  `RepTraits`, `OpaqueOperation` (whose `compute` does its arithmetic through
+  `RepTraits` and never throws; see [Opaque operations and bounded
+  retry](opaque-and-retry.md)) and the vocabulary. Specialising any other
+  formula-cpp template or member is outside the contract, and can make the
+  trace say anything.
 
 Nor does the guard reach a sink's own hooks, which are public: code that calls
 them by hand, or fills in a `Step` by hand, writes whatever trace it likes.

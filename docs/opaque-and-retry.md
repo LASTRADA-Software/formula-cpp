@@ -59,7 +59,41 @@ An operation sees exactly the inputs its call names, and nothing else:
     template <typename Rep>
     static constexpr std::expected<std::array<Rep, 3>, formula::ArithmeticError> compute(
         std::span<Rep const> readings) noexcept
+    {
+        Rep least = readings[0];
+        Rep most = readings[0];
+        for (Rep const& each: readings)
+        {
+            if (each < least)
+                least = each;
+            if (most < each)
+                most = each;
+        }
+        std::expected<Rep, formula::ArithmeticError> const difference = formula::RepTraits<Rep>::subtract(most, least);
+        if (!difference.has_value())
+            return std::unexpected { difference.error() };
+        return std::array { least, most, *difference };
+    }
 ```
+
+**`compute` does its arithmetic through `RepTraits<Rep>`, and never
+throws.** `RepTraits<Rep>::add`, `subtract`, `multiply` and `divide` return
+their result or an `ArithmeticError`, and `compute` returns that error as its
+own, as the subtraction above does: an overflow is then `Overflow` on the
+trace. `Rational`'s own `+`, `-`, `*` and `/` throw `ArithmeticException` on
+overflow instead, and a throw out of `compute`, which is `noexcept`, calls
+`std::terminate`: the program ends, in a debug build with an abort dialog.
+Comparing and copying values never throw. The library checks that `compute`
+is `noexcept`; it cannot check what the body calls, so this rule is the
+operation author's part of the contract.
+
+**`OpaqueOperation` is the extension contract.** A consumer adds a
+computation to this library only by declaring an operation: the members
+above, and the rule on arithmetic. It is one of the library's customisation
+points, with `TagName`, `EnumeratorName`, `Describe`, `RepTraits` and the
+vocabulary, and nothing else is one. Specialising a `detail::` template
+instead -- `ConstantRewrite`, `StepKindOf` or any other -- is outside the
+contract, and can make a trace say anything.
 
 A call names the operation, a citation, and the inputs. Each output is a node,
 chosen by name, and a formula uses it like any other:
@@ -89,7 +123,11 @@ reader to wonder whether a step is missing:
 ```
 
 `[inside not shown]` is written for every opaque call, whatever it holds, and
-nothing an operation declares can switch it off. `document()` lists the
+nothing an operation declares can switch it off. **An operation's name is a
+label, not an identity**: the trace names an operation as its type names
+itself, and two operations may declare one name, so a consumer's operation
+named "linear least squares" reads as the fit this library ships. The
+citation says which computation the method means. `document()` lists the
 operation separately from the symbols (`Documentation::opaqueOperations`),
 with its outputs and what each measures:
 
@@ -160,8 +198,9 @@ linear least squares(t(i), L(i)).slope
 one point: argument outside the domain of the operation
 ```
 
-- **Overflow, never a wrong line.** The fit sums products of every point with
-  every other, and `Rational` keeps each numerator and denominator in 64 bits.
+- **Overflow, never a wrong line.** The fit sums, over the points, squares
+  and products of each point's coordinates about their means, and `Rational`
+  keeps each numerator and denominator in 64 bits.
   When an exact sum does not fit, the result is `Overflow`:
 
 ```text
@@ -176,10 +215,12 @@ points; readings at three decimal places of a few thousand first overflow at
 34 points, and not at every larger size; a different denominator on every
 point overflows from 15. So there is no safe number of points to state. The
 [numeric headroom](numeric-headroom.md) page carries the fit's census over
-every size, regenerated with every build. Where exactness is not needed, `double`
-is the fallback representation: the same fit evaluates in `double`, and
-decides a degenerate set of points on the points themselves, never on a
-rounding-noise spread.
+every size, regenerated with every build. **A fit that overflows has no
+traced fallback in `double`.** A curve evaluates only in `Rational`, so
+`checked_evaluate_si<double>` over a fit is refused where it is written.
+`LinearLeastSquares::compute<double>` can be called directly, on numbers the
+caller has put in coherent SI, but it returns bare numbers: nothing checks
+their dimensions, and nothing reaches the trace or the page.
 
 ## A citation is required
 
@@ -270,7 +311,7 @@ allowed three: Exhausted after 3 attempt(s)
 tolerance not measured: NotJudgeable after 1 attempt(s)
   14. w = retry: not judgeable at attempt 1 [Settled estimate, Example Standard 12, 6]
 third determination missing: NotRecorded after 3 attempt(s)
-  14. d_a = retry: attempt 3 not recorded [Agreed determination, Example Standard 12, 7]
+  12. d_a = retry: attempt 3 not recorded [Agreed determination, Example Standard 12, 7]
 divides by k - 1: Failed, division by zero at attempt 1
   12. w = retry: failed at attempt 1: division by zero [Settled estimate, Example Standard 12, 6]
 typed in by a person: ManuallyEntered after 0 attempt(s); nothing traced
@@ -288,7 +329,9 @@ typed in by a person: ManuallyEntered after 0 attempt(s); nothing traced
 - **NotRecorded:** an attempt needed a recorded determination that nobody
   recorded (see below). Nothing was compared.
 - **Failed:** an attempt or its judgement failed arithmetically. There is no
-  outcome, only the failure, naming the attempt.
+  outcome, only the failure, naming the attempt. A starting value that fails
+  is at `RetryFailure::atStartingValue`, a position no attempt has, so it is
+  never read as the first attempt's failure.
 - **ManuallyEntered:** the environment holds a value a person typed in for the
   result. It is returned, and no attempt runs: a person's entry is never
   replaced by a computation.
@@ -314,13 +357,11 @@ zero and not for "not measured": the attempt fails, and its trace says why:
 A retry can read a new recorded determination at each attempt:
 `attempt_input<Q>` reads element `k - 1` of a series of `Q` holding one
 determination per attempt allowed. "Accepted when two successive results agree
-within 1.27 g" compares the absolute difference, which is written with
-`when`, as a two-sided comparison is anywhere in this library:
+within 1.27 g" compares the absolute difference, written with `abs`. A
+`when` choosing the larger minus the smaller says the same, at more length:
 
 ```cpp
-constexpr auto agree = formula::when(formula::this_attempt<Agreed> >= formula::previous_attempt<Agreed>,
-                                     formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>,
-                                     formula::previous_attempt<Agreed> - formula::this_attempt<Agreed>)
+constexpr auto agree = formula::abs(formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>)
                        <= formula::constant<unit::Gram>(formula::Rational { 127, 100 });
 
 constexpr auto successive = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
@@ -331,9 +372,9 @@ constexpr auto successive = formula::retry<Agreed, 4, formula::FirstJudged::AtSe
 ```
 
 ```text
-up to 4 attempts: d_a(k) = d(k); accept from attempt 2 when (if d_a(k) >= d_a(k-1) then d_a(k) - d_a(k-1) else d_a(k-1) - d_a(k)) <= 127/100 g; otherwise: repeat the test
+up to 4 attempts: d_a(k) = d(k); accept from attempt 2 when abs(d_a(k) - d_a(k-1)) <= 127/100 g; otherwise: repeat the test
 41.3, 43.9, 42.7, 45.7 g: Accepted after 3 attempt(s)
-  21. d_a = retry: accepted at attempt 3 of 4 = 427/10 g [Agreed determination, Example Standard 12, 7]
+  17. d_a = retry: accepted at attempt 3 of 4 = 427/10 g [Agreed determination, Example Standard 12, 7]
 ```
 
 43.9 and 41.3 g differ by 2.6 g; 42.7 and 43.9 g by 1.2 g, so the third

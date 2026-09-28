@@ -289,13 +289,14 @@ These are asserted by the census program's own tests.
 
 ### Least squares (realistic, and one stress control)
 
-`linear_least_squares` sums products of every pair of points, centred on
-their means. The data are the phase 15 spike's shapes, in seconds and
-newtons so that the fit sees them unconverted: readings at 1 decimal place;
-readings at 3 decimal places of a few thousand newtons, a load cell's; and a
-different denominator on every point, the stress control. Every size from 2
-to 128 points is fitted through `LinearLeastSquares::compute`, the fit the
-node calls, and the node itself is checked against it at 33 and 34 points.
+`linear_least_squares` sums, over the points, squares and products of each
+point's coordinates, centred on their means. The data are the phase 15
+spike's shapes, in seconds and newtons so that the fit sees them
+unconverted: readings at 1 decimal place; readings at 3 decimal places of a
+few thousand newtons, a load cell's; and a different denominator on every
+point, the stress control. Every size from 2 to 128 points is fitted through
+`LinearLeastSquares::compute`, the fit the node calls, and the node itself
+is checked against it at 33 and 34 points.
 
 <!-- census:least-squares -->
 
@@ -310,8 +311,11 @@ node calls, and the node itself is checked against it at 33 and 34 points.
 **Overflow depends on the data far more than on the number of points.** At
 3 decimal places the first size to overflow is 34 points, but not every
 larger size does. So no number of points is safe to state; an overflowing
-fit is `Overflow`, never a line, and `double` is the fallback
-representation.
+fit is `Overflow`, never a line. It has no traced fallback in `double`: a
+curve evaluates only in `Rational`, so `checked_evaluate_si<double>` over a
+fit is refused. `LinearLeastSquares::compute<double>` can be called
+directly, on numbers already in coherent SI, but nothing it returns is
+checked, traced, rendered or documented.
 
 ## Which cases decide
 

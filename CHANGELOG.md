@@ -143,8 +143,13 @@ or entered by a person, which no attempt replaces. Every attempt is traced with 
 how the retry ended; the page marks the result as iterated. An opaque call read inside a read from
 another record carries its origin, and a retry's attempt can read from another record. An acceptance
 can compare with a `precision_limit` whose level is `this_attempt`. A retry whose starting value reads a
-context node is refused where it is written. A concept asked of a retry, such as
-`std::equality_comparable`, answers no; comparing or adding one is refused.
+context node is refused where it is written, and so is one whose attempt reads `this_attempt`. A
+concept asked of a retry, such as `std::equality_comparable`, answers no; comparing or adding one is
+refused. A failing starting value ends at `RetryFailure::atStartingValue`, never at the first
+attempt's position. An opaque call stopped at a failing input writes each input after it as
+`(not evaluated)`, and an output never borrows a unit that has no symbol. A precision limit can
+read a level inside an opaque output. `OpaqueOperation` joins the customisation points: its
+`compute` does its arithmetic through `RepTraits` and never throws.
 `docs/opaque-and-retry.md` is the guide, with `examples/opaque_and_retry.cpp` and gallery entries.
 
 ### Changed

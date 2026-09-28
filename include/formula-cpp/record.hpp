@@ -80,8 +80,8 @@
 /// a value to a record it did not read it from.
 ///
 /// **Only the documented customization points are supported** -- `TagName`,
-/// `EnumeratorName`, `Describe` through `Quantity`, and the others each
-/// header names as one. Explicitly specialising any other library template
+/// `EnumeratorName`, `Describe` through `Quantity`, `OpaqueOperation`, and
+/// the others each header names as one. Explicitly specialising any other library template
 /// or member is outside the contract: it can make a trace say anything, and
 /// no library can prevent it. `RecordOrigin`'s refusing constructor is not a
 /// template, so that there is nothing there to specialise, but that is a

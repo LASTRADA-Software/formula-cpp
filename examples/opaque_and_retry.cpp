@@ -16,7 +16,7 @@
 //   5. A retry ends in exactly one of six ways, each run below. Running out
 //      of attempts is the method's verdict, not a missing value.
 //   6. Judged from the second attempt, two successive results must agree,
-//      written with `when`.
+//      written with `abs`.
 //
 // Every number here is invented, as in every other example in this
 // repository; nothing here cites a standard.
@@ -179,9 +179,7 @@ struct Agreed: formula::Quantity<Agreed, "d_a", "an invented agreed determinatio
 {
 };
 
-constexpr auto agree = formula::when(formula::this_attempt<Agreed> >= formula::previous_attempt<Agreed>,
-                                     formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>,
-                                     formula::previous_attempt<Agreed> - formula::this_attempt<Agreed>)
+constexpr auto agree = formula::abs(formula::this_attempt<Agreed> - formula::previous_attempt<Agreed>)
                        <= formula::constant<unit::Gram>(formula::Rational { 127, 100 });
 
 constexpr auto successive = formula::retry<Agreed, 4, formula::FirstJudged::AtSecondAttempt>(
