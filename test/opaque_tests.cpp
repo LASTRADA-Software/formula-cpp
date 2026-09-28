@@ -1162,3 +1162,61 @@ TEST_CASE("an opaque call read inside a from_record scope says which record", "[
     REQUIRE(formula::opaque_data(trace, calls[1]) != nullptr);
     CHECK(formula::opaque_data(trace, calls[1])->outputs[2].value == std::optional { rat(114, 1000) });
 }
+
+namespace
+{
+// A consumer's unit of length with no symbol: a thousandth of a metre.
+inline constexpr formula::Unit UnnamedThousandth { .dimension = formula::dim::Length,
+                                                   .magnitudeNumerator = 1,
+                                                   .magnitudeDenominator = 1000,
+                                                   .symbolText = formula::symbol(""),
+                                                   .decimals = 0 };
+struct UnnamedGap: formula::Quantity<UnnamedGap, "x_g", "an invented gap", UnnamedThousandth>
+{
+};
+
+// One output, half its one input, through RepTraits' checked operations.
+struct Halve
+{
+    static constexpr std::string_view name = "halve";
+    static constexpr std::array shapes { formula::InputShape::Single };
+    static constexpr std::array<std::string_view, 1> outputs { "half" };
+
+    static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
+        std::array<formula::Dimension, 1> inputDimensions) noexcept
+    {
+        return inputDimensions;
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(Rep whole) noexcept
+    {
+        auto const two = formula::RepTraits<Rep>::from(formula::Rational { 2 });
+        if (!two)
+            return std::unexpected { two.error() };
+        auto const halved = formula::RepTraits<Rep>::divide(whole, *two);
+        if (!halved)
+            return std::unexpected { halved.error() };
+        return std::array { *halved };
+    }
+};
+} // namespace
+
+TEST_CASE("an opaque output does not borrow a unit with no symbol, and reads in the coherent unit", "[opaque][trace]")
+{
+    // A gap of 9785 thousandths of a metre, 9.785 m: half is 4.8925 m =
+    // 9785/2000 m. Borrowed, the symbolless unit's value, 9785/2, would read
+    // as metres, a thousand times too large.
+    constexpr auto half = formula::opaque_output<"half">(
+        formula::opaque<Halve>({ .reference = "Example Standard 12" }, formula::var<UnnamedGap>));
+    constexpr auto gapped = formula::environment(formula::Measured<UnnamedGap> { rat(9785) });
+    formula::Trace<> recorded {};
+    auto const outcome = formula::detail::dispatch<formula::Rational>(half, gapped, formula::RecordingSink { recorded });
+    REQUIRE(outcome.has_value());
+    CHECK(**outcome == rat(9785, 2000)); // coherent SI
+    std::string const text = formula::render_trace(recorded, { .maxSteps = 20 });
+    INFO(text);
+    CHECK(text.find("halve(#1) = half = 1957/400 m [inside not shown] [Example Standard 12]\n") != std::string::npos);
+    CHECK(text.find("half of #2 = 1957/400 m\n") != std::string::npos);
+    CHECK(text.find("9785/2 m") == std::string::npos);
+}

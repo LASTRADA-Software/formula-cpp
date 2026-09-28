@@ -2486,13 +2486,17 @@ namespace detail
     ///  3. else the coherent SI unit, which the trace spells out
     ///     (`coherent_unit_text`, `trace_render.hpp`).
     ///
-    /// Two exceptions keep a borrowed unit honest. A unit with an offset is
+    /// Three exceptions keep a borrowed unit honest. A unit with an offset is
     /// never borrowed: an output of an input's dimension is not in general a
     /// reading on its scale -- a span of Celsius readings is a difference, and
     /// shown in degrees Celsius it would be off by the offset -- so it reads
-    /// in kelvin. And a dimensionless output borrows nothing: a ratio of two
-    /// masses is not a percentage because some input was one, and an
-    /// operation declares no unit for its outputs.
+    /// in kelvin. A unit with no symbol is never borrowed: its value could
+    /// not say what scale it is on, and the trace spells a unit it cannot
+    /// name as the coherent one -- a consumer's unnamed thousandth of a
+    /// metre would read as metres, a thousand times too large. And a
+    /// dimensionless output borrows nothing: a ratio of two masses is not a
+    /// percentage because some input was one, and an operation declares no
+    /// unit for its outputs.
     template <typename Rep>
     [[nodiscard]] Unit opaque_output_unit(std::vector<Step<Rep>> const& steps,
                                           std::vector<std::size_t> const& operands,
@@ -2504,10 +2508,13 @@ namespace detail
         for (std::size_t const operandIndex: operands)
         {
             Step<Rep> const& inputStep = steps[operandIndex];
-            if (inputStep.unit.offsetNumerator == 0)
+            auto const borrowable = [](Unit const& shownUnit) noexcept {
+                return shownUnit.offsetNumerator == 0 && !view(shownUnit.symbolText).empty();
+            };
+            if (borrowable(inputStep.unit))
                 shownIn.push_back(inputStep.unit);
             if ((inputStep.kind == StepKind::CurvePairing || inputStep.kind == StepKind::CurveSplice)
-                && inputStep.sourceUnit.offsetNumerator == 0)
+                && borrowable(inputStep.sourceUnit))
                 shownIn.push_back(inputStep.sourceUnit);
         }
         for (Unit const& candidate: shownIn)
