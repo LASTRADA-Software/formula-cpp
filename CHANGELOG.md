@@ -1,10 +1,21 @@
 # Changelog
 
 Notable changes to formula-cpp, in the form [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
-describes. Nothing has been released yet: everything below is unreleased, and the public API may
-change until 1.0.
+describes. 0.1.0 is the first release. The public API may still change before 1.0: a minor release
+may break it, and each such change is recorded here.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-09-28
+
+The first release of formula-cpp, a header-only C++23 library for traceable formulas: formulas
+written once in C++, with dimensions checked at compile time and units converted exactly, evaluated
+in exact rational arithmetic, documented from the same source, and traced step by step into an audit
+trail that states every number with its unit and its source. 0.1.0 contains exact numbers and
+rounding, dimensions, units and quantities, expressions and evaluation, citations and generated
+documentation, tracing, conditionals and constraints, lookup tables, methods with jurisdiction
+overlays, series and grading curves, statistics with outlier rejection, cross-record context and
+lineage, opaque operations such as least squares, and bounded retry.
 
 ### Added
 
@@ -215,3 +226,6 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
 - A series multiplied or divided by a pure number was stated in coherent SI with no unit, `411/2000`
   for 205.5 g, and so were a curve over it and a value read off that curve. Each now reads in the
   series' unit, `411/2 g`, when that unit has a symbol and no offset.
+
+[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.1.0
