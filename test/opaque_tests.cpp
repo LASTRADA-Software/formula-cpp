@@ -1107,3 +1107,58 @@ TEST_CASE("a quotient never borrows a dimensionless unit", "[opaque][trace]")
     (void) formula::detail::dispatch<formula::Rational>(perGap, specimen, formula::RecordingSink { recorded });
     CHECK(formula::render_trace(recorded, { .maxSteps = 10 }).ends_with("4. quotient of #3 = 12700/103 1/m\n"));
 }
+namespace
+{
+struct ReferenceRecord
+{
+};
+} // namespace
+
+TEST_CASE("an opaque call read inside a from_record scope says which record", "[opaque][trace][record]")
+{
+    // The same call twice, once over this record's readings (span 88 g) and
+    // once over the reference's (277 - 163 = 114 g). Only the second call's
+    // step is inside the scope, and only it may say it was read from there.
+    constexpr auto thereReadings =
+        formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(197) },
+                                                               formula::Measured<Reading> { rat(163) },
+                                                               formula::Measured<Reading> { rat(277) },
+                                                               formula::Measured<Reading> { rat(241) }));
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), readings),
+        formula::record<ReferenceRecord>(formula::record_key(formula::sample_id(23), formula::test_id(3)), thereReadings));
+    constexpr auto bothSpans = formula::opaque_output<"span">(span_call)
+                               + formula::from_record<ReferenceRecord>(formula::opaque_output<"span">(span_call));
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    auto const evaluated = formula::checked_evaluate_si<formula::Rational>(bothSpans, context, sink);
+    REQUIRE(evaluated.has_value());
+    CHECK(**evaluated == rat(202, 1000)); // 88 g + 114 g, in kilograms
+
+    std::vector<std::size_t> calls;
+    std::vector<std::size_t> outputs;
+    for (std::size_t at = 0; at < trace.steps.size(); ++at)
+    {
+        if (trace.steps[at].kind == formula::StepKind::OpaqueOperation)
+            calls.push_back(at);
+        if (trace.steps[at].kind == formula::StepKind::OpaqueOutput)
+            outputs.push_back(at);
+    }
+    REQUIRE(calls.size() == 2);
+    REQUIRE(outputs.size() == 2);
+    // This record's call and output: no origin.
+    CHECK(!formula::origin_of(trace, trace.steps[calls[0]]).has_value());
+    CHECK(!formula::origin_of(trace, trace.steps[outputs[0]]).has_value());
+    // The reference's: the record they were read from.
+    for (std::size_t const inside: { calls[1], outputs[1] })
+    {
+        INFO("step " << inside);
+        REQUIRE(formula::origin_of(trace, trace.steps[inside]).has_value());
+        CHECK(formula::origin_of(trace, trace.steps[inside])->role() == "ReferenceRecord");
+        CHECK(formula::origin_of(trace, trace.steps[inside])->key()
+              == formula::record_key(formula::sample_id(23), formula::test_id(3)));
+    }
+    // And the call's row is still keyed by its step.
+    REQUIRE(formula::opaque_data(trace, calls[1]) != nullptr);
+    CHECK(formula::opaque_data(trace, calls[1])->outputs[2].value == std::optional { rat(114, 1000) });
+}

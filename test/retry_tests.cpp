@@ -737,3 +737,98 @@ TEST_CASE("an exhausted retry counts the attempts it shows, not its limit", "[re
               .ends_with("w = retry: exhausted after 2 of 3: repeat the determination [Settled estimate, Example "
                          "Standard 12, 6]\n"));
 }
+
+namespace
+{
+struct ReferenceRecord
+{
+};
+} // namespace
+
+TEST_CASE("an attempt reads from another record, and only what it read says so", "[retry][trace][record]")
+{
+    // w_k = 6.08 g + w_{k-1} / 2 + (s_w there - s_w here): both records hold
+    // 139 g, so the sequence is the fixture's, accepted at attempt 4 at
+    // 11.4 g. The attempt is evaluated against an attempt's environment over
+    // the record context; the scope must still find the context through it.
+    constexpr auto stepHere = formula::environment(formula::Measured<StepSize> { rat(139) });
+    constexpr auto stepThere = formula::environment(formula::Measured<StepSize> { rat(139) });
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), stepHere),
+        formula::record<ReferenceRecord>(formula::record_key(formula::sample_id(23), formula::test_id(3)), stepThere));
+    constexpr auto reading =
+        halving + formula::from_record<ReferenceRecord>(formula::var<StepSize>) - formula::var<StepSize>;
+    constexpr auto four =
+        formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(fromZero, reading, settled, repeat, cite);
+
+    auto const ran = formula::checked_evaluate_retry(four, context);
+    REQUIRE(ran.has_value());
+    CHECK(ran->end() == formula::RetryEnd::Accepted);
+    CHECK(ran->outcome().measurement().value() == rat(57, 5));
+
+    formula::ExplainedRetry<Estimate> const explained = formula::explain_retry(four, context);
+    REQUIRE(explained.outcome.has_value());
+    std::size_t scopes = 0;
+    for (formula::Step<> const& recorded: explained.trace.steps)
+    {
+        bool const readThere =
+            recorded.kind == formula::StepKind::RecordScope
+            || (recorded.kind == formula::StepKind::Variable && formula::origin_of(explained.trace, recorded).has_value());
+        if (recorded.kind == formula::StepKind::RecordScope)
+            ++scopes;
+        if (readThere)
+        {
+            REQUIRE(formula::origin_of(explained.trace, recorded).has_value());
+            CHECK(formula::origin_of(explained.trace, recorded)->role() == "ReferenceRecord");
+        }
+        // The attempts and the retry are this record's.
+        if (recorded.kind == formula::StepKind::RetryAttempt || recorded.kind == formula::StepKind::RetryConcluded)
+            CHECK(!formula::origin_of(explained.trace, recorded).has_value());
+    }
+    CHECK(scopes == 4); // one read per attempt
+    CHECK(explained.trace.recordStack.empty());
+}
+
+TEST_CASE("an attempt and a retry recorded inside a record's scope say which record", "[retry][trace][record]")
+{
+    // No retry is a node, so none sits inside a from_record today; but
+    // `sink.hpp` says every step recorded between `record_entered` and the
+    // scope's own `produced` is stamped, and a sink composed of the
+    // library's may be told the hooks in that order. Drive them by hand, with
+    // an origin the library stated for a real read.
+    constexpr auto stepHere = formula::environment(formula::Measured<StepSize> { rat(139) });
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), stepHere),
+        formula::record<ReferenceRecord>(formula::record_key(formula::sample_id(23), formula::test_id(3)), stepHere));
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<ReferenceRecord>(formula::var<StepSize>), context, sink);
+    REQUIRE(trace.origins.size() == 1);
+    REQUIRE(trace.recordStack.empty());
+
+    sink.record_entered(trace.origins.front());
+    formula::RetryInfo const retryInfo { .attemptLimit = 1,
+                                         .firstJudged = formula::FirstJudged::AtFirstAttempt,
+                                         .citation = cite,
+                                         .verdictLabel = repeat.label };
+    formula::AttemptInfo const attemptInfo { .attemptNumber = 1, .comparison = formula::Comparison::GreaterOrEqual };
+    sink.retry_entered(retryInfo);
+    sink.attempt_entered(attemptInfo);
+    sink.attempt_produced(
+        attemptInfo, formula::Evaluated<formula::Rational> { rat(139, 1000) }, formula::AttemptJudgement::Rejected);
+    sink.retry_produced<Estimate>(
+        retryInfo,
+        std::expected<formula::RetryOutcome<Estimate>, formula::RetryFailure> {
+            std::unexpected { formula::RetryFailure { .error = formula::ArithmeticError::Overflow, .attempt = 1 } } });
+
+    REQUIRE(trace.steps.size() == 4);
+    CHECK(trace.steps[2].kind == formula::StepKind::RetryAttempt);
+    CHECK(trace.steps[3].kind == formula::StepKind::RetryConcluded);
+    for (std::size_t const inside: { std::size_t { 2 }, std::size_t { 3 } })
+    {
+        INFO("step " << inside);
+        REQUIRE(formula::origin_of(trace, trace.steps[inside]).has_value());
+        CHECK(formula::origin_of(trace, trace.steps[inside])->role() == "ReferenceRecord");
+    }
+}

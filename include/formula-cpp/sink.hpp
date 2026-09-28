@@ -95,8 +95,9 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 ///
 /// **A sink that records steps** must say, of every step recorded between a
 /// `record_entered` and the scope's own `produced`, that it was read from that
-/// record -- on every path that records one, a series', a curve's and a
-/// conformity check's included. `RecordingSink` does it in one place
+/// record -- on every path that records one, a series', a curve's, a
+/// conformity check's, an opaque call's, and a retry's and each of its
+/// attempts' included. `RecordingSink` does it in one place
 /// (`stamp_origin`), which every path that appends to `Trace::steps` calls;
 /// a path added later that does not traces a value read from another record as
 /// this record's.

@@ -49,6 +49,7 @@
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/record.hpp>
 #include <formula-cpp/sink.hpp>
 
 #include <cstddef>
@@ -307,6 +308,9 @@ namespace detail
         }
 
       private:
+        template <typename>
+        friend struct RecordContextOf;
+
         Env const* _inner;
         std::size_t _attemptAt;
         Evaluated<Rep> _before;
@@ -332,6 +336,25 @@ namespace detail
         using retried = R;
     };
 
+    /// An attempt's environment reaches the `RecordContext` its caller's
+    /// does, and only that one: a retry evaluated against a
+    /// `record_context(...)` reads from another record inside an attempt, its
+    /// starting value or its acceptance as it would outside the retry. Over an
+    /// environment that reaches none, nothing, so a scope there is refused in
+    /// `RequireRecordContext`'s words, as it is outside a retry.
+    template <typename Env, typename Rep, typename R, AttemptPhase P>
+        requires reachesRecordContext<Env>
+    struct RecordContextOf<AttemptEnvironment<Env, Rep, R, P>>
+    {
+        /// The context the caller's environment reaches.
+        using type = typename RecordContextOf<Env>::type;
+
+        /// The context @p attemptEnvironment's inner environment reaches.
+        [[nodiscard]] static constexpr type const& of(AttemptEnvironment<Env, Rep, R, P> const& attemptEnvironment) noexcept
+        {
+            return RecordContextOf<Env>::of(*attemptEnvironment._inner);
+        }
+    };
     /// Fails to compile when a retry's context node is evaluated outside any
     /// retry. Named so the environment prints.
     template <typename Env>

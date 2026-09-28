@@ -3765,6 +3765,7 @@ class RecordingSink
                 callRow.failure = OpaqueFailure::Undetermined;
         }
 
+        stamp_origin(callStep);
         _trace->steps.push_back(std::move(callStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
         callRow.step = _trace->steps.size() - 1;
@@ -3821,6 +3822,7 @@ class RecordingSink
         attemptStep.operands.assign(firstClaimed, _trace->unclaimed.end());
         _trace->unclaimed.erase(firstClaimed, _trace->unclaimed.end());
 
+        stamp_origin(attemptStep);
         _trace->steps.push_back(std::move(attemptStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
         _trace->attemptSteps.push_back(AttemptStepData {
@@ -3888,6 +3890,7 @@ class RecordingSink
                 _trace->steps[claimed].symbol = retryStep.symbol;
             }
 
+        stamp_origin(retryStep);
         _trace->steps.push_back(std::move(retryStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
         retryRow.step = _trace->steps.size() - 1;

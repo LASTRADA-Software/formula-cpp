@@ -1115,9 +1115,9 @@ namespace detail
     /// **Not a customisation point.** It is in `detail::`, and the header's
     /// contract excludes specialising anything there: a specialisation could
     /// hand a scope any record as the one it reads. Only the library's own
-    /// wrappers of a context specialise it -- the environment phase 15's
-    /// retry evaluates against, when it lands -- and until a wrapper does, a
-    /// scope evaluated against it is refused, which is safe.
+    /// wrappers of a context specialise it -- `detail::AttemptEnvironment`,
+    /// the environment a retry evaluates against (`retry.hpp`) -- and until a
+    /// wrapper does, a scope evaluated against it is refused, which is safe.
     template <typename Env>
     struct RecordContextOf
     {
