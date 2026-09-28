@@ -27,15 +27,9 @@ namespace
 namespace unit = formula::unit;
 using formula::var;
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", unit::Litre>
-{
-};
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", unit::Litre>
-{
-};
-struct WaterCementRatio: formula::Quantity<WaterCementRatio, "w/c", "ratio of water to cement", unit::One>
-{
-};
+using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
+using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
+using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
 
 // The formula and its citation, declared together, exactly as in
 // examples/citations.cpp -- documented() attaches the citation, and attaching

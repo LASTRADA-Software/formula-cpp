@@ -45,18 +45,12 @@ namespace
 namespace unit = formula::unit;
 using formula::var;
 
-struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
-{
-};
-struct MeasuredStrength: formula::Quantity<MeasuredStrength, "f_m", "measured compressive strength", unit::Megapascal>
-{
-};
-struct CorrectedStrength: formula::Quantity<CorrectedStrength, "f_c", "corrected compressive strength", unit::Megapascal>
-{
-};
-struct SizeCorrection: formula::Quantity<SizeCorrection, "k", "size correction factor", unit::One>
-{
-};
+using Diameter = formula::Quantity<struct DiameterTag, "d", "specimen diameter", unit::Millimetre>;
+using MeasuredStrength =
+    formula::Quantity<struct MeasuredStrengthTag, "f_m", "measured compressive strength", unit::Megapascal>;
+using CorrectedStrength =
+    formula::Quantity<struct CorrectedStrengthTag, "f_c", "corrected compressive strength", unit::Megapascal>;
+using SizeCorrection = formula::Quantity<struct SizeCorrectionTag, "k", "size correction factor", unit::One>;
 
 [[nodiscard]] constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {

@@ -47,27 +47,13 @@ using formula::var;
 }
 
 // ---- Quantities ---------------------------------------------------------------
-struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
-{
-};
-struct TotalMass: formula::Quantity<TotalMass, "m_t", "total dry mass", unit::Gram>
-{
-};
-struct Passing: formula::Quantity<Passing, "p", "percentage passing a screen", unit::Percent>
-{
-};
-struct Share: formula::Quantity<Share, "s_r", "share of the total retained", unit::One>
-{
-};
-struct Opening: formula::Quantity<Opening, "d", "screen opening", unit::Metre>
-{
-};
-struct ParticleSize: formula::Quantity<ParticleSize, "s", "particle size", unit::Metre>
-{
-};
-struct Count: formula::Quantity<Count, "n", "particles in a class", unit::One>
-{
-};
+using Retained = formula::Quantity<struct RetainedTag, "m_r", "mass retained on a screen", unit::Gram>;
+using TotalMass = formula::Quantity<struct TotalMassTag, "m_t", "total dry mass", unit::Gram>;
+using Passing = formula::Quantity<struct PassingTag, "p", "percentage passing a screen", unit::Percent>;
+using Share = formula::Quantity<struct ShareTag, "s_r", "share of the total retained", unit::One>;
+using Opening = formula::Quantity<struct OpeningTag, "d", "screen opening", unit::Metre>;
+using ParticleSize = formula::Quantity<struct ParticleSizeTag, "s", "particle size", unit::Metre>;
+using Count = formula::Quantity<struct CountTag, "n", "particles in a class", unit::One>;
 
 template <typename Q>
 [[nodiscard]] constexpr formula::Measured<Q> m(std::int64_t numerator, std::int64_t denominator = 1)

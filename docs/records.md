@@ -44,18 +44,10 @@ typed in by a person, so its entry is wrapped in `entered(...)`; a value that
 was measured is a plain `Measured<Q>`:
 
 ```cpp
-struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit::Megapascal>
-{
-};
-struct Force: formula::Quantity<Force, "F", "load at failure", unit::Newton>
-{
-};
-struct EdgeX: formula::Quantity<EdgeX, "x_m", "measured edge", unit::Millimetre>
-{
-};
-struct EdgeY: formula::Quantity<EdgeY, "y_m", "measured edge", unit::Millimetre>
-{
-};
+using Strength = formula::Quantity<struct StrengthTag, "f_c", "compressive strength", unit::Megapascal>;
+using Force = formula::Quantity<struct ForceTag, "F", "load at failure", unit::Newton>;
+using EdgeX = formula::Quantity<struct EdgeXTag, "x_m", "measured edge", unit::Millimetre>;
+using EdgeY = formula::Quantity<struct EdgeYTag, "y_m", "measured edge", unit::Millimetre>;
 ```
 
 ```cpp

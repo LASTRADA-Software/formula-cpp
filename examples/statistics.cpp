@@ -56,15 +56,9 @@ using formula::var;
 }
 
 // ---- Quantities -------------------------------------------------------------------
-struct Mass: formula::Quantity<Mass, "m", "mass of a determination", unit::Gram>
-{
-};
-struct Determinations: formula::Quantity<Determinations, "n", "number of determinations", unit::One>
-{
-};
-struct Spread: formula::Quantity<Spread, "s", "spread of the determinations", unit::Gram>
-{
-};
+using Mass = formula::Quantity<struct MassTag, "m", "mass of a determination", unit::Gram>;
+using Determinations = formula::Quantity<struct DeterminationsTag, "n", "number of determinations", unit::One>;
+using Spread = formula::Quantity<struct SpreadTag, "s", "spread of the determinations", unit::Gram>;
 /// A gram squared, the unit a variance of masses in grams is stated in. The
 /// library ships no squared mass unit; a method that reports a variance
 /// declares its own.
@@ -73,9 +67,7 @@ inline constexpr formula::Unit GramSquared { .dimension = formula::dim::Mass * f
                                              .magnitudeDenominator = 1'000'000,
                                              .symbolText = formula::symbol("g2"),
                                              .decimals = 4 };
-struct MassVariance: formula::Quantity<MassVariance, "s2", "variance of the determinations", GramSquared>
-{
-};
+using MassVariance = formula::Quantity<struct MassVarianceTag, "s2", "variance of the determinations", GramSquared>;
 
 // ---- 1. A sample -------------------------------------------------------------------
 //
@@ -171,12 +163,8 @@ template <typename Criterion>
 }
 
 // ---- 4. Precision ----------------------------------------------------------------------
-struct FirstResult: formula::Quantity<FirstResult, "x_A", "first determination", unit::Gram>
-{
-};
-struct SecondResult: formula::Quantity<SecondResult, "x_B", "second determination", unit::Gram>
-{
-};
+using FirstResult = formula::Quantity<struct FirstResultTag, "x_A", "first determination", unit::Gram>;
+using SecondResult = formula::Quantity<struct SecondResultTag, "x_B", "second determination", unit::Gram>;
 struct Tag
 {
 };

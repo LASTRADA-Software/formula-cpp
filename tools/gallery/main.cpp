@@ -57,15 +57,9 @@ inline constexpr formula::Unit LitrePerSecond { .dimension = formula::dim::Volum
 
 // ---- 1: a density ----------------------------------------------------------
 
-struct SpecimenMass: formula::Quantity<SpecimenMass, "m", "specimen mass", unit::Kilogram>
-{
-};
-struct SpecimenVolume: formula::Quantity<SpecimenVolume, "V", "specimen volume", unit::CubicMetre>
-{
-};
-struct BulkDensity: formula::Quantity<BulkDensity, "rho", "bulk density", KilogramPerCubicMetre>
-{
-};
+using SpecimenMass = formula::Quantity<struct SpecimenMassTag, "m", "specimen mass", unit::Kilogram>;
+using SpecimenVolume = formula::Quantity<struct SpecimenVolumeTag, "V", "specimen volume", unit::CubicMetre>;
+using BulkDensity = formula::Quantity<struct BulkDensityTag, "rho", "bulk density", KilogramPerCubicMetre>;
 
 constexpr auto density =
     formula::documented(var<SpecimenMass> / var<SpecimenVolume>,
@@ -78,12 +72,8 @@ constexpr auto density =
 
 // ---- 2: a circular area -----------------------------------------------------
 
-struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
-{
-};
-struct CircularArea: formula::Quantity<CircularArea, "A", "cross-sectional area", unit::SquareMetre>
-{
-};
+using Diameter = formula::Quantity<struct DiameterTag, "d", "specimen diameter", unit::Millimetre>;
+using CircularArea = formula::Quantity<struct CircularAreaTag, "A", "cross-sectional area", unit::SquareMetre>;
 
 // No equation number this time, deliberately: the symbol table and the
 // citation block below both show only the fields a formula actually has.
@@ -112,15 +102,9 @@ constexpr auto maximumDiameter =
 
 // ---- 3: a flow rate ----------------------------------------------------------
 
-struct DischargedVolume: formula::Quantity<DischargedVolume, "V", "volume discharged", unit::Litre>
-{
-};
-struct ElapsedTime: formula::Quantity<ElapsedTime, "t", "elapsed time", unit::Second>
-{
-};
-struct FlowRate: formula::Quantity<FlowRate, "Q", "volumetric flow rate", LitrePerSecond>
-{
-};
+using DischargedVolume = formula::Quantity<struct DischargedVolumeTag, "V", "volume discharged", unit::Litre>;
+using ElapsedTime = formula::Quantity<struct ElapsedTimeTag, "t", "elapsed time", unit::Second>;
+using FlowRate = formula::Quantity<struct FlowRateTag, "Q", "volumetric flow rate", LitrePerSecond>;
 
 // Sparser still: no section, no equation, just a reference and the prose.
 constexpr auto flowRate =
@@ -131,15 +115,9 @@ constexpr auto flowRate =
 
 // ---- 4: a water/cement ratio, evaluated below too ----------------------------
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", unit::Litre>
-{
-};
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", unit::Litre>
-{
-};
-struct WaterCementRatio: formula::Quantity<WaterCementRatio, "w/c", "ratio of water to cement", unit::One>
-{
-};
+using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
+using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
+using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
 
 constexpr auto waterCementRatio =
     formula::documented(var<WaterVolume> / var<CementVolume>,
@@ -155,13 +133,10 @@ constexpr auto waterCementRatio =
 // (which is a formula's *result*, not a variable a formula can read): this
 // conditional's predicate and both its branches need a leaf they can read
 // from the environment.
-struct MeasuredDensity: formula::Quantity<MeasuredDensity, "rho_m", "measured bulk density", KilogramPerCubicMetre>
-{
-};
-struct AdjustedBulkDensity:
-    formula::Quantity<AdjustedBulkDensity, "rho_adj", "compaction-adjusted bulk density", KilogramPerCubicMetre>
-{
-};
+using MeasuredDensity =
+    formula::Quantity<struct MeasuredDensityTag, "rho_m", "measured bulk density", KilogramPerCubicMetre>;
+using AdjustedBulkDensity =
+    formula::Quantity<struct AdjustedBulkDensityTag, "rho_adj", "compaction-adjusted bulk density", KilogramPerCubicMetre>;
 
 // A numeric threshold selects between two formulas, not an if/else a caller
 // has to remember to apply: a specimen compacted below the reference density
@@ -191,18 +166,11 @@ constexpr auto compactionAdjustedDensity = formula::documented(
 // comment character. The library now escapes it (`detail::latex_math_words`),
 // so a table in percent typesets too; these were left as they are.
 
-struct CrushingStrength: formula::Quantity<CrushingStrength, "f", "measured crushing strength", unit::Megapascal>
-{
-};
-struct CuringAge: formula::Quantity<CuringAge, "t", "curing age at test", unit::Hour>
-{
-};
-struct SizeAllowance: formula::Quantity<SizeAllowance, "k_d", "size allowance", unit::Megapascal>
-{
-};
-struct CorrectedStrength: formula::Quantity<CorrectedStrength, "f_c", "size- and age-corrected strength", unit::Megapascal>
-{
-};
+using CrushingStrength = formula::Quantity<struct CrushingStrengthTag, "f", "measured crushing strength", unit::Megapascal>;
+using CuringAge = formula::Quantity<struct CuringAgeTag, "t", "curing age at test", unit::Hour>;
+using SizeAllowance = formula::Quantity<struct SizeAllowanceTag, "k_d", "size allowance", unit::Megapascal>;
+using CorrectedStrength =
+    formula::Quantity<struct CorrectedStrengthTag, "f_c", "size- and age-corrected strength", unit::Megapascal>;
 
 // Three bands over the diameter `Diameter` already declares, each stated as a
 // numerator/denominator pair for its low (inclusive) and high (EXCLUSIVE)
@@ -317,15 +285,9 @@ struct Cylinder
 {
 };
 
-struct FailureLoad: formula::Quantity<FailureLoad, "F", "maximum load at failure", unit::Newton>
-{
-};
-struct LoadedEdge: formula::Quantity<LoadedEdge, "a", "loaded edge", unit::Millimetre>
-{
-};
-struct ShapeFactor: formula::Quantity<ShapeFactor, "k_s", "shape factor", unit::One>
-{
-};
+using FailureLoad = formula::Quantity<struct FailureLoadTag, "F", "maximum load at failure", unit::Newton>;
+using LoadedEdge = formula::Quantity<struct LoadedEdgeTag, "a", "loaded edge", unit::Millimetre>;
+using ShapeFactor = formula::Quantity<struct ShapeFactorTag, "k_s", "shape factor", unit::One>;
 
 constexpr auto cubeStrengthMethod = formula::method(
     formula::variants(formula::variant<Cube>(var<ShapeFactor> * var<FailureLoad> / formula::pow<2>(var<LoadedEdge>)),
@@ -363,21 +325,11 @@ constexpr auto overlaidStrengthMethod = formula::apply(galleryOverlay, cubeStren
 //
 // Invented screens of 103, 127, 163, 197 and 241 m: three significant digits,
 // none a preferred number, and not a sieve size or designation in any unit.
-struct RetainedMass: formula::Quantity<RetainedMass, "m_r", "mass retained on a screen", unit::Gram>
-{
-};
-struct DryMass: formula::Quantity<DryMass, "m_t", "total dry mass", unit::Gram>
-{
-};
-struct PassingShare: formula::Quantity<PassingShare, "p", "percentage passing a screen", unit::Percent>
-{
-};
-struct ParticleSize: formula::Quantity<ParticleSize, "s", "particle size", unit::Metre>
-{
-};
-struct ClassShare: formula::Quantity<ClassShare, "n", "share of the particles in a class", unit::One>
-{
-};
+using RetainedMass = formula::Quantity<struct RetainedMassTag, "m_r", "mass retained on a screen", unit::Gram>;
+using DryMass = formula::Quantity<struct DryMassTag, "m_t", "total dry mass", unit::Gram>;
+using PassingShare = formula::Quantity<struct PassingShareTag, "p", "percentage passing a screen", unit::Percent>;
+using ParticleSize = formula::Quantity<struct ParticleSizeTag, "s", "particle size", unit::Metre>;
+using ClassShare = formula::Quantity<struct ClassShareTag, "n", "share of the particles in a class", unit::One>;
 
 inline constexpr formula::BreakpointTable<5> galleryScreens { formula::breakpoint(103),
                                                               formula::breakpoint(127),
@@ -406,18 +358,10 @@ constexpr auto classShares = countedParticles / formula::sum(countedParticles);
 // after outliers are rejected, and a precision check of two determinations
 // against a limit that depends on their own level.
 
-struct DeterminedMass: formula::Quantity<DeterminedMass, "m", "mass of a determination", unit::Gram>
-{
-};
-struct MassSpread: formula::Quantity<MassSpread, "s", "spread of the determinations", unit::Gram>
-{
-};
-struct FirstResult: formula::Quantity<FirstResult, "x_A", "first determination", unit::Gram>
-{
-};
-struct SecondResult: formula::Quantity<SecondResult, "x_B", "second determination", unit::Gram>
-{
-};
+using DeterminedMass = formula::Quantity<struct DeterminedMassTag, "m", "mass of a determination", unit::Gram>;
+using MassSpread = formula::Quantity<struct MassSpreadTag, "s", "spread of the determinations", unit::Gram>;
+using FirstResult = formula::Quantity<struct FirstResultTag, "x_A", "first determination", unit::Gram>;
+using SecondResult = formula::Quantity<struct SecondResultTag, "x_B", "second determination", unit::Gram>;
 
 constexpr auto massMean = formula::sample_mean(formula::series<DeterminedMass, 6>);
 
@@ -495,18 +439,10 @@ constexpr auto gatedRelativeStrength =
 // does not spell out, and an estimate repeated until it settles, at most four
 // times.
 
-struct SettlementTime: formula::Quantity<SettlementTime, "t", "time of a settlement reading", unit::Second>
-{
-};
-struct Settlement: formula::Quantity<Settlement, "L", "settlement read", unit::Millimetre>
-{
-};
-struct SettlementRate: formula::Quantity<SettlementRate, "v", "rate of settlement", unit::MillimetrePerMinute>
-{
-};
-struct IteratedEstimate: formula::Quantity<IteratedEstimate, "w", "an invented iterated estimate", unit::Gram>
-{
-};
+using SettlementTime = formula::Quantity<struct SettlementTimeTag, "t", "time of a settlement reading", unit::Second>;
+using Settlement = formula::Quantity<struct SettlementTag, "L", "settlement read", unit::Millimetre>;
+using SettlementRate = formula::Quantity<struct SettlementRateTag, "v", "rate of settlement", unit::MillimetrePerMinute>;
+using IteratedEstimate = formula::Quantity<struct IteratedEstimateTag, "w", "an invented iterated estimate", unit::Gram>;
 
 constexpr auto settlementSlope = formula::opaque_output<"slope">(
     formula::linear_least_squares(formula::curve(formula::series<SettlementTime, 4>, formula::series<Settlement, 4>),

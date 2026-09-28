@@ -47,18 +47,10 @@ inline constexpr formula::Unit Euro { .dimension = formula::dim::Scalar,
                                       .symbolText = formula::symbol("EUR"),
                                       .decimals = 2 };
 
-struct WaterVolume: formula::Quantity<WaterVolume, "V_w", "effective water content", unit::Litre>
-{
-};
-struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", unit::Litre>
-{
-};
-struct UnitPrice: formula::Quantity<UnitPrice, "c_u", "price at a water/cement ratio of one", Euro>
-{
-};
-struct MixCost: formula::Quantity<MixCost, "C", "cost of the mix", Euro>
-{
-};
+using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
+using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
+using UnitPrice = formula::Quantity<struct UnitPriceTag, "c_u", "price at a water/cement ratio of one", Euro>;
+using MixCost = formula::Quantity<struct MixCostTag, "C", "cost of the mix", Euro>;
 
 // ---- The inner formula, declared and cited on its own ----
 //

@@ -38,15 +38,9 @@ using formula::RoundingMode;
 using formula::SignificantDigits;
 using formula::var;
 
-struct Diameter: formula::Quantity<Diameter, "d", "specimen diameter", unit::Millimetre>
-{
-};
-struct Strength: formula::Quantity<Strength, "f", "material strength", unit::Megapascal>
-{
-};
-struct CorrectionFactor: formula::Quantity<CorrectionFactor, "k", "empirical correction factor", unit::One>
-{
-};
+using Diameter = formula::Quantity<struct DiameterTag, "d", "specimen diameter", unit::Millimetre>;
+using Strength = formula::Quantity<struct StrengthTag, "f", "material strength", unit::Megapascal>;
+using CorrectionFactor = formula::Quantity<struct CorrectionFactorTag, "k", "empirical correction factor", unit::One>;
 
 // ---- 1: intermediate vs. final rounding, same formula shape, same input ---
 //
