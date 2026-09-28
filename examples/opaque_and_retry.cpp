@@ -234,8 +234,13 @@ std::string ending(char const* label, Retrying const& retrying, Env const& envir
     auto const explained = formula::explain_retry(retrying, environment);
     std::string line = std::string { label } + ": ";
     if (!explained.outcome.has_value())
-        line += "Failed, " + std::string { formula::describe(explained.outcome.error().error) } + " at attempt "
-                + std::to_string(explained.outcome.error().attempt + 1);
+    {
+        formula::RetryFailure const failure = explained.outcome.error();
+        line += "Failed, " + std::string { formula::describe(failure.error) }
+                + (failure.attempt == formula::RetryFailure::atStartingValue
+                       ? std::string { " at its starting value" }
+                       : " at attempt " + std::to_string(failure.attempt + 1));
+    }
     else
         line += std::string { endName(explained.outcome->end()) } + " after "
                 + std::to_string(explained.outcome->attempts_made()) + " attempt(s)";

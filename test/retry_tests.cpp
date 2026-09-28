@@ -206,7 +206,13 @@ TEST_CASE("a starting value that fails fails the retry before any attempt", "[re
         formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(badStart, halving, settled, repeat, cite);
     constexpr auto ran = formula::checked_evaluate_retry(four, nothing);
     STATIC_REQUIRE(!ran.has_value());
-    STATIC_REQUIRE(ran.error() == formula::RetryFailure { formula::ArithmeticError::DivisionByZero, 0 });
+    // At its own position, not at 0, which is the first attempt's: a consumer
+    // holding only the failure can tell the two apart.
+    STATIC_REQUIRE(
+        ran.error()
+        == formula::RetryFailure { formula::ArithmeticError::DivisionByZero, formula::RetryFailure::atStartingValue });
+    STATIC_REQUIRE(ran.error().attempt != 0);
+    STATIC_REQUIRE(formula::RetryFailure::atStartingValue != formula::RetryFailure::refusedBeforeStart);
 }
 
 TEST_CASE("a retry of exactly the cap runs every attempt, and one of one or two of two is allowed", "[retry]")

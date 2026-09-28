@@ -2284,6 +2284,18 @@ formula_add_negative_test(retry_render_context_in_starting_value
     "formula: a retry's starting value is evaluated before its first attempt, so no attempt exists yet"
     EXPECT_COUNT 1
     REJECT "names another" "only meaningful inside a retry" "does not compute the dimension")
+formula_add_negative_test(retry_render_this_attempt_in_attempt
+    "formula: this_attempt is the value an attempt produced, known only when judging it"
+    EXPECT_COUNT 1
+    REJECT "only meaningful inside a retry" "names another" "does not compute the dimension")
+formula_add_negative_test(retry_previous_in_record_scope
+    "inside from_record<Role>(...) the other record's data is read, where no attempt runs"
+    EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(retry_attempt_input_in_record_scope
+    "inside from_record<Role>(...) the other record's data is read, where no attempt runs"
+    EXPECT_COUNT 1
+    REJECT "no matching")
 formula_add_negative_test(retry_compared
     "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
     EXPECT_COUNT 1

@@ -439,7 +439,9 @@ namespace detail
     struct RequireInsideRetry
     {
         static_assert(AttemptEnvironmentTraits<Env>::isAttempt,
-                      "formula: previous_attempt, this_attempt and attempt_number are only meaningful inside a retry");
+                      "formula: previous_attempt, this_attempt and attempt_number are only meaningful inside a retry; "
+                      "inside from_record<Role>(...) the other record's data is read, where no attempt runs -- read "
+                      "the context node outside the scope");
 
         static constexpr bool value = true;
     };
@@ -489,7 +491,9 @@ namespace detail
     {
         static_assert(AttemptEnvironmentTraits<Env>::isAttempt,
                       "formula: attempt_input reads the determination recorded for the attempt that is running, so "
-                      "it is only meaningful inside a retry's attempt or its acceptance");
+                      "it is only meaningful inside a retry's attempt or its acceptance; inside "
+                      "from_record<Role>(...) the other record's data is read, where no attempt runs -- read it "
+                      "outside the scope");
 
         static constexpr bool value = true;
     };
@@ -783,6 +787,36 @@ namespace detail
     template <typename T>
     inline constexpr bool readsAttemptContext = HoldsNodeType<AttemptContextProbe, std::remove_cv_t<T>>::value;
 
+    /// Whether @p T is `this_attempt<Q>`, for any `Q`.
+    template <typename T>
+    inline constexpr bool isThisAttemptNode = false;
+
+    template <typename Q>
+    inline constexpr bool isThisAttemptNode<ThisAttemptNode<Q>> = true;
+
+    /// `HoldsNodeType`'s probe for `this_attempt`.
+    struct ThisAttemptProbe
+    {
+        template <typename T>
+        static constexpr bool matches = isThisAttemptNode<T>;
+    };
+
+    /// Fails to compile when a retry's attempt expression reads
+    /// `this_attempt`, where the retry is built -- so that `render` and
+    /// `document`, which never evaluate it, do not print a circular
+    /// definition -- in the words its evaluation uses
+    /// (`RequireThisAttemptInJudgement`).
+    template <typename A>
+    struct RequireNoThisAttemptInAttempt
+    {
+        static_assert(!HoldsNodeType<ThisAttemptProbe, std::remove_cv_t<A>>::value,
+                      "formula: this_attempt is the value an attempt produced, known only when judging it; read in "
+                      "the attempt expression itself it would be circular -- use previous_attempt there; the attempt "
+                      "appears in this diagnostic as the template argument of RequireNoThisAttemptInAttempt");
+
+        static constexpr bool value = true;
+    };
+
     /// Fails to compile when a retry's starting value reads a context node,
     /// where the retry is built -- so that `render` and `document`, which
     /// never evaluate it, are refused too, and a misnamed
@@ -888,7 +922,22 @@ namespace detail
 
         // And a starting value that reads an attempt's context or a recorded
         // determination, which it runs before any attempt has either.
-        static constexpr bool namesOk = shapesOk && attemptNamesOk && acceptNamesOk;
+        static constexpr bool quantitiesOk = shapesOk && attemptNamesOk && acceptNamesOk;
+
+        // An attempt that reads the value it is producing.
+        template <bool Ask>
+        [[nodiscard]] static consteval bool attempt_reads_no_own_value() noexcept
+        {
+            if constexpr (Ask)
+                return !HoldsNodeType<ThisAttemptProbe, std::remove_cv_t<A>>::value;
+            else
+                return true;
+        }
+
+        static constexpr bool attemptSelfOk = attempt_reads_no_own_value<quantitiesOk>();
+        static_assert(std::conditional_t<quantitiesOk, RequireNoThisAttemptInAttempt<A>, std::true_type>::value);
+
+        static constexpr bool namesOk = quantitiesOk && attemptSelfOk;
 
         template <bool Ask>
         [[nodiscard]] static consteval bool start_reads_no_context() noexcept
@@ -1040,10 +1089,15 @@ struct RetryFailure
     /// attempt's.
     static constexpr std::size_t refusedBeforeStart = static_cast<std::size_t>(-1);
 
+    /// The `attempt` of a retry whose starting value failed, before its
+    /// first attempt ran. No attempt has this position, so a starting
+    /// value's failure is never taken for the first attempt's, which is at 0.
+    static constexpr std::size_t atStartingValue = static_cast<std::size_t>(-2);
+
     /// What went wrong.
     ArithmeticError error;
-    /// At which attempt, from 0: the starting value's failure is at 0 too;
-    /// `refusedBeforeStart` when nothing ran.
+    /// At which attempt, from 0; `atStartingValue` when the starting value
+    /// failed, and `refusedBeforeStart` when nothing ran.
     std::size_t attempt;
 
     /// Memberwise equality.
@@ -1391,7 +1445,7 @@ namespace detail
             AttemptEnvironment<Env, Rep, R, AttemptPhase::Starting, Max> const starting { environment };
             before = dispatch<Rep>(retrying.start.expression, starting, sink);
             if (!before.has_value())
-                return std::unexpected { RetryFailure { before.error(), 0 } };
+                return std::unexpected { RetryFailure { before.error(), RetryFailure::atStartingValue } };
         }
 
         // The one loop: at most Max attempts, and no other bound.
