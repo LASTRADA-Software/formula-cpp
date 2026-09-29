@@ -429,22 +429,24 @@ namespace
 // Money, with this file's own units -- the library ships no currencies. Euros
 // and yen are named base dimensions, a cent is a hundredth of a euro, and an
 // exchange rate is data: a quantity in yen per euro, not a conversion factor.
-constexpr formula::Dimension Euros = formula::base_dimension("EUR");
-constexpr formula::Dimension Yens = formula::base_dimension("JPY");
+constexpr formula::Dimension EuroAmount = formula::base_dimension("EUR");
+constexpr formula::Dimension YenAmount = formula::base_dimension("JPY");
 
-constexpr formula::Unit Euro { .dimension = Euros, .symbolText = formula::symbol("EUR"), .decimals = 2 };
-constexpr formula::Unit EuroCent { .dimension = Euros,
+constexpr formula::Unit Euro { .dimension = EuroAmount, .symbolText = formula::symbol("EUR"), .decimals = 2 };
+constexpr formula::Unit EuroCent { .dimension = EuroAmount,
                                    .magnitudeNumerator = 1,
                                    .magnitudeDenominator = 100,
                                    .symbolText = formula::symbol("ct"),
                                    .decimals = 0 };
-constexpr formula::Unit Yen { .dimension = Yens, .symbolText = formula::symbol("JPY"), .decimals = 0 };
-constexpr formula::Unit EuroPerKilowattHour { .dimension = Euros / formula::dim::Energy,
+constexpr formula::Unit Yen { .dimension = YenAmount, .symbolText = formula::symbol("JPY"), .decimals = 0 };
+constexpr formula::Unit EuroPerKilowattHour { .dimension = EuroAmount / formula::dim::Energy,
                                               .magnitudeNumerator = 1,
                                               .magnitudeDenominator = 3600000,
                                               .symbolText = formula::symbol("EUR/kWh"),
                                               .decimals = 4 };
-constexpr formula::Unit YenPerEuro { .dimension = Yens / Euros, .symbolText = formula::symbol("JPY/EUR"), .decimals = 2 };
+constexpr formula::Unit YenPerEuro { .dimension = YenAmount / EuroAmount,
+                                     .symbolText = formula::symbol("JPY/EUR"),
+                                     .decimals = 2 };
 
 struct Energy: formula::Quantity<Energy, "E", "energy consumed", formula::unit::KilowattHour>
 {
@@ -480,11 +482,11 @@ TEST_CASE("evaluate: energy at a tariff costs euros, exactly", "[evaluate][money
     // The product of an energy and a tariff in euros per kilowatt-hour is a
     // dimension of euros, decided while the formula is compiled.
     constexpr auto cost = var<Energy> * var<Tariff>;
-    STATIC_REQUIRE(decltype(cost)::dimension == Euros);
+    STATIC_REQUIRE(decltype(cost)::dimension == EuroAmount);
 
     // 150 kWh at 3/10 EUR/kWh is exactly 45 EUR. Evaluated as 540000000 J
-    // times 1/12000000 EUR/J, so a wrong factor on the kilowatt-hour or on the
-    // tariff lands on something other than 45.
+    // times 1/12000000 EUR/J, so a wrong factor on one of the two -- the
+    // kilowatt-hour or the tariff -- lands on something other than 45.
     constexpr auto consumption =
         formula::environment(formula::Measured<Energy> { rat(150) }, formula::Measured<Tariff> { rat(3, 10) });
     constexpr auto charged = formula::checked_evaluate<EnergyCost>(cost, consumption);

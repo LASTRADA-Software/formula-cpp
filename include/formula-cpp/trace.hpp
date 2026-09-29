@@ -2594,7 +2594,11 @@ namespace detail
     /// would number more than `NamedBaseCapacity`: a name both units carry
     /// counts once, or not at all when its exponents cancel. That is judged
     /// with `merged_dimension`, not `operator/`, whose guard aborts when
-    /// reached at run time, as this is.
+    /// reached at run time, as this is. An exponent overflow is not judged:
+    /// `merged_dimension` combines exponents through `reduced`, as `operator/`
+    /// always did, and its guard ends the program when a combined exponent
+    /// would leave `std::int32_t` -- reachable only by units whose dimensions
+    /// carry exponents near 2^31.
     [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
     {
         if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar

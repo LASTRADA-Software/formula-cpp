@@ -109,8 +109,8 @@ namespace detail
     /// open a clause, nor an author's newline end a line. The semicolon,
     /// because a verdict's clause is `[<label>; <whose constraint>]`: a label
     /// holding `; jurisdiction overlay: ...` would otherwise name a second,
-    /// false owner beside the true one. The backslash, so that an author's `\[` cannot pass for an
-    /// escaped bracket.
+    /// false owner beside the true one. The backslash, so that an author's
+    /// `\[` cannot pass for an escaped bracket.
     ///
     /// **What it does not do.** It stops author text from breaking a line's
     /// structure, not from holding a clause's words: a `documented()` citation

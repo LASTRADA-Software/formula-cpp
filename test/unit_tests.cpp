@@ -1008,17 +1008,17 @@ TEST_CASE("a unit template argument has the same identity in every translation u
 
 namespace
 {
-constexpr Dimension Euros = formula::base_dimension("EUR");
-constexpr Dimension Yens = formula::base_dimension("JPY");
+constexpr Dimension EuroAmount = formula::base_dimension("EUR");
+constexpr Dimension YenAmount = formula::base_dimension("JPY");
 
-constexpr Unit Euro { .dimension = Euros, .symbolText = formula::symbol("EUR"), .decimals = 2 };
-constexpr Unit EuroCent { .dimension = Euros,
+constexpr Unit Euro { .dimension = EuroAmount, .symbolText = formula::symbol("EUR"), .decimals = 2 };
+constexpr Unit EuroCent { .dimension = EuroAmount,
                           .magnitudeNumerator = 1,
                           .magnitudeDenominator = 100,
                           .symbolText = formula::symbol("ct"),
                           .decimals = 0 };
-constexpr Unit Yen { .dimension = Yens, .symbolText = formula::symbol("JPY"), .decimals = 0 };
-constexpr Unit EuroPerKilowattHour { .dimension = Euros / dim::Energy,
+constexpr Unit Yen { .dimension = YenAmount, .symbolText = formula::symbol("JPY"), .decimals = 0 };
+constexpr Unit EuroPerKilowattHour { .dimension = EuroAmount / dim::Energy,
                                      .magnitudeNumerator = 1,
                                      .magnitudeDenominator = 3600000,
                                      .symbolText = formula::symbol("EUR/kWh"),
@@ -1066,10 +1066,13 @@ TEST_CASE("euros convert to cents and back exactly and never to yen", "[unit][mo
 TEST_CASE("a unit carrying a named base dimension has the same identity in every translation unit", "[unit][money]")
 {
     // Declared in unit_cross_tu.hpp with its dimension spelt euros per energy,
-    // defined in unit_cross_tu_b.cpp as the reciprocal of energy times euros,
-    // and called here with euros times energy to the minus one -- so this
-    // linking at all is the assertion.
-    constexpr Unit TariffRebuilt { .dimension = Euros * formula::power(dim::Energy, -1),
+    // defined in unit_cross_tu_b.cpp as euros squared over euros times energy,
+    // raised to the first power, and called here with euros times energy to
+    // the minus one. A call spelt as a different type would not compile here,
+    // and a definition spelt as one would be an overload the call cannot
+    // reach, so the program would not link: compiling and linking at all is
+    // the assertion.
+    constexpr Unit TariffRebuilt { .dimension = EuroAmount * formula::power(dim::Energy, -1),
                                    .magnitudeNumerator = 1,
                                    .magnitudeDenominator = 3600000,
                                    .symbolText = formula::symbol("EUR/kWh"),
