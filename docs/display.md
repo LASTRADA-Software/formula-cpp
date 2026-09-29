@@ -151,7 +151,7 @@ them, as the padded trace of the dish's weighings below shows.
 ### A value in a unit nobody declared
 
 Line 3 reads `0.0134`, with no unit. A value the arithmetic computed -- a
-difference, a product, a ratio -- is stated in the coherent SI unit of its
+difference, a product, a ratio -- is stated in the coherent unit of its
 dimension, here the kilogram: `0.0134` is the 13.4 g the specimen lost. Nobody
 declared that unit for this formula, so its decimals are `Unit`'s default of 3,
 which is no one's statement of precision. Such a value is **never padded** --
