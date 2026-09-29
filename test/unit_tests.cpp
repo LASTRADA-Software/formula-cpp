@@ -1066,12 +1066,12 @@ TEST_CASE("euros convert to cents and back exactly and never to yen", "[unit][mo
 TEST_CASE("a unit carrying a named base dimension has the same identity in every translation unit", "[unit][money]")
 {
     // Declared in unit_cross_tu.hpp with its dimension spelt euros per energy,
-    // defined in unit_cross_tu_b.cpp as euros squared over euros times energy,
-    // raised to the first power, and called here with euros times energy to
-    // the minus one. A call spelt as a different type would not compile here,
-    // and a definition spelt as one would be an overload the call cannot
-    // reach, so the program would not link: compiling and linking at all is
-    // the assertion.
+    // defined in unit_cross_tu_b.cpp as euros times euros, over euros times
+    // energy, raised to the first power, and called here with euros times
+    // energy to the minus one. A call spelt as a different type would not
+    // compile here, and a definition spelt as one would be an overload the
+    // call cannot reach, so the program would not link: compiling and linking
+    // at all is the assertion.
     constexpr Unit TariffRebuilt { .dimension = EuroAmount * formula::power(dim::Energy, -1),
                                    .magnitudeNumerator = 1,
                                    .magnitudeDenominator = 3600000,

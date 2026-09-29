@@ -2596,9 +2596,10 @@ namespace detail
     /// with `merged_dimension`, not `operator/`, whose guard aborts when
     /// reached at run time, as this is. An exponent overflow is not judged:
     /// `merged_dimension` combines exponents through `reduced`, as `operator/`
-    /// always did, and its guard ends the program when a combined exponent
-    /// would leave `std::int32_t` -- reachable only by units whose dimensions
-    /// carry exponents near 2^31.
+    /// always did, and its guard ends the program when a combined exponent,
+    /// in lowest terms, would not fit `std::int32_t` -- a very large
+    /// numerator, or two denominators whose product passes 2^31: a length to
+    /// the 1/46349 over a length to the -1/46351 needs 92700/2148322499.
     [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
     {
         if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar

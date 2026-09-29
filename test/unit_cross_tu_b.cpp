@@ -10,8 +10,9 @@ int consume_litre(TaggedUnit<formula::unit::Litre> tagged)
 }
 
 // The dimension spelt unlike the declaration, and built differently: euros
-// squared over euros times energy -- two equal names the merge combines -- then
-// raised to the first power, which builds every slot again outside the merge.
+// times euros, over euros times energy -- two equal names the merge
+// combines -- then raised to the first power, which builds every slot again
+// outside the merge.
 // The same unit, so this defines the declared function; a representation that
 // differed between the merge's slots and power's would make it an overload
 // instead, and the call in unit_tests.cpp would not link.

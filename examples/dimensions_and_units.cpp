@@ -190,7 +190,7 @@ int main()
     //
     // A currency is not a bare number, so it gets a base dimension of its
     // own, named by the application: base_dimension("EUR"). The unit named
-    // after the base is one of it, and a cent is a hundredth of it. A tariff
+    // after the base has magnitude one, and a cent is a hundredth of it. A tariff
     // in euros per energy times an energy is euros; and euros never convert
     // into yen, because an exchange rate is data -- a quantity in yen per euro
     // -- not a conversion factor.

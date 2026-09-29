@@ -19,10 +19,10 @@ inline constexpr formula::Unit Voucher { .dimension = formula::base_dimension("V
 struct Credits: formula::Quantity<Credits, "C", "a credit balance", Credit>
 {
 };
-struct Euros: formula::Quantity<Euros, "E", "an amount in euros", Euro>
+struct EuroAmount: formula::Quantity<EuroAmount, "E", "an amount in euros", Euro>
 {
 };
-struct Yens: formula::Quantity<Yens, "Y", "an amount in yen", Yen>
+struct YenAmount: formula::Quantity<YenAmount, "Y", "an amount in yen", Yen>
 {
 };
 struct Tokens: formula::Quantity<Tokens, "T", "a token count", Token>
@@ -32,8 +32,8 @@ struct Vouchers: formula::Quantity<Vouchers, "V", "a voucher count", Voucher>
 {
 };
 
-inline constexpr auto product = formula::var<Credits> * formula::var<Euros> * formula::var<Yens> * formula::var<Tokens>
-                              * formula::var<Vouchers>;
+inline constexpr auto product = formula::var<Credits> * formula::var<EuroAmount> * formula::var<YenAmount>
+                              * formula::var<Tokens> * formula::var<Vouchers>;
 
 int main()
 {
