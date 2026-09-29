@@ -10,7 +10,8 @@ where you ask for it.**
 
 The four ways a number reaches text, each covered below:
 
-- a **trace**, and a worksheet's derivation, through `TraceRenderOptions::numbers`;
+- a **trace**, and a [worksheet's derivation](calculations.md#how-a-value-was-reached),
+  through `TraceRenderOptions::numbers`;
 - a **rendered formula** and its **documentation**, through `RenderOptions`;
 - **`number_text()`** and **`decimal_text()`**, which need neither `<format>`
   nor an allocation;
@@ -148,7 +149,8 @@ column of grams reads `144.0 g` beside `157.4 g`. Padding never cuts a decimal
 short: a value with more decimals than its unit declares keeps every one of
 them, as the padded trace of the dish's weighings below shows.
 
-A worksheet's derivation, `render_derivation`, takes the same
+A worksheet's derivation, `render_derivation`
+([How a value was reached](calculations.md#how-a-value-was-reached)), takes the same
 `TraceRenderOptions`. Its steps and inputs read as a trace's lines do in the
 style. Each block's header states its value in the unit its quantity
 declares, as a line of another block that reads the value states it --
@@ -240,10 +242,11 @@ contradicts itself -- so a compared value is never shown rounded.
 `render()` and `document()` take the style in `RenderOptions`, beside the
 [vocabulary](citations.md#whose-symbols-a-jurisdictions-vocabulary) that says
 how each quantity's symbol is written (`DefaultVocabulary {}` renames nothing).
-They take it for a formula and for a calculation alike: `render(calculation,
-vocabulary, options)` writes each definition's numbers in it, and
-`document(calculation, vocabulary, options)` its formula and each calculated
-quantity's `calculatedAs`.
+They take it for a formula and for a
+[calculation](calculations.md#defining-named-values) alike:
+`render(calculation, vocabulary, options)` writes each definition's numbers in
+it, and `document(calculation, vocabulary, options)` its formula and each
+calculated quantity's `calculatedAs`.
 
 For the moisture content:
 
