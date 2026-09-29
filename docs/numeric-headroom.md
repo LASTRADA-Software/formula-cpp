@@ -114,9 +114,8 @@ The figures are deterministic: the census program prints the same on cl
 19.51 and gcc 13.3, and the clang and gcc presets hold it to the same pins.
 The examples table below is cl's. clang and gcc evaluate a `const` local's
 constant initialiser at compile time, where cl runs it, so under them a
-program can report fewer integers -- today `dimensions_and_units` and
-`expressions` each read one bit fewer. The test holds every compiler to at
-least this table's headroom.
+program can report fewer integers -- today `expressions` reads one bit fewer.
+The test holds every compiler to at least this table's headroom.
 
 ## The census
 
@@ -134,7 +133,7 @@ Each program's largest integers over everything it evaluates at run time.
 |---|---|---|---|---|
 | example `simple` | 4 | 10 | 6 | 53 |
 | example `exact_numbers` | 9 | 10 | 9 | 53 |
-| example `dimensions_and_units` | 20 | 10 | 19 | 43 |
+| example `dimensions_and_units` | 22 | 10 | 22 | 41 |
 | example `quantities` | 4 | 10 | 9 | 53 |
 | example `expressions` | 3 | 2 | 0 | 60 |
 | example `citations` | 4 | 10 | 6 | 53 |

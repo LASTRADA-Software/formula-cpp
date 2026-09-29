@@ -5,9 +5,10 @@
 // Generic physics only, no standard cited: composing dimensions from named
 // constants rather than spelling exponents, a dimension only a rational
 // exponent can express, an exact round-tripping conversion, the affine case a
-// temperature scale needs, a unit's declared display precision applied to a
-// computed value, and a bounds check that tells "never checked" apart from
-// "checked and passed".
+// temperature scale needs on both of the scales the library has, an energy unit
+// whose factor to the joule is a whole number, a unit's declared display
+// precision applied to a computed value, and a bounds check that tells "never
+// checked" apart from "checked and passed".
 
 #include <formula-cpp/formula.hpp>
 
@@ -96,7 +97,7 @@ int main()
     bool const volumeRoundTrips = volumeBackInLitres == volumeInLitres;
     std::printf("volume round trip exact: %s\n", volumeRoundTrips ? "yes" : "no");
 
-    // ---- 4. The affine case: 100 degC to K and back ----
+    // ---- 4. The affine case: 100 degC to K and back, then degF to degC ----
     //
     // Conversion moves a POINT on a scale, not a difference: 100 degC is not
     // 100 K, it is 100 K above the offset between the two scales.
@@ -111,7 +112,34 @@ int main()
     bool const temperatureRoundTrips = tempBackInCelsius == tempInCelsius;
     std::printf("temperature round trip exact: %s\n", temperatureRoundTrips ? "yes" : "no");
 
-    // ---- 5. A unit's declared precision applied to a computed value ----
+    // The second affine scale. -40 is where degrees Fahrenheit and degrees
+    // Celsius meet, so it converts to itself. 100 degF is a fraction of a
+    // degree Celsius that is not a terminating decimal, 340/9, and is kept as
+    // that fraction: converting divides by 9 and rounds nothing.
+    Rational const minusFortyInFahrenheit = *Rational::make(-40, 1);
+    Rational const minusFortyInCelsius = formula::convert(minusFortyInFahrenheit, unit::Fahrenheit, unit::Celsius);
+    Rational const hundredInFahrenheit = *Rational::make(100, 1);
+    Rational const hundredFahrenheitInCelsius = formula::convert(hundredInFahrenheit, unit::Fahrenheit, unit::Celsius);
+
+    std::printf("-40 degF = %lld degC\n", static_cast<long long>(minusFortyInCelsius.numerator()));
+    std::printf("100 degF = %lld/%lld degC\n",
+                static_cast<long long>(hundredFahrenheitInCelsius.numerator()),
+                static_cast<long long>(hundredFahrenheitInCelsius.denominator()));
+    bool const fahrenheitConvertsExactly = minusFortyInCelsius == *Rational::make(-40, 1)
+                                           && hundredFahrenheitInCelsius == *Rational::make(340, 9);
+
+    // ---- 5. Power and energy: a kilowatt-hour is exactly 3600000 joules ----
+    //
+    // A watt-hour is the energy of one watt sustained for an hour, 3600
+    // joules, and a kilowatt-hour is a thousand of them: the factor is a whole
+    // number, so the conversion needs no rounded constant.
+    Rational const oneKilowattHour = *Rational::make(1, 1);
+    Rational const kilowattHourInJoules = formula::convert(oneKilowattHour, unit::KilowattHour, unit::Joule);
+
+    std::printf("1 kWh = %lld J\n", static_cast<long long>(kilowattHourInJoules.numerator()));
+    bool const kilowattHourIsExact = kilowattHourInJoules == *Rational::make(3600000, 1);
+
+    // ---- 6. A unit's declared precision applied to a computed value ----
     //
     // A generic density and a generic volume, multiplied to a mass -- the
     // point is that the RESULT of a calculation, not a literal, gets rounded
@@ -135,7 +163,7 @@ int main()
     // changes it while the example still reports success.
     bool const massRoundsAsDocumented = roundedMass == *Rational::from_decimal(64286, -3);
 
-    // ---- 6. Bounds: NotChecked is not a verdict, WithinBounds is ----
+    // ---- 7. Bounds: NotChecked is not a verdict, WithinBounds is ----
     constexpr Unit BoundedGauge { .dimension = dim::Scalar,
                                   .magnitudeNumerator = 1,
                                   .magnitudeDenominator = 100,
@@ -153,7 +181,8 @@ int main()
 
     // ---- summary ----
     bool const allChecksPassed = compositionMatches && rootIsHalfPower && volumeRoundTrips && temperatureRoundTrips
-                                  && massRoundsAsDocumented && boundsBehaveAsDocumented;
+                                  && fahrenheitConvertsExactly && kilowattHourIsExact && massRoundsAsDocumented
+                                  && boundsBehaveAsDocumented;
     std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

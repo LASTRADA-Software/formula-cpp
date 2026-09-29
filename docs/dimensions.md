@@ -50,7 +50,7 @@ template and is always evaluated.
 Nobody spells out `Dimension{.length = exponent(2)}` for an area. The
 `dim::` namespace supplies the seven base dimensions and a handful of derived
 ones (`Area`, `Volume`, `Density`, `Velocity`, `Acceleration`, `Force`,
-`Pressure`, `Energy`, `Frequency`, and `MassPerArea`, `ForcePerLength`,
+`Pressure`, `Energy`, `Power`, `Frequency`, and `MassPerArea`, `ForcePerLength`,
 `DynamicViscosity`, `KinematicViscosity`), and the arithmetic operators build the
 rest: `operator*` adds two dimensions' exponents (composing quantities that
 multiply), `operator/` subtracts them, `power` scales by an integer exponent,
@@ -111,7 +111,7 @@ A `formula::Unit` is a small aggregate, and every field earns its place:
 |---|---|
 | `dimension` | which physical quantity this unit measures |
 | `magnitudeNumerator` / `magnitudeDenominator` | the exact multiplicative factor to the coherent SI unit, as an integer ratio |
-| `offsetNumerator` / `offsetDenominator` | the exact additive offset, for an affine scale such as degrees Celsius |
+| `offsetNumerator` / `offsetDenominator` | the exact additive offset, for an affine scale such as degrees Celsius or degrees Fahrenheit |
 | `symbolText` | a fixed-capacity display symbol (a `Symbol`, not a `std::string_view`) |
 | `decimals` | the declared display precision |
 | `bounds` | an optional valid range, in the unit's own scale |
@@ -125,15 +125,33 @@ here, with the convenient types (`Rational`, `std::string_view`) appearing
 only at the point of use, via `formula::view()` and the conversion functions
 below.
 
-The `formula::unit::` namespace declares fifty-one of these: the coherent SI
-units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Newton`, `Pascal`, ...) alongside
-scaled ones (`Millimetre`, `Tonne`, `Hour`, `Megapascal`, ...), compound ones
-(`KilogramPerCubicMetre`, `MillimetrePerMinute`, `PascalSecond`, ...) and five
-dimensionless ones (`One`, `Percent`, `PerMille`, `PartsPerMillion`,
-`MilligramPerKilogram`). Two pairs are deliberately the same magnitude under two
-names -- `Megapascal` and `NewtonPerSquareMillimetre`, `PartsPerMillion` and
-`MilligramPerKilogram` -- because both spellings are in ordinary use, and a test
-pins that each pair converts into the other exactly.
+The `formula::unit::` namespace declares fifty-six of these: the coherent SI
+units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Newton`, `Pascal`, `Watt`, ...)
+alongside scaled ones (`Millimetre`, `Tonne`, `Hour`, `Megapascal`,
+`KilowattHour`, ...), compound ones (`KilogramPerCubicMetre`,
+`MillimetrePerMinute`, `PascalSecond`, ...) and five dimensionless ones (`One`,
+`Percent`, `PerMille`, `PartsPerMillion`, `MilligramPerKilogram`). Two pairs are
+deliberately the same magnitude under two names -- `Megapascal` and
+`NewtonPerSquareMillimetre`, `PartsPerMillion` and `MilligramPerKilogram` --
+because both spellings are in ordinary use, and a test pins that each pair
+converts into the other exactly.
+
+Power and energy have four of them: `Watt` and `Kilowatt` measure `dim::Power`,
+`WattHour` and `KilowattHour` measure `dim::Energy`. A watt-hour is the energy
+of one watt sustained for an hour, exactly 3600 joules, so a kilowatt-hour --
+the unit an electricity bill is usually written in -- is exactly 3600000
+joules, a whole number, and a power times a time converts into kilowatt-hours
+without a rounded factor. A kilowatt and a kilowatt-hour differ only by a
+factor of time, but they are different dimensions: the type system keeps a
+power and an energy apart. The worked example converts one kilowatt-hour, and
+its output below really is copied from the program:
+
+```
+1 kWh = 3600000 J
+```
+
+Temperature has `Kelvin` and two affine scales, `Celsius` and `Fahrenheit`,
+which the section on the affine case below covers.
 
 There is no angle unit. A degree is pi/180 radians, which is not a rational
 number, and every conversion here is by exact rational magnitude; a `Degree`
@@ -152,9 +170,11 @@ unit's magnitude -- as exact integer ratios throughout, and always
 multiply-then-divide rather than a single precomputed floating-point factor.
 That ordering is why 30 MPa converts to *exactly* 30000000 Pa and back to
 *exactly* 30, rather than to some binary approximation that happens to print
-as 30. As exact rationals, not program output -- pinned by `static_assert`s
-in `test/unit_tests.cpp:234-235`, not printed by the example below: 30/1 MPa
-converts to 30000000/1 Pa, and converting that back gives 30/1 MPa again.
+as 30. As exact rationals, not program output, and not printed by the example
+below: 30/1 MPa converts to 30000000/1 Pa, and converting that back gives 30/1
+MPa again. `static_assert`s in `test/unit_tests.cpp` pin both, the ones that
+read `converted(30, 1, unit::Megapascal, unit::Pascal)` and
+`converted(30000000, 1, unit::Pascal, unit::Megapascal)`.
 
 The worked example does perform this round trip on a volume, though, and its
 output below really is copied from the program:
@@ -174,11 +194,14 @@ the conversion is well-formed.
 ### The affine case, and the point-versus-difference caveat
 
 Degrees Celsius is why `Unit` carries an offset at all: converting to Kelvin
-is not a plain scaling. `checked_convert`/`convert` move a *point* on a
-scale, not a difference between two points -- a distinction that matters
+is not a plain scaling. Degrees Fahrenheit is the second unit with an offset,
+and everything here holds for both. `checked_convert`/`convert` move a *point*
+on a scale, not a difference between two points -- a distinction that matters
 because the two operations give different answers for the same nominal
-number. As exact rationals, not program output -- pinned by `static_assert`s
-in `test/unit_tests.cpp:243,244,250`:
+number. As exact rationals, not program output -- pinned by the `static_assert`s
+in `test/unit_tests.cpp` that read `converted(0, 1, unit::Celsius, unit::Kelvin)`,
+`converted(1, 1, unit::Celsius, unit::Kelvin)` and
+`converted(100, 1, unit::Celsius, unit::Kelvin)`:
 
 | Input    | In degC | In Kelvin |
 |----------|---------|-----------|
@@ -189,14 +212,48 @@ in `test/unit_tests.cpp:243,244,250`:
 5463/20 is 273,15 and 5483/20 is 274,15: 1 degree Celsius converts to
 274,15 K, **not** to 1 K. A caller that wants "how much did the temperature
 change" needs a difference, which this function does not compute -- it always
-applies the offset, because it always converts a point. The worked example
-does convert 100 degC, and its output below really is copied from the
-program, confirming the round trip holds anyway, offset included:
+applies the offset, because it always converts a point.
+
+Degrees Fahrenheit has a different degree as well as a different offset: one is
+exactly 5/9 of a kelvin, and 0 degF is 45967/180 K. Again exact rationals, not
+program output, pinned by the `static_assert`s that read
+`converted(0, 1, unit::Fahrenheit, unit::Kelvin)`,
+`converted(1, 1, unit::Fahrenheit, unit::Kelvin)` and
+`converted(32, 1, unit::Fahrenheit, unit::Kelvin)`:
+
+| Input    | In degF | In Kelvin |
+|----------|---------|-----------|
+| 0 degF   | 0/1     | 45967/180 |
+| 1 degF   | 1/1     | 46067/180 |
+| 32 degF  | 32/1    | 5463/20   |
+
+The first two rows differ by 100/180 K, which is 5/9 K: a step of one degree
+Fahrenheit is 5/9 K, but the *point* 1 degF is 46067/180 K, not 5/9 K, for the
+same reason 1 degC is not 1 K. The last row is the freezing point of water,
+5463/20 K, which is also where 0 degC sits.
+
+The two scales agree at one point only, and the example prints it: -40 degF is
+-40 degC. Converting from Fahrenheit divides by 9, and a ninth is not a
+terminating decimal, so a reading in whole degrees Fahrenheit has no finite
+decimal form in Celsius unless it lies a multiple of 9 degrees from 32 degF:
+100 degF is 340/9 degC, which is 37,777... degC. The conversion returns the
+fraction rather than a rounded 37,78, because a conversion that rounded would
+stop round-tripping: 37,78 degC converts back to 100,004 degF, not to 100.
+Going the other way multiplies by 9/5, which keeps a terminating decimal
+terminating -- 37 degC is 493/5 degF, which is 98,6 -- and rounding a result for
+display is the job of the unit's declared precision (see below), not of the
+conversion.
+
+The worked example converts 100 degC, and its output below really is copied from
+the program, confirming the round trip holds anyway, offset included. The last
+two lines are the two Fahrenheit conversions above:
 
 ```
 100 degC = 7463/20 K
 ... converted back = 100 degC
 temperature round trip exact: yes
+-40 degF = -40 degC
+100 degF = 340/9 degC
 ```
 
 ## Declared precision and bounds
