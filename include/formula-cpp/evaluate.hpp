@@ -313,7 +313,7 @@ namespace detail
 
     /// What a variable produces once the value it read is in hand: nothing
     /// when @p measured is absent, and otherwise that value converted to the
-    /// coherent SI unit. Either way the sink is told where the value came
+    /// coherent unit. Either way the sink is told where the value came
     /// from (`report_input_source`) just before `produced`.
     template <typename Rep, Described Q, typename Env, typename Sink>
     [[nodiscard]] constexpr Evaluated<Rep> produce_read(VarNode<Q> const& node,

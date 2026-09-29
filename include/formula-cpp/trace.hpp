@@ -4434,7 +4434,7 @@ struct WorksheetEntry
     /// Why calculating the value failed; empty when it did not.
     std::optional<ArithmeticError> error {};
     /// How the value was reached. For a calculated value, the derivation of
-    /// its definition, whose root is the value, in the coherent SI unit; a
+    /// its definition, whose root is the value, in the coherent unit; a
     /// calculated value it reads is one `Variable` step whose `inputSource`
     /// is `Derived`, the value's own block saying how it was reached. For an
     /// override or an input, one `Variable` step.

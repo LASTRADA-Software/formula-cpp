@@ -1579,7 +1579,7 @@ namespace detail
 ///
 /// **Where an answer can differ from evaluating the inlined formula:** a
 /// calculated value is kept in its quantity's declared unit, and converted
-/// back to the coherent SI unit where it is read. Both conversions are exact,
+/// back to the coherent unit where it is read. Both conversions are exact,
 /// but either can overflow where the inlined formula, which makes neither,
 /// would not.
 ///

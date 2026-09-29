@@ -2849,7 +2849,7 @@ namespace detail
 /// block is the header alone: `symbol = value, entered by hand in place of
 /// definition`. The inputs read follow under a line `inputs`, one indented
 /// line each, as `render_trace` writes a variable's step. A computed step
-/// states its value in the coherent SI unit of its dimension, as in
+/// states its value in the coherent unit of its dimension, as in
 /// `render_trace` (`docs/tracing.md`, "Reading a derivation"), so it may
 /// read differently from the header above it: `fridge_kwh = fridge_kw *
 /// fridge_h = 24/5 kWh` over `3. #1 * #2 = 17280000`, in joules.
