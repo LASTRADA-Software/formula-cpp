@@ -29,8 +29,8 @@ inline constexpr formula::BandTable<2> classes { formula::band(0, 1, 163, 1), fo
 int main()
 {
     constexpr auto counted = formula::binned<unit::Millimetre, classes>(formula::observations<Particle, 4>);
-    constexpr auto share = formula::define<Share>(
+    [[maybe_unused]] constexpr auto share = formula::define<Share>(
         formula::sum(counted * formula::series_constant<unit::One>(formula::Rational { 0 }, formula::Rational { 1 }))
         / formula::sum(counted));
-    return decltype(share)::valid ? 0 : 1;
+    return 0;
 }

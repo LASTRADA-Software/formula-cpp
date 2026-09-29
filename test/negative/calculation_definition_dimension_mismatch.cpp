@@ -27,6 +27,6 @@ struct Stress: formula::Quantity<Stress, "sigma", "an invented stress", unit::Me
 
 int main()
 {
-    constexpr auto stress = formula::define<Stress>(formula::var<Load> / formula::var<Width>);
-    return decltype(stress)::valid ? 0 : 1;
+    [[maybe_unused]] constexpr auto stress = formula::define<Stress>(formula::var<Load> / formula::var<Width>);
+    return 0;
 }

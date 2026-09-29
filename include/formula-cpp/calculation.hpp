@@ -11,17 +11,26 @@
 /// reads them. That list is what lets a calculation made of definitions know
 /// its dependency graph before anything runs.
 ///
-/// **What the walk lists.** A `var<Q>` reads `Q`. A node reads what its
-/// children read, as `detail::LevelChildren` (`precision.hpp`) lists them for
-/// every node kind this library ships; a precision limit reads what its level
-/// and its limit expression read, since both are evaluated against the same
-/// environment. An overlay's fixed constant reads nothing -- it never asks the
-/// environment for its value -- and an overlay's derived quantity reads what
-/// its definition reads, not the quantity it stands for. The placeholders a
-/// construct binds (`precision_level`, `pass_mean`, `pass_count`) and a
-/// retry's context (`attempt_number`, `previous_attempt`, `this_attempt`,
-/// `attempt_input`) read nothing from the environment; outside their
-/// construct the evaluator refuses them, as it does anywhere.
+/// **What the walk lists.** A `var<Q>` reads `Q`. Any other node reads what
+/// its children read, as `detail::LevelChildren` (`precision.hpp`) lists
+/// them. Every node kind this library ships has an entry there but three,
+/// which the walk handles before asking: a read from another record
+/// (`from_record`, refused below), and the two stand-ins a refusal leaves
+/// behind -- a series-valued `from_record`, and arithmetic over a retry --
+/// which read nothing. A precision limit reads what its level and its limit
+/// expression read, since both are evaluated against the same environment.
+/// An overlay's fixed constant reads nothing -- it never asks the environment
+/// for its value -- and an overlay's derived quantity reads what its
+/// definition reads, not the quantity it stands for. The placeholders a
+/// construct binds (`precision_level`, `pass_mean`, `pass_count`) read
+/// nothing: they stand for a value the construct works out.
+///
+/// **A retry's context is listed as reading nothing** (`attempt_number`,
+/// `previous_attempt`, `this_attempt`, `attempt_input`), although inside a
+/// retry `attempt_input<Q>` reads the series recorded for `Q`. A retry is not
+/// a `Node`, so no definition can hold one, and outside a retry the evaluator
+/// refuses each of these nodes (`RequireInsideRetry`,
+/// `RequireAttemptInputInsideRetry`, `retry.hpp`).
 ///
 /// **A `when()` lists what it may read**, not what one evaluation reads: its
 /// condition and both branches, although it evaluates only the branch it

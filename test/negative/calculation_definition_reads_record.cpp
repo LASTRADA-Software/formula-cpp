@@ -31,7 +31,7 @@ struct Share: formula::Quantity<Share, "s", "an invented share", unit::One>
 
 int main()
 {
-    constexpr auto share =
+    [[maybe_unused]] constexpr auto share =
         formula::define<Share>(formula::var<Load> / formula::from_record<Reference>(formula::var<Load>));
-    return decltype(share)::valid ? 0 : 1;
+    return 0;
 }

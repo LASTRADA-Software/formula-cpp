@@ -112,6 +112,10 @@ struct LargerOfTwo
 };
 
 inline constexpr formula::BreakpointTable<2> curvePoints { formula::breakpoint(1), formula::breakpoint(2) };
+inline constexpr formula::BreakpointTable<1> curveTail { formula::breakpoint(5) };
+inline constexpr formula::PlacesTable<3> roundingPlaces { formula::DecimalPlaces { 0 },
+                                                          formula::DecimalPlaces { 0 },
+                                                          formula::DecimalPlaces { -1 } };
 } // namespace
 
 TEST_CASE("define binds a quantity to the expression that calculates it", "[calculation]")
@@ -215,11 +219,26 @@ TEST_CASE("a single value made of a series is walked into, and the scalars it br
                                                               / (formula::sample_range(scaled) * var<SecondMass>))>,
                                   QuantityList<Factor, SecondMass>>);
 
-    // A curve over a declared domain, read at the other factor.
+    // A negation, a rounding per element and a running total, summed.
+    constexpr auto running = formula::sum(formula::cumulative<formula::CumulativeDirection::FromLast>(
+        formula::rounded_elementwise<unit::Gram, roundingPlaces, formula::RoundingMode::HalfAwayFromZero>(-scaled)));
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<decltype(running)>, QuantityList<Factor>>);
+    STATIC_REQUIRE(formula::Definition<Retained, std::remove_cv_t<decltype(running)>>::valid);
+
+    // A curve over a declared domain, read at the other factor; and two
+    // curves spliced, the factor scaling the first.
     constexpr auto alongCurve = formula::interpolate_at(
         formula::curve(formula::domain<unit::One, curvePoints>, formula::series_constant<unit::One>(rat(1, 4), rat(3, 4))),
         var<Other>);
     STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<decltype(alongCurve)>, QuantityList<Other>>);
+    constexpr auto alongSplice = formula::interpolate_at(
+        formula::splice<formula::Monotone::NonDecreasing>(
+            formula::curve(formula::domain<unit::One, curvePoints>,
+                           formula::series_constant<unit::One>(rat(1, 4), rat(3, 4)) * var<Factor>),
+            formula::curve(formula::domain<unit::One, curveTail>, formula::series_constant<unit::One>(rat(1)))),
+        var<Other>);
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<decltype(alongSplice)>, QuantityList<Factor, Other>>);
+    STATIC_REQUIRE(formula::Definition<Share, std::remove_cv_t<decltype(alongSplice)>>::valid);
 
     // A rejection reads its sample and its limit, and its pass mean is a
     // placeholder, not a read of the retained mass.
@@ -239,8 +258,12 @@ TEST_CASE("an opaque operation's output reads what its inputs read", "[calculati
     STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<decltype(larger)>, QuantityList<Factor, Other>>);
 }
 
-TEST_CASE("placeholders and a retry's context read nothing from the environment", "[calculation][retry]")
+TEST_CASE("placeholders and a retry's context are listed as reading nothing", "[calculation][retry]")
 {
+    // A placeholder stands for a value its construct works out. A retry's
+    // context does read, inside a retry -- attempt_input a recorded series --
+    // but no definition can hold a retry, and outside one the evaluator
+    // refuses these nodes.
     STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<decltype(formula::precision_level<Retained>
                                                               + formula::pass_mean<Retained> * formula::pass_count)>,
                                   QuantityList<>>);
@@ -256,7 +279,9 @@ TEST_CASE("a node refused already reads nothing, and draws no second message", "
 {
     // Arithmetic over a retry is refused where it is written, and leaves a
     // node refused already, of no LevelChildren entry: nothing is asked of it.
-    using OverRetry = formula::detail::RefusedRetryValue<formula::dim::Scalar>;
+    // Its dimension, a mass's, is a stand-in, and a definition of a share by
+    // it is not refused a second time for measuring something else.
+    using OverRetry = formula::detail::RefusedRetryValue<formula::dim::Mass>;
     STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<OverRetry>, QuantityList<>>);
     STATIC_REQUIRE_FALSE(CalculationReads<OverRetry>::accepted);
     STATIC_REQUIRE_FALSE(formula::Definition<Share, OverRetry>::valid);

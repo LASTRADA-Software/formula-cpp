@@ -26,6 +26,6 @@ struct Share: formula::Quantity<Share, "s", "an invented share", unit::One>
 
 int main()
 {
-    constexpr auto share = formula::define<Share>(formula::series<Retained, 3>);
-    return decltype(share)::valid ? 0 : 1;
+    [[maybe_unused]] constexpr auto share = formula::define<Share>(formula::series<Retained, 3>);
+    return 0;
 }

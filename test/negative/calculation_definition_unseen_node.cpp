@@ -36,7 +36,7 @@ struct Hidden: formula::NodeBase
 
 int main()
 {
-    constexpr auto share = formula::define<Share>(Hidden<formula::VarNode<Factor>> { {}, formula::var<Factor> }
-                                                  * formula::var<Factor>);
-    return decltype(share)::valid ? 0 : 1;
+    [[maybe_unused]] constexpr auto share =
+        formula::define<Share>(Hidden<formula::VarNode<Factor>> { {}, formula::var<Factor> } * formula::var<Factor>);
+    return 0;
 }
