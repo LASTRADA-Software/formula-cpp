@@ -280,14 +280,18 @@ formula_add_negative_test(dimension_mismatch
 formula_add_negative_test(dimension_named_base_mismatch
     "formula: these two dimensions are not the same")
 
-# Named base dimensions: the same NAME-not-message case as the exponent
-# sentinels above -- a base name is a function argument, which no
-# `static_assert` can see, so each rule is a non-`constexpr` sentinel named
-# after it. No EXPECT_COUNT: clang and clang-cl report a failed `consteval` call
-# twice, once for the constant it initialises and once for the call, each
-# naming the sentinel, while cl and g++ report it once.
+# Named base dimensions. A product or quotient needing more than four is the
+# same NAME-not-message case as the exponent sentinels above, and follows
+# them: no EXPECT_COUNT.
 formula_add_negative_test(dimension_too_many_named_bases "formula_dimension_has_too_many_named_bases")
+formula_add_negative_test(dimension_too_many_named_bases_divided "formula_dimension_has_too_many_named_bases")
 formula_add_negative_test(expression_too_many_named_bases "formula_dimension_has_too_many_named_bases")
+
+# A base name is a function argument, which no `static_assert` can see, so each
+# rule `base_dimension` enforces is a non-`constexpr` sentinel named after it.
+# No EXPECT_COUNT: clang and clang-cl report a failed `consteval` call twice,
+# once for the constant it initialises and once for the call, each naming the
+# sentinel, while cl and g++ report it once.
 formula_add_negative_test(base_dimension_name_empty "formula_base_dimension_name_must_not_be_empty")
 # A 16-byte name would also overflow symbol(); the base's own rule must be the one that fires.
 formula_add_negative_test(base_dimension_name_too_long "formula_base_dimension_name_too_long"

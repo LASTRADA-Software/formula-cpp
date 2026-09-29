@@ -207,7 +207,7 @@ struct Symbol
 namespace detail
 {
     /// Deliberately NOT `constexpr`, for the same reason as
-    /// `formula_exponent_out_of_range` in dimension.hpp: `symbol()` runs in
+    /// `formula_exponent_out_of_range`: `symbol()` runs in
     /// exactly the same context -- a constant expression building a constant
     /// that determines a `Unit`'s type -- and has exactly the same consequence
     /// when it goes wrong. Truncating instead of refusing would let two
@@ -434,8 +434,9 @@ namespace detail
     /// together: the smaller name is emitted -- the right operand's negated
     /// when dividing -- and equal names are emitted once with the two
     /// exponents combined, or not at all when they cancel. Cancelling happens
-    /// before counting, so `(EUR / USD) * (USD / JPY)` fits even though four
-    /// names go in. The result is built in a fresh value, never by editing a
+    /// before counting, so four bases times `Token / Voucher`, where `Voucher`
+    /// is one of the four, fits: five names go in, one cancels and four come
+    /// out. The result is built in a fresh value, never by editing a
     /// copy of an operand (see `Dimension::namedBases` for why that matters on
     /// g++). Exponent overflow goes through `reduced`'s guard as everywhere else.
     [[nodiscard]] constexpr MergedDimension merged_dimension(Dimension const& leftOperand,
@@ -470,11 +471,13 @@ namespace detail
                                            : compare_base_names(leftOperand.namedBases[leftSlot].name,
                                                                 rightOperand.namedBases[rightSlot].name);
             NamedBase const& taken = order > 0 ? rightOperand.namedBases[rightSlot] : leftOperand.namedBases[leftSlot];
-            // Not `const`, deliberately. g++ 13.3 and 14.2 keep a local's `const`
-            // in the value they copy out of it, so a slot built from a `const
-            // Exponent` local becomes a different template argument from the
-            // equal slot `base_dimension()` builds -- measured: `EUR * Energy /
-            // Energy` stopped being the same type as `EUR`.
+            // Not `const`, deliberately. With this local `const`, g++ 13.3 and
+            // 14.2 carry the `const` into the slot that `NamedBase { taken.name,
+            // takenExponent }` below builds, and the slot becomes a different
+            // template argument from the equal one `base_dimension()` builds --
+            // measured: `EUR * Energy / Energy` stopped being the same type as
+            // `EUR`. Returning a `const` local whole, as `operator*` does, was
+            // measured unaffected.
             Exponent takenExponent =
                 order < 0   ? taken.exponent
                 : order > 0 ? (dividing ? -taken.exponent : taken.exponent)

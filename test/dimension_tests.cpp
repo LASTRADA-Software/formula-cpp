@@ -195,6 +195,13 @@ static_assert(dim::Energy * (EUR / dim::Energy) == EUR, "kWh times EUR per kWh i
 static_assert(power(EUR, 0) == dim::Scalar);
 static_assert(nth_root(power(EUR, 2), 2) == EUR);
 static_assert(nth_root(EUR, 2).namedBases[0].exponent == exponent(1, 2));
+// `power` and `nth_root` build their slots on their own, not through the merge,
+// so they get the same type-identity checks: `==` cannot see g++ splitting one
+// dimension into two template arguments (see `merged_dimension`).
+static_assert(std::is_same_v<Tagged<power(EUR, -1)>, Tagged<dim::Scalar / EUR>>);
+static_assert(std::is_same_v<Tagged<power(EUR / JPY, 2)>, Tagged<(EUR * EUR) / (JPY * JPY)>>);
+static_assert(std::is_same_v<Tagged<nth_root(power(EUR, 2), 2)>, Tagged<EUR>>);
+static_assert(std::is_same_v<Tagged<nth_root(power(EUR / JPY, 2), 2)>, Tagged<EUR / JPY>>);
 
 // Sorted by name, whichever order the operands came in, and packed: a slot
 // that falls out is closed up, and every slot after the last one in use is
