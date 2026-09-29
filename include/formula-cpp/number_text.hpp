@@ -275,7 +275,7 @@ namespace detail
     /// below the denominator.
     ///
     /// @pre `0 <= minimumPlaces <= 18`.
-    [[nodiscard]] constexpr std::optional<NumberText> exact_decimal_text(Rational shownValue, int minimumPlaces) noexcept
+    [[nodiscard]] constexpr std::optional<NumberText> exact_decimal_digits(Rational shownValue, int minimumPlaces) noexcept
     {
         auto const divisor = static_cast<std::uint64_t>(shownValue.denominator());
         if (ExactDecimalScale % divisor != 0U)
@@ -367,7 +367,7 @@ namespace detail
 /// -- see `has_exact_decimal` -- rather than a decimal that is not the value.
 [[nodiscard]] constexpr std::optional<NumberText> exact_decimal_text(Rational shownValue) noexcept
 {
-    return detail::exact_decimal_text(shownValue, 0);
+    return detail::exact_decimal_digits(shownValue, 0);
 }
 
 /// @p shownValue as a fraction in lowest terms, or as a whole number when its
@@ -425,7 +425,7 @@ namespace detail
         if (!rounded)
             return std::unexpected { rounded.error() };
         // A multiple of a power of ten is whole, so this always has one.
-        std::optional<NumberText> spelledRounded = detail::exact_decimal_text(*rounded, 0);
+        std::optional<NumberText> spelledRounded = detail::exact_decimal_digits(*rounded, 0);
         if (!spelledRounded)
             return std::unexpected { ArithmeticError::DomainError };
         if (!(*rounded == unrounded))
@@ -548,7 +548,7 @@ namespace detail
 
     int const minimumPlaces =
         shownStyle.padding() == DecimalPadding::Padded && declaredPlaces.value > 0 ? declaredPlaces.value : 0;
-    std::optional<NumberText> const exact = detail::exact_decimal_text(shownValue, minimumPlaces);
+    std::optional<NumberText> const exact = detail::exact_decimal_digits(shownValue, minimumPlaces);
     if (exact)
         return *exact;
     if (shownStyle.notation() == NumberNotation::ExactDecimal)
