@@ -146,8 +146,7 @@ may break it, and each such change is recorded here.
   style, and none is padded, so `number(Rational { 1, 2 })` reads `0.5`. Without options nothing
   changes. The style travels with the vocabulary, the one argument every `render_node` already
   receives, so a consumer's own two-argument `render_node` hands it on unchanged and can read it
-  with `number_style_of(vocabulary)`. `render.hpp`'s internal `detail::number_text`, which spelled
-  every such number as a fraction, is gone.
+  with `number_style_of(vocabulary)`.
 
 ### Changed
 

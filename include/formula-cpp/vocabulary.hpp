@@ -430,7 +430,11 @@ template <Described Q, Vocabulary V>
 /// `NumberStyle::fraction()` -- the text every surface wrote before number
 /// styles existed -- for `DefaultVocabulary` and a `ScopedVocabulary`. A
 /// consumer's own `render_node` that writes a number asks here, so that it
-/// follows `RenderOptions` as this library's nodes do.
+/// follows `RenderOptions` as this library's nodes do. A number the author
+/// typed -- every number a formula's text states -- is written with
+/// `number_style_of(vocabulary).exact_only()` and without padding, as this
+/// library's own nodes write theirs: never rounded, never padded
+/// (`RenderOptions`, `render.hpp`).
 template <Vocabulary V>
 [[nodiscard]] constexpr NumberStyle number_style_of(V const&) noexcept
 {

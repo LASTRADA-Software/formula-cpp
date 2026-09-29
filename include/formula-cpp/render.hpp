@@ -2625,17 +2625,23 @@ template <typename... Ds, Vocabulary V = DefaultVocabulary>
 /// **A formula states its numbers as its author typed them.** Every number in
 /// a formula's text was typed -- a constant, a table's bound or row, a
 /// permitted value, a limit -- so it is written exactly, and never padded,
-/// whatever `numbers` says:
+/// whatever `numbers` says. `NumberStyle::exact_decimal(DecimalPadding::Padded)`
+/// and `NumberStyle::approximate_decimal(mode)` are accepted, and act here as
+/// `NumberStyle::exact_decimal()`:
 ///
-///  - an approximating style writes it as `NumberStyle::exact_decimal()`
+///  - an approximating style writes a number as `NumberStyle::exact_decimal()`
 ///    would, so `1/3` stays `1/3` and no `≈` appears in a formula;
 ///  - the style's padding is ignored, so a constant in a unit that declares
-///    decimals reads as typed (`5 kJ`, not `5.0 kJ`), and a pure number such
-///    as `number(Rational { 1, 2 })`, whose unit (`unit::One`) nobody
-///    declared, reads `0.5`, never `0.500` -- the rule a trace keeps for a
-///    value in a unit nobody declared (`TraceRenderOptions::numbers`,
-///    `trace_render.hpp`), which is also where a computed value may be shown
-///    rounded.
+///    decimals reads as typed, `5 kJ`, and a pure number such as
+///    `number(Rational { 1, 2 })` reads `0.5`, never `0.500`.
+///
+/// **A trace is different, on purpose.** Its lines state values in a column,
+/// where a uniform number of decimals is what padding is for, so under
+/// `Padded` a trace writes that same typed `5 kJ` as `5.0 kJ`
+/// (`TraceRenderOptions::numbers`, `trace_render.hpp`). It pads only a value
+/// in a unit that declares decimals: a pure number, whose unit (`unit::One`)
+/// nobody declared, stays `0.5` there too. And a trace may show a computed
+/// value rounded, which a formula has none of.
 struct RenderOptions
 {
     /// The notation of every number in the formula's text. The default,

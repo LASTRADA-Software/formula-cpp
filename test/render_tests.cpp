@@ -2185,6 +2185,21 @@ constexpr formula::Envelope<2> decimalEnvelope {
 };
 constexpr auto decimalLimits = formula::conformity<unit::Millimetre>(
     formula::series<Diameter, 2>, decimalEnvelope, formula::Verdict { "reject the specimen" });
+
+/// An invented limit no decimal ends, and an invented whole one in
+/// millimetres, which declare one decimal.
+constexpr formula::Envelope<1> thirdEnvelope { formula::LimitRow { formula::unbounded, formula::limit(rat(1, 3)) } };
+constexpr auto thirdLimit = formula::conformity<unit::Millimetre>(
+    formula::series<Diameter, 1>, thirdEnvelope, formula::Verdict { "reject the specimen" });
+constexpr formula::Envelope<1> wholeEnvelope { formula::LimitRow { formula::limit(rat(13)), formula::unbounded } };
+constexpr auto wholeLimit = formula::conformity<unit::Millimetre>(
+    formula::series<Diameter, 1>, wholeEnvelope, formula::Verdict { "reject the specimen" });
+
+/// Invented bounds and points holding a third and whole millimetres: an
+/// approximating style would round the one and a padding style pad the
+/// others, were either applied to a number its author typed.
+inline constexpr BandTable<2> ThirdBands { band(1, 3, 7, 1), band(7, 1, 13, 1) };
+inline constexpr BreakpointTable<2> ThirdPoints { breakpoint(1, 3), breakpoint(7) };
 } // namespace
 
 TEST_CASE("render: RenderOptions writes a constant as an exact decimal, in every dialect", "[render][decimals]")
@@ -2208,7 +2223,9 @@ TEST_CASE("render: a typed number is never approximated, whatever the style", "[
     CHECK(formula::render(var<Strength> * formula::number(rat(1, 3)), formula::DefaultVocabulary {}, approximated)
           == "f * 1/3");
     CHECK(formula::render(scaledStrength, formula::DefaultVocabulary {}, approximated) == "f * 0.863");
-    // A table's rows and bounds too: exact decimals, no marker.
+    // A table whose rows and bounds all have exact decimals is written in
+    // them, unmarked. Tables holding numbers no decimal ends are in the case
+    // after next.
     CHECK(formula::render(bandedLookup(), formula::DefaultVocabulary {}, approximated)
           == "lookup(d, 2.11 to under 2.77 mm gives 0.863, 2.77 to under 9.73 mm gives 1.381, 9.73 to under 30.7 mm "
              "gives 1.043)");
@@ -2266,8 +2283,39 @@ TEST_CASE("render: every number a table or a list states follows RenderOptions",
     CHECK(formula::render(decimalLimits) == "conform(d(i), at most 51/10 mm, from 11/10 to 23/10 mm)");
     CHECK(formula::render(decimalLimits, formula::DefaultVocabulary {}, exactDecimals)
           == "conform(d(i), at most 5.1 mm, from 1.1 to 2.3 mm)");
-    constexpr formula::Envelope<1> thirdEnvelope { formula::LimitRow { formula::unbounded, formula::limit(rat(1, 3)) } };
-    constexpr auto thirdLimit = formula::conformity<unit::Millimetre>(
-        formula::series<Diameter, 1>, thirdEnvelope, formula::Verdict { "reject the specimen" });
     CHECK(formula::render(thirdLimit, formula::DefaultVocabulary {}, exactDecimals) == "conform(d(i), at most 1/3 mm)");
+}
+
+TEST_CASE("render: no table or list rounds or pads a number its author typed, whatever the style", "[render][decimals]")
+{
+    // Every table and list site holds a third, which an approximating style
+    // would round, or whole millimetres or megapascals, which a padding style
+    // would pad to their one declared decimal: each reads as typed under both.
+    constexpr auto thirdsBanded =
+        banded_lookup<unit::Millimetre, ThirdBands, unit::One>(var<Diameter>, { rat(1, 3), rat(5) });
+    constexpr auto thirdsKeyed =
+        exact_lookup<ShapeKeys, unit::Megapascal>(MouldShape::Cylinder, { rat(1, 3), rat(43), rat(1373, 1000) });
+    constexpr auto thirdsCurve =
+        interpolating_lookup<unit::Millimetre, ThirdPoints, unit::Megapascal>(var<Diameter>, { rat(1, 3), rat(5) });
+    constexpr auto thirdsValues = formula::series_constant<unit::Millimetre>(rat(1, 3), rat(7));
+    constexpr auto thirdsSnap =
+        formula::snapped<unit::Millimetre, ThirdPoints, formula::SnapTie::TowardLower>(var<Diameter>);
+    constexpr auto thirdsDomain = formula::domain<unit::Millimetre, ThirdPoints>;
+    constexpr auto thirdsBinned = formula::binned<unit::Millimetre, ThirdBands>(formula::observations<Diameter, 3>);
+    for (formula::RenderOptions const renderOptions: { approximated, padded })
+    {
+        CHECK(formula::render(thirdsBanded, formula::DefaultVocabulary {}, renderOptions)
+              == "lookup(d, 1/3 to under 7 mm gives 1/3, 7 to under 13 mm gives 5)");
+        CHECK(formula::render(thirdsKeyed, formula::DefaultVocabulary {}, renderOptions)
+              == "lookup(key Cylinder, key Cube gives 1/3 MPa, key Cylinder gives 43 MPa, key Prism gives 1.373 MPa)");
+        CHECK(formula::render(thirdsCurve, formula::DefaultVocabulary {}, renderOptions)
+              == "interpolate(d, at 1/3 mm gives 1/3 MPa, at 7 mm gives 5 MPa)");
+        CHECK(formula::render(thirdsValues, formula::DefaultVocabulary {}, renderOptions) == "values(1/3 mm, 7 mm)");
+        CHECK(formula::render(thirdsSnap, formula::DefaultVocabulary {}, renderOptions) == "snap(d, to 1/3, 7 mm)");
+        CHECK(formula::render(thirdsDomain, formula::DefaultVocabulary {}, renderOptions) == "domain(1/3, 7 mm)");
+        CHECK(formula::render(thirdsBinned, formula::DefaultVocabulary {}, renderOptions)
+              == "bin(d(i), 1/3 to under 7 mm, 7 to under 13 mm)");
+        CHECK(formula::render(thirdLimit, formula::DefaultVocabulary {}, renderOptions) == "conform(d(i), at most 1/3 mm)");
+        CHECK(formula::render(wholeLimit, formula::DefaultVocabulary {}, renderOptions) == "conform(d(i), at least 13 mm)");
+    }
 }

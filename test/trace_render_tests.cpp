@@ -3489,3 +3489,15 @@ TEST_CASE("a precision limit whose limit is a typed number shows it as typed, wh
     CHECK(renderedIn(forgedPass, approximately).find("4. r at level #2 (pass 2 of 2) = #3 = \xe2\x89\x88" "0.091\n")
           != std::string::npos);
 }
+
+TEST_CASE("a trace pads a typed number in a labelled unit, where the formula states it as typed", "[trace-render][decimals]")
+{
+    // Under a padding style a trace states 5 kJ in kilojoules' one declared
+    // decimal, as every value in that unit on its lines; the formula
+    // (`RenderOptions`, render.hpp) states the 5 its author typed.
+    constexpr auto work = formula::constant<unit::Kilojoule>(rat(5)) * var<Mass>;
+    constexpr formula::NumberStyle padding = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded);
+    CHECK(renderedIn(tracedValue(work, formula::environment(formula::Measured<Mass> { rat(2) })), padding)
+              .starts_with("1. 5.0 kJ\n"));
+    CHECK(formula::render(work, formula::DefaultVocabulary {}, { .numbers = padding }) == "5 kJ * m");
+}
