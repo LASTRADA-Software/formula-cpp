@@ -115,6 +115,9 @@ struct TraceRenderOptions
     /// cannot show does; a bound or a limit the author typed falls back to
     /// its exact fraction instead.
     ///
+    /// `render_derivation` spells a worksheet's derivation in it too: its
+    /// headers, its steps and its inputs.
+    ///
     /// Defaulted, unlike `maxSteps`: fractions are how a trace has always
     /// read, and a caller who names no style gets exactly that. The default
     /// does not reopen `{}`: `maxSteps` still has to be stated.
@@ -3135,16 +3138,24 @@ namespace detail
     }
 
     /// The value of @p shown's block as its header states it: in the unit it
-    /// was declared in, with that unit's symbol; why its calculation failed;
-    /// or `(no value)`.
-    [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown)
+    /// was declared in, with that unit's symbol, spelled in @p numberStyle as
+    /// a trace line spells a value (`checked_shown_text`), or `(not shown:
+    /// ...)` where the style cannot spell it in that unit; why its
+    /// calculation failed; or `(no value)`. Exact only where the block's
+    /// root states a number typed rather than computed (`value_is_typed`),
+    /// so that the header and the root's line never disagree about it.
+    [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown, NumberStyle numberStyle)
     {
         if (shown.error.has_value())
             return std::string { describe(*shown.error) };
         if (!shown.value.has_value())
             return "(no value)";
-        NumberText const spelled = fraction_text(*shown.value);
-        std::string valueText { spelled.view() };
+        bool const typed = !shown.trace.empty() && value_is_typed(shown.trace, shown.trace.root());
+        std::expected<NumberText, ArithmeticError> const spelled =
+            checked_shown_text(*shown.value, typed ? numberStyle.exact_only() : numberStyle, shown.unit);
+        if (!spelled)
+            return "(not shown: " + std::string { describe(spelled.error()) } + ")";
+        std::string valueText { spelled->view() };
         std::string const unitSymbol = unit_symbol_text(shown.unit);
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
@@ -3152,18 +3163,21 @@ namespace detail
     }
 
     /// The header of @p shown's block, @p definitionText being its
-    /// definition as rendered: `symbol = definition = value` for a value
+    /// definition as rendered and its value spelled in @p numberStyle
+    /// (`block_value_text`): `symbol = definition = value` for a value
     /// calculated, and `symbol = value, entered by hand in place of
     /// definition` for one overridden.
-    [[nodiscard]] inline std::string block_header(WorksheetEntry const& shown, std::string const& definitionText)
+    [[nodiscard]] inline std::string block_header(WorksheetEntry const& shown,
+                                                  std::string const& definitionText,
+                                                  NumberStyle numberStyle)
     {
         std::string const symbolText = escaped_author_text(shown.symbol);
         if (shown.kind == WorksheetEntryKind::Overridden)
             return symbolText + " = "
-                   + (shown.value.has_value() ? block_value_text(shown) + ", entered by hand"
+                   + (shown.value.has_value() ? block_value_text(shown, numberStyle) + ", entered by hand"
                                               : std::string { "(entered by hand as empty)" })
                    + " in place of " + definitionText;
-        return symbolText + " = " + definitionText + " = " + block_value_text(shown);
+        return symbolText + " = " + definitionText + " = " + block_value_text(shown, numberStyle);
     }
 } // namespace detail
 
@@ -3183,6 +3197,16 @@ namespace detail
 /// read differently from the header above it: `fridge_kwh = fridge_kw *
 /// fridge_h = 24/5 kWh` over `3. #1 * #2 = 17280000`, in joules.
 ///
+/// **Every number is spelled in @p options.numbers**, fractions unless the
+/// caller names another style, as `render_trace` spells a trace's: each
+/// step and input line exactly as `render_trace` writes it in that style;
+/// each header's definition as `render` writes it under `RenderOptions`
+/// with that style, its typed numbers exact and never padded; and each
+/// header's value as a trace line states a value in its unit, rounded and
+/// marked `≈` only where the style asks and the block's root states a
+/// computed value rather than a typed one, and `(not shown: ...)` where
+/// the style cannot spell it there.
+///
 /// **One budget bounds it all.** Every header, step and input line spends
 /// one unit of @p options.maxSteps, and a step showing a series spends one
 /// more on each element it shows, as in `render_trace`. When it runs out,
@@ -3200,7 +3224,9 @@ template <Described Result, typename... Ds, Vocabulary V>
     if constexpr (Graph::valid)
     {
         std::array<std::string, sizeof...(Ds)> const definitionTexts =
-            detail::rendered_definitions(explained.calculation, explained.vocabulary, std::index_sequence_for<Ds...> {});
+            detail::rendered_definitions(explained.calculation,
+                                         detail::styled(explained.vocabulary, options.numbers),
+                                         std::index_sequence_for<Ds...> {});
         std::size_t budget = options.maxSteps.value;
         std::size_t notShown = 0;
         bool inputsHeaded = false;
@@ -3219,8 +3245,9 @@ template <Described Result, typename... Ds, Vocabulary V>
                 inputsHeaded = true;
                 derivationText += "  ";
                 derivationText += shown.trace.empty()
-                                      ? detail::escaped_author_text(shown.symbol) + " = " + detail::block_value_text(shown)
-                                      : detail::step_line(shown.trace, shown.trace.root(), budget, NumberStyle::fraction());
+                                      ? detail::escaped_author_text(shown.symbol) + " = "
+                                            + detail::block_value_text(shown, options.numbers)
+                                      : detail::step_line(shown.trace, shown.trace.root(), budget, options.numbers);
                 derivationText += "\n";
                 continue;
             }
@@ -3234,7 +3261,9 @@ template <Described Result, typename... Ds, Vocabulary V>
             --budget;
             bool const defined = shown.slot >= Graph::inputCount && shown.slot < Graph::slotCount;
             derivationText += detail::block_header(
-                shown, defined ? definitionTexts[shown.slot - Graph::inputCount] : std::string { "(no definition)" });
+                shown,
+                defined ? definitionTexts[shown.slot - Graph::inputCount] : std::string { "(no definition)" },
+                options.numbers);
             derivationText += "\n";
             for (std::size_t stepIndex = 0; stepIndex < stepCount; ++stepIndex)
             {
@@ -3245,11 +3274,8 @@ template <Described Result, typename... Ds, Vocabulary V>
                 }
                 --budget;
                 derivationText += "  " + std::to_string(stepIndex + 1) + ". ";
-                derivationText += detail::step_line(shown.trace,
-                                                    stepIndex,
-                                                    budget,
-                                                    NumberStyle::fraction(),
-                                                    detail::conformity_limits_of(shown.trace, stepIndex));
+                derivationText += detail::step_line(
+                    shown.trace, stepIndex, budget, options.numbers, detail::conformity_limits_of(shown.trace, stepIndex));
                 derivationText += "\n";
             }
         }

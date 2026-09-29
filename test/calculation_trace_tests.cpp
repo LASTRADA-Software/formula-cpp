@@ -777,3 +777,163 @@ TEST_CASE("author text in a derivation's header cannot end its line", "[calculat
              "  k = 3\n"
              "  k_o = 2\n");
 }
+
+// ------------------------------------------------------ numbers in a derivation
+
+namespace
+{
+struct Third: formula::Quantity<Third, "s_3", "an invented share, a third of it", unit::One>
+{
+};
+struct TypedShare: formula::Quantity<TypedShare, "s_t", "an invented share, typed outright", unit::One>
+{
+};
+
+/// A share of two factors; a third of it, a typed 1/3 that has no exact
+/// decimal; and a share typed outright, which reads nothing.
+inline constexpr auto thirds =
+    formula::calculation(formula::define<Share>(var<Factor> / var<Other>),
+                         formula::define<Third>(var<Share> * rat(1, 3)),
+                         formula::define<TypedShare>(formula::constant<unit::One>(rat(2, 3))));
+
+/// `thirds`' worksheet over a factor of 1 and another of 4: a share of 1/4,
+/// which is 0.25, and a third of it, 1/12, which has no exact decimal.
+inline auto thirds_sheet()
+{
+    return formula::worksheet(
+        thirds, formula::environment(formula::Measured<Factor> { rat(1) }, formula::Measured<Other> { rat(4) }));
+}
+} // namespace
+
+TEST_CASE("a derivation spells its headers, steps and inputs in the trace's number style",
+          "[calculation][worksheet][trace][decimals]")
+{
+    auto sheet = thirds_sheet();
+    auto const explained = formula::explain_worksheet<Third>(sheet);
+
+    // Fractions unless a style is named, as before.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 20 }) == "s_3 = s * 1/3 = 1/12\n"
+                                                                       "  1. s = 1/4, calculated\n"
+                                                                       "  2. 1/3\n"
+                                                                       "  3. #1 * #2 = 1/12\n"
+                                                                       "s = k / k_o = 1/4\n"
+                                                                       "  1. k = 1\n"
+                                                                       "  2. k_o = 4\n"
+                                                                       "  3. #1 / #2 = 1/4\n"
+                                                                       "inputs\n"
+                                                                       "  k = 1\n"
+                                                                       "  k_o = 4\n");
+    // Exact decimals: 1/4 is 0.25 in its block's header, on its root's line
+    // and where the third's block reads it; 1/12 and the typed 1/3 have none.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 20, .numbers = formula::NumberStyle::exact_decimal() })
+          == "s_3 = s * 1/3 = 1/12\n"
+             "  1. s = 0.25, calculated\n"
+             "  2. 1/3\n"
+             "  3. #1 * #2 = 1/12\n"
+             "s = k / k_o = 0.25\n"
+             "  1. k = 1\n"
+             "  2. k_o = 4\n"
+             "  3. #1 / #2 = 0.25\n"
+             "inputs\n"
+             "  k = 1\n"
+             "  k_o = 4\n");
+    // Rounded: 1/12 reads ≈0.083 in its header and on its root's line alike,
+    // at the 3 places of a unit nobody declared. The typed 1/3 is never
+    // rounded, in the header's definition or on its step.
+    CHECK(formula::render_derivation(
+              explained,
+              { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) })
+          == "s_3 = s * 1/3 = \xe2\x89\x88"
+             "0.083\n"
+             "  1. s = 0.25, calculated\n"
+             "  2. 1/3\n"
+             "  3. #1 * #2 = \xe2\x89\x88"
+             "0.083\n"
+             "s = k / k_o = 0.25\n"
+             "  1. k = 1\n"
+             "  2. k_o = 4\n"
+             "  3. #1 / #2 = 0.25\n"
+             "inputs\n"
+             "  k = 1\n"
+             "  k_o = 4\n");
+}
+
+TEST_CASE("a derivation's header states a typed value exactly, as its root's line does",
+          "[calculation][worksheet][trace][decimals]")
+{
+    // The share typed as 2/3: its block's root is the typed constant, so a
+    // rounding style rounds neither the root's line nor the header.
+    auto sheet = thirds_sheet();
+    CHECK(formula::render_derivation(
+              formula::explain_worksheet<TypedShare>(sheet),
+              { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) })
+          == "s_t = 2/3 = 2/3\n"
+             "  1. 2/3\n");
+}
+
+TEST_CASE("an input line with no step of its own is spelled in the trace's number style",
+          "[calculation][worksheet][trace][decimals]")
+{
+    // A derivation edited by hand: the second input's step dropped and its
+    // value set to 1/3, so its line falls back to the value the block holds.
+    auto sheet = thirds_sheet();
+    auto handMade = formula::explain_worksheet<Third>(sheet);
+    formula::WorksheetEntry& lastInput = handMade.entries.back();
+    REQUIRE(lastInput.kind == formula::WorksheetEntryKind::Input);
+    REQUIRE(lastInput.symbol == "k_o");
+    lastInput.trace = {};
+    lastInput.value = rat(1, 3);
+    CHECK(formula::render_derivation(handMade, { .maxSteps = 20 }).ends_with("inputs\n"
+                                                                             "  k = 1\n"
+                                                                             "  k_o = 1/3\n"));
+    CHECK(formula::render_derivation(
+              handMade,
+              { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) })
+              .ends_with("inputs\n"
+                         "  k = 1\n"
+                         "  k_o = \xe2\x89\x88"
+                         "0.333\n"));
+}
+
+TEST_CASE("a derivation pads a header as a trace pads the line that reads its value",
+          "[calculation][worksheet][trace][decimals]")
+{
+    // The bill with the energy drawn entered by hand, rendered rounded and
+    // padded: each value in a unit that declares decimals is padded to them
+    // -- the euro's two, the kilowatt-hour's three, the tariff's four -- in a
+    // header and on the line that reads it alike. A computed step, stated in
+    // the coherent unit nobody declared, is never padded, and the typed 4/5
+    // is written exactly, 0.8, in the definition and on its step.
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    CHECK(formula::render_derivation(formula::explain_worksheet<EnergyCost>(sheet),
+                                     { .maxSteps = 30,
+                                       .numbers = formula::NumberStyle::approximate_decimal(
+                                           formula::RoundingMode::HalfEven, formula::DecimalPadding::Padded) })
+          == "energy_cost = grid_cost - feed_in_credit = 77.60 EUR\n"
+             "  1. grid_cost = 80.00 EUR, calculated\n"
+             "  2. feed_in_credit = 2.40 EUR, calculated\n"
+             "  3. #1 - #2 = 77.6\n"
+             "feed_in_credit = exported * feed_in = 2.40 EUR\n"
+             "  1. exported = 30.000 kWh, calculated\n"
+             "  2. feed_in = 0.0800 EUR/kWh\n"
+             "  3. #1 * #2 = 2.4\n"
+             "grid_cost = net_draw * price = 80.00 EUR\n"
+             "  1. net_draw = 250.000 kWh, entered by hand\n"
+             "  2. price = 0.3200 EUR/kWh\n"
+             "  3. #1 * #2 = 80\n"
+             "net_draw = 250.000 kWh, entered by hand in place of monthly_load - self_used\n"
+             "exported = solar - self_used = 30.000 kWh\n"
+             "  1. solar = 150.000 kWh\n"
+             "  2. self_used = 120.000 kWh, calculated\n"
+             "  3. #1 - #2 = 108000000\n"
+             "self_used = solar * 0.8 = 120.000 kWh\n"
+             "  1. solar = 150.000 kWh\n"
+             "  2. 0.8\n"
+             "  3. #1 * #2 = 432000000\n"
+             "inputs\n"
+             "  solar = 150.000 kWh\n"
+             "  price = 0.3200 EUR/kWh\n"
+             "  feed_in = 0.0800 EUR/kWh\n");
+}

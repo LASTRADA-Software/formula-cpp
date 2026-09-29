@@ -2319,3 +2319,27 @@ TEST_CASE("render: no table or list rounds or pads a number its author typed, wh
         CHECK(formula::render(wholeLimit, formula::DefaultVocabulary {}, renderOptions) == "conform(d(i), at least 13 mm)");
     }
 }
+
+TEST_CASE("render: a calculation's typed numbers follow RenderOptions, never rounded or padded",
+          "[render][calculation][decimals]")
+{
+    // The bill states two typed numbers, 4/5 and 19/100, both exact decimals:
+    // under an exact-decimal style they read 0.8 and 0.19, and every other
+    // line reads as it does without options.
+    std::string const fractionBill = formula::render(household::bill);
+    std::string const decimalBill = formula::render(household::bill, formula::DefaultVocabulary {}, exactDecimals);
+    std::string expected = fractionBill;
+    expected.replace(expected.find("solar * 4/5"), std::string_view { "solar * 4/5" }.size(), "solar * 0.8");
+    expected.replace(expected.find("subtotal * 19/100"), std::string_view { "subtotal * 19/100" }.size(), "subtotal * 0.19");
+    CHECK(decimalBill == expected);
+    // A rounding style writes them the same: a typed number is never rounded.
+    CHECK(formula::render(household::bill, formula::DefaultVocabulary {}, approximated) == decimalBill);
+    // In every dialect: in Markdown a blank line apart, as without options.
+    CHECK(formula::render<Dialect::Markdown>(household::bill, formula::DefaultVocabulary {}, exactDecimals)
+              .find("\n\n`self_used` = `solar` * 0.8\n\n")
+          != std::string::npos);
+    // A typed number with no exact decimal stays its fraction under any style.
+    constexpr auto thirdAbove = formula::calculation(formula::define<Low>(var<Start> + rat(1, 3)));
+    CHECK(formula::render(thirdAbove, formula::DefaultVocabulary {}, exactDecimals) == "x_l = x_0 + 1/3");
+    CHECK(formula::render(thirdAbove, formula::DefaultVocabulary {}, approximated) == "x_l = x_0 + 1/3");
+}

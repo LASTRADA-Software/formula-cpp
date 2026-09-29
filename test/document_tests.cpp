@@ -1269,3 +1269,41 @@ TEST_CASE("document: RenderOptions writes every number the page states in its st
     CHECK(decimalRejectionPage.formula
           == formula::render(meanWithoutOutliers, formula::DefaultVocabulary {}, exactDecimals));
 }
+
+TEST_CASE("document: a calculation's definitions follow RenderOptions, their typed numbers never rounded",
+          "[document][calculation][decimals]")
+{
+    // A water/binder ratio scaled by a typed 4/5, which is 0.8, and a third
+    // of it, a typed 1/3 with no exact decimal.
+    constexpr auto scaledMix =
+        formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<Binder> * rat(4, 5)),
+                             formula::define<MixPerCent>(var<MixRatio> * rat(1, 3)));
+    constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+    constexpr formula::RenderOptions roundedAndPadded { .numbers = formula::NumberStyle::approximate_decimal(
+                                                            formula::RoundingMode::HalfEven,
+                                                            formula::DecimalPadding::Padded) };
+
+    formula::Documentation const fractions = formula::document(scaledMix);
+    formula::Documentation const decimals = formula::document(scaledMix, formula::DefaultVocabulary {}, exactDecimals);
+    REQUIRE(fractions.symbols.size() >= 2);
+    REQUIRE(decimals.symbols.size() >= 2);
+    REQUIRE(fractions.symbols[0].calculatedAs.has_value());
+    REQUIRE(decimals.symbols[0].calculatedAs.has_value());
+    REQUIRE(decimals.symbols[1].calculatedAs.has_value());
+    CHECK(decimals.symbols[0].symbol == "w");
+    CHECK(fractions.symbols[0].calculatedAs->ends_with(" * 4/5"));
+    CHECK(decimals.symbols[0].calculatedAs->ends_with(" * 0.8"));
+    CHECK(decimals.symbols[1].symbol == "w_p");
+    CHECK(*decimals.symbols[1].calculatedAs == "w * 1/3");
+    // The page's formula is the calculation as render writes it, under the
+    // same options.
+    CHECK(decimals.formula == formula::render(scaledMix, formula::DefaultVocabulary {}, exactDecimals));
+    CHECK(decimals.formula != fractions.formula);
+
+    // A rounding, padding style writes the same page: a typed number is
+    // written exactly, and never padded.
+    formula::Documentation const rounded = formula::document(scaledMix, formula::DefaultVocabulary {}, roundedAndPadded);
+    CHECK(rounded.formula == decimals.formula);
+    CHECK(rounded.symbols[0].calculatedAs == decimals.symbols[0].calculatedAs);
+    CHECK(rounded.symbols[1].calculatedAs == decimals.symbols[1].calculatedAs);
+}

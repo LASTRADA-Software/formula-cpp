@@ -121,7 +121,10 @@ may break it, and each such change is recorded here.
   -- a computed product or ratio, or a quantity declared in `unit::One`, which is the same unit --
   is never padded with zeros. A step's value the style cannot spell in its unit reads `(not
   shown: ...)`. `render_trace(trace, { .numbers = ... })` without `.maxSteps` still does not
-  compile.
+  compile. `render_derivation` spells a worksheet's derivation in the same style: its steps and
+  inputs as a trace's lines, each block's header value as the line that reads it -- rounded,
+  padded or exact alike -- and the header's definition as `render` writes it under
+  `RenderOptions`.
 - `format.hpp`, opt-in and not included by `formula.hpp`, because it needs `<format>`:
   `std::format` writes a `Rational` and a `Measured` value in the spellings `number_text` gives.
   `{}` is the exact decimal, or the fraction where there is none (`0.6`, `1/3`, `5.2 kJ`); `{:/}`
@@ -142,14 +145,15 @@ may break it, and each such change is recorded here.
   NumberStyle::exact_decimal() })` writes a constant holding 863/1000 as `0.863`, and so every
   number a formula states -- a table's bounds and rows, a snap's permitted values, a domain's
   points, a per-element constant's values, an envelope's limits -- and `document()` its formula, a
-  derived quantity's derivation and a rejection's limit. These numbers were typed by the formula's
+  derived quantity's derivation and a rejection's limit; for a calculation, `render` each definition
+  and `document` its formula and each `calculatedAs`. These numbers were typed by the formula's
   author, so they are written exactly whatever the style: `1/3` stays `1/3` under an approximating
   style, and none is padded, so `number(Rational { 1, 2 })` reads `0.5`. Without options nothing
   changes. The style travels with the vocabulary, the one argument every `render_node` already
   receives, so a consumer's own two-argument `render_node` hands it on unchanged and can read it
   with `number_style_of(vocabulary)`. `typed_number_style(vocabulary)` is the style every number a
-  formula states is written in -- the vocabulary's, exact only and never padded -- for a
-  consumer's own node that writes a number its author typed.
+  formula states is written in -- the vocabulary's, exact only and never padded -- for a consumer's
+  own node that writes a number its author typed.
 - `docs/display.md`, a guide to displaying numbers, and its example `examples/display.cpp`: decimals
   in a trace, in a rendered formula and in its documentation, `number_text()` and `decimal_text()`,
   and a reference for `std::format` of a `Rational` and a `Measured` -- every form of the spec with
