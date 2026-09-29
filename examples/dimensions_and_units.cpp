@@ -7,12 +7,14 @@
 // exponent can express, an exact round-tripping conversion, the affine case a
 // temperature scale needs on both affine scales, an energy unit whose factor to
 // the joule is a whole number, a unit's declared display precision applied to a
-// computed value, and a bounds check that tells "never checked" apart from
-// "checked and passed".
+// computed value, a bounds check that tells "never checked" apart from
+// "checked and passed", and a base dimension the SI does not have: money.
 
 #include <formula-cpp/formula.hpp>
 
 #include <cstdio>
+#include <expected>
+#include <string_view>
 
 namespace
 {
@@ -21,20 +23,22 @@ using formula::Exponent;
 
 /// Prints one base dimension's exponent as "^p" when integral, "^(p/q)" when
 /// not, and nothing at all when the exponent is zero.
-void print_exponent(char const* baseName, Exponent value)
+void print_exponent(std::string_view baseName, Exponent value)
 {
     if (formula::is_zero(value))
         return;
+    int const nameLength = static_cast<int>(baseName.size());
     if (formula::is_integer(value))
-        std::printf(" %s^%d", baseName, value.numerator);
+        std::printf(" %.*s^%d", nameLength, baseName.data(), value.numerator);
     else
-        std::printf(" %s^(%d/%d)", baseName, value.numerator, value.denominator);
+        std::printf(" %.*s^(%d/%d)", nameLength, baseName.data(), value.numerator, value.denominator);
 }
 
-/// Prints a Dimension as its seven-exponent vector, base dimensions omitted
-/// when their exponent is zero. There is no formula::operator<<: the library
-/// keeps <ostream>/<format> out of its public headers, so a consumer that
-/// wants to print a Dimension writes this itself, as this example does.
+/// Prints a Dimension as its seven-exponent vector and then its named base
+/// dimensions, each omitted when its exponent is zero. There is no
+/// formula::operator<<: the library keeps <ostream>/<format> out of its public
+/// headers, so a consumer that wants to print a Dimension writes this itself,
+/// as this example does.
 void print_dimension(char const* label, Dimension value)
 {
     std::printf("%s =", label);
@@ -45,6 +49,9 @@ void print_dimension(char const* label, Dimension value)
     print_exponent("Theta", value.temperature);
     print_exponent("N", value.amount);
     print_exponent("J", value.luminosity);
+    // A slot not in use holds a zero exponent, which prints nothing.
+    for (formula::NamedBase const& base: value.namedBases)
+        print_exponent(formula::view(base.name), base.exponent);
     if (formula::is_dimensionless(value))
         std::printf(" (dimensionless)");
     std::printf("\n");
@@ -179,10 +186,51 @@ int main()
     bool const boundsBehaveAsDocumented =
         unboundedVerdict == BoundsCheck::NotChecked && boundedVerdict == BoundsCheck::WithinBounds;
 
+    // ---- 8. A base dimension the SI does not have: money ----
+    //
+    // A currency is not a bare number, so it gets a base dimension of its
+    // own, named by the application: base_dimension("EUR"). The unit named
+    // after the base is one of it, and a cent is a hundredth of it. A tariff
+    // in euros per energy times an energy is euros; and euros never convert
+    // into yen, because an exchange rate is data -- a quantity in yen per euro
+    // -- not a conversion factor.
+    Dimension const euros = formula::base_dimension("EUR");
+    Dimension const tariff = euros / dim::Energy;
+    Dimension const tariffTimesEnergy = tariff * dim::Energy;
+    print_dimension("tariff (EUR / energy)", tariff);
+    print_dimension("tariff * energy", tariffTimesEnergy);
+
+    constexpr Unit Euro { .dimension = formula::base_dimension("EUR"),
+                          .symbolText = formula::symbol("EUR"),
+                          .decimals = 2 };
+    constexpr Unit EuroCent { .dimension = formula::base_dimension("EUR"),
+                              .magnitudeNumerator = 1,
+                              .magnitudeDenominator = 100,
+                              .symbolText = formula::symbol("ct"),
+                              .decimals = 0 };
+    constexpr Unit Yen { .dimension = formula::base_dimension("JPY"),
+                         .symbolText = formula::symbol("JPY"),
+                         .decimals = 0 };
+
+    Rational const priceInEuros = *Rational::make(250, 1);
+    Rational const priceInCents = formula::convert(priceInEuros, Euro, EuroCent);
+    Rational const priceBackInEuros = formula::convert(priceInCents, EuroCent, Euro);
+    std::expected<Rational, formula::ArithmeticError> const priceInYen =
+        formula::checked_convert(priceInEuros, Euro, Yen);
+
+    std::printf("250 EUR = %lld ct\n", static_cast<long long>(priceInCents.numerator()));
+    std::printf("... converted back = %lld EUR\n", static_cast<long long>(priceBackInEuros.numerator()));
+    std::printf("250 EUR to JPY: %s\n",
+                priceInYen.has_value() ? "converted" : formula::describe(priceInYen.error()).data());
+    bool const moneyBehavesAsDocumented = tariffTimesEnergy == euros && !(tariff == euros)
+                                          && priceInCents == *Rational::make(25000, 1)
+                                          && priceBackInEuros == priceInEuros && !priceInYen.has_value()
+                                          && priceInYen.error() == formula::ArithmeticError::DomainError;
+
     // ---- summary ----
     bool const allChecksPassed = compositionMatches && rootIsHalfPower && volumeRoundTrips && temperatureRoundTrips
                                   && fahrenheitConvertsExactly && kilowattHourIsExact && massRoundsAsDocumented
-                                  && boundsBehaveAsDocumented;
+                                  && boundsBehaveAsDocumented && moneyBehavesAsDocumented;
     std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }
