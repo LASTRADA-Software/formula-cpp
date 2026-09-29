@@ -1513,9 +1513,10 @@ namespace detail
     /// operand; a conditional over the branch that ran, its last operand; a
     /// record's scope over the derivation it read, its last operand that is
     /// not a lineage attribute (as the recorder reads it for the scope's
-    /// unit); a precision limit's pass 1 over the level expression, its last
-    /// operand; and a level placeholder over the level it read, the step its
-    /// record names (`Trace::precisionRecords`).
+    /// unit); a precision limit's pass 1 over the level expression and its
+    /// pass 2 over the limit expression, each its last operand; and a level
+    /// placeholder over the level it read, the step its record names
+    /// (`Trace::precisionRecords`).
     ///
     /// Only when that step holds this one's value, in this one's dimension.
     /// A consumer's node that forwards the sink records no step of its own,
@@ -1550,9 +1551,14 @@ namespace detail
                         passedFrom = operandIndex;
                 break;
             case StepKind::PrecisionLevel:
+            case StepKind::PrecisionLimit:
                 if (PrecisionRecord const* const precisionRecord = record_for_step(trace.precisionRecords, stepIndex))
                 {
                     if (precisionRecord->role == PrecisionStepRole::LevelPass && !passing.operands.empty())
+                        passedFrom = passing.operands.back();
+                    // Pass 2 names the level step first and the limit
+                    // expression's last, as `precision_expression` reads it.
+                    else if (precisionRecord->role == PrecisionStepRole::LimitPass && passing.operands.size() >= 2)
                         passedFrom = passing.operands.back();
                     else if (precisionRecord->role == PrecisionStepRole::Placeholder)
                         passedFrom = precisionRecord->levelStep;

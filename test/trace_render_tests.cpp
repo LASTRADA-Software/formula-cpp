@@ -3452,3 +3452,26 @@ TEST_CASE("a splice of typed curves shows its pairs as typed, whatever the style
     CHECK(renderedIn(forgedPairing, approximately).find("3. curve(#1, #2) = \xe2\x89\x88" "0.143 m: 100/3 %;")
           != std::string::npos);
 }
+
+TEST_CASE("a precision limit whose limit is a typed number shows it as typed, whatever the style",
+          "[trace-render][decimals]")
+{
+    // Pass 2 states its limit expression's value, the constant 1/7 kg, and
+    // the product computed from it is rounded. Both passes read in the
+    // coherent unit here: no placeholder names a quantity whose unit the
+    // level could borrow.
+    constexpr auto limitOfSeventh =
+        formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Kilogram>(rat(1, 3)),
+                                                                        formula::constant<unit::Kilogram>(rat(1, 7)))
+        * var<Mass>;
+    CHECK(renderedIn(tracedValue(limitOfSeventh, formula::environment(formula::Measured<Mass> { rat(2, 7) })),
+                     approximately)
+          == "1. 1/3 kg\n"
+             "2. level (pass 1 of 2) = #1 = 1/3\n"
+             "3. 1/7 kg\n"
+             "4. r at level #2 (pass 2 of 2) = #3 = 1/7\n"
+             "5. m = \xe2\x89\x88"
+             "0.286 kg\n"
+             "6. #4 * #5 = \xe2\x89\x88"
+             "0.041\n");
+}
