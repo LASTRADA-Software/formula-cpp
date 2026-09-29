@@ -2773,7 +2773,6 @@ template <typename Rep = Rational>
     return renderedTrace;
 }
 
-
 namespace detail
 {
     /// @p shownText with a backslash, and every character that could end a
@@ -2849,7 +2848,11 @@ namespace detail
 /// the block, each line as `render_trace` writes it. An overridden value's
 /// block is the header alone: `symbol = value, entered by hand in place of
 /// definition`. The inputs read follow under a line `inputs`, one indented
-/// line each, as `render_trace` writes a variable's step.
+/// line each, as `render_trace` writes a variable's step. A computed step
+/// states its value in the coherent SI unit of its dimension, as in
+/// `render_trace` (`docs/tracing.md`, "Reading a derivation"), so it may
+/// read differently from the header above it: `fridge_kwh = fridge_kw *
+/// fridge_h = 24/5 kWh` over `3. #1 * #2 = 17280000`, in joules.
 ///
 /// **One budget bounds it all.** Every header, step and input line spends
 /// one unit of @p options.maxSteps, and a step showing a series spends one

@@ -669,17 +669,64 @@ TEST_CASE("a derivation's header states a failure, an empty value and an overrid
           == "net_draw = (entered by hand as empty) in place of monthly_load - self_used\n");
 }
 
+TEST_CASE("an override between calculated blocks is one line of the budget", "[calculation][worksheet][trace]")
+{
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    auto const explained = formula::explain_worksheet<EnergyCost>(sheet);
+
+    // Six blocks, the override fourth, and three inputs: 24 lines.
+    std::string const everything = "energy_cost = grid_cost - feed_in_credit = 388/5 EUR\n"
+                                   "  1. grid_cost = 80 EUR, calculated\n"
+                                   "  2. feed_in_credit = 12/5 EUR, calculated\n"
+                                   "  3. #1 - #2 = 388/5\n"
+                                   "feed_in_credit = exported * feed_in = 12/5 EUR\n"
+                                   "  1. exported = 30 kWh, calculated\n"
+                                   "  2. feed_in = 2/25 EUR/kWh\n"
+                                   "  3. #1 * #2 = 12/5\n"
+                                   "grid_cost = net_draw * price = 80 EUR\n"
+                                   "  1. net_draw = 250 kWh, entered by hand\n"
+                                   "  2. price = 8/25 EUR/kWh\n"
+                                   "  3. #1 * #2 = 80\n"
+                                   "net_draw = 250 kWh, entered by hand in place of monthly_load - self_used\n"
+                                   "exported = solar - self_used = 30 kWh\n"
+                                   "  1. solar = 150 kWh\n"
+                                   "  2. self_used = 120 kWh, calculated\n"
+                                   "  3. #1 - #2 = 108000000\n"
+                                   "self_used = solar * 4/5 = 120 kWh\n"
+                                   "  1. solar = 150 kWh\n"
+                                   "  2. 4/5\n"
+                                   "  3. #1 * #2 = 432000000\n"
+                                   "inputs\n"
+                                   "  solar = 150 kWh\n"
+                                   "  price = 8/25 EUR/kWh\n"
+                                   "  feed_in = 2/25 EUR/kWh\n";
+    CHECK(formula::render_derivation(explained, { .maxSteps = 24 }) == everything);
+
+    // Fifteen lines: twelve of three blocks, the override's one, the
+    // header after it and its first step. Left out: two steps, a block of
+    // four and three inputs.
+    std::string::size_type const cut = everything.find("  2. self_used = 120 kWh, calculated\n");
+    REQUIRE(cut != std::string::npos);
+    CHECK(formula::render_derivation(explained, { .maxSteps = 15 })
+          == everything.substr(0, cut) + "... 9 further steps not shown\n");
+}
+
 TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][worksheet][trace][vocabulary]")
 {
     using namespace household;
-    constexpr auto words = formula::vocabulary(formula::renames<Total>("C_bill"));
+    constexpr auto words =
+        formula::vocabulary(formula::renames<Total>("C_bill"), formula::renames<Subtotal>("S"));
     auto sheet = formula::worksheet(bill, bill_environment(billValues));
     sheet.set(formula::entered(formula::Measured<Price> { rat(1, 4) }));
     auto const explained = formula::explain_worksheet<Total>(sheet, words);
 
     // Fifteen headers, 45 steps and ten inputs: seventy lines, four shown.
-    CHECK(formula::render_derivation(explained, { .maxSteps = 4 }) == "C_bill = subtotal + vat = 190043/2000 EUR\n"
-                                                                      "  1. subtotal = 1597/20 EUR, calculated\n"
+    // The subtotal is renamed in the definition the header states, as in
+    // the step reading it.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 4 }) == "C_bill = S + vat = 190043/2000 EUR\n"
+                                                                      "  1. S = 1597/20 EUR, calculated\n"
                                                                       "  2. vat = 30343/2000 EUR, calculated\n"
                                                                       "  3. #1 + #2 = 190043/2000\n"
                                                                       "... 66 further steps not shown\n");
@@ -687,7 +734,15 @@ TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][wo
     // In full: the inputs close it, the typed-in price saying so.
     std::string const full = formula::render_derivation(explained, { .maxSteps = 70 });
     CHECK(full.find("further step") == std::string::npos);
+    CHECK(full.find("\nvat = S * 19/100 = 30343/2000 EUR\n  1. S = 1597/20 EUR, calculated\n") != std::string::npos);
     CHECK(full.find("\nfridge_kw = fridge_w = 1/5 kW\n  1. fridge_w = 200 W\n") != std::string::npos);
+    // A computed step states its value in the coherent unit, as render_trace
+    // does: 24/5 kWh in joules.
+    CHECK(full.find("\nfridge_kwh = fridge_kw * fridge_h = 24/5 kWh\n"
+                    "  1. fridge_kw = 1/5 kW, calculated\n"
+                    "  2. fridge_h = 24 h\n"
+                    "  3. #1 * #2 = 17280000\n")
+          != std::string::npos);
     CHECK(full.ends_with("inputs\n"
                          "  fridge_w = 200 W\n"
                          "  fridge_h = 24 h\n"

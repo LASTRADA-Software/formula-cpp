@@ -1988,6 +1988,25 @@ inline constexpr auto againstTheGrain = formula::calculation(formula::define<Low
 
 /// A calculation of one constant, which reads nothing.
 inline constexpr auto constantOnly = formula::calculation(formula::define<Start>(formula::number(rat(7))));
+
+struct Lower: formula::Quantity<Lower, "x_lo", "an invented lower point", formula::unit::One>
+{
+};
+struct Upper: formula::Quantity<Upper, "x_hi", "an invented upper point", formula::unit::One>
+{
+};
+struct Top: formula::Quantity<Top, "x_t", "an invented top", formula::unit::One>
+{
+};
+
+/// The top, given first, reads the upper point and then the lower one; the
+/// upper point reads the lower one, and the lower one the start. Given in
+/// the reverse of the order they are calculated in: the upper point holds
+/// the earlier position and is read first, and yet the lower one is
+/// calculated first.
+inline constexpr auto backwards = formula::calculation(formula::define<Top>(var<Upper> + var<Lower>),
+                                                       formula::define<Upper>(var<Lower> * rat(2)),
+                                                       formula::define<Lower>(var<Start> + rat(1)));
 } // namespace
 
 TEST_CASE("render: a calculation is one line per definition, in the order it is calculated in",
@@ -2054,12 +2073,27 @@ TEST_CASE("describe_graph: the inputs, then what each calculated value reads, th
              "vat            <- subtotal\n"
              "total          <- subtotal, vat\n");
 
+    // The reads in the order they are calculated in: neither in the order of
+    // their positions nor in the order the definition reads them.
+    CHECK(formula::describe_graph(backwards) == "inputs: x_0\n"
+                                                "x_lo <- x_0\n"
+                                                "x_hi <- x_lo\n"
+                                                "x_t  <- x_lo, x_hi\n");
+
     // In a vocabulary, padded to the longest symbol as written there.
     constexpr auto words = formula::vocabulary(formula::renames<Apex>("apex"));
     CHECK(formula::describe_graph(againstTheGrain, words) == "inputs: x_0\n"
                                                              "x_l  <- x_0\n"
                                                              "x_h  <- x_l\n"
                                                              "apex <- x_h\n");
+
+    // Padded by bytes: UTF-8 spells the sigma in two, so its symbol counts
+    // four and shows three.
+    constexpr auto greek = formula::vocabulary(formula::renames<Apex>("\xCF\x83_a"));
+    CHECK(formula::describe_graph(againstTheGrain, greek) == "inputs: x_0\n"
+                                                             "x_l  <- x_0\n"
+                                                             "x_h  <- x_l\n"
+                                                             "\xCF\x83_a <- x_h\n");
 }
 
 TEST_CASE("to_dot: the graph in Graphviz's DOT language", "[render][calculation]")
@@ -2075,6 +2109,21 @@ TEST_CASE("to_dot: the graph in Graphviz's DOT language", "[render][calculation]
                                               "  q1 -> q3;\n"
                                               "  q3 -> q2;\n"
                                               "}\n");
+
+    // The arrows into a value in the order they are calculated in: the top
+    // reads the lower point, q3, before the upper one, q2.
+    CHECK(formula::to_dot(backwards) == "digraph calculation {\n"
+                                        "  rankdir=LR;\n"
+                                        "  node [fontname=\"Helvetica\"];\n"
+                                        "  q0 [label=\"x_0\", shape=box];\n"
+                                        "  q3 [label=\"x_lo\", shape=ellipse];\n"
+                                        "  q2 [label=\"x_hi\", shape=ellipse];\n"
+                                        "  q1 [label=\"x_t\", shape=ellipse];\n"
+                                        "  q0 -> q3;\n"
+                                        "  q3 -> q2;\n"
+                                        "  q3 -> q1;\n"
+                                        "  q2 -> q1;\n"
+                                        "}\n");
 
     // A quote or a backslash in a symbol is escaped, so that it cannot end
     // the label early.
@@ -2096,4 +2145,8 @@ TEST_CASE("to_dot: the graph in Graphviz's DOT language", "[render][calculation]
     CHECK(billDot.find("  q9 [label=\"base_fee\", shape=box];\n  q10 [label=\"fridge_kw\", shape=ellipse];\n")
           != std::string::npos);
     CHECK(billDot.ends_with("  q23 -> q24;\n}\n"));
+    std::size_t arrows = 0;
+    for (std::size_t found = billDot.find(" -> "); found != std::string::npos; found = billDot.find(" -> ", found + 1))
+        ++arrows;
+    CHECK(arrows == 27);
 }
