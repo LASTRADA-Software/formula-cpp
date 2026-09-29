@@ -998,3 +998,82 @@ TEST_CASE("a unit template argument has the same identity in every translation u
                                   .decimals = 1 };
     CHECK(formula_test::consume_litre(formula_test::TaggedUnit<LitreRebuilt> { 10 }) == 11);
 }
+
+// ---- money: base dimensions the application names ----
+//
+// The library ships no currencies, so these units are this file's own: euros
+// and yen, each a named base dimension, and a cent, a hundredth of a euro. The
+// tariff is in euros per kilowatt-hour, `unit::KilowattHour` being the
+// library's.
+
+namespace
+{
+constexpr Dimension Euros = formula::base_dimension("EUR");
+constexpr Dimension Yens = formula::base_dimension("JPY");
+
+constexpr Unit Euro { .dimension = Euros, .symbolText = formula::symbol("EUR"), .decimals = 2 };
+constexpr Unit EuroCent { .dimension = Euros,
+                          .magnitudeNumerator = 1,
+                          .magnitudeDenominator = 100,
+                          .symbolText = formula::symbol("ct"),
+                          .decimals = 0 };
+constexpr Unit Yen { .dimension = Yens, .symbolText = formula::symbol("JPY"), .decimals = 0 };
+constexpr Unit EuroPerKilowattHour { .dimension = Euros / dim::Energy,
+                                     .magnitudeNumerator = 1,
+                                     .magnitudeDenominator = 3600000,
+                                     .symbolText = formula::symbol("EUR/kWh"),
+                                     .decimals = 4 };
+} // namespace
+
+// A cent is a hundredth of a euro, both ways, exactly.
+static_assert(converted(250, 1, Euro, EuroCent) == *Rational::make(25000, 1));
+static_assert(converted(25000, 1, EuroCent, Euro) == *Rational::make(250, 1));
+static_assert(formula::RequireSameUnitDimension<Euro, EuroCent>::value);
+
+// Euros never become yen: each currency is its own dimension, and an exchange
+// rate is data, not a conversion factor.
+static_assert(!formula::checked_convert(Rational { 1 }, Euro, Yen).has_value());
+static_assert(formula::checked_convert(Rational { 1 }, Euro, Yen).error() == ArithmeticError::DomainError);
+
+// A kilowatt-hour at a tariff in euros per kilowatt-hour is euros.
+static_assert(unit::KilowattHour.dimension * EuroPerKilowattHour.dimension == Euro.dimension);
+
+// Yen are rounded to whole yen, euros to the cent: 245/2 is 122.5, which a
+// unit declaring two decimals would keep as it is.
+static_assert(*formula::checked_round_to_declared(*Rational::make(245, 2), Yen, formula::RoundingMode::HalfAwayFromZero)
+              == *Rational::make(123, 1));
+static_assert(*formula::checked_round_to_declared(*Rational::make(12345, 1000), Euro,
+                                                  formula::RoundingMode::HalfAwayFromZero)
+              == *Rational::make(1235, 100));
+
+TEST_CASE("euros convert to cents and back exactly and never to yen", "[unit][money]")
+{
+    auto const inCents = formula::checked_convert(Rational { 250 }, Euro, EuroCent);
+    REQUIRE(inCents.has_value());
+    CHECK(*inCents == Rational { 25000 });
+    auto const backInEuros = formula::checked_convert(*inCents, EuroCent, Euro);
+    REQUIRE(backInEuros.has_value());
+    CHECK(*backInEuros == Rational { 250 });
+
+    auto const inYen = formula::checked_convert(Rational { 1 }, Euro, Yen);
+    REQUIRE_FALSE(inYen.has_value());
+    CHECK(inYen.error() == ArithmeticError::DomainError);
+
+    CHECK(*formula::checked_round_to_declared(*Rational::make(245, 2), Yen, formula::RoundingMode::HalfAwayFromZero)
+          == Rational { 123 });
+}
+
+TEST_CASE("a unit carrying a named base dimension has the same identity in every translation unit", "[unit][money]")
+{
+    // Declared in unit_cross_tu.hpp with its dimension spelt euros per energy,
+    // defined in unit_cross_tu_b.cpp as the reciprocal of energy times euros,
+    // and called here with euros times energy to the minus one -- so this
+    // linking at all is the assertion.
+    constexpr Unit TariffRebuilt { .dimension = Euros * formula::power(dim::Energy, -1),
+                                   .magnitudeNumerator = 1,
+                                   .magnitudeDenominator = 3600000,
+                                   .symbolText = formula::symbol("EUR/kWh"),
+                                   .decimals = 4 };
+    static_assert(TariffRebuilt == EuroPerKilowattHour);
+    CHECK(formula_test::consume_tariff_unit(formula_test::TaggedUnit<TariffRebuilt> { 20 }) == 22);
+}

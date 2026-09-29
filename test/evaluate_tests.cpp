@@ -423,3 +423,92 @@ TEST_CASE("evaluate: a Fahrenheit reading converts to Celsius and back exactly",
     STATIC_REQUIRE(inFahrenheit.has_value());
     STATIC_REQUIRE(inFahrenheit->measurement().value() == rat(493, 5));
 }
+
+namespace
+{
+// Money, with this file's own units -- the library ships no currencies. Euros
+// and yen are named base dimensions, a cent is a hundredth of a euro, and an
+// exchange rate is data: a quantity in yen per euro, not a conversion factor.
+constexpr formula::Dimension Euros = formula::base_dimension("EUR");
+constexpr formula::Dimension Yens = formula::base_dimension("JPY");
+
+constexpr formula::Unit Euro { .dimension = Euros, .symbolText = formula::symbol("EUR"), .decimals = 2 };
+constexpr formula::Unit EuroCent { .dimension = Euros,
+                                   .magnitudeNumerator = 1,
+                                   .magnitudeDenominator = 100,
+                                   .symbolText = formula::symbol("ct"),
+                                   .decimals = 0 };
+constexpr formula::Unit Yen { .dimension = Yens, .symbolText = formula::symbol("JPY"), .decimals = 0 };
+constexpr formula::Unit EuroPerKilowattHour { .dimension = Euros / formula::dim::Energy,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 3600000,
+                                              .symbolText = formula::symbol("EUR/kWh"),
+                                              .decimals = 4 };
+constexpr formula::Unit YenPerEuro { .dimension = Yens / Euros, .symbolText = formula::symbol("JPY/EUR"), .decimals = 2 };
+
+struct Energy: formula::Quantity<Energy, "E", "energy consumed", formula::unit::KilowattHour>
+{
+};
+struct Tariff: formula::Quantity<Tariff, "c", "energy tariff", EuroPerKilowattHour>
+{
+};
+struct EnergyCost: formula::Quantity<EnergyCost, "C", "cost of the energy", Euro>
+{
+};
+struct Fee: formula::Quantity<Fee, "F", "testing fee", Euro>
+{
+};
+struct Surcharge: formula::Quantity<Surcharge, "S", "surcharge", EuroCent>
+{
+};
+struct Charged: formula::Quantity<Charged, "T", "amount charged", Euro>
+{
+};
+struct Amount: formula::Quantity<Amount, "A", "amount in euros", Euro>
+{
+};
+struct ExchangeRate: formula::Quantity<ExchangeRate, "r", "exchange rate", YenPerEuro>
+{
+};
+struct AmountInYen: formula::Quantity<AmountInYen, "A_y", "amount in yen", Yen>
+{
+};
+} // namespace
+
+TEST_CASE("evaluate: energy at a tariff costs euros, exactly", "[evaluate][money]")
+{
+    // The product of an energy and a tariff in euros per kilowatt-hour is a
+    // dimension of euros, decided while the formula is compiled.
+    constexpr auto cost = var<Energy> * var<Tariff>;
+    STATIC_REQUIRE(decltype(cost)::dimension == Euros);
+
+    // 150 kWh at 3/10 EUR/kWh is exactly 45 EUR. Evaluated as 540000000 J
+    // times 1/12000000 EUR/J, so a wrong factor on the kilowatt-hour or on the
+    // tariff lands on something other than 45.
+    constexpr auto consumption =
+        formula::environment(formula::Measured<Energy> { rat(150) }, formula::Measured<Tariff> { rat(3, 10) });
+    constexpr auto charged = formula::checked_evaluate<EnergyCost>(cost, consumption);
+    STATIC_REQUIRE(charged.has_value());
+    STATIC_REQUIRE(charged->measurement().value() == rat(45));
+}
+
+TEST_CASE("evaluate: euros and cents add up in euros", "[evaluate][money]")
+{
+    // 10 EUR + 250 ct is 25/2 EUR: the cents converted, not added as euros.
+    constexpr auto bill =
+        formula::environment(formula::Measured<Fee> { rat(10) }, formula::Measured<Surcharge> { rat(250) });
+    constexpr auto billed = formula::checked_evaluate<Charged>(var<Fee> + var<Surcharge>, bill);
+    STATIC_REQUIRE(billed.has_value());
+    STATIC_REQUIRE(billed->measurement().value() == rat(25, 2));
+}
+
+TEST_CASE("evaluate: an exchange rate supplied as a quantity turns euros into yen", "[evaluate][money]")
+{
+    // 100 EUR at 16235/100 JPY/EUR is 16235 JPY. The rate is an input like any
+    // other, which is the only way euros become yen.
+    constexpr auto exchange = formula::environment(formula::Measured<Amount> { rat(100) },
+                                                   formula::Measured<ExchangeRate> { rat(16235, 100) });
+    constexpr auto inYen = formula::checked_evaluate<AmountInYen>(var<Amount> * var<ExchangeRate>, exchange);
+    STATIC_REQUIRE(inYen.has_value());
+    STATIC_REQUIRE(inYen->measurement().value() == rat(16235));
+}

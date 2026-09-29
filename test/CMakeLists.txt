@@ -304,6 +304,11 @@ formula_add_negative_test(base_dimension_name_si_symbol
 formula_add_negative_test(unit_dimension_mismatch
     "formula: these two units measure different dimensions")
 
+# Money: two units whose SI exponents are the same, told apart only by their
+# named base dimensions.
+formula_add_negative_test(unit_currency_mismatch
+    "formula: these two units measure different dimensions" EXPECT_COUNT 1)
+
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately
 # non-`constexpr` sentinel rather than truncating it.
@@ -337,6 +342,13 @@ formula_add_negative_test(describe_dimension_mismatch
 formula_add_negative_test(expression_add_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
 
+# Money: sides whose SI exponents are the same, told apart only by their named
+# base dimensions -- euros against a pure number, and against yen.
+formula_add_negative_test(money_plus_number
+    "formula: the two sides of this addition or subtraction measure different dimensions" EXPECT_COUNT 1)
+formula_add_negative_test(money_plus_other_currency
+    "formula: the two sides of this addition or subtraction measure different dimensions" EXPECT_COUNT 1)
+
 formula_add_negative_test(expression_inconsistent_describe
     "describes a dimension its own unit does not measure")
 
@@ -361,6 +373,11 @@ formula_add_negative_test(quantity_alias_environment_missing
 
 formula_add_negative_test(evaluate_result_dimension_mismatch
     "does not measure the dimension this expression computes")
+
+# Money: a result quantity in yen for an expression in euros, the SI exponents
+# of both being the same.
+formula_add_negative_test(evaluate_result_other_currency
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1)
 
 # Series (`series.hpp`, `environment.hpp`). Each refusal is gated so that one
 # mistake draws one message, and each REJECT names the message that would be

@@ -449,3 +449,47 @@ TEST_CASE("Measured works on a foreign type described by specialisation, not onl
     REQUIRE(combined.has_value());
     CHECK(combined.value() == *Rational::make(10, 1));
 }
+
+namespace
+{
+// Money, with this file's own units: euros and yen are named base dimensions,
+// and a cent is a hundredth of a euro.
+inline constexpr formula::Unit Euro { .dimension = formula::base_dimension("EUR"),
+                                      .symbolText = formula::symbol("EUR"),
+                                      .decimals = 2 };
+inline constexpr formula::Unit EuroCent { .dimension = formula::base_dimension("EUR"),
+                                          .magnitudeNumerator = 1,
+                                          .magnitudeDenominator = 100,
+                                          .symbolText = formula::symbol("ct"),
+                                          .decimals = 0 };
+inline constexpr formula::Unit Yen { .dimension = formula::base_dimension("JPY"),
+                                     .symbolText = formula::symbol("JPY"),
+                                     .decimals = 0 };
+
+struct PriceInEuros: formula::Quantity<PriceInEuros, "p", "a price in euros", Euro>
+{
+};
+struct PriceInCents: formula::Quantity<PriceInCents, "p", "a price in cents", EuroCent>
+{
+};
+struct PriceInYen: formula::Quantity<PriceInYen, "p", "a price in yen", Yen>
+{
+};
+} // namespace
+
+TEST_CASE("a price converts from cents to euros exactly and never from euros to yen", "[measured][money]")
+{
+    auto const inEuros = formula::checked_convert_to<PriceInEuros>(Measured<PriceInCents> { Rational { 250 } });
+    REQUIRE(inEuros.has_value());
+    REQUIRE(inEuros->has_value());
+    CHECK(inEuros->value() == *Rational::make(5, 2));
+
+    auto const inYen = formula::checked_convert_to<PriceInYen>(Measured<PriceInEuros> { Rational { 10 } });
+    REQUIRE_FALSE(inYen.has_value());
+    CHECK(inYen.error() == ArithmeticError::DomainError);
+
+    // Refused even with no number, like any conversion between dimensions.
+    auto const absentInYen = formula::checked_convert_to<PriceInYen>(Measured<PriceInEuros> {});
+    REQUIRE_FALSE(absentInYen.has_value());
+    CHECK(absentInYen.error() == ArithmeticError::DomainError);
+}
