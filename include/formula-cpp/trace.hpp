@@ -4574,11 +4574,10 @@ namespace detail
 /// quantity in a definition reads nothing of the quantity it stands for. Its
 /// step says where the worksheet's value for that quantity came from, and
 /// whether it held one -- never the value -- only when the definition itself
-/// declares a read of that quantity, anywhere, even in a `when()` branch not
-/// taken; so it never speaks of a value the worksheet did not bring up to
-/// date for the definition. Saying so reads that quantity, which then has a
-/// block of its own, even where the definition's own read of it lies in a
-/// branch not taken.
+/// declares a read of that quantity, anywhere in it; so it never speaks of a
+/// value the worksheet did not bring up to date for the definition. Saying
+/// so reads that quantity, which then has a block of its own, even where the
+/// definition's own read of it lies in a `when()` branch not taken.
 template <Described Result, typename Calc, Vocabulary V = DefaultVocabulary>
 [[nodiscard]] ExplainedWorksheet<Result, Calc, V> explain_worksheet(Worksheet<Calc>& sheet,
                                                                    V const& vocabulary = V {})

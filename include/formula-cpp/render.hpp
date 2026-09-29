@@ -2407,12 +2407,11 @@ template <typename... Ds>
 /// and then one line per defined quantity, in the order it is calculated
 /// in, naming what it reads, in that order too -- `fridge_kwh <- fridge_h,
 /// fridge_kw`. The symbol each such line begins with is padded with spaces
-/// to the longest of them, so that the arrows line up. The lengths are
-/// counted in bytes: a symbol holding a character UTF-8 spells in more than
-/// one, `σ` for one, counts as wider than it shows, and the arrows line up
-/// only as far as the bytes do. `none` stands for no input, and `nothing`
-/// for a definition that reads nothing. Every line ends in a newline.
-/// Nothing for a calculation refused where it was written.
+/// to the longest of them, so that the arrows line up. The padding counts
+/// bytes, so a symbol with a character UTF-8 spells in several bytes, such
+/// as `σ`, is padded short. `none` stands for no input, and `nothing` for a
+/// definition that reads nothing. Every line ends in a newline. Nothing for
+/// a calculation refused where it was written.
 template <typename... Ds, Vocabulary V = DefaultVocabulary>
 [[nodiscard]] std::string describe_graph(Calculation<Ds...> const&, V const& vocabulary = V {})
 {
@@ -2470,8 +2469,9 @@ template <typename... Ds, Vocabulary V = DefaultVocabulary>
 /// quantities written alike stay two nodes; a `"` or `\` in a symbol is
 /// preceded by a `\`. The nodes come in the order the quantities are
 /// calculated in, the inputs first, and the arrows by the value that reads,
-/// in that order too. Nothing for a calculation refused where it was
-/// written.
+/// in that order too; the arrows into one value come in the order the
+/// values it reads are calculated in. Nothing for a calculation refused
+/// where it was written.
 template <typename... Ds, Vocabulary V = DefaultVocabulary>
 [[nodiscard]] std::string to_dot(Calculation<Ds...> const&, V const& vocabulary = V {})
 {

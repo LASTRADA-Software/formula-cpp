@@ -9,8 +9,8 @@
 // A worksheet of a calculation refused for a cycle: the cycle's message is
 // the one, and the worksheet -- over an environment that misses the input
 // and holds an entry nobody reads, set, asked, asked about and cleared of an
-// override of an input, and asked for the derivation of a quantity it does
-// not hold and of one it defines -- says nothing more.
+// override of an input, and asked for the derivation of a quantity its
+// calculation does not hold and of one it defines -- says nothing more.
 //
 // This must not compile.
 #include <formula-cpp/calculation.hpp>
