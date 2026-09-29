@@ -90,6 +90,7 @@ add_executable(formula-cpp-tests
     opaque_cross_tu_b.cpp
     least_squares_tests.cpp
     retry_tests.cpp
+    calculation_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -2363,6 +2364,45 @@ formula_add_negative_test(retry_attempt_input_documented_outside
     "formula: attempt_input reads the determination recorded for the attempt that is running"
     EXPECT_COUNT 1
     REJECT "provides no value for this quantity" "no matching")
+
+# A definition, refused where it is written.
+formula_add_negative_test(calculation_definition_dimension_mismatch
+    "formula: this definition's expression measures a different dimension from the quantity it defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside" "no matching")
+formula_add_negative_test(calculation_definition_of_series
+    "formula: define<Q> takes an expression of one value, and this is a series"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition's expression measures a different dimension from the quantity it defines"
+           "formula: a calculation holds single values, and this definition reads a quantity as a series"
+           "no matching")
+formula_add_negative_test(calculation_definition_reads_series
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation"
+           "formula: this definition's expression measures a different dimension from the quantity it defines"
+           "no matching")
+formula_add_negative_test(calculation_definition_reads_observations
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation" "no matching")
+formula_add_negative_test(calculation_definition_reads_record
+    "formula: a calculation's definitions read the worksheet's own values, and this one reads from another record with from_record"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation" "no matching")
+formula_add_negative_test(calculation_definition_unseen_node
+    "formula: this definition holds a node kind the calculation cannot see inside"
+    EXPECT_COUNT 1
+    REJECT "has no detail::LevelChildren specialisation"
+           "formula: this definition's expression measures a different dimension from the quantity it defines"
+           "no matching")
+formula_add_negative_test(calculation_library_kind_without_entry
+    "formula: this library node kind has no detail::LevelChildren specialisation"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

@@ -53,8 +53,10 @@
 // unbound record, untraced and traced into `render_trace`, gated on
 // `same_lineage` through `checked_explain`, rendered and documented, with
 // `lineage_of` and `origin_of` reading the trace's side tables, and under an
-// overlay's constant and derived quantity, traced; and a quantity declared by
-// alias at global scope, so that its tag is one more global. A
+// overlay's constant and derived quantity, traced; `define` of the formula
+// above and of a variant an overlay derived a quantity in, with what each
+// reads; and a quantity declared by alias at global scope, so that its tag
+// is one more global. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -132,6 +134,7 @@ int index;
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/binning.hpp>
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -920,6 +923,18 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render_trace(typedSeriesTrace, { .maxSteps = 20 })
                                       .find("103 mm, from record Reference (sample 23, test 3), entered by hand\n")
                                   != std::string::npos);
+
+    // Definitions of the formula touching every node kind and of the
+    // variant an overlay derived the factor in: what each reads, and the
+    // formula it holds, evaluated.
+    constexpr auto definedStrength = formula::define<Strength>(everything);
+    constexpr auto definedDerived = formula::define<Strength>(std::get<0>(derived.variantSet.cases).expression);
+    auto const fromDefinition = formula::checked_evaluate<Strength>(definedStrength.expression, specimen);
+    probe.checks.push_back(
+        std::is_same_v<std::remove_cv_t<decltype(definedStrength)>::reads,
+                       formula::detail::QuantityList<Force, EdgeX, Factor>>
+        && std::is_same_v<std::remove_cv_t<decltype(definedDerived)>::reads, formula::detail::QuantityList<EdgeX, Force>>
+        && fromDefinition.has_value() && checked.has_value() && *fromDefinition == *checked);
 
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};

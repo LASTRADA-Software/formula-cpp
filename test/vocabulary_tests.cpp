@@ -1139,6 +1139,35 @@ TEST_CASE("a precision limit's checks see inside every node kind", "[vocabulary]
                              var<Strength>, Gauge {} * var<Strength>))>());
 }
 
+TEST_CASE("a definition's reads walk sees inside every single-value node kind", "[vocabulary][calculation]")
+{
+    // The every-kind method's two single-value variants, overlaid, and the
+    // method's rounding around the first. A node kind the walk could not see
+    // inside, or one without its `LevelChildren` entry, would refuse here at
+    // compile time. The other four variants read a series or raw
+    // observations, which a calculation refuses.
+    using Cube = std::remove_cvref_t<decltype(std::get<0>(everyOverlaid.variantSet.cases).expression)>;
+    using Cylinder = std::remove_cvref_t<decltype(std::get<1>(everyOverlaid.variantSet.cases).expression)>;
+    using Rounded = formula::
+        RoundingRuleNode<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero, Cube>;
+    using formula::detail::CalculationReads;
+    using formula::detail::CalculationReadsOf;
+    using formula::detail::QuantityList;
+
+    // The cube reads the strength and the modulus throughout, and the
+    // diameter in its lookups and in the size factor's definition. Neither
+    // overlaid factor is read: the size factor is derived from the diameter,
+    // and the national factor is fixed. The precision limit's limit
+    // expression is its placeholder alone, which reads nothing.
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<Cube>, QuantityList<EveryStrength, EveryModulus, EveryDiameter>>);
+    STATIC_REQUIRE(CalculationReads<Cube>::accepted);
+    // The cylinder's replacement reads the modulus first.
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<Cylinder>, QuantityList<EveryModulus, EveryStrength>>);
+    STATIC_REQUIRE(CalculationReads<Cylinder>::accepted);
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<Rounded>, QuantityList<EveryStrength, EveryModulus, EveryDiameter>>);
+    STATIC_REQUIRE(CalculationReads<Rounded>::accepted);
+}
+
 TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",
           "[vocabulary][trace][document]")
 {

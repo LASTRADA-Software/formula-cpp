@@ -26,6 +26,14 @@ may break it, and each such change is recorded here.
   variable's failure, which travels up the formula as any operand's does. A member of that name with
   any other return type is not taken for it. The environments a precision limit, a rejection and a
   retry evaluate in forward it.
+- `define<Q>(expression)`, in the new header `calculation.hpp` (included by `formula.hpp`), binds a
+  quantity to the expression that calculates it and returns a `Definition<Q, Expr>`. The quantities
+  the expression reads are known at compile time: each once, in the order first read, a `when()`
+  listing its condition and both branches, an overlay's derived quantity what its definition reads
+  and a fixed constant nothing. A definition is refused where it is written when its expression
+  measures a dimension other than `Q`'s, is a series, reads a quantity as a series or as raw
+  observations, reads from another record, or holds a node kind of a consumer's own that cannot be
+  seen inside.
 
 ### Changed
 
