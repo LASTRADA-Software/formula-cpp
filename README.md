@@ -155,7 +155,7 @@ which.
 #include <formula-cpp/format.hpp>
 ```
 
-```
+```text
 std::format("{}", Rational { 3, 5 })                           0.6
 std::format("{}", Rational { 1, 3 })                           1/3
 std::format("{:/}", Rational { 3, 5 })                         3/5

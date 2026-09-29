@@ -28,7 +28,11 @@
 #     where a quote carries one, the header's line 219 must really be `<text>`.
 #     This is the strongest check here -- it verifies the number *means* what
 #     the quote says, not merely that something is there.
-#  3. **Every other quoted line must be neither blank nor comment-only.** The
+#  3. **A quoted MSVC `note: see usage of '<name>'` must name a line that
+#     calls `<name>`** -- the last `::` segment, followed by `(`. MSVC points
+#     that note at the use, so this is as exact as the `static_assert` rule:
+#     it pins a guide's quote of a refusing guard to the guard's call.
+#  4. **Every other quoted line must be neither blank nor comment-only.** The
 #     `note: see reference to ...` cascade points at instantiation sites, and
 #     no invariant this script can state says which line one of those must be.
 #     But drift lands them on blank lines and in the middle of prose comments,
@@ -291,6 +295,15 @@ foreach(document ${documents})
             if(NOT headerLine MATCHES "^static_assert\\(")
                 list(APPEND problems
                      "${documentName}:${lineNumber} quotes a static-assertion error at ${headerName}:${quotedNumber}, but that line is not a static_assert -- it is '${headerLine}'")
+            endif()
+        elseif(line MATCHES "see usage of '([A-Za-z_][A-Za-z0-9_:]*)'")
+            # MSVC's `note: see usage of 'formula::detail::name'` points at the
+            # call of that function, so line N must call it: `name(`.
+            string(REGEX REPLACE "^.*::" "" usedName "${CMAKE_MATCH_1}")
+            string(FIND "${headerLine}" "${usedName}(" usedAt)
+            if(usedAt EQUAL -1)
+                list(APPEND problems
+                     "${documentName}:${lineNumber} quotes a use of ${usedName} at ${headerName}:${quotedNumber}, but that line does not call it -- it is '${headerLine}'")
             endif()
         elseif(headerLine STREQUAL "")
             list(APPEND problems

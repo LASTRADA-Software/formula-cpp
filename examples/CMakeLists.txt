@@ -244,11 +244,22 @@ add_test(NAME docs.opaque-and-retry-snippets
 formula_add_example(display display.cpp [==[#3 / #6 = 134/1185.*#3 / #6 = ≈0\.113.*m_d = 144\.0 g.*67/6 % \(at most 12 %\).*\(m_w - m_d\) / \(m_d - 25\.5 g\).*not measured: \(not measured\).*Rational \{ 3, 5 \}\)  +0\.6.*Rational \{ 1, 3 \}\)  +1/3.*Rational \{ 1, 3 \}\)  +≈0\.333.*formula: this number format rounds but names no rounding mode.*all checks passed: yes]==])
 
 # Every ```text block of docs/display.md must be lines the example really
-# prints, and every ```cpp block lines of its source.
+# prints, and every ```cpp block lines of its source. CALL_TABLES also judges
+# the guide's std::format table: each row's call and output must be a line the
+# example prints.
 add_test(NAME docs.display-output
     COMMAND "${CMAKE_COMMAND}"
             -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-display>"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
+            -D "CALL_TABLES=ON"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+# README.md's ```text blocks are judged against this example too: its
+# std::format block is this program's output, and any ```text block added to
+# README later must be as well.
+add_test(NAME docs.readme-display-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-display>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
 add_test(NAME docs.display-snippets
     COMMAND "${CMAKE_COMMAND}"

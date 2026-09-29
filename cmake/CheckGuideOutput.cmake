@@ -116,10 +116,57 @@ if(blocks EQUAL 0 OR lines EQUAL 0)
         "examines nothing is a check that lies.")
 endif()
 
+# With CALL_TABLES, a table row whose last two cells are code spans, the first
+# of them a `std::format(` call, states what the example prints for that call:
+# the output must hold a line that starts with the call and a space, and ends,
+# after the column's padding, with the row's last cell. docs/display.md's spec
+# table is such a table; its rows are prose around real output, and a row's
+# Output cell could otherwise drift from the checked block beside it.
+set(tableRows 0)
+if(CALL_TABLES)
+    set(rest "${guide}")
+    while(TRUE)
+        string(FIND "${rest}" "\n" newline)
+        if(newline EQUAL -1)
+            break()
+        endif()
+        math(EXPR next "${newline} + 1")
+        string(SUBSTRING "${rest}" ${next} -1 rest)
+        string(FIND "${rest}" "\n" rowEnd)
+        string(SUBSTRING "${rest}" 0 ${rowEnd} row)
+        if(NOT row MATCHES "\\| `(std::format\\([^`]*\\))` \\| `([^`]*)` \\|$")
+            continue()
+        endif()
+        set(call "${CMAKE_MATCH_1}")
+        set(written "${CMAKE_MATCH_2}")
+        math(EXPR tableRows "${tableRows} + 1")
+        string(FIND "${haystack}" "\n${call} " callFound)
+        if(callFound EQUAL -1)
+            string(APPEND offenders "\n  a table row whose call the example never prints: ${call}")
+            continue()
+        endif()
+        string(LENGTH "\n${call} " callLength)
+        math(EXPR printedStart "${callFound} + ${callLength}")
+        string(SUBSTRING "${haystack}" ${printedStart} -1 printed)
+        string(FIND "${printed}" "\n" printedEnd)
+        string(SUBSTRING "${printed}" 0 ${printedEnd} printed)
+        string(STRIP "${printed}" printed)
+        if(NOT printed STREQUAL written)
+            string(APPEND offenders "\n  a table row states ${call} as ${written}, but the example prints ${printed}")
+        endif()
+    endwhile()
+    if(tableRows EQUAL 0)
+        message(FATAL_ERROR
+            "guide output check: CALL_TABLES is set, but ${GUIDE} has no table row whose last two cells are a "
+            "`std::format(` call and its output. A check that examines nothing is a check that lies.")
+    endif()
+endif()
+
 if(NOT offenders STREQUAL "")
     message(FATAL_ERROR
         "${GUIDE} quotes output the example does not print as quoted. Re-run the example and copy its output:"
         "${offenders}")
 endif()
 
-message(STATUS "guide output check: ${blocks} blocks of ${lines} quoted lines, each printed by the example as quoted")
+message(STATUS "guide output check: ${blocks} blocks of ${lines} quoted lines, and ${tableRows} table rows, "
+               "each printed by the example as quoted")
