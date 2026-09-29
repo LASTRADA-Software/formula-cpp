@@ -67,10 +67,24 @@ formula_add_example(composition composition.cpp "all checks passed: yes")
 # price, after a new base fee, and on the what-if copy -- and how many values
 # each step of the worksheet recalculated and reused: the first run, a new
 # price, the same price again, a new base fee, the fridge's early cutoff, the
-# what-if copy and the worksheet left as it was. Then the derivation reading
-# the fridge's current 400 W, and, in the example's second calculation, the
-# division by zero reaching the value that reads it.
-formula_add_example(electricity_bill electricity_bill.cpp [==[first run: .*total 118\.26 EUR, net draw 279 kWh, recomputed 15, reused 0.*price 0\.25 EUR/kWh: .*total 95\.02 EUR, .*recomputed 5, reused 0.*the same price again: .*recomputed 0, reused 0.*base fee 15 EUR: .*total 98\.00 EUR, .*recomputed 3, reused 0.*fridge 400 W for 12 h: .*recomputed 2, reused 8.*fridge_w = 400 W.*with 200 kWh of sun: .*total 85\.14 EUR, net draw 239 kWh, recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*shared by nobody: share: division by zero, in cents: division by zero.*all checks passed: yes]==])
+# what-if copy and the worksheet left as it was. Then the derivation of the
+# daily load, which the fridge's change reused, reading the fridge's current
+# 400 W; the grid cost's derivation stating the value typed in by hand, cut
+# short with its footer; and, in the example's second calculation, the division
+# by zero reaching the value that reads it, the failure not calculated again,
+# and an input nobody counted.
+#
+# Twice, one line must follow another: the daily load's first line its title,
+# and the footer the net draw's line. A bracket argument cannot spell a line
+# break, so it is spelled once here -- with the CR that Windows' output has.
+set(lineBreak "\r?\n")
+string(CONCAT billOutput
+    [==[first run: .*total 118\.26 EUR, net draw 279 kWh, recomputed 15, reused 0.*price 0\.25 EUR/kWh: .*total 95\.02 EUR, .*recomputed 5, reused 0.*the same price again: .*recomputed 0, reused 0.*base fee 15 EUR: .*total 98\.00 EUR, .*recomputed 3, reused 0.*fridge 400 W for 12 h: .*recomputed 2, reused 8.*how the daily load was reached:]==]
+    "${lineBreak}"
+    [==[daily_load = fridge_kwh \+ oven_kwh \+ heater_kwh = 13\.3 kWh.*fridge_w = 400 W.*with 200 kWh of sun: .*total 85\.14 EUR, net draw 239 kWh, recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*net_draw = 250 kWh, entered by hand in place of monthly_load - self_used]==]
+    "${lineBreak}"
+    [==[\.\.\. 1 further step not shown.*shared by nobody: share: division by zero, in cents: division by zero.*asked again: recomputed 0.*occupants not counted: share \(not measured\), in cents \(not measured\).*all checks passed: yes]==])
+formula_add_example(electricity_bill electricity_bill.cpp "${billOutput}")
 
 # Every ```text block of docs/calculations.md must be a run of lines the
 # example prints, and every ```cpp block a run of lines of its source.

@@ -34,10 +34,39 @@ indentation (`cmake/CheckGuideSnippets.cmake`). A code block that is
 deliberately *not* from the example -- each misuse under
 [What is refused](#what-is-refused) -- carries a
 `<!-- snippet: not from the example -->` comment directly above it, which
-that check skips. **Compiler diagnostics** -- the blocks opening
-`static assertion failed` -- are the library's refusals of those misuses as
-g++ 14.2 printed them; cl 19.51 prints the same message, and each misuse
-draws exactly one.
+that check skips. **Compiler diagnostics** are the library's refusals of
+those misuses as g++ 14.2 printed them, each block opening `static assertion
+failed` -- and once as cl 19.51 printed one, opening with the header's path
+and line. Both compilers print the same message, one per misuse.
+
+## Headers and names
+
+The umbrella header, `formula.hpp`, brings calculations and worksheets: it
+includes `calculation.hpp`. It includes nothing that turns them into text,
+since each of those pulls in `<string>`, `<vector>` or `<format>`, which a
+program that only calculates must not compile: `render.hpp` for `render`,
+`describe_graph` and `to_dot`; `document.hpp` for `document`; `trace.hpp` for
+`explain_worksheet`; `trace_render.hpp` for `render_derivation`; and
+`format.hpp` for `std::format` of a number ([Displaying numbers](display.md)).
+Include whichever you need, by name. The example includes them all:
+
+```cpp
+#include <formula-cpp/calculation.hpp>
+#include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
+#include <formula-cpp/formula.hpp>
+#include <formula-cpp/render.hpp>
+#include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
+```
+
+and spells three names short:
+
+```cpp
+namespace unit = formula::unit;
+using formula::Rational;
+using formula::var;
+```
 
 ## Money of its own
 
@@ -78,6 +107,38 @@ static_assert(!formula::SameDimension<Euro.dimension, Yen.dimension>);
 
 The power and energy units -- watts, kilowatts, hours and kilowatt-hours --
 are the library's own.
+
+## Quantities
+
+Each value the bill names is a quantity: a type with a symbol, a description
+and the unit its values are stated in
+([Quantities and measurements](quantities.md)). The fridge's power is an
+input, stated in watts, and the grid price one in the euros per kilowatt-hour
+declared above:
+
+```cpp
+struct FridgeW: formula::Quantity<FridgeW, "fridge_w", "the fridge's power", unit::Watt>
+{
+};
+```
+
+```cpp
+struct Price: formula::Quantity<Price, "price", "the grid price", EuroPerKilowattHour>
+{
+};
+```
+
+The same power in kilowatts is a calculated value:
+
+```cpp
+struct FridgeKw: formula::Quantity<FridgeKw, "fridge_kw", "the fridge's power in kilowatts", unit::Kilowatt>
+{
+};
+```
+
+A value is converted exactly wherever it is read in another unit, so the
+definition `define<FridgeKw>(var<FridgeW>)` below is the whole conversion from
+watts to kilowatts: 400 W is 0.4 kW.
 
 ## Defining named values
 
@@ -127,8 +188,9 @@ has ten, from the fridge's power to the base fee, in the order the
 definitions first read them.
 
 `render` writes the calculation out, one `symbol = expression` line per
-definition in the order it calculates them, in any of the three dialects.
-The example asks for its numbers as decimals where that is their exact value
+definition in the order it calculates them, in any of the
+[three dialects](citations.md#the-three-dialects). The example asks for its
+numbers as decimals where that is their exact value
 ([Displaying numbers](display.md)):
 
 ```cpp
@@ -176,8 +238,9 @@ static_assert(formula::depends_on<Total, Price>(bill));
 static_assert(!formula::depends_on<Exported, Price>(bill));
 ```
 
-The queries name the values themselves, each as its symbol, in the order the
-calculation calculates them:
+The queries name the values themselves, each as its symbol: the inputs
+first, in the order the definitions first read them, then the calculated
+values in the order the calculation calculates them:
 
 ```cpp
 std::printf("affected by price    : %s\n", listed(formula::affected_by<Price>(bill)).c_str());
@@ -202,9 +265,11 @@ names each value as that vocabulary writes it
 ([Methods and overlays](methods-and-overlays.md)).
 
 The graph can also be read whole. `describe_graph` lists the inputs, and then
-every calculated value with what it reads, the arrows aligned; `to_dot` writes
-it in the DOT language of Graphviz, for `dot -Tsvg` to draw, the inputs as
-boxes and the calculated values as ellipses:
+every calculated value with what it reads, the arrows aligned. A value's reads
+come in the queries' order -- its inputs first -- so the fridge's energy reads
+its hours before its power. `to_dot` writes the graph in the DOT language of
+Graphviz, for `dot -Tsvg` to draw, the inputs as boxes and the calculated
+values as ellipses:
 
 ```cpp
 std::printf("its graph:\n%s\n", formula::describe_graph(bill).c_str());
@@ -252,9 +317,31 @@ and ends with the arrows into the tax and the total:
 }
 ```
 
-`document(bill)` makes the calculation's documentation page, whose symbol
-table gives each calculated value its definition
-([Citations and rendering](citations.md)).
+`document(bill)` makes the calculation's documentation page
+([Citations and rendering](citations.md)), here with its numbers as decimals
+too:
+
+```cpp
+formula::Documentation const page = formula::document(bill, formula::DefaultVocabulary {}, { .numbers = decimals });
+```
+
+Its [symbol table](citations.md#the-symbol-table-and-its-ordering-rule),
+`page.symbols`, has a `SymbolEntry` for each of the 25 quantities, whose
+`calculatedAs` holds a calculated value's definition as `render` writes it and
+is empty for an input. The example prints one line each: first the calculated
+values, with their definitions,
+
+```text
+self_used      the solar energy used at home       calculated as solar * 0.8
+```
+
+and after the last of them, the inputs:
+
+```text
+total          the bill                            calculated as round(subtotal + vat, to 0 dp of ct)
+fridge_w       the fridge's power                  an input
+fridge_h       the fridge's hours a day            an input
+```
 
 ## A worksheet
 
@@ -294,10 +381,13 @@ typed in by hand. Asked for several values at once, it answers with a
 auto const [total, netDraw] = sheet.calculate<Total, NetDraw>();
 ```
 
-The example spells each answer with `std::format` (`format.hpp`,
-[Displaying numbers](display.md)): the total, which the bill rounds to whole
-cents, padded to them, and the net draw as its exact decimal, each with its
-unit:
+The example spells each answer with `std::format` (`format.hpp`).
+`.2HalfAwayFromZero` rounds to two places and pads to them: the total is whole
+cents already, so only the padding shows, and the mode -- which `std::format`
+requires on every rounding
+([Displaying numbers](display.md#rounding-modes-and-why-none-is-assumed)) --
+is the bill's own. `{}` writes the net draw's exact decimal. Each comes with
+its unit:
 
 ```cpp
 std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
@@ -311,6 +401,10 @@ std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reu
 ```text
 first run:                 total 118.26 EUR, net draw 279 kWh, recomputed 15, reused 0
 ```
+
+`step` labels the line, and `counted` is how far the worksheet's counters
+moved during this one question: the example reads `recomputed()` and
+`reused()` before it asks and after, since each is a running total.
 
 The same question can name the variables instead of their types:
 
@@ -328,10 +422,10 @@ Asking is not `const`. It brings every value the answer is reached through up
 to date, calculating each at most once, and counts: `recomputed()` is how
 many values the worksheet has calculated since it was made, and `reused()`
 how many it found still up to date after a change and did not calculate
-again. The first time the bill is asked for its total and net draw, it
-calculates the fifteen values those are reached through, each once --
-118.26 EUR and 279 kWh -- and reuses none. A value no question reaches is
-not calculated at all.
+again -- running totals, both. The first time the bill is asked for its total
+and net draw, it calculates the fifteen values those are reached through, each
+once -- 118.26 EUR and 279 kWh -- and reuses none. A value no question reaches
+is not calculated at all.
 
 ## A change, and what it reaches
 
@@ -402,7 +496,8 @@ auto sunnier = sheet.with(formula::Measured<Solar> { Rational { 200 } });
 
 The copy holds everything the worksheet had calculated, so a question to it
 calculates only what the change reaches: nine values, for 85.14 EUR and
-239 kWh drawn. Its counters start where the worksheet's stood.
+239 kWh drawn. Its counters start where the worksheet's stood, and the line
+says how far the copy's `recomputed()` moved:
 
 ```text
 with 200 kWh of sun:       total 85.14 EUR, net draw 239 kWh, recomputed 9
@@ -419,13 +514,30 @@ the worksheet itself:      total 98.00 EUR, net draw 279 kWh, recomputed 0, reus
 
 `explain_worksheet<Q>(sheet)` asks for `Q` and records how the answer was
 reached, as one **block** per named value; `render_derivation` writes them
-out for a person:
+out for a person. The example asks how the daily load was reached, right
+after the fridge's change -- which reused the daily load rather than
+calculating it again:
 
 ```cpp
-auto const fridgeEnergy = formula::explain_worksheet<FridgeKwh>(sheet);
-std::string const fridgeText =
-    formula::render_derivation(fridgeEnergy, { .maxSteps = 12, .numbers = decimals });
+auto const dailyLoad = formula::explain_worksheet<DailyLoad>(sheet);
+std::string const dailyText = formula::render_derivation(dailyLoad, { .maxSteps = 30, .numbers = decimals });
 ```
+
+`Q`'s block comes first: its definition, evaluated step by step as a trace
+states a formula ([Reading a derivation](tracing.md#reading-a-derivation)).
+In it, a calculated value it reads is one step, marked `calculated`:
+
+```text
+daily_load = fridge_kwh + oven_kwh + heater_kwh = 13.3 kWh
+  1. fridge_kwh = 4.8 kWh, calculated
+  2. oven_kwh = 2.5 kWh, calculated
+  3. #1 + #2 = 26280000
+  4. heater_kwh = 6 kWh, calculated
+  5. #3 + #4 = 47880000
+```
+
+That value's own block, further on, says how it was reached, and the inputs
+read come last, one line each:
 
 ```text
 fridge_kwh = fridge_kw * fridge_h = 4.8 kWh
@@ -437,28 +549,33 @@ fridge_kw = fridge_w = 0.4 kW
 inputs
   fridge_w = 400 W
   fridge_h = 12 h
+  oven_kw = 2.5 kW
+  oven_h = 1 h
+  heater_kw = 1.5 kW
+  heater_h = 4 h
 ```
 
-`Q`'s block comes first: its definition, evaluated step by step as a trace
-states a formula ([Reading a derivation](tracing.md#reading-a-derivation)).
-In it, a calculated value it reads is one step, marked `calculated`, and that
-value's own block, further on, says how it was reached. The inputs read come
-last, one line each. A value the evaluation never reached -- read only in a
-`when()` branch not taken, or to the right of an operand that failed -- gets
-no block. One step limit bounds every line, as `render_trace`'s does, and a
-last line says how many were left out. `.numbers` spells every number as it
-spells a trace's -- here the decimals the example named, so the fridge's
-power reads 0.4 kW rather than 2/5 kW.
+A value the evaluation never reached -- read only in a `when()` branch not
+taken, or to the right of an operand that failed -- gets no block. One step
+limit bounds every line, as `render_trace`'s does, and a last line says how
+many were left out ([A value typed in by hand](#a-value-typed-in-by-hand)
+shows one). `.numbers` spells every number as it spells a trace's -- here the
+decimals the example named, so the heater's power reads 1.5 kW rather than
+3/2 kW.
 
 **A derivation is never stale.** It is recorded afresh on every call, from the
-values the worksheet holds, never kept from when a value was calculated. After
-the fridge's change, the eight values built on its energy a day were reused
-rather than calculated again -- yet every derivation reads the fridge at
-400 W for 12 h, because that is what the worksheet holds. The rule that lets
-a value be reused is what makes this sound: a value is reused only when
-nothing it reads has changed since it was calculated, so evaluating its
-definition again against what it reads now gives the value it holds.
-Recording a derivation calculates nothing again.
+values the worksheet holds, never kept from when a value was calculated. The
+daily load was not calculated again after the fridge's change -- it was one
+of the eight reused -- and a derivation kept from when it was calculated would
+read the fridge at 200 W for 24 h. This one reads 400 W for 12 h, because that
+is what the worksheet holds, and the example checks that no 200 W is in it. The
+rule that lets a value be reused is what makes this sound: a value is reused
+only when nothing it reads has changed since it was calculated, so evaluating
+its definition again against what it reads now gives the value it holds.
+
+Asking for `Q` brings it up to date, as `checked_calculate` does, and counts as
+it does; recording the blocks calculates nothing again. Here nothing was out
+of date, and the example checks that neither counter moved.
 
 A computed step states its value in the coherent unit of its dimension, as
 every trace does: the fridge's 4.8 kWh reads `17280000` there, in joules,
@@ -481,9 +598,26 @@ net draw typed in:         total 89.37 EUR, net draw 250 kWh, recomputed 5, reus
 The value typed in stands in place of the calculated one: what is built on it
 is calculated again from it -- five values, for 89.37 EUR -- its source reads
 `ManuallyEntered`, and what the net draw was calculated from is no longer
-read. `is_overridden<NetDraw>()` says whether it stands. In a derivation it
-is one line, `net_draw = 250 kWh, entered by hand in place of monthly_load -
-self_used`. `clear_override` goes back to calculating it:
+read. `is_overridden<NetDraw>()` says whether it stands. The grid cost's
+derivation reads it as typed in, and the net draw's own block is one line
+saying what it stands in place of. Cut short at five lines, the derivation
+says how many it left out:
+
+```cpp
+auto const gridCost = formula::explain_worksheet<GridCost>(sheet);
+std::string const gridText = formula::render_derivation(gridCost, { .maxSteps = 5, .numbers = decimals });
+```
+
+```text
+grid_cost = net_draw * price = 62.5 EUR
+  1. net_draw = 250 kWh, entered by hand
+  2. price = 0.25 EUR/kWh
+  3. #1 * #2 = 62.5
+net_draw = 250 kWh, entered by hand in place of monthly_load - self_used
+... 1 further step not shown
+```
+
+`clear_override` goes back to calculating it:
 
 ```cpp
 sheet.clear_override<NetDraw>();
@@ -504,7 +638,7 @@ so by being `entered`.
 A value whose calculation fails is kept like any other answer, and a
 definition that reads it fails where it reads it, with the same error, as an
 operand's failure fails a formula. The example shows it with a second, small
-calculation: a cost shared among the people who live there, each share in
+calculation: the bill shared among the people who live there, each share in
 whole cents.
 
 ```cpp
@@ -513,6 +647,16 @@ inline constexpr auto sharing = formula::calculation(
     formula::define<ShareInCents>(
         formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Share>)));
+```
+
+The bill's total is the second calculation's input -- one calculation's
+result read by another as a measurement, which is also how a calculation too
+large for one graph is split in two ([Limits](#limits)):
+
+```cpp
+formula::Measured<SharedCost> const sharedCost { sheet.calculate<Total>().measurement().value() };
+auto shares = formula::worksheet(
+    sharing, formula::environment(sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
 ```
 
 ```text
@@ -532,7 +676,8 @@ shared by nobody: share: division by zero, in cents: division by zero
 ```
 
 `calculate` throws the same failure, as an `ArithmeticException` whose
-`code()` is the `ArithmeticError`:
+`code()` is the `ArithmeticError` -- and calculates nothing to do so. The
+failure is kept, and is not calculated again until something it read changes:
 
 ```cpp
 try
@@ -548,11 +693,11 @@ catch (formula::ArithmeticException const& failure)
 
 ```text
 calculate<ShareInCents>() threw: division by zero
+asked again: recomputed 0
 ```
 
-A failure is not calculated again until something it read changes, and a
-value calculated again that fails with the same error counts as unchanged. Its
-derivation is a block like any other, the failure in its header and in the
+A value calculated again that fails with the same error counts as unchanged.
+Its derivation is a block like any other, the failure in its header and in the
 step that read it:
 
 ```cpp
@@ -576,9 +721,18 @@ inputs
 
 **Absence is not failure.** An input given as `Measured<Q>::absent()` makes
 what reads it absent, as it makes a formula's result absent
-([Absence propagates](expressions.md#absence-propagates)), never zero. And a
-`when()` branch not taken reads nothing: a failed value read only there does
-not fail the value whose definition holds it.
+([Absence propagates](expressions.md#absence-propagates)), never zero:
+
+```cpp
+shares.set(formula::Measured<Occupants>::absent());
+```
+
+```text
+occupants not counted: share (not measured), in cents (not measured)
+```
+
+And a `when()` branch not taken reads nothing: a failed value read only there
+does not fail the value whose definition holds it.
 
 ## What is refused
 
@@ -710,6 +864,46 @@ sheet.clear_override<Price>();
 ```
 static assertion failed: formula: clear_override or is_overridden names an input of the calculation; only a calculated quantity is overridden by hand, and an input is simply set again -- the quantity appears in this diagnostic as the template argument Q of RequireCalculatedQuantity
 ```
+
+**The same quantity set twice** in one `set()`: taking the first or the last
+would be a guess either way.
+
+<!-- snippet: not from the example -->
+```cpp
+sheet.set(formula::Measured<Price> { Rational { 1, 4 } }, formula::Measured<Price> { Rational { 1, 5 } });
+```
+
+```
+static assertion failed: formula: set() was given the same quantity more than once; first-wins and last-wins are equally arbitrary, so neither is guessed -- the entries appear in this diagnostic as the template arguments of RequireDistinctSettings
+```
+
+**Setting a quantity the calculation does not hold:**
+
+<!-- snippet: not from the example -->
+```cpp
+sheet.set(formula::Measured<DryerKw> { Rational { 2 } });
+```
+
+```
+static assertion failed: formula: set() names a quantity this worksheet's calculation neither reads nor defines; the quantity and the calculation appear in this diagnostic as the template arguments of RequireSettableQuantity
+```
+
+**A query about a quantity the calculation does not hold:**
+
+<!-- snippet: not from the example -->
+```cpp
+formula::affected_by<DryerKw>(bill)
+```
+
+```
+static assertion failed: formula: this calculation neither defines nor reads this quantity; the quantity and the calculation appear in this diagnostic as the template arguments of RequireCalculationQuantity
+```
+
+The rest are refused the same way, each with a message of its own: a series
+given to `define<Q>` as its expression, `calculation()` with no definitions,
+an argument to `calculation()` that is not a definition, a node kind the
+calculation cannot see inside, and a series or raw observations given to a
+worksheet.
 
 A refused calculation says nothing more: a query over it, a worksheet of it, a
 question to that worksheet, a derivation or a documentation page of it adds no

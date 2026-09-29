@@ -169,9 +169,10 @@ may break it, and each such change is recorded here.
   output block on the page is checked against the example's output, and each code block against
   its source.
 - A guide, *Calculations and worksheets* (`docs/calculations.md`), with `examples/electricity_bill.cpp`:
-  a household's monthly electricity bill as a calculation and a worksheet -- its graph, a first run,
-  changes and what each recalculates, a what-if copy, a value typed in by hand, a failure reaching
-  what reads it, a derivation, and what is refused.
+  a household's monthly electricity bill as a calculation and a worksheet -- its graph and its
+  documentation page, a first run, changes and what each recalculates, the derivation of a value
+  that was reused, a what-if copy, a value typed in by hand, a failure reaching what reads it, an
+  input nobody measured, and what is refused.
 
 ### Changed
 

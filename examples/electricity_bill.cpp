@@ -14,18 +14,20 @@
 //   - currencies of its own, each a base dimension the SI does not have, and a
 //     rounding to cents as a node of the formula;
 //   - the dependency graph described, queried and drawn, all known while the
-//     program compiles;
+//     program compiles, and the calculation's documentation page;
 //   - a first run, then a change of price, the same price again, a new base
 //     fee and a fridge that draws twice the power for half the time -- with
 //     how many values each recalculated and how many it reused;
-//   - a derivation of a value that was reused rather than recalculated, which
-//     still describes the current inputs;
+//   - the derivation of the daily load, which that last change reused rather
+//     than recalculated, still describing the current inputs;
 //   - a what-if copy, and a value typed in by hand in place of a calculated
-//     one, and its clearing;
-//   - in a second, smaller calculation -- a cost shared among the people who
-//     live there -- a division by zero reaching the value that reads it.
+//     one, with the derivation that reads it, and its clearing;
+//   - in a second, smaller calculation -- the bill shared among the people who
+//     live there -- a division by zero reaching the value that reads it, and
+//     an input nobody counted.
 
 #include <formula-cpp/calculation.hpp>
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
@@ -256,11 +258,26 @@ int main()
     std::printf("affected by price    : %s\n", listed(formula::affected_by<Price>(bill)).c_str());
     std::printf("upstream of net_draw : %s\n", listed(formula::upstream_of<NetDraw>(bill)).c_str());
     std::printf("read by self_used    : %s\n", listed(formula::dependents_of<SelfUsed>(bill)).c_str());
-    check("the price reaches the total, and not the energy exported",
+    check("a new price reaches five values, and self_used is read by two",
           formula::affected_by<Price>(bill).size() == 5 && formula::dependents_of<SelfUsed>(bill).size() == 2);
 
     std::string const drawn = formula::to_dot(bill);
     std::printf("\nfor Graphviz:\n%s\n", drawn.c_str());
+
+    // Its documentation page: a row per calculated value, with its definition,
+    // then a row per input.
+    formula::Documentation const page = formula::document(bill, formula::DefaultVocabulary {}, { .numbers = decimals });
+    std::printf("its symbol table:\n");
+    for (formula::SymbolEntry const& symbolRow: page.symbols)
+        std::printf("%s\n",
+                    std::format("{:<14} {:<35} {}",
+                                symbolRow.symbol,
+                                symbolRow.description,
+                                symbolRow.calculatedAs.has_value() ? "calculated as " + *symbolRow.calculatedAs
+                                                                   : std::string { "an input" })
+                        .c_str());
+    check("25 rows, the self-use share in decimals",
+          page.symbols.size() == 25 && page.symbols[6].calculatedAs == "solar * 0.8");
 
     // ---- 2. A worksheet, and a first run ----
     //
@@ -329,17 +346,20 @@ int main()
     check("two recalculated, eight reused, the total unchanged",
           fridgeTotal == feeTotal && fridgeCount.recomputed == 2 && fridgeCount.reused == 8);
 
-    // ---- 4. A derivation, after that cutoff ----
+    // ---- 4. The derivation of a value that was reused ----
     //
-    // The fridge's energy a day was recalculated, and its derivation is
-    // recorded afresh from the values the worksheet holds now: 400 W for 12 h.
-    auto const fridgeEnergy = formula::explain_worksheet<FridgeKwh>(sheet);
-    std::string const fridgeText =
-        formula::render_derivation(fridgeEnergy, { .maxSteps = 12, .numbers = decimals });
-    std::printf("\nhow the fridge's energy a day was reached:\n%s", fridgeText.c_str());
-    check("the derivation reads the current 400 W",
-          fridgeText.find("fridge_w = 400 W") != std::string::npos
-              && fridgeText.find("fridge_h = 12 h") != std::string::npos);
+    // The daily load was not recalculated by that change: what it reads came
+    // out the same. Its derivation is recorded afresh from the values the
+    // worksheet holds now, so it reads the fridge at 400 W for 12 h all the
+    // same -- and recording it calculates nothing.
+    Counters const beforeExplaining = counters_of(sheet);
+    auto const dailyLoad = formula::explain_worksheet<DailyLoad>(sheet);
+    std::string const dailyText = formula::render_derivation(dailyLoad, { .maxSteps = 30, .numbers = decimals });
+    std::printf("\nhow the daily load was reached:\n%s", dailyText.c_str());
+    check("the reused daily load reads the fridge's 400 W, and not 200 W",
+          dailyText.find("fridge_w = 400 W") != std::string::npos && dailyText.find("200 W") == std::string::npos);
+    check("recording it calculated nothing",
+          sheet.recomputed() == beforeExplaining.recomputed && sheet.reused() == beforeExplaining.reused);
 
     // ---- 5. What if the sun shone more? ----
     //
@@ -373,21 +393,36 @@ int main()
               && sheet.calculate<NetDraw>().source() == formula::ValueSource::ManuallyEntered
               && overriddenCount.recomputed == 5);
 
+    // The grid cost reads the value typed in, and its derivation says what
+    // that value stands in place of. Cut short at five lines, it says how
+    // many it left out.
+    auto const gridCost = formula::explain_worksheet<GridCost>(sheet);
+    std::string const gridText = formula::render_derivation(gridCost, { .maxSteps = 5, .numbers = decimals });
+    std::printf("\nhow the grid cost was reached, in five lines:\n%s", gridText.c_str());
+    check("the override in place of its definition, one line left out",
+          gridText.find("net_draw = 250 kWh, entered by hand in place of monthly_load - self_used\n")
+                  != std::string::npos
+              && gridText.ends_with("... 1 further step not shown\n"));
+
     sheet.clear_override<NetDraw>();
     auto const [clearedTotal, clearedCount] = report("the override cleared:");
     check("calculated again: 98.00 EUR",
           clearedTotal == feeTotal && !sheet.is_overridden<NetDraw>() && clearedCount.recomputed == 6);
 
-    // ---- 7. A failure, and what reads it ----
+    // ---- 7. One calculation's result, another's input ----
     //
-    // 98.00 EUR shared by three is 32.67 EUR each, in whole cents.
-    auto shares = formula::worksheet(sharing,
-                                     formula::environment(formula::Measured<SharedCost> { Rational { 98 } },
-                                                          formula::Measured<Occupants> { Rational { 3 } }));
+    // The bill shared by the three people who live there, each share in whole
+    // cents: the bill's total, read as the second calculation's input.
+    formula::Measured<SharedCost> const sharedCost { sheet.calculate<Total>().measurement().value() };
+    auto shares = formula::worksheet(
+        sharing, formula::environment(sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
     formula::Measured<ShareInCents> const eachInCents = shares.calculate<ShareInCents>().measurement();
-    std::printf("\n%s\n", std::format("98.00 EUR shared by 3: {} each", eachInCents).c_str());
+    std::printf("\n%s\n",
+                std::format("{:.2HalfAwayFromZero} shared by 3: {} each", sharedCost, eachInCents).c_str());
     check("32.67 EUR each", eachInCents.value() == Rational { 3267, 100 });
 
+    // ---- 8. A failure, and what reads it ----
+    //
     // Nobody to share it: the share divides by zero, and the share in cents,
     // which reads it, fails with it.
     shares.set(formula::Measured<Occupants> { Rational { 0 } });
@@ -400,7 +435,9 @@ int main()
           !share.has_value() && share.error() == formula::ArithmeticError::DivisionByZero
               && !shareInCents.has_value() && shareInCents.error() == formula::ArithmeticError::DivisionByZero);
 
-    // The throwing form says the same.
+    // The throwing form says the same -- and the failure, kept like any
+    // answer, is not calculated again: nothing it read has changed.
+    Counters const failed = counters_of(shares);
     bool thrown = false;
     try
     {
@@ -411,11 +448,26 @@ int main()
         std::printf("calculate<ShareInCents>() threw: %s\n", failure.what());
         thrown = failure.code() == formula::ArithmeticError::DivisionByZero;
     }
+    std::printf("asked again: recomputed %zu\n", shares.recomputed() - failed.recomputed);
     check("calculate() throws what checked_calculate() returns", thrown);
+    check("the failure was not calculated again", shares.recomputed() == failed.recomputed);
 
     auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
     std::printf("\nhow the failure was reached:\n%s",
                 formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }).c_str());
+
+    // ---- 9. An input nobody measured ----
+    //
+    // The people living there not counted: the occupants are absent, and so
+    // is every share -- not zero, and not a failure.
+    shares.set(formula::Measured<Occupants>::absent());
+    auto const [uncountedShare, uncountedInCents] = shares.calculate<Share, ShareInCents>();
+    std::printf("\n%s\n",
+                std::format("occupants not counted: share {}, in cents {}",
+                            uncountedShare.measurement(),
+                            uncountedInCents.measurement())
+                    .c_str());
+    check("an absent input leaves what reads it empty", uncountedShare.is_empty() && uncountedInCents.is_empty());
 
     std::printf("\nall checks passed: %s\n", ok ? "yes" : "no");
     return ok ? 0 : 1;
