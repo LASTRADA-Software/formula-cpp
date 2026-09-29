@@ -28,20 +28,20 @@ namespace formula
 /// and differ only on an exact tie.
 enum class RoundingMode : std::uint8_t
 {
-    /// Nearest; ties move to the larger magnitude. 1,25 -> 1,3 and -1,25 -> -1,3.
+    /// Nearest; ties move to the larger magnitude. 1.25 -> 1.3 and -1.25 -> -1.3.
     HalfAwayFromZero,
-    /// Nearest; ties move to the smaller magnitude. 1,25 -> 1,2 and -1,25 -> -1,2.
+    /// Nearest; ties move to the smaller magnitude. 1.25 -> 1.2 and -1.25 -> -1.2.
     HalfTowardZero,
     /// Nearest; ties move to the neighbour whose last kept digit is even.
-    /// 1,25 -> 1,2 and 1,35 -> 1,4. The IEEE-754 decimal default.
+    /// 1.25 -> 1.2 and 1.35 -> 1.4. The IEEE-754 decimal default.
     HalfEven,
-    /// Always toward positive infinity. 1,21 -> 1,3 and -1,21 -> -1,2.
+    /// Always toward positive infinity. 1.21 -> 1.3 and -1.21 -> -1.2.
     Ceiling,
-    /// Always toward negative infinity. 1,29 -> 1,2 and -1,21 -> -1,3.
+    /// Always toward negative infinity. 1.29 -> 1.2 and -1.21 -> -1.3.
     Floor,
-    /// Always toward zero; plain truncation. 1,29 -> 1,2 and -1,29 -> -1,2.
+    /// Always toward zero; plain truncation. 1.29 -> 1.2 and -1.29 -> -1.2.
     TowardZero,
-    /// Always away from zero. 1,21 -> 1,3 and -1,21 -> -1,3.
+    /// Always away from zero. 1.21 -> 1.3 and -1.21 -> -1.3.
     /// On a non-negative quantity this coincides with Ceiling, which is what
     /// "rounded up" usually means in norm text; on a signed quantity it does not.
     AwayFromZero,
@@ -312,7 +312,7 @@ namespace detail
 ///
 /// - `from_double_exact` needs the double's exact binary value to be
 ///   representable, which fails outright for a full-mantissa value below
-///   `2^-10`, about 0,00098. Measured: `0.0009765625` converts, `0.0001` does not.
+///   `2^-10`, about 0.00098. Measured: `0.0009765625` converts, `0.0001` does not.
 /// - Rounding to a POSITIVE number of places `N` scales by `10^N`, cancelling
 ///   common factors of two against the denominator first, so what must fit in
 ///   `Int` is `|numerator| * (10^N / gcd(10^N, denominator))` -- for a binary

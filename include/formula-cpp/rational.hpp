@@ -5,9 +5,9 @@
 /// An exact rational number over std::int64_t.
 ///
 /// Norm rounding rules are specified behaviour, not presentation: "round the
-/// result to 0,1 %" is part of the method. Binary floating point cannot express
+/// result to 0.1 %" is part of the method. Binary floating point cannot express
 /// that faithfully, and it makes exact round-tripping impossible -- 450 l stored
-/// as 0,45 m3 and rendered back is not reliably 450.
+/// as 0.45 m3 and rendered back is not reliably 450.
 ///
 /// This type carries no decimal-place tag. Declared precision belongs to the
 /// unit and quantity layer; rounding is an explicit operation (rounding.hpp) and,
@@ -123,7 +123,7 @@ class Rational
     }
 
     /// `mantissa * 10^exponent`, exactly. The preferred way to write a decimal:
-    /// `from_decimal(45, -2)` is 9/20, not the nearest double to 0,45.
+    /// `from_decimal(45, -2)` is 9/20, not the nearest double to 0.45.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_decimal(Int mantissa, int exponent) noexcept
     {
         if (mantissa == 0)
@@ -142,7 +142,7 @@ class Rational
     }
 
     /// The exact value of the double, which is a dyadic rational. Usually not
-    /// what a norm means: 0,45 as a double is not 9/20. Prefer from_decimal, or
+    /// what a norm means: 0.45 as a double is not 9/20. Prefer from_decimal, or
     /// rational_from_double when the input genuinely is a measured double.
     [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> from_double_exact(double floating) noexcept
     {

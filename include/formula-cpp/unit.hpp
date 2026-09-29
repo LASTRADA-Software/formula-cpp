@@ -610,7 +610,7 @@ struct RequireSameUnitDimension
 /// Celsius and degrees Fahrenheit need; for units without one it is zero and
 /// drops out.
 ///
-/// Converts a POINT on the scale, not a difference: 1 degC becomes 274,15 K, not
+/// Converts a POINT on the scale, not a difference: 1 degC becomes 274.15 K, not
 /// 1 K. A difference-preserving conversion is a different operation and is not
 /// this one.
 ///

@@ -209,8 +209,8 @@ in `test/unit_tests.cpp` that read `converted(0, 1, unit::Celsius, unit::Kelvin)
 | 1 degC   | 1/1     | 5483/20   |
 | 100 degC | 100/1   | 7463/20   |
 
-5463/20 is 273,15 and 5483/20 is 274,15: 1 degree Celsius converts to
-274,15 K, **not** to 1 K. A caller that wants "how much did the temperature
+5463/20 is 273.15 and 5483/20 is 274.15: 1 degree Celsius converts to
+274.15 K, **not** to 1 K. A caller that wants "how much did the temperature
 change" needs a difference, which this function does not compute -- it always
 applies the offset, because it always converts a point.
 
@@ -236,11 +236,11 @@ The two scales agree at one point only, and the example prints it: -40 degF is
 -40 degC. Converting from Fahrenheit divides by 9, and a ninth is not a
 terminating decimal, so a reading in whole degrees Fahrenheit has no finite
 decimal form in Celsius unless it lies a multiple of 9 degrees from 32 degF:
-100 degF is 340/9 degC, which is 37,777... degC. The conversion returns the
-fraction rather than a rounded 37,78, because a conversion that rounded would
-stop round-tripping: 37,78 degC converts back to 100,004 degF, not to 100.
+100 degF is 340/9 degC, which is 37.777... degC. The conversion returns the
+fraction rather than a rounded 37.78, because a conversion that rounded would
+stop round-tripping: 37.78 degC converts back to 100.004 degF, not to 100.
 Going the other way multiplies by 9/5, which keeps a terminating decimal
-terminating -- 37 degC is 493/5 degF, which is 98,6 -- and rounding a result for
+terminating -- 37 degC is 493/5 degF, which is 98.6 -- and rounding a result for
 display is the job of the unit's declared precision (see below), not of the
 conversion.
 

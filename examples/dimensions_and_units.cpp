@@ -157,8 +157,8 @@ int main()
                 formula::declared_decimals(unit::Kilogram).value,
                 roundedMass.to_double());
 
-    // 450/7 kg is 64,2857..., which at kilogram's three declared places is
-    // 64,286. Asserted, not merely printed: the documentation quotes this
+    // 450/7 kg is 64.2857..., which at kilogram's three declared places is
+    // 64.286. Asserted, not merely printed: the documentation quotes this
     // number, and without a check here changing the rounding mode silently
     // changes it while the example still reports success.
     bool const massRoundsAsDocumented = roundedMass == *Rational::from_decimal(64286, -3);

@@ -274,10 +274,10 @@ degrees Celsius and degrees Fahrenheit, and each therefore behaves as an
 absolute temperature inside a formula, not as a delta: 20 °C minus 15 °C is
 exactly 5 K once both leaves have been converted to the coherent SI unit
 (kelvin) and subtracted there, but reading that same computed 5 K back through
-a result quantity declared in degrees Celsius gives −268,15, because the
+a result quantity declared in degrees Celsius gives −268.15, because the
 conversion adds the offset the point 5 K sits at, not the offset the interval
 spans. Degrees Fahrenheit converts a leaf as a point in the same way, with a
-degree of 5/9 K: a leaf of 98,6 °F enters a formula as exactly 310,15 K, which
+degree of 5/9 K: a leaf of 98.6 °F enters a formula as exactly 310.15 K, which
 is 37 °C. A quantity that represents a *difference* -- a temperature swing, not
 a temperature -- must declare a non-offset unit such as kelvin; declaring it in
 an affine unit asks the library a different question than the one intended.
