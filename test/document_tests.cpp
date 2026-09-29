@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/method.hpp>
+#include <formula-cpp/overlay.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
@@ -7,8 +10,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 namespace
 {
@@ -957,4 +962,174 @@ TEST_CASE("a per-element rounding documents as its series, with every granularit
     REQUIRE(page.symbols.size() == 1);
     CHECK(page.symbols[0].shape == formula::ValueShape::Series);
     CHECK(page.symbols[0].length == 3);
+}
+
+// ------------------------------------------------------------ calculations
+
+namespace
+{
+struct Binder: formula::Quantity<Binder, "V_b", "an invented binder content", formula::unit::Litre>
+{
+};
+struct Additive: formula::Quantity<Additive, "V_a", "an invented additive content", formula::unit::Litre>
+{
+};
+struct MixRatio: formula::Quantity<MixRatio, "w", "an invented water/binder ratio", formula::unit::One>
+{
+};
+struct MixPerCent: formula::Quantity<MixPerCent, "w_p", "an invented water/binder ratio, per cent", formula::unit::One>
+{
+};
+struct Surplus: formula::Quantity<Surplus, "V_s", "an invented surplus of water over cement", formula::unit::Litre>
+{
+};
+
+// Invented, as every citation in this repository must be.
+inline constexpr formula::Citation ratioClause { .title = "Water/binder ratio",
+                                                 .reference = "Example Standard 3:2022",
+                                                 .section = "4.1" };
+inline constexpr formula::Citation perCentClause { .title = "Water/binder ratio, per cent",
+                                                   .reference = "Example Standard 3:2022",
+                                                   .section = "4.2" };
+
+/// Given against the grain -- the per-cent value first, which reads the
+/// ratio, which reads the binder -- and calculated as the binder, the ratio,
+/// the per-cent value and the surplus. The water and the cement are each read
+/// by two definitions.
+inline constexpr auto mix =
+    formula::calculation(formula::define<MixPerCent>(formula::documented(var<MixRatio> * rat(100), perCentClause)),
+                         formula::define<MixRatio>(formula::documented(var<WaterVolume> / var<Binder>, ratioClause)),
+                         formula::define<Binder>(var<CementVolume> + var<Additive>),
+                         formula::define<Surplus>(var<WaterVolume> - var<CementVolume>));
+
+struct Unrounded
+{
+};
+
+/// A method reading the ratio, and the constant standing for the ratio once
+/// an overlay fixes it at 1/2.
+inline constexpr auto perCentMethod = formula::method(
+    formula::variants(formula::variant<Unrounded>(var<MixRatio> * rat(100))),
+    formula::rounding_rule<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+inline constexpr formula::Citation fixedClause { .reference = "Example Standard 3:2022 NA", .section = "NA.1" };
+inline constexpr auto fixedRatio =
+    std::get<0>(formula::apply(formula::overlay(formula::with_constant<MixRatio>(rat(1, 2), fixedClause)), perCentMethod)
+                    .variantSet.cases)
+        .expression.lhs;
+} // namespace
+
+TEST_CASE("document: a calculation's page is its definitions, in the order they are calculated in",
+          "[document][calculation]")
+{
+    CHECK(formula::document(mix).formula == "V_b = V_c + V_a\nw = V_w / V_b\nw_p = w * 100\nV_s = V_w - V_c");
+    CHECK(formula::document<formula::Dialect::Markdown>(mix).formula
+          == "`V_b` = `V_c` + `V_a`\n\n`w` = `V_w` / `V_b`\n\n`w_p` = `w` * 100\n\n`V_s` = `V_w` - `V_c`");
+}
+
+TEST_CASE("document: a calculation's symbol table is what it calculates, each with its definition, then its inputs",
+          "[document][calculation]")
+{
+    formula::Documentation const page = formula::document(mix);
+
+    // The calculated quantities in the order they are calculated in; then
+    // the inputs, each once, in the order the definitions first read them
+    // when read in that order: the cement and the additive by the binder's,
+    // the water by the ratio's. Neither the water's nor the cement's second
+    // read, by the surplus's, adds a row, nor does the ratio's read of the
+    // binder or the per-cent value's of the ratio.
+    REQUIRE(page.symbols.size() == 7);
+    CHECK(page.symbols[0]
+          == formula::SymbolEntry { .symbol = "V_b",
+                                    .description = "an invented binder content",
+                                    .unit = formula::unit::Litre,
+                                    .calculatedAs = "V_c + V_a" });
+    CHECK(page.symbols[1]
+          == formula::SymbolEntry { .symbol = "w",
+                                    .description = "an invented water/binder ratio",
+                                    .unit = formula::unit::One,
+                                    .calculatedAs = "V_w / V_b" });
+    CHECK(page.symbols[2]
+          == formula::SymbolEntry { .symbol = "w_p",
+                                    .description = "an invented water/binder ratio, per cent",
+                                    .unit = formula::unit::One,
+                                    .calculatedAs = "w * 100" });
+    CHECK(page.symbols[3]
+          == formula::SymbolEntry { .symbol = "V_s",
+                                    .description = "an invented surplus of water over cement",
+                                    .unit = formula::unit::Litre,
+                                    .calculatedAs = "V_w - V_c" });
+    CHECK(page.symbols[4]
+          == formula::SymbolEntry { .symbol = "V_c", .description = "cement content", .unit = formula::unit::Litre });
+    CHECK(page.symbols[5]
+          == formula::SymbolEntry {
+              .symbol = "V_a", .description = "an invented additive content", .unit = formula::unit::Litre });
+    CHECK(page.symbols[6]
+          == formula::SymbolEntry {
+              .symbol = "V_w", .description = "effective water content", .unit = formula::unit::Litre });
+}
+
+TEST_CASE("document: a calculation's citations are its definitions', in the order they are calculated in",
+          "[document][calculation]")
+{
+    // The ratio's before the per-cent value's, though the per-cent value's
+    // definition was given first.
+    formula::Documentation const page = formula::document(mix);
+    REQUIRE(page.citations.size() == 2);
+    CHECK(page.citations[0] == ratioClause);
+    CHECK(page.citations[1] == perCentClause);
+}
+
+TEST_CASE("document: a calculation's definitions are written in the page's dialect and words",
+          "[document][calculation][vocabulary]")
+{
+    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(mix);
+    REQUIRE(latex.symbols.size() == 7);
+    CHECK(latex.symbols[1].calculatedAs == "\\frac{V_w}{V_b}");
+    CHECK(latex.symbols[2].calculatedAs == "w \\cdot 100");
+
+    constexpr auto words = formula::vocabulary(formula::renames<Binder>("B"), formula::renames<WaterVolume>("W"));
+    formula::Documentation const renamed = formula::document(mix, words);
+    CHECK(renamed.formula == "B = V_c + V_a\nw = W / B\nw_p = w * 100\nV_s = W - V_c");
+    REQUIRE(renamed.symbols.size() == 7);
+    CHECK(renamed.symbols[0].symbol == "B");
+    CHECK(renamed.symbols[1].calculatedAs == "W / B");
+    CHECK(renamed.symbols[6].symbol == "W");
+    CHECK(renamed.symbols[6].description == "effective water content");
+}
+
+TEST_CASE("document: a calculated quantity an overlay fixes in a definition is one row, also read only when read",
+          "[document][calculation][overlay]")
+{
+    // The per-cent value reads the constant standing for the ratio, and not
+    // the ratio: one row, calculated and fixed, not also read.
+    constexpr auto fixedOnly = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                    formula::define<MixPerCent>(fixedRatio * rat(100)));
+    formula::Documentation const fixedPage = formula::document(fixedOnly);
+    REQUIRE(fixedPage.symbols.size() == 4);
+    CHECK(fixedPage.symbols[0]
+          == formula::SymbolEntry { .symbol = "w",
+                                    .description = "an invented water/binder ratio",
+                                    .unit = formula::unit::One,
+                                    .fixedValue = rat(1, 2),
+                                    .fixedBy = fixedClause,
+                                    .calculatedAs = "V_w / V_c" });
+    CHECK(fixedPage.symbols[1].symbol == "w_p");
+    CHECK(fixedPage.symbols[1].calculatedAs == "w * 100");
+    CHECK(fixedPage.symbols[2].symbol == "V_w");
+    CHECK(fixedPage.symbols[3].symbol == "V_c");
+
+    // It reads the ratio as well, before or after the constant: also read,
+    // in either order.
+    constexpr auto readFirst = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                    formula::define<MixPerCent>(var<MixRatio> + fixedRatio));
+    constexpr auto fixedFirst = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                     formula::define<MixPerCent>(fixedRatio + var<MixRatio>));
+    for (formula::Documentation const& bothPage : { formula::document(readFirst), formula::document(fixedFirst) })
+    {
+        REQUIRE(bothPage.symbols.size() == 4);
+        CHECK(bothPage.symbols[0].calculatedAs == "V_w / V_c");
+        CHECK(bothPage.symbols[0].fixedValue == rat(1, 2));
+        CHECK(bothPage.symbols[0].alsoReadAsInput);
+    }
 }

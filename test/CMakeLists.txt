@@ -947,6 +947,15 @@ formula_add_negative_test(rounded_sqrt_rep_double
 formula_add_negative_test(render_trace_no_step_limit "StepLimit")
 formula_add_negative_test(calculation_render_derivation_no_step_limit "StepLimit"
     REJECT "no matching" "cannot convert argument")
+formula_add_negative_test(calculation_document_attempt_input
+    "formula: attempt_input reads the determination recorded for the attempt that is running"
+    EXPECT_COUNT 1
+    REJECT "provides no value for this quantity" "no matching")
+formula_add_negative_test(calculation_document_refused
+    "formula: these definitions read one another in a cycle, so none of them can be calculated first"
+    EXPECT_COUNT 1
+    REJECT "formula: attempt_input reads the determination recorded for the attempt that is running"
+           "provides no value for this quantity" "no matching")
 
 formula_add_negative_test(band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"

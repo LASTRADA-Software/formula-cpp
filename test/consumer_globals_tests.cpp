@@ -61,9 +61,9 @@
 // worksheet about to be discarded, copied with an override by `with`, the
 // override cleared, with its counters and every query, and its derivation
 // by `explain_worksheet`, rendered by `render_derivation`; the calculation
-// rendered, and its graph by `describe_graph` and `to_dot`; and a quantity
-// declared by alias at global scope, so that its tag is one more global. A
-// template it does not reach is not guarded by it.
+// rendered and documented, and its graph by `describe_graph` and `to_dot`;
+// and a quantity declared by alias at global scope, so that its tag is one
+// more global. A template it does not reach is not guarded by it.
 // `consumer_globals_run_tests.cpp` checks that each of these computed what
 // it should.
 //
@@ -1029,6 +1029,15 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && strengthDot.starts_with("digraph calculation {\n")
                            && strengthDerivationText.starts_with("f_c = ")
                            && strengthDerivationText.ends_with(" further steps not shown\n"));
+
+    // The calculation documented: the calculated rows first, each with its
+    // definition, then the inputs in the order the definitions read them.
+    formula::Documentation const strengthPage =
+        formula::document<formula::Dialect::Markdown>(strengthCalculation, north);
+    probe.checks.push_back(strengthPage.formula == strengthRendered && strengthPage.symbols.size() == 4
+                           && strengthPage.symbols[0].symbol == "k" && strengthPage.symbols[0].calculatedAs.has_value()
+                           && strengthPage.symbols[1].symbol == "f_c" && strengthPage.symbols[2].symbol == "x_m"
+                           && strengthPage.symbols[3].symbol == "P" && !strengthPage.symbols[3].calculatedAs.has_value());
 
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};

@@ -90,6 +90,12 @@ may break it, and each such change is recorded here.
   numbered within it as `render_trace` writes them, and the inputs last. One step limit bounds every
   header, step and input line, and one last line says how many were left out;
   `render_derivation(explained, {})` does not compile.
+- `document(calculation, vocabulary)`, in `document.hpp`, documents a calculation: its `formula` is
+  the calculation as `render` writes it; its symbol table opens with a row per calculated quantity,
+  in the order they are calculated in, each with its definition in the page's dialect in the new
+  `SymbolEntry::calculatedAs`, and then lists the inputs, each once, in the order the definitions
+  first read them; and its citations are every one the definitions hold. A definition reading
+  `attempt_input` is refused there, as a formula documented on its own is.
 
 ### Changed
 
