@@ -431,10 +431,9 @@ template <Described Q, Vocabulary V>
 /// styles existed -- for `DefaultVocabulary` and a `ScopedVocabulary`. A
 /// consumer's own `render_node` that writes a number asks here, so that it
 /// follows `RenderOptions` as this library's nodes do. A number the author
-/// typed -- every number a formula's text states -- is written with
-/// `number_style_of(vocabulary).exact_only()` and without padding, as this
-/// library's own nodes write theirs: never rounded, never padded
-/// (`RenderOptions`, `render.hpp`).
+/// typed -- every number a formula's text states -- is written in
+/// `typed_number_style(vocabulary)`, as this library's own nodes write
+/// theirs: never rounded, never padded (`RenderOptions`, `render.hpp`).
 template <Vocabulary V>
 [[nodiscard]] constexpr NumberStyle number_style_of(V const&) noexcept
 {
@@ -447,6 +446,27 @@ template <Vocabulary V>
 [[nodiscard]] constexpr NumberStyle number_style_of(detail::StyledVocabulary<V> const& styledVocabulary) noexcept
 {
     return styledVocabulary.numbers;
+}
+
+/// The style a formula's text under @p vocabulary writes a number its author
+/// typed in: `number_style_of(vocabulary)`, exact only and never padded.
+/// Every number a formula states was typed -- a constant, a table's row or
+/// bound, a permitted value, a limit -- and is stated as typed: a rounding
+/// would be a number nobody wrote, and a padding zero a precision nobody
+/// stated. So `NumberStyle::fraction()` stays itself, and every decimal
+/// style, padded or approximating, becomes `NumberStyle::exact_decimal()`:
+/// `1/3` stays `1/3`, and `number(1/2)` reads `0.5`, never `0.500`.
+///
+/// Every number this library's own nodes write into a formula's text is
+/// written in this style; a consumer's own `render_node` that writes a number
+/// its author typed should write it in this style too, with `number_text`.
+template <Vocabulary V>
+[[nodiscard]] constexpr NumberStyle typed_number_style(V const& vocabulary) noexcept
+{
+    NumberStyle const exactOnly = number_style_of(vocabulary).exact_only();
+    if (exactOnly.notation() == NumberNotation::ExactDecimal)
+        return NumberStyle::exact_decimal(DecimalPadding::Trimmed);
+    return exactOnly;
 }
 
 namespace detail

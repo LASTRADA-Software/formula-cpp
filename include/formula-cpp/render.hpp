@@ -396,19 +396,6 @@ namespace detail
         return std::string { exactFraction.view() };
     }
 
-    /// The style a formula's text writes a number in: the one @p vocabulary
-    /// carries (`number_style_of`), exact only and never padded. Every number
-    /// a formula states was typed by its author -- a constant, a table's row
-    /// or bound, a permitted value, a limit -- and is stated as typed: a
-    /// rounding would be a number nobody wrote, and a padding zero a
-    /// precision nobody stated. So `1/3` stays `1/3` under an approximating
-    /// style, and `number(1/2)` reads `0.5`, never `0.500`.
-    template <Vocabulary V>
-    [[nodiscard]] constexpr NumberStyle typed_number_style(V const& vocabulary) noexcept
-    {
-        return trimmed(number_style_of(vocabulary).exact_only());
-    }
-
     /// @p typedNumber, a number its author typed in @p typedIn, as a formula's
     /// text under @p vocabulary writes it (`typed_number_style`): `0.863`
     /// under an exact-decimal style, `863/1000` under the default fraction.
@@ -1398,7 +1385,7 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
-    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
+    NumberStyle const tableStyle = typed_number_style(vocabulary);
     std::string rowText;
     for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
         rowText += detail::lookup_separator<D>()
@@ -1463,7 +1450,7 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
-    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
+    NumberStyle const tableStyle = typed_number_style(vocabulary);
     std::string rowText;
     for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
         rowText +=
@@ -1489,7 +1476,7 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
 [[nodiscard]] std::string render_node(SnapNode<KeyUnit, Permitted, Tie, Operand> const& node, V const& vocabulary)
 {
     constexpr Unit keyUnit = KeyUnit;
-    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
+    NumberStyle const tableStyle = typed_number_style(vocabulary);
     std::string listed;
     for (std::size_t pointIndex = 0; pointIndex < Permitted.size(); ++pointIndex)
     {
@@ -1512,7 +1499,7 @@ template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
 [[nodiscard]] std::string render_node(DomainNode<U, Points> const&, V const& vocabulary)
 {
     constexpr Unit declaredIn = U;
-    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
+    NumberStyle const tableStyle = typed_number_style(vocabulary);
     std::string listed;
     for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
     {
@@ -1553,7 +1540,7 @@ template <Dialect D, Unit KeyUnit, BandTable Classes, ObservationsNode Obs, Voca
 [[nodiscard]] std::string render_node(BinnedNode<KeyUnit, Classes, Obs> const& node, V const& vocabulary)
 {
     constexpr Unit keyUnit = KeyUnit;
-    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
+    NumberStyle const tableStyle = typed_number_style(vocabulary);
     std::string classText;
     for (std::size_t classIndex = 0; classIndex < Classes.size(); ++classIndex)
         classText += detail::lookup_separator<D>()
@@ -2318,7 +2305,7 @@ template <Dialect D, Unit U, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render(Conformity<U, S> const& conformityCheck, V const& vocabulary)
 {
     constexpr Unit limitsIn = U;
-    NumberStyle const limitStyle = detail::typed_number_style(vocabulary);
+    NumberStyle const limitStyle = typed_number_style(vocabulary);
     std::string rowFields;
     for (std::size_t at = 0; at < S::length; ++at)
         rowFields += detail::lookup_separator<D>()
@@ -2635,6 +2622,10 @@ template <typename... Ds, Vocabulary V = DefaultVocabulary>
 ///    decimals reads as typed, `5 kJ`, and a pure number such as
 ///    `number(Rational { 1, 2 })` reads `0.5`, never `0.500`.
 ///
+/// `typed_number_style(vocabulary)` (`vocabulary.hpp`) is that style: the one
+/// every node of this library writes a formula's number in, and the one a
+/// consumer's own `render_node` should write one in.
+///
 /// **A trace is different, on purpose.** Its lines state values in a column,
 /// where a uniform number of decimals is what padding is for, so under
 /// `Padded` a trace writes that same typed `5 kJ` as `5.0 kJ`
@@ -2654,7 +2645,8 @@ struct RenderOptions
 /// writing every symbol as @p vocabulary says and every number as
 /// @p renderOptions says (`RenderOptions`). Takes whatever `render<D>(node,
 /// vocabulary)` takes, and hands every node @p vocabulary carrying the style,
-/// so that a consumer's own `render_node` reads it with `number_style_of`.
+/// so that a consumer's own `render_node` reads it with `number_style_of`,
+/// or with `typed_number_style` for a number its author typed.
 template <Dialect D = Dialect::Plain, typename X, Vocabulary V>
     requires requires(X const& written, V const& writtenIn) { render<D>(written, writtenIn); }
 [[nodiscard]] std::string render(X const& node, V const& vocabulary, RenderOptions renderOptions)

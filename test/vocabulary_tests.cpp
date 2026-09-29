@@ -532,6 +532,30 @@ TEST_CASE("a vocabulary carrying a number style is still the vocabulary it wraps
     STATIC_REQUIRE(formula::symbol_of<Strength>(restyled) == "R");
 }
 
+TEST_CASE("a typed number's style is the vocabulary's, exact only and never padded", "[vocabulary][decimals]")
+{
+    using formula::DecimalPadding;
+    using formula::NumberStyle;
+    using formula::RoundingMode;
+    // Fractions stay fractions, styled or not.
+    STATIC_REQUIRE(formula::typed_number_style(formula::DefaultVocabulary {}) == NumberStyle::fraction());
+    STATIC_REQUIRE(formula::typed_number_style(formula::detail::styled(north, NumberStyle::fraction()))
+                   == NumberStyle::fraction());
+    // Every decimal style -- exact or approximating, trimmed or padded --
+    // states a typed number as the trimmed exact decimal.
+    for (NumberStyle const carried : { NumberStyle::exact_decimal(),
+                                       NumberStyle::exact_decimal(DecimalPadding::Padded),
+                                       NumberStyle::approximate_decimal(RoundingMode::Ceiling),
+                                       NumberStyle::approximate_decimal(RoundingMode::Floor, DecimalPadding::Padded) })
+        CHECK(formula::typed_number_style(formula::detail::styled(north, carried)) == NumberStyle::exact_decimal());
+    // So a third stays a third, and a half has no padding zeros, in a unit
+    // declaring three decimals.
+    constexpr NumberStyle typed = formula::typed_number_style(
+        formula::detail::styled(north, NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded)));
+    STATIC_REQUIRE(formula::number_text(rat(1, 3), typed, unit::One) == "1/3");
+    STATIC_REQUIRE(formula::number_text(rat(1, 2), typed, unit::One) == "0.5");
+}
+
 TEST_CASE("a number style leaves every symbol in the vocabulary's words", "[vocabulary][decimals]")
 {
     constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };

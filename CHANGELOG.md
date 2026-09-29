@@ -147,7 +147,9 @@ may break it, and each such change is recorded here.
   style, and none is padded, so `number(Rational { 1, 2 })` reads `0.5`. Without options nothing
   changes. The style travels with the vocabulary, the one argument every `render_node` already
   receives, so a consumer's own two-argument `render_node` hands it on unchanged and can read it
-  with `number_style_of(vocabulary)`.
+  with `number_style_of(vocabulary)`. `typed_number_style(vocabulary)` is the style every number a
+  formula states is written in -- the vocabulary's, exact only and never padded -- for a
+  consumer's own node that writes a number its author typed.
 - `docs/display.md`, a guide to displaying numbers, and its example `examples/display.cpp`: decimals
   in a trace, in a rendered formula and in its documentation, `number_text()` and `decimal_text()`,
   and a reference for `std::format` of a `Rational` and a `Measured` -- every form of the spec with
