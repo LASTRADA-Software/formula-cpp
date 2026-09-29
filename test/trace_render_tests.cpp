@@ -3501,3 +3501,49 @@ TEST_CASE("a trace pads a typed number in a labelled unit, where the formula sta
               .starts_with("1. 5.0 kJ\n"));
     CHECK(formula::render(work, formula::DefaultVocabulary {}, { .numbers = padding }) == "5 kJ * m");
 }
+
+TEST_CASE("a rounding in a unit nobody declared shows the first significant digit, not a zero", "[trace-render][decimals]")
+{
+    using formula::detail::checked_shown_text;
+    constexpr formula::NumberStyle rounded = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven);
+    constexpr formula::NumberStyle ceiling = formula::NumberStyle::approximate_decimal(formula::RoundingMode::Ceiling);
+
+    // A price of 3401/9300 EUR/kWh is 3401/33480000000 in the coherent unit of
+    // euros per energy, euros per joule, about 1.0158e-7. The default 3 places
+    // round it to 0; extended to its first digit, 7 places, it reads
+    // ≈0.0000001, still marked as rounded.
+    constexpr formula::Unit perJoule = formula::coherent(formula::base_dimension("EUR") / formula::dim::Energy);
+    constexpr formula::Rational tariff { 3401, 33'480'000'000 };
+    CHECK(checked_shown_text(tariff, rounded, perJoule).value() == "\xe2\x89\x88" "0.0000001");
+    CHECK(checked_shown_text(tariff, rounded, formula::unit::One).value() == "\xe2\x89\x88" "0.0000001");
+    // The first significant digit, not the first place a rounding leaves
+    // something at: 1/11250000, about 8.9e-8, rounds up to 0.0000001 at 7
+    // places, and reads its digit at 8.
+    CHECK(checked_shown_text(formula::Rational { 1, 11'250'000 }, rounded, formula::unit::One).value()
+          == "\xe2\x89\x88" "0.00000009");
+    // A negative value alike: -1/30000000 shows its first digit at 8 places.
+    CHECK(checked_shown_text(formula::Rational { -1, 30'000'000 }, rounded, formula::unit::One).value()
+          == "\xe2\x89\x88" "-0.00000003");
+    // Padding a unit nobody declared stays off at the places extended to.
+    CHECK(checked_shown_text(tariff,
+                             formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven,
+                                                                       formula::DecimalPadding::Padded),
+                             perJoule)
+              .value()
+          == "\xe2\x89\x88" "0.0000001");
+
+    // A value that shows a digit at 3 places keeps them: 1/12 is ≈0.083.
+    CHECK(checked_shown_text(formula::Rational { 1, 12 }, rounded, formula::unit::One).value() == "\xe2\x89\x88" "0.083");
+    // So does one a rounding mode takes away from zero: the tariff rounded up
+    // at 3 places is 0.001, which is no zero.
+    CHECK(checked_shown_text(tariff, ceiling, formula::unit::One).value() == "\xe2\x89\x88" "0.001");
+    // One that rounds to zero even at 18 places reads ≈0.
+    CHECK(checked_shown_text(formula::Rational { 1, 4'000'000'000'000'000'000 }, rounded, formula::unit::One).value()
+          == "\xe2\x89\x88" "0");
+    // A unit someone declared keeps its declared places, whatever they round
+    // to: 1/300000 g at the gram's one decimal.
+    CHECK(checked_shown_text(formula::Rational { 1, 300'000 }, rounded, formula::unit::Gram).value()
+          == "\xe2\x89\x88" "0");
+    // No other style rounds, so none extends: the tariff has no exact decimal.
+    CHECK(checked_shown_text(tariff, formula::NumberStyle::exact_decimal(), perJoule).value() == "3401/33480000000");
+}

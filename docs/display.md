@@ -197,6 +197,13 @@ matters:
 the dish's mass in its declared grams: ≈4.2 g
 ```
 
+Where those 3 places would round a value other than zero to `≈0`, which says
+nothing of it, they are extended to its first significant digit, up to 18
+places, and the `≈` stays. A price worked out in euros per kilowatt-hour is
+stated in euros per joule: 3401/33480000000 reads `≈0.0000001`, not `≈0`. A
+value in a unit someone declared keeps that unit's places, whatever they
+round to.
+
 ### What no style rounds
 
 **A number the author typed is written exactly, whatever the style**: a

@@ -119,7 +119,9 @@ may break it, and each such change is recorded here.
   or conditional step, a record's scope, a precision limit's level and limit, and a curve. So is
   either side of a comparison a line states beside its verdict. A value in a unit nobody declared
   -- a computed product or ratio, or a quantity declared in `unit::One`, which is the same unit --
-  is never padded with zeros. A step's value the style cannot spell in its unit reads `(not
+  is never padded with zeros, and where its default 3 places would round a value other than zero to
+  `≈0` they are extended to its first significant digit, up to 18: a price in euros per joule
+  reads `≈0.0000001`, not `≈0`. A step's value the style cannot spell in its unit reads `(not
   shown: ...)`. `render_trace(trace, { .numbers = ... })` without `.maxSteps` still does not
   compile. `render_derivation` spells a worksheet's derivation in the same style: its steps and
   inputs as a trace's lines, each block's header value as the line that reads it -- rounded,

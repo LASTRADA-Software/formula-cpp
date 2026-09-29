@@ -366,16 +366,50 @@ namespace detail
         return numberStyle;
     }
 
+    /// Whether @p spelled is a rounding that came out as zero: `≈0`.
+    [[nodiscard]] constexpr bool rounded_to_zero(NumberText const& spelled) noexcept
+    {
+        std::string_view const spelledText = spelled.view();
+        return spelledText.size() == ApproximationMarker.size() + 1 && spelledText.starts_with(ApproximationMarker)
+               && spelledText.back() == '0';
+    }
+
     /// `checked_number_text` for a number shown in @p shownIn, except that a
     /// number in a unit nobody declared (`is_unlabelled`) is never padded:
     /// the 3 decimals it would be padded to are a default, not anyone's
     /// statement of precision. An approximating style still rounds it at
-    /// those 3 places.
+    /// those 3 places -- unless they round a value other than zero to `≈0`,
+    /// which says nothing of it. The places are then extended to its first
+    /// significant digit, up to 18, and the value, rounded there in the
+    /// style's mode, stays marked: a tariff in euros per joule,
+    /// 3401/33480000000, reads `≈0.0000001`, and 1/11250000 `≈0.00000009`. A
+    /// value with no digit within 18 places reads `≈0`. A unit someone
+    /// declared keeps its declared places, whatever they round to.
     [[nodiscard]] constexpr std::expected<NumberText, ArithmeticError> checked_shown_text(Rational shownNumber,
                                                                                          NumberStyle numberStyle,
                                                                                          Unit const& shownIn) noexcept
     {
-        return checked_number_text(shownNumber, is_unlabelled(shownIn) ? trimmed(numberStyle) : numberStyle, shownIn);
+        if (!is_unlabelled(shownIn))
+            return checked_number_text(shownNumber, numberStyle, shownIn);
+        NumberStyle const unpadded = trimmed(numberStyle);
+        std::expected<NumberText, ArithmeticError> const spelled = checked_number_text(shownNumber, unpadded, shownIn);
+        if (!spelled.has_value() || shownNumber == Rational { 0 } || !rounded_to_zero(*spelled))
+            return spelled;
+        // The first significant digit is at the fewest places a truncation
+        // leaves something at; rounded there in the style's own mode, the
+        // value cannot come out as zero.
+        NumberStyle const truncating = NumberStyle::approximate_decimal(RoundingMode::TowardZero);
+        for (std::int32_t places = declared_decimals(shownIn).value + 1; places <= ExactDecimalPlaces; ++places)
+        {
+            Unit finer = shownIn;
+            finer.decimals = places;
+            std::expected<NumberText, ArithmeticError> const truncated = checked_number_text(shownNumber, truncating, finer);
+            if (!truncated.has_value())
+                return spelled;
+            if (!rounded_to_zero(*truncated))
+                return checked_number_text(shownNumber, unpadded, finer);
+        }
+        return spelled;
     }
 
     /// @p shownNumber, a number stated in @p shownIn, as @p numberStyle writes

@@ -1064,3 +1064,35 @@ TEST_CASE("a derivation's header says a value is not shown where its style canno
         CHECK(styled.find("\n  3. #1 * #2 = 0.006\n") != std::string::npos);
     }
 }
+
+TEST_CASE("a derivation's computed price per energy shows its first significant digit, not a zero",
+          "[calculation][worksheet][trace][decimals]")
+{
+    // The price worked out from a cost and the energy it paid for: 80 EUR for
+    // 250 kWh is 0.32 EUR/kWh, and the division's step states it in euros per
+    // joule, 1/11250000. Rounded at the default 3 places it would read ≈0; it
+    // reads its first digit instead, at 8 places.
+    using namespace household;
+    constexpr auto priced = formula::calculation(formula::define<Price>(var<GridCost> / var<NetDraw>));
+    auto sheet = formula::worksheet(
+        priced, formula::environment(formula::Measured<GridCost> { rat(80) }, formula::Measured<NetDraw> { rat(250) }));
+    auto const explained = formula::explain_worksheet<Price>(sheet);
+    CHECK(formula::render_derivation(explained, { .maxSteps = 20 }) == "price = grid_cost / net_draw = 8/25 EUR/kWh\n"
+                                                                       "  1. grid_cost = 80 EUR\n"
+                                                                       "  2. net_draw = 250 kWh\n"
+                                                                       "  3. #1 / #2 = 1/11250000\n"
+                                                                       "inputs\n"
+                                                                       "  grid_cost = 80 EUR\n"
+                                                                       "  net_draw = 250 kWh\n");
+    CHECK(formula::render_derivation(
+              explained,
+              { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) })
+          == "price = grid_cost / net_draw = 0.32 EUR/kWh\n"
+             "  1. grid_cost = 80 EUR\n"
+             "  2. net_draw = 250 kWh\n"
+             "  3. #1 / #2 = \xe2\x89\x88"
+             "0.00000009\n"
+             "inputs\n"
+             "  grid_cost = 80 EUR\n"
+             "  net_draw = 250 kWh\n");
+}

@@ -109,11 +109,13 @@ struct TraceRenderOptions
     /// each with `ApproximationMarker`. Whatever the style, a number typed
     /// rather than computed, and either side of a comparison a line states,
     /// are shown exact (`NumberStyle::exact_only`), and a value in a unit
-    /// nobody declared is never padded. A value the style cannot spell in its
-    /// unit -- one padded or rounded in a unit whose declared decimals lie
-    /// outside -18 to 18, say -- reads `(not shown: ...)`, as a value its unit
-    /// cannot show does; a bound or a limit the author typed falls back to
-    /// its exact fraction instead.
+    /// nobody declared is never padded; where its default 3 places would
+    /// round a value other than zero to `≈0`, they are extended to its first
+    /// significant digit, up to 18 (`checked_shown_text`). A value the style
+    /// cannot spell in its unit -- one padded or rounded in a unit whose
+    /// declared decimals lie outside -18 to 18, say -- reads `(not shown:
+    /// ...)`, as a value its unit cannot show does; a bound or a limit the
+    /// author typed falls back to its exact fraction instead.
     ///
     /// `render_derivation` spells a worksheet's derivation in it too: its
     /// headers, its steps and its inputs.
