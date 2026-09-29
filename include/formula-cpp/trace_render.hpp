@@ -27,6 +27,16 @@
 ///    comparable, and remembers the unit it was *declared* in; this converts
 ///    back before showing a number, so a volume entered as 180 l reads
 ///    `180 l` and not `9/50`.
+///  - It never shows an approximation as exact. Numbers are fractions unless
+///    `TraceRenderOptions::numbers` asks for decimals, and a decimal is shown
+///    only where it is the exact value -- `3/5` reads `0.6`, `1/3` stays
+///    `1/3` -- unless the caller asks for an approximation by naming its
+///    rounding mode, and then the rounded value carries `≈`. Some numbers
+///    are never rounded even then: a number typed rather than computed -- a
+///    constant, a table's row or bound, a permitted value, a limit, and a
+///    step that only passes one on -- and either side of a comparison a line
+///    states beside its verdict. A value in a unit nobody declared, a
+///    computed product or ratio, is never padded with zeros.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/error.hpp>
@@ -90,6 +100,25 @@ struct TraceRenderOptions
     /// `render_trace(trace, {})` value-initialise it to zero and render
     /// nothing at all, silently, rather than fail to compile.
     StepLimit maxSteps;
+
+    /// How every number a line states is spelled. Fractions unless a caller asks.
+    ///
+    /// `NumberStyle::exact_decimal()` writes a decimal wherever that is the
+    /// exact value and the fraction elsewhere; `approximate_decimal(mode)`
+    /// rounds the rest in `mode` at the unit's declared decimals and marks
+    /// each with `ApproximationMarker`. Whatever the style, a number typed
+    /// rather than computed, and either side of a comparison a line states,
+    /// are shown exact (`NumberStyle::exact_only`), and a value in a unit
+    /// nobody declared is never padded. A value the style cannot spell in its
+    /// unit -- one padded or rounded in a unit whose declared decimals lie
+    /// outside -18 to 18, say -- reads `(not shown: ...)`, as a value its unit
+    /// cannot show does; a bound or a limit the author typed falls back to
+    /// its exact fraction instead.
+    ///
+    /// Defaulted, unlike `maxSteps`: fractions are how a trace has always
+    /// read, and a caller who names no style gets exactly that. The default
+    /// does not reopen `{}`: `maxSteps` still has to be stated.
+    NumberStyle numbers = NumberStyle::fraction();
 };
 
 namespace detail
@@ -233,18 +262,12 @@ namespace detail
         std::optional<RecordOrigin> readFrom;
         /// For a `LineageChecked` step, its comparison; empty otherwise.
         std::optional<LineageCheck> comparison;
-        /// How every number on the line is spelled: the style `render_trace`
-        /// was given. Read once, by `escaped_step_line`, which hands it to
-        /// every helper that spells a number as a parameter of its own -- a
-        /// helper often shows a value through a `Step` it built itself, a
-        /// curve's point or an opaque output, which has no style to read.
-        NumberStyle numbers;
     };
 
     struct EscapedStep
     {
         EscapedStep(Step<Rational> const& recorded, std::optional<RecordOrigin> const& originRead,
-                    std::optional<LineageCheck> const& lineageCompared, NumberStyle numberStyle):
+                    std::optional<LineageCheck> const& lineageCompared):
             symbol { escaped_author_text(recorded.symbol) },
             justification { escaped_author_text(recorded.justification) },
             variantTag { escaped_author_text(recorded.variantTag) },
@@ -253,7 +276,7 @@ namespace detail
             variantPrunedBy { recorded.variantPrunedBy },
             verdictLabel { recorded.outcome.verdict().has_value() ? escaped_author_text(recorded.outcome.verdict()->label)
                                                                   : std::string {} },
-            step { recorded, originRead, lineageCompared, numberStyle }
+            step { recorded, originRead, lineageCompared }
         {
             step.symbol = symbol;
             step.justification = justification;
@@ -1406,10 +1429,10 @@ namespace detail
     /// `series_step_line`, so that an element of a series reads exactly as a
     /// single value of the same quantity does.
     ///
-    /// The number is spelled in @p numberStyle (`checked_number_text`); a
-    /// style that cannot spell it in the step's unit is reported as the
-    /// conversion's failure is, `(not shown: ...)`. The fraction style never
-    /// fails.
+    /// The number is spelled in @p numberStyle (`checked_shown_text`: never
+    /// padded in a unit nobody declared); a style that cannot spell it in the
+    /// step's unit is reported as the conversion's failure is, `(not shown:
+    /// ...)`. The fraction style never fails.
     [[nodiscard]] inline std::string value_in_declared_unit(Step<Rational> const& recorded,
                                                             std::optional<Rational> const& storedValue,
                                                             NumberStyle numberStyle)
@@ -1426,7 +1449,7 @@ namespace detail
         // claims it is not in.
         if (!shown)
             return "(not shown: " + std::string { describe(shown.error()) } + ")";
-        std::expected<NumberText, ArithmeticError> const spelled = checked_number_text(*shown, numberStyle, recorded.unit);
+        std::expected<NumberText, ArithmeticError> const spelled = checked_shown_text(*shown, numberStyle, recorded.unit);
         if (!spelled)
             return "(not shown: " + std::string { describe(spelled.error()) } + ")";
 
@@ -1468,10 +1491,11 @@ namespace detail
     /// rational `pi`, or one an overlay fixed -- a per-element constant, a
     /// declared domain, the permitted value a snap chose, and the row a
     /// banded, exact or critical-value lookup read from its table. **The one
-    /// list of them**: `escaped_step_line` spells such a value in
-    /// `exact_only()`, as every bound, row and limit a line quotes is spelled,
-    /// so that no style shows a typed number rounded -- a constant typed as
-    /// `1/3` never reads `≈0.333`, nor a snapped value two ways on one line.
+    /// list of them**, which `value_is_typed` and `curve_part_is_typed` build
+    /// on: `escaped_step_line` spells such a value in `exact_only()`, as
+    /// every bound, row and limit a line quotes is spelled, so that no style
+    /// shows a typed number rounded -- a constant typed as `1/3` never reads
+    /// `≈0.333`, nor a snapped value two ways on one line.
     /// An interpolating lookup's value is not here: it is computed between
     /// two rows, and is neither of them.
     [[nodiscard]] constexpr bool states_typed_value(StepKind stepKind) noexcept
@@ -1481,6 +1505,93 @@ namespace detail
                || stepKind == StepKind::SeriesDomain || stepKind == StepKind::SnappedToPermitted
                || stepKind == StepKind::BandedLookup || stepKind == StepKind::ExactLookup
                || stepKind == StepKind::SampleSizeLookup;
+    }
+
+    /// The step whose value @p trace's step @p stepIndex passes on unchanged,
+    /// when it computes nothing of its own: a documented formula, a selected
+    /// or a replaced variant and a derived quantity, each over its one
+    /// operand, and a conditional over the branch that ran -- its last
+    /// operand. The recorder gives each of these the value of that step, so
+    /// it is read from there. Empty for every other step, and for an operand
+    /// that is not an earlier step: `Trace` is a public aggregate, and
+    /// following a later one could go round in a circle.
+    [[nodiscard]] inline std::optional<std::size_t> value_passed_from(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        Step<Rational> const& passing = trace.steps[stepIndex];
+        std::optional<std::size_t> passedFrom;
+        switch (passing.kind)
+        {
+            case StepKind::Documented:
+            case StepKind::VariantSelected:
+            case StepKind::ReplacedVariant:
+            case StepKind::DerivedQuantity:
+                if (passing.operands.size() == 1)
+                    passedFrom = passing.operands.front();
+                break;
+            case StepKind::Conditional:
+                if (passing.branch != Branch::Neither && !passing.operands.empty())
+                    passedFrom = passing.operands.back();
+                break;
+            default:
+                break;
+        }
+        if (passedFrom.has_value() && *passedFrom >= stepIndex)
+            return std::nullopt;
+        return passedFrom;
+    }
+
+    /// Whether the value @p trace's step @p stepIndex states is a number typed
+    /// rather than computed: its own kind says so (`states_typed_value`), or
+    /// it passes on the value of a step whose kind does (`value_passed_from`),
+    /// however many such steps stand between. Decided from the steps
+    /// themselves, so that one number reads the same on every line that
+    /// states it: a documented constant typed as `1/3` reads `1/3` on both
+    /// its lines, not `1/3` and then `≈0.333`.
+    [[nodiscard]] inline bool value_is_typed(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        std::size_t stated = stepIndex;
+        // Each step passed from is an earlier one, so this ends.
+        while (!states_typed_value(trace.steps[stated].kind))
+        {
+            std::optional<std::size_t> const passedFrom = value_passed_from(trace, stated);
+            if (!passedFrom.has_value())
+                return false;
+            stated = *passedFrom;
+        }
+        return true;
+    }
+
+    /// Which of a curve's two series a question is about: its points or its
+    /// values.
+    enum class CurvePart : std::uint8_t
+    {
+        /// Its points, `Step::domainElements`.
+        Points,
+        /// Its values, `Step::elements`.
+        Values,
+    };
+
+    /// Whether every one of @p curvePart of the curve step @p stepIndex is a
+    /// typed number (`value_is_typed`): a pairing's points are its first
+    /// operand's elements and its values its second's -- a declared domain, a
+    /// per-element constant -- and a splice's are both its curves'. False for
+    /// a step of any other kind, and for operands that are not two earlier
+    /// steps.
+    [[nodiscard]] inline bool curve_part_is_typed(Trace<Rational> const& trace,
+                                                  std::size_t stepIndex,
+                                                  CurvePart curvePart)
+    {
+        Step<Rational> const& curveStep = trace.steps[stepIndex];
+        if (curveStep.operands.size() != 2 || curveStep.operands.front() >= stepIndex
+            || curveStep.operands.back() >= stepIndex)
+            return false;
+        if (curveStep.kind == StepKind::CurvePairing)
+            return value_is_typed(trace,
+                                  curvePart == CurvePart::Points ? curveStep.operands.front() : curveStep.operands.back());
+        if (curveStep.kind == StepKind::CurveSplice)
+            return curve_part_is_typed(trace, curveStep.operands.front(), curvePart)
+                   && curve_part_is_typed(trace, curveStep.operands.back(), curvePart);
+        return false;
     }
 
     /// Where a series step's failure arose, counted from one: `at element 3`,
@@ -1614,9 +1725,15 @@ namespace detail
     /// A failed curve shows its error and, when it belongs to one element,
     /// that element counted from one, then the rule it broke there and the
     /// point (`curve_break_suffix`).
+    ///
+    /// The points are spelled in @p pointStyle and the values in
+    /// @p valueStyle: `escaped_step_line` gives either `exact_only()` when it
+    /// comes from a typed series (`curve_part_is_typed`), so that a declared
+    /// domain's points read here as on the domain's own line.
     [[nodiscard]] inline std::string curve_step_line(ShownStep const& recorded,
                                                      std::size_t& budget,
-                                                     NumberStyle numberStyle)
+                                                     NumberStyle pointStyle,
+                                                     NumberStyle valueStyle)
     {
         std::string lineText = step_expression(recorded) + " = ";
         if (recorded.error.has_value())
@@ -1624,7 +1741,7 @@ namespace detail
             lineText += describe(*recorded.error);
             if (recorded.failedElement.has_value())
                 lineText += " at element " + std::to_string(*recorded.failedElement + 1)
-                            + curve_break_suffix(recorded, numberStyle);
+                            + curve_break_suffix(recorded, pointStyle);
             return lineText;
         }
         std::size_t const pairCount = recorded.elements.size();
@@ -1637,8 +1754,8 @@ namespace detail
         {
             if (at > 0)
                 lineText += "; ";
-            lineText += curve_point_text(recorded, recorded.domainElements[at], numberStyle) + ": "
-                        + value_in_declared_unit(recorded, recorded.elements[at], numberStyle);
+            lineText += curve_point_text(recorded, recorded.domainElements[at], pointStyle) + ": "
+                        + value_in_declared_unit(recorded, recorded.elements[at], valueStyle);
         }
         if (listed < pairCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(pairCount - listed) + " more";
@@ -1973,7 +2090,9 @@ namespace detail
     /// with the unit's symbol: `27/10 g`, `729/100 g2`. Refuses to print, as
     /// `value_in_declared_unit` does, a value its unit cannot show, or one
     /// @p numberStyle cannot spell in it. A square declares no decimals of its
-    /// own, so a squared value is spelled with the unit's.
+    /// own, so a squared value is never padded, as a value in a unit nobody
+    /// declared is not (`checked_shown_text`); rounded, it would round at the
+    /// unit's decimals.
     [[nodiscard]] inline std::string rejection_value_text(Step<Rational> const& recorded,
                                                           Rational si,
                                                           bool squared,
@@ -1990,7 +2109,8 @@ namespace detail
             magnitudeSquared.has_value() ? checked_div(si, *magnitudeSquared) : magnitudeSquared;
         if (!shown)
             return "(not shown: " + std::string { describe(shown.error()) } + ")";
-        std::expected<NumberText, ArithmeticError> const spelled = checked_number_text(*shown, numberStyle, shownUnit);
+        std::expected<NumberText, ArithmeticError> const spelled =
+            checked_number_text(*shown, trimmed(numberStyle), shownUnit);
         if (!spelled)
             return "(not shown: " + std::string { describe(spelled.error()) } + ")";
         std::string valueText { spelled->view() };
@@ -2628,18 +2748,23 @@ namespace detail
     /// (`Trace::conformityLimits`), and empty for every other kind.
     ///
     /// Renders an `EscapedStep`'s copy, never the step itself -- see
-    /// `step_line`, which makes it. The copy's `ShownStep::numbers` is read
-    /// here, once, and every helper below that spells a number is handed it
-    /// -- or, to spell the step's own value when that is a number typed
-    /// rather than computed (`states_typed_value`), its `exact_only()`.
+    /// `step_line`, which makes it.
+    ///
+    /// @p numberStyle is the style `render_trace` was given, and every helper
+    /// below that spells a number takes it as a parameter -- the one way a
+    /// style travels, since several of them show a value through a `Step`
+    /// they build themselves, a curve's point or an opaque output. The step's
+    /// own value is spelled in its `exact_only()` instead when it is a number
+    /// typed rather than computed (`value_is_typed`), and so are a curve's
+    /// points or values that come from a typed series (`curve_part_is_typed`).
     [[nodiscard]] inline std::string escaped_step_line(Trace<Rational> const& trace,
                                                        std::size_t stepIndex,
                                                        ShownStep const& recorded,
                                                        std::size_t& budget,
+                                                       NumberStyle numberStyle,
                                                        std::span<LimitRow const> limits)
     {
-        NumberStyle const numberStyle = recorded.numbers;
-        NumberStyle const valueStyle = states_typed_value(recorded.kind) ? numberStyle.exact_only() : numberStyle;
+        NumberStyle const valueStyle = value_is_typed(trace, stepIndex) ? numberStyle.exact_only() : numberStyle;
         // A retry's attempt and its conclusion read their side tables.
         if (recorded.kind == StepKind::RetryAttempt || recorded.kind == StepKind::RetryConcluded)
         {
@@ -2681,7 +2806,11 @@ namespace detail
         // A curve's values are its pairs, which spend the element budget as
         // a series' elements do.
         if (recorded.kind == StepKind::CurvePairing || recorded.kind == StepKind::CurveSplice)
-            return curve_step_line(recorded, budget, numberStyle);
+            return curve_step_line(
+                recorded,
+                budget,
+                curve_part_is_typed(trace, stepIndex, CurvePart::Points) ? numberStyle.exact_only() : numberStyle,
+                curve_part_is_typed(trace, stepIndex, CurvePart::Values) ? numberStyle.exact_only() : numberStyle);
         if (recorded.kind == StepKind::Constraint)
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
         if (recorded.kind == StepKind::AcceptanceChecked)
@@ -2834,8 +2963,9 @@ namespace detail
     /// (`Trace::conformityLimits`), and empty for every other kind. The
     /// record the step was read from and its lineage comparison are read
     /// from @p trace's own side tables (`Trace::origins`,
-    /// `Trace::lineageChecks`) into the copy -- see `ShownStep` -- and so is
-    /// @p numberStyle, how the line spells every number it states.
+    /// `Trace::lineageChecks`) into the copy -- see `ShownStep`.
+    /// @p numberStyle is how the line spells every number it states, handed
+    /// on to `escaped_step_line`.
     [[nodiscard]] inline std::string step_line(Trace<Rational> const& trace,
                                                std::size_t stepIndex,
                                                std::size_t& budget,
@@ -2845,8 +2975,8 @@ namespace detail
         Step<Rational> const& recorded = trace.steps[stepIndex];
         std::optional<Step<Rational>> const asShown = as_rendered(recorded, trace.steps);
         EscapedStep const escaped { asShown.has_value() ? *asShown : recorded, origin_of(trace, recorded),
-                                    lineage_of(trace, stepIndex), numberStyle };
-        return escaped_step_line(trace, stepIndex, escaped.step, budget, limits);
+                                    lineage_of(trace, stepIndex) };
+        return escaped_step_line(trace, stepIndex, escaped.step, budget, numberStyle, limits);
     }
 } // namespace detail
 
@@ -2866,6 +2996,10 @@ namespace detail
 /// footer then counts the steps not shown at all. One number, chosen by the
 /// caller, bounds everything printed: a 256-element series printed in full on
 /// one line is the unusable line the limit exists to prevent.
+///
+/// Every number is spelled in @p options.numbers -- fractions unless the
+/// caller asks for decimals; see `TraceRenderOptions::numbers` for which
+/// numbers are shown exact whatever the style.
 ///
 /// Only an exact (`Rational`) trace can be rendered. Converting a value back
 /// into the unit it was declared in is the unit layer's exact
@@ -2890,7 +3024,7 @@ template <typename Rep = Rational>
         renderedTrace += std::to_string(shown + 1);
         renderedTrace += ". ";
         renderedTrace +=
-            detail::step_line(trace, shown, budget, NumberStyle::fraction(), detail::conformity_limits_of(trace, shown));
+            detail::step_line(trace, shown, budget, options.numbers, detail::conformity_limits_of(trace, shown));
         renderedTrace += "\n";
         ++shown;
     }

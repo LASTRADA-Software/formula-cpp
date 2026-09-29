@@ -347,8 +347,47 @@ namespace detail
         return std::string { spelled.view() };
     }
 
+    /// Whether @p shownIn is a unit nobody declared: exactly the coherent unit
+    /// `coherent()` builds for its dimension -- no symbol, no scale, and
+    /// `Unit`'s default of 3 decimals, which nobody chose. A trace shows a
+    /// computed value in one, a product in joules or a ratio. A quantity
+    /// declared in `unit::One` is the same `Unit` value, so it counts as
+    /// unlabelled too.
+    [[nodiscard]] constexpr bool is_unlabelled(Unit const& shownIn) noexcept
+    {
+        return shownIn == coherent(shownIn.dimension);
+    }
+
+    /// @p numberStyle with `DecimalPadding::Trimmed`: the same notation and
+    /// the same rounding mode, never padded.
+    [[nodiscard]] constexpr NumberStyle trimmed(NumberStyle numberStyle) noexcept
+    {
+        switch (numberStyle.notation())
+        {
+            case NumberNotation::ExactDecimal:
+                return NumberStyle::exact_decimal(DecimalPadding::Trimmed);
+            case NumberNotation::ApproximateDecimal:
+                return NumberStyle::approximate_decimal(numberStyle.approximation(), DecimalPadding::Trimmed);
+            case NumberNotation::Fraction:
+                break;
+        }
+        return numberStyle;
+    }
+
+    /// `checked_number_text` for a number shown in @p shownIn, except that a
+    /// number in a unit nobody declared (`is_unlabelled`) is never padded:
+    /// the 3 decimals it would be padded to are a default, not anyone's
+    /// statement of precision. An approximating style still rounds it at
+    /// those 3 places.
+    [[nodiscard]] constexpr std::expected<NumberText, ArithmeticError> checked_shown_text(Rational shownNumber,
+                                                                                         NumberStyle numberStyle,
+                                                                                         Unit const& shownIn) noexcept
+    {
+        return checked_number_text(shownNumber, is_unlabelled(shownIn) ? trimmed(numberStyle) : numberStyle, shownIn);
+    }
+
     /// @p shownNumber, a number stated in @p shownIn, as @p numberStyle writes
-    /// it (`checked_number_text`), or its exact fraction where that style
+    /// it (`checked_shown_text`), or its exact fraction where that style
     /// cannot write it in that unit.
     ///
     /// For a helper with no clause to say a number is not shown: a table's
@@ -358,7 +397,7 @@ namespace detail
     /// and the fraction is then the one text still exact.
     [[nodiscard]] inline std::string styled_number_text(Rational shownNumber, NumberStyle numberStyle, Unit const& shownIn)
     {
-        std::expected<NumberText, ArithmeticError> const spelled = checked_number_text(shownNumber, numberStyle, shownIn);
+        std::expected<NumberText, ArithmeticError> const spelled = checked_shown_text(shownNumber, numberStyle, shownIn);
         if (spelled.has_value())
             return std::string { spelled->view() };
         NumberText const exactFraction = fraction_text(shownNumber);

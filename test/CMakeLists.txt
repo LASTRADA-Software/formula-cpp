@@ -946,6 +946,9 @@ formula_add_negative_test(rounded_sqrt_rep_double
 # type whose constructor is deleted, so that name is the one substring common
 # to all of them.
 formula_add_negative_test(render_trace_no_step_limit "StepLimit")
+# The same hole, with a number style named and the step limit left out: the
+# style's default member initialiser must not make the limit optional.
+formula_add_negative_test(render_trace_numbers_without_step_limit "StepLimit")
 formula_add_negative_test(calculation_render_derivation_no_step_limit "StepLimit"
     REJECT "no matching" "cannot convert argument")
 formula_add_negative_test(calculation_document_attempt_input

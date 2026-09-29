@@ -109,6 +109,18 @@ may break it, and each such change is recorded here.
   by argument-dependent lookup: a consumer's own function of the same name and parameters -- a
   `fraction_text(Rational)` helper, say -- now makes such a call ambiguous, and has to be renamed,
   as `examples/statistics.cpp`'s was, or called by a qualified name such as `::fraction_text`.
+- `TraceRenderOptions::numbers`: a trace's numbers as exact decimals (`0.6`), or as rounded
+  decimals marked `≈` (`≈0.333`) when the caller names a rounding mode. Fractions stay the
+  default, so a trace rendered without it reads exactly as before. A decimal is shown only where
+  it is the exact value -- `1/3` stays `1/3` under `NumberStyle::exact_decimal()` -- and whatever
+  the style, a number typed rather than computed is shown exact: a constant or a per-element
+  constant, `pi`, a declared domain, a constant an overlay fixed or derived, a table's row or bound,
+  a permitted value, a limit, and a documented, selected, replaced or conditional step or a curve
+  that passes one on. So is either side of a comparison a line states beside its verdict. A value
+  in a unit nobody declared -- a computed product or ratio, or a quantity declared in `unit::One`,
+  which is the same unit -- is never padded with zeros. A step's value the style cannot spell in
+  its unit reads `(not shown: ...)`. `render_trace(trace, { .numbers = ... })` without `.maxSteps`
+  still does not compile.
 
 ### Changed
 

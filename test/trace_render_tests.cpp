@@ -2831,3 +2831,446 @@ TEST_CASE("a calculated value whose read failed is that variable's failure, and 
              "2. V_c = argument outside the domain of the operation, calculated\n"
              "3. #1 + #2 = argument outside the domain of the operation\n");
 }
+
+// ------------------------------------------------------- decimals in a trace
+
+namespace
+{
+/// A decimal wherever that is the exact value, and otherwise the value rounded
+/// half to even at its unit's declared decimals, marked `≈`. The tests below
+/// that use it state values whose decimals never end, beside a computed value
+/// that is rounded, so that a number shown exact and one shown rounded can be
+/// told apart -- and a style that rounded everything, or nothing, fails.
+inline constexpr formula::NumberStyle approximately =
+    formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven);
+
+/// @p trace with every number spelled in @p numberStyle.
+[[nodiscard]] std::string renderedIn(formula::Trace<> const& trace, formula::NumberStyle numberStyle)
+{
+    return formula::render_trace(trace, { .maxSteps = 40, .numbers = numberStyle });
+}
+
+/// The trace of @p node evaluated against @p environment.
+template <typename Node, typename Env>
+[[nodiscard]] formula::Trace<> tracedValue(Node const& node, Env const& environment)
+{
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(node, environment, formula::RecordingSink<> { trace });
+    return trace;
+}
+
+struct Aperture: formula::Quantity<Aperture, "a", "screen aperture", unit::Metre>
+{
+};
+struct PassingShare: formula::Quantity<PassingShare, "p", "share passing a screen", unit::Percent>
+{
+};
+struct Coefficient: formula::Quantity<Coefficient, "c", "a dimensionless coefficient", unit::One>
+{
+};
+
+/// A unit whose declared decimals no `DecimalPlaces` can hold: 19. Invented,
+/// to make a padded or rounded spelling fail.
+inline constexpr formula::Unit OverPreciseUnit { .dimension = formula::dim::Length,
+                                                 .symbolText = formula::symbol("u"),
+                                                 .decimals = 19 };
+struct OverPreciseLength: formula::Quantity<OverPreciseLength, "l_u", "a length in an over-precise unit", OverPreciseUnit>
+{
+};
+
+/// Thirds of a metre, whose decimals never end: as a snap's permitted values
+/// and as a curve's declared domain.
+inline constexpr formula::BreakpointTable<2> ThirdsPoints { formula::breakpoint(1, 3), formula::breakpoint(2, 3) };
+
+/// Two classes of aperture, 0 to under 1/3 m and 1/3 to under 2/3 m.
+inline constexpr formula::BandTable<2> ThirdsClasses { formula::band(0, 1, 1, 3), formula::band(1, 3, 2, 3) };
+
+/// Two invented rows in percent: at least 100/3 %, and from 0 to 200/3 %.
+inline constexpr formula::Envelope<2> ThirdsEnvelope {
+    formula::LimitRow { formula::limit(rat(100, 3)), formula::unbounded },
+    formula::LimitRow { formula::limit(rat(0)), formula::limit(rat(200, 3)) },
+};
+
+/// 100/3 % and 500/7 % passing -- invented, and decimals that never end.
+[[nodiscard]] auto passingShares()
+{
+    return formula::environment(formula::measured_series<PassingShare>(formula::Measured<PassingShare> { rat(100, 3) },
+                                                                       formula::Measured<PassingShare> { rat(500, 7) }));
+}
+} // namespace
+
+TEST_CASE("a trace spells its numbers as exact decimals when asked, and only where they are exact",
+          "[trace-render][decimals]")
+{
+    constexpr auto ratio =
+        formula::documented(var<WaterVolume> / var<CementVolume>,
+                            { .title = "Water/cement ratio", .reference = "Example Standard 1:2020", .section = "5.2" });
+    formula::Trace<> const trace =
+        tracedValue(ratio,
+                    formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
+                                         formula::Measured<CementVolume> { formula::Rational { 300 } }));
+    CHECK(renderedIn(trace, formula::NumberStyle::exact_decimal())
+          == "1. V_w = 180 l\n"
+             "2. V_c = 300 l\n"
+             "3. #1 / #2 = 0.6\n"
+             "4. #3 = 0.6 [Water/cement ratio, Example Standard 1:2020, 5.2]\n");
+    // Fractions by default, as a trace has always read.
+    CHECK(formula::render_trace(trace, { .maxSteps = 40 }) == renderedIn(trace, formula::NumberStyle::fraction()));
+    CHECK(renderedIn(trace, formula::NumberStyle::fraction()).find("3. #1 / #2 = 3/5\n") != std::string::npos);
+}
+
+TEST_CASE("a value whose decimal never ends is a fraction unless an approximation is asked for, and then says so",
+          "[trace-render][decimals]")
+{
+    constexpr auto density = var<Mass> / var<Volume>;
+    formula::Trace<> const third = tracedValue(density,
+                                               formula::environment(formula::Measured<Mass> { formula::Rational { 1 } },
+                                                                    formula::Measured<Volume> { formula::Rational { 3 } }));
+    CHECK(renderedIn(third, formula::NumberStyle::fraction()) == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = 1/3\n");
+    CHECK(renderedIn(third, formula::NumberStyle::exact_decimal()) == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = 1/3\n");
+    CHECK(renderedIn(third, approximately)
+          == "1. m = 1 kg\n2. V = 3 m3\n3. #1 / #2 = \xe2\x89\x88"
+             "0.333\n");
+
+    // Padded to the declared decimals of each unit: 3 for kilograms, 4 for
+    // cubic metres. The quotient's unit is one nobody declared -- the
+    // coherent kg/m3, with no symbol -- so it is never padded, and rounded it
+    // uses that unit's 3 places.
+    CHECK(renderedIn(third, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
+          == "1. m = 1.000 kg\n2. V = 3.0000 m3\n3. #1 / #2 = 1/3\n");
+    CHECK(renderedIn(third,
+                     formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven,
+                                                               formula::DecimalPadding::Padded))
+          == "1. m = 1.000 kg\n2. V = 3.0000 m3\n3. #1 / #2 = \xe2\x89\x88"
+             "0.333\n");
+    // An unlabelled value that is an exact decimal shows that it is not
+    // padded: 1.5, not 1.500.
+    formula::Trace<> const threeHalves =
+        tracedValue(density,
+                    formula::environment(formula::Measured<Mass> { formula::Rational { 3 } },
+                                         formula::Measured<Volume> { formula::Rational { 2 } }));
+    CHECK(renderedIn(threeHalves, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
+          == "1. m = 3.000 kg\n2. V = 2.0000 m3\n3. #1 / #2 = 1.5\n");
+}
+
+TEST_CASE("a value the style cannot spell in its unit is not shown, and says why", "[trace-render][decimals]")
+{
+    formula::Trace<> const trace =
+        tracedValue(var<OverPreciseLength>,
+                    formula::environment(formula::Measured<OverPreciseLength> { formula::Rational { 3, 5 } }));
+    // Fractions and unpadded exact decimals never read the unit's decimals.
+    CHECK(renderedIn(trace, formula::NumberStyle::fraction()) == "1. l_u = 3/5 u\n");
+    CHECK(renderedIn(trace, formula::NumberStyle::exact_decimal()) == "1. l_u = 0.6 u\n");
+    // Padding or rounding does, and 19 is more than any `DecimalPlaces` holds.
+    CHECK(renderedIn(trace, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
+          == "1. l_u = (not shown: overflow in exact arithmetic)\n");
+    CHECK(renderedIn(trace, approximately) == "1. l_u = (not shown: overflow in exact arithmetic)\n");
+}
+
+TEST_CASE("a rejection's statistic and limit are shown exact beside the comparison, whatever the style",
+          "[trace-render][decimals][rejection]")
+{
+    // 40, 40 and 47 g: the mean is 127/3 g, the third determination lies
+    // 14/3 g from it, and the limit is a tenth of the mean, 127/30 g. Two
+    // values rounded to one decimal each could read as equal beside the `>`
+    // that separated them; these are shown as they are.
+    constexpr auto rejection =
+        formula::without_outliers<formula::PerPass::MostExtreme,
+                                  formula::OnLimit::Keep,
+                                  formula::AtMost<1>,
+                                  formula::KeepAtLeast<2>>(formula::series<SampleMass, 3>,
+                                                           formula::deviation_from_mean(rat(1, 10)
+                                                                                        * formula::pass_mean<SampleMass>),
+                                                           formula::Verdict { "repeat the determination" },
+                                                           formula::Citation { .reference = "Example Standard 7:2020" });
+    auto const determinations = formula::environment(
+        formula::measured_series<SampleMass>(formula::Measured<SampleMass> { rat(40) },
+                                             formula::Measured<SampleMass> { rat(40) },
+                                             formula::Measured<SampleMass> { rat(47) }));
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_rejection<SampleMass>(rejection, determinations, formula::RecordingSink<> { trace });
+
+    CHECK(renderedIn(trace, approximately)
+          == "1. m_s = 40 g; 40 g; 47 g\n"
+             "2. 0.1\n"
+             "3. pass mean = \xe2\x89\x88"
+             "42.3 g\n"
+             "4. #2 * #3 = \xe2\x89\x88"
+             "0.004\n"
+             "5. pass 1: 3 values, mean \xe2\x89\x88"
+             "42.3 g\n"
+             "6. rejected element 3 of 3 (47 g) in pass 1: abs(x - mean) = 14/3 g > 127/30 g (deviation from mean)\n"
+             "7. 0.1\n"
+             "8. pass mean = 40 g\n"
+             "9. #7 * #8 = 0.004\n"
+             "10. pass 2: 2 values, mean 40 g\n"
+             "11. settled: 1 rejected, 2 remain\n");
+
+    // Squared, as a deviation in standard deviations compares them, over six
+    // determinations -- 40 g five times and 47 g, a mean of 247/6 g:
+    // 1225/36 g2 against 49/6 g2, shown exact.
+    constexpr auto inDeviations =
+        formula::without_outliers<formula::PerPass::MostExtreme,
+                                  formula::OnLimit::Keep,
+                                  formula::AtMost<1>,
+                                  formula::KeepAtLeast<3>>(formula::series<SampleMass, 6>,
+                                                           formula::deviation_in_stddevs(formula::number(rat(1))),
+                                                           formula::Verdict { "repeat the determination" },
+                                                           formula::Citation { .reference = "Example Standard 7:2020" });
+    auto const sixOf = [](std::int64_t last, std::int64_t fifth) {
+        return formula::environment(formula::measured_series<SampleMass>(formula::Measured<SampleMass> { rat(40) },
+                                                                         formula::Measured<SampleMass> { rat(40) },
+                                                                         formula::Measured<SampleMass> { rat(40) },
+                                                                         formula::Measured<SampleMass> { rat(40) },
+                                                                         formula::Measured<SampleMass> { rat(fifth) },
+                                                                         formula::Measured<SampleMass> { rat(last) }));
+    };
+    formula::Trace<> squared {};
+    (void) formula::checked_evaluate_rejection<SampleMass>(inDeviations,
+                                                           sixOf(47, 40),
+                                                           formula::RecordingSink<> { squared });
+    CHECK(renderedIn(squared, approximately)
+          == "1. m_s = 40 g; 40 g; 40 g; 40 g; 40 g; 47 g\n"
+             "2. 1\n"
+             "3. pass 1: 6 values, mean \xe2\x89\x88"
+             "41.2 g\n"
+             "4. rejected element 6 of 6 (47 g) in pass 1: (x - mean)^2 = 1225/36 g2 > limit^2 * s^2 = 49/6 g2 "
+             "(deviation in standard deviations)\n"
+             "5. 1\n"
+             "6. pass 2: 5 values, mean 40 g\n"
+             "7. settled: 1 rejected, 5 remain\n");
+
+    // Padded, a square is still never padded -- it declares no decimals of
+    // its own -- where the rejected value in grams is: with 46 g, a mean of
+    // 41 g, 25 g2 against 6 g2.
+    formula::Trace<> padded {};
+    (void) formula::checked_evaluate_rejection<SampleMass>(inDeviations, sixOf(46, 40), formula::RecordingSink<> { padded });
+    CHECK(renderedIn(padded, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
+              .find("rejected element 6 of 6 (46.0 g) in pass 1: (x - mean)^2 = 25 g2 > limit^2 * s^2 = 6 g2 "
+                    "(deviation in standard deviations)\n")
+          != std::string::npos);
+
+    // By gap to range, against a critical value read at the pass's n from a
+    // table invented for this test -- 2/3 at n = 6, 3/2 at n = 5 -- over 40 g
+    // four times, 41 g and 47 g: a gap of 6 g over a range of 7 g, 6/7 against
+    // 2/3, both a pure number.
+    constexpr auto byGap =
+        formula::without_outliers<formula::PerPass::MostExtreme,
+                                  formula::OnLimit::Keep,
+                                  formula::AtMost<1>,
+                                  formula::KeepAtLeast<3>>(
+            formula::series<SampleMass, 6>,
+            formula::gap_to_range(formula::critical_value<DeviationSizes, unit::One>(
+                formula::pass_count, { rat(9), rat(9), rat(3, 2), rat(2, 3), rat(9) })),
+            formula::Verdict { "repeat the determination" },
+            formula::Citation { .reference = "Example Standard 7:2020" });
+    formula::Trace<> gapTrace {};
+    (void) formula::checked_evaluate_rejection<SampleMass>(byGap, sixOf(47, 41), formula::RecordingSink<> { gapTrace });
+    std::string const gapText = renderedIn(gapTrace, approximately);
+    CHECK(gapText.find("rejected element 6 of 6 (47 g) in pass 1: gap / range = 6/7 > 2/3 (gap to range)\n")
+          != std::string::npos);
+    CHECK(gapText.find("pass 1: 6 values, mean \xe2\x89\x88"
+                       "41.3 g\n")
+          != std::string::npos);
+}
+
+TEST_CASE("a conformity element's value and its row are shown exact, whatever the style", "[trace-render][decimals]")
+{
+    constexpr auto passingCheck = formula::conformity<unit::Percent>(
+        formula::series<PassingShare, 2>, ThirdsEnvelope, formula::Verdict { "reject the specimen" });
+    formula::Trace<> trace {};
+    (void) formula::check_conformity(passingCheck, passingShares(), formula::RecordingSink<> { trace });
+
+    // Rounded, the first element would read 33.3 % against a row of at least
+    // 100/3 % -- as if it had failed the row it met exactly.
+    CHECK(renderedIn(trace, approximately)
+          == "1. p = \xe2\x89\x88"
+             "33.3 %; \xe2\x89\x88"
+             "71.4 %\n"
+             "2. conform(#1) [1 satisfied, 100/3 % (at least 100/3 %); "
+             "2 violated, 500/7 % (from 0 to 200/3 %): reject the specimen]\n");
+}
+
+TEST_CASE("a binning's missed observation and the classes it missed are shown exact, whatever the style",
+          "[trace-render][decimals]")
+{
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_series_si(
+        formula::binned<unit::Metre, ThirdsClasses>(formula::observations<Aperture, 2>),
+        formula::environment(formula::MeasuredObservations<Aperture, 2>(rat(1, 7), rat(2, 3))),
+        formula::RecordingSink<> { trace });
+
+    CHECK(renderedIn(trace, approximately)
+          == "1. a = \xe2\x89\x88"
+             "0.143 m; \xe2\x89\x88"
+             "0.667 m\n"
+             "2. bin(#1) = argument outside the domain of the operation at observation 2 "
+             "[2/3 m in no class; the classes cover 0 to under 2/3 m]\n");
+}
+
+TEST_CASE("a snap's value and the neighbour it names are the permitted values as typed, whatever the style",
+          "[trace-render][decimals]")
+{
+    formula::Trace<> const trace =
+        tracedValue(formula::snapped<unit::Metre, ThirdsPoints, formula::SnapTie::TowardLower>(var<Aperture>),
+                    formula::environment(formula::Measured<Aperture> { rat(3, 7) }));
+    CHECK(renderedIn(trace, approximately)
+          == "1. a = \xe2\x89\x88"
+             "0.429 m\n"
+             "2. snap(#1) = 1/3 m [1/3 m to 2/3 m; nearer 1/3 m]\n");
+}
+
+TEST_CASE("a number typed rather than computed is shown exact, whatever the style", "[trace-render][decimals]")
+{
+    // Each beside a product computed from it, which is rounded: so a style
+    // that never rounded, or rounded everything, fails here as well.
+    CHECK(renderedIn(tracedValue(formula::constant<unit::One>(rat(1, 3)) * var<Mass>,
+                                 formula::environment(formula::Measured<Mass> { rat(2, 7) })),
+                     approximately)
+          == "1. 1/3\n"
+             "2. m = \xe2\x89\x88"
+             "0.286 kg\n"
+             "3. #1 * #2 = \xe2\x89\x88"
+             "0.095\n");
+
+    // The library's pi is a rational it states itself, and has no decimal
+    // that ends.
+    CHECK(renderedIn(tracedValue(formula::pi * var<Mass>, formula::environment(formula::Measured<Mass> { rat(1) })),
+                     approximately)
+          == "1. pi = 245850922/78256779\n"
+             "2. m = 1 kg\n"
+             "3. #1 * #2 = \xe2\x89\x88"
+             "3.142\n");
+
+    // A table's row, which each of the three table lookups reads: the banded
+    // one's bounds are shown as typed too, as exact decimals.
+    CHECK(renderedIn(tracedValue(banded_lookup<unit::Centimetre, SizeBands, unit::Percent>(
+                                     var<Diameter>, { rat(100, 3), rat(200, 3), rat(500, 7) })
+                                     * rat(1, 7),
+                                 diameterOf(30)),
+                     approximately)
+          == "1. d = 30 mm\n"
+             "2. lookup(#1) = 200/3 % [2.41 to under 4.73 cm]\n"
+             "3. 1/7\n"
+             "4. #2 * #3 = \xe2\x89\x88"
+             "0.095\n");
+    CHECK(renderedIn(tracedValue(exact_lookup<ShapeKeys, unit::One>(RenderedShape::Cylinder,
+                                                                    { rat(1, 3), rat(2, 3), rat(1, 7) })
+                                     * rat(2, 7),
+                                 formula::environment()),
+                     approximately)
+          == "1. lookup(key Cylinder) = 1/7\n"
+             "2. 2/7\n"
+             "3. #1 * #2 = \xe2\x89\x88"
+             "0.041\n");
+    CHECK(renderedIn(tracedValue(formula::critical_value<DeviationSizes, unit::One>(
+                                     var<Determinations>, { rat(1, 3), rat(2, 3), rat(1, 7), rat(2, 7), rat(3, 7) })
+                                     * rat(1, 11),
+                                 formula::environment(formula::Measured<Determinations> { rat(5) })),
+                     approximately)
+          == "1. n = 5\n"
+             "2. critical(#1) = 1/7 [critical value at n = 5]\n"
+             "3. 1/11\n"
+             "4. #2 * #3 = \xe2\x89\x88"
+             "0.013\n");
+}
+
+TEST_CASE("a constant an overlay fixed or derived is shown as typed, whatever the style", "[trace-render][decimals]")
+{
+    constexpr auto scaledMass = formula::method(
+        formula::variants(formula::variant<PlainDensity>(var<Coefficient> * var<Mass>)),
+        formula::rounding_rule<unit::Kilogram, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    constexpr formula::Citation annex { .reference = "Example Standard 12:2021 NA", .section = "NA.4" };
+    auto const twoKilograms = formula::environment(formula::Measured<Mass> { rat(2) });
+
+    constexpr auto fixed =
+        formula::apply(formula::overlay(formula::with_constant<Coefficient>(rat(1, 3), annex)), scaledMass);
+    formula::Trace<> fixedTrace {};
+    (void) formula::evaluate_method<PlainDensity>(fixed, twoKilograms, formula::RecordingSink<> { fixedTrace });
+    CHECK(renderedIn(fixedTrace, approximately)
+          == "1. c = 1/3 [fixed by jurisdiction overlay: Example Standard 12:2021 NA, NA.4]\n"
+             "2. m = 2 kg\n"
+             "3. #1 * #2 = \xe2\x89\x88"
+             "0.667\n"
+             "4. round(#3, in kg) = 0.667 kg [rounded to 3 dp (method default); nearest, ties away from zero]\n"
+             "5. #4 = 0.667 kg [variant PlainDensity (1st of 1), selected by tag]\n");
+
+    // A derived quantity passes its definition's value on: a constant typed
+    // as 1/3 reads 1/3 on both lines.
+    constexpr auto derived = formula::apply(
+        formula::overlay(formula::add_derived<Coefficient>(formula::constant<unit::One>(rat(1, 3)), annex)), scaledMass);
+    formula::Trace<> derivedTrace {};
+    (void) formula::evaluate_method<PlainDensity>(derived, twoKilograms, formula::RecordingSink<> { derivedTrace });
+    CHECK(renderedIn(derivedTrace, approximately)
+          == "1. 1/3\n"
+             "2. c = #1 = 1/3 [derived by jurisdiction overlay: Example Standard 12:2021 NA, NA.4]\n"
+             "3. m = 2 kg\n"
+             "4. #2 * #3 = \xe2\x89\x88"
+             "0.667\n"
+             "5. round(#4, in kg) = 0.667 kg [rounded to 3 dp (method default); nearest, ties away from zero]\n"
+             "6. #5 = 0.667 kg [variant PlainDensity (1st of 1), selected by tag]\n");
+}
+
+TEST_CASE("a step that passes a typed number on shows it as typed, whatever the style", "[trace-render][decimals]")
+{
+    // A citation over a constant, then a quotient computed from it.
+    constexpr auto cited =
+        formula::documented(formula::constant<unit::Gram>(rat(1, 3)),
+                            { .title = "Tare", .reference = "Example Standard 1:2020", .section = "4.3" })
+        / var<SampleMass>;
+    CHECK(renderedIn(tracedValue(cited, formula::environment(formula::Measured<SampleMass> { rat(1) })), approximately)
+          == "1. 1/3 g\n"
+             "2. #1 = 1/3 g [Tare, Example Standard 1:2020, 4.3]\n"
+             "3. m_s = 1 g\n"
+             "4. #2 / #3 = \xe2\x89\x88"
+             "0.333\n");
+
+    // A conditional whose branch that ran is a constant: its value is that
+    // constant's. The measured mass it compared is rounded.
+    constexpr auto chosen = formula::when(var<Mass> > formula::constant<unit::Kilogram>(rat(1, 7)),
+                                          formula::constant<unit::Kilogram>(rat(1, 3)),
+                                          var<Mass>);
+    CHECK(renderedIn(tracedValue(chosen, formula::environment(formula::Measured<Mass> { rat(2, 7) })), approximately)
+          == "1. m = \xe2\x89\x88"
+             "0.286 kg\n"
+             "2. 1/7 kg\n"
+             "3. 1/3 kg\n"
+             "4. if #1 > #2 then #3 = 1/3\n");
+}
+
+TEST_CASE("a curve's typed points and values are shown as typed, and its computed ones rounded", "[trace-render][decimals]")
+{
+    // A declared domain paired with measured values: the points as typed,
+    // the values rounded, on the domain's line and on the curve's alike.
+    constexpr auto measuredCurve =
+        formula::curve(formula::domain<unit::Metre, ThirdsPoints>, formula::series<PassingShare, 2>);
+    CHECK(renderedIn(tracedValue(formula::interpolate_at(measuredCurve, formula::constant<unit::Metre>(rat(1, 2))),
+                                 passingShares()),
+                     approximately)
+          == "1. 1/3 m; 2/3 m\n"
+             "2. p = \xe2\x89\x88"
+             "33.3 %; \xe2\x89\x88"
+             "71.4 %\n"
+             "3. curve(#1, #2) = 1/3 m: \xe2\x89\x88"
+             "33.3 %; 2/3 m: \xe2\x89\x88"
+             "71.4 %\n"
+             "4. 0.5 m\n"
+             "5. interpolate(#3, at #4) = \xe2\x89\x88"
+             "52.4 % [between 1/3 and 2/3 m]\n");
+
+    // Per-element constants as the values: every pair as typed, and only the
+    // interpolation, and the measured aperture it was read at, rounded.
+    constexpr auto typedCurve = formula::curve(formula::domain<unit::Metre, ThirdsPoints>,
+                                               formula::series_constant<unit::Percent>(rat(100, 3), rat(500, 7)));
+    CHECK(renderedIn(tracedValue(formula::interpolate_at(typedCurve, var<Aperture>),
+                                 formula::environment(formula::Measured<Aperture> { rat(3, 7) })),
+                     approximately)
+          == "1. 1/3 m; 2/3 m\n"
+             "2. 100/3 %; 500/7 %\n"
+             "3. curve(#1, #2) = 1/3 m: 100/3 %; 2/3 m: 500/7 %\n"
+             "4. a = \xe2\x89\x88"
+             "0.429 m\n"
+             "5. interpolate(#3, at #4) = \xe2\x89\x88"
+             "44.2 % [between 1/3 and 2/3 m]\n");
+}
