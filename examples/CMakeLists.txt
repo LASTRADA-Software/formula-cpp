@@ -72,7 +72,7 @@ formula_add_example(composition composition.cpp "all checks passed: yes")
 # 400 W; the grid cost's derivation stating the value typed in by hand, cut
 # short with its footer; and, in the example's second calculation, the division
 # by zero reaching the value that reads it, the failure not calculated again,
-# and an input nobody counted.
+# the same failure again counted as no change, and an input nobody counted.
 #
 # Twice, one line must follow another: the daily load's first line its title,
 # and the footer the net draw's line. A bracket argument cannot spell a line
@@ -83,7 +83,7 @@ string(CONCAT billOutput
     "${lineBreak}"
     [==[daily_load = fridge_kwh \+ oven_kwh \+ heater_kwh = 13\.3 kWh.*fridge_w = 400 W.*with 200 kWh of sun: .*total 85\.14 EUR, net draw 239 kWh, recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*net_draw = 250 kWh, entered by hand in place of monthly_load - self_used]==]
     "${lineBreak}"
-    [==[\.\.\. 1 further step not shown.*shared by nobody: share: division by zero, in cents: division by zero.*asked again: recomputed 0.*occupants not counted: share \(not measured\), in cents \(not measured\).*all checks passed: yes]==])
+    [==[\.\.\. 1 further step not shown.*shared by nobody: share: division by zero, in cents: division by zero.*asked again: recomputed 0.*100\.00 EUR, still shared by nobody: recomputed 1, reused 1.*occupants not counted: share \(not measured\), in cents \(not measured\).*all checks passed: yes]==])
 formula_add_example(electricity_bill electricity_bill.cpp "${billOutput}")
 
 # Every ```text block of docs/calculations.md must be a run of lines the

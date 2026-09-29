@@ -48,10 +48,10 @@ program that only calculates must not compile: `render.hpp` for `render`,
 `describe_graph` and `to_dot`; `document.hpp` for `document`; `trace.hpp` for
 `explain_worksheet`; `trace_render.hpp` for `render_derivation`; and
 `format.hpp` for `std::format` of a number ([Displaying numbers](display.md)).
-Include whichever you need, by name. The example includes them all:
+Include whichever you need, by name. The example includes the umbrella header
+and all five:
 
 ```cpp
-#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
@@ -112,9 +112,15 @@ are the library's own.
 
 Each value the bill names is a quantity: a type with a symbol, a description
 and the unit its values are stated in
-([Quantities and measurements](quantities.md)). The fridge's power is an
-input, stated in watts, and the grid price one in the euros per kilowatt-hour
-declared above:
+([Quantities and measurements](quantities.md)). Ten are **inputs**, the
+values the bill is given: what the appliances draw and for how long, the
+solar yield, the grid price, the feed-in tariff and the base fee. The other
+fifteen are **calculated values**, each worked out from others. A quantity's
+first template argument is its tag -- in a struct, the struct's own name --
+which makes each quantity a type of its own
+([Declaring a quantity](quantities.md#declaring-a-quantity)). The fridge's
+power is an input, stated in watts, and the grid price another, in the euros
+per kilowatt-hour declared above:
 
 ```cpp
 struct FridgeW: formula::Quantity<FridgeW, "fridge_w", "the fridge's power", unit::Watt>
@@ -243,21 +249,28 @@ first, in the order the definitions first read them, then the calculated
 values in the order the calculation calculates them:
 
 ```cpp
+std::printf("inputs               : %s\n", listed(formula::inputs_of(bill)).c_str());
+std::printf("calculation order    : %s\n", listed(formula::calculation_order(bill)).c_str());
+std::printf("grid_cost reads      : %s\n", listed(formula::dependencies_of<GridCost>(bill)).c_str());
 std::printf("affected by price    : %s\n", listed(formula::affected_by<Price>(bill)).c_str());
 std::printf("upstream of net_draw : %s\n", listed(formula::upstream_of<NetDraw>(bill)).c_str());
 std::printf("read by self_used    : %s\n", listed(formula::dependents_of<SelfUsed>(bill)).c_str());
 ```
 
 ```text
+inputs               : fridge_w, fridge_h, oven_kw, oven_h, heater_kw, heater_h, solar, price, feed_in, base_fee
+calculation order    : fridge_kw, fridge_kwh, oven_kwh, heater_kwh, daily_load, monthly_load, self_used, exported, net_draw, grid_cost, feed_in_credit, energy_cost, subtotal, vat, total
+grid_cost reads      : price, net_draw
 affected by price    : grid_cost, energy_cost, subtotal, vat, total
 upstream of net_draw : fridge_w, fridge_h, oven_kw, oven_h, heater_kw, heater_h, solar, fridge_kw, fridge_kwh, oven_kwh, heater_kwh, daily_load, monthly_load, self_used
 read by self_used    : exported, net_draw
 ```
 
-`affected_by<Q>` is every value a change of `Q` reaches, and `upstream_of<Q>`
-every value `Q` is reached from; `dependents_of<Q>` and `dependencies_of<Q>`
-are the direct readers and reads only, `inputs_of` the inputs, and
-`calculation_order` the calculated values. Each returns a `std::array` of
+`inputs_of` is the inputs, and `calculation_order` the calculated values in
+the order they are calculated. `dependencies_of<Q>` is what `Q` reads
+directly, and `dependents_of<Q>` what reads `Q` directly; `affected_by<Q>` is
+every value a change of `Q` reaches, and `upstream_of<Q>` every value `Q` is
+reached from, through any chain. Each returns a `std::array` of
 `std::string_view` whose size is known at compile time, so a query is a
 constant expression as well. `listed` is the example's own, joining the names
 with commas. Each query takes a vocabulary as a second argument, and then
@@ -536,8 +549,10 @@ daily_load = fridge_kwh + oven_kwh + heater_kwh = 13.3 kWh
   5. #3 + #4 = 47880000
 ```
 
-That value's own block, further on, says how it was reached, and the inputs
-read come last, one line each:
+The blocks of the calculated values it reads follow it, the last calculated
+first: the heater's energy, then the oven's -- eight lines not quoted here --
+then the fridge's energy, and after it the fridge's power in kilowatts, which
+the fridge's energy reads. The inputs read come last, one line each:
 
 ```text
 fridge_kwh = fridge_kw * fridge_h = 4.8 kWh
@@ -556,7 +571,8 @@ inputs
 ```
 
 A value the evaluation never reached -- read only in a `when()` branch not
-taken, or to the right of an operand that failed -- gets no block. One step
+taken, or to the right of an operand that failed -- gets no block. Neither
+happens in the example; `test/calculation_trace_tests.cpp` pins both. One step
 limit bounds every line, as `render_trace`'s does, and a last line says how
 many were left out ([A value typed in by hand](#a-value-typed-in-by-hand)
 shows one). `.numbers` spells every number as it spells a trace's -- here the
@@ -651,12 +667,25 @@ inline constexpr auto sharing = formula::calculation(
 
 The bill's total is the second calculation's input -- one calculation's
 result read by another as a measurement, which is also how a calculation too
-large for one graph is split in two ([Limits](#limits)):
+large for one graph is split in two ([Limits](#limits)).
+`checked_convert_to<SharedCost>` turns the one into the other
+([Measurements that may be absent](quantities.md#measurements-that-may-be-absent)):
+it converts the value exactly into the input's unit, leaves an absent total
+absent, and answers `DomainError` for a total of another dimension. The raw
+number re-wrapped, `Measured<SharedCost> { total.value() }`, would do none of
+that, and would be wrong the moment the two units differ:
 
 ```cpp
-formula::Measured<SharedCost> const sharedCost { sheet.calculate<Total>().measurement().value() };
+std::expected<formula::Measured<SharedCost>, formula::ArithmeticError> const sharedCost =
+    formula::checked_convert_to<SharedCost>(sheet.calculate<Total>().measurement());
+if (!sharedCost.has_value())
+{
+    std::printf("the total is not a cost to share: %s\n",
+                std::string { formula::describe(sharedCost.error()) }.c_str());
+    return 1;
+}
 auto shares = formula::worksheet(
-    sharing, formula::environment(sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
+    sharing, formula::environment(*sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
 ```
 
 ```text
@@ -677,9 +706,14 @@ shared by nobody: share: division by zero, in cents: division by zero
 
 `calculate` throws the same failure, as an `ArithmeticException` whose
 `code()` is the `ArithmeticError` -- and calculates nothing to do so. The
-failure is kept, and is not calculated again until something it read changes:
+failure is kept, and is not calculated again until something it read changes.
+The example reads the counters before it asks -- `counters_of` and `Counters`
+are its own, the worksheet's `recomputed()` and `reused()` together -- and
+prints how far `recomputed()` moved:
 
 ```cpp
+Counters const failed = counters_of(shares);
+bool thrown = false;
 try
 {
     static_cast<void>(shares.calculate<ShareInCents>());
@@ -689,6 +723,7 @@ catch (formula::ArithmeticException const& failure)
     std::printf("calculate<ShareInCents>() threw: %s\n", failure.what());
     thrown = failure.code() == formula::ArithmeticError::DivisionByZero;
 }
+std::printf("asked again: recomputed %zu\n", shares.recomputed() - failed.recomputed);
 ```
 
 ```text
@@ -696,9 +731,8 @@ calculate<ShareInCents>() threw: division by zero
 asked again: recomputed 0
 ```
 
-A value calculated again that fails with the same error counts as unchanged.
-Its derivation is a block like any other, the failure in its header and in the
-step that read it:
+Its derivation is a block like any other, the failure in its header and in
+the step that read it:
 
 ```cpp
 auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
@@ -719,6 +753,19 @@ inputs
   occupants = 0
 ```
 
+**A value calculated again that fails with the same error counts as
+unchanged.** A new cost, with still nobody to share it, reaches the share and
+the share in cents. The share is calculated again and fails as it did, so the
+share in cents, which reads only the share, is reused:
+
+```cpp
+shares.set(newCost);
+```
+
+```text
+100.00 EUR, still shared by nobody: recomputed 1, reused 1
+```
+
 **Absence is not failure.** An input given as `Measured<Q>::absent()` makes
 what reads it absent, as it makes a formula's result absent
 ([Absence propagates](expressions.md#absence-propagates)), never zero:
@@ -732,7 +779,9 @@ occupants not counted: share (not measured), in cents (not measured)
 ```
 
 And a `when()` branch not taken reads nothing: a failed value read only there
-does not fail the value whose definition holds it.
+does not fail the value whose definition holds it. The bill has no `when()`;
+the test "a when() branch not taken never reads a failed value", in
+`test/calculation_tests.cpp`, pins this.
 
 ## What is refused
 
@@ -951,7 +1000,9 @@ branches as read, since which one is taken is known only when it is
 evaluated. So a value read only on the branch not taken is still brought up
 to date when the value holding the `when()` is asked for, and a change to it
 still marks that value out of date -- though it is not read, its failure does
-not reach, and it has no block in a derivation.
+not reach, and it has no block in a derivation. `test/calculation_tests.cpp`
+pins the graph's side ("a when() definition depends on its condition and both
+of its branches").
 
 **A calculated value is kept in its declared unit.** It is stored in the unit
 its quantity was declared in, and converted back to the coherent unit where a

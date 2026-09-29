@@ -23,10 +23,10 @@
 //   - a what-if copy, and a value typed in by hand in place of a calculated
 //     one, with the derivation that reads it, and its clearing;
 //   - in a second, smaller calculation -- the bill shared among the people who
-//     live there -- a division by zero reaching the value that reads it, and
-//     an input nobody counted.
+//     live there, its total converted into that calculation's input -- a
+//     division by zero reaching the value that reads it, the same failure
+//     again counted as no change, and an input nobody counted.
 
-#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
@@ -255,9 +255,15 @@ int main()
                 formula::render(bill, formula::DefaultVocabulary {}, { .numbers = decimals }).c_str());
     std::printf("its graph:\n%s\n", formula::describe_graph(bill).c_str());
 
+    std::printf("inputs               : %s\n", listed(formula::inputs_of(bill)).c_str());
+    std::printf("calculation order    : %s\n", listed(formula::calculation_order(bill)).c_str());
+    std::printf("grid_cost reads      : %s\n", listed(formula::dependencies_of<GridCost>(bill)).c_str());
     std::printf("affected by price    : %s\n", listed(formula::affected_by<Price>(bill)).c_str());
     std::printf("upstream of net_draw : %s\n", listed(formula::upstream_of<NetDraw>(bill)).c_str());
     std::printf("read by self_used    : %s\n", listed(formula::dependents_of<SelfUsed>(bill)).c_str());
+    check("ten inputs, fifteen calculated, and grid_cost reads two",
+          formula::inputs_of(bill).size() == 10 && formula::calculation_order(bill).size() == 15
+              && formula::dependencies_of<GridCost>(bill).size() == 2);
     check("a new price reaches five values, and self_used is read by two",
           formula::affected_by<Price>(bill).size() == 5 && formula::dependents_of<SelfUsed>(bill).size() == 2);
 
@@ -412,13 +418,22 @@ int main()
     // ---- 7. One calculation's result, another's input ----
     //
     // The bill shared by the three people who live there, each share in whole
-    // cents: the bill's total, read as the second calculation's input.
-    formula::Measured<SharedCost> const sharedCost { sheet.calculate<Total>().measurement().value() };
+    // cents: the bill's total, read as the second calculation's input. It is
+    // converted, not re-wrapped: exactly into the input's unit, an absent
+    // total staying absent, and a total of another dimension refused.
+    std::expected<formula::Measured<SharedCost>, formula::ArithmeticError> const sharedCost =
+        formula::checked_convert_to<SharedCost>(sheet.calculate<Total>().measurement());
+    if (!sharedCost.has_value())
+    {
+        std::printf("the total is not a cost to share: %s\n",
+                    std::string { formula::describe(sharedCost.error()) }.c_str());
+        return 1;
+    }
     auto shares = formula::worksheet(
-        sharing, formula::environment(sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
+        sharing, formula::environment(*sharedCost, formula::Measured<Occupants> { Rational { 3 } }));
     formula::Measured<ShareInCents> const eachInCents = shares.calculate<ShareInCents>().measurement();
     std::printf("\n%s\n",
-                std::format("{:.2HalfAwayFromZero} shared by 3: {} each", sharedCost, eachInCents).c_str());
+                std::format("{:.2HalfAwayFromZero} shared by 3: {} each", *sharedCost, eachInCents).c_str());
     check("32.67 EUR each", eachInCents.value() == Rational { 3267, 100 });
 
     // ---- 8. A failure, and what reads it ----
@@ -455,6 +470,25 @@ int main()
     auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
     std::printf("\nhow the failure was reached:\n%s",
                 formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }).c_str());
+
+    // A new cost, and still nobody to share it: the share is calculated again
+    // and fails with the same error, which counts as unchanged, so the share
+    // in cents, which reads only the share, is reused.
+    Counters const beforeNewCost = counters_of(shares);
+    formula::Measured<SharedCost> const newCost { Rational { 100 } };
+    shares.set(newCost);
+    auto const stillShared = shares.checked_calculate<ShareInCents>();
+    Counters const afterNewCost = counters_of(shares);
+    std::printf("\n%s\n",
+                std::format("{:.2HalfAwayFromZero}, still shared by nobody: recomputed {}, reused {}",
+                            newCost,
+                            afterNewCost.recomputed - beforeNewCost.recomputed,
+                            afterNewCost.reused - beforeNewCost.reused)
+                    .c_str());
+    check("failing again the same way counts as unchanged",
+          !stillShared.has_value() && stillShared.error() == formula::ArithmeticError::DivisionByZero
+              && afterNewCost.recomputed - beforeNewCost.recomputed == 1
+              && afterNewCost.reused - beforeNewCost.reused == 1);
 
     // ---- 9. An input nobody measured ----
     //
