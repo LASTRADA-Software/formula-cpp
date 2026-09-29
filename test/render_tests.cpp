@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include "household_bill.hpp"
@@ -2149,4 +2154,120 @@ TEST_CASE("to_dot: the graph in Graphviz's DOT language", "[render][calculation]
     for (std::size_t found = billDot.find(" -> "); found != std::string::npos; found = billDot.find(" -> ", found + 1))
         ++arrows;
     CHECK(arrows == 27);
+}
+
+// ------------------------------------------------------ numbers as decimals
+//
+// `RenderOptions` (render.hpp): every number a formula states written in the
+// style asked for -- exactly, and never padded, whatever that style says,
+// because each was typed by the formula's author.
+
+namespace
+{
+/// 863/1000, typed as the decimal it is.
+constexpr auto scaledStrength =
+    var<Strength> * formula::constant<unit::One>(formula::Rational::from_decimal(863, -3).value());
+
+constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+constexpr formula::RenderOptions approximated { .numbers =
+                                                formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) };
+constexpr formula::RenderOptions padded { .numbers = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded) };
+
+/// Invented permitted openings, and the same points as a declared domain: one
+/// with a decimal, one whole, one with two decimals -- more than millimetres
+/// declare -- so a decimal dropped, padded or cut short shows.
+inline constexpr BreakpointTable<3> DecimalOpenings { breakpoint(1031, 10), breakpoint(127), breakpoint(3263, 20) };
+
+/// Invented limits in millimetres, each with one decimal.
+constexpr formula::Envelope<2> decimalEnvelope {
+    formula::LimitRow { formula::unbounded, formula::limit(rat(51, 10)) },
+    formula::LimitRow { formula::limit(rat(11, 10)), formula::limit(rat(23, 10)) },
+};
+constexpr auto decimalLimits = formula::conformity<unit::Millimetre>(
+    formula::series<Diameter, 2>, decimalEnvelope, formula::Verdict { "reject the specimen" });
+} // namespace
+
+TEST_CASE("render: RenderOptions writes a constant as an exact decimal, in every dialect", "[render][decimals]")
+{
+    CHECK(formula::render<Dialect::Plain>(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "f * 0.863");
+    CHECK(formula::render<Dialect::Markdown>(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "`f` * 0.863");
+    CHECK(formula::render<Dialect::LaTeX>(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "f \\cdot 0.863");
+    // Plain text unless a dialect is named, as every other overload.
+    CHECK(formula::render(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "f * 0.863");
+    // The default options write exactly what render() without them writes.
+    CHECK(formula::render(scaledStrength, formula::DefaultVocabulary {}, {}) == "f * 863/1000");
+    CHECK(formula::render(scaledStrength) == "f * 863/1000");
+    // A value with no exact decimal stays the fraction it is.
+    CHECK(formula::render(var<Strength> * rat(1, 3), formula::DefaultVocabulary {}, exactDecimals) == "f * 1/3");
+}
+
+TEST_CASE("render: a typed number is never approximated, whatever the style", "[render][decimals]")
+{
+    // Under an approximating style a trace would round 1/3 to ≈0.333 in
+    // unit::One's three places; a formula states it as typed.
+    CHECK(formula::render(var<Strength> * formula::number(rat(1, 3)), formula::DefaultVocabulary {}, approximated)
+          == "f * 1/3");
+    CHECK(formula::render(scaledStrength, formula::DefaultVocabulary {}, approximated) == "f * 0.863");
+    // A table's rows and bounds too: exact decimals, no marker.
+    CHECK(formula::render(bandedLookup(), formula::DefaultVocabulary {}, approximated)
+          == "lookup(d, 2.11 to under 2.77 mm gives 0.863, 2.77 to under 9.73 mm gives 1.381, 9.73 to under 30.7 mm "
+             "gives 1.043)");
+}
+
+TEST_CASE("render: a typed number is never padded, whatever the style", "[render][decimals]")
+{
+    // A pure number's unit, unit::One, is one nobody declared, so its three
+    // decimals are no one's statement of precision: 0.5, never 0.500.
+    CHECK(formula::render(var<Strength> * formula::number(rat(1, 2)), formula::DefaultVocabulary {}, padded) == "f * 0.5");
+    // Nor is a constant in a unit that declares decimals padded to them:
+    // typed as 5, kilojoules' one decimal would make it 5.0.
+    CHECK(formula::render(formula::constant<unit::Kilojoule>(rat(5)), formula::DefaultVocabulary {}, padded) == "5 kJ");
+    CHECK(formula::render(formula::constant<unit::Millimetre>(rat(1031, 10)), formula::DefaultVocabulary {}, padded)
+          == "103.1 mm");
+}
+
+TEST_CASE("render: every number a table or a list states follows RenderOptions", "[render][decimals]")
+{
+    // The three lookup kinds: bounds, keys and corrections alike.
+    CHECK(formula::render(bandedLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "lookup(d, 2.11 to under 2.77 mm gives 0.863, 2.77 to under 9.73 mm gives 1.381, 9.73 to under 30.7 mm "
+             "gives 1.043)");
+    CHECK(formula::render<Dialect::LaTeX>(bandedLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{2.11\\ to\\ under\\ 2.77\\ mm\\ gives\\ 0.863},"
+             "\\allowbreak \\mathrm{2.77\\ to\\ under\\ 9.73\\ mm\\ gives\\ 1.381},\\allowbreak "
+             "\\mathrm{9.73\\ to\\ under\\ 30.7\\ mm\\ gives\\ 1.043})");
+    CHECK(formula::render(shapeLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "lookup(key Cylinder, key Cube gives 2.791 MPa, key Cylinder gives 43 MPa, key Prism gives 1.373 MPa)");
+    CHECK(formula::render(curveLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "interpolate(d, at 2.39 mm gives 0.873 MPa, at 7.37 mm gives -1.139 MPa, at 19.3 mm gives 1.217 MPa)");
+
+    // A per-element constant's values.
+    constexpr auto offsets = formula::series_constant<unit::Millimetre>(rat(7, 10), rat(19, 10));
+    CHECK(formula::render(offsets) == "values(7/10 mm, 19/10 mm)");
+    CHECK(formula::render(offsets, formula::DefaultVocabulary {}, exactDecimals) == "values(0.7 mm, 1.9 mm)");
+
+    // A snap's permitted values and a declared domain's points.
+    constexpr auto snappedDiameter =
+        formula::snapped<unit::Millimetre, DecimalOpenings, formula::SnapTie::TowardLower>(var<Diameter>);
+    CHECK(formula::render(snappedDiameter) == "snap(d, to 1031/10, 127, 3263/20 mm)");
+    CHECK(formula::render(snappedDiameter, formula::DefaultVocabulary {}, exactDecimals)
+          == "snap(d, to 103.1, 127, 163.15 mm)");
+    constexpr auto openingDomain = formula::domain<unit::Millimetre, DecimalOpenings>;
+    CHECK(formula::render(openingDomain) == "domain(1031/10, 127, 3263/20 mm)");
+    CHECK(formula::render(openingDomain, formula::DefaultVocabulary {}, exactDecimals) == "domain(103.1, 127, 163.15 mm)");
+
+    // A binning's classes.
+    constexpr auto binnedDiameters = formula::binned<unit::Millimetre, SizeBands>(formula::observations<Diameter, 3>);
+    CHECK(formula::render(binnedDiameters, formula::DefaultVocabulary {}, exactDecimals)
+          == "bin(d(i), 2.11 to under 2.77 mm, 2.77 to under 9.73 mm, 9.73 to under 30.7 mm)");
+
+    // An envelope's limits -- and one with no exact decimal, which stays the
+    // fraction it is.
+    CHECK(formula::render(decimalLimits) == "conform(d(i), at most 51/10 mm, from 11/10 to 23/10 mm)");
+    CHECK(formula::render(decimalLimits, formula::DefaultVocabulary {}, exactDecimals)
+          == "conform(d(i), at most 5.1 mm, from 1.1 to 2.3 mm)");
+    constexpr formula::Envelope<1> thirdEnvelope { formula::LimitRow { formula::unbounded, formula::limit(rat(1, 3)) } };
+    constexpr auto thirdLimit = formula::conformity<unit::Millimetre>(
+        formula::series<Diameter, 1>, thirdEnvelope, formula::Verdict { "reject the specimen" });
+    CHECK(formula::render(thirdLimit, formula::DefaultVocabulary {}, exactDecimals) == "conform(d(i), at most 1/3 mm)");
 }

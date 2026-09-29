@@ -2,8 +2,12 @@
 #include <formula-cpp/calculation.hpp>
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/rejection.hpp>
+#include <formula-cpp/render.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -1185,4 +1189,83 @@ TEST_CASE("document: a calculation's citation is listed as often as its definiti
     REQUIRE(page.citations.size() == 2);
     CHECK(page.citations[0] == ratioClause);
     CHECK(page.citations[1] == ratioClause);
+}
+
+// ------------------------------------------------------ numbers as decimals
+
+namespace
+{
+struct SizeFactor: formula::Quantity<SizeFactor, "k", "size factor", formula::unit::One>
+{
+};
+struct RetainedMass: formula::Quantity<RetainedMass, "m", "mass retained on a screen", formula::unit::Gram>
+{
+};
+struct Sized
+{
+};
+
+// Invented, as every citation in this repository must be.
+constexpr formula::Citation sizeAnnex { .reference = "Example Standard 7:2019", .section = "B.2" };
+
+/// A strength scaled by a size factor a jurisdiction derives from the
+/// diameter -- over an invented 152.5 mm, a decimal the derivation states.
+constexpr auto sizedStrength =
+    std::get<0>(formula::apply(formula::overlay(formula::add_derived<SizeFactor>(
+                                   var<Diameter> / formula::constant<formula::unit::Millimetre>(rat(305, 2)), sizeAnnex)),
+                               formula::method(formula::variants(formula::variant<Sized>(var<Strength> * var<SizeFactor>)),
+                                               formula::rounding_rule<formula::unit::Megapascal,
+                                                                      formula::DecimalPlaces { 1 },
+                                                                      formula::RoundingMode::HalfAwayFromZero>(),
+                                               formula::constraints()))
+                    .variantSet.cases)
+        .expression;
+
+/// The mean of three masses without an outlier more than an invented 3/50 of
+/// the pass's mean from it.
+constexpr auto meanWithoutOutliers = formula::sample_mean(
+    formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            formula::series<RetainedMass, 3>,
+            formula::deviation_from_mean(rat(3, 50) * formula::pass_mean<RetainedMass>),
+            formula::Verdict { "repeat the sieving" },
+            sizeAnnex));
+} // namespace
+
+TEST_CASE("document: RenderOptions writes every number the page states in its style", "[document][decimals]")
+{
+    constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+
+    // The formula's text.
+    formula::Documentation const plain = formula::document(var<Strength> * rat(863, 1000));
+    CHECK(plain.formula == "f * 863/1000");
+    formula::Documentation const decimal =
+        formula::document(var<Strength> * rat(863, 1000), formula::DefaultVocabulary {}, exactDecimals);
+    CHECK(decimal.formula == "f * 0.863");
+    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(
+        var<Strength> * rat(863, 1000), formula::DefaultVocabulary {}, exactDecimals);
+    CHECK(latex.formula == "f \\cdot 0.863");
+
+    // A derived quantity's derivation.
+    formula::Documentation const derivedPage = formula::document(sizedStrength);
+    REQUIRE(derivedPage.symbols.size() == 3);
+    REQUIRE(derivedPage.symbols[1].derivedAs.has_value());
+    CHECK(*derivedPage.symbols[1].derivedAs == "d / 305/2 mm");
+    formula::Documentation const decimalDerivedPage =
+        formula::document(sizedStrength, formula::DefaultVocabulary {}, exactDecimals);
+    REQUIRE(decimalDerivedPage.symbols.size() == 3);
+    CHECK(decimalDerivedPage.symbols[1].symbol == "k");
+    REQUIRE(decimalDerivedPage.symbols[1].derivedAs.has_value());
+    CHECK(*decimalDerivedPage.symbols[1].derivedAs == "d / 152.5 mm");
+
+    // A rejection's limit.
+    formula::Documentation const rejectionPage = formula::document(meanWithoutOutliers);
+    REQUIRE(rejectionPage.rejections.size() == 1);
+    CHECK(rejectionPage.rejections[0].limit == "3/50 * pass mean");
+    formula::Documentation const decimalRejectionPage =
+        formula::document(meanWithoutOutliers, formula::DefaultVocabulary {}, exactDecimals);
+    REQUIRE(decimalRejectionPage.rejections.size() == 1);
+    CHECK(decimalRejectionPage.rejections[0].limit == "0.06 * pass mean");
+    CHECK(decimalRejectionPage.formula
+          == formula::render(meanWithoutOutliers, formula::DefaultVocabulary {}, exactDecimals));
 }

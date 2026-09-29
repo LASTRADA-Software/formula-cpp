@@ -133,6 +133,17 @@ may break it, and each such change is recorded here.
   not allow is a compile error naming what is wrong in a literal format string, and a
   `std::format_error` starting `formula: ` under `std::vformat`. The library owns these
   `std::formatter` specialisations; only `char` is supported.
+- `RenderOptions` for `render()` and `document()`: `render(f, vocabulary, { .numbers =
+  NumberStyle::exact_decimal() })` writes a constant holding 863/1000 as `0.863`, and so every
+  number a formula states -- a table's bounds and rows, a snap's permitted values, a domain's
+  points, a per-element constant's values, an envelope's limits -- and `document()` its formula, a
+  derived quantity's derivation and a rejection's limit. These numbers were typed by the formula's
+  author, so they are written exactly whatever the style: `1/3` stays `1/3` under an approximating
+  style, and none is padded, so `number(Rational { 1, 2 })` reads `0.5`. Without options nothing
+  changes. The style travels with the vocabulary, the one argument every `render_node` already
+  receives, so a consumer's own two-argument `render_node` hands it on unchanged and can read it
+  with `number_style_of(vocabulary)`. `render.hpp`'s internal `detail::number_text`, which spelled
+  every such number as a fraction, is gone.
 
 ### Changed
 

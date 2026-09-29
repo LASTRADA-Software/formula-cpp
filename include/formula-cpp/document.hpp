@@ -1527,5 +1527,17 @@ template <Dialect D = Dialect::Plain, typename... Ds>
 {
     return document<D>(node, DefaultVocabulary {});
 }
+/// Documents @p node as `document<D>(node, vocabulary)` does, with every
+/// number the page writes -- in the formula's text, a derived quantity's
+/// derivation and a criterion's limit -- written as @p renderOptions says
+/// (`RenderOptions`, `render.hpp`). Everything else on the page is the same
+/// either way: a constant an overlay fixed is held as a `Rational`
+/// (`SymbolEntry::fixedValue`), for the caller to write as it chooses.
+template <Dialect D = Dialect::Plain, typename X, Vocabulary V>
+    requires requires(X const& written, V const& writtenIn) { document<D>(written, writtenIn); }
+[[nodiscard]] Documentation document(X const& node, V const& vocabulary, RenderOptions renderOptions)
+{
+    return document<D>(node, detail::styled(vocabulary, renderOptions.numbers));
+}
 
 } // namespace formula

@@ -339,14 +339,6 @@ namespace detail
             return quantitySymbol + "(" + std::string { attemptIndex } + ")";
     }
 
-    /// An exact rational as text: `4`, or `1/4` when it is not whole --
-    /// `fraction_text` (`number_text.hpp`), the one spelling of a fraction.
-    [[nodiscard]] inline std::string number_text(Rational shownNumber)
-    {
-        NumberText const spelled = fraction_text(shownNumber);
-        return std::string { spelled.view() };
-    }
-
     /// Whether @p shownIn is a unit nobody declared: exactly the coherent unit
     /// `coherent()` builds for its dimension -- no symbol, no scale, and
     /// `Unit`'s default of 3 decimals, which nobody chose. A trace shows a
@@ -402,6 +394,28 @@ namespace detail
             return std::string { spelled->view() };
         NumberText const exactFraction = fraction_text(shownNumber);
         return std::string { exactFraction.view() };
+    }
+
+    /// The style a formula's text writes a number in: the one @p vocabulary
+    /// carries (`number_style_of`), exact only and never padded. Every number
+    /// a formula states was typed by its author -- a constant, a table's row
+    /// or bound, a permitted value, a limit -- and is stated as typed: a
+    /// rounding would be a number nobody wrote, and a padding zero a
+    /// precision nobody stated. So `1/3` stays `1/3` under an approximating
+    /// style, and `number(1/2)` reads `0.5`, never `0.500`.
+    template <Vocabulary V>
+    [[nodiscard]] constexpr NumberStyle typed_number_style(V const& vocabulary) noexcept
+    {
+        return trimmed(number_style_of(vocabulary).exact_only());
+    }
+
+    /// @p typedNumber, a number its author typed in @p typedIn, as a formula's
+    /// text under @p vocabulary writes it (`typed_number_style`): `0.863`
+    /// under an exact-decimal style, `863/1000` under the default fraction.
+    template <Vocabulary V>
+    [[nodiscard]] std::string typed_number_text(Rational typedNumber, Unit const& typedIn, V const& vocabulary)
+    {
+        return styled_number_text(typedNumber, typed_number_style(vocabulary), typedIn);
     }
 
     /// A number followed by its unit's symbol, or the number alone when the
@@ -927,21 +941,25 @@ template <Dialect D, Described Q, std::size_t N, Vocabulary V>
 ///
 /// The number-and-unit spelling is `detail::number_with_unit`, shared with the
 /// lookup tables below so that a table's row states a number exactly as a
-/// constant holding the same number does -- see that helper.
+/// constant holding the same number does -- see that helper. The number is
+/// written as @p vocabulary's style says, exact and unpadded
+/// (`detail::typed_number_text`): `863/1000` by default, `0.863` under
+/// `NumberStyle::exact_decimal()`.
 ///
 /// In LaTeX the symbol is set upright after a thin space, `150\,\mathrm{mm}`
 /// and `5\,\mathrm{\%}`, as the rounding clause sets it (`detail::latex_unit`):
 /// written bare in math mode, `150 mm` read as the product of two italic
 /// letters, and `5 %` commented out the rest of the formula.
 template <Dialect D, Unit U, Vocabulary V>
-[[nodiscard]] std::string render_node(ConstantNode<U> const& node, V const&)
+[[nodiscard]] std::string render_node(ConstantNode<U> const& node, V const& vocabulary)
 {
     constexpr Unit declaredUnit = U;
     if constexpr (D == Dialect::LaTeX)
-        return detail::number_text(node.number)
+        return detail::typed_number_text(node.number, declaredUnit, vocabulary)
                + detail::unit_clause("\\,", detail::latex_unit(view(declaredUnit.symbolText)));
     else
-        return detail::number_with_unit(detail::number_text(node.number), view(declaredUnit.symbolText));
+        return detail::number_with_unit(detail::typed_number_text(node.number, declaredUnit, vocabulary),
+                                        view(declaredUnit.symbolText));
 }
 
 /// A unary node renders as its operator followed by its (parenthesised if
@@ -1115,7 +1133,7 @@ template <Dialect D, SeriesNode S, Vocabulary V>
 /// already reads as many values, so it carries no index marker. A
 /// formula's own values are never truncated.
 template <Dialect D, Unit U, std::size_t N, Vocabulary V>
-[[nodiscard]] std::string render_node(SeriesConstantNode<U, N> const& node, V const&)
+[[nodiscard]] std::string render_node(SeriesConstantNode<U, N> const& node, V const& vocabulary)
 {
     constexpr Unit statedIn = U;
     std::string listed;
@@ -1125,11 +1143,11 @@ template <Dialect D, Unit U, std::size_t N, Vocabulary V>
             listed += detail::lookup_separator<D>();
         // Each value spelled as a `ConstantNode` holding it is, in every
         // dialect: in LaTeX its unit set upright and escaped.
+        std::string const elementText = detail::typed_number_text(node.elements[at], statedIn, vocabulary);
         if constexpr (D == Dialect::LaTeX)
-            listed += detail::number_text(node.elements[at])
-                      + detail::unit_clause("\\,", detail::latex_unit(view(statedIn.symbolText)));
+            listed += elementText + detail::unit_clause("\\,", detail::latex_unit(view(statedIn.symbolText)));
         else
-            listed += detail::number_with_unit(detail::number_text(node.elements[at]), view(statedIn.symbolText));
+            listed += detail::number_with_unit(elementText, view(statedIn.symbolText));
     }
     if constexpr (D == Dialect::LaTeX)
         return "\\operatorname{values}(" + listed + ")";
@@ -1380,13 +1398,15 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
+    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
     std::string rowText;
     for (std::size_t bandIndex = 0; bandIndex < Bands.size(); ++bandIndex)
-        rowText +=
-            detail::lookup_separator<D>()
-            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                detail::band_text(Bands[bandIndex], view(keyUnit.symbolText), keyUnit, NumberStyle::fraction()),
-                detail::number_with_unit(detail::number_text(node.corrections[bandIndex]), view(resultUnit.symbolText))));
+        rowText += detail::lookup_separator<D>()
+                   + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                       detail::band_text(Bands[bandIndex], view(keyUnit.symbolText), keyUnit, tableStyle),
+                       detail::number_with_unit(
+                           detail::typed_number_text(node.corrections[bandIndex], resultUnit, vocabulary),
+                           view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>("lookup", render<D>(node.operand, vocabulary), rowText);
 }
@@ -1409,17 +1429,18 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
 /// underlying value only when it names no row of the table. See
 /// `detail::key_text`.
 template <Dialect D, KeyTable Keys, Unit ResultUnit, Vocabulary V>
-[[nodiscard]] std::string render_node(ExactLookupNode<Keys, ResultUnit> const& node, V const&)
+[[nodiscard]] std::string render_node(ExactLookupNode<Keys, ResultUnit> const& node, V const& vocabulary)
 {
     constexpr Unit resultUnit = ResultUnit;
 
     std::string rowText;
     for (std::size_t keyIndex = 0; keyIndex < Keys.size(); ++keyIndex)
-        rowText +=
-            detail::lookup_separator<D>()
-            + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                detail::key_text<D, Keys>(Keys[keyIndex]),
-                detail::number_with_unit(detail::number_text(node.corrections[keyIndex]), view(resultUnit.symbolText))));
+        rowText += detail::lookup_separator<D>()
+                   + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
+                       detail::key_text<D, Keys>(Keys[keyIndex]),
+                       detail::number_with_unit(
+                           detail::typed_number_text(node.corrections[keyIndex], resultUnit, vocabulary),
+                           view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>(
         "lookup", detail::lookup_words_in_dialect<D>(detail::key_text<D, Keys>(node.key)), rowText);
@@ -1442,6 +1463,7 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
     constexpr Unit keyUnit = KeyUnit;
     constexpr Unit resultUnit = ResultUnit;
 
+    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
     std::string rowText;
     for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
         rowText +=
@@ -1449,12 +1471,11 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
             + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
                 "at "
                     + detail::number_with_unit(
-                        detail::declared_number_text(Points[pointIndex].numerator,
-                                                     Points[pointIndex].denominator,
-                                                     keyUnit,
-                                                     NumberStyle::fraction()),
+                        detail::declared_number_text(
+                            Points[pointIndex].numerator, Points[pointIndex].denominator, keyUnit, tableStyle),
                         view(keyUnit.symbolText)),
-                detail::number_with_unit(detail::number_text(node.corrections[pointIndex]), view(resultUnit.symbolText))));
+                detail::number_with_unit(detail::typed_number_text(node.corrections[pointIndex], resultUnit, vocabulary),
+                                         view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>("interpolate", render<D>(node.operand, vocabulary), rowText);
 }
@@ -1468,13 +1489,14 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
 [[nodiscard]] std::string render_node(SnapNode<KeyUnit, Permitted, Tie, Operand> const& node, V const& vocabulary)
 {
     constexpr Unit keyUnit = KeyUnit;
+    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
     std::string listed;
     for (std::size_t pointIndex = 0; pointIndex < Permitted.size(); ++pointIndex)
     {
         if (pointIndex > 0)
             listed += ", ";
         listed += detail::declared_number_text(
-            Permitted[pointIndex].numerator, Permitted[pointIndex].denominator, keyUnit, NumberStyle::fraction());
+            Permitted[pointIndex].numerator, Permitted[pointIndex].denominator, keyUnit, tableStyle);
     }
     std::string const permittedField =
         detail::lookup_separator<D>()
@@ -1487,16 +1509,17 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
 /// already reads as many values, so it carries no index marker, as a
 /// per-element constant carries none.
 template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
-[[nodiscard]] std::string render_node(DomainNode<U, Points> const&, V const&)
+[[nodiscard]] std::string render_node(DomainNode<U, Points> const&, V const& vocabulary)
 {
     constexpr Unit declaredIn = U;
+    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
     std::string listed;
     for (std::size_t pointIndex = 0; pointIndex < Points.size(); ++pointIndex)
     {
         if (pointIndex > 0)
             listed += ", ";
         listed += detail::declared_number_text(
-            Points[pointIndex].numerator, Points[pointIndex].denominator, declaredIn, NumberStyle::fraction());
+            Points[pointIndex].numerator, Points[pointIndex].denominator, declaredIn, tableStyle);
     }
     std::string const pointsText =
         detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
@@ -1530,11 +1553,12 @@ template <Dialect D, Unit KeyUnit, BandTable Classes, ObservationsNode Obs, Voca
 [[nodiscard]] std::string render_node(BinnedNode<KeyUnit, Classes, Obs> const& node, V const& vocabulary)
 {
     constexpr Unit keyUnit = KeyUnit;
+    NumberStyle const tableStyle = detail::typed_number_style(vocabulary);
     std::string classText;
     for (std::size_t classIndex = 0; classIndex < Classes.size(); ++classIndex)
         classText += detail::lookup_separator<D>()
-                     + detail::lookup_words_in_dialect<D>(detail::band_text(
-                         Classes[classIndex], view(keyUnit.symbolText), keyUnit, NumberStyle::fraction()));
+                     + detail::lookup_words_in_dialect<D>(
+                         detail::band_text(Classes[classIndex], view(keyUnit.symbolText), keyUnit, tableStyle));
     return detail::lookup_call<D>("bin", render_node<D>(node.source, vocabulary), classText);
 }
 
@@ -2294,14 +2318,12 @@ template <Dialect D, Unit U, SeriesNode S, Vocabulary V>
 [[nodiscard]] std::string render(Conformity<U, S> const& conformityCheck, V const& vocabulary)
 {
     constexpr Unit limitsIn = U;
+    NumberStyle const limitStyle = detail::typed_number_style(vocabulary);
     std::string rowFields;
     for (std::size_t at = 0; at < S::length; ++at)
         rowFields += detail::lookup_separator<D>()
-                     + detail::lookup_words_in_dialect<D>(
-                         detail::limit_row_text(conformityCheck.envelope[at],
-                                                view(limitsIn.symbolText),
-                                                limitsIn,
-                                                NumberStyle::fraction()));
+                     + detail::lookup_words_in_dialect<D>(detail::limit_row_text(
+                         conformityCheck.envelope[at], view(limitsIn.symbolText), limitsIn, limitStyle));
     return detail::lookup_call<D>("conform", render<D>(conformityCheck.subject, vocabulary), rowFields);
 }
 
@@ -2596,4 +2618,41 @@ template <typename... Ds, Vocabulary V = DefaultVocabulary>
     return dotText;
 }
 
+/// How `render()` and `document()` write a formula's numbers, for the
+/// overloads that take it: under `{ .numbers = NumberStyle::exact_decimal() }`
+/// a constant holding 863/1000 reads `0.863` where it read `863/1000`.
+///
+/// **A formula states its numbers as its author typed them.** Every number in
+/// a formula's text was typed -- a constant, a table's bound or row, a
+/// permitted value, a limit -- so it is written exactly, and never padded,
+/// whatever `numbers` says:
+///
+///  - an approximating style writes it as `NumberStyle::exact_decimal()`
+///    would, so `1/3` stays `1/3` and no `≈` appears in a formula;
+///  - the style's padding is ignored, so a constant in a unit that declares
+///    decimals reads as typed (`5 kJ`, not `5.0 kJ`), and a pure number such
+///    as `number(Rational { 1, 2 })`, whose unit (`unit::One`) nobody
+///    declared, reads `0.5`, never `0.500` -- the rule a trace keeps for a
+///    value in a unit nobody declared (`TraceRenderOptions::numbers`,
+///    `trace_render.hpp`), which is also where a computed value may be shown
+///    rounded.
+struct RenderOptions
+{
+    /// The notation of every number in the formula's text. The default,
+    /// `NumberStyle::fraction()`, writes exactly what `render()` without
+    /// options writes.
+    NumberStyle numbers = NumberStyle::fraction();
+};
+
+/// Renders @p node in dialect @p D -- plain text unless one is named --
+/// writing every symbol as @p vocabulary says and every number as
+/// @p renderOptions says (`RenderOptions`). Takes whatever `render<D>(node,
+/// vocabulary)` takes, and hands every node @p vocabulary carrying the style,
+/// so that a consumer's own `render_node` reads it with `number_style_of`.
+template <Dialect D = Dialect::Plain, typename X, Vocabulary V>
+    requires requires(X const& written, V const& writtenIn) { render<D>(written, writtenIn); }
+[[nodiscard]] std::string render(X const& node, V const& vocabulary, RenderOptions renderOptions)
+{
+    return render<D>(node, detail::styled(vocabulary, renderOptions.numbers));
+}
 } // namespace formula

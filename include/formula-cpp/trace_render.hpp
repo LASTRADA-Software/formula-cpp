@@ -3143,7 +3143,8 @@ namespace detail
             return std::string { describe(*shown.error) };
         if (!shown.value.has_value())
             return "(no value)";
-        std::string valueText = number_text(*shown.value);
+        NumberText const spelled = fraction_text(*shown.value);
+        std::string valueText { spelled.view() };
         std::string const unitSymbol = unit_symbol_text(shown.unit);
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
