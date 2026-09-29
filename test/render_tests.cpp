@@ -2342,4 +2342,11 @@ TEST_CASE("render: a calculation's typed numbers follow RenderOptions, never rou
     constexpr auto thirdAbove = formula::calculation(formula::define<Low>(var<Start> + rat(1, 3)));
     CHECK(formula::render(thirdAbove, formula::DefaultVocabulary {}, exactDecimals) == "x_l = x_0 + 1/3");
     CHECK(formula::render(thirdAbove, formula::DefaultVocabulary {}, approximated) == "x_l = x_0 + 1/3");
+    // Nor is a typed number in a unit that declares decimals padded to them:
+    // the euro declares two, and a typed fee of 5 EUR stays 5 EUR.
+    constexpr auto withFee = formula::calculation(
+        formula::define<household::Total>(var<household::Subtotal> + formula::constant<household::Euro>(rat(5))));
+    constexpr formula::RenderOptions exactPadded { .numbers = formula::NumberStyle::exact_decimal(
+                                                       formula::DecimalPadding::Padded) };
+    CHECK(formula::render(withFee, formula::DefaultVocabulary {}, exactPadded) == "total = subtotal + 5 EUR");
 }

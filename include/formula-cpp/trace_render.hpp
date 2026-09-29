@@ -1425,6 +1425,14 @@ namespace detail
                + variant_narrowing_clause(recorded) + "]";
     }
 
+    /// A value no line can spell, and why: `(not shown: <reason>)`. The one
+    /// spelling of it, for a value its unit cannot show and for a value its
+    /// style cannot spell in that unit alike.
+    [[nodiscard]] inline std::string not_shown_text(ArithmeticError whyNot)
+    {
+        return "(not shown: " + std::string { describe(whyNot) } + ")";
+    }
+
     /// @p storedValue -- a step's own, or one element of a series step's -- converted
     /// from the coherent unit of @p recorded's dimension into the unit the
     /// step was declared in, with that unit's symbol, or `(not measured)`
@@ -1451,10 +1459,10 @@ namespace detail
         // honest answer: the alternative is a number in a scale the line
         // claims it is not in.
         if (!shown)
-            return "(not shown: " + std::string { describe(shown.error()) } + ")";
+            return not_shown_text(shown.error());
         std::expected<NumberText, ArithmeticError> const spelled = checked_shown_text(*shown, numberStyle, recorded.unit);
         if (!spelled)
-            return "(not shown: " + std::string { describe(spelled.error()) } + ")";
+            return not_shown_text(spelled.error());
 
         std::string valueText { spelled->view() };
         std::string const unitSymbol = unit_symbol_text(recorded.unit);
@@ -2169,11 +2177,11 @@ namespace detail
         std::expected<Rational, ArithmeticError> const shown =
             magnitudeSquared.has_value() ? checked_div(si, *magnitudeSquared) : magnitudeSquared;
         if (!shown)
-            return "(not shown: " + std::string { describe(shown.error()) } + ")";
+            return not_shown_text(shown.error());
         std::expected<NumberText, ArithmeticError> const spelled =
             checked_number_text(*shown, trimmed(numberStyle), shownUnit);
         if (!spelled)
-            return "(not shown: " + std::string { describe(spelled.error()) } + ")";
+            return not_shown_text(spelled.error());
         std::string valueText { spelled->view() };
         std::string const unitSymbol = unit_symbol_text(shownUnit);
         if (!unitSymbol.empty())
@@ -3137,24 +3145,78 @@ namespace detail
         return { line_safe_text(render<Dialect::Plain>(std::get<Is>(definitionSet.definitions).expression, vocabulary))... };
     }
 
+    /// Whether @p shown's step @p stepIndex reads, from the worksheet, a
+    /// calculated value whose own block's value is typed: a `Variable` step
+    /// whose source is `Derived`, matched to that value's block by the slot it
+    /// read (`WorksheetEntry::readSlots`), which @p typedSlots sets. False for
+    /// a step whose slot is unknown, as in an entry edited by hand.
+    [[nodiscard]] inline bool reads_typed_block(WorksheetEntry const& shown, std::size_t stepIndex, std::uint64_t typedSlots)
+    {
+        Step<Rational> const& readingStep = shown.trace.steps[stepIndex];
+        if (readingStep.kind != StepKind::Variable || readingStep.inputSource != ValueSource::Derived)
+            return false;
+        if (stepIndex >= shown.readSlots.size() || shown.readSlots[stepIndex] >= 64)
+            return false;
+        return ((typedSlots >> shown.readSlots[stepIndex]) & 1u) != 0;
+    }
+
+    /// Whether the value @p shown's step @p stepIndex states is a number typed
+    /// rather than computed: as `value_is_typed` decides within the block, or
+    /// where the step, or a step whose value it passes on, reads a calculated
+    /// value whose own block's value is typed (`reads_typed_block`). So a
+    /// typed value is stated alike wherever the derivation states it: in its
+    /// block's header, on its root's line, and on each line of another block
+    /// that reads it.
+    [[nodiscard]] inline bool derivation_value_is_typed(WorksheetEntry const& shown,
+                                                        std::size_t stepIndex,
+                                                        std::uint64_t typedSlots)
+    {
+        std::size_t stated = stepIndex;
+        // Each step passed from is an earlier one, so this ends.
+        while (!states_typed_value(shown.trace.steps[stated].kind) && !reads_typed_block(shown, stated, typedSlots))
+        {
+            std::optional<std::size_t> const passedFrom = value_passed_from(shown.trace, stated);
+            if (!passedFrom.has_value())
+                return false;
+            stated = *passedFrom;
+        }
+        return true;
+    }
+
+    /// The slots of @p entries' calculated blocks whose value is typed -- its
+    /// root's, as `derivation_value_is_typed` decides -- as a set of bits.
+    /// Each block comes before the blocks of the values it reads, so walking
+    /// them from the last decides every value a block reads before the block.
+    [[nodiscard]] inline std::uint64_t typed_block_slots(std::vector<WorksheetEntry> const& entries)
+    {
+        std::uint64_t typedSlots = 0;
+        for (auto shown = entries.rbegin(); shown != entries.rend(); ++shown)
+            if (shown->kind == WorksheetEntryKind::Calculated && !shown->trace.empty() && shown->slot < 64
+                && derivation_value_is_typed(*shown, shown->trace.root(), typedSlots))
+                typedSlots |= std::uint64_t { 1 } << shown->slot;
+        return typedSlots;
+    }
+
     /// The value of @p shown's block as its header states it: in the unit it
     /// was declared in, with that unit's symbol, spelled in @p numberStyle as
     /// a trace line spells a value (`checked_shown_text`), or `(not shown:
     /// ...)` where the style cannot spell it in that unit; why its
-    /// calculation failed; or `(no value)`. Exact only where the block's
-    /// root states a number typed rather than computed (`value_is_typed`),
-    /// so that the header and the root's line never disagree about it.
-    [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown, NumberStyle numberStyle)
+    /// calculation failed; or `(no value)`. Exact only when @p typed, the
+    /// block's value being a number typed rather than computed
+    /// (`derivation_value_is_typed`), so that the header, the block's root
+    /// and every line reading the value agree on whether it is rounded. A
+    /// computed root states the value in the coherent unit, so it may still
+    /// differ from the header in its unit and its padding.
+    [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown, NumberStyle numberStyle, bool typed)
     {
         if (shown.error.has_value())
             return std::string { describe(*shown.error) };
         if (!shown.value.has_value())
             return "(no value)";
-        bool const typed = !shown.trace.empty() && value_is_typed(shown.trace, shown.trace.root());
         std::expected<NumberText, ArithmeticError> const spelled =
             checked_shown_text(*shown.value, typed ? numberStyle.exact_only() : numberStyle, shown.unit);
         if (!spelled)
-            return "(not shown: " + std::string { describe(spelled.error()) } + ")";
+            return not_shown_text(spelled.error());
         std::string valueText { spelled->view() };
         std::string const unitSymbol = unit_symbol_text(shown.unit);
         if (!unitSymbol.empty())
@@ -3163,21 +3225,22 @@ namespace detail
     }
 
     /// The header of @p shown's block, @p definitionText being its
-    /// definition as rendered and its value spelled in @p numberStyle
-    /// (`block_value_text`): `symbol = definition = value` for a value
-    /// calculated, and `symbol = value, entered by hand in place of
-    /// definition` for one overridden.
+    /// definition as rendered and its value spelled in @p numberStyle,
+    /// exact when @p typed (`block_value_text`): `symbol = definition =
+    /// value` for a value calculated, and `symbol = value, entered by hand
+    /// in place of definition` for one overridden.
     [[nodiscard]] inline std::string block_header(WorksheetEntry const& shown,
                                                   std::string const& definitionText,
-                                                  NumberStyle numberStyle)
+                                                  NumberStyle numberStyle,
+                                                  bool typed)
     {
         std::string const symbolText = escaped_author_text(shown.symbol);
         if (shown.kind == WorksheetEntryKind::Overridden)
             return symbolText + " = "
-                   + (shown.value.has_value() ? block_value_text(shown, numberStyle) + ", entered by hand"
+                   + (shown.value.has_value() ? block_value_text(shown, numberStyle, typed) + ", entered by hand"
                                               : std::string { "(entered by hand as empty)" })
                    + " in place of " + definitionText;
-        return symbolText + " = " + definitionText + " = " + block_value_text(shown, numberStyle);
+        return symbolText + " = " + definitionText + " = " + block_value_text(shown, numberStyle, typed);
     }
 } // namespace detail
 
@@ -3203,9 +3266,12 @@ namespace detail
 /// each header's definition as `render` writes it under `RenderOptions`
 /// with that style, its typed numbers exact and never padded; and each
 /// header's value as a trace line states a value in its unit, rounded and
-/// marked `≈` only where the style asks and the block's root states a
-/// computed value rather than a typed one, and `(not shown: ...)` where
-/// the style cannot spell it there.
+/// marked `≈` only where the style asks and the block's value was computed
+/// rather than typed, and `(not shown: ...)` where the style cannot spell it
+/// there. A typed value is exact wherever the derivation states it: in its
+/// block's header, on its root's line, and on each line of another block
+/// that reads it (`WorksheetEntry::readSlots`) -- where it reads as its
+/// header does, both in the unit the quantity was declared in.
 ///
 /// **One budget bounds it all.** Every header, step and input line spends
 /// one unit of @p options.maxSteps, and a step showing a series spends one
@@ -3227,6 +3293,7 @@ template <Described Result, typename... Ds, Vocabulary V>
             detail::rendered_definitions(explained.calculation,
                                          detail::styled(explained.vocabulary, options.numbers),
                                          std::index_sequence_for<Ds...> {});
+        std::uint64_t const typedSlots = detail::typed_block_slots(explained.entries);
         std::size_t budget = options.maxSteps.value;
         std::size_t notShown = 0;
         bool inputsHeaded = false;
@@ -3246,7 +3313,7 @@ template <Described Result, typename... Ds, Vocabulary V>
                 derivationText += "  ";
                 derivationText += shown.trace.empty()
                                       ? detail::escaped_author_text(shown.symbol) + " = "
-                                            + detail::block_value_text(shown, options.numbers)
+                                            + detail::block_value_text(shown, options.numbers, false)
                                       : detail::step_line(shown.trace, shown.trace.root(), budget, options.numbers);
                 derivationText += "\n";
                 continue;
@@ -3263,7 +3330,8 @@ template <Described Result, typename... Ds, Vocabulary V>
             derivationText += detail::block_header(
                 shown,
                 defined ? definitionTexts[shown.slot - Graph::inputCount] : std::string { "(no definition)" },
-                options.numbers);
+                options.numbers,
+                !shown.trace.empty() && detail::derivation_value_is_typed(shown, shown.trace.root(), typedSlots));
             derivationText += "\n";
             for (std::size_t stepIndex = 0; stepIndex < stepCount; ++stepIndex)
             {
@@ -3274,8 +3342,15 @@ template <Described Result, typename... Ds, Vocabulary V>
                 }
                 --budget;
                 derivationText += "  " + std::to_string(stepIndex + 1) + ". ";
-                derivationText += detail::step_line(
-                    shown.trace, stepIndex, budget, options.numbers, detail::conformity_limits_of(shown.trace, stepIndex));
+                // A line whose value is typed only because it reads a typed
+                // value from another block is exact, as that block is.
+                bool const readsTyped = !detail::value_is_typed(shown.trace, stepIndex)
+                                        && detail::derivation_value_is_typed(shown, stepIndex, typedSlots);
+                derivationText += detail::step_line(shown.trace,
+                                                    stepIndex,
+                                                    budget,
+                                                    readsTyped ? options.numbers.exact_only() : options.numbers,
+                                                    detail::conformity_limits_of(shown.trace, stepIndex));
                 derivationText += "\n";
             }
         }

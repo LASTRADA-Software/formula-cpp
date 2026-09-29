@@ -150,9 +150,13 @@ them, as the padded trace of the dish's weighings below shows.
 
 A worksheet's derivation, `render_derivation`, takes the same
 `TraceRenderOptions`. Its steps and inputs read as a trace's lines do in the
-style; each block's header states its value as the line reading that value
-does, rounded and padded alike; and the header's definition is written as a
-rendered formula is (see below), its typed numbers exact.
+style. Each block's header states its value in the unit its quantity
+declares, as a line of another block that reads the value states it --
+rounded, padded or exact alike. The block's own last step agrees with the
+header on whether the value is rounded, though where it computed the value
+it states it in the coherent unit, not always with the same unit or
+padding. A typed value is exact on every one of those lines. The header's definition is written as a rendered
+formula is (see below), its typed numbers exact.
 
 ### A value in a unit nobody declared
 

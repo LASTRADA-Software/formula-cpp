@@ -56,11 +56,14 @@
 /// **A vocabulary also carries how a formula's text writes its numbers.**
 /// `render()` and `document()` given `RenderOptions` (`render.hpp`) wrap the
 /// vocabulary they were given with the style asked for, and hand that on as
-/// the vocabulary: it is the one argument that already reaches every node,
-/// a consumer's own `render_node` included, so no signature a consumer
-/// overloads had to change. Symbols are resolved through the wrapped
-/// vocabulary exactly as before, and `number_style_of(vocabulary)` reads the
-/// style -- `NumberStyle::fraction()` for a vocabulary nothing wrapped.
+/// the vocabulary; `render_derivation` (`trace_render.hpp`) wraps the
+/// worksheet's vocabulary so on every call, default options included, to
+/// write each block's definition. It is the one argument that already
+/// reaches every node, a consumer's own `render_node` included, so no
+/// signature a consumer overloads had to change. Symbols are resolved
+/// through the wrapped vocabulary exactly as before, and
+/// `number_style_of(vocabulary)` reads the style -- `NumberStyle::fraction()`
+/// for a vocabulary nothing wrapped.
 
 #include <formula-cpp/detail/name_text.hpp>
 #include <formula-cpp/number_text.hpp>

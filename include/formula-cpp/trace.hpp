@@ -4409,6 +4409,10 @@ enum class WorksheetEntryKind : std::uint8_t
     Input,
 };
 
+/// What `WorksheetEntry::readSlots` holds for a step that read nothing from
+/// the worksheet.
+inline constexpr std::size_t NothingRead = static_cast<std::size_t>(-1);
+
 /// One block of a worksheet's derivation: one named value, and how it was
 /// reached.
 ///
@@ -4439,6 +4443,14 @@ struct WorksheetEntry
     /// is `Derived`, the value's own block saying how it was reached. For an
     /// override or an input, one `Variable` step.
     Trace<Rational> trace {};
+    /// For each step of `trace`, in order, the slot of the quantity that step
+    /// read from the worksheet -- an input, a calculated value or an override
+    /// -- or `NothingRead` for a step that read nothing. It matches a step
+    /// reading a calculated value to that value's own block by the quantity,
+    /// which a symbol cannot do: a vocabulary may write two quantities alike.
+    /// `render_derivation` reads it to state a typed value read by another
+    /// block as exactly as that value's own block does.
+    std::vector<std::size_t> readSlots {};
 };
 
 /// A worksheet's answer for @p Result, and its derivation: one block per
@@ -4469,6 +4481,88 @@ struct ExplainedWorksheet
 
 namespace detail
 {
+    /// @p View, a `WorksheetView`, noting each value read through it in
+    /// @p readSlots: the slot of the quantity read, at the index of the step
+    /// that reads it in @p recording. A sink records a step once the node's
+    /// operands are recorded, and a node reads the worksheet just before its
+    /// own step, with no step recorded in between -- a variable reads its
+    /// value, an overlay's constant or derived quantity asks whether the
+    /// entry it replaced held one -- so the steps recorded so far are that
+    /// step's index.
+    ///
+    /// Forwards everything a definition's evaluation asks of the view, and
+    /// nothing else. Holds pointers to the trace and the slots: it lives for
+    /// one evaluation, inside the call that made it.
+    template <typename View, typename Graph>
+    class NotedWorksheetView
+    {
+      public:
+        /// Views through @p viewed, noting each read in @p readSlots at the
+        /// index of the next step of @p recording.
+        constexpr NotedWorksheetView(View viewed,
+                                     Trace<Rational> const* recording,
+                                     std::vector<std::size_t>* readSlots) noexcept:
+            _viewed { viewed },
+            _recording { recording },
+            _readSlots { readSlots }
+        {
+        }
+
+        /// Whether the view provides @p Q.
+        template <Described Q>
+        static constexpr bool provides = View::template provides<Q>;
+
+        /// Whether the view's value for @p Q was typed in, as the view says.
+        template <Described Q>
+        static constexpr bool is_entered = View::template is_entered<Q>;
+
+        /// Whether the view's series for @p Q was typed in, as the view says.
+        template <Described Q>
+        static constexpr bool is_entered_series = View::template is_entered_series<Q>;
+
+        /// The view's value for @p Q, the read noted.
+        template <Described Q>
+        [[nodiscard]] Measured<Q> get() const
+        {
+            note<Q>();
+            return _viewed.template get<Q>();
+        }
+
+        /// The view's value for @p Q, or why calculating it failed, the read
+        /// noted.
+        template <Described Q>
+        [[nodiscard]] std::expected<Measured<Q>, ArithmeticError> checked_get() const
+        {
+            note<Q>();
+            return _viewed.template checked_get<Q>();
+        }
+
+        /// Where the view's value for @p Q came from. Not a read.
+        template <Described Q>
+        [[nodiscard]] constexpr ValueSource source_of() const noexcept
+        {
+            return _viewed.template source_of<Q>();
+        }
+
+      private:
+        /// Notes a read of @p Q at the index of the next step.
+        template <Described Q>
+        void note() const
+        {
+            if constexpr (View::template provides<Q>)
+            {
+                std::size_t const readingStep = _recording->steps.size();
+                if (_readSlots->size() <= readingStep)
+                    _readSlots->resize(readingStep + 1, NothingRead);
+                (*_readSlots)[readingStep] = Graph::template slot_of<Q>;
+            }
+        }
+
+        View _viewed;
+        Trace<Rational> const* _recording;
+        std::vector<std::size_t>* _readSlots;
+    };
+
     /// The block of @p sheet's derivation for the value in slot @p Slot,
     /// which @p sheet has brought up to date. A calculated value's
     /// definition is evaluated again against the values it reads, and each
@@ -4501,19 +4595,26 @@ namespace detail
         {
             namedBlock.kind = WorksheetEntryKind::Calculated;
             std::uint64_t made = 0;
+            using DefinitionView = WorksheetView<Sheet, Graph::reads[Slot]>;
             static_cast<void>(formula::checked_evaluate<Q>(
                 std::get<Slot - Graph::inputCount>(sheet.calculation().definitions).expression,
-                WorksheetView<Sheet, Graph::reads[Slot]> { &sheet, &made },
+                NotedWorksheetView<DefinitionView, Graph> { DefinitionView { &sheet, &made },
+                                                            &namedBlock.trace,
+                                                            &namedBlock.readSlots },
                 RecordingSink<Rational, V> { namedBlock.trace, vocabulary }));
+            namedBlock.readSlots.resize(namedBlock.trace.steps.size(), NothingRead);
             wanted |= made;
             return namedBlock;
         }
         else
             namedBlock.kind = WorksheetEntryKind::Overridden;
 
-        static_cast<void>(formula::checked_evaluate<Q>(var<Q>,
-                                                       WorksheetView<Sheet, std::uint64_t { 1 } << Slot> { &sheet, nullptr },
-                                                       RecordingSink<Rational, V> { namedBlock.trace, vocabulary }));
+        using OwnView = WorksheetView<Sheet, std::uint64_t { 1 } << Slot>;
+        static_cast<void>(formula::checked_evaluate<Q>(
+            var<Q>,
+            NotedWorksheetView<OwnView, Graph> { OwnView { &sheet, nullptr }, &namedBlock.trace, &namedBlock.readSlots },
+            RecordingSink<Rational, V> { namedBlock.trace, vocabulary }));
+        namedBlock.readSlots.resize(namedBlock.trace.steps.size(), NothingRead);
         return namedBlock;
     }
 

@@ -163,6 +163,59 @@ std::optional<formula::Rational> root_in_declared_unit(formula::WorksheetEntry c
         return std::nullopt;
     return *converted;
 }
+
+struct Third: formula::Quantity<Third, "s_3", "an invented share, a third of it", unit::One>
+{
+};
+struct TypedShare: formula::Quantity<TypedShare, "s_t", "an invented share, typed outright", unit::One>
+{
+};
+
+/// A share of two factors; a third of it, a typed 1/3 that has no exact
+/// decimal; and a share typed outright, which reads nothing.
+inline constexpr auto thirds =
+    formula::calculation(formula::define<Share>(var<Factor> / var<Other>),
+                         formula::define<Third>(var<Share> * rat(1, 3)),
+                         formula::define<TypedShare>(formula::constant<unit::One>(rat(2, 3))));
+
+/// `thirds`' worksheet over a factor of 1 and another of 4: a share of 1/4,
+/// which is 0.25, and a third of it, 1/12, which has no exact decimal.
+inline auto thirds_sheet()
+{
+    return formula::worksheet(
+        thirds, formula::environment(formula::Measured<Factor> { rat(1) }, formula::Measured<Other> { rat(4) }));
+}
+
+/// The typed share, read as it is by the halved share -- which is therefore a
+/// typed value too -- and that doubled: reads of a typed value, one through
+/// another.
+inline constexpr auto typedReads =
+    formula::calculation(formula::define<TypedShare>(formula::constant<unit::One>(rat(2, 3))),
+                         formula::define<Halved>(var<TypedShare>),
+                         formula::define<Doubled>(var<Halved> * rat(2)));
+
+/// A computed share and the typed one, added: read side by side, and written
+/// alike under `alikeShares`.
+inline constexpr auto sharesAdded =
+    formula::calculation(formula::define<Share>(var<Factor> / var<Other>),
+                         formula::define<TypedShare>(formula::constant<unit::One>(rat(2, 3))),
+                         formula::define<Doubled>(var<Share> + var<TypedShare>));
+
+/// A vocabulary writing the typed share as the computed one is written, `s`.
+inline constexpr auto alikeShares = formula::vocabulary(formula::renames<TypedShare>("s"));
+
+/// A unit declaring more decimals than `DecimalPlaces` spans: 19. Invented.
+inline constexpr formula::Unit OverPrecise { .dimension = formula::dim::Length,
+                                             .symbolText = formula::symbol("u"),
+                                             .decimals = 19 };
+struct OverPreciseLength: formula::Quantity<OverPreciseLength, "l_u", "a length in an over-precise unit", OverPrecise>
+{
+};
+
+/// A length in the over-precise unit, twice the width, and the depth that
+/// reads it.
+inline constexpr auto overPrecise = formula::calculation(formula::define<OverPreciseLength>(var<Width> * rat(2)),
+                                                         formula::define<Depth>(var<OverPreciseLength> + var<Width>));
 } // namespace
 
 TEST_CASE("a worksheet's derivation gives the result first, then what it was reached through, then the inputs",
@@ -778,33 +831,6 @@ TEST_CASE("author text in a derivation's header cannot end its line", "[calculat
              "  k_o = 2\n");
 }
 
-// ------------------------------------------------------ numbers in a derivation
-
-namespace
-{
-struct Third: formula::Quantity<Third, "s_3", "an invented share, a third of it", unit::One>
-{
-};
-struct TypedShare: formula::Quantity<TypedShare, "s_t", "an invented share, typed outright", unit::One>
-{
-};
-
-/// A share of two factors; a third of it, a typed 1/3 that has no exact
-/// decimal; and a share typed outright, which reads nothing.
-inline constexpr auto thirds =
-    formula::calculation(formula::define<Share>(var<Factor> / var<Other>),
-                         formula::define<Third>(var<Share> * rat(1, 3)),
-                         formula::define<TypedShare>(formula::constant<unit::One>(rat(2, 3))));
-
-/// `thirds`' worksheet over a factor of 1 and another of 4: a share of 1/4,
-/// which is 0.25, and a third of it, 1/12, which has no exact decimal.
-inline auto thirds_sheet()
-{
-    return formula::worksheet(
-        thirds, formula::environment(formula::Measured<Factor> { rat(1) }, formula::Measured<Other> { rat(4) }));
-}
-} // namespace
-
 TEST_CASE("a derivation spells its headers, steps and inputs in the trace's number style",
           "[calculation][worksheet][trace][decimals]")
 {
@@ -893,6 +919,27 @@ TEST_CASE("an input line with no step of its own is spelled in the trace's numbe
                          "  k = 1\n"
                          "  k_o = \xe2\x89\x88"
                          "0.333\n"));
+
+    // An input in a unit that declares decimals: the fallback line states the
+    // value in that unit, with its symbol, and pads it to its three decimals.
+    using namespace household;
+    auto billSheet = formula::worksheet(bill, bill_environment(billValues));
+    billSheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    auto handMadeBill = formula::explain_worksheet<EnergyCost>(billSheet);
+    formula::WorksheetEntry* solarInput = nullptr;
+    for (formula::WorksheetEntry& shown: handMadeBill.entries)
+        if (shown.kind == formula::WorksheetEntryKind::Input && shown.symbol == "solar")
+            solarInput = &shown;
+    REQUIRE(solarInput != nullptr);
+    solarInput->trace = {};
+    CHECK(formula::render_derivation(handMadeBill, { .maxSteps = 30 }).find("inputs\n  solar = 150 kWh\n")
+          != std::string::npos);
+    CHECK(formula::render_derivation(handMadeBill,
+                                     { .maxSteps = 30,
+                                       .numbers = formula::NumberStyle::approximate_decimal(
+                                           formula::RoundingMode::HalfEven, formula::DecimalPadding::Padded) })
+              .find("inputs\n  solar = 150.000 kWh\n")
+          != std::string::npos);
 }
 
 TEST_CASE("a derivation pads a header as a trace pads the line that reads its value",
@@ -936,4 +983,84 @@ TEST_CASE("a derivation pads a header as a trace pads the line that reads its va
              "  solar = 150.000 kWh\n"
              "  price = 0.3200 EUR/kWh\n"
              "  feed_in = 0.0800 EUR/kWh\n");
+}
+
+TEST_CASE("a typed value another block reads is stated as exactly there as in its own block",
+          "[calculation][worksheet][trace][decimals]")
+{
+    // The typed 2/3, read as it is by the halved share and that doubled. A
+    // reading line, and the header of a block that only passes the value on,
+    // state it exactly, as its own block does; the product, computed, is
+    // rounded where the style rounds.
+    auto sheet = formula::worksheet(typedReads, formula::environment());
+    auto const explained = formula::explain_worksheet<Doubled>(sheet);
+    std::string const exactly = "s_2 = s_h * 2 = 4/3\n"
+                                "  1. s_h = 2/3, calculated\n"
+                                "  2. 2\n"
+                                "  3. #1 * #2 = 4/3\n"
+                                "s_h = s_t = 2/3\n"
+                                "  1. s_t = 2/3, calculated\n"
+                                "s_t = 2/3 = 2/3\n"
+                                "  1. 2/3\n";
+    CHECK(formula::render_derivation(explained, { .maxSteps = 20 }) == exactly);
+    CHECK(formula::render_derivation(explained, { .maxSteps = 20, .numbers = formula::NumberStyle::exact_decimal() })
+          == exactly);
+    CHECK(formula::render_derivation(
+              explained,
+              { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) })
+          == "s_2 = s_h * 2 = \xe2\x89\x88"
+             "1.333\n"
+             "  1. s_h = 2/3, calculated\n"
+             "  2. 2\n"
+             "  3. #1 * #2 = \xe2\x89\x88"
+             "1.333\n"
+             "s_h = s_t = 2/3\n"
+             "  1. s_t = 2/3, calculated\n"
+             "s_t = 2/3 = 2/3\n"
+             "  1. 2/3\n");
+}
+
+TEST_CASE("a derivation tells a typed value from a computed one written alike", "[calculation][worksheet][trace][decimals]")
+{
+    // A computed share of 1/3 and the typed 2/3, both written `s`: the line
+    // reading the computed one is rounded, the line reading the typed one is
+    // not. Only the slot each step read can tell the two apart.
+    auto sheet = formula::worksheet(
+        sharesAdded, formula::environment(formula::Measured<Factor> { rat(1) }, formula::Measured<Other> { rat(3) }));
+    auto const explained = formula::explain_worksheet<Doubled>(sheet, alikeShares);
+    std::string const rounded = formula::render_derivation(
+        explained,
+        { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) });
+    CHECK(rounded.starts_with("s_2 = s + s = 1\n"
+                              "  1. s = \xe2\x89\x88"
+                              "0.333, calculated\n"
+                              "  2. s = 2/3, calculated\n"
+                              "  3. #1 + #2 = 1\n"));
+    CHECK(rounded.find("\ns = k / k_o = \xe2\x89\x88"
+                       "0.333\n")
+          != std::string::npos);
+    CHECK(rounded.find("\ns = 2/3 = 2/3\n") != std::string::npos);
+}
+
+TEST_CASE("a derivation's header says a value is not shown where its style cannot spell it",
+          "[calculation][worksheet][trace][decimals]")
+{
+    // A length in a unit declaring 19 decimals, more than a rounding or a
+    // padding can take: under a style that pads or rounds, its header and
+    // the line reading it say it is not shown, while its root, in metres,
+    // spells it. In fractions every value is shown.
+    auto sheet = formula::worksheet(overPrecise, formula::environment(formula::Measured<Width> { rat(3) }));
+    auto const explained = formula::explain_worksheet<Depth>(sheet);
+    std::string const fractions = formula::render_derivation(explained, { .maxSteps = 20 });
+    CHECK(fractions.find("\nl_u = b * 2 = 3/500 u\n") != std::string::npos);
+    CHECK(fractions.find("\n  1. l_u = 3/500 u, calculated\n") != std::string::npos);
+    for (formula::NumberStyle const style :
+         { formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded),
+           formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) })
+    {
+        std::string const styled = formula::render_derivation(explained, { .maxSteps = 20, .numbers = style });
+        CHECK(styled.find("\nl_u = b * 2 = (not shown: overflow in exact arithmetic)\n") != std::string::npos);
+        CHECK(styled.find("\n  1. l_u = (not shown: overflow in exact arithmetic), calculated\n") != std::string::npos);
+        CHECK(styled.find("\n  3. #1 * #2 = 0.006\n") != std::string::npos);
+    }
 }

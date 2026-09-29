@@ -1304,6 +1304,17 @@ TEST_CASE("document: a calculation's definitions follow RenderOptions, their typ
     // written exactly, and never padded.
     formula::Documentation const rounded = formula::document(scaledMix, formula::DefaultVocabulary {}, roundedAndPadded);
     CHECK(rounded.formula == decimals.formula);
+    REQUIRE(rounded.symbols.size() >= 2);
     CHECK(rounded.symbols[0].calculatedAs == decimals.symbols[0].calculatedAs);
     CHECK(rounded.symbols[1].calculatedAs == decimals.symbols[1].calculatedAs);
+
+    // Nor is a typed number in a unit that declares decimals padded to them:
+    // the litre declares one, and a typed 5 l stays 5 l.
+    constexpr auto toppedUp = formula::calculation(
+        formula::define<Surplus>(var<WaterVolume> - var<CementVolume> + formula::constant<formula::unit::Litre>(rat(5))));
+    formula::Documentation const toppedUpPage = formula::document(toppedUp, formula::DefaultVocabulary {}, roundedAndPadded);
+    REQUIRE_FALSE(toppedUpPage.symbols.empty());
+    REQUIRE(toppedUpPage.symbols[0].calculatedAs.has_value());
+    CHECK(toppedUpPage.symbols[0].calculatedAs->ends_with(" + 5 l"));
+    CHECK(toppedUpPage.formula.ends_with(" + 5 l"));
 }

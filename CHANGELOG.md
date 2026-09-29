@@ -124,7 +124,10 @@ may break it, and each such change is recorded here.
   compile. `render_derivation` spells a worksheet's derivation in the same style: its steps and
   inputs as a trace's lines, each block's header value as the line that reads it -- rounded,
   padded or exact alike -- and the header's definition as `render` writes it under
-  `RenderOptions`.
+  `RenderOptions`. A typed value is exact wherever the derivation states it, on the line of another
+  block that reads it as well: the new `WorksheetEntry::readSlots` records, for each step, which of
+  the calculation's quantities it read from the worksheet, so that the line is matched to that
+  value's block even where a vocabulary writes two quantities alike.
 - `format.hpp`, opt-in and not included by `formula.hpp`, because it needs `<format>`:
   `std::format` writes a `Rational` and a `Measured` value in the spellings `number_text` gives.
   `{}` is the exact decimal, or the fraction where there is none (`0.6`, `1/3`, `5.2 kJ`); `{:/}`
