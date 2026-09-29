@@ -2,9 +2,13 @@
 #include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
+#include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
+#include <formula-cpp/render.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
@@ -18,6 +22,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <initializer_list>
 #include <optional>
 #include <string>
@@ -1249,4 +1254,128 @@ TEST_CASE("a derivation's computed price per energy shows its first significant 
              "inputs\n"
              "  grid_cost = 80 EUR\n"
              "  net_draw = 250 kWh\n");
+}
+
+// ------------------------------------------------------------ money of its own
+
+namespace
+{
+/// An invented currency, a base dimension of its own as a consumer declares
+/// one, with two decimals.
+inline constexpr formula::Unit MoneyEuro { .dimension = formula::base_dimension("EUR"),
+                                           .symbolText = formula::symbol("EUR"),
+                                           .decimals = 2 };
+/// That currency per kilowatt-hour: one of it per 3600000 joules.
+inline constexpr formula::Unit MoneyEuroPerKwh { .dimension = MoneyEuro.dimension / formula::dim::Energy,
+                                                 .magnitudeNumerator = 1,
+                                                 .magnitudeDenominator = 3'600'000,
+                                                 .symbolText = formula::symbol("EUR/kWh"),
+                                                 .decimals = 4 };
+
+struct MeterDraw: formula::Quantity<MeterDraw, "draw", "an invented energy drawn", unit::KilowattHour>
+{
+};
+struct EnergyTariff: formula::Quantity<EnergyTariff, "tariff", "an invented price of energy", MoneyEuroPerKwh>
+{
+};
+struct StandingFee: formula::Quantity<StandingFee, "fee", "an invented standing fee", MoneyEuro>
+{
+};
+struct EnergyCharge: formula::Quantity<EnergyCharge, "charge", "an invented charge for energy", MoneyEuro>
+{
+};
+struct ChargeTotal: formula::Quantity<ChargeTotal, "total", "an invented total", MoneyEuro>
+{
+};
+struct MeanRate: formula::Quantity<MeanRate, "rate", "an invented total per energy drawn", MoneyEuroPerKwh>
+{
+};
+
+/// A charge for the energy drawn; a total of it, the fee and a quarter of a
+/// euro typed as money; and what the total comes to per energy drawn.
+inline constexpr auto charges = formula::calculation(
+    formula::define<EnergyCharge>(var<MeterDraw> * var<EnergyTariff>),
+    formula::define<ChargeTotal>(var<EnergyCharge> + var<StandingFee> + formula::constant<MoneyEuro>(rat(1, 4))),
+    formula::define<MeanRate>(var<ChargeTotal> / var<MeterDraw>));
+} // namespace
+
+TEST_CASE("money of its own is calculated, derived, documented and spelled in its units",
+          "[calculation][worksheet][trace][decimals][money]")
+{
+    auto sheet = formula::worksheet(charges,
+                                    formula::environment(formula::Measured<MeterDraw> { rat(279) },
+                                                         formula::Measured<EnergyTariff> { rat(8, 25) },
+                                                         formula::Measured<StandingFee> { rat(25, 2) }));
+    formula::NumberStyle const decimals = formula::NumberStyle::exact_decimal();
+
+    // The derivation in exact decimals, each value in its quantity's unit. A
+    // computed step is in the coherent unit, the rate's in euros per joule,
+    // and neither it nor the rate, 3401/9300 EUR/kWh, has an exact decimal.
+    auto const explained = formula::explain_worksheet<MeanRate>(sheet);
+    CHECK(explained.entries.front().unit == MoneyEuroPerKwh);
+    CHECK(formula::render_derivation(explained, { .maxSteps = 30, .numbers = decimals })
+          == "rate = total / draw = 3401/9300 EUR/kWh\n"
+             "  1. total = 102.03 EUR, calculated\n"
+             "  2. draw = 279 kWh\n"
+             "  3. #1 / #2 = 3401/33480000000\n"
+             "total = charge + fee + 0.25 EUR = 102.03 EUR\n"
+             "  1. charge = 89.28 EUR, calculated\n"
+             "  2. fee = 12.5 EUR\n"
+             "  3. #1 + #2 = 101.78\n"
+             "  4. 0.25 EUR\n"
+             "  5. #3 + #4 = 102.03\n"
+             "charge = draw * tariff = 89.28 EUR\n"
+             "  1. draw = 279 kWh\n"
+             "  2. tariff = 0.32 EUR/kWh\n"
+             "  3. #1 * #2 = 89.28\n"
+             "inputs\n"
+             "  draw = 279 kWh\n"
+             "  tariff = 0.32 EUR/kWh\n"
+             "  fee = 12.5 EUR\n");
+
+    CHECK(formula::describe_graph(charges) == "inputs: draw, tariff, fee\n"
+                                              "charge <- draw, tariff\n"
+                                              "total  <- fee, charge\n"
+                                              "rate   <- draw, total\n");
+
+    // The documentation page: every row in its unit, and each definition in
+    // the style asked for -- the quarter of a euro as 0.25 EUR.
+    formula::Documentation const page =
+        formula::document(charges, formula::DefaultVocabulary {}, { .numbers = decimals });
+    CHECK(page.formula == "charge = draw * tariff\n"
+                          "total = charge + fee + 0.25 EUR\n"
+                          "rate = total / draw");
+    REQUIRE(page.symbols.size() == 6);
+    CHECK(page.symbols[0].symbol == "charge");
+    CHECK(page.symbols[0].unit == MoneyEuro);
+    CHECK(page.symbols[0].calculatedAs == "draw * tariff");
+    CHECK(page.symbols[1].symbol == "total");
+    CHECK(page.symbols[1].unit == MoneyEuro);
+    CHECK(page.symbols[1].calculatedAs == "charge + fee + 0.25 EUR");
+    CHECK(page.symbols[2].symbol == "rate");
+    CHECK(page.symbols[2].unit == MoneyEuroPerKwh);
+    CHECK(page.symbols[2].calculatedAs == "total / draw");
+    CHECK(page.symbols[3].symbol == "draw");
+    CHECK(page.symbols[3].unit == unit::KilowattHour);
+    CHECK_FALSE(page.symbols[3].calculatedAs.has_value());
+    CHECK(page.symbols[4].symbol == "tariff");
+    CHECK(page.symbols[4].unit == MoneyEuroPerKwh);
+    CHECK_FALSE(page.symbols[4].calculatedAs.has_value());
+    CHECK(page.symbols[5].symbol == "fee");
+    CHECK(page.symbols[5].unit == MoneyEuro);
+    CHECK_FALSE(page.symbols[5].calculatedAs.has_value());
+
+    // A value in euros, and one in euros per kilowatt-hour, written by
+    // std::format and by number_text.
+    formula::Measured<ChargeTotal> const chargedTotal = sheet.calculate<ChargeTotal>().measurement();
+    formula::Measured<MeanRate> const meanRate = sheet.calculate<MeanRate>().measurement();
+    formula::Measured<StandingFee> const standingFee { rat(25, 2) };
+    CHECK(std::format("{}", chargedTotal) == "102.03 EUR");
+    CHECK(std::format("{:.2HalfEven}", standingFee) == "12.50 EUR");
+    CHECK(std::format("{}", meanRate) == "3401/9300 EUR/kWh");
+    CHECK(std::format("{:~HalfEven}", meanRate) == "\xe2\x89\x88"
+                                                   "0.3657 EUR/kWh");
+    CHECK(formula::number_text(standingFee, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
+          == "12.50 EUR");
+    CHECK(formula::number_text(chargedTotal, formula::NumberStyle::fraction()) == "10203/100 EUR");
 }
