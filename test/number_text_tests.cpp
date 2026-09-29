@@ -1,0 +1,455 @@
+// SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/number_text.hpp>
+#include <formula-cpp/quantity.hpp>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+
+using formula::ArithmeticError;
+using formula::ArithmeticException;
+using formula::DecimalPadding;
+using formula::DecimalPlaces;
+using formula::Measured;
+using formula::NumberNotation;
+using formula::NumberStyle;
+using formula::NumberText;
+using formula::Rational;
+using formula::RoundingMode;
+
+namespace dim = formula::dim;
+namespace unit = formula::unit;
+
+namespace
+{
+inline constexpr Rational::Int IntMax = formula::detail::IntMax;
+inline constexpr Rational::Int IntMin = formula::detail::IntMin;
+
+/// A quantity in kilojoules: a unit with a symbol, `kJ`, and one declared
+/// decimal, which the padded cases below read.
+struct ImpactWork: formula::Quantity<ImpactWork, "W_i", "impact work", unit::Kilojoule>
+{
+};
+
+/// A quantity in `unit::One`, which has no symbol.
+struct Share: formula::Quantity<Share, "s_h", "a share", unit::One>
+{
+};
+
+/// 18 declared decimals and a symbol of 16 bytes with no terminator -- as
+/// many as a `Symbol` holds and `view()` reads -- so that a value in it is
+/// the longest text this library spells.
+inline constexpr formula::Unit Widest {
+    .dimension = dim::Scalar,
+    .symbolText = formula::Symbol { { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p' } },
+    .decimals = 18
+};
+struct WidestReading: formula::Quantity<WidestReading, "r_w", "a reading in the widest unit", Widest>
+{
+};
+
+/// Declared decimals of -1: whole tens.
+inline constexpr formula::Unit Tens { .dimension = dim::Scalar, .symbolText = formula::symbol("t10"), .decimals = -1 };
+/// Declared decimals of 19 and of -19, one past what `DecimalPlaces` spans on either side.
+inline constexpr formula::Unit TooFine { .dimension = dim::Scalar, .symbolText = formula::symbol("tf"), .decimals = 19 };
+inline constexpr formula::Unit TooCoarse { .dimension = dim::Scalar, .symbolText = formula::symbol("tc"), .decimals = -19 };
+
+/// Whether `view()` can be called on a @p T.
+template <typename T>
+concept Viewable = requires(T&& spelled) { std::forward<T>(spelled).view(); };
+
+/// @p exactText with zeros appended up to @p places decimal places.
+[[nodiscard]] std::string padded_to(std::string exactText, int places)
+{
+    if (places <= 0)
+        return exactText;
+    std::size_t const point = exactText.find('.');
+    std::size_t shownPlaces = point == std::string::npos ? 0 : exactText.size() - point - 1;
+    if (point == std::string::npos)
+        exactText += '.';
+    for (; shownPlaces < static_cast<std::size_t>(places); ++shownPlaces)
+        exactText += '0';
+    return exactText;
+}
+} // namespace
+
+// ---- exact decimals and fractions ----
+
+TEST_CASE("an exact decimal is shown only when it is the exact value", "[number_text]")
+{
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { 3, 5 }) == "0.6");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { 94411, 5000 }) == "18.8822");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { -7, 4 }) == "-1.75");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { 1, 262144 }) == "0.000003814697265625"); // 2^18: 18 places
+    STATIC_REQUIRE(!formula::exact_decimal(Rational { 1, 524288 }).has_value());             // 2^19: 19 places
+    STATIC_REQUIRE(!formula::exact_decimal(Rational { 1, 3 }).has_value());
+    STATIC_REQUIRE(formula::fraction_text(Rational { -1, 3 }) == "-1/3");
+
+    // Whole numbers, zero, and 10^18 itself as a denominator.
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { 4 }) == "4");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational {}) == "0");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { 1, 1'000'000'000'000'000'000 }) == "0.000000000000000001");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { -1, 20 }) == "-0.05");
+    STATIC_REQUIRE(formula::fraction_text(Rational { 3, 5 }) == "3/5");
+    STATIC_REQUIRE(formula::fraction_text(Rational { 4 }) == "4");
+    STATIC_REQUIRE(formula::fraction_text(Rational {}) == "0");
+
+    // has_exact_decimal draws the same line exact_decimal does.
+    STATIC_REQUIRE(formula::has_exact_decimal(Rational { 1, 262144 }));
+    STATIC_REQUIRE(!formula::has_exact_decimal(Rational { 1, 524288 }));
+    STATIC_REQUIRE(!formula::has_exact_decimal(Rational { 1, 3 }));
+    STATIC_REQUIRE(!formula::has_exact_decimal(Rational { 7, IntMax }));
+
+    // Both are exact, whatever they show.
+    STATIC_REQUIRE(formula::exact_decimal(Rational { 3, 5 })->is_exact());
+    STATIC_REQUIRE(formula::fraction_text(Rational { 1, 3 }).is_exact());
+}
+
+TEST_CASE("the extremes of Rational are spelled in full", "[number_text]")
+{
+    // The magnitude of IntMin is 2^63, which Int cannot hold; the text has it.
+    STATIC_REQUIRE(formula::fraction_text(Rational { IntMin }) == "-9223372036854775808");
+    STATIC_REQUIRE(formula::fraction_text(Rational { IntMin, IntMax }) == "-9223372036854775808/9223372036854775807");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { IntMin }) == "-9223372036854775808");
+    STATIC_REQUIRE(*formula::exact_decimal(Rational { IntMax }) == "9223372036854775807");
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { IntMin }, DecimalPlaces { 18 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+        == "-9223372036854775808.000000000000000000");
+}
+
+// ---- rounded decimals ----
+
+TEST_CASE("a rounded decimal is what checked_round rounds to", "[number_text]")
+{
+    STATIC_REQUIRE(formula::decimal_text(
+                       Rational { 23653, 200 }, DecimalPlaces { 2 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+                   == "118.26");
+    STATIC_REQUIRE(formula::decimal_text(
+                       Rational { 23653, 200 }, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero, DecimalPadding::Padded)
+                   == "118.27");
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { 4 }, DecimalPlaces { 2 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+        == "4.00");
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { -1, 1000 }, DecimalPlaces { 2 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+        == "0.00"); // no "-0.00"
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { -1, 1000 }, DecimalPlaces { 2 }, RoundingMode::Floor, DecimalPadding::Padded)
+        == "-0.01");
+    STATIC_REQUIRE(formula::decimal_text(
+                       Rational { 9999, 1000 }, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero, DecimalPadding::Padded)
+                   == "10.00");
+    STATIC_REQUIRE(
+        formula::number_text(Rational { 1, 3 }, NumberStyle::approximate_decimal(RoundingMode::HalfEven), unit::One)
+        == "\xe2\x89\x88" "0.333");
+
+    // With no places, HalfEven reads the parity of the whole number: 2.5 and
+    // 3.5 go to 2 and 4, where rounding every tie up gives 3 and 4.
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { 5, 2 }, DecimalPlaces { 0 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+        == "2");
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { 7, 2 }, DecimalPlaces { 0 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+        == "4");
+    // Ties on a negative value: toward zero and away from it differ.
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { -5, 2 }, DecimalPlaces { 0 }, RoundingMode::HalfTowardZero, DecimalPadding::Padded)
+        == "-2");
+    STATIC_REQUIRE(formula::decimal_text(
+                       Rational { -5, 2 }, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero, DecimalPadding::Padded)
+                   == "-3");
+    // Trimmed drops the trailing zeros, and the point with them.
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { 1, 10 }, DecimalPlaces { 3 }, RoundingMode::HalfEven, DecimalPadding::Trimmed)
+        == "0.1");
+    STATIC_REQUIRE(formula::decimal_text(
+                       Rational { 9999, 1000 }, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero, DecimalPadding::Trimmed)
+                   == "10");
+
+    // is_exact says whether rounding changed the value, not whether zeros were added.
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { 4 }, DecimalPlaces { 2 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+            .is_exact());
+    STATIC_REQUIRE(
+        !formula::decimal_text(Rational { 23653, 200 }, DecimalPlaces { 2 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+             .is_exact());
+    STATIC_REQUIRE(
+        formula::decimal_text(Rational { 23653, 200 }, DecimalPlaces { 3 }, RoundingMode::HalfEven, DecimalPadding::Padded)
+            .is_exact());
+}
+
+TEST_CASE("a rounded decimal exists where checked_round overflows", "[number_text]")
+{
+    NumberText const third =
+        formula::decimal_text(Rational { IntMax, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven, DecimalPadding::Padded);
+    CHECK(third.view() == "3074457345618258602.333333333333333333");
+    CHECK_FALSE(third.is_exact());
+
+    auto const rounded = formula::checked_round(Rational { IntMax, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven);
+    REQUIRE_FALSE(rounded.has_value());
+    CHECK(rounded.error() == ArithmeticError::Overflow);
+}
+
+TEST_CASE("more places than DecimalPlaces spans is refused as checked_round refuses it", "[number_text]")
+{
+    auto const tooFine = formula::checked_decimal_text(
+        Rational { 1, 3 }, DecimalPlaces { 19 }, RoundingMode::HalfEven, DecimalPadding::Padded);
+    REQUIRE_FALSE(tooFine.has_value());
+    CHECK(tooFine.error() == ArithmeticError::Overflow);
+
+    auto const tooCoarse = formula::checked_decimal_text(
+        Rational { 1, 3 }, DecimalPlaces { -19 }, RoundingMode::HalfEven, DecimalPadding::Padded);
+    REQUIRE_FALSE(tooCoarse.has_value());
+    CHECK(tooCoarse.error() == ArithmeticError::Overflow);
+
+    CHECK_THROWS_AS(
+        formula::decimal_text(Rational { 1, 3 }, DecimalPlaces { 19 }, RoundingMode::HalfEven, DecimalPadding::Padded),
+        ArithmeticException);
+}
+
+TEST_CASE("negative places round to whole tens through checked_round", "[number_text]")
+{
+    NumberText const evenTens =
+        formula::decimal_text(Rational { 125 }, DecimalPlaces { -1 }, RoundingMode::HalfEven, DecimalPadding::Padded);
+    NumberText const awayTens = formula::decimal_text(
+        Rational { 125 }, DecimalPlaces { -1 }, RoundingMode::HalfAwayFromZero, DecimalPadding::Padded);
+    CHECK(evenTens.view() == "120");
+    CHECK(awayTens.view() == "130");
+    CHECK_FALSE(evenTens.is_exact());
+    CHECK_FALSE(awayTens.is_exact());
+
+    NumberText const negativeTens =
+        formula::decimal_text(Rational { -125 }, DecimalPlaces { -1 }, RoundingMode::Floor, DecimalPadding::Trimmed);
+    CHECK(negativeTens.view() == "-130");
+
+    NumberText const alreadyTens =
+        formula::decimal_text(Rational { 120 }, DecimalPlaces { -1 }, RoundingMode::HalfEven, DecimalPadding::Padded);
+    CHECK(alreadyTens.view() == "120");
+    CHECK(alreadyTens.is_exact());
+}
+
+TEST_CASE("a rounding mode that is none of the seven is refused on a tie as checked_round refuses it", "[number_text]")
+{
+    auto const unknownMode = static_cast<RoundingMode>(42);
+
+    auto const tie =
+        formula::checked_decimal_text(Rational { 5, 2 }, DecimalPlaces { 0 }, unknownMode, DecimalPadding::Padded);
+    REQUIRE_FALSE(tie.has_value());
+    CHECK(tie.error() == ArithmeticError::DomainError);
+    auto const roundedTie = formula::checked_round(Rational { 5, 2 }, DecimalPlaces { 0 }, unknownMode);
+    REQUIRE_FALSE(roundedTie.has_value());
+    CHECK(roundedTie.error() == ArithmeticError::DomainError);
+
+    // Off a tie it is nearest, as there.
+    auto const nearTie =
+        formula::checked_decimal_text(Rational { 7, 3 }, DecimalPlaces { 0 }, unknownMode, DecimalPadding::Padded);
+    REQUIRE(nearTie.has_value());
+    CHECK(nearTie->view() == "2");
+    CHECK(formula::checked_round(Rational { 7, 3 }, DecimalPlaces { 0 }, unknownMode) == Rational { 2 });
+}
+
+TEST_CASE("decimal_text agrees with checked_round wherever checked_round answers", "[number_text]")
+{
+    std::array<Rational::Int, 9> const divisors { 1, 2, 3, 7, 8, 40, 125, 1000, 1024 };
+    std::array<RoundingMode, 7> const roundingModes { RoundingMode::HalfAwayFromZero, RoundingMode::HalfTowardZero,
+                                                      RoundingMode::HalfEven,         RoundingMode::Ceiling,
+                                                      RoundingMode::Floor,            RoundingMode::TowardZero,
+                                                      RoundingMode::AwayFromZero };
+    constexpr std::int32_t MostPlaces = 6;
+
+    std::size_t compared = 0;
+    std::size_t disagreements = 0;
+    std::string firstDisagreement;
+    for (Rational::Int dividend = -2000; dividend <= 2000; ++dividend)
+    {
+        for (Rational::Int const divisor: divisors)
+        {
+            Rational const unrounded { dividend, divisor };
+            for (std::int32_t places = 0; places <= MostPlaces; ++places)
+            {
+                for (RoundingMode const roundingMode: roundingModes)
+                {
+                    auto const rounded = formula::checked_round(unrounded, DecimalPlaces { places }, roundingMode);
+                    if (!rounded)
+                        continue;
+                    ++compared;
+
+                    NumberText const padded =
+                        formula::decimal_text(unrounded, DecimalPlaces { places }, roundingMode, DecimalPadding::Padded);
+                    NumberText const trimmed =
+                        formula::decimal_text(unrounded, DecimalPlaces { places }, roundingMode, DecimalPadding::Trimmed);
+                    std::string const exactRounded { formula::exact_decimal(*rounded)->view() };
+                    bool const changed = !(*rounded == unrounded);
+
+                    if (padded.view() != padded_to(exactRounded, places) || trimmed.view() != exactRounded
+                        || padded.is_exact() == changed || trimmed.is_exact() == changed)
+                    {
+                        if (disagreements == 0)
+                            firstDisagreement = std::to_string(dividend) + "/" + std::to_string(divisor) + " to "
+                                                + std::to_string(places) + " places in mode "
+                                                + std::to_string(static_cast<int>(roundingMode)) + ": "
+                                                + std::string { padded.view() } + " and "
+                                                + std::string { trimmed.view() } + ", checked_round gives "
+                                                + exactRounded;
+                        ++disagreements;
+                    }
+                }
+            }
+        }
+    }
+
+    INFO(firstDisagreement);
+    CHECK(disagreements == 0);
+    // Without this, a `continue` above that fired every time would leave the
+    // case green with nothing compared. checked_round answers every one of
+    // these -- numerators to 2000, places to 6 -- so the count is exact.
+    CHECK(compared == std::size_t { 4001 } * divisors.size() * std::size_t { MostPlaces + 1 } * roundingModes.size());
+}
+
+// ---- styles ----
+
+TEST_CASE("a style is a fraction unless it asks for more", "[number_text]")
+{
+    STATIC_REQUIRE(NumberStyle {} == NumberStyle::fraction());
+    STATIC_REQUIRE(NumberStyle {}.notation() == NumberNotation::Fraction);
+    STATIC_REQUIRE(NumberStyle::exact_decimal().notation() == NumberNotation::ExactDecimal);
+    STATIC_REQUIRE(NumberStyle::exact_decimal().padding() == DecimalPadding::Trimmed);
+    STATIC_REQUIRE(NumberStyle::exact_decimal(DecimalPadding::Padded).padding() == DecimalPadding::Padded);
+
+    constexpr NumberStyle approximating = NumberStyle::approximate_decimal(RoundingMode::Floor, DecimalPadding::Padded);
+    STATIC_REQUIRE(approximating.notation() == NumberNotation::ApproximateDecimal);
+    STATIC_REQUIRE(approximating.approximation() == RoundingMode::Floor);
+    STATIC_REQUIRE(approximating.padding() == DecimalPadding::Padded);
+    STATIC_REQUIRE(approximating != NumberStyle::approximate_decimal(RoundingMode::Ceiling, DecimalPadding::Padded));
+
+    // exact_only drops the approximation and its mode, and keeps the padding.
+    STATIC_REQUIRE(approximating.exact_only() == NumberStyle::exact_decimal(DecimalPadding::Padded));
+    STATIC_REQUIRE(NumberStyle::approximate_decimal(RoundingMode::Ceiling).exact_only() == NumberStyle::exact_decimal());
+    STATIC_REQUIRE(NumberStyle::fraction().exact_only() == NumberStyle::fraction());
+    STATIC_REQUIRE(NumberStyle::exact_decimal().exact_only() == NumberStyle::exact_decimal());
+}
+
+TEST_CASE("only this library makes a NumberText and a temporary one cannot be viewed", "[number_text]")
+{
+    STATIC_REQUIRE(!std::is_default_constructible_v<NumberText>);
+    STATIC_REQUIRE(Viewable<NumberText const&>);
+    STATIC_REQUIRE(!Viewable<NumberText>);
+}
+
+TEST_CASE("each notation writes the number its own way", "[number_text]")
+{
+    constexpr NumberStyle paddedExact = NumberStyle::exact_decimal(DecimalPadding::Padded);
+    constexpr NumberStyle evenApproximation = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
+    constexpr NumberStyle paddedApproximation =
+        NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded);
+    constexpr NumberStyle floorApproximation = NumberStyle::approximate_decimal(RoundingMode::Floor);
+    constexpr NumberStyle ceilingApproximation = NumberStyle::approximate_decimal(RoundingMode::Ceiling);
+
+    // Fraction: always the fraction.
+    STATIC_REQUIRE(formula::number_text(Rational { 3, 5 }, NumberStyle::fraction(), unit::One) == "3/5");
+
+    // ExactDecimal: the decimal when it is the value, else the fraction.
+    STATIC_REQUIRE(formula::number_text(Rational { 3, 5 }, NumberStyle::exact_decimal(), unit::One) == "0.6");
+    STATIC_REQUIRE(formula::number_text(Rational { 1, 3 }, NumberStyle::exact_decimal(), unit::One) == "1/3");
+    STATIC_REQUIRE(formula::number_text(Rational { 1, 3 }, NumberStyle::exact_decimal(), unit::One).is_exact());
+
+    // Padded pads to the unit's decimals, 3 for unit::One, and never cuts short.
+    STATIC_REQUIRE(unit::One.decimals == 3);
+    STATIC_REQUIRE(formula::number_text(Rational { 3, 5 }, paddedExact, unit::One) == "0.600");
+    STATIC_REQUIRE(formula::number_text(Rational { 4 }, paddedExact, unit::One) == "4.000");
+    STATIC_REQUIRE(formula::number_text(Rational { 1929, 15625 }, paddedExact, unit::One) == "0.123456");
+    STATIC_REQUIRE(formula::number_text(Rational { 1, 3 }, paddedExact, unit::One) == "1/3");
+
+    // ApproximateDecimal: the exact decimal unmarked when there is one...
+    STATIC_REQUIRE(formula::number_text(Rational { 3, 5 }, evenApproximation, unit::One) == "0.6");
+    STATIC_REQUIRE(formula::number_text(Rational { 3, 5 }, evenApproximation, unit::One).is_exact());
+    STATIC_REQUIRE(formula::number_text(Rational { 1929, 15625 }, evenApproximation, unit::One) == "0.123456");
+    // ... and otherwise a marked decimal, rounded in the mode it names.
+    STATIC_REQUIRE(!formula::number_text(Rational { 1, 3 }, evenApproximation, unit::One).is_exact());
+    STATIC_REQUIRE(formula::number_text(Rational { 2, 3 }, evenApproximation, unit::One) == "\xe2\x89\x88" "0.667");
+    STATIC_REQUIRE(formula::number_text(Rational { 2, 3 }, floorApproximation, unit::One) == "\xe2\x89\x88" "0.666");
+    STATIC_REQUIRE(formula::number_text(Rational { -2, 3 }, floorApproximation, unit::One) == "\xe2\x89\x88" "-0.667");
+    STATIC_REQUIRE(formula::number_text(Rational { -2, 3 }, ceilingApproximation, unit::One) == "\xe2\x89\x88" "-0.666");
+    // 301/3000 is 0.100333...: to 3 places 0.100, which Trimmed shortens.
+    STATIC_REQUIRE(formula::number_text(Rational { 301, 3000 }, evenApproximation, unit::One) == "\xe2\x89\x88" "0.1");
+    STATIC_REQUIRE(formula::number_text(Rational { 301, 3000 }, paddedApproximation, unit::One) == "\xe2\x89\x88" "0.100");
+    // A negative value that rounds to zero keeps its marker and loses its sign.
+    STATIC_REQUIRE(formula::number_text(Rational { -1, 3000 }, paddedApproximation, unit::One) == "\xe2\x89\x88" "0.000");
+
+    // A unit of whole tens: an approximation rounds to tens, an exact
+    // decimal is shown in full.
+    STATIC_REQUIRE(formula::number_text(Rational { 1253, 3 }, evenApproximation, Tens) == "\xe2\x89\x88" "420");
+    STATIC_REQUIRE(formula::number_text(Rational { 5, 2 }, paddedExact, Tens) == "2.5");
+}
+
+TEST_CASE("a style that reads the unit's decimals refuses decimals outside what DecimalPlaces spans", "[number_text]")
+{
+    constexpr NumberStyle paddedExact = NumberStyle::exact_decimal(DecimalPadding::Padded);
+    constexpr NumberStyle evenApproximation = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
+
+    // A style that never reads them is unaffected.
+    CHECK(formula::number_text(Rational { 1, 2 }, NumberStyle::fraction(), TooFine) == "1/2");
+    CHECK(formula::number_text(Rational { 1, 2 }, NumberStyle::exact_decimal(), TooFine) == "0.5");
+
+    // One that pads or approximates is refused, whatever the value.
+    auto const padded = formula::checked_number_text(Rational { 1, 2 }, paddedExact, TooFine);
+    auto const paddedThird = formula::checked_number_text(Rational { 1, 3 }, paddedExact, TooFine);
+    auto const approximated = formula::checked_number_text(Rational { 1, 2 }, evenApproximation, TooFine);
+    auto const approximatedCoarse = formula::checked_number_text(Rational { 1, 3 }, evenApproximation, TooCoarse);
+    REQUIRE_FALSE(padded.has_value());
+    REQUIRE_FALSE(paddedThird.has_value());
+    REQUIRE_FALSE(approximated.has_value());
+    REQUIRE_FALSE(approximatedCoarse.has_value());
+    CHECK(padded.error() == ArithmeticError::Overflow);
+    CHECK(paddedThird.error() == ArithmeticError::Overflow);
+    CHECK(approximated.error() == ArithmeticError::Overflow);
+    CHECK(approximatedCoarse.error() == ArithmeticError::Overflow);
+
+    CHECK_THROWS_AS(formula::number_text(Rational { 1, 2 }, paddedExact, TooFine), ArithmeticException);
+}
+
+// ---- a measured value ----
+
+TEST_CASE("a measured value is its number then its unit's symbol", "[number_text]")
+{
+    constexpr NumberStyle paddedExact = NumberStyle::exact_decimal(DecimalPadding::Padded);
+    constexpr NumberStyle evenApproximation = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
+    constexpr NumberStyle ceilingApproximation = NumberStyle::approximate_decimal(RoundingMode::Ceiling);
+
+    STATIC_REQUIRE(unit::Kilojoule.decimals == 1);
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> { Rational { 26, 5 } }, NumberStyle::exact_decimal())
+                   == "5.2 kJ");
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> { Rational { 26, 5 } }, NumberStyle::fraction()) == "26/5 kJ");
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> { Rational { 5 } }, NumberStyle::exact_decimal()) == "5 kJ");
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> { Rational { 5 } }, paddedExact) == "5.0 kJ");
+    // 47/9 is 5.222...: to 1 place, 5.2 to nearest and 5.3 toward positive infinity.
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> { Rational { 47, 9 } }, evenApproximation)
+                   == "\xe2\x89\x88" "5.2 kJ");
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> { Rational { 47, 9 } }, ceilingApproximation)
+                   == "\xe2\x89\x88" "5.3 kJ");
+
+    // No symbol, no space.
+    STATIC_REQUIRE(formula::number_text(Measured<Share> { Rational { 3, 5 } }, NumberStyle::fraction()) == "3/5");
+
+    // Absent is not zero, and not a number.
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> {}, NumberStyle::exact_decimal()) == "(not measured)");
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> {}, NumberStyle::exact_decimal()) == formula::NotMeasuredText);
+    STATIC_REQUIRE(formula::number_text(Measured<ImpactWork> {}, evenApproximation).is_exact());
+}
+
+TEST_CASE("the longest text this library spells fits its buffer", "[number_text]")
+{
+    // The marker, a sign, 19 whole digits, a point, 18 places, a space and a
+    // 16-byte symbol: 59 bytes of the 64 NumberText holds.
+    NumberText const widest = formula::number_text(Measured<WidestReading> { Rational { IntMin, 3 } },
+                                                   NumberStyle::approximate_decimal(RoundingMode::HalfEven));
+    CHECK(widest.view() == "\xe2\x89\x88" "-3074457345618258602.666666666666666667 abcdefghijklmnop");
+    CHECK(widest.view().size() == 59);
+    CHECK(widest.view().size() == formula::detail::LongestNumberText);
+}

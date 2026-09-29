@@ -62,8 +62,11 @@
 // override cleared, with its counters and every query, and its derivation
 // by `explain_worksheet`, rendered by `render_derivation`; the calculation
 // rendered and documented, and its graph by `describe_graph` and `to_dot`;
-// and a quantity declared by alias at global scope, so that its tag is one
-// more global. A template it does not reach is not guarded by it.
+// a measured value spelled by `number_text` in each notation, with
+// `checked_number_text`, `decimal_text`, `fraction_text` and
+// `exact_decimal`; and a quantity declared by alias at global scope, so
+// that its tag is one more global. A template it does not reach is not
+// guarded by it.
 // `consumer_globals_run_tests.cpp` checks that each of these computed what
 // it should.
 //
@@ -163,6 +166,7 @@ int index;
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
@@ -1048,5 +1052,25 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(doubledEdge.has_value() && doubledEdge->measurement().value() == formula::Rational { 278 }
                            && formula::render_trace(aliasTrace, { .maxSteps = 5 }).starts_with("1. x_g = 139 mm\n")
                            && formula::render(var<AliasEdge> * formula::Rational { 2 }) == "x_g * 2");
+
+    // A measured value spelled as text in the edge's millimetres, which
+    // declare one decimal: 150 mm padded, 452/3 mm as a fraction -- asked
+    // for, and as the exact decimal it has none of -- and rounded to 150.7,
+    // and an absent edge; and the functions they are made of.
+    formula::Measured<EdgeX> const thirdEdge { formula::Rational { 452, 3 } };
+    probe.checks.push_back(
+        formula::number_text(edge, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded)) == "150.0 mm"
+        && formula::number_text(thirdEdge, formula::NumberStyle::fraction()) == "452/3 mm"
+        && formula::number_text(thirdEdge, formula::NumberStyle::exact_decimal()) == "452/3 mm"
+        && formula::number_text(thirdEdge, formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven))
+               == "\xe2\x89\x88" "150.7 mm"
+        && formula::checked_number_text(formula::Measured<EdgeX>::absent(), formula::NumberStyle {}).value()
+               == formula::NotMeasuredText
+        && formula::decimal_text(formula::Rational { 23653, 200 }, formula::DecimalPlaces { 2 },
+                                 formula::RoundingMode::HalfEven, formula::DecimalPadding::Padded)
+               == "118.26"
+        && formula::fraction_text(formula::Rational { -1, 3 }) == "-1/3"
+        && formula::has_exact_decimal(formula::Rational { 3, 5 })
+        && *formula::exact_decimal(formula::Rational { 3, 5 }) == "0.6");
     return probe;
 }

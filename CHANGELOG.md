@@ -96,6 +96,19 @@ may break it, and each such change is recorded here.
   `SymbolEntry::calculatedAs`, and then lists the inputs, each once, in the order the definitions
   first read them; and its citations are every one the definitions hold. A definition reading
   `attempt_input` is refused there, as a formula documented on its own is.
+- `number_text.hpp`, included by `formula.hpp`: a `Rational` spelled as an exact decimal (`0.6`,
+  `18.8822`), as a decimal rounded under a named rounding mode (`118.26`), or as a fraction
+  (`3/5`), into a fixed 64-byte `NumberText` -- without allocating, and at compile time as well as
+  at run time. A `NumberStyle` chooses the notation. A decimal is shown only when it is the exact
+  value, so `1/3` stays `1/3` under `NumberStyle::exact_decimal()`; an approximation is opt-in
+  through `NumberStyle::approximate_decimal(mode)`, rounds at the unit's declared decimals and
+  always starts with `≈` (`≈0.333`). `number_text` of a `Measured` value adds its unit's symbol
+  (`5.2 kJ`), or reads `(not measured)` when it is absent. `decimal_text` spells exactly what
+  `checked_round` rounds to, and at 0 to 18 places still does where `checked_round`'s own
+  arithmetic overflows. These functions take a `Rational`, so an unqualified call also finds them
+  by argument-dependent lookup: a consumer's own function of the same name and parameters -- a
+  `fraction_text(Rational)` helper, say -- now makes such a call ambiguous, and has to be renamed,
+  as `examples/statistics.cpp`'s was, or called by a qualified name such as `::fraction_text`.
 
 ### Changed
 
