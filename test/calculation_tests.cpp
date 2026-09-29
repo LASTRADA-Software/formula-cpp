@@ -751,6 +751,30 @@ TEST_CASE("set chains on a worksheet about to be discarded", "[calculation][work
     CHECK(kept.recomputed() == 15);
 }
 
+TEST_CASE("clear_override chains on a worksheet about to be discarded", "[calculation][worksheet]")
+{
+    using namespace household;
+    formula::Outcome<NetDraw> const calculatedAgain =
+        formula::worksheet(bill, bill_environment(billValues))
+            .set(formula::entered(formula::Measured<NetDraw> { rat(250) }))
+            .clear_override<NetDraw>()
+            .calculate<NetDraw>();
+    CHECK(calculatedAgain.measurement() == formula::Measured<NetDraw> { rat(279) });
+    CHECK(calculatedAgain.source() == formula::ValueSource::Derived);
+
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    REQUIRE(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    REQUIRE(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(107219, 1000) });
+    REQUIRE(sheet.recomputed() == 20);
+    STATIC_REQUIRE(std::is_same_v<decltype(std::move(sheet).clear_override<NetDraw>()), decltype(sheet)>);
+    auto kept = std::move(sheet).clear_override<NetDraw>();
+    CHECK_FALSE(kept.is_overridden<NetDraw>());
+    // The net draw is calculated again, and the five values built on it.
+    CHECK(kept.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    CHECK(kept.recomputed() == 26);
+}
+
 TEST_CASE("a worksheet answers several values at once, in the order asked", "[calculation][worksheet]")
 {
     using namespace household;

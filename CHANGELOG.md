@@ -57,18 +57,20 @@ may break it, and each such change is recorded here.
   fails what reads it as a failed operand would, except on a `when()` branch not taken, and an absent
   input leaves what reads it empty. `set(...)` changes inputs, or overrides a calculated value by hand
   with `entered(Measured<Q> { ... })`, and marks what the change reaches; `clear_override<Q>()` drops
-  an override; `with(...)` answers a changed copy and leaves the worksheet as it was. A value a change
-  reaches is reused when nothing it reads has changed, and a value calculated again to the same
-  answer from the same source counts as unchanged, so that what reads it can be reused in turn;
-  `recomputed()` and `reused()` count both. The calculation's queries take a worksheet as well. A
-  calculated value is kept in its quantity's declared unit, so a conversion the inlined formula never
-  makes can overflow. Refused where it is written, each with one message: an environment with no
-  entry for an input, with an entry the calculation neither reads nor defines, with a series or raw
-  observations, or with a calculated quantity given as a measurement rather than `entered`; `set()`
-  naming one quantity twice, one the calculation neither reads nor defines, a series, or a calculated
-  quantity given as a measurement; asking about a quantity the calculation neither defines nor reads;
-  and `clear_override` or `is_overridden` of an input, which is set again rather than overridden --
-  whether its value was typed in is the `source()` of what `calculate` answers for it.
+  an override. On a worksheet about to be discarded, `set` and `clear_override` each answer it
+  changed, so `worksheet(...).set(...)` can be kept or asked at once. `with(...)` answers a changed
+  copy and leaves the worksheet as it was. A value a change reaches is reused when nothing it reads
+  has changed, and a value calculated again to the same answer from the same source counts as
+  unchanged, so that what reads it can be reused in turn; `recomputed()` and `reused()` count both.
+  The calculation's queries take a worksheet as well. A calculated value is kept in its quantity's
+  declared unit, so a conversion the inlined formula never makes can overflow. Refused where it is
+  written, each with one message: an environment with no entry for an input, with an entry the
+  calculation neither reads nor defines, with a series or raw observations, or with a calculated
+  quantity given as a measurement rather than `entered`; `set()` naming one quantity twice, one the
+  calculation neither reads nor defines, a series, or a calculated quantity given as a measurement;
+  asking about a quantity the calculation neither defines nor reads; and `clear_override` or
+  `is_overridden` of an input, which is set again rather than overridden -- whether its value was
+  typed in is the `source()` of what `calculate` answers for it.
 - `explain_worksheet<Q>(sheet, vocabulary)`, in `trace.hpp`, asks a worksheet for `Q` and records
   how the answer was reached, as an `ExplainedWorksheet`: the answer, failure included, and one
   `WorksheetEntry` per named value -- `Q`'s first, then each calculated value it was reached through,

@@ -1730,6 +1730,16 @@ class Worksheet
         return *this;
     }
 
+    /// `clear_override`, on a worksheet about to be discarded: returns it,
+    /// changed, as `set` does, so that
+    /// `std::move(sheet).clear_override<Q>()` can be kept or asked at once.
+    template <Described Q>
+    [[nodiscard]] constexpr Worksheet clear_override() && noexcept
+    {
+        clear_override<Q>();
+        return std::move(*this);
+    }
+
     /// Whether the calculated quantity @p Q is overridden by hand. Refused
     /// for a quantity the calculation neither defines nor reads, and for an
     /// input, which is set again rather than overridden: whether its value
