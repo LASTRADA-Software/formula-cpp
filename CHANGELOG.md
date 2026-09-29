@@ -108,9 +108,10 @@ may break it, and each such change is recorded here.
   arithmetic overflows. `exact_decimal_text` gives the exact decimal alone, as a
   `std::optional<NumberText>` empty where the value has none of at most 18 places, and
   `has_exact_decimal` says whether it has one. These functions take a `Rational`, so an
-  unqualified call also finds them by argument-dependent lookup: a consumer's own function of the same name and parameters -- a
-  `fraction_text(Rational)` helper, say -- now makes such a call ambiguous, and has to be renamed,
-  as `examples/statistics.cpp`'s was, or called by a qualified name such as `::fraction_text`.
+  unqualified call also finds them by argument-dependent lookup: a consumer's own function of
+  the same name and parameters -- a `fraction_text(Rational)` helper, say -- now makes such a
+  call ambiguous, and has to be renamed, as `examples/statistics.cpp`'s was, or called by a
+  qualified name such as `::fraction_text`.
 - `TraceRenderOptions::numbers`: a trace's numbers as exact decimals (`0.6`), or as rounded
   decimals marked `≈` (`≈0.333`) when the caller names a rounding mode. Fractions stay the
   default, so a trace rendered without it reads exactly as before. A decimal is shown only where

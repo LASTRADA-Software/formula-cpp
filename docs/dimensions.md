@@ -6,13 +6,22 @@ why a dimension is a type rather than a runtime tag, how to compose one, why
 its exponents are rational rather than integer, what a `Unit` carries, how
 conversion between units stays exact, where the declared-precision and
 bounds machinery sits, and how an application declares a base dimension the
-SI does not have, such as money. The worked example below is
-`examples/dimensions_and_units.cpp`; every block on this page that is
-formatted as program output is copied verbatim from that program's actual
-output, not worked out by hand. A couple of numeric facts that the example
-does not itself print are given as plain rationals instead, each naming the
-`static_assert` in the test suite that pins it -- never formatted as if a
-program had printed them.
+SI does not have, such as money.
+
+The worked example is `examples/dimensions_and_units.cpp`. **Program output**
+on this page is copied verbatim from that program's output, and
+`docs.dimensions-output` fails unless each output block is a run of
+consecutive lines the program prints, exactly as quoted
+(`cmake/CheckGuideOutput.cmake`). **Code** is copied from the example's
+source, and `docs.dimensions-snippets` fails unless each code block appears
+there as a run of consecutive lines, compared without their indentation
+(`cmake/CheckGuideSnippets.cmake`). A code block deliberately not from the
+example carries a `<!-- snippet: not from the example -->` comment directly
+above it; one on this page does, the block showing that
+`formula::exponent(1, 0)` does not compile. A couple of numeric facts that
+the example does not itself print are given as plain rationals instead, each
+naming the `static_assert` in the test suite that pins it -- never formatted
+as if a program had printed them.
 
 ## Why dimensions are types
 
@@ -273,9 +282,8 @@ temperature round trip exact: yes
 Every unit declares a display precision (`decimals`) and, optionally, a valid
 range (`bounds`), and both apply to a *computed* value, not just to a literal:
 
-<!-- snippet: not from the example -->
 ```cpp
-Rational const computedMass = genericDensity * volumeInCubicMetres;   // 450/7 kg
+Rational const computedMass = genericDensity * volumeInCubicMetres;
 Rational const roundedMass =
     *formula::checked_round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
 ```

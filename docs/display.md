@@ -168,8 +168,8 @@ dimension, here the kilogram: `0.0134` is the 13.4 g the specimen lost. Nobody
 declared that unit for this formula, so its decimals are `Unit`'s default of 3,
 which is no one's statement of precision. Such a value is **never padded** --
 the padded trace in the next section writes a computed 0.12 kg as `0.12`, not
-`0.120` -- and when it is rounded it keeps those **3 places**: line 7's ratio reads
-`≈0.113`.
+`0.120` -- and when it is rounded it keeps those **3 places** (bar one
+exception, below): line 7's ratio reads `≈0.113`.
 
 Three places of a kilogram can hide almost everything. The dish's mass, the
 mean of three weighings in grams, is computed in kilograms:

@@ -3524,6 +3524,23 @@ TEST_CASE("a rounding in a unit nobody declared shows the first significant digi
     // A negative value alike: -1/30000000 shows its first digit at 8 places.
     CHECK(checked_shown_text(formula::Rational { -1, 30'000'000 }, rounded, formula::unit::One).value()
           == "\xe2\x89\x88" "-0.00000003");
+    // At its first digit's place the value is rounded in the style's own
+    // mode, and a carry is written as short as it is: 1/10000001, just under
+    // 1e-7, has its first digit at 8 places, where half-even rounds it up to
+    // 0.0000001, not 0.00000010.
+    CHECK(checked_shown_text(formula::Rational { 1, 10'000'001 }, rounded, formula::unit::One).value()
+          == "\xe2\x89\x88" "0.0000001");
+    // A mode that rounds toward zero at 3 places is extended too: 1/11250000
+    // and the tariff round down at their first digits, and the negative
+    // tariff rounds up at its first.
+    constexpr formula::NumberStyle flooring = formula::NumberStyle::approximate_decimal(formula::RoundingMode::Floor);
+    CHECK(checked_shown_text(formula::Rational { 1, 11'250'000 }, flooring, formula::unit::One).value()
+          == "\xe2\x89\x88" "0.00000008");
+    CHECK(checked_shown_text(tariff, flooring, formula::unit::One).value() == "\xe2\x89\x88" "0.0000001");
+    CHECK(checked_shown_text(-tariff, ceiling, formula::unit::One).value() == "\xe2\x89\x88" "-0.0000001");
+    // The 18th place is the last one looked at, and a digit there is shown.
+    CHECK(checked_shown_text(formula::Rational { 1, 300'000'000'000'000'000 }, rounded, formula::unit::One).value()
+          == "\xe2\x89\x88" "0.000000000000000003");
     // Padding a unit nobody declared stays off at the places extended to.
     CHECK(checked_shown_text(tariff,
                              formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven,
