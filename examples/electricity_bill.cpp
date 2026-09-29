@@ -20,8 +20,10 @@
 //     how many values each recalculated and how many it reused;
 //   - a derivation of a value that was reused rather than recalculated, which
 //     still describes the current inputs;
-//   - a what-if copy, a value typed in by hand in place of a calculated one and
-//     its clearing, and a division by zero reaching the value that reads it.
+//   - a what-if copy, and a value typed in by hand in place of a calculated
+//     one, and its clearing;
+//   - in a second, smaller calculation -- a cost shared among the people who
+//     live there -- a division by zero reaching the value that reads it.
 
 #include <formula-cpp/calculation.hpp>
 #include <formula-cpp/formula.hpp>
@@ -150,14 +152,6 @@ struct Vat: formula::Quantity<Vat, "vat", "the value-added tax", Euro>
 struct Total: formula::Quantity<Total, "total", "the bill", Euro>
 {
 };
-struct PricePaid: formula::Quantity<PricePaid, "price_paid", "what a kWh drawn cost, net of the credit",
-                                    EuroPerKilowattHour>
-{
-};
-struct PricePaidGross: formula::Quantity<PricePaidGross, "price_paid_gross", "what a kWh drawn cost, with tax",
-                                         EuroPerKilowattHour>
-{
-};
 
 // Two numbers the bill states: the share of the solar yield the household
 // uses itself, and the rate of the tax. Both are pure numbers.
@@ -186,13 +180,35 @@ inline constexpr auto bill = formula::calculation(
     formula::define<Vat>(var<Subtotal> * vatRate),
     formula::define<Total>(
         formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<Subtotal> + var<Vat>)),
-    formula::define<PricePaid>(var<EnergyCost> / var<NetDraw>),
-    formula::define<PricePaidGross>(var<PricePaid> + var<PricePaid> * vatRate));
+            var<Subtotal> + var<Vat>)));
 
 // What reads what is known while the program compiles.
 static_assert(formula::depends_on<Total, Price>(bill));
 static_assert(!formula::depends_on<Exported, Price>(bill));
+
+// ---- A second calculation: a cost shared out ----
+//
+// The bill shared among the people who live there, each share in whole
+// cents. With nobody to share it, the share divides by zero, and the share
+// in cents, which reads it, fails with it.
+struct SharedCost: formula::Quantity<SharedCost, "shared_cost", "the cost to share", Euro>
+{
+};
+struct Occupants: formula::Quantity<Occupants, "occupants", "the people sharing it", unit::One>
+{
+};
+struct Share: formula::Quantity<Share, "share", "each one's share", Euro>
+{
+};
+struct ShareInCents: formula::Quantity<ShareInCents, "share_ct", "each one's share, in whole cents", Euro>
+{
+};
+
+inline constexpr auto sharing = formula::calculation(
+    formula::define<Share>(var<SharedCost> / var<Occupants>),
+    formula::define<ShareInCents>(
+        formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Share>)));
 
 /// @p amount as the bill states it: a decimal of @p places places when that
 /// is its exact value -- 118.26, 279 -- and its exact fraction otherwise.
@@ -258,7 +274,7 @@ int main()
     std::printf("upstream of net_draw : %s\n", listed(formula::upstream_of<NetDraw>(bill)).c_str());
     std::printf("read by self_used    : %s\n", listed(formula::dependents_of<SelfUsed>(bill)).c_str());
     check("the price reaches the total, and not the energy exported",
-          formula::affected_by<Price>(bill).size() == 7 && formula::dependents_of<SelfUsed>(bill).size() == 2);
+          formula::affected_by<Price>(bill).size() == 5 && formula::dependents_of<SelfUsed>(bill).size() == 2);
 
     std::string const drawn = formula::to_dot(bill);
     std::printf("\nfor Graphviz:\n%s\n", drawn.c_str());
@@ -374,39 +390,42 @@ int main()
 
     // ---- 7. A failure, and what reads it ----
     //
-    // Nothing drawn from the grid: the price a kWh drawn cost divides by zero,
-    // and the price with tax, which reads it, fails with it. The total does
-    // not read either, and has its value.
-    auto nothingDrawn = sheet.with(formula::entered(formula::Measured<NetDraw> { Rational { 0 } }));
-    auto const [pricePaid, pricePaidGross, drawnTotal] =
-        nothingDrawn.checked_calculate<PricePaid, PricePaidGross, Total>();
-    std::printf("\nnothing drawn: price paid: %s; with tax: %s; total %s EUR\n",
-                pricePaid.has_value() ? "a value" : std::string { formula::describe(pricePaid.error()) }.c_str(),
-                pricePaidGross.has_value() ? "a value"
-                                           : std::string { formula::describe(pricePaidGross.error()) }.c_str(),
-                drawnTotal.has_value() ? shown(drawnTotal->measurement().value(), 2).c_str() : "none");
+    // 98.00 EUR shared by three is 32.67 EUR each, in whole cents.
+    auto shares = formula::worksheet(sharing,
+                                     formula::environment(formula::Measured<SharedCost> { Rational { 98 } },
+                                                          formula::Measured<Occupants> { Rational { 3 } }));
+    Rational const eachInCents = shares.calculate<ShareInCents>().measurement().value();
+    std::printf("\n98.00 EUR shared by 3: %s EUR each\n", shown(eachInCents, 2).c_str());
+    check("32.67 EUR each", eachInCents == Rational { 3267, 100 });
+
+    // Nobody to share it: the share divides by zero, and the share in cents,
+    // which reads it, fails with it.
+    shares.set(formula::Measured<Occupants> { Rational { 0 } });
+    auto const [share, shareInCents] = shares.checked_calculate<Share, ShareInCents>();
+    std::printf("shared by nobody: share: %s, in cents: %s\n",
+                share.has_value() ? "a value" : std::string { formula::describe(share.error()) }.c_str(),
+                shareInCents.has_value() ? "a value"
+                                         : std::string { formula::describe(shareInCents.error()) }.c_str());
     check("a division by zero, and the value reading it fails with it",
-          !pricePaid.has_value() && pricePaid.error() == formula::ArithmeticError::DivisionByZero
-              && !pricePaidGross.has_value()
-              && pricePaidGross.error() == formula::ArithmeticError::DivisionByZero && drawnTotal.has_value()
-              && drawnTotal->measurement().value() == Rational { 1499, 100 });
+          !share.has_value() && share.error() == formula::ArithmeticError::DivisionByZero
+              && !shareInCents.has_value() && shareInCents.error() == formula::ArithmeticError::DivisionByZero);
 
     // The throwing form says the same.
     bool thrown = false;
     try
     {
-        static_cast<void>(nothingDrawn.calculate<PricePaidGross>());
+        static_cast<void>(shares.calculate<ShareInCents>());
     }
     catch (formula::ArithmeticException const& failure)
     {
-        std::printf("calculate<PricePaidGross>() threw: %s\n", failure.what());
+        std::printf("calculate<ShareInCents>() threw: %s\n", failure.what());
         thrown = failure.code() == formula::ArithmeticError::DivisionByZero;
     }
     check("calculate() throws what checked_calculate() returns", thrown);
 
-    auto const failedPrice = formula::explain_worksheet<PricePaidGross>(nothingDrawn);
+    auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
     std::printf("\nhow the failure was reached:\n%s",
-                formula::render_derivation(failedPrice, { .maxSteps = 7 }).c_str());
+                formula::render_derivation(failedShare, { .maxSteps = 12 }).c_str());
 
     std::printf("\nall checks passed: %s\n", ok ? "yes" : "no");
     return ok ? 0 : 1;

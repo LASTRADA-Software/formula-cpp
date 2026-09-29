@@ -66,8 +66,9 @@ formula_add_example(composition composition.cpp "all checks passed: yes")
 # the program prints them: how many values each step of the worksheet
 # recalculated and reused -- the first run, a new price, the same price again, a
 # new base fee, the fridge's early cutoff, the what-if copy and the worksheet
-# left as it was -- and the division by zero reaching the value that reads it.
-formula_add_example(electricity_bill electricity_bill.cpp [==[first run: .*recomputed 15, reused 0.*price 0\.25 EUR/kWh: .*recomputed 5, reused 0.*the same price again: .*recomputed 0, reused 0.*base fee 15 EUR: .*recomputed 3, reused 0.*fridge 400 W for 12 h: .*recomputed 2, reused 8.*fridge_w = 400 W.*with 200 kWh of sun: .*recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*price paid: division by zero. with tax: division by zero.*all checks passed: yes]==])
+# left as it was -- and, in the example's second calculation, the division by
+# zero reaching the value that reads it.
+formula_add_example(electricity_bill electricity_bill.cpp [==[first run: .*recomputed 15, reused 0.*price 0\.25 EUR/kWh: .*recomputed 5, reused 0.*the same price again: .*recomputed 0, reused 0.*base fee 15 EUR: .*recomputed 3, reused 0.*fridge 400 W for 12 h: .*recomputed 2, reused 8.*fridge_w = 400 W.*with 200 kWh of sun: .*recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*shared by nobody: share: division by zero, in cents: division by zero.*all checks passed: yes]==])
 
 # Every ```cpp block of docs/calculations.md must appear in the example's
 # source as consecutive lines, indentation aside -- see the script.

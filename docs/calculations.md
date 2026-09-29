@@ -108,9 +108,7 @@ inline constexpr auto bill = formula::calculation(
     formula::define<Vat>(var<Subtotal> * vatRate),
     formula::define<Total>(
         formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<Subtotal> + var<Vat>)),
-    formula::define<PricePaid>(var<EnergyCost> / var<NetDraw>),
-    formula::define<PricePaidGross>(var<PricePaid> + var<PricePaid> * vatRate));
+            var<Subtotal> + var<Vat>)));
 ```
 
 A definition is an ordinary formula of single values, and may hold what such
@@ -237,9 +235,8 @@ many values the worksheet has calculated since it was made, and `reused()`
 how many it found still up to date after a change and did not calculate
 again. The first time the bill is asked for its total and net draw, it
 calculates the fifteen values those are reached through, each once --
-118.26 EUR and 279 kWh -- and reuses none. The price paid per kilowatt-hour
-and its gross figure are not among them, and are not calculated until
-something asks for them.
+118.26 EUR and 279 kWh -- and reuses none. A value no question reaches is
+not calculated at all.
 
 ## A change, and what it reaches
 
@@ -362,15 +359,24 @@ so by being `entered`.
 
 A value whose calculation fails is kept like any other answer, and a
 definition that reads it fails where it reads it, with the same error, as an
-operand's failure fails a formula. With nothing drawn from the grid, the price
-a kilowatt-hour drawn cost divides by zero, and the price with tax, which
-reads it, fails with it. The total reads neither, and has its value,
-14.99 EUR:
+operand's failure fails a formula. The example shows it with a second, small
+calculation: a cost shared among the people who live there, each share in
+whole cents.
 
 ```cpp
-auto nothingDrawn = sheet.with(formula::entered(formula::Measured<NetDraw> { Rational { 0 } }));
-auto const [pricePaid, pricePaidGross, drawnTotal] =
-    nothingDrawn.checked_calculate<PricePaid, PricePaidGross, Total>();
+inline constexpr auto sharing = formula::calculation(
+    formula::define<Share>(var<SharedCost> / var<Occupants>),
+    formula::define<ShareInCents>(
+        formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Share>)));
+```
+
+98.00 EUR shared by three is 32.67 EUR each. With nobody to share it, the
+share divides by zero, and the share in cents, which reads it, fails with it:
+
+```cpp
+shares.set(formula::Measured<Occupants> { Rational { 0 } });
+auto const [share, shareInCents] = shares.checked_calculate<Share, ShareInCents>();
 ```
 
 `calculate` throws the same failure, as an `ArithmeticException` whose
@@ -379,11 +385,11 @@ auto const [pricePaid, pricePaidGross, drawnTotal] =
 ```cpp
 try
 {
-    static_cast<void>(nothingDrawn.calculate<PricePaidGross>());
+    static_cast<void>(shares.calculate<ShareInCents>());
 }
 catch (formula::ArithmeticException const& failure)
 {
-    std::printf("calculate<PricePaidGross>() threw: %s\n", failure.what());
+    std::printf("calculate<ShareInCents>() threw: %s\n", failure.what());
     thrown = failure.code() == formula::ArithmeticError::DivisionByZero;
 }
 ```
