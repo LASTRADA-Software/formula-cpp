@@ -82,9 +82,9 @@ static_assert(unit::Minute.magnitudeNumerator == 60 && unit::Minute.magnitudeDen
 static_assert(unit::Hour.magnitudeNumerator == 3600 && unit::Hour.magnitudeDenominator == 1);
 static_assert(unit::Percent.magnitudeNumerator == 1 && unit::Percent.magnitudeDenominator == 100);
 
-// The affine one, which is why an offset field exists at all: 0 degC is 273,15 K.
+// The affine one, which is why an offset field exists at all: 0 degC is 273.15 K.
 static_assert(unit::Celsius.offsetNumerator == 27315 && unit::Celsius.offsetDenominator == 100);
-// The other one: zero degrees Fahrenheit is 459,67 * 5/9 = 45967/180 K, and a degree is 5/9 K.
+// The other one: zero degrees Fahrenheit is 459.67 * 5/9 = 45967/180 K, and a degree is 5/9 K.
 static_assert(unit::Fahrenheit.offsetNumerator == 45967 && unit::Fahrenheit.offsetDenominator == 180);
 static_assert(unit::Fahrenheit.magnitudeNumerator == 5 && unit::Fahrenheit.magnitudeDenominator == 9);
 
@@ -507,7 +507,7 @@ static_assert(converted(1, 1, unit::Kilonewton, unit::Newton) == *Rational::make
 // A loading rate: 50 mm/min is exactly 1/1200 m/s -- and back, with nothing lost.
 static_assert(converted(50, 1, unit::MillimetrePerMinute, unit::MetrePerSecond) == *Rational::make(1, 1200));
 static_assert(converted(1, 1200, unit::MetrePerSecond, unit::MillimetrePerMinute) == *Rational::make(50, 1));
-// A density: 2,4 g/cm3 is exactly 2400 kg/m3.
+// A density: 2.4 g/cm3 is exactly 2400 kg/m3.
 static_assert(converted(12, 5, unit::GramPerCubicCentimetre, unit::KilogramPerCubicMetre)
               == *Rational::make(2400, 1));
 static_assert(converted(2400, 1, unit::KilogramPerCubicMetre, unit::GramPerCubicCentimetre)
@@ -565,7 +565,7 @@ static_assert(converted(5, 2, unit::Litre, unit::Litre) == *Rational::make(5, 2)
 
 // The second affine unit. -40 is where the two scales meet; 32 and 212 are the
 // freezing and boiling points of water, which together fix the factor and the
-// offset; and 98,6 is 493/5.
+// offset; and 98.6 is 493/5.
 static_assert(converted(-40, 1, unit::Fahrenheit, unit::Celsius) == *Rational::make(-40, 1));
 static_assert(converted(-40, 1, unit::Celsius, unit::Fahrenheit) == *Rational::make(-40, 1));
 static_assert(converted(32, 1, unit::Fahrenheit, unit::Celsius) == *Rational::make(0, 1));
@@ -578,11 +578,11 @@ static_assert(converted(0, 1, unit::Fahrenheit, unit::Kelvin) == *Rational::make
 static_assert(converted(1, 1, unit::Fahrenheit, unit::Kelvin) == *Rational::make(46067, 180));
 static_assert(converted(32, 1, unit::Fahrenheit, unit::Kelvin) == *Rational::make(27315, 100));
 static_assert(converted(27315, 100, unit::Kelvin, unit::Fahrenheit) == *Rational::make(32, 1));
-// A fraction of a degree stays exact: 100 degF is 340/9 degC, not a rounded 37,78.
+// A fraction of a degree stays exact: 100 degF is 340/9 degC, not a rounded 37.78.
 static_assert(converted(100, 1, unit::Fahrenheit, unit::Celsius) == *Rational::make(340, 9));
 static_assert(converted(1, 1, unit::Fahrenheit, unit::Fahrenheit) == *Rational::make(1, 1));
 
-// Power and energy: the watt-hour is 3600 J, so a kilowatt-hour is 3,6 MJ and a
+// Power and energy: the watt-hour is 3600 J, so a kilowatt-hour is 3.6 MJ and a
 // thousand watt-hours.
 static_assert(converted(1, 1, unit::Kilowatt, unit::Watt) == *Rational::make(1000, 1));
 static_assert(converted(1, 1, unit::WattHour, unit::Joule) == *Rational::make(3600, 1));
@@ -884,7 +884,7 @@ TEST_CASE("every bounds outcome still has its own distinct wording", "[unit]")
 
 TEST_CASE("rounding to a unit's declared precision uses that unit's decimals", "[unit]")
 {
-    Rational const value = *Rational::make(123456, 1000); // 123,456
+    Rational const value = *Rational::make(123456, 1000); // 123.456
 
     CHECK(*formula::checked_round_to_declared(value, unit::Litre, formula::RoundingMode::HalfAwayFromZero)
           == *Rational::from_decimal(1235, -1));

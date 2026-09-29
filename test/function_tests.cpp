@@ -136,7 +136,7 @@ TEST_CASE("function: the double representation raises to a power", "[function]")
     auto const inputs = formula::environment(formula::Measured<Diameter> { rat(200) });
     auto const computed = formula::checked_evaluate_si<double>(formula::pow<2>(var<Diameter>), inputs);
 
-    // 200 mm is 0,2 m; squared is 0,04 m2.
+    // 200 mm is 0.2 m; squared is 0.04 m2.
     REQUIRE(computed.has_value());
     REQUIRE(computed->has_value());
     CHECK(**computed > 0.0399999);

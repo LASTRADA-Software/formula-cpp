@@ -90,7 +90,7 @@ TEST_CASE("evaluate: a ratio of like quantities is exact and dimensionless", "[e
 TEST_CASE("evaluate: a sum comes back in the result quantity's own unit", "[evaluate]")
 {
     // 180 l + 300 l is 480 l. Evaluated in cubic metres and converted back, it
-    // must be exactly 480 -- not 0,48 and not 479,999999.
+    // must be exactly 480 -- not 0.48 and not 479.999999.
     constexpr auto computed = formula::checked_evaluate<TotalVolume>(total, inputs);
 
     STATIC_REQUIRE(computed.has_value());
@@ -115,7 +115,7 @@ TEST_CASE("evaluate: the double representation adds, subtracts, multiplies and n
     // ratio below); add, subtract, multiply and negate are otherwise only
     // exercised through the exact `Rational` representation.
     // checked_evaluate_si answers in the coherent SI unit, cubic metres, not
-    // litres: 180 l and 300 l are 0,18 m3 and 0,3 m3 there. Bounded rather
+    // litres: 180 l and 300 l are 0.18 m3 and 0.3 m3 there. Bounded rather
     // than compared for exact equality, like the rest of this suite's double
     // arithmetic: binary floating point owes no promise of landing on the
     // same bit pattern as a decimal literal.
@@ -289,8 +289,8 @@ TEST_CASE("evaluate: a value in a different unit converts exactly", "[evaluate]"
 TEST_CASE("evaluate: an overflowing computation is reported, not wrapped", "[evaluate]")
 {
     // Anything above the square root of the representable range cannot be
-    // squared: sqrt(INT64_MAX) is about 3,04e9, so 4e9 divided by 1/4e9 -- a
-    // cross-reduction-proof 1,6e19 -- overflows outright. (3e9 does not: see
+    // squared: sqrt(INT64_MAX) is about 3.04e9, so 4e9 divided by 1/4e9 -- a
+    // cross-reduction-proof 1.6e19 -- overflows outright. (3e9 does not: see
     // the companion test below, which pins exactly where the edge is.)
     constexpr std::int64_t huge = 4'000'000'000LL;
     auto const big =
@@ -369,12 +369,12 @@ TEST_CASE("evaluate: an arithmetic error on one side outranks absence on the oth
 TEST_CASE("evaluate: an offset unit converts a point, not a difference", "[evaluate]")
 {
     // checked_convert converts a POINT on the scale (unit.hpp says so): 20
-    // degC and 15 degC become 293,15 K and 288,15 K on the way in, so their
+    // degC and 15 degC become 293.15 K and 288.15 K on the way in, so their
     // difference in the coherent SI unit -- where the subtraction actually
     // happens -- is exactly 5 K, and a result quantity declared in kelvin
     // reports that. A result quantity declared in degrees Celsius instead
     // asks a different question: it converts the computed 5 K as a point too,
-    // landing on -268,15, not on the 5-degree swing a reader might expect.
+    // landing on -268.15, not on the 5-degree swing a reader might expect.
     // This documents that behaviour rather than judging it -- it is this
     // layer's documented semantics, faithfully propagated.
     constexpr auto temperatures =
@@ -407,8 +407,8 @@ TEST_CASE("evaluate: a power over a time is an energy, exact in kilowatt-hours",
 
 TEST_CASE("evaluate: a Fahrenheit reading converts to Celsius and back exactly", "[evaluate]")
 {
-    // 98,6 degF is 493/5, and lands on exactly 37 degC rather than on a rounded
-    // 37,0000001: the factor is 5/9 and the offset 45967/180, both exact.
+    // 98.6 degF is 493/5, and lands on exactly 37 degC rather than on a rounded
+    // 37.0000001: the factor is 5/9 and the offset 45967/180, both exact.
     constexpr auto fever = formula::environment(formula::Measured<BodyTemperatureFahrenheit> { rat(493, 5) });
     constexpr auto reading = var<BodyTemperatureFahrenheit>;
 
