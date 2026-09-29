@@ -3274,3 +3274,181 @@ TEST_CASE("a curve's typed points and values are shown as typed, and its compute
              "5. interpolate(#3, at #4) = \xe2\x89\x88"
              "44.2 % [between 1/3 and 2/3 m]\n");
 }
+
+namespace
+{
+/// The role another record plays, read from by `from_record`.
+struct Reference
+{
+};
+
+/// Halves and three quarters of a metre, whose decimals end: a domain that
+/// shows its padding.
+inline constexpr formula::BreakpointTable<2> HalvesPoints { formula::breakpoint(1, 2), formula::breakpoint(3, 4) };
+
+/// Sevenths of a metre, the second domain of a splice: 1/7 m below the thirds
+/// and 5/7 m above them.
+inline constexpr formula::BreakpointTable<2> SeventhsPoints { formula::breakpoint(1, 7), formula::breakpoint(5, 7) };
+} // namespace
+
+TEST_CASE("a record's scope over a typed number shows it as typed, whatever the style", "[trace-render][decimals]")
+{
+    auto const context = formula::record_context(
+        formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)),
+                                             formula::environment(formula::Measured<Mass> { rat(2, 7) })),
+        formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
+                                   formula::environment()));
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        formula::from_record<Reference>(formula::constant<unit::Kilogram>(rat(1, 3))) * var<Mass>,
+        context,
+        formula::RecordingSink<> { trace });
+    CHECK(renderedIn(trace, approximately)
+          == "1. 1/3 kg\n"
+             "2. #1 from record Reference (sample 23, test 3) = 1/3 kg\n"
+             "3. m = \xe2\x89\x88"
+             "0.286 kg\n"
+             "4. #2 * #3 = \xe2\x89\x88"
+             "0.095\n");
+}
+
+TEST_CASE("a step over a consumer's node that forwards the sink is not taken for its typed operand",
+          "[trace-render][decimals]")
+{
+    // The consumer's node records no step, so the citation claims the
+    // constant under it -- whose value, 1/3 m, is not the rise above 1/7 m
+    // the node returns, 4/21 m, which is computed and rounded.
+    constexpr auto rise = formula::documented(
+        forwarding::rise_above(formula::constant<unit::Metre>(rat(1, 3)), rat(1, 7)),
+        { .title = "Rise above the reference", .reference = "Example Standard 1:2020", .section = "6.5" });
+    CHECK(renderedIn(tracedValue(rise, formula::environment()), approximately)
+          == "1. 1/3 m\n"
+             "2. #1 = \xe2\x89\x88"
+             "0.19 [Rise above the reference, Example Standard 1:2020, 6.5]\n");
+
+    // The same for a branch that ran: the branch's step is the constant, and
+    // the conditional's value is the node's.
+    constexpr auto chosen = formula::when(var<Mass> > formula::constant<unit::Kilogram>(rat(1, 7)),
+                                          forwarding::rise_above(formula::constant<unit::Kilogram>(rat(1, 3)), rat(1, 7)),
+                                          var<Mass>);
+    CHECK(renderedIn(tracedValue(chosen, formula::environment(formula::Measured<Mass> { rat(2, 7) })), approximately)
+          == "1. m = \xe2\x89\x88"
+             "0.286 kg\n"
+             "2. 1/7 kg\n"
+             "3. 1/3 kg\n"
+             "4. if #1 > #2 then #3 = \xe2\x89\x88"
+             "0.19\n");
+}
+
+TEST_CASE("a replaced variant whose formula is a typed number shows it as typed, whatever the style",
+          "[trace-render][decimals]")
+{
+    constexpr auto scaledMass = formula::method(
+        formula::variants(formula::variant<PlainDensity>(var<Coefficient> * var<Mass>)),
+        formula::rounding_rule<unit::Kilogram, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    constexpr formula::Citation annex { .reference = "Example Standard 12:2021 NA", .section = "NA.5" };
+    constexpr auto replaced = formula::apply(
+        formula::overlay(formula::replace_variant<PlainDensity>(formula::constant<unit::Kilogram>(rat(1, 3)), annex)),
+        scaledMass);
+    formula::Trace<> trace {};
+    (void) formula::evaluate_method<PlainDensity>(replaced, formula::environment(), formula::RecordingSink<> { trace });
+    CHECK(renderedIn(trace, approximately)
+          == "1. 1/3 kg\n"
+             "2. #1 = 1/3 kg [replaced by jurisdiction overlay: Example Standard 12:2021 NA, NA.5]\n"
+             "3. round(#2, in kg) = 0.333 kg [rounded to 3 dp (method default); nearest, ties away from zero]\n"
+             "4. #3 = 0.333 kg [variant PlainDensity (1st of 1), selected by tag]\n");
+}
+
+TEST_CASE("a precision limit's level over a typed number shows it as typed, whatever the style",
+          "[trace-render][decimals]")
+{
+    // Pass 1 states the level expression's value, and the placeholder the
+    // level it read: both the constant 1/3 kg. The limit computed from it is
+    // rounded.
+    constexpr auto limitAtThird = formula::precision_limit<formula::PrecisionKind::Repeatability>(
+        formula::constant<unit::Kilogram>(rat(1, 3)),
+        formula::constant<unit::Kilogram>(rat(1, 10)) + rat(1, 50) * formula::precision_level<Mass>);
+    CHECK(renderedIn(tracedValue(limitAtThird, formula::environment()), approximately)
+          == "1. 1/3 kg\n"
+             "2. level (pass 1 of 2) = #1 = 1/3 kg\n"
+             "3. 0.1 kg\n"
+             "4. 0.02\n"
+             "5. level = 1/3 kg [bound by #8]\n"
+             "6. #4 * #5 = \xe2\x89\x88"
+             "0.007\n"
+             "7. #3 + #6 = \xe2\x89\x88"
+             "0.107\n"
+             "8. r at level #2 (pass 2 of 2) = #7 = \xe2\x89\x88"
+             "0.107\n");
+}
+
+TEST_CASE("a value in a unit nobody declared is never padded, a quantity in unit::One included",
+          "[trace-render][decimals]")
+{
+    // `unit::One` is the coherent unit of a pure number, so a quantity
+    // declared in it reads as a computed ratio does: 0.5, not 0.500.
+    CHECK(renderedIn(tracedValue(var<Coefficient> * formula::number(rat(1, 2)),
+                                 formula::environment(formula::Measured<Coefficient> { rat(1, 2) })),
+                     formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
+          == "1. c = 0.5\n"
+             "2. 0.5\n"
+             "3. #1 * #2 = 0.25\n");
+
+    // A curve whose values are computed in no declared unit -- a number over
+    // a series of percentages -- shows them in the coherent unit, and its
+    // line pads its declared points in metres but not those values.
+    constexpr auto inverseCurve =
+        formula::curve(formula::domain<unit::Metre, HalvesPoints>, rat(2) / formula::series<PassingShare, 2>);
+    CHECK(renderedIn(tracedValue(formula::interpolate_at(inverseCurve, formula::constant<unit::Metre>(rat(5, 8))),
+                                 formula::environment(formula::measured_series<PassingShare>(
+                                     formula::Measured<PassingShare> { rat(50) },
+                                     formula::Measured<PassingShare> { rat(80) }))),
+                     formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded))
+          == "1. 0.500 m; 0.750 m\n"
+             "2. 2\n"
+             "3. p = 50.0 %; 80.0 %\n"
+             "4. #2 / #3 = 4; 2.5\n"
+             "5. curve(#1, #4) = 0.500 m: 4; 0.750 m: 2.5\n"
+             "6. 0.625 m\n"
+             "7. interpolate(#5, at #6) = 3.25 [between 0.500 and 0.750 m]\n");
+}
+
+TEST_CASE("a splice of typed curves shows its pairs as typed, whatever the style", "[trace-render][decimals]")
+{
+    constexpr auto thirds = formula::curve(formula::domain<unit::Metre, ThirdsPoints>,
+                                           formula::series_constant<unit::Percent>(rat(100, 3), rat(500, 7)));
+    constexpr auto sevenths = formula::curve(formula::domain<unit::Metre, SeventhsPoints>,
+                                             formula::series_constant<unit::Percent>(rat(100, 7), rat(600, 7)));
+    constexpr auto joined = formula::splice<formula::Monotone::NonDecreasing>(thirds, sevenths);
+    formula::Trace<> trace = tracedValue(formula::interpolate_at(joined, var<Aperture>),
+                                         formula::environment(formula::Measured<Aperture> { rat(3, 7) }));
+    CHECK(renderedIn(trace, approximately)
+          == "1. 1/3 m; 2/3 m\n"
+             "2. 100/3 %; 500/7 %\n"
+             "3. curve(#1, #2) = 1/3 m: 100/3 %; 2/3 m: 500/7 %\n"
+             "4. 1/7 m; 5/7 m\n"
+             "5. 100/7 %; 600/7 %\n"
+             "6. curve(#4, #5) = 1/7 m: 100/7 %; 5/7 m: 600/7 %\n"
+             "7. splice(#3, #6, non-decreasing) = 1/7 m: 100/7 %; 1/3 m: 100/3 %; 2/3 m: 500/7 %; 5/7 m: 600/7 %\n"
+             "8. a = \xe2\x89\x88"
+             "0.429 m\n"
+             "9. interpolate(#7, at #8) = \xe2\x89\x88"
+             "44.2 % [between 1/3 and 2/3 m]\n");
+
+    // A splice whose pairs are not its curves' -- a hand-built trace -- is not
+    // taken for typed: its line is spelled as a computed one is.
+    formula::Trace<> forged = trace;
+    forged.steps[6].elements[0] = rat(1, 11);
+    CHECK(renderedIn(forged, approximately)
+              .find("7. splice(#3, #6, non-decreasing) = 1/7 m: \xe2\x89\x88"
+                    "9.1 %; 1/3 m: \xe2\x89\x88"
+                    "33.3 %;")
+          != std::string::npos);
+
+    // Nor is a pairing whose points are not its domain's.
+    formula::Trace<> forgedPairing = trace;
+    forgedPairing.steps[2].domainElements[0] = rat(1, 7);
+    CHECK(renderedIn(forgedPairing, approximately).find("3. curve(#1, #2) = \xe2\x89\x88" "0.143 m: 100/3 %;")
+          != std::string::npos);
+}

@@ -1510,11 +1510,23 @@ namespace detail
     /// The step whose value @p trace's step @p stepIndex passes on unchanged,
     /// when it computes nothing of its own: a documented formula, a selected
     /// or a replaced variant and a derived quantity, each over its one
-    /// operand, and a conditional over the branch that ran -- its last
-    /// operand. The recorder gives each of these the value of that step, so
-    /// it is read from there. Empty for every other step, and for an operand
-    /// that is not an earlier step: `Trace` is a public aggregate, and
-    /// following a later one could go round in a circle.
+    /// operand; a conditional over the branch that ran, its last operand; a
+    /// record's scope over the derivation it read, its last operand that is
+    /// not a lineage attribute (as the recorder reads it for the scope's
+    /// unit); a precision limit's pass 1 over the level expression, its last
+    /// operand; and a level placeholder over the level it read, the step its
+    /// record names (`Trace::precisionRecords`).
+    ///
+    /// Only when that step holds this one's value, in this one's dimension.
+    /// A consumer's node that forwards the sink records no step of its own,
+    /// so a documented formula or a branch over one claims that node's
+    /// operand instead -- a constant under a rise above a reference -- whose
+    /// value is not the one passed on. The recorder refuses that operand's
+    /// unit for the same reason (`trace.hpp`'s `PassesThroughRecordedStep`);
+    /// the value is what tells the two apart here. Empty for every other
+    /// step, and for an operand that is not an earlier step: `Trace` is a
+    /// public aggregate, and following a later one could go round in a
+    /// circle.
     [[nodiscard]] inline std::optional<std::size_t> value_passed_from(Trace<Rational> const& trace, std::size_t stepIndex)
     {
         Step<Rational> const& passing = trace.steps[stepIndex];
@@ -1532,10 +1544,27 @@ namespace detail
                 if (passing.branch != Branch::Neither && !passing.operands.empty())
                     passedFrom = passing.operands.back();
                 break;
+            case StepKind::RecordScope:
+                for (std::size_t const operandIndex: passing.operands)
+                    if (operandIndex < stepIndex && trace.steps[operandIndex].kind != StepKind::LineageChecked)
+                        passedFrom = operandIndex;
+                break;
+            case StepKind::PrecisionLevel:
+                if (PrecisionRecord const* const precisionRecord = record_for_step(trace.precisionRecords, stepIndex))
+                {
+                    if (precisionRecord->role == PrecisionStepRole::LevelPass && !passing.operands.empty())
+                        passedFrom = passing.operands.back();
+                    else if (precisionRecord->role == PrecisionStepRole::Placeholder)
+                        passedFrom = precisionRecord->levelStep;
+                }
+                break;
             default:
                 break;
         }
-        if (passedFrom.has_value() && *passedFrom >= stepIndex)
+        if (!passedFrom.has_value() || *passedFrom >= stepIndex)
+            return std::nullopt;
+        Step<Rational> const& passedStep = trace.steps[*passedFrom];
+        if (!(passedStep.value == passing.value) || !(passedStep.dimension == passing.dimension))
             return std::nullopt;
         return passedFrom;
     }
@@ -1574,9 +1603,12 @@ namespace detail
     /// Whether every one of @p curvePart of the curve step @p stepIndex is a
     /// typed number (`value_is_typed`): a pairing's points are its first
     /// operand's elements and its values its second's -- a declared domain, a
-    /// per-element constant -- and a splice's are both its curves'. False for
-    /// a step of any other kind, and for operands that are not two earlier
-    /// steps.
+    /// per-element constant -- and a splice's are both its curves'. As for
+    /// `value_passed_from`, only when those operands hold what the curve
+    /// does: a pairing's points or values equal to its operand's elements,
+    /// and every point, or every point with its value, of a splice one of
+    /// its two curves'. False for a step of any other kind, and for operands
+    /// that are not two earlier steps.
     [[nodiscard]] inline bool curve_part_is_typed(Trace<Rational> const& trace,
                                                   std::size_t stepIndex,
                                                   CurvePart curvePart)
@@ -1585,13 +1617,33 @@ namespace detail
         if (curveStep.operands.size() != 2 || curveStep.operands.front() >= stepIndex
             || curveStep.operands.back() >= stepIndex)
             return false;
+        Step<Rational> const& firstStep = trace.steps[curveStep.operands.front()];
+        Step<Rational> const& secondStep = trace.steps[curveStep.operands.back()];
         if (curveStep.kind == StepKind::CurvePairing)
-            return value_is_typed(trace,
-                                  curvePart == CurvePart::Points ? curveStep.operands.front() : curveStep.operands.back());
-        if (curveStep.kind == StepKind::CurveSplice)
-            return curve_part_is_typed(trace, curveStep.operands.front(), curvePart)
-                   && curve_part_is_typed(trace, curveStep.operands.back(), curvePart);
-        return false;
+        {
+            if (curvePart == CurvePart::Points)
+                return curveStep.domainElements == firstStep.elements
+                       && value_is_typed(trace, curveStep.operands.front());
+            return curveStep.elements == secondStep.elements && value_is_typed(trace, curveStep.operands.back());
+        }
+        if (curveStep.kind != StepKind::CurveSplice)
+            return false;
+        // Whether @p spliced's pair at @p at -- its point, and with it its
+        // value when the values are asked about -- is one of @p joined's.
+        auto const pairFound = [curvePart](Step<Rational> const& spliced, std::size_t at, Step<Rational> const& joined) {
+            for (std::size_t each = 0; each < joined.domainElements.size(); ++each)
+                if (joined.domainElements[each] == spliced.domainElements[at]
+                    && (curvePart == CurvePart::Points
+                        || (each < joined.elements.size() && at < spliced.elements.size()
+                            && joined.elements[each] == spliced.elements[at])))
+                    return true;
+            return false;
+        };
+        for (std::size_t at = 0; at < curveStep.domainElements.size(); ++at)
+            if (!pairFound(curveStep, at, firstStep) && !pairFound(curveStep, at, secondStep))
+                return false;
+        return curve_part_is_typed(trace, curveStep.operands.front(), curvePart)
+               && curve_part_is_typed(trace, curveStep.operands.back(), curvePart);
     }
 
     /// Where a series step's failure arose, counted from one: `at element 3`,
