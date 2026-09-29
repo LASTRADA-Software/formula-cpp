@@ -30,6 +30,7 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/error.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
@@ -1372,15 +1373,15 @@ namespace detail
 
     /// @p storedValue -- a step's own, or one element of a series step's -- converted
     /// from the coherent unit of @p recorded's dimension into the unit the
-    /// step was declared in, with that unit's symbol, or `(not measured)` when
-    /// it is empty. Shared by `step_value_text` and `series_step_line`, so that
-    /// an element of a series reads exactly as a single value of the same
-    /// quantity does.
+    /// step was declared in, with that unit's symbol, or `(not measured)`
+    /// (`NotMeasuredText`) when it is empty. Shared by `step_value_text` and
+    /// `series_step_line`, so that an element of a series reads exactly as a
+    /// single value of the same quantity does.
     [[nodiscard]] inline std::string value_in_declared_unit(Step<Rational> const& recorded,
                                                             std::optional<Rational> const& storedValue)
     {
         if (!storedValue.has_value())
-            return "(not measured)";
+            return std::string { NotMeasuredText };
 
         std::expected<Rational, ArithmeticError> const shown =
             checked_convert(*storedValue, coherent(recorded.dimension), recorded.unit);
@@ -2247,7 +2248,7 @@ namespace detail
         if (recorded.error.has_value())
             lineText += describe(*recorded.error);
         else if (callRow == nullptr || callRow->outputs.empty() || !callRow->outputs.front().value.has_value())
-            lineText += "(not measured)";
+            lineText += NotMeasuredText;
         else
         {
             std::size_t const outputCount = callRow->outputs.size();

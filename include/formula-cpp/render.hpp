@@ -44,6 +44,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
@@ -338,12 +339,12 @@ namespace detail
             return quantitySymbol + "(" + std::string { attemptIndex } + ")";
     }
 
-    /// An exact rational as text: `4`, or `1/4` when it is not whole.
+    /// An exact rational as text: `4`, or `1/4` when it is not whole --
+    /// `fraction_text` (`number_text.hpp`), the one spelling of a fraction.
     [[nodiscard]] inline std::string number_text(Rational shownNumber)
     {
-        if (shownNumber.denominator() == 1)
-            return std::to_string(shownNumber.numerator());
-        return std::to_string(shownNumber.numerator()) + "/" + std::to_string(shownNumber.denominator());
+        NumberText const spelled = fraction_text(shownNumber);
+        return std::string { spelled.view() };
     }
 
     /// A number followed by its unit's symbol, or the number alone when the
