@@ -1194,17 +1194,19 @@ struct Step
 
     /// For `Variable`: whether the value was measured or typed in by a
     /// person, as the environment's entry says -- `Measured<Q>` or
-    /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant` and
-    /// `DerivedQuantity`: the same, of the environment's entry the overlay's
-    /// constant or definition replaced -- whether or not that entry held a
-    /// value, which `replacedEntryEmpty` says -- and empty when the
-    /// environment has no entry for the quantity at all. For
-    /// `SeriesVariable`: the same, of the whole series -- a measured series
-    /// or `entered(measured_series<Q>(...))`. For `AttemptInput`: the same, of
-    /// the series the attempt's determination was read from. Never
-    /// `Derived`: an input is not computed. Empty for every other kind, and
-    /// for an environment that cannot say (one without `is_entered`), which
-    /// is recorded as not known rather than guessed.
+    /// `Entered<Q>` (`environment.hpp`) -- or `Derived` when the environment
+    /// says, through its own `source_of<Q>()`, that it calculated the value
+    /// itself (`detail::known_source`, `evaluate.hpp`); `Environment` never
+    /// does. For `OverriddenConstant` and `DerivedQuantity`: the same, of the
+    /// environment's entry the overlay's constant or definition replaced --
+    /// whether or not that entry held a value, which `replacedEntryEmpty`
+    /// says -- and empty when the environment has no entry for the quantity
+    /// at all. For `SeriesVariable`: measured or typed in, of the whole
+    /// series -- a measured series or `entered(measured_series<Q>(...))`. For
+    /// `AttemptInput`: the same, of the series the attempt's determination
+    /// was read from. Empty for every other kind, and for an environment that
+    /// cannot say (one with neither `source_of` nor `is_entered`), which is
+    /// recorded as not known rather than guessed.
     std::optional<ValueSource> inputSource {};
 
     /// For `OverriddenConstant` and `DerivedQuantity`: true when the
@@ -2850,7 +2852,8 @@ class RecordingSink
     }
 
     /// Told, by the variable evaluator (`evaluate.hpp`), whether the value it
-    /// just read was measured or typed in; `produced` puts it on the step.
+    /// just read was measured, typed in or calculated; `produced` puts it on
+    /// the step.
     /// Optional, as `branch_taken` is: a sink without it pays nothing.
     ///
     /// Public, because the evaluator is not this class's friend. A caller

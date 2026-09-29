@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/conditional.hpp>
 #include <formula-cpp/evaluate.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <cstdint>
+#include <expected>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 namespace
 {
@@ -513,4 +520,283 @@ TEST_CASE("evaluate: an exchange rate supplied as a quantity turns euros into ye
     constexpr auto inYen = formula::checked_evaluate<AmountInYen>(var<Amount> * var<ExchangeRate>, exchange);
     STATIC_REQUIRE(inYen.has_value());
     STATIC_REQUIRE(inYen->measurement().value() == rat(16235));
+}
+
+namespace
+{
+/// What every test-local environment below answers from `get<Q>()`: 1009 l,
+/// never what its other hooks answer, so that a result tells which one the
+/// evaluator read. 1009 l over 1009 l is 1, not the fixture's 3/5.
+inline constexpr std::int64_t fromGet = 1009;
+
+/// The fixture's 180 l of water, and 300 l for any other quantity.
+template <typename Q>
+[[nodiscard]] constexpr formula::Measured<Q> fixtureValue() noexcept
+{
+    return formula::Measured<Q> { std::is_same_v<Q, WaterVolume> ? rat(180) : rat(300) };
+}
+
+/// An environment of a consumer's own that works its values out rather than
+/// holding them, and can fail to: `checked_get<Q>()` answers the fixture's
+/// values, except for @p Failing, whose read fails with `DomainError` -- an
+/// error no arithmetic in these formulas produces, so one seen is this one.
+/// It has no `source_of`, and says through `is_entered` that nothing was
+/// typed in.
+template <typename Failing>
+struct FailingEnvironment
+{
+    template <formula::Described Q>
+    static constexpr bool is_entered = false;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return formula::Measured<Q> { rat(fromGet) };
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr std::expected<formula::Measured<Q>, formula::ArithmeticError> checked_get() const noexcept
+    {
+        if constexpr (std::is_same_v<Q, Failing>)
+            return std::unexpected { formula::ArithmeticError::DomainError };
+        else
+            return fixtureValue<Q>();
+    }
+};
+
+/// An environment that says at run time where its values came from:
+/// `source_of<Q>()` answers @p answered, whatever the static `is_entered`
+/// says -- which is that every value was typed in. It holds the fixture's
+/// water, and no cement.
+struct SourceEnvironment
+{
+    formula::ValueSource answered;
+
+    template <formula::Described Q>
+    static constexpr bool is_entered = true;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        if constexpr (std::is_same_v<Q, WaterVolume>)
+            return fixtureValue<Q>();
+        else
+            return formula::Measured<Q>::absent();
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::ValueSource source_of() const noexcept
+    {
+        return answered;
+    }
+};
+
+/// An environment whose members are named as the hooks are but return
+/// something else. Its `source_of` answers an `int`; its `checked_get` is
+/// one of the two below. Neither is the hook, so the evaluator reads `get`
+/// -- the fixture's values -- and asks `is_entered`, which says the water was
+/// typed in and the cement was not.
+struct Lookalike
+{
+    template <formula::Described Q>
+    static constexpr bool is_entered = std::is_same_v<Q, WaterVolume>;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return fixtureValue<Q>();
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr int source_of() const noexcept
+    {
+        return 2;
+    }
+};
+
+/// A `checked_get` whose error is an `int`, and which always fails.
+struct ErrorOfAnotherType: Lookalike
+{
+    template <formula::Described Q>
+    [[nodiscard]] constexpr std::expected<formula::Measured<Q>, int> checked_get() const noexcept
+    {
+        return std::unexpected { 7 };
+    }
+};
+
+/// A `checked_get` answering a plain measurement -- one the hook's type
+/// converts from, so that only an exact match refuses it -- of 1009 l.
+struct PlainMeasurement: Lookalike
+{
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> checked_get() const noexcept
+    {
+        return formula::Measured<Q> { rat(fromGet) };
+    }
+};
+
+/// A `checked_get` answering a reference to the hook's own type, holding a
+/// failure: the hook's type exactly, but not by value.
+struct ReferenceToFailure: Lookalike
+{
+    template <formula::Described Q>
+    static constexpr std::expected<formula::Measured<Q>, formula::ArithmeticError> failed =
+        std::unexpected { formula::ArithmeticError::DomainError };
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr std::expected<formula::Measured<Q>, formula::ArithmeticError> const&
+    checked_get() const noexcept
+    {
+        return failed<Q>;
+    }
+};
+
+[[nodiscard]] std::string source_name(formula::ValueSource answered)
+{
+    switch (answered)
+    {
+        case formula::ValueSource::Measured:
+            return "measured";
+        case formula::ValueSource::ManuallyEntered:
+            return "entered";
+        case formula::ValueSource::Derived:
+            return "derived";
+    }
+    return "unknown";
+}
+
+[[nodiscard]] std::string held_text(formula::Evaluated<formula::Rational> const& evaluated)
+{
+    if (!evaluated.has_value())
+        return std::string { formula::describe(evaluated.error()) };
+    return evaluated->has_value() ? "a value" : "absent";
+}
+
+/// A sink that writes down, in order, what the evaluator tells it of each
+/// variable -- where its value came from, and what it produced -- and what
+/// every other node produced.
+struct VariableLog
+{
+    std::vector<std::string>* heard;
+
+    template <formula::Node N>
+    void entered(N const&) const
+    {
+    }
+
+    template <formula::Node N, typename V>
+    void produced(N const&, V const& evaluated) const
+    {
+        if constexpr (std::is_same_v<V, formula::Evaluated<formula::Rational>>)
+            heard->push_back("an operation produced " + held_text(evaluated));
+    }
+
+    template <formula::Described Q>
+    void produced(formula::VarNode<Q> const&, formula::Evaluated<formula::Rational> const& evaluated) const
+    {
+        heard->push_back(std::string { formula::Describe<Q>::symbol } + " produced " + held_text(evaluated));
+    }
+
+    template <formula::Described Q>
+    void input_source(formula::VarNode<Q> const&, formula::ValueSource answered) const
+    {
+        heard->push_back(std::string { formula::Describe<Q>::symbol } + " was " + source_name(answered));
+    }
+};
+} // namespace
+
+TEST_CASE("evaluate: an environment that can fail a read is read through checked_get", "[evaluate]")
+{
+    // 180 l over 300 l is 3/5, read through checked_get; get's 1009 l over
+    // 1009 l would be 1.
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<void> {})->measurement().value()
+                   == rat(3, 5));
+    // A failed read fails the formula with the environment's own error, on
+    // either side; read through get it would have been a value.
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<WaterVolume> {}).error()
+                   == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, FailingEnvironment<CementVolume> {}).error()
+                   == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("evaluate: a failed read is the variable's failure, relayed as an inline one is", "[evaluate]")
+{
+    // The variable is told its source and then that it failed; the sum
+    // relays the failure. A failure on the left ends the sum there, so the
+    // cement is never read -- as a left-hand division by zero would end it.
+    std::vector<std::string> heard;
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        total, FailingEnvironment<WaterVolume> {}, VariableLog { &heard });
+    CHECK(heard
+          == std::vector<std::string> { "V_w was measured",
+                                        "V_w produced argument outside the domain of the operation",
+                                        "an operation produced argument outside the domain of the operation" });
+
+    heard.clear();
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        total, FailingEnvironment<CementVolume> {}, VariableLog { &heard });
+    CHECK(heard
+          == std::vector<std::string> { "V_w was measured",
+                                        "V_w produced a value",
+                                        "V_c was measured",
+                                        "V_c produced argument outside the domain of the operation",
+                                        "an operation produced argument outside the domain of the operation" });
+}
+
+TEST_CASE("evaluate: a branch not taken never reads a value whose read fails", "[evaluate]")
+{
+    // 180 l is over 100 l. The cement's read fails: in the branch not taken
+    // it is never read, and in the branch taken it fails the formula.
+    constexpr auto overHundred = var<WaterVolume> > formula::constant<formula::unit::Litre>(rat(100));
+    constexpr auto cementUntaken = formula::when(overHundred, var<WaterVolume>, var<CementVolume>);
+    constexpr auto cementTaken = formula::when(overHundred, var<CementVolume>, var<WaterVolume>);
+    STATIC_REQUIRE(formula::checked_evaluate<TotalVolume>(cementUntaken, FailingEnvironment<CementVolume> {})
+                       ->measurement()
+                       .value()
+                   == rat(180));
+    STATIC_REQUIRE(formula::checked_evaluate<TotalVolume>(cementTaken, FailingEnvironment<CementVolume> {}).error()
+                   == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("evaluate: an environment's run-time source is preferred over its static is_entered", "[evaluate]")
+{
+    // is_entered says typed in; source_of says what it is told, at run time,
+    // of a present value and of an absent one alike.
+    std::vector<std::string> heard;
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        total, SourceEnvironment { formula::ValueSource::Derived }, VariableLog { &heard });
+    CHECK(heard
+          == std::vector<std::string> { "V_w was derived",
+                                        "V_w produced a value",
+                                        "V_c was derived",
+                                        "V_c produced absent",
+                                        "an operation produced absent" });
+
+    heard.clear();
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        total, SourceEnvironment { formula::ValueSource::Measured }, VariableLog { &heard });
+    CHECK(heard
+          == std::vector<std::string> { "V_w was measured",
+                                        "V_w produced a value",
+                                        "V_c was measured",
+                                        "V_c produced absent",
+                                        "an operation produced absent" });
+}
+
+TEST_CASE("evaluate: a checked_get or a source_of of another return type is not the hook", "[evaluate]")
+{
+    // No checked_get of these is read, so the ratio is the fixture's 3/5: not
+    // an error, and not 1009 l over 1009 l.
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, ErrorOfAnotherType {})->measurement().value() == rat(3, 5));
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, PlainMeasurement {})->measurement().value() == rat(3, 5));
+    STATIC_REQUIRE(formula::checked_evaluate<Ratio>(ratio, ReferenceToFailure {})->measurement().value() == rat(3, 5));
+    // Their source_of answers an int: not asked, so is_entered decides.
+    std::vector<std::string> heard;
+    (void) formula::checked_evaluate_si<formula::Rational>(total, ErrorOfAnotherType {}, VariableLog { &heard });
+    CHECK(heard
+          == std::vector<std::string> { "V_w was entered",
+                                        "V_w produced a value",
+                                        "V_c was measured",
+                                        "V_c produced a value",
+                                        "an operation produced a value" });
 }

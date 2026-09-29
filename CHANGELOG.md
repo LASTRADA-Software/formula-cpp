@@ -21,6 +21,11 @@ may break it, and each such change is recorded here.
   need a fifth does not compile. A name is an ASCII letter followed by letters or digits, shorter
   than 16 bytes and not the symbol of an SI base unit; two uses of one name are one dimension. A
   trace spells a named base by its name in a coherent unit, ahead of the SI units: `EUR s^2/(m^2 kg)`.
+- An environment can fail a read: the variable evaluator reads it through `checked_get<Q>()` when it
+  has one returning exactly `std::expected<Measured<Q>, ArithmeticError>`, and a failed read is that
+  variable's failure, which travels up the formula as any operand's does. A member of that name with
+  any other return type is not taken for it. The environments a precision limit, a rejection and a
+  retry evaluate in forward it.
 
 ### Changed
 
@@ -34,6 +39,12 @@ may break it, and each such change is recorded here.
   name"; its opening, "formula: these two dimensions are not the same", is unchanged.
 - A currency declared as `dim::Scalar` until now should be declared with `base_dimension` instead,
   so that the dimension system tells it from a bare ratio.
+- An environment's run-time `source_of<Q>()`, when it has one returning `ValueSource`, now decides
+  the source a trace records for a variable, and for the entry an overlay's constant or derived
+  quantity replaced; `is_entered<Q>` decides only for an environment without one. For an
+  `Environment` the two always agree, so its traces read as before. A variable's step can now
+  record `ValueSource::Derived`, a value its environment calculated: its line ends `, calculated`,
+  and one with no value reads `(no value), calculated` rather than `(not measured)`.
 
 ## [0.1.0] - 2026-09-28
 

@@ -476,7 +476,8 @@ namespace detail
     /// jurisdiction's. A sink reading `input_source` as "this value was typed
     /// in" is therefore never told it for a constant. Each hook is asked for
     /// only when the sink defines it, and the source only when the
-    /// environment can answer `Env::is_entered<Q>`.
+    /// environment can say, as a variable's is (`known_source`,
+    /// `evaluate.hpp`).
     template <Described Q, typename Env, typename ReplacingNode, typename Sink>
     constexpr void report_replaced_entry(ReplacingNode const& node, Env const& environment, Sink& sink) noexcept
     {
@@ -484,9 +485,8 @@ namespace detail
             if constexpr (Env::template provides<Q>)
             {
                 if constexpr (requires { sink.replaced_entry_source(node, ValueSource::Measured); }
-                              && requires { Env::template is_entered<Q>; })
-                    sink.replaced_entry_source(
-                        node, Env::template is_entered<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured);
+                              && KnowsSource<Env, Q>)
+                    sink.replaced_entry_source(node, known_source<Q>(environment));
                 if constexpr (requires { sink.replaced_entry_empty(node); })
                     if (environment.template get<Q>().is_absent())
                         sink.replaced_entry_empty(node);

@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace
@@ -2741,4 +2742,92 @@ TEST_CASE("a critical-value step records the count and whose failure it carries,
     forged.sampleSizeRecords[0].step = 0;
     CHECK(formula::render_trace(forged, { .maxSteps = 10 })
               .ends_with(" [no row for n = 7 (the table's sizes were not recorded)]\n"));
+}
+
+namespace
+{
+/// An environment of a consumer's own that works its values out and says,
+/// at run time, where each came from: 180 l of water, and cement it has no
+/// value for -- or, when @p cementFails, whose read fails with
+/// `DomainError`. Each source is whatever it is told.
+struct CalculatingEnvironment
+{
+    formula::ValueSource waterSource;
+    formula::ValueSource cementSource;
+    bool cementFails;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        if constexpr (std::is_same_v<Q, WaterVolume>)
+            return formula::Measured<Q> { formula::Rational { 180 } };
+        else
+            return formula::Measured<Q>::absent();
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr std::expected<formula::Measured<Q>, formula::ArithmeticError> checked_get() const noexcept
+    {
+        if (std::is_same_v<Q, CementVolume> && cementFails)
+            return std::unexpected { formula::ArithmeticError::DomainError };
+        return get<Q>();
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::ValueSource source_of() const noexcept
+    {
+        return std::is_same_v<Q, WaterVolume> ? waterSource : cementSource;
+    }
+};
+
+[[nodiscard]] formula::Trace<> traced_sum(CalculatingEnvironment const& calculating)
+{
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        var<WaterVolume> + var<CementVolume>, calculating, formula::RecordingSink<> { trace });
+    return trace;
+}
+} // namespace
+
+TEST_CASE("a value the environment calculated says so, and one it has no value for says that", "[trace-render]")
+{
+    constexpr auto derived = formula::ValueSource::Derived;
+    formula::Trace<> const calculated = traced_sum({ derived, derived, false });
+    CHECK(calculated.steps[0].inputSource == derived);
+    CHECK(calculated.steps[1].inputSource == derived);
+    CHECK(formula::render_trace(calculated, { .maxSteps = 10 })
+          == "1. V_w = 180 l, calculated\n"
+             "2. V_c = (no value), calculated\n"
+             "3. #1 + #2 = (not measured)\n");
+
+    // The run-time answer decides the other wordings too: a typed-in input,
+    // and a measured one never measured, read as they always have.
+    formula::Trace<> const measured =
+        traced_sum({ formula::ValueSource::ManuallyEntered, formula::ValueSource::Measured, false });
+    CHECK(formula::render_trace(measured, { .maxSteps = 10 })
+          == "1. V_w = 180 l, entered by hand\n"
+             "2. V_c = (not measured)\n"
+             "3. #1 + #2 = (not measured)\n");
+    formula::Trace<> const typedEmpty =
+        traced_sum({ formula::ValueSource::Measured, formula::ValueSource::ManuallyEntered, false });
+    CHECK(formula::render_trace(typedEmpty, { .maxSteps = 10 })
+          == "1. V_w = 180 l\n"
+             "2. V_c = (entered by hand as empty)\n"
+             "3. #1 + #2 = (not measured)\n");
+}
+
+TEST_CASE("a calculated value whose read failed is that variable's failure, and says it was calculated",
+          "[trace-render]")
+{
+    constexpr auto derived = formula::ValueSource::Derived;
+    formula::Trace<> const failed = traced_sum({ derived, derived, true });
+    REQUIRE(failed.steps.size() == 3);
+    CHECK(failed.steps[1].kind == formula::StepKind::Variable);
+    CHECK(failed.steps[1].error == formula::ArithmeticError::DomainError);
+    CHECK(failed.steps[1].inputSource == derived);
+    CHECK(failed.steps[2].error == formula::ArithmeticError::DomainError);
+    CHECK(formula::render_trace(failed, { .maxSteps = 10 })
+          == "1. V_w = 180 l, calculated\n"
+             "2. V_c = argument outside the domain of the operation, calculated\n"
+             "3. #1 + #2 = argument outside the domain of the operation\n");
 }

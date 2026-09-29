@@ -10,9 +10,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <limits>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 namespace
 {
@@ -485,4 +487,125 @@ TEST_CASE("a precision limit documents its results, and never the level as an in
     REQUIRE(documentation.symbols.size() == 2);
     CHECK(documentation.symbols[0].symbol == std::string_view { "x_A" });
     CHECK(documentation.symbols[1].symbol == std::string_view { "x_B" });
+}
+
+namespace
+{
+/// Fixture P's pair, from an environment of a consumer's own that works its
+/// values out: `checked_get` answers 40 g and 40.905 g -- except for
+/// @p Failing, whose read fails with `DomainError` -- and `source_of` says
+/// each was calculated. Its `get` answers 1009 g for both, and its
+/// `is_entered` says neither was typed in, so a limit that read either
+/// instead of the hooks would show it.
+template <typename Failing>
+struct CalculatedPair
+{
+    template <formula::Described Q>
+    static constexpr bool is_entered = false;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return formula::Measured<Q> { rat(1009) };
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr std::expected<formula::Measured<Q>, formula::ArithmeticError> checked_get() const noexcept
+    {
+        if constexpr (std::is_same_v<Q, Failing>)
+            return std::unexpected { formula::ArithmeticError::DomainError };
+        else
+            return formula::Measured<Q> { std::is_same_v<Q, ResultA> ? rat(40) : rat(40905, 1000) };
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::ValueSource source_of() const noexcept
+    {
+        return formula::ValueSource::Derived;
+    }
+};
+
+/// Fixture P's pair from an environment with neither hook: `get` and
+/// `is_entered` only, which says x_A was typed in.
+struct PlainPair
+{
+    template <formula::Described Q>
+    static constexpr bool is_entered = std::is_same_v<Q, ResultA>;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return formula::Measured<Q> { std::is_same_v<Q, ResultA> ? rat(40) : rat(40905, 1000) };
+    }
+};
+
+template <typename Env>
+concept FailsReads = requires(Env const& asked) { asked.template checked_get<ResultB>(); };
+
+template <typename Env>
+concept SaysSource = requires(Env const& asked) { asked.template source_of<ResultB>(); };
+
+/// r = level / 50 + x_B at the level x_A: x_B is read only in pass 2, inside
+/// the limit's own environment. Fixture P gives 40 g / 50 + 40.905 g =
+/// 8341/200 g; 1009 g for both would give 51459/50 g.
+inline constexpr auto limitReadingB = formula::precision_limit<formula::PrecisionKind::Repeatability>(
+    var<ResultA>, rat(1, 50) * formula::precision_level<ResultA> + var<ResultB>);
+} // namespace
+
+TEST_CASE("a precision limit's environment forwards a read's source and its failure", "[precision]")
+{
+    // Each hook is there exactly when the wrapped environment has it.
+    STATIC_REQUIRE(FailsReads<formula::detail::BoundEnvironment<CalculatedPair<void>>>);
+    STATIC_REQUIRE(SaysSource<formula::detail::BoundEnvironment<CalculatedPair<void>>>);
+    STATIC_REQUIRE_FALSE(FailsReads<formula::detail::BoundEnvironment<std::remove_cv_t<decltype(pairP)>>>);
+    STATIC_REQUIRE(SaysSource<formula::detail::BoundEnvironment<std::remove_cv_t<decltype(pairP)>>>);
+    STATIC_REQUIRE_FALSE(FailsReads<formula::detail::BoundEnvironment<PlainPair>>);
+    STATIC_REQUIRE_FALSE(SaysSource<formula::detail::BoundEnvironment<PlainPair>>);
+
+    // Pass 2 reads x_B through checked_get, and fails when it fails.
+    STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(limitReadingB, CalculatedPair<void> {})->measurement().value()
+                   == rat(8341, 200));
+    STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(limitReadingB, CalculatedPair<ResultB> {}).error()
+                   == formula::ArithmeticError::DomainError);
+    // An environment with neither hook still evaluates inside the limit.
+    STATIC_REQUIRE(formula::checked_evaluate<Tolerance>(limitReadingB, PlainPair {})->measurement().value()
+                   == rat(8341, 200));
+}
+
+TEST_CASE("inside a precision limit, a read says where the environment says its value came from",
+          "[precision][trace-render]")
+{
+    // x_B, read in pass 2, is calculated as x_A is, and says so; its failed
+    // read is x_B's own failure, which the limit relays.
+    formula::Trace<> trace {};
+    (void) formula::checked_evaluate<Tolerance>(limitReadingB, CalculatedPair<void> {}, formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 20 })
+          == "1. x_A = 40 g, calculated\n"
+             "2. level (pass 1 of 2) = #1 = 40 g\n"
+             "3. 1/50\n"
+             "4. level = 40 g [bound by #8]\n"
+             "5. #3 * #4 = 1/1250\n"
+             "6. x_B = 8181/200 g, calculated\n"
+             "7. #5 + #6 = 8341/200000\n"
+             "8. r at level #2 (pass 2 of 2) = #7 = 8341/200000\n");
+
+    formula::Trace<> failed {};
+    (void) formula::checked_evaluate<Tolerance>(
+        limitReadingB, CalculatedPair<ResultB> {}, formula::RecordingSink<> { failed });
+    CHECK(formula::render_trace(failed, { .maxSteps = 20 })
+          == "1. x_A = 40 g, calculated\n"
+             "2. level (pass 1 of 2) = #1 = 40 g\n"
+             "3. 1/50\n"
+             "4. level = 40 g [bound by #8]\n"
+             "5. #3 * #4 = 1/1250\n"
+             "6. x_B = argument outside the domain of the operation, calculated\n"
+             "7. #5 + #6 = argument outside the domain of the operation\n"
+             "8. r at level #2 (pass 2 of 2) = #7 = argument outside the domain of the operation\n");
+
+    // Without source_of, is_entered decides, inside the limit as outside it.
+    formula::Trace<> plain {};
+    (void) formula::checked_evaluate<Tolerance>(limitReadingB, PlainPair {}, formula::RecordingSink<> { plain });
+    REQUIRE(plain.steps.size() == 8);
+    CHECK(plain.steps[0].inputSource == formula::ValueSource::ManuallyEntered);
+    CHECK(plain.steps[5].inputSource == formula::ValueSource::Measured);
 }

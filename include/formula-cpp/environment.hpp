@@ -673,16 +673,19 @@ class Environment
             return MeasuredObservations<Q, Capacity> {};
     }
 
-    /// Where the value for @p Q came from.
+    /// Where the value for @p Q came from: `ManuallyEntered` for an `Entered`
+    /// entry, `Measured` for any other.
     ///
-    /// `checked_evaluate` does not call this: it already knows, from
-    /// `Env::is_entered<Result>`, whether the result it is about to return was
-    /// typed in or derived, and decides `ValueSource` from that directly. This
-    /// accessor is the one a future tracing layer (phase 7) will consult for an
-    /// *input's* provenance instead, which is a question the evaluator never
-    /// asks today. Consequently `ValueSource::Measured` -- correct as it is
-    /// here -- cannot appear in any `Outcome` this phase produces; only
-    /// `Derived` and `ManuallyEntered` do.
+    /// The variable evaluator asks this, for a sink that records an input's
+    /// source (`detail::report_input_source`, `evaluate.hpp`). It prefers it
+    /// to `is_entered<Q>` because an environment of another type can answer
+    /// it at run time, and say `Derived` of a value it calculated; for this
+    /// type the two always agree. `checked_evaluate` does not call it for the
+    /// result: it already knows, from `Env::is_entered<Result>`, whether the
+    /// result it is about to return was typed in or derived. So
+    /// `ValueSource::Measured` -- correct as it is here -- appears on a
+    /// trace's steps, and never as the source of an `Outcome` that
+    /// `checked_evaluate` returns; only `Derived` and `ManuallyEntered` do.
     template <Described Q>
     [[nodiscard]] constexpr ValueSource source_of() const noexcept
     {

@@ -2472,7 +2472,8 @@ namespace detail
     /// a justification for `NumericValue`, the tie-breaking rule
     /// for the three rounding kinds, the granularity, provenance and tie rule
     /// for a method's rounding rule, the overlay that fixed an overridden
-    /// constant, for a `Conditional` whose predicate never
+    /// constant, `, entered by hand` or `, calculated` for a variable whose
+    /// value was not measured, for a `Conditional` whose predicate never
     /// resolved `[no branch]`, and for the three lookup kinds the row selected
     /// or the failure's origin (see `lookup_suffix`).
     ///
@@ -2563,6 +2564,13 @@ namespace detail
         bool const enteredButEmpty = recorded.kind == StepKind::Variable
                                      && recorded.inputSource == ValueSource::ManuallyEntered
                                      && !recorded.value.has_value() && !recorded.error.has_value();
+        // A value the environment calculated was never going to be measured
+        // either: an empty one reads "(no value)" -- the calculation had
+        // nothing to give it -- and ", calculated" below still says whose
+        // value it is.
+        bool const calculatedButEmpty = recorded.kind == StepKind::Variable
+                                        && recorded.inputSource == ValueSource::Derived
+                                        && !recorded.value.has_value() && !recorded.error.has_value();
         // A read from a record that was bound, withheld because a lineage key
         // was unknown: nothing was read, so "(not measured)" would be false of
         // a record whose values may well have been measured. Its line holds no
@@ -2570,9 +2578,10 @@ namespace detail
         bool const withheld = recorded.kind == StepKind::RecordScope && recorded.readFrom.has_value()
                               && recorded.readFrom->is_bound() && recorded.operands.empty()
                               && !recorded.value.has_value() && !recorded.error.has_value();
-        std::string const valueText = enteredButEmpty ? std::string { "(entered by hand as empty)" }
-                                      : withheld      ? std::string { "(not read: lineage not checked)" }
-                                                      : step_value_text(recorded);
+        std::string const valueText = enteredButEmpty      ? std::string { "(entered by hand as empty)" }
+                                      : calculatedButEmpty ? std::string { "(no value)" }
+                                      : withheld           ? std::string { "(not read: lineage not checked)" }
+                                                           : step_value_text(recorded);
         std::string annotation;
         if (recorded.kind == StepKind::Documented)
             annotation = citation_suffix(recorded.citation);
@@ -2623,6 +2632,13 @@ namespace detail
         else if ((recorded.kind == StepKind::Variable || recorded.kind == StepKind::AttemptInput)
                  && recorded.inputSource == ValueSource::ManuallyEntered && !enteredButEmpty)
             annotation = ", entered by hand";
+        // A value the environment calculated from its other values says so,
+        // after a comma, as a typed-in one does: it was neither measured nor
+        // typed in, and a reader looking for where it came from looks for its
+        // calculation. Said of an empty or a failed value too: where a value
+        // came from does not change with what it holds.
+        else if (recorded.kind == StepKind::Variable && recorded.inputSource == ValueSource::Derived)
+            annotation = ", calculated";
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
         // value fell in, and on a failure it is the only thing separating a
