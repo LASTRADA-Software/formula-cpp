@@ -11,8 +11,9 @@ may break it, and each such change is recorded here.
 - `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
   `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
   into kilowatt-hours without a rounded factor.
-- `unit::Fahrenheit`, a second affine temperature unit beside `unit::Celsius`. Its conversions to and
-  from kelvin and Celsius are exact, so 98.6 degrees Fahrenheit is exactly 37 degrees Celsius.
+- `unit::Fahrenheit`, a second affine temperature unit beside `unit::Celsius`. No conversion to or
+  from kelvin or Celsius rounds, so 98.6 degrees Fahrenheit is exactly 37 degrees Celsius and 100
+  degrees Fahrenheit is exactly 340/9 degrees Celsius.
 
 ## [0.1.0] - 2026-09-28
 

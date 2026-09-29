@@ -362,17 +362,22 @@ namespace unit
     /// The coherent SI unit of thermodynamic temperature.
     inline constexpr Unit Kelvin { .dimension = dim::Temperature, .symbolText = symbol("K"), .decimals = 2 };
     /// One of the two affine units, and the reason `Unit` carries an offset at
-    /// all; `Fahrenheit` is the other. Zero degrees Celsius is 273.15 kelvin,
-    /// while a difference of one degree is a difference of one kelvin.
+    /// all; `Fahrenheit` is the other. Zero degrees Celsius is 273.15 kelvin.
+    /// Conversion moves a point on the scale, not a difference, so one degree
+    /// Celsius converts to 274.15 kelvin, not to one kelvin; this library does
+    /// not convert differences.
     inline constexpr Unit Celsius { .dimension = dim::Temperature,
                                     .offsetNumerator = 27315,
                                     .offsetDenominator = 100,
                                     .symbolText = symbol("\xc2\xb0" "C"),
                                     .decimals = 1 };
     /// The other affine unit. A degree is exactly 5/9 of a kelvin, and zero
-    /// degrees Fahrenheit is exactly 459.67 * 5/9 = 45967/180 kelvin, so every
-    /// conversion is exact: 32 degrees is 273.15 kelvin, and -40 degrees is
-    /// -40 degrees Celsius. One decimal, `Celsius`'s.
+    /// degrees Fahrenheit is exactly 459.67 * 5/9 = 45967/180 kelvin, so no
+    /// conversion rounds: 32 degrees is 273.15 kelvin, and -40 degrees is -40
+    /// degrees Celsius. Converting to Celsius divides by 9, so a reading is
+    /// often a fraction that is not a terminating decimal, and is kept as that
+    /// fraction: 100 degrees is 340/9 degrees Celsius, not a rounded 37.78. Like
+    /// `Celsius`, it converts a point, not a difference. One decimal, `Celsius`'s.
     inline constexpr Unit Fahrenheit { .dimension = dim::Temperature,
                                        .magnitudeNumerator = 5,
                                        .magnitudeDenominator = 9,
@@ -602,7 +607,8 @@ struct RequireSameUnitDimension
 /// Applies integer factors by multiply-then-divide rather than a precomputed
 /// floating-point factor, so 30 MPa is exactly 30000000 Pa and converts back to
 /// exactly 30. The offset makes the conversion affine, which is what degrees
-/// Celsius need; for units without one it is zero and drops out.
+/// Celsius and degrees Fahrenheit need; for units without one it is zero and
+/// drops out.
 ///
 /// Converts a POINT on the scale, not a difference: 1 degC becomes 274,15 K, not
 /// 1 K. A difference-preserving conversion is a different operation and is not
