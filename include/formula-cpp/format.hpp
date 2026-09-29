@@ -96,10 +96,10 @@ namespace formula::detail
 }
 
 /// Refuses to write a value the format could not spell: `~Mode` on a
-/// `Measured` whose unit declares negative decimals, for a value exact
+/// `Measured` whose unit declares negative decimals, for a value it must
+/// round (one with no exact decimal of at most 18 places) that exact
 /// arithmetic cannot divide by 10^-decimals (see `formatter<Measured<Q>>`)
-/// -- the one case the parser's checks cannot see. Reached only at run time,
-/// from `format`.
+/// -- the one case the parser's checks cannot see. Only `format` reaches it.
 /// @throws std::format_error always.
 [[noreturn]] inline void number_format_failed(ArithmeticError spellingFailure)
 {
@@ -570,13 +570,15 @@ struct formatter<formula::Rational, char>
 /// `std::format_error`, whose `what()` starts `formula: `.
 ///
 /// **A value exact arithmetic cannot round** is refused when it is written,
-/// not when the spec is read: `~Mode` on a `Q` whose unit declares negative
-/// decimals divides the value by 10^-decimals, which overflows for a value
-/// whose denominator times that power of ten, less any factor of it the
-/// numerator cancels, exceeds the integer range -- `from_double_exact(0.1)`
-/// at -3 decimals is one. `format` then throws `std::format_error`, whose
-/// `what()` starts `formula: this number cannot be spelled as the format
-/// asks`.
+/// not when the spec is read. `~Mode` on a `Q` whose unit declares negative
+/// decimals writes a value with an exact decimal of at most 18 places as it
+/// is -- 1/10^18 at -3 decimals is `0.000000000000000001` -- and rounds any
+/// other by dividing it by 10^-decimals. For such a value whose denominator
+/// times that power of ten, less any factor of it the numerator cancels,
+/// exceeds the integer range, the division overflows --
+/// `from_double_exact(0.1)` at -3 decimals is one -- and `format` throws
+/// `std::format_error`, whose `what()` starts `formula: this number cannot be
+/// spelled as the format asks`.
 ///
 /// The guide, `docs/display.md`, section "Formatting with `std::format`",
 /// sets this reference out with a real program's output beside each form.

@@ -244,6 +244,13 @@ TEST_CASE("a spec the grammar does not allow is refused at run time, in the libr
     // thousand.
     CHECK(std::format("{:/}", coarseTenth) == "3602879701896397/36028797018963968 ku");
     CHECK(std::format("{:~HalfEven}", Measured<CoarseLength> { Rational { 7501, 3 } }) == "\xe2\x89\x88" "3000 ku");
+    // A value with an exact decimal of at most 18 places is written as it
+    // is, never rounded, so never divided: 1/10^18, whose rounding at -3
+    // places overflows, is written exactly.
+    Rational const atto { 1, 1'000'000'000'000'000'000 };
+    REQUIRE(!formula::checked_decimal_text(
+        atto, formula::DecimalPlaces { -3 }, RoundingMode::HalfEven, formula::DecimalPadding::Trimmed));
+    CHECK(std::format("{:~HalfEven}", Measured<CoarseLength> { atto }) == "0.000000000000000001 ku");
 }
 
 TEST_CASE("the spec parser reads each form, at compile time", "[format]")
@@ -268,6 +275,13 @@ TEST_CASE("the spec parser reads each form, at compile time", "[format]")
     STATIC_REQUIRE(parse_number_format("<12/").body == NumberFormatBody::Fraction);
     STATIC_REQUIRE(parse_number_format("\xc2\xb7>6").fillLength == 2);
     STATIC_REQUIRE(parse_number_format("<<4").fill[0] == '<');
+    // A fill cut short by the spec's end is no scalar value: its length is
+    // checked before a continuation byte is read. Each view ends inside a
+    // whole character, so a read past its end would find a valid
+    // continuation byte and count the character whole.
+    STATIC_REQUIRE(formula::detail::scalar_value_length(std::string_view { "\xe2\x89\x88", 2 }) == 0);
+    STATIC_REQUIRE(formula::detail::scalar_value_length(std::string_view { "\xf0\x90\x8d\x88", 3 }) == 0);
+    STATIC_REQUIRE(formula::detail::scalar_value_length(std::string_view { "\xe2\x89\x88", 3 }) == 3);
 
     // Every mode by its enumerator's name, and only by it.
     STATIC_REQUIRE(parse_number_format(".1HalfAwayFromZero").roundingMode == RoundingMode::HalfAwayFromZero);

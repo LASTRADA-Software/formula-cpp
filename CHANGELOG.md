@@ -133,7 +133,8 @@ may break it, and each such change is recorded here.
   not allow is a compile error naming what is wrong in a literal format string, and a
   `std::format_error` starting `formula: ` under `std::vformat`. The fill must be one Unicode scalar
   value in well-formed UTF-8. `{:~Mode}` of a measured value in a unit declaring negative decimals
-  throws `std::format_error` when written if exact arithmetic cannot round the value there, as
+  writes a value with an exact decimal of at most 18 places as it is, and throws `std::format_error`
+  when written if the value has none and exact arithmetic cannot round it there, as
   `from_double_exact(0.1)` at -3 decimals cannot. The library owns these `std::formatter`
   specialisations, so the header belongs in every translation unit that formats these types or asks
   `std::formattable` about them; only `char` is supported.

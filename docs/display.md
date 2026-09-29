@@ -438,8 +438,10 @@ formula: this number format rounds but names no rounding mode -- write one after
 
 One case is refused only when a value is written, because no spec check can
 see it: `{:~Mode}` on a `Measured` whose unit declares negative decimals --
-rounding to tens or thousands -- rounds through exact arithmetic, which
-overflows for a value with a large denominator, such as
+rounding to tens or thousands. A value with an exact decimal of at most 18
+places is written as it is and never rounded: 1/10^18 at -3 decimals is
+`0.000000000000000001`. Any other value is rounded through exact arithmetic,
+which overflows for one with a large denominator, such as
 `Rational::from_double_exact(0.1)` at -3 decimals. `std::format` then throws
 `std::format_error` too, starting `formula: this number cannot be spelled as
 the format asks`; it never writes a text that is neither the value nor the
