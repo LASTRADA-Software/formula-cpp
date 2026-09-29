@@ -41,7 +41,7 @@ named base dimensions by name. Adding a volume to a mass
 both vectors spelled out in the diagnostic. A named base appears there as its
 name and its exponent, and how legibly depends on the compiler: g++ prints
 `formula::Symbol{"EUR"}`, while cl, clang-cl and clang++ print the name's
-character codes, `69, 85, 82` for `EUR`. `formula::Unit` has the analogous
+character codes (69, 85, 82 for EUR). `formula::Unit` has the analogous
 `RequireSameUnitDimension<From, To>` for conversions between units of
 different dimensions.
 

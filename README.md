@@ -260,7 +260,7 @@ and still growing. The public API may change until 1.0.
 | Area | State |
 |---|---|
 | Exact rational arithmetic, rounding modes | shipped |
-| Dimensions with rational exponents and named base dimensions such as money, units, exact conversion | shipped |
+| Dimensions with rational exponents, units, exact conversion | shipped |
 | Quantities, metadata, absent measurements | shipped |
 | Formulas, operators, environments, evaluation | shipped |
 | Citations, rendering dialects, generated documentation | shipped |
@@ -273,6 +273,7 @@ and still growing. The public API may change until 1.0.
 | Statistics, precision limits, outlier rejection | shipped |
 | Other samples and other tests: records, context, lineage | shipped |
 | Opaque operations (least squares), bounded retry | shipped |
+| Named base dimensions such as money | next release |
 
 ## Requirements
 

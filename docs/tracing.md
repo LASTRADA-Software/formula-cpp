@@ -253,15 +253,6 @@ renderer, has to be the one holding that unit:
 /// the same volume and a worse record. The renderer cannot recover this
 /// on its own -- by the time a `Step` exists the quantity type is erased,
 /// so the recorder captures it here.
-///
-/// **Deliberately not the unit `NumericValue` was read in.** That unit
-/// measures the *operand's* dimension (`Megapascal`, say), while a
-/// `NumericValueNode`'s own `dimension` is always `Scalar` -- assigning it
-/// here would make the renderer's `checked_convert(value, coherent(dimension),
-/// unit)` compare a `Scalar` `from` against a non-`Scalar` `to` and refuse
-/// every such step with a dimension-mismatch error, hiding the very number
-/// this node exists to produce. See `sourceUnit` below for that unit.
-Unit unit {};
 ```
 
 (`trace.hpp`.) A quantity's C++ type exists only while the evaluator is

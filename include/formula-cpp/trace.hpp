@@ -2598,8 +2598,9 @@ namespace detail
     /// `merged_dimension` combines exponents through `reduced`, as `operator/`
     /// always did, and its guard ends the program when a combined exponent,
     /// in lowest terms, would not fit `std::int32_t` -- a very large
-    /// numerator, or two denominators whose product passes 2^31: a length to
-    /// the 1/46349 over a length to the -1/46351 needs 92700/2148322499.
+    /// numerator, or two denominators whose product, in lowest terms, still
+    /// exceeds `INT32_MAX`: a length to the 1/46349 over a length to the
+    /// -1/46351 needs 92700/2148322499.
     [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
     {
         if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar
