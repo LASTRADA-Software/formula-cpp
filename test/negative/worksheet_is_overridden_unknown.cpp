@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: set() was given the same quantity more than once
-// REJECT: formula: set() names a quantity this worksheet's calculation neither reads nor defines
-// REJECT: tuple index
+// EXPECT: formula: this worksheet's calculation neither defines nor reads the quantity asked for
+// REJECT: formula: this calculation neither defines nor reads this quantity
+// REJECT: formula: clear_override or is_overridden names an input of the calculation
 // REJECT: no matching
 //
-// set() names one quantity twice -- and one the calculation does not hold,
-// which is not judged until each quantity is named once: one message.
+// is_overridden asked about a quantity the calculation does not hold: a
+// silent false would read as "calculated, not typed in".
 //
 // This must not compile.
 #include <formula-cpp/calculation.hpp>
@@ -43,7 +43,5 @@ int main()
     auto sheet = formula::worksheet(shares,
                                     formula::environment(formula::Measured<Factor> { formula::Rational { 3 } },
                                                          formula::Measured<Other> { formula::Rational { 2 } }));
-    sheet.set(formula::Measured<Unrelated> { formula::Rational { 1 } },
-              formula::Measured<Unrelated> { formula::Rational { 2 } });
-    return 0;
+    return sheet.is_overridden<Unrelated>() ? 1 : 0;
 }

@@ -67,7 +67,8 @@ may break it, and each such change is recorded here.
   observations, or with a calculated quantity given as a measurement rather than `entered`; `set()`
   naming one quantity twice, one the calculation neither reads nor defines, a series, or a calculated
   quantity given as a measurement; asking about a quantity the calculation neither defines nor reads;
-  and `clear_override` of an input.
+  and `clear_override` or `is_overridden` of an input, which is set again rather than overridden --
+  whether its value was typed in is the `source()` of what `calculate` answers for it.
 
 ### Changed
 

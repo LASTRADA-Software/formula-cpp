@@ -2,6 +2,7 @@
 // EXPECT: formula: set() names a quantity this worksheet's calculation neither reads nor defines
 // REJECT: formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines
 // REJECT: formula: this worksheet's calculation neither defines nor reads the quantity asked for
+// REJECT: tuple index
 // REJECT: no matching
 //
 // set() names a quantity the calculation neither reads nor defines, among

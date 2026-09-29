@@ -121,8 +121,8 @@
 ///    defines (`RequireSettableQuantity`), a series, or a calculated
 ///    quantity given as a measurement, refused as above;
 ///  - asking about a quantity the calculation neither defines nor reads
-///    (`RequireWorksheetResult`), and `clear_override` of an input
-///    (`RequireCalculatedQuantity`).
+///    (`RequireWorksheetResult`), and `clear_override` or `is_overridden` of
+///    an input (`RequireCalculatedQuantity`).
 ///
 /// A worksheet of a calculation refused already is asked none of these.
 
@@ -1235,15 +1235,15 @@ namespace detail
         static constexpr bool value = true;
     };
 
-    /// Fails to compile when `clear_override` names an input. Instantiated
-    /// only for one.
+    /// Fails to compile when `clear_override` or `is_overridden` names an
+    /// input. Instantiated only for one.
     template <typename Q>
     struct RequireCalculatedQuantity
     {
         static_assert(alwaysFalse<Q>,
-                      "formula: clear_override names an input of the calculation; only a calculated quantity is "
-                      "overridden by hand, and an input is simply set again -- the quantity appears in this diagnostic "
-                      "as the template argument Q of RequireCalculatedQuantity");
+                      "formula: clear_override or is_overridden names an input of the calculation; only a calculated "
+                      "quantity is overridden by hand, and an input is simply set again -- the quantity appears in this "
+                      "diagnostic as the template argument Q of RequireCalculatedQuantity");
 
         static constexpr bool value = true;
     };
@@ -1730,14 +1730,20 @@ class Worksheet
         return *this;
     }
 
-    /// Whether @p Q is overridden by hand; never for an input. Refused for a
-    /// quantity the calculation neither defines nor reads.
+    /// Whether the calculated quantity @p Q is overridden by hand. Refused
+    /// for a quantity the calculation neither defines nor reads, and for an
+    /// input, which is set again rather than overridden: whether its value
+    /// was typed in is the `source()` of `calculate<Q>()`.
     template <Described Q>
     [[nodiscard]] constexpr bool is_overridden() const noexcept
     {
         static_assert(std::conditional_t<Graph::valid, detail::RequireWorksheetResult<Q, Calc>, std::true_type>::value);
         if constexpr (Graph::valid && Graph::template holds<Q>)
+        {
+            static_assert(
+                std::conditional_t<Graph::template defines<Q>, std::true_type, detail::RequireCalculatedQuantity<Q>>::value);
             return (_overridden & own_bit<Graph::template slot_of<Q>>()) != 0;
+        }
         else
             return false;
     }

@@ -2,6 +2,9 @@
 // EXPECT: formula: a worksheet holds single values, and this entry is a series or raw observations
 // REJECT: formula: set() names a quantity this worksheet's calculation neither reads nor defines
 // REJECT: holds a series for this quantity, not a single value
+// REJECT: to non-scalar type
+// REJECT: no viable conversion
+// REJECT: cannot convert from
 // REJECT: no matching
 //
 // set() is given a series for the other factor.

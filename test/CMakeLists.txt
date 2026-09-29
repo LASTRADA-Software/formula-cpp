@@ -2512,10 +2512,26 @@ formula_add_negative_test(worksheet_result_unknown
     "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
     EXPECT_COUNT 1
     REJECT "formula: this calculation neither defines nor reads this quantity"
-           "formula: clear_override names an input of the calculation"
+           "formula: clear_override or is_overridden names an input of the calculation"
            "no matching")
+formula_add_negative_test(worksheet_is_overridden_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: clear_override or is_overridden names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_clear_override_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: clear_override or is_overridden names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_is_overridden_input
+    "formula: clear_override or is_overridden names an input of the calculation"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's calculation neither defines nor reads the quantity asked for" "no matching")
 formula_add_negative_test(worksheet_clear_input_override
-    "formula: clear_override names an input of the calculation"
+    "formula: clear_override or is_overridden names an input of the calculation"
     EXPECT_COUNT 1
     REJECT "formula: this worksheet's calculation neither defines nor reads the quantity asked for" "no matching")
 formula_add_negative_test(worksheet_of_refused_calculation
@@ -2524,7 +2540,7 @@ formula_add_negative_test(worksheet_of_refused_calculation
     REJECT "formula: this worksheet's environment"
            "formula: set() names a quantity this worksheet's calculation neither reads nor defines"
            "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
-           "formula: clear_override names an input of the calculation"
+           "formula: clear_override or is_overridden names an input of the calculation"
            "no matching")
 formula_add_negative_test(worksheet_view_missed_read
     "formula: this environment provides no value for this quantity"

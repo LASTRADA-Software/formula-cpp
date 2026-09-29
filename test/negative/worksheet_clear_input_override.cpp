@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: clear_override names an input of the calculation
+// EXPECT: formula: clear_override or is_overridden names an input of the calculation
 // REJECT: formula: this worksheet's calculation neither defines nor reads the quantity asked for
 // REJECT: no matching
 //

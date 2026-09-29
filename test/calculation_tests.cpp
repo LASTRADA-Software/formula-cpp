@@ -973,7 +973,7 @@ TEST_CASE("a worksheet reads an input back as it was given, measured or typed in
     formula::Outcome<Price> const measured = sheet.calculate<Price>();
     CHECK(measured.measurement() == formula::Measured<Price> { rat(8, 25) });
     CHECK(measured.source() == formula::ValueSource::Measured);
-    CHECK_FALSE(sheet.is_overridden<Price>());
+    CHECK(sheet.checked_calculate<Price>()->source() == formula::ValueSource::Measured);
     CHECK(sheet.recomputed() == 0);
     REQUIRE(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
 
@@ -983,7 +983,7 @@ TEST_CASE("a worksheet reads an input back as it was given, measured or typed in
     formula::Outcome<Price> const typedIn = sheet.calculate<Price>();
     CHECK(typedIn.measurement() == formula::Measured<Price> { rat(8, 25) });
     CHECK(typedIn.source() == formula::ValueSource::ManuallyEntered);
-    CHECK_FALSE(sheet.is_overridden<Price>());
+    CHECK(sheet.checked_calculate<Price>()->source() == formula::ValueSource::ManuallyEntered);
     CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
     CHECK(sheet.recomputed() == 16);
     CHECK(sheet.reused() == 4);
@@ -1113,6 +1113,28 @@ TEST_CASE("a failed calculation fails what reads it, and calculate throws it", "
     // Once the other factor is set, the failure is gone.
     sheet.set(formula::Measured<Other> { rat(2) });
     CHECK(sheet.calculate<Doubled>().measurement() == formula::Measured<Doubled> { rat(3) });
+}
+
+TEST_CASE("a value that fails again with the same error counts as unchanged", "[calculation][worksheet]")
+{
+    auto sheet = guarded_sheet(rat(3), rat(0));
+    REQUIRE_FALSE(sheet.checked_calculate<Doubled>().has_value());
+    REQUIRE(sheet.calculate<Halved>().measurement() == formula::Measured<Halved> { rat(3) });
+    CHECK(sheet.recomputed() == 3);
+    CHECK(sheet.reused() == 0);
+
+    // A new factor reaches the share, the doubled share and the halved value.
+    // The share fails again, with the same error, so the doubled share, which
+    // reads only the share, is reused; the halved value reads the factor too,
+    // and is calculated again.
+    sheet.set(formula::Measured<Factor> { rat(4) });
+    std::expected<formula::Outcome<Doubled>, formula::ArithmeticError> const doubled =
+        sheet.checked_calculate<Doubled>();
+    REQUIRE_FALSE(doubled.has_value());
+    CHECK(doubled.error() == formula::ArithmeticError::DivisionByZero);
+    CHECK(sheet.calculate<Halved>().measurement() == formula::Measured<Halved> { rat(4) });
+    CHECK(sheet.recomputed() == 5);
+    CHECK(sheet.reused() == 1);
 }
 
 TEST_CASE("a when() branch not taken never reads a failed value", "[calculation][worksheet]")

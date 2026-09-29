@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this worksheet's calculation neither defines nor reads the quantity asked for
 // REJECT: formula: this calculation neither defines nor reads this quantity
-// REJECT: formula: clear_override names an input of the calculation
+// REJECT: formula: clear_override or is_overridden names an input of the calculation
 // REJECT: no matching
 //
-// A worksheet asked about a quantity its calculation does not hold, four
-// ways: one message, since it is one mistake.
+// A worksheet asked for a quantity its calculation does not hold, three
+// ways -- checked, throwing by variable, and among several: one message,
+// since it is one mistake.
 //
 // This must not compile.
 #include <formula-cpp/calculation.hpp>
@@ -44,7 +45,7 @@ int main()
                                     formula::environment(formula::Measured<Factor> { formula::Rational { 3 } },
                                                          formula::Measured<Other> { formula::Rational { 2 } }));
     bool const asked = sheet.checked_calculate<Unrelated>().has_value();
-    bool const overridden = sheet.is_overridden<Unrelated>();
-    sheet.clear_override<Unrelated>();
-    return asked && !overridden && sheet.calculate(var<Unrelated>).is_empty() ? 0 : 1;
+    bool const empty = sheet.calculate(var<Unrelated>).is_empty();
+    bool const both = std::get<1>(sheet.checked_calculate<Factor, Unrelated>()).has_value();
+    return asked && empty && both ? 0 : 1;
 }

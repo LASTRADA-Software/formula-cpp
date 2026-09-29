@@ -3,13 +3,13 @@
 // REJECT: formula: this worksheet's environment
 // REJECT: formula: set() names a quantity this worksheet's calculation neither reads nor defines
 // REJECT: formula: this worksheet's calculation neither defines nor reads the quantity asked for
-// REJECT: formula: clear_override names an input of the calculation
+// REJECT: formula: clear_override or is_overridden names an input of the calculation
 // REJECT: no matching
 //
 // A worksheet of a calculation refused for a cycle: the cycle's message is
 // the one, and the worksheet -- over an environment that misses the input
-// and holds an entry nobody reads, set, asked and cleared wrongly -- says
-// nothing more.
+// and holds an entry nobody reads, set, asked, and asked about and cleared
+// of an override of an input -- says nothing more.
 //
 // This must not compile.
 #include <formula-cpp/calculation.hpp>
@@ -51,5 +51,5 @@ int main()
         formula::worksheet(circular, formula::environment(formula::Measured<Unrelated> { formula::Rational { 1 } }));
     sheet.set(formula::Measured<Unrelated> { formula::Rational { 2 } });
     sheet.clear_override<Factor>();
-    return sheet.checked_calculate<Unrelated>().has_value() ? 0 : 1;
+    return sheet.checked_calculate<Unrelated>().has_value() || sheet.is_overridden<Factor>() ? 0 : 1;
 }
