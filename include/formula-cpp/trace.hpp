@@ -2589,7 +2589,11 @@ namespace detail
     /// offset, has no symbol, is dimensionless -- a ratio is not a percentage
     /// because some input was one, as `opaque_output_unit` rules for a
     /// dimensionless output -- or already holds a slash (`m/s/s` reads two
-    /// ways), or when the symbol or the magnitude would not fit.
+    /// ways), or when the symbol, the magnitude or the dimension would not
+    /// fit: two units that carry more than `NamedBaseCapacity` named base
+    /// dimensions between them have no quotient a `Dimension` can hold. That
+    /// is judged with `merged_dimension`, not `operator/`, whose guard aborts
+    /// when reached at run time, as this is.
     [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
     {
         if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar
@@ -2607,7 +2611,10 @@ namespace detail
                                         Rational { under.magnitudeNumerator, under.magnitudeDenominator });
         if (!magnitude.has_value())
             return std::nullopt;
-        Unit quotientUnit { .dimension = over.dimension / under.dimension,
+        MergedDimension const quotientDimension = merged_dimension(over.dimension, under.dimension, true);
+        if (!quotientDimension.fits)
+            return std::nullopt;
+        Unit quotientUnit { .dimension = quotientDimension.dimension,
                             .magnitudeNumerator = magnitude->numerator(),
                             .magnitudeDenominator = magnitude->denominator(),
                             .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
@@ -2633,8 +2640,8 @@ namespace detail
     ///     dimension, so that a slope along a curve of millimetres over
     ///     seconds reads `mm/s` (`unit_quotient`) -- at most one way up can
     ///     match, since the output is not dimensionless;
-    ///  3. else the coherent SI unit, which the trace spells out
-    ///     (`coherent_unit_text`, `trace_render.hpp`).
+    ///  3. else the coherent unit -- SI, times one of each named base -- which
+    ///     the trace spells out (`coherent_unit_text`, `trace_render.hpp`).
     ///
     /// Three exceptions keep a borrowed unit honest. A unit with an offset is
     /// never borrowed: an output of an input's dimension is not in general a

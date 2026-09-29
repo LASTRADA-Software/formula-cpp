@@ -476,8 +476,8 @@ namespace detail
             // takenExponent }` below builds, and the slot becomes a different
             // template argument from the equal one `base_dimension()` builds --
             // measured: `EUR * Energy / Energy` stopped being the same type as
-            // `EUR`. Returning a `const` local whole, as `operator*` does, was
-            // measured unaffected.
+            // `EUR`. `operator*` returning the dimension member of its
+            // `MergedDimension const` local was measured unaffected.
             Exponent takenExponent =
                 order < 0   ? taken.exponent
                 : order > 0 ? (dividing ? -taken.exponent : taken.exponent)

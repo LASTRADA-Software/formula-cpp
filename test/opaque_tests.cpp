@@ -1049,6 +1049,55 @@ TEST_CASE("the coherent unit is spelt from its base units", "[opaque][trace]")
     CHECK(formula::detail::coherent_unit_text(formula::Dimension { .length = formula::exponent(1, 2) }) == "m^(1/2)");
 }
 
+TEST_CASE("a named base dimension is spelt by its name and ahead of the SI units on its side", "[opaque][trace]")
+{
+    constexpr formula::Dimension euros = formula::base_dimension("EUR");
+    constexpr formula::Dimension yen = formula::base_dimension("JPY");
+    CHECK(formula::detail::coherent_unit_text(euros) == "EUR");
+    // A tariff in euros per joule: the name leads the numerator, and the SI
+    // units follow in their usual order on either side.
+    CHECK(formula::detail::coherent_unit_text(euros / formula::dim::Energy) == "EUR s^2/(m^2 kg)");
+    CHECK(formula::detail::coherent_unit_text(formula::power(yen, -1)) == "1/JPY");
+    CHECK(formula::detail::coherent_unit_text(euros / yen) == "EUR/JPY");
+    CHECK(formula::detail::coherent_unit_text(formula::nth_root(euros, 2)) == "EUR^(1/2)");
+    // It leads the denominator too.
+    CHECK(formula::detail::coherent_unit_text(formula::dim::Scalar / (formula::dim::Time * euros)) == "1/(EUR s)");
+
+    // `base_dimension` admits only letters and digits, but `namedBases` is a
+    // public member: a name filled in by hand is escaped as author text is.
+    formula::Dimension handFilled {};
+    handFilled.namedBases[0] = formula::NamedBase { formula::symbol("a]b"), formula::exponent(1) };
+    CHECK(formula::detail::coherent_unit_text(handFilled) == "a\\]b");
+}
+
+TEST_CASE("a quotient of two units is not offered when its dimension would need a fifth named base",
+          "[opaque][trace]")
+{
+    // Three named bases over three others: six in the quotient, two more than
+    // a dimension holds. Refused with an empty result -- at run time, where
+    // the division operator's guard would end the program instead.
+    constexpr formula::Unit overUnit { .dimension = formula::base_dimension("AcmeCredit") * formula::base_dimension("Bonus")
+                                                    * formula::base_dimension("Coupon"),
+                                       .symbolText = formula::symbol("ABC") };
+    constexpr formula::Unit underUnit { .dimension = formula::base_dimension("Stamp") * formula::base_dimension("Token")
+                                                     * formula::base_dimension("Voucher"),
+                                        .symbolText = formula::symbol("STV") };
+    CHECK_FALSE(formula::detail::unit_quotient(overUnit, underUnit).has_value());
+    CHECK_FALSE(formula::detail::unit_quotient(underUnit, overUnit).has_value());
+
+    // A quotient that fits is offered as before, its dimension merged:
+    // euros per kilowatt-hour.
+    constexpr formula::Unit euro { .dimension = formula::base_dimension("EUR"),
+                                   .symbolText = formula::symbol("EUR"),
+                                   .decimals = 2 };
+    std::optional<formula::Unit> const tariff = formula::detail::unit_quotient(euro, unit::KilowattHour);
+    REQUIRE(tariff.has_value());
+    CHECK(tariff->dimension == formula::base_dimension("EUR") / formula::dim::Energy);
+    CHECK(formula::view(tariff->symbolText) == "EUR/kWh");
+    CHECK(tariff->magnitudeNumerator == 1);
+    CHECK(tariff->magnitudeDenominator == 3600000);
+}
+
 TEST_CASE("an output's marker is judged by its operand step's kind, not by a row", "[opaque][trace]")
 {
     // A call's step and its output's, built by hand with no side tables: the

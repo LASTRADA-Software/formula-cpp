@@ -2,8 +2,9 @@
 #pragma once
 
 /// @file
-/// Units: a dimension, an exact conversion to the coherent SI unit, a display
-/// symbol, a declared decimal precision and optional validity bounds.
+/// Units: a dimension, an exact conversion to the coherent unit -- SI, or one of
+/// each named base -- a display symbol, a declared decimal precision and
+/// optional validity bounds.
 ///
 /// Every type here is *structural*, so a unit can be a non-type template
 /// parameter -- a quantity's declaration names its unit as a template argument.
@@ -51,25 +52,28 @@ struct Bounds
 
 /// A unit of measurement.
 ///
-/// The conversion to the coherent SI unit is affine and exact:
+/// The conversion to the coherent unit of its dimension is affine and exact:
 ///
-///     value_in_SI = value * (magnitudeNumerator / magnitudeDenominator)
-///                         + (offsetNumerator / offsetDenominator)
+///     value_in_coherent = value * (magnitudeNumerator / magnitudeDenominator)
+///                               + (offsetNumerator / offsetDenominator)
 ///
 /// stated as integer pairs so the whole descriptor stays structural, and applied
 /// by multiply-then-divide so that 30 MPa is exactly 30000000 Pa and converts
-/// back to exactly 30.
+/// back to exactly 30. The coherent unit is the SI unit of the dimension, or,
+/// for a dimension with named bases, the SI unit times one of each: the unit
+/// named after a base has magnitude one, and a hundredth of it -- a cent of a
+/// euro -- has magnitude 1/100.
 struct Unit
 {
     /// What this unit measures.
     Dimension dimension {};
-    /// Numerator of the multiplicative factor to the coherent SI unit.
+    /// Numerator of the multiplicative factor to the coherent unit.
     std::int64_t magnitudeNumerator = 1;
-    /// Denominator of the multiplicative factor to the coherent SI unit.
+    /// Denominator of the multiplicative factor to the coherent unit.
     std::int64_t magnitudeDenominator = 1;
-    /// Numerator of the additive offset to the coherent SI unit.
+    /// Numerator of the additive offset to the coherent unit.
     std::int64_t offsetNumerator = 0;
-    /// Denominator of the additive offset to the coherent SI unit.
+    /// Denominator of the additive offset to the coherent unit.
     std::int64_t offsetDenominator = 1;
     /// How the unit is written: `mm`, `°C`, and so on.
     Symbol symbolText {};

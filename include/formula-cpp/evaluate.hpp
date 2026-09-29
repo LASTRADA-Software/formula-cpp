@@ -34,7 +34,9 @@
 namespace formula
 {
 
-/// The coherent SI unit of a dimension: magnitude one, offset zero, no symbol.
+/// The coherent unit of a dimension: magnitude one, offset zero, no symbol --
+/// the SI unit, times one of each named base dimension it has, since the unit
+/// named after a base is one of it.
 ///
 /// Every `Unit` already states its own exact conversion to this one, so it is
 /// the single scale on which values from different units can meet.

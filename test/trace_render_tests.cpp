@@ -1977,6 +1977,13 @@ namespace series_trace
     struct Gap: formula::Quantity<Gap, "w", "a gap in an unnamed unit", UnnamedMillimetre>
     {
     };
+    /// Money: a named base dimension of its own, never a bare ratio.
+    inline constexpr formula::Unit Euro { .dimension = formula::base_dimension("EUR"),
+                                          .symbolText = formula::symbol("EUR"),
+                                          .decimals = 2 };
+    struct Price: formula::Quantity<Price, "p", "a unit price", Euro>
+    {
+    };
 
     [[nodiscard]] constexpr formula::Measured<Retained> retained(std::int64_t grams)
     {
@@ -2181,6 +2188,27 @@ TEST_CASE("a series scaled by a pure number reads in the series' unit", "[series
                                                                formula::RecordingSink<> { doubled });
     REQUIRE(doubled.steps.size() == 3);
     CHECK(formula::render_trace(doubled, { .maxSteps = 30 }).ends_with("3. #1 * #2 = 5937/10; 6289/10; 6221/10\n"));
+}
+
+TEST_CASE("a series of prices scaled by a pure number reads in euros", "[series][trace]")
+{
+    // Euros are a named base dimension, so of a price and a ratio only the
+    // ratio is dimensionless, and the product is a price in euros. Declared
+    // as a bare ratio, as money had to be, the euros would be a pure number
+    // too, and the product of two pure numbers keeps no unit.
+    constexpr auto prices = formula::environment(
+        formula::measured_series<series_trace::Price>(formula::Measured<series_trace::Price> { formula::Rational { 137 } },
+                                                      formula::Measured<series_trace::Price> { formula::Rational { 213 } },
+                                                      formula::Measured<series_trace::Price> { formula::Rational { 293 } }));
+    formula::Trace<> trace {};
+    (void) formula::detail::dispatch_series<formula::Rational>(formula::series<series_trace::Price, 3>
+                                                                   * formula::number(formula::Rational { 3, 2 }),
+                                                               prices,
+                                                               formula::RecordingSink<> { trace });
+    CHECK(formula::render_trace(trace, { .maxSteps = 30 })
+          == "1. p = 137 EUR; 213 EUR; 293 EUR\n"
+             "2. 3/2\n"
+             "3. #1 * #2 = 411/2 EUR; 639/2 EUR; 879/2 EUR\n");
 }
 
 TEST_CASE("a per-element constant and a negation each record one step with every element", "[series][trace]")

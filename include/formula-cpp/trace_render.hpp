@@ -2101,10 +2101,19 @@ namespace detail
         std::optional<std::size_t> failedInput {};
     };
 
-    /// The coherent SI unit of @p dimension, spelt from its base units:
+    /// The coherent unit of @p dimension, spelt from its base units:
     /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
     /// one. For an opaque output shown in no input's unit, so that a slope in
     /// metres per second does not read as a pure number.
+    ///
+    /// A named base dimension is spelt by its name -- the name is also the
+    /// symbol of its coherent unit -- ahead of the SI units on its side of the
+    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
+    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
+    /// read as money per energy, not as seconds squared of money per metre.
+    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
+    /// only letters and digits, but a hand-filled `namedBases` can hold
+    /// anything.
     [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
     {
         struct BaseUnit
@@ -2127,18 +2136,21 @@ namespace detail
         std::string above;
         std::string below;
         std::size_t belowCount = 0;
-        for (BaseUnit const& base: bases)
-        {
-            if (base.exponent.numerator > 0)
-                above +=
-                    (above.empty() ? "" : " ") + unitPower(base.symbol, base.exponent.numerator, base.exponent.denominator);
-            else if (base.exponent.numerator < 0)
+        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
+            if (baseExponent.numerator > 0)
+                above += (above.empty() ? "" : " ")
+                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
+            else if (baseExponent.numerator < 0)
             {
-                below +=
-                    (below.empty() ? "" : " ") + unitPower(base.symbol, -base.exponent.numerator, base.exponent.denominator);
+                below += (below.empty() ? "" : " ")
+                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
                 ++belowCount;
             }
-        }
+        };
+        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
+            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
+        for (BaseUnit const& base: bases)
+            place(base.symbol, base.exponent);
         if (below.empty())
             return above;
         return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
