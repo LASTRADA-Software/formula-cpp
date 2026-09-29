@@ -364,8 +364,8 @@ namespace unit
     /// One of the two affine units, and the reason `Unit` carries an offset at
     /// all; `Fahrenheit` is the other. Zero degrees Celsius is 273.15 kelvin.
     /// Conversion moves a point on the scale, not a difference, so one degree
-    /// Celsius converts to 274.15 kelvin, not to one kelvin; this library does
-    /// not convert differences.
+    /// Celsius converts to 274.15 kelvin, not to one kelvin; `checked_convert`
+    /// does not convert differences.
     inline constexpr Unit Celsius { .dimension = dim::Temperature,
                                     .offsetNumerator = 27315,
                                     .offsetDenominator = 100,

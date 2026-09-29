@@ -5,10 +5,10 @@
 // Generic physics only, no standard cited: composing dimensions from named
 // constants rather than spelling exponents, a dimension only a rational
 // exponent can express, an exact round-tripping conversion, the affine case a
-// temperature scale needs on both of the scales the library has, an energy unit
-// whose factor to the joule is a whole number, a unit's declared display
-// precision applied to a computed value, and a bounds check that tells "never
-// checked" apart from "checked and passed".
+// temperature scale needs on both affine scales, an energy unit whose factor to
+// the joule is a whole number, a unit's declared display precision applied to a
+// computed value, and a bounds check that tells "never checked" apart from
+// "checked and passed".
 
 #include <formula-cpp/formula.hpp>
 
@@ -113,9 +113,9 @@ int main()
     std::printf("temperature round trip exact: %s\n", temperatureRoundTrips ? "yes" : "no");
 
     // The second affine scale. -40 is where degrees Fahrenheit and degrees
-    // Celsius meet, so it converts to itself. 100 degF is a fraction of a
-    // degree Celsius that is not a terminating decimal, 340/9, and is kept as
-    // that fraction: converting divides by 9 and rounds nothing.
+    // Celsius meet, so it converts to itself. 100 degF is a number of degrees
+    // Celsius that is a fraction, 340/9, not a terminating decimal, and it is
+    // kept as that fraction: converting divides by 9 and rounds nothing.
     Rational const minusFortyInFahrenheit = *Rational::make(-40, 1);
     Rational const minusFortyInCelsius = formula::convert(minusFortyInFahrenheit, unit::Fahrenheit, unit::Celsius);
     Rational const hundredInFahrenheit = *Rational::make(100, 1);
