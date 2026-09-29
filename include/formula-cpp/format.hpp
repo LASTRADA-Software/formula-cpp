@@ -9,9 +9,17 @@
 /// **Opt-in.** This header is not included by `formula.hpp`: it includes
 /// `<format>`, which the umbrella deliberately keeps out, so that a consumer
 /// who only evaluates numbers does not compile it in every translation unit.
-/// Include it by name where numbers are formatted:
 ///
 ///     #include <formula-cpp/format.hpp>
+///
+/// **Include it in every translation unit that formats a `Rational` or a
+/// `Measured`, or asks whether it can** (`std::formattable`). What it
+/// declares are explicit specialisations of `std::formatter`, and an explicit
+/// specialisation must be seen before any use that would otherwise
+/// instantiate the primary template. A translation unit that asks without it
+/// gets `std::formatter`'s disabled primary for a type another translation
+/// unit formats, and a program whose translation units disagree on that is
+/// ill-formed, with no diagnostic required.
 ///
 /// **One rule, the library's throughout** (`number_text.hpp`): a decimal is
 /// written only when it is the exact value, and a rounded one only when the
@@ -80,11 +88,13 @@
 /// **Width counts code points, not bytes.** `≈`, `°C` and `µm` each take one
 /// column per character, as the eye counts them, so `{:>8}` of 21.3 in degrees
 /// Celsius is `" 21.3 °C"`, seven characters and one fill, although `°` is two
-/// bytes in UTF-8. The fill is one code point, any but `{` and `}`; the
-/// alignment `<` puts the text left, `>` right (the default) and `^` in the
-/// middle, the odd fill going to the right. The width is a whole number of at
-/// most nine digits, written directly: a width taken from an argument, `{:{}}`,
-/// is refused, as is `0`-padding.
+/// bytes in UTF-8. The fill is one Unicode scalar value -- a code point that
+/// is not a surrogate -- in well-formed UTF-8, any but `{` and `}`: it is
+/// copied into the output, so an overlong encoding, a surrogate's or one past
+/// U+10FFFF is refused. The alignment `<` puts the text left, `>` right (the
+/// default) and `^` in the middle, the odd fill going to the right. The width
+/// is a whole number of at most nine digits, written directly: a width taken
+/// from an argument, `{:{}}`, is refused, as is `0`-padding.
 ///
 /// ## What goes wrong, and how it shows
 ///
@@ -107,10 +117,19 @@
 /// the same function throws `std::format_error`, whose `what()` starts
 /// `formula: ` and says what to write instead.
 ///
-/// Should spelling a value fail even so -- the arithmetic reporting an error
-/// no check above foresaw; no value is known to -- `format` throws
-/// `std::format_error` too, starting `formula: `, rather than write a text
-/// that is neither the value nor the rounding the spec asked for.
+/// **Spelling a value can still fail, in one case no spec check can see.**
+/// `~Mode` on a `Measured` whose unit declares negative decimals -- rounding
+/// to tens, or thousands -- rounds through exact arithmetic (`checked_round`),
+/// which divides the value by 10^-decimals. A value whose denominator times
+/// that power of ten -- less any factor of it the numerator cancels --
+/// exceeds the integer range overflows there, even when the rounded result is
+/// small: `from_double_exact(0.1)`, which is
+/// 3602879701896397/2^55, in a unit declaring -3 decimals is one. `format`
+/// then throws `std::format_error`, whose `what()` starts `formula: this number
+/// cannot be spelled as the format asks`, rather than write a text that is
+/// neither the value nor the rounding the spec asked for. Every other form,
+/// and every form of a `Rational`, spells at 0 to 18 places, where nothing
+/// overflows.
 ///
 /// **The library owns these two specialisations of `std::formatter`.** A
 /// consumer who specialises `std::formatter<formula::Rational, char>` or
@@ -170,9 +189,11 @@ namespace formula::detail
         "rounding mode (~ without .N only for a Measured value, whose unit declares the places)");
 }
 
-/// Refuses to write a value the format could not spell, should the arithmetic
-/// report an error the parser's checks did not foresee. Reached only at run
-/// time, from `format`.
+/// Refuses to write a value the format could not spell: `~Mode` on a
+/// `Measured` whose unit declares negative decimals, for a value exact
+/// arithmetic cannot divide by 10^-decimals (see the file comment) -- the one
+/// case the parser's checks cannot see. Reached only at run time, from
+/// `format`.
 /// @throws std::format_error always.
 [[noreturn]] inline void number_format_failed(ArithmeticError spellingFailure)
 {
@@ -248,20 +269,45 @@ inline constexpr RoundingModeName RoundingModeNames[] {
     { "AwayFromZero", RoundingMode::AwayFromZero },
 };
 
-/// The number of bytes of the UTF-8 character @p leadByte starts, or 0 when
-/// it starts none.
-[[nodiscard]] constexpr std::size_t utf8_length(char leadByte) noexcept
+/// The number of bytes of the Unicode scalar value @p utf8Text starts with,
+/// in well-formed UTF-8, or 0 when it starts with none: a stray continuation
+/// byte, a sequence cut short, an overlong encoding (a lead byte of 0xC0 or
+/// 0xC1, or 0xE0 or 0xF0 followed by too small a second byte), a surrogate
+/// (0xED followed by 0xA0 or more), or a value past U+10FFFF (0xF4 followed
+/// by 0x90 or more, or a lead byte of 0xF5 or more).
+[[nodiscard]] constexpr std::size_t scalar_value_length(std::string_view utf8Text) noexcept
 {
-    auto const byte = static_cast<unsigned char>(leadByte);
-    if (byte < 0x80U)
+    if (utf8Text.empty())
+        return 0;
+    auto const byteOf = [utf8Text](std::size_t byteAt) { return static_cast<unsigned char>(utf8Text[byteAt]); };
+    unsigned const lead = byteOf(0);
+    if (lead < 0x80U)
         return 1;
-    if ((byte & 0xE0U) == 0xC0U)
-        return 2;
-    if ((byte & 0xF0U) == 0xE0U)
-        return 3;
-    if ((byte & 0xF8U) == 0xF0U)
-        return 4;
-    return 0;
+    std::size_t encodedLength = 0;
+    unsigned lowestSecond = 0x80U;
+    unsigned highestSecond = 0xBFU;
+    if (lead >= 0xC2U && lead <= 0xDFU)
+        encodedLength = 2;
+    else if (lead >= 0xE0U && lead <= 0xEFU)
+    {
+        encodedLength = 3;
+        lowestSecond = lead == 0xE0U ? 0xA0U : lowestSecond;
+        highestSecond = lead == 0xEDU ? 0x9FU : highestSecond;
+    }
+    else if (lead >= 0xF0U && lead <= 0xF4U)
+    {
+        encodedLength = 4;
+        lowestSecond = lead == 0xF0U ? 0x90U : lowestSecond;
+        highestSecond = lead == 0xF4U ? 0x8FU : highestSecond;
+    }
+    else
+        return 0;
+    if (utf8Text.size() < encodedLength || byteOf(1) < lowestSecond || byteOf(1) > highestSecond)
+        return 0;
+    for (std::size_t continuationAt = 2; continuationAt < encodedLength; ++continuationAt)
+        if ((byteOf(continuationAt) & 0xC0U) != 0x80U)
+            return 0;
+    return encodedLength;
 }
 
 /// How many code points @p utf8Text holds: its bytes that do not continue a
@@ -293,16 +339,15 @@ inline constexpr RoundingModeName RoundingModeNames[] {
     NumberFormatSpec parsed {};
     std::size_t at = 0;
 
-    // A fill is one code point followed by an alignment; an alignment alone
-    // is one too.
+    // A fill is one Unicode scalar value followed by an alignment; an
+    // alignment alone is one too. Bytes that are no scalar value are no fill,
+    // and nothing else the grammar allows starts with them: they are refused
+    // below, as not understood.
     if (!specText.empty())
     {
-        std::size_t const fillLength = utf8_length(specText[0]);
+        std::size_t const fillLength = scalar_value_length(specText);
         if (fillLength > 0 && fillLength < specText.size() && is_number_format_align(specText[fillLength]))
         {
-            for (std::size_t byteAt = 1; byteAt < fillLength; ++byteAt)
-                if ((static_cast<unsigned char>(specText[byteAt]) & 0xC0U) != 0x80U)
-                    formula_number_format_spec_not_understood();
             if (specText[0] == '{' || specText[0] == '}')
                 formula_number_format_spec_not_understood();
             for (std::size_t byteAt = 0; byteAt < fillLength; ++byteAt)
@@ -513,9 +558,10 @@ namespace std
 ///
 /// **Width counts code points, not bytes**: `{:>8~.3HalfEven}` of 1/3 is
 /// `"  ≈0.333"`, two fill characters, although `≈` is three bytes. The fill
-/// is one code point, any but `{` and `}`; `<` aligns left, `>` right (the
-/// default) and `^` in the middle, the odd fill character going after the
-/// text. The width is at most nine digits, written in the spec.
+/// is one Unicode scalar value in well-formed UTF-8, any but `{` and `}`;
+/// `<` aligns left, `>` right (the default) and `^` in the middle, the odd
+/// fill character going after the text. The width is at most nine digits,
+/// written in the spec.
 ///
 /// **A bad spec** calls the guard named for the mistake:
 /// `formula_number_format_needs_a_rounding_mode` for a rounding with no mode
@@ -542,10 +588,10 @@ struct formatter<formula::Rational, char>
         return specEnd;
     }
 
-    /// Writes @p shown as the spec says.
-    /// @throws std::format_error should spelling @p shown report an arithmetic
-    ///         error; the spelling's result is checked rather than assumed,
-    ///         though no value is known to reach this.
+    /// Writes @p shown as the spec says. Every form spells a `Rational` at 0
+    /// to 18 places, where exact arithmetic cannot overflow, so this does not
+    /// throw; the spelling's result is checked rather than assumed all the
+    /// same, as the `Measured` overload's must be.
     template <typename FormatContext>
     auto format(formula::Rational const& shown, FormatContext& formatContext) const
     {
@@ -598,10 +644,10 @@ struct formatter<formula::Rational, char>
 ///
 /// **Width counts code points, not bytes**, the symbol's included: `{:>8}` of
 /// 21.3 in degrees Celsius is `" 21.3 °C"`, one fill character, although `°`
-/// is two bytes. The fill is one code point, any but `{` and `}`; `<` aligns
-/// left, `>` right (the default) and `^` in the middle, the odd fill
-/// character going after the text. The width is at most nine digits, written
-/// in the spec.
+/// is two bytes. The fill is one Unicode scalar value in well-formed UTF-8,
+/// any but `{` and `}`; `<` aligns left, `>` right (the default) and `^` in
+/// the middle, the odd fill character going after the text. The width is at
+/// most nine digits, written in the spec.
 ///
 /// **A bad spec** calls the guard named for the mistake:
 /// `formula_number_format_needs_a_rounding_mode` for a rounding with no mode
@@ -612,6 +658,15 @@ struct formatter<formula::Rational, char>
 /// from an argument `{:{}}`). In a literal format string that is a compile
 /// error naming the guard; under `std::vformat` the guard throws
 /// `std::format_error`, whose `what()` starts `formula: `.
+///
+/// **A value exact arithmetic cannot round** is refused when it is written,
+/// not when the spec is read: `~Mode` on a `Q` whose unit declares negative
+/// decimals divides the value by 10^-decimals, which overflows for a value
+/// whose denominator times that power of ten, less any factor of it the
+/// numerator cancels, exceeds the integer range -- `from_double_exact(0.1)`
+/// at -3 decimals is one. `format` then throws `std::format_error`, whose
+/// `what()` starts `formula: this number cannot be spelled as the format
+/// asks`.
 ///
 /// Owned by this library: a consumer's own specialisation of it would define
 /// it twice, which breaks the one-definition rule.
@@ -634,8 +689,11 @@ struct formatter<formula::Measured<Q>, char>
 
     /// Writes @p shown as the spec says, or `(not measured)` when it is
     /// absent.
-    /// @throws std::format_error should spelling @p shown report an arithmetic
-    ///         error, as `formatter<Rational>::format` does.
+    /// @throws std::format_error when `~Mode` rounds @p shown at a unit
+    ///         declaring negative decimals and exact arithmetic overflows
+    ///         there: for a value whose denominator times 10^-decimals, less
+    ///         any factor of it the numerator cancels, exceeds the integer
+    ///         range.
     template <typename FormatContext>
     auto format(formula::Measured<Q> const& shown, FormatContext& formatContext) const
     {

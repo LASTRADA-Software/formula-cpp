@@ -3464,8 +3464,9 @@ TEST_CASE("a precision limit whose limit is a typed number shows it as typed, wh
         formula::precision_limit<formula::PrecisionKind::Repeatability>(formula::constant<unit::Kilogram>(rat(1, 3)),
                                                                         formula::constant<unit::Kilogram>(rat(1, 7)))
         * var<Mass>;
-    CHECK(renderedIn(tracedValue(limitOfSeventh, formula::environment(formula::Measured<Mass> { rat(2, 7) })),
-                     approximately)
+    formula::Trace<> const trace =
+        tracedValue(limitOfSeventh, formula::environment(formula::Measured<Mass> { rat(2, 7) }));
+    CHECK(renderedIn(trace, approximately)
           == "1. 1/3 kg\n"
              "2. level (pass 1 of 2) = #1 = 1/3\n"
              "3. 1/7 kg\n"
@@ -3474,4 +3475,17 @@ TEST_CASE("a precision limit whose limit is a typed number shows it as typed, wh
              "0.286 kg\n"
              "6. #4 * #5 = \xe2\x89\x88"
              "0.041\n");
+
+    // A hand-built trace whose limit step does not hold the value pass 2
+    // states is not taken for typed: pass 2's line is spelled as a computed
+    // one is, rounded.
+    formula::Trace<> forgedLimit = trace;
+    forgedLimit.steps[2].value = rat(1, 11);
+    CHECK(renderedIn(forgedLimit, approximately).find("4. r at level #2 (pass 2 of 2) = #3 = \xe2\x89\x88" "0.143\n")
+          != std::string::npos);
+    // Nor one whose pass 2 states a value its limit step does not hold.
+    formula::Trace<> forgedPass = trace;
+    forgedPass.steps[3].value = rat(1, 11);
+    CHECK(renderedIn(forgedPass, approximately).find("4. r at level #2 (pass 2 of 2) = #3 = \xe2\x89\x88" "0.091\n")
+          != std::string::npos);
 }

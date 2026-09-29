@@ -43,6 +43,14 @@ struct OverPreciseLength: formula::Quantity<OverPreciseLength, "l_u", "a length 
 {
 };
 
+/// A unit declaring -3 decimals -- a value rounded at it is rounded to thousands. Invented.
+inline constexpr formula::Unit Coarse { .dimension = formula::dim::Length,
+                                        .symbolText = formula::symbol("ku"),
+                                        .decimals = -3 };
+struct CoarseLength: formula::Quantity<CoarseLength, "l_k", "a length in a coarse unit", Coarse>
+{
+};
+
 /// The text of the `std::format_error` @p formatString throws formatting
 /// @p shown through `std::vformat`, which checks the spec only at run time;
 /// empty when it throws none.
@@ -103,6 +111,11 @@ TEST_CASE("a formatted number is filled and aligned to a width counted in code p
     CHECK(std::format("{:\xc2\xb7>6}", Rational { 3, 5 }) == "\xc2\xb7\xc2\xb7\xc2\xb7" "0.6");
     CHECK(std::format("{:\xe2\x80\xa6>5}", Rational { 3, 5 }) == "\xe2\x80\xa6\xe2\x80\xa6" "0.6");
     CHECK(std::format("{:\xf0\x90\x8d\x88<4}", Rational { 3, 5 }) == "0.6\xf0\x90\x8d\x88");
+    // A fill is one Unicode scalar value: the lowest three-byte one, U+0800,
+    // the highest below the surrogates, U+D7FF, and the highest, U+10FFFF.
+    CHECK(std::format("{:\xe0\xa0\x80<4}", Rational { 3, 5 }) == "0.6\xe0\xa0\x80");
+    CHECK(std::format("{:\xed\x9f\xbf<4}", Rational { 3, 5 }) == "0.6\xed\x9f\xbf");
+    CHECK(std::format("{:\xf4\x8f\xbf\xbf<4}", Rational { 3, 5 }) == "0.6\xf4\x8f\xbf\xbf");
     // `°` is two bytes: 21.3 °C is seven characters, and one fill makes eight.
     CHECK(std::format("{:>8}", Measured<Reading> { Rational { 213, 10 } }) == " 21.3 \xc2\xb0" "C");
 }
@@ -180,6 +193,22 @@ TEST_CASE("a spec the grammar does not allow is refused at run time, in the libr
     // A fill that is not one whole UTF-8 character: a two-byte lead, then a
     // letter where its second byte belongs.
     CHECK(refusalOf("{:\xc2" "A<5}", third).starts_with("formula: this number format is not one formula-cpp understands"));
+    // Nor one that is no Unicode scalar value: overlong encodings of two,
+    // three and four bytes, a surrogate (U+D800), one past U+10FFFF, a lead
+    // byte no scalar value starts with, a three-byte one cut short, and a
+    // three- and a four-byte one whose last byte continues nothing, an
+    // alignment after it.
+    for (std::string_view const notScalar : { "{:\xc0\x80<5}",
+                                              "{:\xc1\xbf<5}",
+                                              "{:\xe0\x9f\xbf<5}",
+                                              "{:\xed\xa0\x80<5}",
+                                              "{:\xf0\x8f\xbf\xbf<5}",
+                                              "{:\xf4\x90\x80\x80<5}",
+                                              "{:\xf5\x80\x80\x80<5}",
+                                              "{:\xe2\x89<5}",
+                                              "{:\xe2\x89" "A<5}",
+                                              "{:\xf0\x90\x8d" "A<5}" })
+        CHECK(refusalOf(notScalar, third).starts_with("formula: this number format is not one formula-cpp understands"));
     // A width from an argument is refused too.
     int const argumentWidth = 8;
     try
@@ -198,6 +227,23 @@ TEST_CASE("a spec the grammar does not allow is refused at run time, in the libr
     CHECK(refusalOf("{:~HalfEven}", overPrecise).starts_with("formula: a number format rounds to 0 to 18 decimal places"));
     CHECK(std::format("{:~.3HalfEven}", overPrecise) == "\xe2\x89\x88" "0.333 u");
     CHECK(refusalOf("{:~HalfEven}", Measured<ImpactWork> { third }).empty());
+
+    // `~Mode` at a unit's negative decimals divides the value by 10^3 in
+    // exact arithmetic, which overflows for from_double_exact(0.1) -- its
+    // denominator is 2^55 -- although the rounded value would be 0. It is
+    // refused when written, with a literal format string and under
+    // std::vformat alike, rather than spelled some other way.
+    Rational const binaryTenth = Rational::from_double_exact(0.1).value();
+    REQUIRE(binaryTenth == Rational { 3602879701896397, 36028797018963968 });
+    Measured<CoarseLength> const coarseTenth { binaryTenth };
+    CHECK(refusalOf("{:~HalfEven}", coarseTenth)
+          == "formula: this number cannot be spelled as the format asks: overflow in exact arithmetic");
+    CHECK_THROWS_AS(std::format("{:~HalfEven}", coarseTenth), std::format_error);
+    // Its exact forms are still written; and in the same unit a value that
+    // exact arithmetic can round rounds: 7501/3 is 2500.33..., 3000 to the
+    // thousand.
+    CHECK(std::format("{:/}", coarseTenth) == "3602879701896397/36028797018963968 ku");
+    CHECK(std::format("{:~HalfEven}", Measured<CoarseLength> { Rational { 7501, 3 } }) == "\xe2\x89\x88" "3000 ku");
 }
 
 TEST_CASE("the spec parser reads each form, at compile time", "[format]")

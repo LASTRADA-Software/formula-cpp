@@ -131,8 +131,12 @@ may break it, and each such change is recorded here.
   `RoundingMode`: there is no default. Fill, alignment and width work as for other types, with
   the width counted in code points, so `°C` and `≈` take one column each. A spec the grammar does
   not allow is a compile error naming what is wrong in a literal format string, and a
-  `std::format_error` starting `formula: ` under `std::vformat`. The library owns these
-  `std::formatter` specialisations; only `char` is supported.
+  `std::format_error` starting `formula: ` under `std::vformat`. The fill must be one Unicode scalar
+  value in well-formed UTF-8. `{:~Mode}` of a measured value in a unit declaring negative decimals
+  throws `std::format_error` when written if exact arithmetic cannot round the value there, as
+  `from_double_exact(0.1)` at -3 decimals cannot. The library owns these `std::formatter`
+  specialisations, so the header belongs in every translation unit that formats these types or asks
+  `std::formattable` about them; only `char` is supported.
 - `RenderOptions` for `render()` and `document()`: `render(f, vocabulary, { .numbers =
   NumberStyle::exact_decimal() })` writes a constant holding 863/1000 as `0.863`, and so every
   number a formula states -- a table's bounds and rows, a snap's permitted values, a domain's
