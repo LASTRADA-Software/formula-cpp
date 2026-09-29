@@ -6,9 +6,11 @@
 /// dimensions, usable as a non-type template parameter so that a dimension is
 /// part of a type rather than a runtime tag.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <limits>
+#include <string_view>
 
 namespace formula
 {
@@ -179,6 +181,92 @@ namespace detail
 {
     return exponentValue.denominator == 1;
 }
+
+/// Bytes available for a unit symbol, including the terminator. Enough for the
+/// UTF-8 spellings that occur in practice: `m3`, `°C` (3 bytes), `µm` (3). A
+/// symbol that does not fit is a compile error (see `symbol()`), never a
+/// silent truncation; bump this deliberately if a real symbol ever needs more.
+inline constexpr std::size_t SymbolCapacity = 16;
+
+/// A fixed-capacity symbol. An array of a structural type is structural, which a
+/// `std::string_view` is not -- and unlike a `FixedString<N>` template this keeps
+/// `Unit` a single non-template type, so every unit has the same type.
+struct Symbol
+{
+    /// The symbol's UTF-8 bytes, zero-terminated as produced by `symbol()`;
+    /// read with `view()`, which does not assume that and scans instead of
+    /// trusting a terminator -- `Symbol` is a public aggregate, so a caller
+    /// can fill `characters` directly and leave no room for one.
+    char characters[SymbolCapacity] {};
+
+    /// Memberwise equality -- the full `SymbolCapacity` bytes, terminator
+    /// included when the value is one `symbol()` produced.
+    [[nodiscard]] constexpr bool operator==(Symbol const&) const noexcept = default;
+};
+
+namespace detail
+{
+    /// Deliberately NOT `constexpr`, for the same reason as
+    /// `formula_exponent_out_of_range` in dimension.hpp: `symbol()` runs in
+    /// exactly the same context -- a constant expression building a constant
+    /// that determines a `Unit`'s type -- and has exactly the same consequence
+    /// when it goes wrong. Truncating instead of refusing would let two
+    /// distinct symbols collapse into the same `Symbol` object and therefore
+    /// the same NTTP type, and could split a multi-byte UTF-8 character in
+    /// half. Calling this makes the enclosing expression a non-constant one,
+    /// so the mistake is a compile error at the point of use. Defined, not
+    /// merely declared, because a runtime call must still link; reaching it at
+    /// runtime is a programming error with no recovery.
+    [[noreturn]] inline void formula_unit_symbol_too_long()
+    {
+        std::abort();
+    }
+} // namespace detail
+
+/// Builds a Symbol from a byte string. Refuses -- see
+/// `formula_unit_symbol_too_long` -- rather than truncating when the text does
+/// not fit in `SymbolCapacity` bytes including the terminator; every symbol
+/// shipped by this library is well within the limit.
+[[nodiscard]] constexpr Symbol symbol(char const* spelling) noexcept
+{
+    Symbol built {};
+    std::size_t characterIndex = 0;
+    while (spelling[characterIndex] != '\0')
+    {
+        if (characterIndex + 1 >= SymbolCapacity)
+            detail::formula_unit_symbol_too_long();
+        built.characters[characterIndex] = spelling[characterIndex];
+        ++characterIndex;
+    }
+    return built;
+}
+
+/// Reads a Symbol back as a view. The storage has to be structural; this does not.
+///
+/// The scan is bounded by `SymbolCapacity` rather than left to the terminator,
+/// and that is not belt-and-braces. `Symbol` is a public aggregate -- it has to
+/// be, or `Unit` is not structural and cannot be a template argument -- so a
+/// caller can fill `characters` directly, and exactly `SymbolCapacity` bytes of
+/// text is a legal initialiser that leaves no room for a terminator. Handing
+/// that to `std::string_view { value.characters }` reads until it happens to
+/// find a zero somewhere after the array. Measured on a `Symbol` followed by
+/// seven bytes of padding: 23 characters returned from a 16-byte array, the
+/// neighbours included. A symbol built by `symbol()` is always terminated, but
+/// this function cannot assume its argument came from there.
+[[nodiscard]] constexpr std::string_view view(Symbol const& unitSymbol) noexcept
+{
+    std::size_t symbolLength = 0;
+    while (symbolLength < SymbolCapacity && unitSymbol.characters[symbolLength] != '\0')
+        ++symbolLength;
+    return std::string_view { unitSymbol.characters, symbolLength };
+}
+
+/// Deleted: binding a temporary here would return a view into a `Symbol` that
+/// is already destroyed by the time the caller reads through it -- e.g.
+/// `view(symbol("mm"))`. Measured silent on cl /W4, clang-cl /W4 and
+/// `clang++ -Wall -Wextra -Wdangling`. Bind the `Symbol` to a named local
+/// first, then call `view()` on that.
+std::string_view view(Symbol&&) = delete;
 
 /// An exponent vector over the seven SI base dimensions.
 ///

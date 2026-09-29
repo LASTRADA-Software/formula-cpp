@@ -20,7 +20,7 @@
 /// assumption, and so is checked rather than re-derived with a second loop.
 ///
 /// Bands are declared as int64 numerator/denominator pairs, not `Rational` --
-/// the same reason `Unit::Bounds` is (unit.hpp:114): `Rational` keeps its
+/// the same reason `Bounds`, a unit's validity range, is: `Rational` keeps its
 /// members private, so it is not a *structural* type and cannot be a
 /// non-type template parameter (dimension.hpp's comment on `Exponent` says so
 /// first, and a spike compiled the rejection on all four compilers). An
