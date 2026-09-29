@@ -347,6 +347,24 @@ namespace detail
         return std::string { spelled.view() };
     }
 
+    /// @p shownNumber, a number stated in @p shownIn, as @p numberStyle writes
+    /// it (`checked_number_text`), or its exact fraction where that style
+    /// cannot write it in that unit.
+    ///
+    /// For a helper with no clause to say a number is not shown: a table's
+    /// bound, an envelope's limit. The fraction style never fails. Any other
+    /// can -- a padded or approximated number in a unit whose declared
+    /// decimals lie outside the -18 to 18 `DecimalPlaces` spans, for one --
+    /// and the fraction is then the one text still exact.
+    [[nodiscard]] inline std::string styled_number_text(Rational shownNumber, NumberStyle numberStyle, Unit const& shownIn)
+    {
+        std::expected<NumberText, ArithmeticError> const spelled = checked_number_text(shownNumber, numberStyle, shownIn);
+        if (spelled.has_value())
+            return std::string { spelled->view() };
+        NumberText const exactFraction = fraction_text(shownNumber);
+        return std::string { exactFraction.view() };
+    }
+
     /// A number followed by its unit's symbol, or the number alone when the
     /// unit has none (`unit::One`) -- `139 mm`, `863/1000`.
     ///
@@ -382,7 +400,8 @@ namespace detail
     }
 
     /// A bound a table declared as a numerator/denominator pair -- a band's
-    /// low or high bound, or a breakpoint's key -- as text.
+    /// low or high bound, or a breakpoint's key -- as text, a number in
+    /// @p declaredIn.
     ///
     /// Reduced through `Rational::make` first, so a bound typed `10/2` reads
     /// as `5` and `0/1` reads as `0`, exactly as a `ConstantNode` holding the
@@ -392,22 +411,36 @@ namespace detail
     /// at compile time -- and is guarded anyway for the reason
     /// `detail::find_band` (`lookup.hpp`) guards the identical call: printing
     /// back the pair the author typed is better than dereferencing an error.
-    [[nodiscard]] inline std::string declared_number_text(std::int64_t declaredNumerator, std::int64_t declaredDenominator)
+    ///
+    /// Spelled in `numberStyle.exact_only()`: a number the author typed is
+    /// never shown rounded, whatever style the rest of the text is in.
+    [[nodiscard]] inline std::string declared_number_text(std::int64_t declaredNumerator,
+                                                          std::int64_t declaredDenominator,
+                                                          Unit const& declaredIn,
+                                                          NumberStyle numberStyle)
     {
         std::expected<Rational, ArithmeticError> const declared = Rational::make(declaredNumerator, declaredDenominator);
         if (declared.has_value())
-            return number_text(*declared);
+            return styled_number_text(*declared, numberStyle.exact_only(), declaredIn);
         return std::to_string(declaredNumerator) + "/" + std::to_string(declaredDenominator);
     }
 
     /// A half-open band as text: `103 to under 197 mm`. **The one spelling of a
     /// half-open interval in this library** -- see this file's comment for the
     /// ruling and for the published defect that bought it.
-    [[nodiscard]] inline std::string band_text(Band const& shownBand, std::string_view keySymbol)
+    ///
+    /// @p keySymbol is @p keyUnit's symbol as the caller writes it -- the
+    /// trace escapes it, `render()` does not -- and @p keyUnit is the unit the
+    /// bounds are numbers in (`declared_number_text`).
+    [[nodiscard]] inline std::string band_text(Band const& shownBand,
+                                               std::string_view keySymbol,
+                                               Unit const& keyUnit,
+                                               NumberStyle numberStyle)
     {
-        return number_with_unit(declared_number_text(shownBand.lowNumerator, shownBand.lowDenominator) + " to under "
-                                    + declared_number_text(shownBand.highNumerator, shownBand.highDenominator),
-                                keySymbol);
+        return number_with_unit(
+            declared_number_text(shownBand.lowNumerator, shownBand.lowDenominator, keyUnit, numberStyle) + " to under "
+                + declared_number_text(shownBand.highNumerator, shownBand.highDenominator, keyUnit, numberStyle),
+            keySymbol);
     }
 
     /// Author-supplied words -- a key's name -- made literal in Markdown, so
@@ -1313,7 +1346,7 @@ template <Dialect D, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operan
         rowText +=
             detail::lookup_separator<D>()
             + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
-                detail::band_text(Bands[bandIndex], view(keyUnit.symbolText)),
+                detail::band_text(Bands[bandIndex], view(keyUnit.symbolText), keyUnit, NumberStyle::fraction()),
                 detail::number_with_unit(detail::number_text(node.corrections[bandIndex]), view(resultUnit.symbolText))));
 
     return detail::lookup_call<D>("lookup", render<D>(node.operand, vocabulary), rowText);
@@ -1377,7 +1410,10 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Points, Unit ResultUnit, Node
             + detail::lookup_words_in_dialect<D>(detail::lookup_row_text(
                 "at "
                     + detail::number_with_unit(
-                        detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator),
+                        detail::declared_number_text(Points[pointIndex].numerator,
+                                                     Points[pointIndex].denominator,
+                                                     keyUnit,
+                                                     NumberStyle::fraction()),
                         view(keyUnit.symbolText)),
                 detail::number_with_unit(detail::number_text(node.corrections[pointIndex]), view(resultUnit.symbolText))));
 
@@ -1398,7 +1434,8 @@ template <Dialect D, Unit KeyUnit, BreakpointTable Permitted, SnapTie Tie, Node 
     {
         if (pointIndex > 0)
             listed += ", ";
-        listed += detail::declared_number_text(Permitted[pointIndex].numerator, Permitted[pointIndex].denominator);
+        listed += detail::declared_number_text(
+            Permitted[pointIndex].numerator, Permitted[pointIndex].denominator, keyUnit, NumberStyle::fraction());
     }
     std::string const permittedField =
         detail::lookup_separator<D>()
@@ -1419,7 +1456,8 @@ template <Dialect D, Unit U, BreakpointTable Points, Vocabulary V>
     {
         if (pointIndex > 0)
             listed += ", ";
-        listed += detail::declared_number_text(Points[pointIndex].numerator, Points[pointIndex].denominator);
+        listed += detail::declared_number_text(
+            Points[pointIndex].numerator, Points[pointIndex].denominator, declaredIn, NumberStyle::fraction());
     }
     std::string const pointsText =
         detail::lookup_words_in_dialect<D>(detail::number_with_unit(listed, view(declaredIn.symbolText)));
@@ -1456,7 +1494,8 @@ template <Dialect D, Unit KeyUnit, BandTable Classes, ObservationsNode Obs, Voca
     std::string classText;
     for (std::size_t classIndex = 0; classIndex < Classes.size(); ++classIndex)
         classText += detail::lookup_separator<D>()
-                     + detail::lookup_words_in_dialect<D>(detail::band_text(Classes[classIndex], view(keyUnit.symbolText)));
+                     + detail::lookup_words_in_dialect<D>(detail::band_text(
+                         Classes[classIndex], view(keyUnit.symbolText), keyUnit, NumberStyle::fraction()));
     return detail::lookup_call<D>("bin", render_node<D>(node.source, vocabulary), classText);
 }
 
@@ -2179,16 +2218,27 @@ namespace detail
     /// One row of an envelope as the range it permits, the unit after the
     /// last number: `from 30 to 40 %`, `at least 60 %`, `at most 5 mm`, or
     /// `any value` for a row unbounded on both sides.
-    [[nodiscard]] inline std::string limit_row_text(LimitRow limitRow, std::string_view unitSymbol)
+    ///
+    /// @p unitSymbol is @p limitsIn's symbol as the caller writes it -- the
+    /// trace escapes it, `render()` does not -- and @p limitsIn is the unit
+    /// the limits are numbers in. Spelled in `numberStyle.exact_only()`: a
+    /// limit is one side of the comparison a check states, and is never shown
+    /// rounded.
+    [[nodiscard]] inline std::string limit_row_text(LimitRow limitRow,
+                                                    std::string_view unitSymbol,
+                                                    Unit const& limitsIn,
+                                                    NumberStyle numberStyle)
     {
+        NumberStyle const limitStyle = numberStyle.exact_only();
         std::optional<Rational> const lowerValue = limitRow.lower.value();
         std::optional<Rational> const upperValue = limitRow.upper.value();
         if (lowerValue.has_value() && upperValue.has_value())
-            return "from " + number_text(*lowerValue) + " to " + number_with_unit(number_text(*upperValue), unitSymbol);
+            return "from " + styled_number_text(*lowerValue, limitStyle, limitsIn) + " to "
+                   + number_with_unit(styled_number_text(*upperValue, limitStyle, limitsIn), unitSymbol);
         if (lowerValue.has_value())
-            return "at least " + number_with_unit(number_text(*lowerValue), unitSymbol);
+            return "at least " + number_with_unit(styled_number_text(*lowerValue, limitStyle, limitsIn), unitSymbol);
         if (upperValue.has_value())
-            return "at most " + number_with_unit(number_text(*upperValue), unitSymbol);
+            return "at most " + number_with_unit(styled_number_text(*upperValue, limitStyle, limitsIn), unitSymbol);
         return "any value";
     }
 } // namespace detail
@@ -2209,7 +2259,10 @@ template <Dialect D, Unit U, SeriesNode S, Vocabulary V>
     for (std::size_t at = 0; at < S::length; ++at)
         rowFields += detail::lookup_separator<D>()
                      + detail::lookup_words_in_dialect<D>(
-                         detail::limit_row_text(conformityCheck.envelope[at], view(limitsIn.symbolText)));
+                         detail::limit_row_text(conformityCheck.envelope[at],
+                                                view(limitsIn.symbolText),
+                                                limitsIn,
+                                                NumberStyle::fraction()));
     return detail::lookup_call<D>("conform", render<D>(conformityCheck.subject, vocabulary), rowFields);
 }
 
