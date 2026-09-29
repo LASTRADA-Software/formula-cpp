@@ -180,6 +180,7 @@ TEST_CASE("dimension algebra composes the way physics does", "[dimension]")
     CHECK(dim::Force == Dimension { .length = exponent(1), .mass = exponent(1), .time = exponent(-2) });
     CHECK(dim::Pressure == Dimension { .length = exponent(-1), .mass = exponent(1), .time = exponent(-2) });
     CHECK(dim::Energy == Dimension { .length = exponent(2), .mass = exponent(1), .time = exponent(-2) });
+    CHECK(dim::Power == Dimension { .length = exponent(2), .mass = exponent(1), .time = exponent(-3) });
     CHECK(dim::Frequency == Dimension { .time = exponent(-1) });
     CHECK(dim::Density == Dimension { .length = exponent(-3), .mass = exponent(1) });
     CHECK(dim::MassPerArea == Dimension { .length = exponent(-2), .mass = exponent(1) });
@@ -191,7 +192,7 @@ TEST_CASE("dimension algebra composes the way physics does", "[dimension]")
     // The four base dimensions none of these touch must stay at exactly zero --
     // a stray exponent there is invisible to every check above.
     for (Dimension const& d: { dim::Velocity, dim::Acceleration, dim::Force, dim::Pressure, dim::Energy,
-                               dim::Frequency, dim::Density, dim::MassPerArea, dim::ForcePerLength,
+                               dim::Power, dim::Frequency, dim::Density, dim::MassPerArea, dim::ForcePerLength,
                                dim::DynamicViscosity, dim::KinematicViscosity })
     {
         CHECK(d.current == exponent(0));
@@ -226,6 +227,13 @@ TEST_CASE("the derived dimensions that read alike are still not equal", "[dimens
     CHECK_FALSE(dim::ForcePerLength == dim::Pressure);
     CHECK(dim::Pressure == dim::ForcePerLength / dim::Length);
 
+    // Power is energy per time, and an energy is what a power delivers over a
+    // time -- a kilowatt-hour is not a kilowatt. A force moving at a velocity
+    // reaches the same dimension by a different route.
+    CHECK_FALSE(dim::Power == dim::Energy);
+    CHECK(dim::Power * dim::Time == dim::Energy);
+    CHECK(dim::Power == dim::Force * dim::Velocity);
+
     // And no two of the four new ones collide with each other or with anything
     // the library already had. A pairwise sweep, because a new dimension that
     // silently equals an existing one would let the type system pass a value of
@@ -235,8 +243,8 @@ TEST_CASE("the derived dimensions that read alike are still not equal", "[dimens
                                 dim::Time,             dim::Area,          dim::Volume,
                                 dim::Density,          dim::Velocity,      dim::Acceleration,
                                 dim::Force,            dim::Pressure,      dim::Energy,
-                                dim::Frequency,        dim::MassPerArea,   dim::ForcePerLength,
-                                dim::DynamicViscosity, dim::KinematicViscosity };
+                                dim::Power,            dim::Frequency,     dim::MassPerArea,
+                                dim::ForcePerLength,   dim::DynamicViscosity, dim::KinematicViscosity };
     for (std::size_t i = 0; i < std::size(named); ++i)
         for (std::size_t j = i + 1; j < std::size(named); ++j)
         {
@@ -250,8 +258,8 @@ TEST_CASE("multiplying by a dimension and dividing by it again is an identity", 
     Dimension const all[] = { dim::Scalar,           dim::Length,         dim::Mass,
                               dim::Time,             dim::Area,           dim::Volume,
                               dim::Density,          dim::Force,          dim::Pressure,
-                              dim::Energy,           dim::MassPerArea,    dim::ForcePerLength,
-                              dim::DynamicViscosity, dim::KinematicViscosity };
+                              dim::Energy,           dim::Power,          dim::MassPerArea,
+                              dim::ForcePerLength,   dim::DynamicViscosity, dim::KinematicViscosity };
     for (Dimension const& a: all)
     {
         for (Dimension const& b: all)

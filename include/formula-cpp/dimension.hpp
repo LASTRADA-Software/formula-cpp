@@ -293,6 +293,10 @@ namespace dim
     inline constexpr Dimension Pressure = Force / Area;
     /// Force times length.
     inline constexpr Dimension Energy = Force * Length;
+    /// Energy per time -- the rate at which energy is delivered or used. The
+    /// name has nothing to do with the function `power()` above, which raises a
+    /// dimension to an integer exponent.
+    inline constexpr Dimension Power = Energy / Time;
     /// The reciprocal of time.
     inline constexpr Dimension Frequency = Scalar / Time;
     /// Mass per area -- what a sheet or a membrane is specified by, and NOT a

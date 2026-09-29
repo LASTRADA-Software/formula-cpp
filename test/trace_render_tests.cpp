@@ -51,6 +51,12 @@ struct EndTemperature: formula::Quantity<EndTemperature, "T_1", "end temperature
 struct Strength: formula::Quantity<Strength, "f", "measured strength", unit::Megapascal>
 {
 };
+struct HeaterPower: formula::Quantity<HeaterPower, "P", "heater power", unit::Kilowatt>
+{
+};
+struct RunTime: formula::Quantity<RunTime, "t", "run time", unit::Hour>
+{
+};
 
 // Author text that would forge a trace line printed as written: each spells a
 // provenance clause only the library may state, or opens a line of its own.
@@ -118,6 +124,25 @@ TEST_CASE("a value renders in the unit it was entered in, not in coherent SI", "
              "2. V_c = 300 l\n"
              "3. #1 / #2 = 3/5\n"
              "4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.2]\n");
+}
+
+TEST_CASE("a power times a time reads in the coherent unit, not in kilowatt-hours", "[trace-render]")
+{
+    // The two leaves read in the units they were entered in, kW and h. Their
+    // product is 3/2 kW * 4 h = 1500 W * 14400 s = 21600000 J, a computed
+    // value with no declared unit, so it reads in the unlabelled coherent unit
+    // -- joules -- as every computed step does, and not as 6 kWh.
+    auto const heater = formula::environment(formula::Measured<HeaterPower> { formula::Rational { 3, 2 } },
+                                             formula::Measured<RunTime> { formula::Rational { 4 } });
+
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(var<HeaterPower> * var<RunTime>, heater, sink);
+
+    CHECK(formula::render_trace(trace, { .maxSteps = 10 })
+          == "1. P = 3/2 kW\n"
+             "2. t = 4 h\n"
+             "3. #1 * #2 = 21600000\n");
 }
 
 TEST_CASE("a derivation longer than the limit is cut, and says so", "[trace-render]")
@@ -1939,6 +1964,10 @@ namespace series_trace
     struct Reading: formula::Quantity<Reading, "T_r", "a temperature reading", unit::Celsius>
     {
     };
+    /// The same kind of reading on the Fahrenheit scale, the other offset unit.
+    struct FahrenheitReading: formula::Quantity<FahrenheitReading, "T_f", "a temperature reading", unit::Fahrenheit>
+    {
+    };
     /// A thousandth of a metre the author gave no symbol: a value shown in it
     /// could not say what scale it is on.
     inline constexpr formula::Unit UnnamedMillimetre { .dimension = formula::dim::Length,
@@ -1959,6 +1988,11 @@ namespace series_trace
         formula::measured_series<Reading>(formula::Measured<Reading> { formula::Rational { 237, 10 } },
                                           formula::Measured<Reading> { formula::Rational { 413, 10 } },
                                           formula::Measured<Reading> { formula::Rational { 379, 10 } }));
+
+    /// 50 and 51 degrees Fahrenheit.
+    inline constexpr auto fahrenheitReadings = formula::environment(formula::measured_series<FahrenheitReading>(
+        formula::Measured<FahrenheitReading> { formula::Rational { 50 } },
+        formula::Measured<FahrenheitReading> { formula::Rational { 51 } }));
 
     inline constexpr auto inputs = formula::environment(
         formula::measured_series<Retained>(
@@ -2323,6 +2357,24 @@ TEST_CASE("a sum, a range and a running total of Celsius readings read in the co
           == readingsLine + "2. cumulative(#1, from first) = 5937/20; 6113/10; 18447/20\n");
     REQUIRE(running.steps.size() == 2);
     CHECK(running.steps[1].unit.offsetNumerator == 0);
+}
+
+TEST_CASE("a sum, a range and a mean of Fahrenheit readings read as those of Celsius ones do", "[series][trace]")
+{
+    // 50 and 51 degrees Fahrenheit are 50967/180 and 51067/180 K. Their sum,
+    // 51017/90 K, and their range, 5/9 K, are no points on the Fahrenheit
+    // scale and read in the unlabelled coherent unit -- kelvin -- where the
+    // 5/9 K is a difference of one degree. Their mean is a point on the scale,
+    // 101/2 degrees, and reads as the readings do.
+    std::string const degreesFahrenheit = "\xc2\xb0" "F";
+    std::string const readingsLine = "1. T_f = 50 " + degreesFahrenheit + "; 51 " + degreesFahrenheit + "\n";
+    constexpr auto readings = formula::series<series_trace::FahrenheitReading, 2>;
+    CHECK(derivationOf(formula::sum(readings), series_trace::fahrenheitReadings)
+          == readingsLine + "2. sum(#1) = 51017/90\n");
+    CHECK(derivationOf(formula::sample_range(readings), series_trace::fahrenheitReadings)
+          == readingsLine + "2. sample_range(#1) = 5/9\n");
+    CHECK(derivationOf(formula::sample_mean(readings), series_trace::fahrenheitReadings)
+          == readingsLine + "2. sample_mean(#1) = 101/2 " + degreesFahrenheit + "\n");
 }
 
 TEST_CASE("a sum and a mean of a series in a unit with no symbol read in the coherent unit", "[series][trace]")

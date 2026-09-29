@@ -361,12 +361,25 @@ namespace unit
 
     /// The coherent SI unit of thermodynamic temperature.
     inline constexpr Unit Kelvin { .dimension = dim::Temperature, .symbolText = symbol("K"), .decimals = 2 };
-    /// The affine unit, and the reason `Unit` carries an offset at all.
+    /// One of the two affine units, and the reason `Unit` carries an offset at
+    /// all; `Fahrenheit` is the other. Zero degrees Celsius is 273.15 kelvin,
+    /// while a difference of one degree is a difference of one kelvin.
     inline constexpr Unit Celsius { .dimension = dim::Temperature,
                                     .offsetNumerator = 27315,
                                     .offsetDenominator = 100,
                                     .symbolText = symbol("\xc2\xb0" "C"),
                                     .decimals = 1 };
+    /// The other affine unit. A degree is exactly 5/9 of a kelvin, and zero
+    /// degrees Fahrenheit is exactly 459.67 * 5/9 = 45967/180 kelvin, so every
+    /// conversion is exact: 32 degrees is 273.15 kelvin, and -40 degrees is
+    /// -40 degrees Celsius. One decimal, `Celsius`'s.
+    inline constexpr Unit Fahrenheit { .dimension = dim::Temperature,
+                                       .magnitudeNumerator = 5,
+                                       .magnitudeDenominator = 9,
+                                       .offsetNumerator = 45967,
+                                       .offsetDenominator = 180,
+                                       .symbolText = symbol("\xc2\xb0" "F"),
+                                       .decimals = 1 };
 
     /// The coherent SI unit of force. One decimal rather than `Pascal`'s
     /// none: a newton is a coarse enough unit that reporting a tenth of one is
@@ -423,6 +436,28 @@ namespace unit
                                       .magnitudeNumerator = 1000,
                                       .symbolText = symbol("kJ"),
                                       .decimals = 1 };
+    /// The coherent SI unit of power: a joule per second. One decimal, as
+    /// `Joule` has.
+    inline constexpr Unit Watt { .dimension = dim::Power, .symbolText = symbol("W"), .decimals = 1 };
+    /// One thousand watts. Three decimals, so that the last digit is one watt.
+    inline constexpr Unit Kilowatt { .dimension = dim::Power,
+                                     .magnitudeNumerator = 1000,
+                                     .symbolText = symbol("kW"),
+                                     .decimals = 3 };
+    /// The energy of one watt sustained for an hour: exactly 3600 joules. An
+    /// energy, not a power -- the two are different dimensions and the type
+    /// system keeps them apart. One decimal, `Joule`'s.
+    inline constexpr Unit WattHour { .dimension = dim::Energy,
+                                     .magnitudeNumerator = 3600,
+                                     .symbolText = symbol("Wh"),
+                                     .decimals = 1 };
+    /// One thousand watt-hours: exactly 3600000 joules, the unit an electricity
+    /// bill is usually written in. Three decimals, so that the last digit is one
+    /// watt-hour.
+    inline constexpr Unit KilowattHour { .dimension = dim::Energy,
+                                         .magnitudeNumerator = 3600000,
+                                         .symbolText = symbol("kWh"),
+                                         .decimals = 3 };
 
     /// The coherent SI unit of frequency. One decimal: a loading frequency is
     /// set and reported to a tenth of a hertz.

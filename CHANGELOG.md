@@ -6,6 +6,14 @@ may break it, and each such change is recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
+  `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
+  into kilowatt-hours without a rounded factor.
+- `unit::Fahrenheit`, a second affine temperature unit beside `unit::Celsius`. Its conversions to and
+  from kelvin and Celsius are exact, so 98.6 degrees Fahrenheit is exactly 37 degrees Celsius.
+
 ## [0.1.0] - 2026-09-28
 
 The first release of formula-cpp, a header-only C++23 library for traceable formulas: formulas

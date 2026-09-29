@@ -44,6 +44,23 @@ struct TemperatureDeltaCelsius:
     formula::Quantity<TemperatureDeltaCelsius, "dT_C", "temperature difference", formula::unit::Celsius>
 {
 };
+struct HeaterPower: formula::Quantity<HeaterPower, "P", "heater power", formula::unit::Kilowatt>
+{
+};
+struct RunTime: formula::Quantity<RunTime, "t", "run time", formula::unit::Hour>
+{
+};
+struct HeaterEnergy: formula::Quantity<HeaterEnergy, "E", "heater energy", formula::unit::KilowattHour>
+{
+};
+struct BodyTemperatureFahrenheit:
+    formula::Quantity<BodyTemperatureFahrenheit, "T_F", "body temperature", formula::unit::Fahrenheit>
+{
+};
+struct BodyTemperatureCelsius:
+    formula::Quantity<BodyTemperatureCelsius, "T_C", "body temperature", formula::unit::Celsius>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -371,4 +388,38 @@ TEST_CASE("evaluate: an offset unit converts a point, not a difference", "[evalu
     constexpr auto inCelsius = formula::checked_evaluate<TemperatureDeltaCelsius>(difference, temperatures);
     STATIC_REQUIRE(inCelsius.has_value());
     STATIC_REQUIRE(inCelsius->measurement().value() == rat(-26815, 100));
+}
+
+TEST_CASE("evaluate: a power over a time is an energy, exact in kilowatt-hours", "[evaluate]")
+{
+    // 3/2 kW for 4 h is exactly 6 kWh. Evaluated in joules -- 1500 W times
+    // 14400 s is 21600000 J -- and converted back through the 3600000 that a
+    // kilowatt-hour is, so a wrong magnitude on the power, the hour or the
+    // energy unit lands on something other than 6.
+    constexpr auto heater = formula::environment(formula::Measured<HeaterPower> { rat(3, 2) },
+                                                 formula::Measured<RunTime> { rat(4) });
+    constexpr auto consumed = var<HeaterPower> * var<RunTime>;
+
+    constexpr auto energy = formula::checked_evaluate<HeaterEnergy>(consumed, heater);
+    STATIC_REQUIRE(energy.has_value());
+    STATIC_REQUIRE(energy->measurement().value() == rat(6));
+}
+
+TEST_CASE("evaluate: a Fahrenheit reading converts to Celsius and back exactly", "[evaluate]")
+{
+    // 98,6 degF is 493/5, and lands on exactly 37 degC rather than on a rounded
+    // 37,0000001: the factor is 5/9 and the offset 45967/180, both exact.
+    constexpr auto fever = formula::environment(formula::Measured<BodyTemperatureFahrenheit> { rat(493, 5) });
+    constexpr auto reading = var<BodyTemperatureFahrenheit>;
+
+    constexpr auto inCelsius = formula::checked_evaluate<BodyTemperatureCelsius>(reading, fever);
+    STATIC_REQUIRE(inCelsius.has_value());
+    STATIC_REQUIRE(inCelsius->measurement().value() == rat(37));
+
+    // And the other way: 37 degC is 493/5 degF.
+    constexpr auto normal = formula::environment(formula::Measured<BodyTemperatureCelsius> { rat(37) });
+    constexpr auto inFahrenheit =
+        formula::checked_evaluate<BodyTemperatureFahrenheit>(var<BodyTemperatureCelsius>, normal);
+    STATIC_REQUIRE(inFahrenheit.has_value());
+    STATIC_REQUIRE(inFahrenheit->measurement().value() == rat(493, 5));
 }
