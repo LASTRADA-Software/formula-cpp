@@ -1098,6 +1098,15 @@ TEST_CASE("a quotient of two units is not offered when its dimension would need 
                  / (formula::base_dimension("Stamp") * formula::base_dimension("Token")));
     CHECK(formula::view(shared->symbolText) == "ABC/AST");
 
+    // A name both carry cancels only when its exponents do: credits squared
+    // over credits leave credits, so five names remain and no quotient is
+    // offered.
+    constexpr formula::Unit squaredUnit { .dimension = formula::power(formula::base_dimension("AcmeCredit"), 2)
+                                                       * formula::base_dimension("Bonus")
+                                                       * formula::base_dimension("Coupon"),
+                                          .symbolText = formula::symbol("A2BC") };
+    CHECK_FALSE(formula::detail::unit_quotient(squaredUnit, sharingUnit).has_value());
+
     // A quotient that fits is offered as before, its dimension merged:
     // euros per kilowatt-hour.
     constexpr formula::Unit euro { .dimension = formula::base_dimension("EUR"),

@@ -2590,10 +2590,11 @@ namespace detail
     /// because some input was one, as `opaque_output_unit` rules for a
     /// dimensionless output -- or already holds a slash (`m/s/s` reads two
     /// ways), or when the symbol, the magnitude or the dimension would not
-    /// fit -- the dimension when the quotient would need more than
-    /// `NamedBaseCapacity` named base dimensions once the names both units
-    /// carry have cancelled. That is judged with `merged_dimension`, not
-    /// `operator/`, whose guard aborts when reached at run time, as this is.
+    /// fit -- the dimension when the quotient's own named base dimensions
+    /// would number more than `NamedBaseCapacity`: a name both units carry
+    /// counts once, or not at all when its exponents cancel. That is judged
+    /// with `merged_dimension`, not `operator/`, whose guard aborts when
+    /// reached at run time, as this is.
     [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
     {
         if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar

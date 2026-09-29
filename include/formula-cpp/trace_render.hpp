@@ -123,11 +123,17 @@ namespace detail
     /// or the line separator U+2028 is written as it is, since it cannot
     /// break the ASCII structure the library writes.
     ///
-    /// Applied by `step_line`, once, to every piece of author text a step
-    /// holds -- see `EscapedStep`, `unit_symbol_text` and, for a record's role
-    /// and a lineage attribute's name, `tag_words` -- and by
-    /// `coherent_unit_text` to each named base dimension's name, and nowhere
-    /// else: the words this file writes itself go into the line as they are.
+    /// Applied to every piece of author text a trace line states, on the way
+    /// from `step_line`: once to each such field of the step and of a citation,
+    /// in `EscapedStep` and `EscapedCitation`, with `unit_symbol_text` and, for
+    /// a record's role and a lineage
+    /// attribute's name, `tag_words`; and directly by the lines that state
+    /// author text the step does not hold -- a rejection's verdict label
+    /// (`rejection_line`), an opaque operation's and its outputs' names
+    /// (`opaque_call_line`, `opaque_output_line`), a retry's verdict label
+    /// (`retry_concluded_line`) and a named base dimension's name
+    /// (`coherent_unit_text`). The words this file writes itself go into the
+    /// line as they are.
     [[nodiscard]] inline std::string escaped_author_text(std::string_view authored)
     {
         constexpr std::string_view hexDigits = "0123456789abcdef";
