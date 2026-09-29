@@ -34,6 +34,17 @@ may break it, and each such change is recorded here.
   measures a dimension other than `Q`'s, is a series, reads a quantity as a series or as raw
   observations, reads from another record, or holds a node kind of a consumer's own that cannot be
   seen inside.
+- `calculation(define<A>(...), ...)` builds a `Calculation` whose dependency graph is worked out and
+  checked at compile time. Its inputs are what its definitions read and none of them defines, in the
+  order first read; its dependency order lists the inputs, then each defined quantity once everything
+  it reads comes before it, keeping the order given wherever it can. `dependencies_of`,
+  `dependents_of`, `upstream_of`, `affected_by`, `inputs_of` and `calculation_order` answer the
+  symbols concerned as a `std::array<std::string_view, N>`, in that order and in a vocabulary's
+  words, and `depends_on` whether one quantity depends on another. A calculation is refused where it
+  is written when it is given something other than a definition, or nothing; defines a quantity
+  twice; holds more than 64 quantities; or holds a definition that reads what it defines, or
+  definitions that read one another in a cycle. A query about a quantity the calculation neither
+  defines nor reads is refused.
 
 ### Changed
 

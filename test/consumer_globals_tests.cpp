@@ -55,8 +55,9 @@
 // `lineage_of` and `origin_of` reading the trace's side tables, and under an
 // overlay's constant and derived quantity, traced; `define` of the formula
 // above and of a variant an overlay derived a quantity in, with what each
-// reads; and a quantity declared by alias at global scope, so that its tag
-// is one more global. A
+// reads, and a `calculation` of two with every query over its graph; and a
+// quantity declared by alias at global scope, so that its tag is one more
+// global. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
 // computed what it should.
 //
@@ -935,6 +936,27 @@ ConsumerGlobalsProbe probe_consumer_globals()
                        formula::detail::QuantityList<Force, EdgeX, Factor>>
         && std::is_same_v<std::remove_cv_t<decltype(definedDerived)>::reads, formula::detail::QuantityList<EdgeX, Force>>
         && fromDefinition.has_value() && checked.has_value() && *fromDefinition == *checked);
+
+    // A calculation of two definitions, and every query over its graph, in
+    // a vocabulary: the edge and the force are its inputs, the factor is
+    // calculated before the strength that reads it.
+    constexpr auto strengthCalculation =
+        formula::calculation(formula::define<Strength>(var<Factor> * var<Force> / (var<EdgeX> * var<EdgeX>)),
+                             formula::define<Factor>(var<EdgeX> / var<EdgeX>));
+    probe.checks.push_back(
+        formula::inputs_of(strengthCalculation, north) == std::array<std::string_view, 2> { "P", "x_m" }
+        && formula::calculation_order(strengthCalculation) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::dependencies_of<Strength>(strengthCalculation, north)
+               == std::array<std::string_view, 3> { "P", "x_m", "k" }
+        && formula::dependents_of<EdgeX>(strengthCalculation) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::upstream_of<Strength>(strengthCalculation).size() == 3
+        && formula::affected_by<Force>(strengthCalculation, north) == std::array<std::string_view, 1> { "f_c" }
+        && formula::depends_on<Strength, EdgeX>(strengthCalculation)
+        && !formula::depends_on<Factor, Force>(strengthCalculation)
+        // Nothing to name: an input reads nothing, and nothing reads the
+        // strength.
+        && formula::dependencies_of<Force>(strengthCalculation).empty()
+        && formula::dependents_of<Strength>(strengthCalculation, north).empty());
 
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};

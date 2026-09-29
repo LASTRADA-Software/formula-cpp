@@ -2403,6 +2403,63 @@ formula_add_negative_test(calculation_library_kind_without_entry
     "formula: this library node kind has no detail::LevelChildren specialisation"
     EXPECT_COUNT 1
     REJECT "formula: this definition holds a node kind the calculation cannot see inside")
+
+# A calculation, refused where it is written, and its queries.
+formula_add_negative_test(calculation_argument_not_a_definition
+    "formula: calculation(...) takes only definitions made by define<Q>(expression)"
+    EXPECT_COUNT 1
+    REJECT "formula: a calculation defines at least one quantity"
+           "formula: this calculation neither defines nor reads this quantity"
+           "no type named" "is not a member" "no matching")
+formula_add_negative_test(calculation_of_nothing
+    "formula: a calculation defines at least one quantity; calculation() with no definitions calculates nothing"
+    EXPECT_COUNT 1
+    REJECT "formula: calculation(...) takes only definitions made by define<Q>(expression)" "no matching")
+formula_add_negative_test(calculation_defines_twice
+    "formula: this calculation defines the same quantity more than once"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: these definitions read one another in a cycle"
+           "formula: a calculation holds at most 64 quantities"
+           "formula: this calculation neither defines nor reads this quantity")
+formula_add_negative_test(calculation_self_reference
+    "formula: this definition reads the quantity it defines, so it can never be calculated"
+    EXPECT_COUNT 1
+    REJECT "formula: these definitions read one another in a cycle"
+           "formula: this calculation neither defines nor reads this quantity")
+formula_add_negative_test(calculation_cycle
+    "formula: these definitions read one another in a cycle, so none of them can be calculated first"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: this calculation neither defines nor reads this quantity")
+formula_add_negative_test(calculation_over_capacity
+    "formula: a calculation holds at most 64 quantities, inputs and definitions together, and this one holds more"
+    EXPECT_COUNT 1
+    REJECT "formula: these definitions read one another in a cycle"
+           "formula: this calculation neither defines nor reads this quantity" "shift")
+formula_add_negative_test(calculation_query_unknown_quantity
+    "formula: this calculation neither defines nor reads this quantity"
+    EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(calculation_defines_twice_reading_itself
+    "formula: this calculation defines the same quantity more than once"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: these definitions read one another in a cycle")
+formula_add_negative_test(calculation_over_capacity_reading_itself
+    "formula: a calculation holds at most 64 quantities, inputs and definitions together, and this one holds more"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: these definitions read one another in a cycle")
+formula_add_negative_test(calculation_reads_itself_on_a_cycle
+    "formula: this definition reads the quantity it defines, so it can never be calculated"
+    EXPECT_COUNT 1
+    REJECT "formula: these definitions read one another in a cycle")
+formula_add_negative_test(calculation_query_after_refused_definition
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: these definitions read one another in a cycle")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"
