@@ -216,7 +216,8 @@ inline constexpr auto moistureLimit = formula::conformity<unit::Percent>(
 ```
 
 Line 1, the input, is rounded at the percent's one declared decimal: the
-second specimen's 289/24 %, 12.0416... %, reads `≈12 %`. Line 2 states both
+second specimen's 289/24 %, 12.0416... %, rounds to 12.0 and reads `≈12 %`,
+its zero trimmed, since this style does not pad. Line 2 states both
 values it compared exactly, `67/6 %` and `289/24 %`. Rounded, the second would
 read `≈12 % (at most 12 %)` beside the verdict *violated* -- a comparison that
 contradicts itself -- so a compared value is never shown rounded.
@@ -262,7 +263,10 @@ its weighings a typed limit of 1/30 of the pass's mean
 
 ```cpp
 inline constexpr auto dishMean = formula::sample_mean(
-    formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+    formula::without_outliers<formula::PerPass::MostExtreme,
+                              formula::OnLimit::Keep,
+                              formula::AtMost<1>,
+                              formula::KeepAtLeast<2>>(
         formula::series<DishWeighing, 3>,
         formula::deviation_from_mean(rat(1, 30) * formula::pass_mean<DishWeighing>),
         formula::Verdict { "weigh the dish again" }));
@@ -554,4 +558,8 @@ which overflows for one with a large denominator, such as
 `Rational::from_double_exact(0.1)` at -3 decimals. `std::format` then throws
 `std::format_error` too, starting `formula: this number cannot be spelled as
 the format asks`; it never writes a text that is neither the value nor the
-rounding the spec asked for.
+rounding the spec asked for. No spec rounds such a value to tens or
+thousands. Write `{:~.0HalfEven}` instead to round it to whole units -- a
+rounding to 0 to 18 places is spelled by long division, which cannot
+overflow, so `from_double_exact(0.1)` reads `≈0` -- or `{:/}` for its exact
+fraction, or catch the `std::format_error`.

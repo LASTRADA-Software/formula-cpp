@@ -29,9 +29,10 @@
 #     This is the strongest check here -- it verifies the number *means* what
 #     the quote says, not merely that something is there.
 #  3. **A quoted MSVC `note: see usage of '<name>'` must name a line that
-#     calls `<name>`** -- the last `::` segment, followed by `(`. MSVC points
-#     that note at the use, so this is as exact as the `static_assert` rule:
-#     it pins a guide's quote of a refusing guard to the guard's call.
+#     calls `<name>`** -- the last `::` segment, followed by `(`, on a line
+#     that is not a comment. MSVC points that note at the use, so this is as
+#     exact as the `static_assert` rule: it pins a guide's quote of a refusing
+#     guard to the guard's call.
 #  4. **Every other quoted line must be neither blank nor comment-only.** The
 #     `note: see reference to ...` cascade points at instantiation sites, and
 #     no invariant this script can state says which line one of those must be.
@@ -298,10 +299,11 @@ foreach(document ${documents})
             endif()
         elseif(line MATCHES "see usage of '([A-Za-z_][A-Za-z0-9_:]*)'")
             # MSVC's `note: see usage of 'formula::detail::name'` points at the
-            # call of that function, so line N must call it: `name(`.
+            # call of that function, so line N must call it: `name(`, in code
+            # -- a comment that names the call is not one.
             string(REGEX REPLACE "^.*::" "" usedName "${CMAKE_MATCH_1}")
             string(FIND "${headerLine}" "${usedName}(" usedAt)
-            if(usedAt EQUAL -1)
+            if(usedAt EQUAL -1 OR headerLine MATCHES "^(///|//|\\*)")
                 list(APPEND problems
                      "${documentName}:${lineNumber} quotes a use of ${usedName} at ${headerName}:${quotedNumber}, but that line does not call it -- it is '${headerLine}'")
             endif()

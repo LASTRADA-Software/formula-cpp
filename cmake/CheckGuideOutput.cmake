@@ -121,7 +121,10 @@ endif()
 # the output must hold a line that starts with the call and a space, and ends,
 # after the column's padding, with the row's last cell. docs/display.md's spec
 # table is such a table; its rows are prose around real output, and a row's
-# Output cell could otherwise drift from the checked block beside it.
+# Output cell could otherwise drift from the checked block beside it. A table
+# row that names `std::format(` in any other form -- an Output cell that lost
+# its backticks, an Example cell that is no longer a code span -- is refused
+# rather than skipped, so that no row drops out of the check unseen.
 set(tableRows 0)
 if(CALL_TABLES)
     set(rest "${guide}")
@@ -135,6 +138,11 @@ if(CALL_TABLES)
         string(FIND "${rest}" "\n" rowEnd)
         string(SUBSTRING "${rest}" 0 ${rowEnd} row)
         if(NOT row MATCHES "\\| `(std::format\\([^`]*\\))` \\| `([^`]*)` \\|$")
+            string(FIND "${row}" "std::format(" namesFormat)
+            if(row MATCHES "^\\|" AND NOT namesFormat EQUAL -1)
+                string(APPEND offenders
+                       "\n  a table row names std::format( but not as a call and its output, each a code span: ${row}")
+            endif()
             continue()
         endif()
         set(call "${CMAKE_MATCH_1}")

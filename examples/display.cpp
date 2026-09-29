@@ -87,7 +87,10 @@ inline constexpr auto wholeTare = var<DryMass> - formula::constant<unit::Gram>(r
 // The dish's mean without a weighing further than a typed 1/30 of the pass's
 // mean from it: a rejection, whose limit a documentation page states.
 inline constexpr auto dishMean = formula::sample_mean(
-    formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+    formula::without_outliers<formula::PerPass::MostExtreme,
+                              formula::OnLimit::Keep,
+                              formula::AtMost<1>,
+                              formula::KeepAtLeast<2>>(
         formula::series<DishWeighing, 3>,
         formula::deviation_from_mean(rat(1, 30) * formula::pass_mean<DishWeighing>),
         formula::Verdict { "weigh the dish again" }));

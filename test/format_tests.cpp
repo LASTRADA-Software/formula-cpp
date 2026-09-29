@@ -253,6 +253,9 @@ TEST_CASE("a spec the grammar does not allow is refused at run time, in the libr
     // exact arithmetic can round rounds: 7501/3 is 2500.33..., 3000 to the
     // thousand.
     CHECK(std::format("{:/}", coarseTenth) == "3602879701896397/36028797018963968 ku");
+    // What to write instead, as the guide says: places of 0 to 18 are spelled
+    // by long division, which cannot overflow.
+    CHECK(std::format("{:~.0HalfEven}", coarseTenth) == "\xe2\x89\x88" "0 ku");
     CHECK(std::format("{:~HalfEven}", Measured<CoarseLength> { Rational { 7501, 3 } }) == "\xe2\x89\x88" "3000 ku");
     // A value with an exact decimal of at most 18 places is written as it
     // is, never rounded, so never divided: 1/10^18, whose rounding at -3
