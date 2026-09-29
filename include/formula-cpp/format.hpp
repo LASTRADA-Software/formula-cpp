@@ -431,8 +431,8 @@ namespace std
 /// gives: a decimal only where it is the exact value, and a rounded one only
 /// where the format names a rounding mode.
 ///
-///     spec  ::= [[fill] align] [width] [body]         fill: one UTF-8 code point; align: < > ^ (default >)
-///     body  ::= ''                   exact decimal, else fraction      0.6   1/3    5.2 kW
+///     spec  ::= [[fill] align] [width] [body]         fill: one Unicode scalar value; align: < > ^ (default >)
+///     body  ::= ''                   exact decimal, else fraction      0.6   1/3    157.4 g
 ///             | '/'                  fraction                           3/5   1/3
 ///             | '.' N Mode           rounded to N (0..18), padded       {:.2HalfEven} -> 118.26
 ///             | '~' ['.' N] Mode     exact where exact, else ≈ rounded  {:~.3HalfEven} -> ≈0.333
@@ -518,8 +518,8 @@ struct formatter<formula::Rational, char>
 /// symbol when it has one -- or `(not measured)` when the value is absent,
 /// whatever the spec's body.
 ///
-///     spec  ::= [[fill] align] [width] [body]         fill: one UTF-8 code point; align: < > ^ (default >)
-///     body  ::= ''                   exact decimal, else fraction      0.6   1/3    5.2 kW
+///     spec  ::= [[fill] align] [width] [body]         fill: one Unicode scalar value; align: < > ^ (default >)
+///     body  ::= ''                   exact decimal, else fraction      0.6   1/3    157.4 g
 ///             | '/'                  fraction                           3/5   1/3
 ///             | '.' N Mode           rounded to N (0..18), padded       {:.2HalfEven} -> 118.26
 ///             | '~' ['.' N] Mode     exact where exact, else ≈ rounded  {:~.3HalfEven} -> ≈0.333
@@ -606,9 +606,10 @@ struct formatter<formula::Measured<Q>, char>
     /// absent.
     /// @throws std::format_error when `~Mode` rounds @p shown at a unit
     ///         declaring negative decimals and exact arithmetic overflows
-    ///         there: for a value whose denominator times 10^-decimals, less
-    ///         any factor of it the numerator cancels, exceeds the integer
-    ///         range.
+    ///         there: for a value with no exact decimal of at most 18 places
+    ///         -- one with such a decimal is written as it is, never rounded
+    ///         -- whose denominator times 10^-decimals, less any factor of it
+    ///         the numerator cancels, exceeds the integer range.
     template <typename FormatContext>
     auto format(formula::Measured<Q> const& shown, FormatContext& formatContext) const
     {

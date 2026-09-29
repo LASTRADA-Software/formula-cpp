@@ -297,6 +297,7 @@ and still growing. The public API may change until 1.0.
 | Other samples and other tests: records, context, lineage | shipped |
 | Opaque operations (least squares), bounded retry | shipped |
 | Named base dimensions such as money | next release |
+| Decimals in traces, rendered formulas and `std::format` | next release |
 
 ## Requirements
 

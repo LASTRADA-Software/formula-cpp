@@ -113,5 +113,6 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Other samples and other tests: records, context, lineage | shipped |
 | Opaque operations (least squares), bounded retry | shipped |
 | Named base dimensions such as money | next release |
+| Decimals in traces, rendered formulas and `std::format` | next release |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).

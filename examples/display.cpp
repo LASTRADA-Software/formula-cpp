@@ -62,7 +62,8 @@ inline constexpr auto specimen =
     formula::environment(formula::Measured<WetMass> { rat(787, 5) }, formula::Measured<DryMass> { rat(144) });
 
 // ---- 2. A value in a unit nobody declared, and a comparison ------------------------
-inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) / formula::number(rat(3));
+// The mean of three weighings: their sum times a typed 1/3, which has no exact decimal.
+inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) * formula::number(rat(1, 3));
 
 inline constexpr auto weighings = formula::environment(
     formula::measured_series<DishWeighing>(formula::Measured<DishWeighing> { rat(421, 100) },
@@ -77,11 +78,19 @@ inline constexpr auto moistureLimit = formula::conformity<unit::Percent>(
     formula::series<MoistureContent, 2>, atMostTwelve, formula::Verdict { "dry the specimen again" });
 
 inline constexpr auto twoSpecimens = formula::environment(formula::measured_series<MoistureContent>(
-    formula::Measured<MoistureContent> { rat(67, 6) }, formula::Measured<MoistureContent> { rat(25, 2) }));
+    formula::Measured<MoistureContent> { rat(67, 6) }, formula::Measured<MoistureContent> { rat(289, 24) }));
 
 // ---- 3. The formula's text ---------------------------------------------------------
 // A tare typed as a whole 24 g, to set a formula's text beside a trace's.
 inline constexpr auto wholeTare = var<DryMass> - formula::constant<unit::Gram>(rat(24));
+
+// The dish's mean without a weighing further than a typed 1/30 of the pass's
+// mean from it: a rejection, whose limit a documentation page states.
+inline constexpr auto dishMean = formula::sample_mean(
+    formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+        formula::series<DishWeighing, 3>,
+        formula::deviation_from_mean(rat(1, 30) * formula::pass_mean<DishWeighing>),
+        formula::Verdict { "weigh the dish again" }));
 
 // ---- 4. number_text at compile time --------------------------------------------------
 static_assert(formula::number_text(Rational { 3, 5 }, NumberStyle::exact_decimal(), unit::One) == "0.6");
@@ -156,10 +165,13 @@ int main()
     formula::Trace<> dishTrace {};
     auto const dish = formula::checked_evaluate<DishMass>(dishMass, weighings, formula::RecordingSink<> { dishTrace });
     check(dish.has_value(), "the dish's mass is a value");
-    std::printf("%s\n", formula::render_trace(dishTrace, { .maxSteps = 20, .numbers = roundedStyle }).c_str());
+    std::string const dishTraceText = formula::render_trace(dishTrace, { .maxSteps = 20, .numbers = paddedStyle });
+    std::printf("%s\n", dishTraceText.c_str());
     formula::NumberText const dishText = formula::number_text(dish->measurement(), roundedStyle);
     print_spelled("the dish's mass in its declared grams: ", dishText);
     std::printf("\n");
+    check(dishTraceText.find("t = 4.21 g; 4.23 g; 4.26 g\n") != std::string::npos, "padding cuts no decimal short");
+    check(dishTraceText.find("3. 1/3\n") != std::string::npos, "a typed number is never rounded");
     check(dishText == "\xe2\x89\x88" "4.2 g", "the declared result rounds at the gram's one decimal");
 
     formula::Trace<> limitTrace {};
@@ -182,6 +194,14 @@ int main()
     std::printf("LaTeX:          %s\n", latexText.c_str());
     std::printf("document():     %s\n\n", page.formula.c_str());
     check(decimalText == "(m_w - m_d) / (m_d - 25.5 g)", "the typed tare as the decimal it is");
+
+    formula::RenderOptions const rounding { .numbers = roundedStyle };
+    std::string const dishFormula = formula::render(dishMass, formula::DefaultVocabulary {}, rounding);
+    formula::Documentation const dishPage = formula::document(dishMean, formula::DefaultVocabulary {}, rounding);
+    std::printf("formula, rounded style:           %s\n", dishFormula.c_str());
+    std::printf("rejection's limit, rounded style: %s\n\n", dishPage.rejections.front().limit.c_str());
+    check(dishFormula.find("1/3") != std::string::npos, "a typed number is never rounded in a formula's text");
+    check(dishPage.rejections.front().limit.find("1/30") != std::string::npos, "nor in a documentation page's limit");
 
     NumberStyle const paddedDecimals = NumberStyle::exact_decimal(DecimalPadding::Padded);
     formula::Trace<> tareTrace {};
@@ -213,9 +233,9 @@ int main()
     // ---- 5. std::format -------------------------------------------------------------------
     std::printf("== 5. std::format ==\n\n");
 
-    formula::Measured<DryMass> const dryMass { rat(787, 5) };
-    formula::Measured<OvenTemperature> const oven { rat(105) };
-    formula::Measured<GrainSize> const grain { rat(63) };
+    formula::Measured<WetMass> const wetMass { rat(787, 5) };
+    formula::Measured<OvenTemperature> const oven { rat(583, 10) };
+    formula::Measured<GrainSize> const grain { rat(217) };
     FormatRow const reference[] = {
         FORMAT_ROW("0.6", std::format("{}", Rational { 3, 5 })),
         FORMAT_ROW("1/3", std::format("{}", Rational { 1, 3 })),
@@ -227,14 +247,14 @@ int main()
         FORMAT_ROW("0.6", std::format("{:~.3HalfEven}", Rational { 3, 5 })),
         FORMAT_ROW("     0.6", std::format("{:>8}", Rational { 3, 5 })),
         FORMAT_ROW("**0.6**", std::format("{:*^7}", Rational { 3, 5 })),
-        FORMAT_ROW("157.4 g", std::format("{}", dryMass)),
+        FORMAT_ROW("157.4 g", std::format("{}", wetMass)),
         FORMAT_ROW("2680/237 %", std::format("{}", w)),
         FORMAT_ROW("\xe2\x89\x88" "11.3 %", std::format("{:~HalfEven}", w)),
         FORMAT_ROW("11.31 %", std::format("{:.2HalfEven}", w)),
         FORMAT_ROW("(not measured)", std::format("{}", notMeasured)),
         FORMAT_ROW("  \xe2\x89\x88" "0.333", std::format("{:>8~.3HalfEven}", Rational { 1, 3 })),
-        FORMAT_ROW("  105 \xc2\xb0" "C", std::format("{:>8}", oven)),
-        FORMAT_ROW("   63 \xc2\xb5" "m", std::format("{:>8}", grain)),
+        FORMAT_ROW(" 58.3 \xc2\xb0" "C", std::format("{:>8}", oven)),
+        FORMAT_ROW("  217 \xc2\xb5" "m", std::format("{:>8}", grain)),
     };
     for (FormatRow const& row: reference)
     {
