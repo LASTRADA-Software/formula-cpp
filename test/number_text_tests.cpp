@@ -85,31 +85,31 @@ concept Viewable = requires(T&& spelled) { std::forward<T>(spelled).view(); };
 
 TEST_CASE("an exact decimal is shown only when it is the exact value", "[number_text]")
 {
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { 3, 5 }) == "0.6");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { 94411, 5000 }) == "18.8822");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { -7, 4 }) == "-1.75");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { 1, 262144 }) == "0.000003814697265625"); // 2^18: 18 places
-    STATIC_REQUIRE(!formula::exact_decimal(Rational { 1, 524288 }).has_value());             // 2^19: 19 places
-    STATIC_REQUIRE(!formula::exact_decimal(Rational { 1, 3 }).has_value());
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { 3, 5 }) == "0.6");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { 94411, 5000 }) == "18.8822");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { -7, 4 }) == "-1.75");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { 1, 262144 }) == "0.000003814697265625"); // 2^18: 18 places
+    STATIC_REQUIRE(!formula::exact_decimal_text(Rational { 1, 524288 }).has_value());             // 2^19: 19 places
+    STATIC_REQUIRE(!formula::exact_decimal_text(Rational { 1, 3 }).has_value());
     STATIC_REQUIRE(formula::fraction_text(Rational { -1, 3 }) == "-1/3");
 
     // Whole numbers, zero, and 10^18 itself as a denominator.
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { 4 }) == "4");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational {}) == "0");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { 1, 1'000'000'000'000'000'000 }) == "0.000000000000000001");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { -1, 20 }) == "-0.05");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { 4 }) == "4");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational {}) == "0");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { 1, 1'000'000'000'000'000'000 }) == "0.000000000000000001");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { -1, 20 }) == "-0.05");
     STATIC_REQUIRE(formula::fraction_text(Rational { 3, 5 }) == "3/5");
     STATIC_REQUIRE(formula::fraction_text(Rational { 4 }) == "4");
     STATIC_REQUIRE(formula::fraction_text(Rational {}) == "0");
 
-    // has_exact_decimal draws the same line exact_decimal does.
+    // has_exact_decimal draws the same line exact_decimal_text does.
     STATIC_REQUIRE(formula::has_exact_decimal(Rational { 1, 262144 }));
     STATIC_REQUIRE(!formula::has_exact_decimal(Rational { 1, 524288 }));
     STATIC_REQUIRE(!formula::has_exact_decimal(Rational { 1, 3 }));
     STATIC_REQUIRE(!formula::has_exact_decimal(Rational { 7, IntMax }));
 
     // Both are exact, whatever they show.
-    STATIC_REQUIRE(formula::exact_decimal(Rational { 3, 5 })->is_exact());
+    STATIC_REQUIRE(formula::exact_decimal_text(Rational { 3, 5 })->is_exact());
     STATIC_REQUIRE(formula::fraction_text(Rational { 1, 3 }).is_exact());
 }
 
@@ -118,8 +118,8 @@ TEST_CASE("the extremes of Rational are spelled in full", "[number_text]")
     // The magnitude of IntMin is 2^63, which Int cannot hold; the text has it.
     STATIC_REQUIRE(formula::fraction_text(Rational { IntMin }) == "-9223372036854775808");
     STATIC_REQUIRE(formula::fraction_text(Rational { IntMin, IntMax }) == "-9223372036854775808/9223372036854775807");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { IntMin }) == "-9223372036854775808");
-    STATIC_REQUIRE(*formula::exact_decimal(Rational { IntMax }) == "9223372036854775807");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { IntMin }) == "-9223372036854775808");
+    STATIC_REQUIRE(*formula::exact_decimal_text(Rational { IntMax }) == "9223372036854775807");
     STATIC_REQUIRE(
         formula::decimal_text(Rational { IntMin }, DecimalPlaces { 18 }, RoundingMode::HalfEven, DecimalPadding::Padded)
         == "-9223372036854775808.000000000000000000");
@@ -322,7 +322,7 @@ TEST_CASE("decimal_text agrees with checked_round wherever checked_round answers
                         formula::decimal_text(unrounded, DecimalPlaces { places }, roundingMode, DecimalPadding::Padded);
                     NumberText const trimmed =
                         formula::decimal_text(unrounded, DecimalPlaces { places }, roundingMode, DecimalPadding::Trimmed);
-                    std::string const exactRounded { formula::exact_decimal(*rounded)->view() };
+                    std::string const exactRounded { formula::exact_decimal_text(*rounded)->view() };
                     bool const changed = !(*rounded == unrounded);
 
                     if (padded.view() != padded_to(exactRounded, places) || trimmed.view() != exactRounded

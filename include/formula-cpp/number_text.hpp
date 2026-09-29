@@ -365,7 +365,7 @@ namespace detail
 /// @p shownValue as its exact decimal, with no trailing zeros: `0.6`,
 /// `18.8822`, `-1.75`, `4`. Nothing when it has none of 18 places or fewer
 /// -- see `has_exact_decimal` -- rather than a decimal that is not the value.
-[[nodiscard]] constexpr std::optional<NumberText> exact_decimal(Rational shownValue) noexcept
+[[nodiscard]] constexpr std::optional<NumberText> exact_decimal_text(Rational shownValue) noexcept
 {
     return detail::exact_decimal_text(shownValue, 0);
 }
@@ -402,8 +402,9 @@ namespace detail
 /// the denominator. A value that rounds to zero is written without a `-`.
 ///
 /// A negative @p places -- whole tens, hundreds -- is `checked_round` itself,
-/// then `exact_decimal` of what it rounded to: `125` to `DecimalPlaces { -1 }`
-/// is `120` in `HalfEven` and `130` in `HalfAwayFromZero`. That path runs
+/// then `exact_decimal_text` of what it rounded to: `125` to
+/// `DecimalPlaces { -1 }` is `120` in `HalfEven` and `130` in
+/// `HalfAwayFromZero`. That path runs
 /// `checked_round`'s arithmetic, so it can overflow where the rounding does,
 /// and it is the only one here that reports to the overflow census.
 ///
@@ -514,9 +515,9 @@ namespace detail
 /// `Measured` adds the unit's symbol.
 ///
 /// - `Fraction`: `fraction_text`.
-/// - `ExactDecimal`: `exact_decimal`, and the fraction when there is none:
+/// - `ExactDecimal`: `exact_decimal_text`, and the fraction when there is none:
 ///   `1/3` stays `1/3`.
-/// - `ApproximateDecimal`: `exact_decimal`, and when there is none,
+/// - `ApproximateDecimal`: `exact_decimal_text`, and when there is none,
 ///   `ApproximationMarker` then `checked_decimal_text` at
 ///   `declared_decimals(shownIn)` in the style's rounding mode: `1/3` in
 ///   `unit::One` (3 decimals) is `≈0.333`. Such a value never has an exact

@@ -64,7 +64,7 @@
 // rendered and documented, and its graph by `describe_graph` and `to_dot`;
 // a measured value spelled by `number_text` in each notation, with
 // `checked_number_text`, `decimal_text`, `fraction_text` and
-// `exact_decimal`; a `Rational` and a measured value written by
+// `exact_decimal_text`; a `Rational` and a measured value written by
 // `std::format`, aligned and rounded; and a quantity declared by alias at
 // global scope, so that its tag is one more global. A template it does
 // not reach is not guarded by it.
@@ -1074,7 +1074,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
                == "118.26"
         && formula::fraction_text(formula::Rational { -1, 3 }) == "-1/3"
         && formula::has_exact_decimal(formula::Rational { 3, 5 })
-        && *formula::exact_decimal(formula::Rational { 3, 5 }) == "0.6");
+        && *formula::exact_decimal_text(formula::Rational { 3, 5 }) == "0.6");
 
     // The same values written by std::format: a Rational as its exact
     // decimal, and the third of an edge right-aligned in ten code points,
