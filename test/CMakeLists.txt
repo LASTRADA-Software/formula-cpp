@@ -2460,6 +2460,76 @@ formula_add_negative_test(calculation_query_after_refused_definition
     EXPECT_COUNT 1
     REJECT "formula: this calculation neither defines nor reads this quantity"
            "formula: these definitions read one another in a cycle")
+
+# A worksheet, refused where it is made, set or asked.
+formula_add_negative_test(worksheet_input_missing
+    "formula: this worksheet's environment provides no value for an input of its calculation"
+    EXPECT_COUNT 1
+    REJECT "formula: this environment provides no value for this quantity" "no matching")
+formula_add_negative_test(worksheet_entry_unread
+    "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment provides no value for an input of its calculation" "no matching")
+formula_add_negative_test(worksheet_entry_misnamed
+    "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment provides no value for an input of its calculation" "no matching")
+formula_add_negative_test(worksheet_calculated_as_measurement
+    "formula: this quantity is calculated by the worksheet's calculation, and was given as a measurement"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+           "formula: this worksheet's environment provides no value for an input of its calculation"
+           "no matching")
+formula_add_negative_test(worksheet_set_calculated_as_measurement
+    "formula: this quantity is calculated by the worksheet's calculation, and was given as a measurement"
+    EXPECT_COUNT 1
+    REJECT "formula: set() names a quantity this worksheet's calculation neither reads nor defines" "no matching")
+formula_add_negative_test(worksheet_series_entry
+    "formula: a worksheet holds single values, and this entry is a series or raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment provides no value for an input of its calculation"
+           "holds a series for this quantity, not a single value"
+           "no matching")
+formula_add_negative_test(worksheet_set_series
+    "formula: a worksheet holds single values, and this entry is a series or raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: set() names a quantity this worksheet's calculation neither reads nor defines"
+           "holds a series for this quantity, not a single value"
+           "to non-scalar type" "no viable conversion" "cannot convert from"
+           "no matching")
+formula_add_negative_test(worksheet_set_twice
+    "formula: set() was given the same quantity more than once"
+    EXPECT_COUNT 1
+    REJECT "formula: set() names a quantity this worksheet's calculation neither reads nor defines" "tuple index"
+           "no matching")
+formula_add_negative_test(worksheet_set_unknown
+    "formula: set() names a quantity this worksheet's calculation neither reads nor defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+           "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+           "tuple index" "no matching")
+formula_add_negative_test(worksheet_result_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: clear_override names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_clear_input_override
+    "formula: clear_override names an input of the calculation"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's calculation neither defines nor reads the quantity asked for" "no matching")
+formula_add_negative_test(worksheet_of_refused_calculation
+    "formula: these definitions read one another in a cycle, so none of them can be calculated first"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment"
+           "formula: set() names a quantity this worksheet's calculation neither reads nor defines"
+           "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+           "formula: clear_override names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_view_missed_read
+    "formula: this environment provides no value for this quantity"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet" "no matching")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

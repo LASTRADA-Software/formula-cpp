@@ -4,7 +4,8 @@
 /// @file
 /// Calculations: each quantity bound to the expression that calculates it,
 /// and the dependency graph those definitions make, known and checked at
-/// compile time.
+/// compile time; and worksheets, which keep a calculation's values up to
+/// date.
 ///
 /// `define<Q>(expression)` says that the quantity `Q` is calculated by
 /// `expression`, and returns a `Definition`. Which quantities that expression
@@ -98,11 +99,41 @@
 /// calculation answers nothing and says nothing more. A query about a
 /// quantity the calculation neither defines nor reads is refused
 /// (`RequireCalculationQuantity`).
+///
+/// **A worksheet** holds a calculation's values: `worksheet(calculation,
+/// environment(...))` takes the inputs from the environment, and calculates
+/// each defined quantity when it is first asked for, by evaluating its
+/// definition against the worksheet's own values. After a change it
+/// calculates again only what the change reaches -- see `Worksheet`.
+///
+/// **Refused where a worksheet is made, set or asked, each with one
+/// message:**
+///  - an environment entry for a quantity the calculation neither reads nor
+///    defines (`RequireEntryReadByCalculation`): it would silently do
+///    nothing, and most likely names the wrong quantity;
+///  - a series or raw observations (`RequireWorksheetSingleValueEntry`);
+///  - a calculated quantity given as a measurement rather than entered by
+///    hand (`RequireCalculatedOverriddenByEntry`);
+///  - once every entry is accepted, an input the environment has no entry
+///    for (`RequireCalculationInput`);
+///  - `set()` naming one quantity twice (`RequireDistinctSettings`), and,
+///    once each is named once, a quantity the calculation neither reads nor
+///    defines (`RequireSettableQuantity`), a series, or a calculated
+///    quantity given as a measurement, refused as above;
+///  - asking about a quantity the calculation neither defines nor reads
+///    (`RequireWorksheetResult`), and `clear_override` of an input
+///    (`RequireCalculatedQuantity`).
+///
+/// A worksheet of a calculation refused already is asked none of these.
 
 #include <formula-cpp/binning.hpp>
 #include <formula-cpp/detail/type_list.hpp>
+#include <formula-cpp/environment.hpp>
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/measured.hpp>
+#include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/quantity.hpp>
@@ -117,6 +148,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -809,9 +841,22 @@ namespace detail
     {
         /// Never.
         static constexpr bool valid = false;
+        /// No inputs.
+        using inputs = QuantityList<>;
+        /// No quantity defined.
+        using defined = QuantityList<>;
+        /// No quantity.
+        using slots = QuantityList<>;
+        /// No input.
+        static constexpr std::size_t inputCount = 0;
+        /// No quantity.
+        static constexpr std::size_t slotCount = 0;
         /// Nothing.
         template <typename Q>
         static constexpr bool holds = false;
+        /// Nothing.
+        template <typename Q>
+        static constexpr bool defines = false;
         /// Nothing.
         template <typename Q, typename P>
         static constexpr bool depends_on = false;
@@ -1076,6 +1121,985 @@ template <Described Q, Described P, typename... Ds>
         return Graph::template depends_on<Q, P>;
     else
         return false;
+}
+
+// ------------------------------------------------------------ worksheets
+
+template <typename Calc>
+class Worksheet;
+
+namespace detail
+{
+    /// Whether the environment entry @p Entry holds a series or raw
+    /// observations rather than one value.
+    template <typename Entry>
+    inline constexpr bool isSeriesEntry = EntryTraits<Entry>::isSeries || EntryTraits<Entry>::isObservations;
+
+    /// Fails to compile when a worksheet's environment has no entry for an
+    /// input of its calculation.
+    template <typename Q, typename Env>
+    struct RequireCalculationInput
+    {
+        static_assert(Env::template provides<Q>,
+                      "formula: this worksheet's environment provides no value for an input of its calculation; supply "
+                      "one, as Measured<Q>::absent() if it was not measured -- the input and the environment appear in "
+                      "this diagnostic as the template arguments of RequireCalculationInput");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a worksheet's environment has an entry for a
+    /// quantity its calculation neither reads nor defines. Instantiated only
+    /// for such an entry.
+    template <typename Entry>
+    struct RequireEntryReadByCalculation
+    {
+        static_assert(alwaysFalse<Entry>,
+                      "formula: this worksheet's environment supplies a quantity its calculation neither reads nor "
+                      "defines; an entry nobody reads would silently do nothing, most likely because it names the wrong "
+                      "quantity -- the entry appears in this diagnostic as the template argument of "
+                      "RequireEntryReadByCalculation");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a calculated quantity is given as a measurement,
+    /// to a worksheet's environment or to `set`. Instantiated only for such a
+    /// quantity.
+    template <typename Q>
+    struct RequireCalculatedOverriddenByEntry
+    {
+        static_assert(alwaysFalse<Q>,
+                      "formula: this quantity is calculated by the worksheet's calculation, and was given as a "
+                      "measurement; override a calculated value by hand with entered(Measured<Q> { ... }) -- the "
+                      "quantity appears in this diagnostic as the template argument Q of "
+                      "RequireCalculatedOverriddenByEntry");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a worksheet is given a series or raw
+    /// observations.
+    template <typename Entry>
+    struct RequireWorksheetSingleValueEntry
+    {
+        static_assert(!isSeriesEntry<Entry>,
+                      "formula: a worksheet holds single values, and this entry is a series or raw observations -- the "
+                      "entry appears in this diagnostic as the template argument of RequireWorksheetSingleValueEntry");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when one call to `set` names one quantity twice.
+    template <typename... Es>
+    struct RequireDistinctSettings
+    {
+        template <typename Q>
+        static constexpr std::size_t occurrences =
+            (std::size_t { 0 } + ... + std::size_t { std::is_same_v<Q, typename EntryTraits<Es>::quantity> });
+
+        /// Whether each quantity is named once.
+        static constexpr bool distinct = (... && (occurrences<typename EntryTraits<Es>::quantity> == 1));
+
+        static_assert(distinct,
+                      "formula: set() was given the same quantity more than once; first-wins and last-wins are equally "
+                      "arbitrary, so neither is guessed -- the entries appear in this diagnostic as the template "
+                      "arguments of RequireDistinctSettings");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `set` names a quantity the calculation neither
+    /// reads nor defines.
+    template <typename Q, typename Calc>
+    struct RequireSettableQuantity
+    {
+        static_assert(CalculationGraphOf<Calc>::type::template holds<Q>,
+                      "formula: set() names a quantity this worksheet's calculation neither reads nor defines; the "
+                      "quantity and the calculation appear in this diagnostic as the template arguments of "
+                      "RequireSettableQuantity");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a worksheet is asked about a quantity its
+    /// calculation neither reads nor defines.
+    template <typename Q, typename Calc>
+    struct RequireWorksheetResult
+    {
+        static_assert(CalculationGraphOf<Calc>::type::template holds<Q>,
+                      "formula: this worksheet's calculation neither defines nor reads the quantity asked for; the "
+                      "quantity and the calculation appear in this diagnostic as the template arguments of "
+                      "RequireWorksheetResult");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when `clear_override` names an input. Instantiated
+    /// only for one.
+    template <typename Q>
+    struct RequireCalculatedQuantity
+    {
+        static_assert(alwaysFalse<Q>,
+                      "formula: clear_override names an input of the calculation; only a calculated quantity is "
+                      "overridden by hand, and an input is simply set again -- the quantity appears in this diagnostic "
+                      "as the template argument Q of RequireCalculatedQuantity");
+
+        static constexpr bool value = true;
+    };
+
+    /// The checks of one entry given to a worksheet -- in its environment
+    /// (@p Setting false) or to `set` (@p Setting true) -- in order, each
+    /// asked only once those before it hold: the calculation holds its
+    /// quantity (`RequireEntryReadByCalculation`, or for `set`
+    /// `RequireSettableQuantity`), it is one value
+    /// (`RequireWorksheetSingleValueEntry`), and a calculated quantity is
+    /// given as entered, an override (`RequireCalculatedOverriddenByEntry`).
+    template <typename Calc, typename Entry, bool Setting>
+    struct WorksheetEntryChecks
+    {
+        using Graph = typename CalculationGraphOf<Calc>::type;
+        using Q = typename EntryTraits<Entry>::quantity;
+
+        static constexpr bool held = Graph::template holds<Q>;
+        static_assert(std::conditional_t<held,
+                                         std::true_type,
+                                         std::conditional_t<Setting,
+                                                            RequireSettableQuantity<Q, Calc>,
+                                                            RequireEntryReadByCalculation<Entry>>>::value);
+
+        static constexpr bool single = held && !isSeriesEntry<Entry>;
+        static_assert(std::conditional_t<held, RequireWorksheetSingleValueEntry<Entry>, std::true_type>::value);
+
+        static constexpr bool measuresCalculated = Graph::template defines<Q> && !EntryTraits<Entry>::isEntered;
+        static_assert(
+            std::conditional_t<single && measuresCalculated, RequireCalculatedOverriddenByEntry<Q>, std::true_type>::value);
+
+        /// Whether every check holds.
+        static constexpr bool accepted = single && !measuresCalculated;
+        static constexpr bool value = true;
+    };
+
+    /// The checks of every one of @p Entries, each its own
+    /// (`WorksheetEntryChecks`), so that two mistakes draw a message each.
+    ///
+    /// Each checks struct here is asked through a static_assert in its
+    /// class, as every `Require` struct is, never only through a flag like
+    /// `accepted`: a static data member's initialiser is instantiated only
+    /// where it is used, so checks asked only through a flag would go
+    /// unasked wherever nothing reads it.
+    template <typename Calc, bool Setting, typename... Entries>
+    struct WorksheetEntriesChecks
+    {
+        static_assert((WorksheetEntryChecks<Calc, Entries, Setting>::value && ...));
+
+        /// Whether every entry's checks hold.
+        static constexpr bool accepted = (WorksheetEntryChecks<Calc, Entries, Setting>::accepted && ...);
+        static constexpr bool value = true;
+    };
+
+    /// What stands for checks not asked, since one before them failed.
+    struct WorksheetChecksNotAsked
+    {
+        /// Never: they were not asked.
+        static constexpr bool accepted = false;
+    };
+
+    /// The inputs @p Inputs each have an entry in @p Env.
+    template <typename Inputs, typename Env>
+    struct WorksheetInputChecks;
+
+    template <typename... Inputs, typename Env>
+    struct WorksheetInputChecks<QuantityList<Inputs...>, Env>
+    {
+        static_assert((RequireCalculationInput<Inputs, Env>::value && ...));
+
+        static constexpr bool value = true;
+    };
+
+    /// The checks of a worksheet's environment: every entry's, then every
+    /// input's. An input is looked for only once every entry is accepted, so
+    /// that an entry naming the wrong quantity -- whose right one is then
+    /// missing -- draws one message, about the entry.
+    template <typename Calc, typename Env>
+    struct WorksheetEnvironmentChecks;
+
+    template <typename Calc, typename... Entries>
+    struct WorksheetEnvironmentChecks<Calc, Environment<Entries...>>
+    {
+        static_assert(WorksheetEntriesChecks<Calc, false, Entries...>::value);
+
+        static constexpr bool entriesAccepted = WorksheetEntriesChecks<Calc, false, Entries...>::accepted;
+        static_assert(std::conditional_t<entriesAccepted,
+                                         WorksheetInputChecks<typename CalculationGraphOf<Calc>::type::inputs,
+                                                              Environment<Entries...>>,
+                                         std::true_type>::value);
+
+        static constexpr bool value = true;
+    };
+
+    /// The checks of one call to `set`: no quantity named twice, then, once
+    /// each is named once, every entry's.
+    template <typename Calc, typename... Es>
+    struct WorksheetSettingChecks
+    {
+        static_assert(RequireDistinctSettings<Es...>::value);
+
+        static constexpr bool distinct = RequireDistinctSettings<Es...>::distinct;
+        static_assert(
+            std::conditional_t<distinct, WorksheetEntriesChecks<Calc, true, Es...>, std::true_type>::value);
+
+        /// Whether every check holds.
+        static constexpr bool accepted =
+            std::conditional_t<distinct, WorksheetEntriesChecks<Calc, true, Es...>, WorksheetChecksNotAsked>::accepted;
+        static constexpr bool value = true;
+    };
+
+    /// The graph of the worksheet type @p Sheet.
+    template <typename Sheet>
+    struct WorksheetGraphOf;
+
+    template <typename Calc>
+    struct WorksheetGraphOf<Worksheet<Calc>>
+    {
+        /// Its calculation's graph.
+        using type = typename CalculationGraphOf<Calc>::type;
+    };
+
+    /// `std::tuple<Measured<Q>...>` for a quantity list.
+    template <typename List>
+    struct MeasurementsOf;
+
+    template <typename... Qs>
+    struct MeasurementsOf<QuantityList<Qs...>>
+    {
+        /// A measurement of each.
+        using type = std::tuple<Measured<Qs>...>;
+    };
+
+    /// `std::tuple<std::expected<Outcome<Q>, ArithmeticError>...>` for a
+    /// quantity list.
+    template <typename List>
+    struct OutcomesOf;
+
+    template <typename... Qs>
+    struct OutcomesOf<QuantityList<Qs...>>
+    {
+        /// What calculating each gave, failure included.
+        using type = std::tuple<std::expected<Outcome<Qs>, ArithmeticError>...>;
+    };
+
+    /// Whether @p mask sets the bit of @p Q's slot in @p Graph; false when
+    /// the graph does not hold @p Q, whose slot would be past the last bit.
+    template <typename Graph, typename Q>
+    [[nodiscard]] consteval bool slot_set_in(std::uint64_t mask) noexcept
+    {
+        if constexpr (Graph::template holds<Q>)
+            return ((mask >> Graph::template slot_of<Q>) & 1u) != 0;
+        else
+            return false;
+    }
+
+    /// The one way into a worksheet's state from outside it: how
+    /// `worksheet()` builds one, and how a `WorksheetView` reads one. Its
+    /// only friend; reaching it means writing `detail::`.
+    struct WorksheetAccess
+    {
+        /// A worksheet of @p definitionSet over @p inputEntries.
+        template <typename Calc, typename Env>
+        [[nodiscard]] static constexpr Worksheet<Calc> make(Calc const& definitionSet, Env const& inputEntries) noexcept
+        {
+            return Worksheet<Calc> { definitionSet, inputEntries };
+        }
+
+        /// The measurement @p sheet holds for its input in slot @p Slot.
+        template <std::size_t Slot, typename Sheet>
+        [[nodiscard]] static constexpr auto const& input(Sheet const& sheet) noexcept
+        {
+            return std::get<Slot>(sheet._inputs);
+        }
+
+        /// What calculating @p sheet's definition number @p D last gave, or
+        /// the override that stands in its place.
+        template <std::size_t D, typename Sheet>
+        [[nodiscard]] static constexpr auto const& result(Sheet const& sheet) noexcept
+        {
+            return std::get<D>(sheet._results);
+        }
+
+        /// The bits of @p sheet's inputs that were typed in.
+        template <typename Sheet>
+        [[nodiscard]] static constexpr std::uint64_t entered_inputs(Sheet const& sheet) noexcept
+        {
+            return sheet._entered;
+        }
+
+        /// The bits of @p sheet's calculated quantities overridden by hand.
+        template <typename Sheet>
+        [[nodiscard]] static constexpr std::uint64_t overridden_quantities(Sheet const& sheet) noexcept
+        {
+            return sheet._overridden;
+        }
+    };
+
+    /// The environment one definition of the worksheet @p Sheet is evaluated
+    /// against: the worksheet's own values, and of those only the ones whose
+    /// bits @p Visible sets -- the definition's declared reads. A read of
+    /// anything else fails to compile (`RequireProvided`) rather than read a
+    /// value the worksheet has not brought up to date for it.
+    ///
+    /// - Nothing is ever `is_entered`, so `checked_evaluate` always evaluates
+    ///   the definition: an override is the worksheet's to keep, and it never
+    ///   evaluates an overridden quantity at all.
+    /// - `checked_get` reads a calculated value whose calculation failed as
+    ///   that failure, so it reaches the definition as an operand's failure
+    ///   does; `get` reads it as absent.
+    /// - `source_of` says where each value came from, at run time: an input
+    ///   measured or typed in, a calculated value `Derived`, or typed in when
+    ///   overridden.
+    ///
+    /// When it is given a non-null @p readInto, each read made sets its bit
+    /// there: the reads one evaluation actually made, where `Visible` is the
+    /// reads it may make. Holds a pointer to the worksheet: it lives for one
+    /// evaluation, inside the call that made it.
+    template <typename Sheet, std::uint64_t Visible>
+    class WorksheetView
+    {
+        using Graph = typename WorksheetGraphOf<Sheet>::type;
+
+      public:
+        /// Views @p viewed, marking each read in @p readInto unless it is null.
+        constexpr WorksheetView(Sheet const* viewed, std::uint64_t* readInto) noexcept:
+            _sheet { viewed },
+            _readInto { readInto }
+        {
+        }
+
+        /// Whether the definition may read @p Q: the worksheet holds it, and
+        /// the definition declares it.
+        template <Described Q>
+        static constexpr bool provides = slot_set_in<Graph, Q>(Visible);
+
+        /// Never: see the class comment.
+        template <Described Q>
+        static constexpr bool is_entered = false;
+
+        /// Never: a worksheet holds no series.
+        template <Described Q>
+        static constexpr bool is_entered_series = false;
+
+        /// The value held for @p Q, a failed calculation reading as absent.
+        template <Described Q>
+        [[nodiscard]] constexpr Measured<Q> get() const noexcept
+        {
+            std::expected<Measured<Q>, ArithmeticError> const checkedRead = checked_get<Q>();
+            return checkedRead.has_value() ? *checkedRead : Measured<Q>::absent();
+        }
+
+        /// The value held for @p Q, or why calculating it failed.
+        template <Described Q>
+        [[nodiscard]] constexpr std::expected<Measured<Q>, ArithmeticError> checked_get() const noexcept
+        {
+            static_assert(RequireProvided<Q, WorksheetView>::value);
+            // Gated as `Environment::get` is: a failed static_assert does not
+            // stop compilation, and the code below was written for a
+            // quantity the definition may read.
+            if constexpr (provides<Q>)
+            {
+                constexpr std::size_t slot = Graph::template slot_of<Q>;
+                if (_readInto != nullptr)
+                    *_readInto |= std::uint64_t { 1 } << slot;
+                if constexpr (slot < Graph::inputCount)
+                    return WorksheetAccess::input<slot>(*_sheet);
+                else
+                {
+                    std::expected<Outcome<Q>, ArithmeticError> const& calculated =
+                        WorksheetAccess::result<slot - Graph::inputCount>(*_sheet);
+                    if (!calculated.has_value())
+                        return std::unexpected { calculated.error() };
+                    return calculated->measurement();
+                }
+            }
+            else
+                return Measured<Q>::absent();
+        }
+
+        /// Where the value held for @p Q came from.
+        template <Described Q>
+        [[nodiscard]] constexpr ValueSource source_of() const noexcept
+        {
+            static_assert(RequireProvided<Q, WorksheetView>::value);
+            if constexpr (provides<Q>)
+            {
+                constexpr std::size_t slot = Graph::template slot_of<Q>;
+                constexpr std::uint64_t own = std::uint64_t { 1 } << slot;
+                if constexpr (slot < Graph::inputCount)
+                    return (WorksheetAccess::entered_inputs(*_sheet) & own) != 0 ? ValueSource::ManuallyEntered
+                                                                                 : ValueSource::Measured;
+                else
+                    return (WorksheetAccess::overridden_quantities(*_sheet) & own) != 0 ? ValueSource::ManuallyEntered
+                                                                                        : ValueSource::Derived;
+            }
+            else
+                return ValueSource::Derived;
+        }
+
+      private:
+        Sheet const* _sheet;
+        std::uint64_t* _readInto;
+    };
+} // namespace detail
+
+/// A calculation's values, kept up to date: its inputs, and each calculated
+/// value calculated once and recalculated only when a change reaches it.
+/// Built by `worksheet(calculation, environment(...))`.
+///
+/// **Asking** -- `calculate<Q>()`, `checked_calculate<Q>()`, several at once,
+/// or with the quantities' variables, `calculate(var<Total>, var<NetDraw>)`
+/// -- brings up to date what the answer needs and nothing else, in dependency
+/// order. Each definition is evaluated by `checked_evaluate`, as it would be
+/// on its own, against the worksheet's values of just the quantities it reads
+/// (`detail::WorksheetView`): a calculated value is read as an input is, its
+/// source `Derived`, and a failure calculating it is a failure of that read,
+/// relayed as any operand's failure is -- and never reached from a `when()`
+/// branch not taken. An absent input leaves what reads it empty.
+///
+/// **Changing** -- `set(...)` an input's measurement or entry, or a
+/// calculated quantity's override, `entered(Measured<Q> { ... })`;
+/// `clear_override<Q>()`; `with(...)`, a changed copy -- marks what the
+/// change reaches, and calculates nothing until something is asked. A value
+/// set to what it already was changes nothing.
+///
+/// **Recalculating only what a change reaches.** A calculated value a change
+/// reached is calculated again only if something it reads has changed since
+/// it was last brought up to date, and otherwise reused as it stands. A value
+/// calculated again to what it was -- the same number, from the same source
+/// -- counts as unchanged, so what reads it can be reused in turn.
+/// `recomputed()` and `reused()` count both, since the worksheet was made.
+///
+/// **Where an answer can differ from evaluating the inlined formula:** a
+/// calculated value is kept in its quantity's declared unit, and converted
+/// back to the coherent SI unit where it is read. Both conversions are exact,
+/// but either can overflow where the inlined formula, which makes neither,
+/// would not.
+///
+/// Asking is not `const`: it brings values up to date, and counts. Its state
+/// changes only through its members; the one way in from outside is
+/// `detail::WorksheetAccess`.
+template <typename Calc>
+class Worksheet
+{
+    using Graph = typename detail::CalculationGraphOf<Calc>::type;
+
+    static constexpr std::size_t inputCount = Graph::inputCount;
+    static constexpr std::size_t slotCount = Graph::slotCount;
+    static constexpr std::size_t definedCount = slotCount - inputCount;
+
+    friend struct detail::WorksheetAccess;
+
+  public:
+    /// The calculation this worksheet keeps the values of.
+    [[nodiscard]] constexpr Calc const& calculation() const noexcept
+    {
+        return _definitionSet;
+    }
+
+    /// What calculating @p Q gives, failure included. For an input, its
+    /// value as given, `Measured` or `ManuallyEntered`; for an overridden
+    /// quantity, its override. Refused for a quantity the calculation neither
+    /// defines nor reads.
+    template <Described Q>
+    [[nodiscard]] constexpr std::expected<Outcome<Q>, ArithmeticError> checked_calculate() noexcept
+    {
+        bring_up_to_date<Q>();
+        return current<Q>();
+    }
+
+    /// What calculating each of the quantities asked for gives, failure
+    /// included, as a `std::tuple` in the order asked.
+    template <Described First, Described Second, Described... Rest>
+    [[nodiscard]] constexpr auto checked_calculate() noexcept
+    {
+        bring_up_to_date<First, Second, Rest...>();
+        return std::tuple { current<First>(), current<Second>(), current<Rest>()... };
+    }
+
+    /// `checked_calculate`, spelled with the quantities' variables:
+    /// `checked_calculate(var<Total>)`.
+    template <Described... Qs>
+        requires(sizeof...(Qs) > 0)
+    [[nodiscard]] constexpr auto checked_calculate(VarNode<Qs> const&...) noexcept
+    {
+        return checked_calculate<Qs...>();
+    }
+
+    /// What calculating @p Q gives. Throws `ArithmeticException` when its
+    /// calculation failed.
+    template <Described Q>
+    [[nodiscard]] constexpr Outcome<Q> calculate()
+    {
+        return detail::or_throw(checked_calculate<Q>());
+    }
+
+    /// What calculating each of the quantities asked for gives, as a
+    /// `std::tuple` in the order asked. Throws `ArithmeticException` for the
+    /// first of them, in that order, whose calculation failed.
+    template <Described First, Described Second, Described... Rest>
+    [[nodiscard]] constexpr auto calculate()
+    {
+        return std::apply([](auto const&... calculated) { return std::tuple { detail::or_throw(calculated)... }; },
+                          checked_calculate<First, Second, Rest...>());
+    }
+
+    /// `calculate`, spelled with the quantities' variables:
+    /// `auto [total, net] = sheet.calculate(var<Total>, var<NetDraw>);`.
+    template <Described... Qs>
+        requires(sizeof...(Qs) > 0)
+    [[nodiscard]] constexpr auto calculate(VarNode<Qs> const&...)
+    {
+        return calculate<Qs...>();
+    }
+
+    /// Sets each of @p entries: an input's `Measured` or `Entered` value, or a
+    /// calculated quantity's override, `entered(Measured<Q> { ... })`, and
+    /// marks what the changed values reach. An entry equal to what it
+    /// replaces changes nothing. Refused for a quantity named twice, one the
+    /// calculation neither defines nor reads, a series or raw observations,
+    /// and a calculated quantity given as a measurement.
+    template <detail::EnvironmentEntry... Es>
+        requires(sizeof...(Es) > 0)
+    constexpr Worksheet& set(Es... entries) & noexcept
+    {
+        static_assert(
+            std::conditional_t<Graph::valid, detail::WorksheetSettingChecks<Calc, Es...>, std::true_type>::value);
+        if constexpr (Graph::valid)
+            if constexpr (detail::WorksheetSettingChecks<Calc, Es...>::accepted)
+            {
+                std::uint64_t changed = 0;
+                (take_setting(entries, changed), ...);
+                mark_changed(changed);
+            }
+        return *this;
+    }
+
+    /// `set`, on a worksheet about to be discarded: returns it, changed, so
+    /// that `worksheet(...).set(...)` can be kept or asked at once.
+    template <detail::EnvironmentEntry... Es>
+        requires(sizeof...(Es) > 0)
+    [[nodiscard]] constexpr Worksheet set(Es... entries) && noexcept
+    {
+        set(entries...);
+        return std::move(*this);
+    }
+
+    /// A copy of this worksheet with @p entries set, and this one unchanged.
+    /// The copy starts from every value calculated so far, and from the
+    /// counters.
+    template <detail::EnvironmentEntry... Es>
+        requires(sizeof...(Es) > 0)
+    [[nodiscard]] constexpr Worksheet with(Es... entries) const noexcept
+    {
+        Worksheet changedCopy { *this };
+        changedCopy.set(entries...);
+        return changedCopy;
+    }
+
+    /// Drops the override of the calculated quantity @p Q, so that it is
+    /// calculated again when next asked for; nothing when it has none.
+    /// Refused for a quantity the calculation neither defines nor reads, and
+    /// for an input, which is set again rather than overridden.
+    template <Described Q>
+    constexpr Worksheet& clear_override() & noexcept
+    {
+        static_assert(std::conditional_t<Graph::valid, detail::RequireWorksheetResult<Q, Calc>, std::true_type>::value);
+        if constexpr (Graph::valid && Graph::template holds<Q>)
+        {
+            static_assert(
+                std::conditional_t<Graph::template defines<Q>, std::true_type, detail::RequireCalculatedQuantity<Q>>::value);
+            if constexpr (Graph::template defines<Q>)
+            {
+                constexpr std::uint64_t own = own_bit<Graph::template slot_of<Q>>();
+                if ((_overridden & own) != 0)
+                {
+                    _overridden &= ~own;
+                    _hasValue &= ~own;
+                    mark_changed(own);
+                }
+            }
+        }
+        return *this;
+    }
+
+    /// Whether @p Q is overridden by hand; never for an input. Refused for a
+    /// quantity the calculation neither defines nor reads.
+    template <Described Q>
+    [[nodiscard]] constexpr bool is_overridden() const noexcept
+    {
+        static_assert(std::conditional_t<Graph::valid, detail::RequireWorksheetResult<Q, Calc>, std::true_type>::value);
+        if constexpr (Graph::valid && Graph::template holds<Q>)
+            return (_overridden & own_bit<Graph::template slot_of<Q>>()) != 0;
+        else
+            return false;
+    }
+
+    /// How many times a calculated value has been calculated since the
+    /// worksheet was made.
+    [[nodiscard]] constexpr std::size_t recomputed() const noexcept
+    {
+        return _recomputed;
+    }
+
+    /// How many times a calculated value a change reached has been reused as
+    /// it stood, nothing it reads having changed, since the worksheet was
+    /// made.
+    [[nodiscard]] constexpr std::size_t reused() const noexcept
+    {
+        return _reused;
+    }
+
+  private:
+    using Inputs = typename detail::MeasurementsOf<typename Graph::inputs>::type;
+    using Results = typename detail::OutcomesOf<typename Graph::defined>::type;
+
+    /// Takes each input's value, and each override, from @p inputEntries.
+    template <typename... Entries>
+    constexpr Worksheet(Calc const& definitionSet, Environment<Entries...> const& inputEntries) noexcept:
+        _definitionSet { definitionSet },
+        _inputs {},
+        _results {},
+        _entered { 0 },
+        _overridden { 0 },
+        _hasValue { 0 },
+        _stale { 0 },
+        _changedAt {},
+        _verifiedAt {},
+        _revision { 1 },
+        _recomputed { 0 },
+        _reused { 0 }
+    {
+        if constexpr (Graph::valid)
+        {
+            take_inputs(inputEntries, std::make_index_sequence<inputCount> {});
+            (take_override<Entries>(inputEntries), ...);
+        }
+    }
+
+    /// The bit of slot @p Slot.
+    template <std::size_t Slot>
+    [[nodiscard]] static consteval std::uint64_t own_bit() noexcept
+    {
+        return std::uint64_t { 1 } << Slot;
+    }
+
+    template <typename... Entries, std::size_t... Slots>
+    constexpr void take_inputs(Environment<Entries...> const& inputEntries, std::index_sequence<Slots...>) noexcept
+    {
+        (take_input<Slots>(inputEntries), ...);
+    }
+
+    /// The value @p inputEntries holds for the input in slot @p Slot: left
+    /// absent where it holds none or holds a series, each refused by
+    /// `worksheet()`.
+    template <std::size_t Slot, typename... Entries>
+    constexpr void take_input(Environment<Entries...> const& inputEntries) noexcept
+    {
+        using Q = detail::QuantityAt<Slot, typename Graph::inputs>;
+        constexpr bool single = (... || (detail::entry_is_for<Q, Entries> && !detail::isSeriesEntry<Entries>));
+        if constexpr (single)
+        {
+            std::get<Slot>(_inputs) = inputEntries.template get<Q>();
+            if constexpr (Environment<Entries...>::template is_entered<Q>)
+                _entered |= own_bit<Slot>();
+        }
+        _changedAt[Slot] = _revision;
+        _verifiedAt[Slot] = _revision;
+    }
+
+    /// The override @p inputEntries holds for a calculated quantity, when
+    /// its entry @p Entry is one.
+    template <typename Entry, typename... Entries>
+    constexpr void take_override(Environment<Entries...> const& inputEntries) noexcept
+    {
+        using Q = typename detail::EntryTraits<Entry>::quantity;
+        if constexpr (Graph::template defines<Q> && detail::EntryTraits<Entry>::isEntered
+                      && !detail::isSeriesEntry<Entry>)
+        {
+            constexpr std::size_t slot = Graph::template slot_of<Q>;
+            std::get<slot - inputCount>(_results) =
+                Outcome<Q>::value(inputEntries.template get<Q>(), ValueSource::ManuallyEntered);
+            _overridden |= own_bit<slot>();
+            _hasValue |= own_bit<slot>();
+            _changedAt[slot] = _revision;
+            _verifiedAt[slot] = _revision;
+        }
+    }
+
+    /// Takes one entry given to `set`, setting its slot's bit in @p changed
+    /// when it changes what the worksheet holds.
+    template <typename Entry>
+    constexpr void take_setting(Entry const& setting, std::uint64_t& changed) noexcept
+    {
+        using Q = typename detail::EntryTraits<Entry>::quantity;
+        constexpr std::size_t slot = Graph::template slot_of<Q>;
+        constexpr std::uint64_t own = own_bit<slot>();
+        Measured<Q> const settingValue = detail::EntryTraits<Entry>::measurement(setting);
+        if constexpr (slot < inputCount)
+        {
+            constexpr bool typedIn = detail::EntryTraits<Entry>::isEntered;
+            Measured<Q>& kept = std::get<slot>(_inputs);
+            if (kept == settingValue && ((_entered & own) != 0) == typedIn)
+                return;
+            kept = settingValue;
+            if constexpr (typedIn)
+                _entered |= own;
+            else
+                _entered &= ~own;
+        }
+        else
+        {
+            Outcome<Q> const typedOutcome = Outcome<Q>::value(settingValue, ValueSource::ManuallyEntered);
+            std::expected<Outcome<Q>, ArithmeticError>& kept = std::get<slot - inputCount>(_results);
+            if ((_overridden & own) != 0 && kept.has_value() && *kept == typedOutcome)
+                return;
+            kept = typedOutcome;
+            _overridden |= own;
+            _hasValue |= own;
+            _stale &= ~own;
+        }
+        changed |= own;
+    }
+
+    /// Records that the values in the slots @p changed changed: one new
+    /// revision, and everything that depends on them marked to be brought up
+    /// to date. Nothing when none did.
+    constexpr void mark_changed(std::uint64_t changed) noexcept
+    {
+        if (changed == 0)
+            return;
+        ++_revision;
+        for (std::size_t slot = 0; slot < slotCount; ++slot)
+            if (((changed >> slot) & 1u) != 0)
+            {
+                _changedAt[slot] = _revision;
+                _verifiedAt[slot] = _revision;
+                _stale |= Graph::downstream[slot];
+            }
+    }
+
+    /// Brings up to date what @p Qs need. Refused for a quantity the
+    /// calculation neither defines nor reads; nothing for a calculation
+    /// refused already.
+    template <Described... Qs>
+    constexpr void bring_up_to_date() noexcept
+    {
+        static_assert(
+            (std::conditional_t<Graph::valid, detail::RequireWorksheetResult<Qs, Calc>, std::true_type>::value && ...));
+        if constexpr (Graph::valid && (Graph::template holds<Qs> && ...))
+            refresh(needed((own_bit<Graph::template slot_of<Qs>>() | ...)));
+    }
+
+    /// @p requested, and every calculated value they need brought up to
+    /// date: what each reads, through any chain -- except past an override,
+    /// which reads nothing.
+    [[nodiscard]] constexpr std::uint64_t needed(std::uint64_t requested) const noexcept
+    {
+        std::uint64_t need = requested;
+        for (std::size_t remaining = slotCount; remaining > 0; --remaining)
+        {
+            std::size_t const slot = Graph::order[remaining - 1];
+            if (((need >> slot) & 1u) != 0 && ((_overridden >> slot) & 1u) == 0)
+                need |= Graph::reads[slot];
+        }
+        return need;
+    }
+
+    /// Brings the calculated values whose bits @p need sets up to date, in
+    /// dependency order.
+    constexpr void refresh(std::uint64_t need) noexcept
+    {
+        refresh_in_order(need, std::make_index_sequence<definedCount> {});
+    }
+
+    /// `refresh`, for the calculated values at the positions @p Positions of
+    /// the dependency order, after the inputs.
+    template <std::size_t... Positions>
+    constexpr void refresh_in_order(std::uint64_t need, std::index_sequence<Positions...>) noexcept
+    {
+        ((((need >> Graph::order[inputCount + Positions]) & 1u) != 0
+              ? refresh_slot<Graph::order[inputCount + Positions]>()
+              : void()),
+         ...);
+    }
+
+    /// Whether nothing the calculated value in slot @p Slot reads has changed
+    /// since that value was last brought up to date.
+    template <std::size_t Slot>
+    [[nodiscard]] constexpr bool reads_unchanged() const noexcept
+    {
+        for (std::size_t slot = 0; slot < slotCount; ++slot)
+            if (((Graph::reads[Slot] >> slot) & 1u) != 0 && _changedAt[slot] > _verifiedAt[Slot])
+                return false;
+        return true;
+    }
+
+    /// Brings the calculated value in slot @p Slot up to date, everything it
+    /// reads being up to date already: nothing for an override or a value no
+    /// change reached; reused when nothing it reads changed; otherwise
+    /// calculated, and counted as changed only when it differs from the
+    /// answer it replaces.
+    template <std::size_t Slot>
+    constexpr void refresh_slot() noexcept
+    {
+        constexpr std::uint64_t own = own_bit<Slot>();
+        constexpr std::size_t definitionIndex = Slot - inputCount;
+        using Q = detail::QuantityAt<Slot, typename Graph::slots>;
+
+        if ((_overridden & own) != 0)
+            return;
+        bool const hadValue = (_hasValue & own) != 0;
+        if (hadValue && (_stale & own) == 0)
+            return;
+        if (hadValue && reads_unchanged<Slot>())
+        {
+            _stale &= ~own;
+            _verifiedAt[Slot] = _revision;
+            ++_reused;
+            return;
+        }
+
+        std::expected<Outcome<Q>, ArithmeticError> const fresh = formula::checked_evaluate<Q>(
+            std::get<definitionIndex>(_definitionSet.definitions).expression,
+            detail::WorksheetView<Worksheet, Graph::reads[Slot]> { this, nullptr });
+        ++_recomputed;
+        std::expected<Outcome<Q>, ArithmeticError>& kept = std::get<definitionIndex>(_results);
+        if (!hadValue || fresh != kept)
+        {
+            kept = fresh;
+            _changedAt[Slot] = _revision;
+        }
+        _verifiedAt[Slot] = _revision;
+        _hasValue |= own;
+        _stale &= ~own;
+    }
+
+    /// What the worksheet holds for @p Q, once brought up to date: an input
+    /// as given, a calculated value or its override. Empty for a calculation
+    /// refused already, or a quantity it does not hold.
+    template <Described Q>
+    [[nodiscard]] constexpr std::expected<Outcome<Q>, ArithmeticError> current() const noexcept
+    {
+        if constexpr (Graph::valid && Graph::template holds<Q>)
+        {
+            constexpr std::size_t slot = Graph::template slot_of<Q>;
+            if constexpr (slot < inputCount)
+                return Outcome<Q>::value(std::get<slot>(_inputs),
+                                         (_entered & own_bit<slot>()) != 0 ? ValueSource::ManuallyEntered
+                                                                           : ValueSource::Measured);
+            else
+                return std::get<slot - inputCount>(_results);
+        }
+        else
+            return Outcome<Q>::empty();
+    }
+
+    /// The definitions. Written in the constructor's list, with no `{}`
+    /// default member initialiser: they hold expressions -- see `Corrections`
+    /// (`lookup.hpp`).
+    Calc _definitionSet;
+    /// Each input's value, in slot order.
+    Inputs _inputs;
+    /// Each calculated value, or its override, in the order defined.
+    Results _results;
+    /// The bits of the inputs typed in.
+    std::uint64_t _entered;
+    /// The bits of the calculated quantities overridden by hand.
+    std::uint64_t _overridden;
+    /// The bits of the calculated quantities holding a value, calculated or
+    /// typed in.
+    std::uint64_t _hasValue;
+    /// The bits of the calculated values a change has reached since they
+    /// were last brought up to date.
+    std::uint64_t _stale;
+    /// The revision at which each value last changed.
+    std::array<std::uint64_t, slotCount> _changedAt;
+    /// The revision at which each value was last brought up to date.
+    std::array<std::uint64_t, slotCount> _verifiedAt;
+    /// One more for each change: a `set` that changed something, or a
+    /// `clear_override` that dropped an override.
+    std::uint64_t _revision;
+    /// See `recomputed()`.
+    std::size_t _recomputed;
+    /// See `reused()`.
+    std::size_t _reused;
+};
+
+/// A worksheet of @p definitionSet over the inputs @p inputEntries holds:
+/// `worksheet(bill, environment(Measured<Price> { ... }, ...))`. The
+/// environment holds one value for every input -- `Measured<Q>::absent()` for
+/// one not measured -- and may override a calculated quantity by hand,
+/// `entered(Measured<Q> { ... })`; nothing else. Refused, each with one
+/// message, for an entry the calculation neither reads nor defines, a series
+/// or raw observations, a calculated quantity given as a measurement, and,
+/// once every entry is accepted, an input the environment has no entry for.
+/// Nothing is calculated until something is asked.
+template <typename... Ds, typename... Entries>
+[[nodiscard]] constexpr Worksheet<Calculation<Ds...>> worksheet(Calculation<Ds...> const& definitionSet,
+                                                                Environment<Entries...> const& inputEntries) noexcept
+{
+    static_assert(std::conditional_t<detail::CalculationGraph<Ds...>::valid,
+                                     detail::WorksheetEnvironmentChecks<Calculation<Ds...>, Environment<Entries...>>,
+                                     std::true_type>::value);
+    return detail::WorksheetAccess::make(definitionSet, inputEntries);
+}
+
+/// `dependencies_of`, asked of a worksheet's calculation.
+template <Described Q, typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] constexpr auto dependencies_of(Worksheet<Calculation<Ds...>> const&, V const& vocabulary = V {}) noexcept
+{
+    return detail::related_symbols<detail::GraphRelation::Reads, Q, Ds...>(vocabulary);
+}
+
+/// `dependents_of`, asked of a worksheet's calculation.
+template <Described Q, typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] constexpr auto dependents_of(Worksheet<Calculation<Ds...>> const&, V const& vocabulary = V {}) noexcept
+{
+    return detail::related_symbols<detail::GraphRelation::Readers, Q, Ds...>(vocabulary);
+}
+
+/// `upstream_of`, asked of a worksheet's calculation.
+template <Described Q, typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] constexpr auto upstream_of(Worksheet<Calculation<Ds...>> const&, V const& vocabulary = V {}) noexcept
+{
+    return detail::related_symbols<detail::GraphRelation::Upstream, Q, Ds...>(vocabulary);
+}
+
+/// `affected_by`, asked of a worksheet's calculation.
+template <Described Q, typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] constexpr auto affected_by(Worksheet<Calculation<Ds...>> const&, V const& vocabulary = V {}) noexcept
+{
+    return detail::related_symbols<detail::GraphRelation::Downstream, Q, Ds...>(vocabulary);
+}
+
+/// `inputs_of`, asked of a worksheet's calculation.
+template <typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] constexpr auto inputs_of(Worksheet<Calculation<Ds...>> const& sheet, V const& vocabulary = V {}) noexcept
+{
+    return formula::inputs_of(sheet.calculation(), vocabulary);
+}
+
+/// `calculation_order`, asked of a worksheet's calculation.
+template <typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] constexpr auto calculation_order(Worksheet<Calculation<Ds...>> const& sheet,
+                                               V const& vocabulary = V {}) noexcept
+{
+    return formula::calculation_order(sheet.calculation(), vocabulary);
+}
+
+/// `depends_on`, asked of a worksheet's calculation.
+template <Described Q, Described P, typename... Ds>
+[[nodiscard]] constexpr bool depends_on(Worksheet<Calculation<Ds...>> const& sheet) noexcept
+{
+    return formula::depends_on<Q, P>(sheet.calculation());
 }
 
 } // namespace formula

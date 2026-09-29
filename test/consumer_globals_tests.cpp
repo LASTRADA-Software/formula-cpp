@@ -55,7 +55,11 @@
 // `lineage_of` and `origin_of` reading the trace's side tables, and under an
 // overlay's constant and derived quantity, traced; `define` of the formula
 // above and of a variant an overlay derived a quantity in, with what each
-// reads, and a `calculation` of two with every query over its graph; and a
+// reads, and a `calculation` of two with every query over its graph; a
+// `worksheet` of it, from an environment with and without an override,
+// asked for one value and for two, by type and by variable, set, set on a
+// worksheet about to be discarded, copied with an override by `with`, the
+// override cleared, with its counters and every query; and a
 // quantity declared by alias at global scope, so that its tag is one more
 // global. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
@@ -957,6 +961,49 @@ ConsumerGlobalsProbe probe_consumer_globals()
         // strength.
         && formula::dependencies_of<Force>(strengthCalculation).empty()
         && formula::dependents_of<Strength>(strengthCalculation, north).empty());
+
+    // A worksheet of that calculation: 100 kN on a 100 mm edge is 10 MPa,
+    // 200 kN 20 MPa, and half the factor, typed in, halves it again.
+    auto strengthSheet =
+        formula::worksheet(strengthCalculation,
+                           formula::environment(formula::Measured<Force> { formula::Rational { 100000 } },
+                                                formula::Measured<EdgeX> { formula::Rational { 100 } }));
+    auto const firstStrength = strengthSheet.checked_calculate<Strength>();
+    strengthSheet.set(formula::Measured<Force> { formula::Rational { 200000 } });
+    auto const [setStrength, setFactor] = strengthSheet.calculate<Strength, Factor>();
+    auto const [checkedStrength, checkedForce] = strengthSheet.checked_calculate(var<Strength>, var<Force>);
+    auto halvedCopy = strengthSheet.with(formula::entered(formula::Measured<Factor> { formula::Rational { 1, 2 } }));
+    auto const halvedStrength = halvedCopy.calculate(var<Strength>);
+    bool const halvedOverridden = halvedCopy.is_overridden<Factor>();
+    halvedCopy.clear_override<Factor>();
+    auto const restoredStrength = halvedCopy.calculate<Strength>();
+    auto const widerStrength =
+        formula::worksheet(strengthCalculation,
+                           formula::environment(formula::Measured<Force> { formula::Rational { 100000 } },
+                                                formula::Measured<EdgeX> { formula::Rational { 100 } },
+                                                formula::entered(formula::Measured<Factor> { formula::Rational { 1 } })))
+            .set(formula::Measured<EdgeX> { formula::Rational { 200 } })
+            .checked_calculate<Strength>();
+    probe.checks.push_back(
+        firstStrength.has_value() && firstStrength->measurement().value() == formula::Rational { 10 }
+        && setStrength.measurement().value() == formula::Rational { 20 }
+        && setFactor.measurement().value() == formula::Rational { 1 } && checkedStrength.has_value()
+        && checkedStrength->measurement().value() == formula::Rational { 20 } && checkedForce.has_value()
+        && checkedForce->source() == formula::ValueSource::Measured
+        && halvedStrength.measurement().value() == formula::Rational { 10 } && halvedOverridden
+        && !halvedCopy.is_overridden<Factor>() && restoredStrength.measurement().value() == formula::Rational { 20 }
+        && widerStrength.has_value() && widerStrength->measurement().value() == formula::Rational { 5, 2 }
+        && strengthSheet.recomputed() == 3 && strengthSheet.reused() == 0 && halvedCopy.recomputed() == 6);
+    probe.checks.push_back(
+        formula::inputs_of(strengthSheet, north) == std::array<std::string_view, 2> { "P", "x_m" }
+        && formula::calculation_order(strengthSheet) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::dependencies_of<Strength>(strengthSheet, north)
+               == std::array<std::string_view, 3> { "P", "x_m", "k" }
+        && formula::dependents_of<EdgeX>(strengthSheet) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::upstream_of<Strength>(strengthSheet).size() == 3
+        && formula::affected_by<Force>(strengthSheet, north) == std::array<std::string_view, 1> { "f_c" }
+        && formula::depends_on<Strength, EdgeX>(strengthSheet) && !formula::depends_on<Factor, Force>(strengthSheet)
+        && formula::dependencies_of<Force>(strengthSheet).empty());
 
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};

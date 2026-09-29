@@ -36,15 +36,38 @@ may break it, and each such change is recorded here.
   seen inside.
 - `calculation(define<A>(...), ...)` builds a `Calculation` whose dependency graph is worked out and
   checked at compile time. Its inputs are what its definitions read and none of them defines, in the
-  order first read; its dependency order lists the inputs, then each defined quantity once everything
-  it reads comes before it, keeping the order given wherever it can. `dependencies_of`,
-  `dependents_of`, `upstream_of`, `affected_by`, `inputs_of` and `calculation_order` answer the
-  symbols concerned as a `std::array<std::string_view, N>`, in that order and in a vocabulary's
-  words, and `depends_on` whether one quantity depends on another. A calculation is refused where it
-  is written when it is given something other than a definition, or nothing; defines a quantity
-  twice; holds more than 64 quantities; or holds a definition that reads what it defines, or
-  definitions that read one another in a cycle. A query about a quantity the calculation neither
-  defines nor reads is refused.
+  order first read, and `inputs_of` lists them. Its defined quantities are calculated in dependency
+  order, each once everything it reads is known, keeping the order given wherever it can, and
+  `calculation_order` lists them -- the defined quantities only -- in that order. `dependencies_of`,
+  `dependents_of`, `upstream_of` and `affected_by` answer the quantities concerned in dependency
+  order, inputs first. Each of these queries answers symbols as a `std::array<std::string_view, N>`,
+  in a vocabulary's words, and `depends_on` whether one quantity depends on another. A calculation is
+  refused where it is written when it is given something other than a definition, or nothing;
+  defines a quantity twice; holds more than 64 quantities; or holds a definition that reads what it
+  defines, or definitions that read one another in a cycle. A query about a quantity the calculation
+  neither defines nor reads is refused.
+- `worksheet(calculation, environment(...))` builds a `Worksheet`: the calculation's inputs, taken
+  from the environment, and its calculated values, each calculated when first asked for and
+  recalculated only when a change reaches it. `calculate<Q>()` answers an `Outcome<Q>`, throwing
+  `ArithmeticException` for a failed calculation, and `checked_calculate<Q>()` answers
+  `std::expected<Outcome<Q>, ArithmeticError>`; each takes several quantities too, answering a
+  `std::tuple`, or the quantities' variables, as in
+  `auto [total, vat] = sheet.calculate(var<Total>, var<Vat>)`. Each definition is evaluated by
+  `checked_evaluate` against the worksheet's values of just the quantities it reads: a failed value
+  fails what reads it as a failed operand would, except on a `when()` branch not taken, and an absent
+  input leaves what reads it empty. `set(...)` changes inputs, or overrides a calculated value by hand
+  with `entered(Measured<Q> { ... })`, and marks what the change reaches; `clear_override<Q>()` drops
+  an override; `with(...)` answers a changed copy and leaves the worksheet as it was. A value a change
+  reaches is reused when nothing it reads has changed, and a value calculated again to the same
+  answer from the same source counts as unchanged, so that what reads it can be reused in turn;
+  `recomputed()` and `reused()` count both. The calculation's queries take a worksheet as well. A
+  calculated value is kept in its quantity's declared unit, so a conversion the inlined formula never
+  makes can overflow. Refused where it is written, each with one message: an environment with no
+  entry for an input, with an entry the calculation neither reads nor defines, with a series or raw
+  observations, or with a calculated quantity given as a measurement rather than `entered`; `set()`
+  naming one quantity twice, one the calculation neither reads nor defines, a series, or a calculated
+  quantity given as a measurement; asking about a quantity the calculation neither defines nor reads;
+  and `clear_override` of an input.
 
 ### Changed
 

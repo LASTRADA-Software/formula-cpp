@@ -23,6 +23,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -664,4 +665,708 @@ TEST_CASE("a calculation holds up to 64 quantities, and orders them all", "[calc
     STATIC_REQUIRE(formula::affected_by<Link<0>>(chain).size() == 63);
     STATIC_REQUIRE(formula::depends_on<Link<63>, Link<0>>(chain));
     STATIC_REQUIRE_FALSE(formula::depends_on<Link<0>, Link<63>>(chain));
+}
+
+// ------------------------------------------------------------ worksheets
+
+namespace
+{
+namespace household
+{
+    /// The bill's ten inputs, each given or not.
+    struct BillValues
+    {
+        std::optional<formula::Rational> fridgeW;
+        std::optional<formula::Rational> fridgeH;
+        std::optional<formula::Rational> ovenKw;
+        std::optional<formula::Rational> ovenH;
+        std::optional<formula::Rational> heaterKw;
+        std::optional<formula::Rational> heaterH;
+        std::optional<formula::Rational> solar;
+        std::optional<formula::Rational> price;
+        std::optional<formula::Rational> feedIn;
+        std::optional<formula::Rational> baseFee;
+    };
+
+    /// The fixture's inputs.
+    inline constexpr BillValues billValues {
+        rat(200), rat(24), rat(5, 2), rat(1), rat(3, 2), rat(4), rat(150), rat(8, 25), rat(2, 25), rat(25, 2)
+    };
+
+    /// @p value measured, or absent when it is not given.
+    template <typename Q>
+    constexpr formula::Measured<Q> given(std::optional<formula::Rational> const& value)
+    {
+        return value.has_value() ? formula::Measured<Q> { *value } : formula::Measured<Q>::absent();
+    }
+
+    /// An environment of the bill's inputs, measured as @p values says, with
+    /// @p extra after them.
+    template <typename... Extra>
+    constexpr auto bill_environment(BillValues const& values, Extra... extra)
+    {
+        return formula::environment(given<FridgeW>(values.fridgeW),
+                                    given<FridgeH>(values.fridgeH),
+                                    given<OvenKw>(values.ovenKw),
+                                    given<OvenH>(values.ovenH),
+                                    given<HeaterKw>(values.heaterKw),
+                                    given<HeaterH>(values.heaterH),
+                                    given<Solar>(values.solar),
+                                    given<Price>(values.price),
+                                    given<FeedIn>(values.feedIn),
+                                    given<BaseFee>(values.baseFee),
+                                    extra...);
+    }
+
+    /// Which value a step of a sequence asks for once it has set its inputs.
+    enum class Asked
+    {
+        Nothing,
+        NetDraw,
+        FeedInCredit,
+        Total,
+    };
+
+    /// One step of a sequence of changes to the bill's worksheet: every input
+    /// set as `values` says, the price typed in or measured, the net draw
+    /// overridden or its override cleared, and then one value asked for.
+    struct BillStep
+    {
+        BillValues values;
+        bool priceTypedIn = false;
+        std::optional<formula::Rational> netDrawOverride = std::nullopt;
+        Asked asked = Asked::Total;
+    };
+
+    /// Takes @p step on @p sheet, which keeps what it calculated before.
+    template <typename Sheet>
+    void take_step(Sheet& sheet, BillStep const& step)
+    {
+        BillValues const& values = step.values;
+        auto const setEveryInput = [&](auto priceEntry) {
+            sheet.set(given<FridgeW>(values.fridgeW),
+                      given<FridgeH>(values.fridgeH),
+                      given<OvenKw>(values.ovenKw),
+                      given<OvenH>(values.ovenH),
+                      given<HeaterKw>(values.heaterKw),
+                      given<HeaterH>(values.heaterH),
+                      given<Solar>(values.solar),
+                      priceEntry,
+                      given<FeedIn>(values.feedIn),
+                      given<BaseFee>(values.baseFee));
+        };
+        if (step.priceTypedIn)
+            setEveryInput(formula::entered(given<Price>(values.price)));
+        else
+            setEveryInput(given<Price>(values.price));
+        if (step.netDrawOverride.has_value())
+            sheet.set(formula::entered(formula::Measured<NetDraw> { *step.netDrawOverride }));
+        else
+            sheet.template clear_override<NetDraw>();
+
+        if (step.asked == Asked::NetDraw)
+            static_cast<void>(sheet.template checked_calculate<NetDraw>());
+        else if (step.asked == Asked::FeedInCredit)
+            static_cast<void>(sheet.template checked_calculate<FeedInCredit>());
+        else if (step.asked == Asked::Total)
+            static_cast<void>(sheet.template checked_calculate<Total>());
+    }
+
+    /// A worksheet that has calculated nothing yet, holding what @p step
+    /// leaves the bill's worksheet holding.
+    inline auto from_scratch(BillStep const& step)
+    {
+        auto fresh = formula::worksheet(bill, bill_environment(step.values));
+        if (step.priceTypedIn)
+            fresh.set(formula::entered(given<Price>(step.values.price)));
+        if (step.netDrawOverride.has_value())
+            fresh.set(formula::entered(formula::Measured<NetDraw> { *step.netDrawOverride }));
+        return fresh;
+    }
+
+    template <typename Q, typename Sheet>
+    void check_same_value(Sheet& incremental, Sheet& fresh)
+    {
+        INFO(formula::symbol_of<Q>(formula::DefaultVocabulary {}));
+        CHECK(incremental.template checked_calculate<Q>() == fresh.template checked_calculate<Q>());
+    }
+
+    /// Checks that @p incremental and @p fresh hold the same answer for every
+    /// one of `Qs`.
+    template <typename Sheet, typename... Qs>
+    void check_same_values(Sheet& incremental, Sheet& fresh, QuantityList<Qs...> const*)
+    {
+        (check_same_value<Qs>(incremental, fresh), ...);
+    }
+} // namespace household
+
+/// Two inputs and four definitions, small enough to run at compile time: the
+/// start squared, one more than that, that times the factor, and the factor
+/// plus one.
+inline constexpr auto squared = formula::calculation(formula::define<Low>(var<Start> * var<Start>),
+                                                     formula::define<High>(var<Low> + rat(1)),
+                                                     formula::define<Apex>(var<High> * var<Factor>),
+                                                     formula::define<Other>(var<Factor> + rat(1)));
+
+/// What `run_squared` found.
+struct SquaredRun
+{
+    formula::Measured<Apex> first;
+    formula::Measured<Apex> second;
+    std::size_t recomputed = 0;
+    std::size_t reused = 0;
+
+    constexpr bool operator==(SquaredRun const&) const = default;
+};
+
+/// Asks `squared`'s worksheet for the apex, sets both inputs, and asks again.
+constexpr SquaredRun run_squared()
+{
+    auto sheet = formula::worksheet(
+        squared, formula::environment(formula::Measured<Start> { rat(1) }, formula::Measured<Factor> { rat(5) }));
+    formula::Measured<Apex> const first = sheet.checked_calculate<Apex>()->measurement();
+    sheet.set(formula::Measured<Start> { rat(-1) }, formula::Measured<Factor> { rat(6) });
+    formula::Measured<Apex> const second = sheet.checked_calculate<Apex>()->measurement();
+    return SquaredRun { first, second, sheet.recomputed(), sheet.reused() };
+}
+
+/// A share of two factors, which fails when the other factor is zero; a
+/// value that reads the share only where the other factor is not zero, and
+/// the factor where it is; and a value that reads the share whatever happens.
+inline constexpr auto guarded =
+    formula::calculation(formula::define<Share>(var<Factor> / var<Other>),
+                         formula::define<Halved>(
+                             formula::when(var<Other> > formula::constant<unit::One>(rat(0)), var<Share>, var<Factor>)),
+                         formula::define<Doubled>(var<Share> * rat(2)));
+
+/// `guarded`'s worksheet over @p factor and @p other.
+inline auto guarded_sheet(formula::Rational factor, formula::Rational other)
+{
+    return formula::worksheet(
+        guarded, formula::environment(formula::Measured<Factor> { factor }, formula::Measured<Other> { other }));
+}
+} // namespace
+
+TEST_CASE("a worksheet calculates each value once, and recalculates only what a change reaches",
+          "[calculation][worksheet]")
+{
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    // Nothing is calculated until something is asked.
+    CHECK(sheet.recomputed() == 0);
+
+    formula::Outcome<Total> const total = sheet.calculate<Total>();
+    CHECK(total.measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    CHECK(total.source() == formula::ValueSource::Derived);
+    CHECK(sheet.recomputed() == 15);
+    CHECK(sheet.reused() == 0);
+    // Asked again, or asked for a value calculated on the way: nothing more.
+    CHECK(sheet.calculate<Total>() == total);
+    CHECK(sheet.calculate<NetDraw>().measurement() == formula::Measured<NetDraw> { rat(279) });
+    CHECK(sheet.recomputed() == 15);
+
+    // A new price reaches the grid cost, the energy cost, the subtotal, the
+    // tax and the total -- calculated when asked, not when set.
+    sheet.set(formula::Measured<Price> { rat(1, 4) });
+    CHECK(sheet.recomputed() == 15);
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(950215, 10000) });
+    CHECK(sheet.recomputed() == 20);
+    CHECK(sheet.reused() == 0);
+
+    // The same price again changes nothing.
+    sheet.set(formula::Measured<Price> { rat(1, 4) });
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(950215, 10000) });
+    CHECK(sheet.recomputed() == 20);
+
+    // A new base fee reaches the subtotal, the tax and the total.
+    sheet.set(formula::Measured<BaseFee> { rat(15) });
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(979965, 10000) });
+    CHECK(sheet.recomputed() == 23);
+    CHECK(sheet.reused() == 0);
+
+    // Twice the fridge's power for half the hours: its power in kilowatts
+    // and its energy a day are calculated again, and the energy comes out
+    // the same, so the eight values after it are reused as they stand.
+    sheet.set(formula::Measured<FridgeW> { rat(400) }, formula::Measured<FridgeH> { rat(12) });
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(979965, 10000) });
+    CHECK(sheet.recomputed() == 25);
+    CHECK(sheet.reused() == 8);
+
+    // A copy with more sun: the nine values the solar yield reaches are
+    // calculated on the copy, which keeps the counters it started from.
+    auto sunnier = sheet.with(formula::Measured<Solar> { rat(200) });
+    CHECK(sunnier.calculate<Total>().measurement() == formula::Measured<Total> { rat(851445, 10000) });
+    CHECK(sunnier.calculate<NetDraw>().measurement() == formula::Measured<NetDraw> { rat(239) });
+    CHECK(sunnier.recomputed() == 34);
+    CHECK(sunnier.reused() == 8);
+    // The original is unchanged, and calculates nothing.
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(979965, 10000) });
+    CHECK(sheet.calculate<NetDraw>().measurement() == formula::Measured<NetDraw> { rat(279) });
+    CHECK(sheet.recomputed() == 25);
+    CHECK(sheet.reused() == 8);
+}
+
+TEST_CASE("set chains on a worksheet about to be discarded", "[calculation][worksheet]")
+{
+    using namespace household;
+    formula::Outcome<Total> const cheaper = formula::worksheet(bill, bill_environment(billValues))
+                                                .set(formula::Measured<Price> { rat(1, 4) })
+                                                .calculate<Total>();
+    CHECK(cheaper.measurement() == formula::Measured<Total> { rat(950215, 10000) });
+
+    auto kept = formula::worksheet(bill, bill_environment(billValues))
+                    .set(formula::Measured<Price> { rat(1, 4) })
+                    .set(formula::Measured<BaseFee> { rat(15) });
+    CHECK(kept.calculate<Total>().measurement() == formula::Measured<Total> { rat(979965, 10000) });
+    CHECK(kept.recomputed() == 15);
+}
+
+TEST_CASE("a worksheet answers several values at once, in the order asked", "[calculation][worksheet]")
+{
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+
+    auto const [total, netDraw] = sheet.calculate<Total, NetDraw>();
+    STATIC_REQUIRE(std::is_same_v<decltype(sheet.calculate<Total, NetDraw>()),
+                                  std::tuple<formula::Outcome<Total>, formula::Outcome<NetDraw>>>);
+    CHECK(total.measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    CHECK(netDraw.measurement() == formula::Measured<NetDraw> { rat(279) });
+
+    auto const checked = sheet.checked_calculate<NetDraw, Price, Total>();
+    STATIC_REQUIRE(std::is_same_v<decltype(checked),
+                                  std::tuple<std::expected<formula::Outcome<NetDraw>, formula::ArithmeticError>,
+                                             std::expected<formula::Outcome<Price>, formula::ArithmeticError>,
+                                             std::expected<formula::Outcome<Total>, formula::ArithmeticError>> const>);
+    CHECK(std::get<0>(checked)->measurement() == formula::Measured<NetDraw> { rat(279) });
+    CHECK(std::get<1>(checked)->measurement() == formula::Measured<Price> { rat(8, 25) });
+    CHECK(std::get<2>(checked) == total);
+    CHECK(sheet.recomputed() == 15);
+}
+
+TEST_CASE("a worksheet answers the quantities named by their variables", "[calculation][worksheet]")
+{
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+
+    auto const [total, netDraw] = sheet.calculate(var<Total>, var<NetDraw>);
+    CHECK(total.measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    CHECK(netDraw.measurement() == formula::Measured<NetDraw> { rat(279) });
+
+    auto const one = sheet.calculate(var<Exported>);
+    STATIC_REQUIRE(std::is_same_v<decltype(one), formula::Outcome<Exported> const>);
+    CHECK(one.measurement() == formula::Measured<Exported> { rat(30) });
+
+    auto const checkedOne = sheet.checked_calculate(var<Vat>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(checkedOne), std::expected<formula::Outcome<Vat>, formula::ArithmeticError> const>);
+    CHECK(checkedOne->measurement() == formula::Measured<Vat> { rat(94411, 5000) });
+
+    auto const [checkedTotal, checkedSolar] = sheet.checked_calculate(var<Total>, var<Solar>);
+    CHECK(checkedTotal == total);
+    CHECK(checkedSolar->measurement() == formula::Measured<Solar> { rat(150) });
+}
+
+TEST_CASE("a worksheet reads an input back as it was given, measured or typed in", "[calculation][worksheet]")
+{
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    formula::Outcome<Price> const measured = sheet.calculate<Price>();
+    CHECK(measured.measurement() == formula::Measured<Price> { rat(8, 25) });
+    CHECK(measured.source() == formula::ValueSource::Measured);
+    CHECK_FALSE(sheet.is_overridden<Price>());
+    CHECK(sheet.recomputed() == 0);
+    REQUIRE(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
+
+    // The same number, typed in: a change of source, so the grid cost is
+    // calculated again -- to the same answer, so what reads it is reused.
+    sheet.set(formula::entered(formula::Measured<Price> { rat(8, 25) }));
+    formula::Outcome<Price> const typedIn = sheet.calculate<Price>();
+    CHECK(typedIn.measurement() == formula::Measured<Price> { rat(8, 25) });
+    CHECK(typedIn.source() == formula::ValueSource::ManuallyEntered);
+    CHECK_FALSE(sheet.is_overridden<Price>());
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    CHECK(sheet.recomputed() == 16);
+    CHECK(sheet.reused() == 4);
+
+    // Measured again.
+    sheet.set(formula::Measured<Price> { rat(8, 25) });
+    CHECK(sheet.calculate<Price>().source() == formula::ValueSource::Measured);
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    CHECK(sheet.recomputed() == 17);
+    CHECK(sheet.reused() == 8);
+
+    // Typed in in the environment the worksheet was made from.
+    auto typedFirst = formula::worksheet(
+        guarded,
+        formula::environment(formula::entered(formula::Measured<Factor> { rat(3) }), formula::Measured<Other> { rat(2) }));
+    CHECK(typedFirst.calculate<Factor>().source() == formula::ValueSource::ManuallyEntered);
+    CHECK(typedFirst.calculate<Other>().source() == formula::ValueSource::Measured);
+    CHECK(typedFirst.calculate<Share>().measurement() == formula::Measured<Share> { rat(3, 2) });
+}
+
+TEST_CASE("a worksheet calculates definitions given out of order in dependency order", "[calculation][worksheet]")
+{
+    // The apex is given before the high point it reads, which reads the low
+    // point, which reads the start.
+    constexpr auto againstTheGrain = formula::calculation(formula::define<Low>(var<Start> + rat(1)),
+                                                          formula::define<Apex>(var<High> + rat(1)),
+                                                          formula::define<High>(var<Low> + rat(1)));
+    auto sheet = formula::worksheet(againstTheGrain, formula::environment(formula::Measured<Start> { rat(1) }));
+    CHECK(sheet.calculate<Apex>().measurement() == formula::Measured<Apex> { rat(4) });
+    CHECK(sheet.recomputed() == 3);
+    sheet.set(formula::Measured<Start> { rat(10) });
+    CHECK(sheet.calculate<Apex>().measurement() == formula::Measured<Apex> { rat(13) });
+    CHECK(sheet.calculate<High>().measurement() == formula::Measured<High> { rat(12) });
+    CHECK(sheet.recomputed() == 6);
+}
+
+TEST_CASE("an override stands in for a calculated value until it is cleared", "[calculation][worksheet]")
+{
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    REQUIRE(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
+    CHECK_FALSE(sheet.is_overridden<NetDraw>());
+
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    CHECK(sheet.is_overridden<NetDraw>());
+    formula::Outcome<NetDraw> const overridden = sheet.calculate<NetDraw>();
+    CHECK(overridden.measurement() == formula::Measured<NetDraw> { rat(250) });
+    CHECK(overridden.source() == formula::ValueSource::ManuallyEntered);
+    CHECK(overridden.is_overridden());
+    // The grid cost, the energy cost, the subtotal, the tax and the total.
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(107219, 1000) });
+    CHECK(sheet.recomputed() == 20);
+
+    // The same override again changes nothing.
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(107219, 1000) });
+    CHECK(sheet.recomputed() == 20);
+
+    // A change upstream of the override does not get past it: the values
+    // it reaches beyond the override read nothing changed, and are reused.
+    sheet.set(formula::Measured<FridgeW> { rat(300) });
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(107219, 1000) });
+    CHECK(sheet.recomputed() == 20);
+    CHECK(sheet.reused() == 5);
+
+    // Cleared, the net draw is calculated again -- from the fridge's new
+    // power, which reaches it now -- and so is everything after it.
+    sheet.clear_override<NetDraw>();
+    CHECK_FALSE(sheet.is_overridden<NetDraw>());
+    formula::Outcome<NetDraw> const calculated = sheet.calculate<NetDraw>();
+    CHECK(calculated.measurement() == formula::Measured<NetDraw> { rat(351) });
+    CHECK(calculated.source() == formula::ValueSource::Derived);
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(1456798, 10000) });
+    CHECK(sheet.recomputed() == 30);
+    CHECK(sheet.reused() == 5);
+
+    // Clearing an override that is not there changes nothing.
+    sheet.clear_override<NetDraw>();
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(1456798, 10000) });
+    CHECK(sheet.recomputed() == 30);
+    CHECK(sheet.reused() == 5);
+
+    // Given, cleared and given again before anything is asked, the override
+    // stands again.
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    sheet.clear_override<NetDraw>();
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    CHECK(sheet.is_overridden<NetDraw>());
+    CHECK(sheet.calculate<NetDraw>().source() == formula::ValueSource::ManuallyEntered);
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(107219, 1000) });
+}
+
+TEST_CASE("an override can be given in a worksheet's environment", "[calculation][worksheet]")
+{
+    using namespace household;
+    auto sheet = formula::worksheet(
+        bill, bill_environment(billValues, formula::entered(formula::Measured<NetDraw> { rat(250) })));
+    CHECK(sheet.is_overridden<NetDraw>());
+    CHECK(sheet.calculate<NetDraw>().source() == formula::ValueSource::ManuallyEntered);
+    // What the total needs past the override: the solar energy used at home
+    // and exported, the grid cost, the credit, the energy cost, the subtotal,
+    // the tax and the total. The loads the override stands in front of are
+    // not calculated.
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(107219, 1000) });
+    CHECK(sheet.recomputed() == 8);
+    CHECK(sheet.calculate<MonthlyLoad>().measurement() == formula::Measured<MonthlyLoad> { rat(399) });
+    CHECK(sheet.recomputed() == 14);
+}
+
+TEST_CASE("a failed calculation fails what reads it, and calculate throws it", "[calculation][worksheet]")
+{
+    auto sheet = guarded_sheet(rat(3), rat(0));
+    std::expected<formula::Outcome<Share>, formula::ArithmeticError> const share = sheet.checked_calculate<Share>();
+    REQUIRE_FALSE(share.has_value());
+    CHECK(share.error() == formula::ArithmeticError::DivisionByZero);
+    std::expected<formula::Outcome<Doubled>, formula::ArithmeticError> const doubled =
+        sheet.checked_calculate<Doubled>();
+    REQUIRE_FALSE(doubled.has_value());
+    CHECK(doubled.error() == formula::ArithmeticError::DivisionByZero);
+
+    CHECK_THROWS_AS(sheet.calculate<Doubled>(), formula::ArithmeticException);
+    CHECK_THROWS_AS((sheet.calculate<Factor, Doubled>()), formula::ArithmeticException);
+    CHECK_THROWS_AS(sheet.calculate(var<Doubled>), formula::ArithmeticException);
+    // A failure is kept like any answer: asking again calculates nothing.
+    CHECK(sheet.recomputed() == 2);
+
+    // Once the other factor is set, the failure is gone.
+    sheet.set(formula::Measured<Other> { rat(2) });
+    CHECK(sheet.calculate<Doubled>().measurement() == formula::Measured<Doubled> { rat(3) });
+}
+
+TEST_CASE("a when() branch not taken never reads a failed value", "[calculation][worksheet]")
+{
+    // The other factor is zero: the share fails, and the halved value takes
+    // the branch that reads the factor instead.
+    auto sheet = guarded_sheet(rat(3), rat(0));
+    std::expected<formula::Outcome<Halved>, formula::ArithmeticError> const halved = sheet.checked_calculate<Halved>();
+    REQUIRE(halved.has_value());
+    CHECK(halved->measurement() == formula::Measured<Halved> { rat(3) });
+    CHECK_FALSE(sheet.checked_calculate<Share>().has_value());
+
+    // Not zero: the branch reading the share is taken.
+    sheet.set(formula::Measured<Other> { rat(2) });
+    CHECK(sheet.calculate<Halved>().measurement() == formula::Measured<Halved> { rat(3, 2) });
+}
+
+TEST_CASE("an absent input leaves what reads it empty", "[calculation][worksheet]")
+{
+    using namespace household;
+    BillValues dark = billValues;
+    dark.solar = std::nullopt;
+    auto sheet = formula::worksheet(bill, bill_environment(dark));
+    CHECK(sheet.calculate<Solar>().is_empty());
+    CHECK(sheet.calculate<SelfUsed>().is_empty());
+    CHECK(sheet.calculate<Total>().is_empty());
+    // What does not read it is calculated.
+    CHECK(sheet.calculate<DailyLoad>().measurement() == formula::Measured<DailyLoad> { rat(133, 10) });
+
+    // Once the yield is given, everything is.
+    sheet.set(formula::Measured<Solar> { rat(150) });
+    CHECK(sheet.calculate<Total>().measurement() == formula::Measured<Total> { rat(591311, 5000) });
+}
+
+TEST_CASE("a worksheet answers what its formulas inlined into one another answer", "[calculation][worksheet]")
+{
+    using namespace household;
+    // The bill's definitions inlined by hand, each into what reads it.
+    constexpr auto fridgeKwh = var<FridgeW> * var<FridgeH>;
+    constexpr auto dailyLoad = fridgeKwh + var<OvenKw> * var<OvenH> + var<HeaterKw> * var<HeaterH>;
+    constexpr auto selfUsed = var<Solar> * rat(4, 5);
+    constexpr auto netDraw = dailyLoad * rat(30) - selfUsed;
+    constexpr auto feedInCredit = (var<Solar> - selfUsed) * var<FeedIn>;
+    constexpr auto energyCost = netDraw * var<Price> - feedInCredit;
+    constexpr auto subtotal = energyCost + var<BaseFee>;
+    constexpr auto total = subtotal + subtotal * rat(19, 100);
+
+    BillValues cheaper = billValues;
+    cheaper.fridgeW = rat(400);
+    cheaper.fridgeH = rat(12);
+    cheaper.price = rat(1, 4);
+    cheaper.baseFee = rat(15);
+    BillValues exporting = billValues;
+    exporting.solar = rat(1000);
+    exporting.feedIn = rat(0);
+    BillValues sunless = billValues;
+    sunless.solar = rat(0);
+    sunless.price = rat(0);
+    BillValues const uneven { rat(1500), rat(20),     rat(9, 4),  rat(7, 3),  rat(3, 2),
+                              rat(11, 2), rat(333, 7), rat(3, 10), rat(1, 20), rat(0) };
+    BillValues dark = billValues;
+    dark.solar = std::nullopt;
+    BillValues unpriced = billValues;
+    unpriced.price = std::nullopt;
+
+    for (BillValues const& values : { billValues, cheaper, exporting, sunless, uneven, dark, unpriced })
+    {
+        auto const inputs = bill_environment(values);
+        auto sheet = formula::worksheet(bill, inputs);
+        CHECK(sheet.checked_calculate<FridgeKwh>() == formula::checked_evaluate<FridgeKwh>(fridgeKwh, inputs));
+        CHECK(sheet.checked_calculate<DailyLoad>() == formula::checked_evaluate<DailyLoad>(dailyLoad, inputs));
+        CHECK(sheet.checked_calculate<SelfUsed>() == formula::checked_evaluate<SelfUsed>(selfUsed, inputs));
+        CHECK(sheet.checked_calculate<NetDraw>() == formula::checked_evaluate<NetDraw>(netDraw, inputs));
+        CHECK(sheet.checked_calculate<FeedInCredit>()
+              == formula::checked_evaluate<FeedInCredit>(feedInCredit, inputs));
+        CHECK(sheet.checked_calculate<EnergyCost>() == formula::checked_evaluate<EnergyCost>(energyCost, inputs));
+        CHECK(sheet.checked_calculate<Subtotal>() == formula::checked_evaluate<Subtotal>(subtotal, inputs));
+        CHECK(sheet.checked_calculate<Total>() == formula::checked_evaluate<Total>(total, inputs));
+    }
+}
+
+TEST_CASE("a worksheet changed step by step answers what one made from scratch answers", "[calculation][worksheet]")
+{
+    using namespace household;
+    BillValues cheaper = billValues;
+    cheaper.price = rat(1, 4);
+    BillValues fridgeSwapped = billValues;
+    fridgeSwapped.fridgeW = rat(400);
+    fridgeSwapped.fridgeH = rat(12);
+    BillValues sunnier = billValues;
+    sunnier.solar = rat(200);
+    BillValues dark = billValues;
+    dark.solar = std::nullopt;
+    BillValues const renewed { rat(100), rat(20), rat(2),     rat(3, 2),  rat(1),
+                               rat(5),   rat(90), rat(3, 10), rat(1, 10), rat(10) };
+    BillValues sunless = billValues;
+    sunless.solar = rat(0);
+    sunless.price = rat(0);
+
+    std::vector<std::vector<BillStep>> const sequences {
+        // Inputs only, asked for different values.
+        { { .values = billValues },
+          { .values = cheaper, .asked = Asked::NetDraw },
+          { .values = cheaper },
+          { .values = billValues, .asked = Asked::Nothing },
+          { .values = fridgeSwapped },
+          { .values = sunnier, .asked = Asked::FeedInCredit },
+          { .values = dark },
+          { .values = billValues } },
+        // An override, changed around, then cleared.
+        { { .values = billValues, .netDrawOverride = rat(250) },
+          { .values = cheaper, .netDrawOverride = rat(250), .asked = Asked::NetDraw },
+          { .values = cheaper },
+          { .values = fridgeSwapped, .netDrawOverride = rat(0), .asked = Asked::FeedInCredit },
+          { .values = renewed } },
+        // The price typed in, and measured again.
+        { { .values = billValues, .asked = Asked::Nothing },
+          { .values = billValues, .priceTypedIn = true },
+          { .values = billValues, .priceTypedIn = true },
+          { .values = billValues },
+          { .values = renewed, .priceTypedIn = true, .asked = Asked::NetDraw },
+          { .values = sunless } },
+        // An absent input, overridden past and then given.
+        { { .values = dark },
+          { .values = dark, .netDrawOverride = rat(100) },
+          { .values = billValues, .netDrawOverride = rat(100), .asked = Asked::Nothing },
+          { .values = billValues, .asked = Asked::Nothing },
+          { .values = sunnier } },
+    };
+
+    std::size_t reusedAcrossSequences = 0;
+    for (std::vector<BillStep> const& sequence : sequences)
+    {
+        auto sheet = formula::worksheet(bill, bill_environment(billValues));
+        for (BillStep const& step : sequence)
+        {
+            take_step(sheet, step);
+            // Compared on a copy, so that the worksheet goes on holding only
+            // what its steps asked for.
+            auto incremental = sheet;
+            auto fresh = from_scratch(step);
+            check_same_values(incremental, fresh, static_cast<BillGraph::slots const*>(nullptr));
+        }
+        reusedAcrossSequences += sheet.reused();
+    }
+    // The steps did reuse values: this compares an incremental calculation
+    // with one from scratch, not two from scratch.
+    CHECK(reusedAcrossSequences > 0);
+}
+
+TEST_CASE("a worksheet sets and recalculates at compile time", "[calculation][worksheet]")
+{
+    // The apex is 1 squared, plus 1, times 5. Then the start becomes -1,
+    // whose square is the same, and the factor 6: the square and the apex are
+    // calculated again, and the value between them is reused.
+    STATIC_REQUIRE(run_squared()
+                   == SquaredRun { formula::Measured<Apex> { rat(10) }, formula::Measured<Apex> { rat(12) }, 5, 1 });
+}
+
+TEST_CASE("a definition is evaluated against the values it reads, and the reads it makes are recorded",
+          "[calculation][worksheet]")
+{
+    auto sheet = guarded_sheet(rat(3), rat(0));
+    REQUIRE(sheet.checked_calculate<Halved>().has_value());
+
+    using Sheet = decltype(sheet);
+    using Graph = formula::detail::WorksheetGraphOf<Sheet>::type;
+    using HalvedView = formula::detail::WorksheetView<Sheet, Graph::reads[Graph::slot_of<Halved>]>;
+    STATIC_REQUIRE(HalvedView::provides<Share>);
+    STATIC_REQUIRE(HalvedView::provides<Other>);
+    STATIC_REQUIRE(HalvedView::provides<Factor>);
+    STATIC_REQUIRE_FALSE(HalvedView::provides<Halved>);
+    STATIC_REQUIRE_FALSE(HalvedView::provides<Doubled>);
+    STATIC_REQUIRE_FALSE(HalvedView::provides<Width>);
+    STATIC_REQUIRE_FALSE(HalvedView::is_entered<Share>);
+    STATIC_REQUIRE(formula::detail::ReportsReadFailure<HalvedView, Share>);
+    STATIC_REQUIRE(formula::detail::RunTimeSource<HalvedView, Share>);
+
+    // Only the branch taken is read: the other factor, then the factor.
+    constexpr std::uint64_t factorBit = std::uint64_t { 1 } << Graph::slot_of<Factor>;
+    constexpr std::uint64_t otherBit = std::uint64_t { 1 } << Graph::slot_of<Other>;
+    constexpr std::uint64_t shareBit = std::uint64_t { 1 } << Graph::slot_of<Share>;
+    auto const& halvedDefinition = std::get<1>(guarded.definitions).expression;
+    std::uint64_t made = 0;
+    CHECK(formula::checked_evaluate<Halved>(halvedDefinition, HalvedView { &sheet, &made })
+          == sheet.checked_calculate<Halved>());
+    CHECK(made == (otherBit | factorBit));
+
+    sheet.set(formula::Measured<Other> { rat(2) });
+    REQUIRE(sheet.checked_calculate<Halved>().has_value());
+    made = 0;
+    CHECK(formula::checked_evaluate<Halved>(halvedDefinition, HalvedView { &sheet, &made })
+          == sheet.checked_calculate<Halved>());
+    CHECK(made == (otherBit | shareBit));
+
+    // A failed calculation reads as its failure, and, through get, as absent.
+    sheet.set(formula::Measured<Other> { rat(0) });
+    REQUIRE_FALSE(sheet.checked_calculate<Doubled>().has_value());
+    HalvedView const view { &sheet, nullptr };
+    CHECK(view.checked_get<Share>() == std::unexpected { formula::ArithmeticError::DivisionByZero });
+    CHECK(view.get<Share>().is_absent());
+    CHECK(view.get<Factor>() == formula::Measured<Factor> { rat(3) });
+
+    // Where each value came from, as the worksheet holds it.
+    CHECK(view.source_of<Factor>() == formula::ValueSource::Measured);
+    CHECK(view.source_of<Share>() == formula::ValueSource::Derived);
+    sheet.set(formula::entered(formula::Measured<Factor> { rat(3) }),
+              formula::entered(formula::Measured<Share> { rat(7) }));
+    CHECK(view.source_of<Factor>() == formula::ValueSource::ManuallyEntered);
+    CHECK(view.source_of<Share>() == formula::ValueSource::ManuallyEntered);
+    CHECK(view.get<Share>() == formula::Measured<Share> { rat(7) });
+}
+
+TEST_CASE("a worksheet answers the questions its calculation answers", "[calculation][worksheet]")
+{
+    using namespace household;
+    constexpr auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    STATIC_REQUIRE(formula::dependencies_of<FridgeKwh>(sheet) == Names<2> { "fridge_h", "fridge_kw" });
+    STATIC_REQUIRE(formula::dependents_of<SelfUsed>(sheet) == Names<2> { "exported", "net_draw" });
+    STATIC_REQUIRE(formula::upstream_of<Exported>(sheet) == Names<2> { "solar", "self_used" });
+    STATIC_REQUIRE(formula::affected_by<BaseFee>(sheet) == Names<3> { "subtotal", "vat", "total" });
+    STATIC_REQUIRE(formula::inputs_of(sheet) == formula::inputs_of(bill));
+    STATIC_REQUIRE(formula::calculation_order(sheet) == formula::calculation_order(bill));
+    STATIC_REQUIRE(formula::depends_on<Total, FridgeW>(sheet));
+    STATIC_REQUIRE_FALSE(formula::depends_on<FeedInCredit, Price>(sheet));
+
+    constexpr auto words =
+        formula::vocabulary(formula::renames<NetDraw>("E_grid"), formula::renames<Price>("c_grid"));
+    STATIC_REQUIRE(formula::dependents_of<MonthlyLoad>(sheet, words) == Names<1> { "E_grid" });
+    STATIC_REQUIRE(formula::upstream_of<GridCost>(sheet, words)[7] == "c_grid");
+    STATIC_REQUIRE(formula::inputs_of(sheet, words)[7] == "c_grid");
+    STATIC_REQUIRE(formula::calculation_order(sheet, words)[8] == "E_grid");
+}
+
+TEST_CASE("a worksheet holds as many quantities as a calculation does", "[calculation][worksheet]")
+{
+    // The chain of 64 links reads no input: its first link is 1, and each
+    // after it one more.
+    auto sheet = formula::worksheet(chain, formula::environment());
+    CHECK(sheet.calculate<Link<63>>().measurement() == formula::Measured<Link<63>> { rat(64) });
+    CHECK(sheet.recomputed() == 64);
+
+    // The first link, given last and so in the last slot, overridden: the
+    // 63 links after it are calculated again. Cleared: all 64 are.
+    sheet.set(formula::entered(formula::Measured<Link<0>> { rat(11) }));
+    CHECK(sheet.calculate<Link<63>>().measurement() == formula::Measured<Link<63>> { rat(74) });
+    CHECK(sheet.recomputed() == 127);
+    sheet.clear_override<Link<0>>();
+    CHECK(sheet.calculate<Link<63>>().measurement() == formula::Measured<Link<63>> { rat(64) });
+    CHECK(sheet.recomputed() == 191);
+
+    // The middle link overridden: only the 32 links after it.
+    sheet.set(formula::entered(formula::Measured<Link<31>> { rat(0) }));
+    CHECK(sheet.calculate<Link<63>>().measurement() == formula::Measured<Link<63>> { rat(32) });
+    CHECK(sheet.calculate<Link<0>>().measurement() == formula::Measured<Link<0>> { rat(1) });
+    CHECK(sheet.recomputed() == 223);
 }
