@@ -2,9 +2,9 @@
 #pragma once
 
 /// @file
-/// Units: a dimension, an exact conversion to the coherent unit -- SI, or one of
-/// each named base -- a display symbol, a declared decimal precision and
-/// optional validity bounds.
+/// Units: a dimension, an exact conversion to the coherent unit -- the SI unit,
+/// times one of each named base -- a display symbol, a declared decimal
+/// precision and optional validity bounds.
 ///
 /// Every type here is *structural*, so a unit can be a non-type template
 /// parameter -- a quantity's declaration names its unit as a template argument.

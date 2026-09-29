@@ -754,6 +754,7 @@ formula_add_negative_test(critical_value_short_no_factory
 formula_add_negative_test(critical_value_count_not_scalar
     "formula: this critical value's count is not dimensionless"
     REJECT "sample-size table" "stated in a unit other than a bare number")
+
 formula_add_negative_test(critical_value_count_in_euros
     "formula: this critical value's count is not dimensionless"
     REJECT "sample-size table" "stated in a unit other than a bare number")

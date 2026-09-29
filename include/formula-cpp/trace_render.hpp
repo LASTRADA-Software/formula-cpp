@@ -125,8 +125,9 @@ namespace detail
     ///
     /// Applied by `step_line`, once, to every piece of author text a step
     /// holds -- see `EscapedStep`, `unit_symbol_text` and, for a record's role
-    /// and a lineage attribute's name, `tag_words` -- and nowhere else: the
-    /// words this file writes itself go into the line as they are.
+    /// and a lineage attribute's name, `tag_words` -- and by
+    /// `coherent_unit_text` to each named base dimension's name, and nowhere
+    /// else: the words this file writes itself go into the line as they are.
     [[nodiscard]] inline std::string escaped_author_text(std::string_view authored)
     {
         constexpr std::string_view hexDigits = "0123456789abcdef";

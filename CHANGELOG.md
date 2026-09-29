@@ -19,7 +19,8 @@ may break it, and each such change is recorded here.
   into each other, and energy times euros per energy is euros. `NamedBase` is one such base and its
   exponent; a `Dimension` holds up to `NamedBaseCapacity` (four) of them, and a product that would
   need a fifth does not compile. A name is an ASCII letter followed by letters or digits, shorter
-  than 16 bytes and not the symbol of an SI base unit; two uses of one name are one dimension.
+  than 16 bytes and not the symbol of an SI base unit; two uses of one name are one dimension. A
+  trace spells a named base by its name in a coherent unit, ahead of the SI units: `EUR s^2/(m^2 kg)`.
 
 ### Changed
 

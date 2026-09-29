@@ -1085,6 +1085,19 @@ TEST_CASE("a quotient of two units is not offered when its dimension would need 
     CHECK_FALSE(formula::detail::unit_quotient(overUnit, underUnit).has_value());
     CHECK_FALSE(formula::detail::unit_quotient(underUnit, overUnit).has_value());
 
+    // Five distinct names between the two, but one on both sides: it cancels
+    // before the count, four remain, and the quotient is offered.
+    constexpr formula::Unit sharingUnit { .dimension = formula::base_dimension("AcmeCredit")
+                                                       * formula::base_dimension("Stamp")
+                                                       * formula::base_dimension("Token"),
+                                          .symbolText = formula::symbol("AST") };
+    std::optional<formula::Unit> const shared = formula::detail::unit_quotient(overUnit, sharingUnit);
+    REQUIRE(shared.has_value());
+    CHECK(shared->dimension
+          == (formula::base_dimension("Bonus") * formula::base_dimension("Coupon"))
+                 / (formula::base_dimension("Stamp") * formula::base_dimension("Token")));
+    CHECK(formula::view(shared->symbolText) == "ABC/AST");
+
     // A quotient that fits is offered as before, its dimension merged:
     // euros per kilowatt-hour.
     constexpr formula::Unit euro { .dimension = formula::base_dimension("EUR"),
