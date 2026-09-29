@@ -149,7 +149,9 @@ These bind every task. Several exist because the alternative failed in an earlie
    `divmod`** and uses the limb-level `divmod_small` the foundation plan adds for it. The spec's 25 000 target was a quarter of a
    100 000 default; against the measured default this plan sets **at most 100 000 cl steps per kernel call
    at `KernelLimbs = 12`** (Task 4 Step 2), about a tenth of the effective default, and Task 4 Step 7
-   measures and reports each call.
+   measures and reports each call. A whole rounding — the enclosure and the foundation's `decide_rounding`,
+   on stand-ins built from both plans' code — measured 240 600–284 500 cl steps (297 950–355 300 on clang-cl
+   22.1.3, default 1 048 576), so the kernel's checks run at run time but one (Task 4 Step 7).
 5. **Reference digits.** Python 3.13 `decimal` (libmpdec) at 150 significant digits; its `ln`, `log10` and
    `exp` are correctly rounded. A Python model of this plan's kernel, operation for operation (written
    while planning, not committed), enclosed the reference on 12 020 inputs (4 000
@@ -1425,9 +1427,10 @@ int main() { return 0; }
   from the planning measurements at `KernelLimbs = 12` with both primitives (Finding 4: 3 000–31 000 cl
   steps per enclosure; 62 000–95 000 on clang-cl 22.1.3 without the zero-limb skip): **one kernel call at
   most 100 000 steps on cl 19.51**, about a tenth of the effective default of about 1 049 000, with
-  `KernelLimbs = 12` kept, so that a constant evaluation holding a whole rounding (an enclosure and
-  `decide_rounding`) stays far inside the default on every toolchain. Step 7 measures each call and
-  reports the figure; only a call above 100 000 stops the task.
+  `KernelLimbs = 12` kept. A whole rounding adds `decide_rounding`, about a quarter of a million steps
+  more (whole roundings measured 240 600–284 500 while planning), so the kernel's checks run at run time
+  but one (Step 7, *Compile time and run time*). Step 7
+  measures each call and reports the figure; only a call above 100 000 stops the task.
 
 - [ ] **Step 3: Write the failing kernel tests.** `test/transcendental_tests.cpp`:
 
@@ -1448,6 +1451,10 @@ int main() { return 0; }
 //
 // The published values the stored constants are checked against: ln 2 =
 // 0.6931471805599453094172321214581765680755..., log10(e) = 0.4342944819032518276511289189166050822943....
+//
+// Every check that runs the kernel runs at run time, but one: a whole rounding costs a quarter of a
+// compiler's default constant-evaluation budget, too near it to pin many. The last case keeps one at
+// compile time, on purpose. The stored constants, which run no kernel, are checked at compile time.
 #include <formula-cpp/detail/transcendental.hpp>
 #include <formula-cpp/detail/wide_int.hpp>
 #include <formula-cpp/detail/wide_rounding.hpp>
@@ -1615,25 +1622,26 @@ TEST_CASE("transcendental kernel: the stored ln 2 and log10(e) are the published
 
 TEST_CASE("transcendental kernel: the kernel re-derives its stored constants from its own series", "[transcendental]")
 {
+    // At run time: the kernel's series, like every check that runs it but one (see the last case).
     // ln 2 = 2 atanh(1/3), since (1 + 1/3) / (1 - 1/3) = 2: the series' enclosure of it meets the stored one.
-    constexpr std::optional<Word> atanhThird = detail::atanh_series_lower(detail::scaled_quotient(1, 3).below);
-    STATIC_REQUIRE(atanhThird.has_value());
-    constexpr Word ln2Lower = *detail::add_checked_or_none(*atanhThird, *atanhThird);
-    constexpr Word ln2Upper = *detail::add_checked_or_none(ln2Lower, Word::from_u64(2 * detail::AtanhSlack));
-    STATIC_REQUIRE(ln2Lower <= detail::Ln2Upper);
-    STATIC_REQUIRE(detail::Ln2Lower <= ln2Upper);
+    std::optional<Word> const atanhThird = detail::atanh_series_lower(detail::scaled_quotient(1, 3).below);
+    REQUIRE(atanhThird.has_value());
+    Word const ln2Lower = *detail::add_checked_or_none(*atanhThird, *atanhThird);
+    Word const ln2Upper = *detail::add_checked_or_none(ln2Lower, Word::from_u64(2 * detail::AtanhSlack));
+    CHECK(ln2Lower <= detail::Ln2Upper);
+    CHECK(detail::Ln2Lower <= ln2Upper);
     // log10(e) = 1 / ln 10, and ln 10 = 3 ln 2 + 2 atanh(1/9), since (1 + 1/9) / (1 - 1/9) = 10/8. The
     // stored M meets [2^256 / upper, 2^256 / lower] over the whole enclosure of ln 10 * 2^128.
-    constexpr std::optional<Word> atanhNinth = detail::atanh_series_lower(detail::scaled_quotient(1, 9).below);
-    STATIC_REQUIRE(atanhNinth.has_value());
-    constexpr Word ln10Lower = *detail::add_checked_or_none(*detail::mul_small_checked_or_none(detail::Ln2Lower, 3U),
-                                                    *detail::add_checked_or_none(*atanhNinth, *atanhNinth));
-    constexpr Word ln10Upper = *detail::add_checked_or_none(
+    std::optional<Word> const atanhNinth = detail::atanh_series_lower(detail::scaled_quotient(1, 9).below);
+    REQUIRE(atanhNinth.has_value());
+    Word const ln10Lower = *detail::add_checked_or_none(*detail::mul_small_checked_or_none(detail::Ln2Lower, 3U),
+                                                        *detail::add_checked_or_none(*atanhNinth, *atanhNinth));
+    Word const ln10Upper = *detail::add_checked_or_none(
         *detail::mul_small_checked_or_none(detail::Ln2Upper, 3U),
         *detail::mul_small_checked_or_none(*detail::add_small_checked_or_none(*atanhNinth, detail::AtanhSlack), 2U));
-    constexpr Word twoTo256 = *detail::shift_left_checked_or_none(Word::from_u64(1), 256);
-    STATIC_REQUIRE(*detail::mul_checked_or_none(detail::Log10eLower, ln10Lower) <= twoTo256);
-    STATIC_REQUIRE(twoTo256 <= *detail::mul_checked_or_none(detail::Log10eUpper, ln10Upper));
+    Word const twoTo256 = *detail::shift_left_checked_or_none(Word::from_u64(1), 256);
+    CHECK(*detail::mul_checked_or_none(detail::Log10eLower, ln10Lower) <= twoTo256);
+    CHECK(twoTo256 <= *detail::mul_checked_or_none(detail::Log10eUpper, ln10Upper));
 }
 
 TEST_CASE("transcendental kernel: every reference value is enclosed and rounds as the reference does in every mode",
@@ -1661,6 +1669,13 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
     }
     // 39 rows, 9 places, 7 modes: a loop over nothing fails here.
     REQUIRE(compared == 2457);
+    // Three of them written out, so that a reader sees the digits.
+    CHECK(kernel_rounding(Transcendental::NaturalLogarithm, Rational { 2 }, 18, RoundingMode::Floor)
+          == Rational::from_decimal(693'147'180'559'945'309, -18));
+    CHECK(kernel_rounding(Transcendental::DecimalLogarithm, Rational { 2 }, 18, RoundingMode::Floor)
+          == Rational::from_decimal(301'029'995'663'981'195, -18));
+    CHECK(kernel_rounding(Transcendental::Exponential, Rational { 1 }, 18, RoundingMode::Floor)
+          == Rational::from_decimal(2'718'281'828'459'045'235, -18));
 }
 
 TEST_CASE("transcendental kernel: an enclosure is at most 2^-118 wide", "[transcendental]")
@@ -1704,12 +1719,12 @@ TEST_CASE("transcendental kernel: an enclosure that straddles a tie is Overflow 
 
 TEST_CASE("transcendental kernel: the kernel answers at compile time", "[transcendental]")
 {
-    STATIC_REQUIRE(kernel_rounding(Transcendental::NaturalLogarithm, Rational { 2 }, 18, RoundingMode::Floor)
-                   == Rational::from_decimal(693'147'180'559'945'309, -18));
-    STATIC_REQUIRE(kernel_rounding(Transcendental::DecimalLogarithm, Rational { 2 }, 18, RoundingMode::Floor)
-                   == Rational::from_decimal(301'029'995'663'981'195, -18));
-    STATIC_REQUIRE(kernel_rounding(Transcendental::Exponential, Rational { 1 }, 18, RoundingMode::Floor)
-                   == Rational::from_decimal(2'718'281'828'459'045'235, -18));
+    // The one deliberate compile-time check of the kernel. A whole rounding -- the enclosure and
+    // decide_rounding -- in one constant evaluation, the cheapest measured while planning: about
+    // 240 600 steps on cl 19.51 and 298 000 on clang-cl 22.1.3, against defaults of about 1 049 000
+    // and 1 048 576. Every other check that runs the kernel runs at run time.
+    STATIC_REQUIRE(kernel_rounding(Transcendental::DecimalLogarithm, Rational { 2 }, 3, RoundingMode::HalfEven)
+                   == Rational { 301, 1000 });
 }
 ```
 
@@ -2029,6 +2044,7 @@ namespace formula::detail
 
 ```cpp
 #include <formula-cpp/detail/transcendental.hpp>
+#include <formula-cpp/detail/wide_rounding.hpp>
 constexpr bool probe()
 {
     using formula::Rational;
@@ -2040,8 +2056,14 @@ constexpr bool probe()
     return formula::detail::decimal_log_enclosure(Rational { 7 }).has_value();
 #elif PROBE_CASE == 4
     return formula::detail::exponential_enclosure(Rational { 1 }).has_value();
-#else
+#elif PROBE_CASE == 5
     return formula::detail::exponential_enclosure(Rational { -43 }).has_value();
+#else
+    // The compile-time smoke test's whole rounding.
+    auto const enclosure = formula::detail::decimal_log_enclosure(Rational { 2 });
+    return formula::detail::decide_rounding(enclosure->lower, enclosure->upper, formula::DecimalPlaces { 3 },
+                                            formula::RoundingMode::HalfEven)
+           == Rational { 301, 1000 };
 #endif
 }
 static_assert(probe());
@@ -2050,17 +2072,23 @@ int main() { return 0; }
 
   For each case, bisect the smallest n for which
   `cl /nologo /std:c++latest /permissive- /c /Zs /I<worktree>\include /DPROBE_CASE=<c> /constexpr:steps<n> probe.cpp`
-  compiles. Record the five counts and the cl version in the header comment ("One enclosure costs, on cl
-  19.51.36257, between … and … constant-evaluation steps; cl's default budget measured about 1 049 000")
-  and in the report. **Expected** from the stand-in with both foundation primitives: 3 000–31 000 (ln with
-  z near 1/3 the most). **The target (Step 2) is at most 100 000 per kernel call**: report every figure;
-  a case above 100 000 (and only such a case) stops the task, reported to the controller with the five
-  counts. Measure also one whole
-  `kernel_rounding(Transcendental::Exponential, Rational { 1 }, 18, RoundingMode::Floor)` (the enclosure
-  and `decide_rounding`, whose `round_wide_ratio` reduces each end by a gcd over 384 bits — not measured
-  while planning) and record it beside the others. Every `STATIC_REQUIRE` in this plan is one such call or
-  one enclosure; any that does not compile at cl's default budget becomes a `CHECK` at run time, said so
-  in its comment and in the report.
+  compiles. Record the six counts and the cl version in the header comment ("One enclosure costs, on cl
+  19.51.36257, between … and … constant-evaluation steps, and a whole rounding about …; cl's default
+  budget measured about 1 049 000") and in the report. **Expected** from stand-ins built from this plan's
+  and the foundation plan's code: cases 1–5, 3 000–31 000 (ln with z near 1/3 the most); case 6, about
+  240 600 (298 000 on clang-cl 22.1.3), nearly all of it `decide_rounding`: per end, a gcd and three
+  binary `divmod`s over 384 bits. Whole roundings measured while planning ran from 240 600 (log10 2 at 3
+  places) to 284 500 (exp 1 at 18 places) on cl. **The target (Step 2) is at most 100 000 per kernel
+  call**: report every figure; an enclosure above 100 000 (and only such a case) stops the task, reported
+  to the controller with the counts.
+
+  **Compile time and run time.** Every check in this plan that runs the kernel, or `decide_rounding` on
+  its enclosure, is a run-time `CHECK`, except the one deliberate compile-time smoke test, "transcendental
+  kernel: the kernel answers at compile time" (case 6). The special points and the early exits, which
+  never reach the kernel, stay `STATIC_REQUIRE`, and so do the stored constants' checks (about 15 300 cl
+  steps each, no kernel). The smoke test is measured by every per-task build on cl-debug and g++-14 (it
+  compiles, or the build fails); if it exceeds any toolchain's default at the final all-preset run, the
+  controller moves it to run time and takes the compile-time claim out of the documentation.
 
 - [ ] **Step 8: Full verification.** `CL` and `GCC14`, no filter.
 
@@ -2130,6 +2158,10 @@ rounding alike; an empty enclosure (a bound that did not hold) → `Overflow`.
 //
 // Every expected value below was computed while planning with Python 3.13's decimal module at 150
 // significant digits, and agrees with the kernel's own reference table (transcendental_tests.cpp).
+//
+// A value that reaches the kernel is checked at run time: one rounding through it costs about a quarter
+// of a compiler's default constant-evaluation budget. The special points and the early exits, which
+// never reach it, are checked at compile time.
 #include <formula-cpp/formula.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -2193,19 +2225,19 @@ TEST_CASE("rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2 with th
           "[rounded_transcendental]")
 {
     // ln 2 = 0.693147...: the nearest and downward modes keep 0.6931, the upward ones 0.6932.
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfAwayFromZero>(Rational { 2 }) == Rational { 6931, 10000 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfTowardZero>(Rational { 2 }) == Rational { 6931, 10000 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 2 }) == Rational { 6931, 10000 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::Ceiling>(Rational { 2 }) == Rational { 1733, 2500 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::Floor>(Rational { 2 }) == Rational { 6931, 10000 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::TowardZero>(Rational { 2 }) == Rational { 6931, 10000 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::AwayFromZero>(Rational { 2 }) == Rational { 1733, 2500 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfAwayFromZero>(Rational { 2 }) == Rational { 6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfTowardZero>(Rational { 2 }) == Rational { 6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 2 }) == Rational { 6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::Ceiling>(Rational { 2 }) == Rational { 1733, 2500 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::Floor>(Rational { 2 }) == Rational { 6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::TowardZero>(Rational { 2 }) == Rational { 6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::AwayFromZero>(Rational { 2 }) == Rational { 1733, 2500 });
     // ln 1/2 = -0.693147...: Ceiling and TowardZero keep -0.6931, Floor and AwayFromZero -0.6932.
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::Ceiling>(Rational { 1, 2 }) == Rational { -6931, 10000 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::TowardZero>(Rational { 1, 2 }) == Rational { -6931, 10000 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::Floor>(Rational { 1, 2 }) == Rational { -1733, 2500 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::AwayFromZero>(Rational { 1, 2 }) == Rational { -1733, 2500 });
-    STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, 2 }) == Rational { -6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::Ceiling>(Rational { 1, 2 }) == Rational { -6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::TowardZero>(Rational { 1, 2 }) == Rational { -6931, 10000 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::Floor>(Rational { 1, 2 }) == Rational { -1733, 2500 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::AwayFromZero>(Rational { 1, 2 }) == Rational { -1733, 2500 });
+    CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1, 2 }) == Rational { -6931, 10000 });
     // A pure number, whatever the argument was.
     STATIC_REQUIRE(decltype(formula::rounded_ln<DecimalPlaces { 4 }, RoundingMode::HalfEven>(var<Ratio>))::dimension
                    == formula::dim::Scalar);
@@ -2214,16 +2246,16 @@ TEST_CASE("rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2 with th
 TEST_CASE("rounded_transcendental: log10 2 to 3 dp and exp 1 to 4 dp and exp -1 to 3 dp", "[rounded_transcendental]")
 {
     // log10 2 = 0.30102...: 0.301, and 0.302 upward.
-    STATIC_REQUIRE(log10At<DecimalPlaces { 3 }, RoundingMode::HalfAwayFromZero>(Rational { 2 }) == Rational { 301, 1000 });
-    STATIC_REQUIRE(log10At<DecimalPlaces { 3 }, RoundingMode::Ceiling>(Rational { 2 }) == Rational { 151, 500 });
+    CHECK(log10At<DecimalPlaces { 3 }, RoundingMode::HalfAwayFromZero>(Rational { 2 }) == Rational { 301, 1000 });
+    CHECK(log10At<DecimalPlaces { 3 }, RoundingMode::Ceiling>(Rational { 2 }) == Rational { 151, 500 });
     // exp 1 = 2.718281...: the nearest modes round up to 2.7183, where Floor and TowardZero keep 2.7182.
-    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfAwayFromZero>(Rational { 1 }) == Rational { 27183, 10000 });
-    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1 }) == Rational { 27183, 10000 });
-    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::Floor>(Rational { 1 }) == Rational { 13591, 5000 });
-    STATIC_REQUIRE(expAt<DecimalPlaces { 4 }, RoundingMode::TowardZero>(Rational { 1 }) == Rational { 13591, 5000 });
+    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::HalfAwayFromZero>(Rational { 1 }) == Rational { 27183, 10000 });
+    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 1 }) == Rational { 27183, 10000 });
+    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::Floor>(Rational { 1 }) == Rational { 13591, 5000 });
+    CHECK(expAt<DecimalPlaces { 4 }, RoundingMode::TowardZero>(Rational { 1 }) == Rational { 13591, 5000 });
     // exp -1 = 0.367879...: 0.368 = 46/125, and 0.367 downward.
-    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::HalfAwayFromZero>(Rational { -1 }) == Rational { 46, 125 });
-    STATIC_REQUIRE(expAt<DecimalPlaces { 3 }, RoundingMode::Floor>(Rational { -1 }) == Rational { 367, 1000 });
+    CHECK(expAt<DecimalPlaces { 3 }, RoundingMode::HalfAwayFromZero>(Rational { -1 }) == Rational { 46, 125 });
+    CHECK(expAt<DecimalPlaces { 3 }, RoundingMode::Floor>(Rational { -1 }) == Rational { 367, 1000 });
 }
 
 TEST_CASE("rounded_transcendental: a special point ties and the mode decides it", "[rounded_transcendental]")
@@ -2306,11 +2338,12 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
 
 TEST_CASE("rounded_transcendental: a percentage is read in the coherent unit", "[rounded_transcendental]")
 {
-    // 5 % is 0.05: ln 0.05 = -2.99573..., -2.9957; ln 5 would give 1.6094.
+    // 5 % is 0.05: ln 0.05 = -2.99573..., -2.9957; ln 5 would give 1.6094. Through the kernel, so at run time.
     constexpr auto fivePercent = formula::environment(formula::Measured<Share> { Rational { 5 } });
-    STATIC_REQUIRE(**formula::checked_evaluate_si<Rational>(
-                       formula::rounded_ln<DecimalPlaces { 4 }, RoundingMode::HalfAwayFromZero>(var<Share>), fivePercent)
-                   == Rational { -29957, 10000 });
+    CHECK(**formula::checked_evaluate_si<Rational>(
+              formula::rounded_ln<DecimalPlaces { 4 }, RoundingMode::HalfAwayFromZero>(var<Share>), fivePercent)
+          == Rational { -29957, 10000 });
+    // 1000 % is 10, a special point: exactly 1, at compile time.
     constexpr auto tenfold = formula::environment(formula::Measured<Share> { Rational { 1000 } });
     STATIC_REQUIRE(**formula::checked_evaluate_si<Rational>(
                        formula::rounded_log10<DecimalPlaces { 0 }, RoundingMode::HalfEven>(var<Share>), tenfold)
@@ -2346,12 +2379,12 @@ TEST_CASE("rounded_transcendental: rounded of a plain logarithm stays an exact l
   Add to `test/overlay_tests.cpp`, after the Task 2 lines:
 
 ```cpp
-    // The rounded forms: ln 4 = 1.386294... is 1.386 at 3 dp, log10 4 = 0.60205... is 0.602, and
-    // exp(4 - 4) is exactly 1.
-    STATIC_REQUIRE(withRatioFixedAtFour(f::rounded_ln<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(r))
-                   == Rational { 693, 500 });
-    STATIC_REQUIRE(withRatioFixedAtFour(f::rounded_log10<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(r))
-                   == Rational { 301, 500 });
+    // The rounded forms: ln 4 = 1.386294... is 1.386 at 3 dp, log10 4 = 0.60205... is 0.602 -- both
+    // through the logarithm kernel, so checked at run time -- and exp(4 - 4) is exactly 1.
+    CHECK(withRatioFixedAtFour(f::rounded_ln<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(r))
+          == Rational { 693, 500 });
+    CHECK(withRatioFixedAtFour(f::rounded_log10<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(r))
+          == Rational { 301, 500 });
     STATIC_REQUIRE(withRatioFixedAtFour(f::rounded_exp<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(
                        r - f::number(Rational { 4 })))
                    == Rational { 1 });
@@ -3034,8 +3067,9 @@ and `write_formula` after `write_formula(out, massSpread);`, `:669`), `docs/gall
   - `### Declaring a precision` — `rounded_ln`, `rounded_log10`, `rounded_exp`, whose value is the decimal
     the true value rounds to, computed with integer arithmetic (link
     [values the exact layer cannot hold](display.md#values-the-exact-layer-cannot-hold)); quote, verbatim,
-    the first three `STATIC_REQUIRE` lines of "rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2
-    with the directions paired the other way" and name the test. Choosing places: the method's own; at
+    the first three `CHECK` lines of "rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2
+    with the directions paired the other way" (run-time checks, as every check through the kernel is) and
+    name the test; say nothing there about compile time. Choosing places: the method's own; at
     most 18, and the result must fit a `Rational` there — at 18 places a value below about 9.2, so
     `log10` of a count near 10^18 at 17. Only ln 1, log10 10^k and exp 0 can tie, and the mode breaks the
     tie as `rounded<>` does (log10 10^15 at −1 dp is 20, 10 or 20 under HalfAwayFromZero, HalfTowardZero,
@@ -3197,9 +3231,21 @@ judged per step. (7) Every negative case has a deletion check. (8) The tools nam
 3. **`decide_rounding` at `L = 12`** — resolved: the foundation's `round_wide_ratio` reduces its argument, then
    multiplies the numerator (or, for negative places, the denominator) by `pow10<L>(|places|)` within the same
    width and divides once (declared-precision plan, Task 2). Numerators up to 2^193 times 10^18 < 2^60 stay
-   below 2^253 < 2^384. Each end costs one 12-limb `divmod` (about 130 000 cl steps) plus the reduction, so Task
-   4 Step 7 measures `decide_rounding` too and moves any compile-time check over budget to a run-time `CHECK`.
-   A spurious `Overflow` in the 18-place table means the word is too narrow: stop and report, do not add slack.
+   below 2^253 < 2^384. Measured while planning, on stand-ins built from this plan's kernel code and the
+   foundation plan's `wide_int.hpp` and `wide_rounding.hpp` code: 13 roundings (ln 2, log10 2 and exp 1 at 18
+   places among them) give the reference's answers at run time on cl 19.51, and a whole rounding costs
+   240 600–284 500 cl steps (297 950–355 300 on clang-cl 22.1.3), nearly all of it `decide_rounding`'s gcd
+   and binary `divmod`s. A spurious `Overflow` in the 18-place table means the word is too narrow: stop and
+   report, do not add slack.
 4. **`StepKind` order** — resolved: only the declared-precision plan (`RoundedOpaqueOutput`) and this plan (six
    kinds) append enumerators, in that order; the regression plan appends none.
+5. **Compile-time checks through the kernel** — resolved, for consistency across the three plans and for
+   portability (clang's default `-fconstexpr-steps` is 1 048 576 as well): every check in Tasks 4 and 5 that
+   reaches the kernel, or `decide_rounding` on its enclosure, is a run-time `CHECK`; the special points and
+   early exits stay `STATIC_REQUIRE`. Exactly one compile-time check reaches the kernel, "transcendental
+   kernel: the kernel answers at compile time" — log10 2 at 3 places, the cheapest whole rounding measured
+   (about 240 600 cl steps) — so the claim "at compile time and at run time" stays true. Each per-task build
+   on cl-debug and g++-14 compiles it; if it exceeds any toolchain's default at the final all-preset run,
+   the controller moves it to run time and takes the compile-time claim out of the documentation. Task 7
+   quotes `CHECK` lines.
 
