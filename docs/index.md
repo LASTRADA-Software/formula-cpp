@@ -113,6 +113,7 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Statistics, precision limits, outlier rejection | shipped |
 | Other samples and other tests: records, context, lineage | shipped |
 | Opaque operations (least squares), bounded retry | shipped |
+| Power, energy and Fahrenheit units | next release |
 | Named base dimensions such as money | next release |
 | Decimals in traces, rendered formulas and `std::format` | next release |
 | Calculations: definitions, dependency graph, incremental worksheets | next release |
