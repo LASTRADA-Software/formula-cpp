@@ -1209,10 +1209,10 @@ struct Sized
 constexpr formula::Citation sizeAnnex { .reference = "Example Standard 7:2019", .section = "B.2" };
 
 /// A strength scaled by a size factor a jurisdiction derives from the
-/// diameter -- over an invented 152.5 mm, a decimal the derivation states.
+/// diameter -- over an invented 163.7 mm, a decimal the derivation states.
 constexpr auto sizedStrength =
     std::get<0>(formula::apply(formula::overlay(formula::add_derived<SizeFactor>(
-                                   var<Diameter> / formula::constant<formula::unit::Millimetre>(rat(305, 2)), sizeAnnex)),
+                                   var<Diameter> / formula::constant<formula::unit::Millimetre>(rat(1637, 10)), sizeAnnex)),
                                formula::method(formula::variants(formula::variant<Sized>(var<Strength> * var<SizeFactor>)),
                                                formula::rounding_rule<formula::unit::Megapascal,
                                                                       formula::DecimalPlaces { 1 },
@@ -1250,13 +1250,13 @@ TEST_CASE("document: RenderOptions writes every number the page states in its st
     formula::Documentation const derivedPage = formula::document(sizedStrength);
     REQUIRE(derivedPage.symbols.size() == 3);
     REQUIRE(derivedPage.symbols[1].derivedAs.has_value());
-    CHECK(*derivedPage.symbols[1].derivedAs == "d / 305/2 mm");
+    CHECK(*derivedPage.symbols[1].derivedAs == "d / 1637/10 mm");
     formula::Documentation const decimalDerivedPage =
         formula::document(sizedStrength, formula::DefaultVocabulary {}, exactDecimals);
     REQUIRE(decimalDerivedPage.symbols.size() == 3);
     CHECK(decimalDerivedPage.symbols[1].symbol == "k");
     REQUIRE(decimalDerivedPage.symbols[1].derivedAs.has_value());
-    CHECK(*decimalDerivedPage.symbols[1].derivedAs == "d / 152.5 mm");
+    CHECK(*decimalDerivedPage.symbols[1].derivedAs == "d / 163.7 mm");
 
     // A rejection's limit.
     formula::Documentation const rejectionPage = formula::document(meanWithoutOutliers);
