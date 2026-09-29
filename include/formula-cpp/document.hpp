@@ -115,9 +115,10 @@ struct SymbolEntry
     std::optional<std::string> calculatedAs {};
 
     /// For a fixed or derived row: whether the formula ALSO reads this
-    /// quantity from the environment somewhere, besides where an overlay fixed
-    /// or defined it. False for a row that is neither, which is read and
-    /// nothing else.
+    /// quantity plainly somewhere -- from the environment, or, for a quantity
+    /// a calculation calculates, its calculated value -- besides where an
+    /// overlay fixed or defined it. False for a row that is neither, which is
+    /// read and nothing else.
     ///
     /// Only a formula assembled by hand has both -- `apply` substitutes every
     /// use -- and then a row saying only "fixed at 863/1000" would hide that the
@@ -1484,7 +1485,9 @@ template <Dialect D = Dialect::Plain, Unit U, SeriesNode S>
 /// order the calculation calculates them in, each with its definition
 /// rendered in dialect @p D (`SymbolEntry::calculatedAs`). The inputs
 /// follow, each once, in the order the definitions first read them when
-/// read in that order -- the order they first appear in `formula`. The
+/// read in that order -- the order they first appear in `formula`, which can
+/// differ from the order `inputs_of` and `describe_graph` list them in, the
+/// order the calculation first met them in its definitions as given. The
 /// citations are what the `Node` overload collects from each definition --
 /// each `documented()` citation among them -- definition by definition in
 /// that order, each definition's outermost first, and each as often as it

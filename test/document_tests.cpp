@@ -1125,11 +1125,64 @@ TEST_CASE("document: a calculated quantity an overlay fixes in a definition is o
                                                     formula::define<MixPerCent>(var<MixRatio> + fixedRatio));
     constexpr auto fixedFirst = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
                                                      formula::define<MixPerCent>(fixedRatio + var<MixRatio>));
-    for (formula::Documentation const& bothPage : { formula::document(readFirst), formula::document(fixedFirst) })
+    struct NamedPage
     {
-        REQUIRE(bothPage.symbols.size() == 4);
-        CHECK(bothPage.symbols[0].calculatedAs == "V_w / V_c");
-        CHECK(bothPage.symbols[0].fixedValue == rat(1, 2));
-        CHECK(bothPage.symbols[0].alsoReadAsInput);
+        std::string_view order;
+        formula::Documentation page;
+    };
+    for (NamedPage const& bothPage : { NamedPage { "read first", formula::document(readFirst) },
+                                       NamedPage { "fixed first", formula::document(fixedFirst) } })
+    {
+        INFO(bothPage.order);
+        REQUIRE(bothPage.page.symbols.size() == 4);
+        CHECK(bothPage.page.symbols[0].calculatedAs == "V_w / V_c");
+        CHECK(bothPage.page.symbols[0].fixedValue == rat(1, 2));
+        CHECK(bothPage.page.symbols[0].alsoReadAsInput);
     }
+}
+
+TEST_CASE("document: a calculated quantity an overlay derives in a definition is one row, with both definitions",
+          "[document][calculation][overlay]")
+{
+    // The per-cent value reads the ratio as an overlay derives it, from the
+    // water and the additive, where the calculation calculates it from the
+    // water and the cement: one row, holding both, and what the overlay
+    // cited. The additive, read only by the overlay's definition, is an
+    // input like any other.
+    constexpr formula::Citation derivedClause { .reference = "Example Standard 3:2022 NA", .section = "NA.2" };
+    constexpr auto derivedRatio =
+        std::get<0>(formula::apply(formula::overlay(formula::add_derived<MixRatio>(var<WaterVolume> / var<Additive>,
+                                                                                   derivedClause)),
+                                   perCentMethod)
+                        .variantSet.cases)
+            .expression.lhs;
+    constexpr auto derivedOnly = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                      formula::define<MixPerCent>(derivedRatio * rat(100)));
+    formula::Documentation const derivedPage = formula::document(derivedOnly);
+    REQUIRE(derivedPage.symbols.size() == 5);
+    CHECK(derivedPage.symbols[0]
+          == formula::SymbolEntry { .symbol = "w",
+                                    .description = "an invented water/binder ratio",
+                                    .unit = formula::unit::One,
+                                    .derivedAs = "V_w / V_a",
+                                    .derivedBy = derivedClause,
+                                    .calculatedAs = "V_w / V_c" });
+    CHECK(derivedPage.symbols[1].symbol == "w_p");
+    CHECK(derivedPage.symbols[2].symbol == "V_w");
+    CHECK(derivedPage.symbols[3].symbol == "V_c");
+    CHECK(derivedPage.symbols[4].symbol == "V_a");
+}
+
+TEST_CASE("document: a calculation's citation is listed as often as its definitions cite it",
+          "[document][calculation]")
+{
+    // Two definitions citing the same clause: the page lists it twice, as a
+    // single formula's page lists a citation it meets twice.
+    constexpr auto citedTwice = formula::calculation(
+        formula::define<MixRatio>(formula::documented(var<WaterVolume> / var<CementVolume>, ratioClause)),
+        formula::define<Surplus>(formula::documented(var<WaterVolume> - var<CementVolume>, ratioClause)));
+    formula::Documentation const page = formula::document(citedTwice);
+    REQUIRE(page.citations.size() == 2);
+    CHECK(page.citations[0] == ratioClause);
+    CHECK(page.citations[1] == ratioClause);
 }
