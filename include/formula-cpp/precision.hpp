@@ -160,16 +160,17 @@ namespace detail
     /// binds -- a precision limit's level here, a rejection pass's mean and
     /// count later. Written once, for every such construct.
     ///
-    /// It forwards exactly what the shipped nodes ask of an environment --
-    /// `provides`, `is_entered`, `get` and `source_of`, measured by a
-    /// spike, and phase 12's `is_entered_series` and `get_series` -- so every
-    /// node, a series node included, evaluates inside it as it does outside.
-    /// `source_of` and `checked_get` are forwarded only when the wrapped
-    /// environment has them, so that the variable evaluator, which asks
-    /// whether an environment has each (`evaluate.hpp`), gets the same answer
-    /// inside as outside. A binding it does not hold itself is asked of the
-    /// environment it wraps, so an inner construct's binding shadows an outer
-    /// one's of the same kind.
+    /// It forwards what the shipped nodes ask of an environment for a single
+    /// value -- `provides`, `is_entered`, `get` and `source_of` -- and for a
+    /// series -- `is_entered_series` and `get_series` -- so a node reading
+    /// either evaluates inside it as it does outside. It does not forward
+    /// `get_observations`, so a node reading raw observations (`binned`) does
+    /// not compile inside it. `source_of` and `checked_get` are forwarded
+    /// only when the wrapped environment has them, so that the variable
+    /// evaluator, which asks whether an environment has each
+    /// (`evaluate.hpp`), gets the same answer inside as outside. A binding it
+    /// does not hold itself is asked of the environment it wraps, so an inner
+    /// construct's binding shadows an outer one's of the same kind.
     ///
     /// Holds a reference to the environment it wraps: it lives for one
     /// evaluation, inside the call that made it. In `detail`, so that nothing

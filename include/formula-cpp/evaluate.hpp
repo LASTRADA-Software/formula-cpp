@@ -251,7 +251,11 @@ namespace detail
     /// Whether @p Env says at run time where its value for @p Q came from,
     /// through a member `source_of<Q>()` returning exactly `ValueSource`.
     /// `Environment` has one, and so do the library's own wrappers of an
-    /// environment whenever what they wrap has one.
+    /// environment whenever what they wrap has one. A member of that name
+    /// returning anything else -- a reference, or a type that merely converts
+    /// to `ValueSource` -- is not this hook, as `ReportsReadFailure` says of
+    /// its own: such an environment is asked `is_entered<Q>` instead, as one
+    /// with no `source_of` is.
     template <typename Env, typename Q>
     concept RunTimeSource = requires(Env const& asked) {
         { asked.template source_of<Q>() } -> std::same_as<ValueSource>;

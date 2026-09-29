@@ -673,19 +673,24 @@ class Environment
             return MeasuredObservations<Q, Capacity> {};
     }
 
-    /// Where the value for @p Q came from: `ManuallyEntered` for an `Entered`
-    /// entry, `Measured` for any other.
+    /// Where the value for @p Q came from: `ManuallyEntered` for a value or a
+    /// series a person typed in (an `Entered` or an `EnteredSeries` entry),
+    /// `Measured` for any other entry.
     ///
-    /// The variable evaluator asks this, for a sink that records an input's
-    /// source (`detail::report_input_source`, `evaluate.hpp`). It prefers it
-    /// to `is_entered<Q>` because an environment of another type can answer
-    /// it at run time, and say `Derived` of a value it calculated; for this
-    /// type the two always agree. `checked_evaluate` does not call it for the
-    /// result: it already knows, from `Env::is_entered<Result>`, whether the
-    /// result it is about to return was typed in or derived. So
-    /// `ValueSource::Measured` -- correct as it is here -- appears on a
-    /// trace's steps, and never as the source of an `Outcome` that
-    /// `checked_evaluate` returns; only `Derived` and `ManuallyEntered` do.
+    /// Asked, through `detail::known_source` (`evaluate.hpp`), for a sink
+    /// that records where a value came from: by the evaluator of a `var<Q>`,
+    /// of the value it reads (`detail::report_input_source`), and by the
+    /// evaluators of an overlay's fixed constant and derived quantity, of the
+    /// entry each replaced (`detail::report_replaced_entry`, `overlay.hpp`).
+    /// Both prefer it to `is_entered<Q>` because an environment of another
+    /// type can answer it at run time, and say `Derived` of a value it
+    /// calculated; for this type the two always agree. `checked_evaluate`
+    /// does not call it for the result: it already knows, from
+    /// `Env::is_entered<Result>`, whether the result it is about to return
+    /// was typed in or derived. So `ValueSource::Measured` -- correct as it
+    /// is here -- appears on a trace's steps, and never as the source of an
+    /// `Outcome` that `checked_evaluate` returns; only `Derived` and
+    /// `ManuallyEntered` do.
     template <Described Q>
     [[nodiscard]] constexpr ValueSource source_of() const noexcept
     {

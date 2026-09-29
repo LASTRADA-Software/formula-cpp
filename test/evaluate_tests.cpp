@@ -651,6 +651,40 @@ struct ReferenceToFailure: Lookalike
     }
 };
 
+/// Converts to `ValueSource::Derived`.
+struct DerivedOnConversion
+{
+    [[nodiscard]] constexpr operator formula::ValueSource() const noexcept
+    {
+        return formula::ValueSource::Derived;
+    }
+};
+
+/// A `source_of` answering a type that converts to `ValueSource` -- to
+/// `Derived`, which contradicts both of `is_entered`'s answers -- so that
+/// only an exact match refuses it.
+struct ConvertibleSource: Lookalike
+{
+    template <formula::Described Q>
+    [[nodiscard]] constexpr DerivedOnConversion source_of() const noexcept
+    {
+        return DerivedOnConversion {};
+    }
+};
+
+/// A `source_of` answering a reference to `ValueSource::Derived`: the hook's
+/// type exactly, but not by value.
+struct ReferenceToSource: Lookalike
+{
+    static constexpr formula::ValueSource calculated = formula::ValueSource::Derived;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::ValueSource const& source_of() const noexcept
+    {
+        return calculated;
+    }
+};
+
 [[nodiscard]] std::string source_name(formula::ValueSource answered)
 {
     switch (answered)
@@ -799,4 +833,28 @@ TEST_CASE("evaluate: a checked_get or a source_of of another return type is not 
                                         "V_c was measured",
                                         "V_c produced a value",
                                         "an operation produced a value" });
+}
+
+TEST_CASE("evaluate: a source_of answering a reference or a type converting to ValueSource is not the hook",
+          "[evaluate]")
+{
+    // Both answer Derived, if asked; an int, as above, would not convert.
+    STATIC_REQUIRE(static_cast<formula::ValueSource>(ConvertibleSource {}.source_of<WaterVolume>())
+                   == formula::ValueSource::Derived);
+    STATIC_REQUIRE(ReferenceToSource {}.source_of<WaterVolume>() == formula::ValueSource::Derived);
+
+    // Neither is asked, so is_entered decides: the water typed in, the cement
+    // measured -- where the hook would have said both were derived.
+    std::vector<std::string> const decidedByIsEntered { "V_w was entered",
+                                                        "V_w produced a value",
+                                                        "V_c was measured",
+                                                        "V_c produced a value",
+                                                        "an operation produced a value" };
+    std::vector<std::string> heard;
+    (void) formula::checked_evaluate_si<formula::Rational>(total, ConvertibleSource {}, VariableLog { &heard });
+    CHECK(heard == decidedByIsEntered);
+
+    heard.clear();
+    (void) formula::checked_evaluate_si<formula::Rational>(total, ReferenceToSource {}, VariableLog { &heard });
+    CHECK(heard == decidedByIsEntered);
 }

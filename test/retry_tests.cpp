@@ -1260,6 +1260,21 @@ struct CalculatedStep
     }
 };
 
+/// The same step from an environment with neither hook: `get` and
+/// `is_entered` only, which says the step was typed in and the estimate was
+/// not.
+struct PlainStep
+{
+    template <formula::Described Q>
+    static constexpr bool is_entered = std::is_same_v<Q, StepSize>;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return formula::Measured<Q> { rat(152, 25) };
+    }
+};
+
 template <typename Env>
 concept FailsReads = requires(Env const& asked) { asked.template checked_get<StepSize>(); };
 
@@ -1302,5 +1317,29 @@ TEST_CASE("the attempt's environment forwards a read's source and its failure wh
         }
     CHECK(calculatedReads == 4);
     CHECK(formula::render_trace(explained.trace, { .maxSteps = 60 }).find("s_w = 152/25 g, calculated\n")
+          != std::string::npos);
+}
+
+TEST_CASE("the attempt's environment has neither hook when the specimen's has neither", "[retry]")
+{
+    using Neither =
+        formula::detail::AttemptEnvironment<PlainStep, formula::Rational, Estimate, formula::AttemptPhase::Attempting, 4>;
+    STATIC_REQUIRE_FALSE(FailsReads<Neither>);
+    STATIC_REQUIRE_FALSE(SaysSource<Neither>);
+
+    // It still evaluates and traces, and is_entered decides every read's
+    // source: typed in, as the specimen says.
+    auto const explained = formula::explain_retry(calculatedStep, PlainStep {});
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->end() == formula::RetryEnd::Accepted);
+    std::size_t typedReads = 0;
+    for (formula::Step<> const& each: explained.trace.steps)
+        if (each.kind == formula::StepKind::Variable)
+        {
+            CHECK(each.inputSource == formula::ValueSource::ManuallyEntered);
+            ++typedReads;
+        }
+    CHECK(typedReads == 4);
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 60 }).find("s_w = 152/25 g, entered by hand\n")
           != std::string::npos);
 }
