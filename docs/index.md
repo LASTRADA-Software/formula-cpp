@@ -65,6 +65,7 @@ for it, in the mode the method specifies.
 | [Expressions and evaluation](expressions.md) | Operators, environments, outcomes, overrides |
 | [Citations and rendering](citations.md) | `documented()`, the three dialects, generated documentation |
 | [Tracing and audit trails](tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
+| [Displaying numbers](display.md) | Decimals in traces and rendered formulas, exact unless an approximation is asked for, and std::format for Rational and Measured |
 | [Rounding and conditionals](rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Lookup tables](lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |

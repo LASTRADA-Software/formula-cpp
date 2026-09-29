@@ -162,6 +162,11 @@ Rational const toTwoSignificant = formula::round(value, SignificantDigits { 2 },
 Rational const snapped = formula::round_to_multiple(Rational { 7 }, Rational { 5 }, RoundingMode::HalfAwayFromZero); // 5
 ```
 
+A `Rational` is written as text as a fraction by default. To write it as a
+decimal -- exactly where it has one, rounded in a mode you name and marked `≈`
+where it does not -- in a trace, a rendered formula, `number_text()` or
+`std::format`, see [Displaying numbers](display.md).
+
 ## Rounding is part of the calculation
 
 Because rounding is an operation over exact values rather than a formatting

@@ -28,108 +28,14 @@
 /// `≈` saying it was rounded; `{:.3HalfEven}` is `0.333`, a rounding the
 /// format asked for outright.
 ///
-/// ## The format spec
-///
-///     spec  ::= [[fill] align] [width] [body]         fill: one UTF-8 code point; align: < > ^ (default >)
-///     body  ::= ''                   exact decimal, else fraction      0.6   1/3    5.2 kW
-///             | '/'                  fraction                           3/5   1/3
-///             | '.' N Mode           rounded to N (0..18), padded       {:.2HalfEven} -> 118.26
-///             | '~' ['.' N] Mode     exact where exact, else ≈ rounded  {:~.3HalfEven} -> ≈0.333
-///     Mode  ::= HalfAwayFromZero | HalfTowardZero | HalfEven | Ceiling | Floor | TowardZero | AwayFromZero
-///
-/// One example per form, each call with the text it produces:
-///
-///     std::format("{}", Rational { 3, 5 })                          0.6
-///     std::format("{}", Rational { 1, 3 })                          1/3
-///     std::format("{:/}", Rational { 3, 5 })                        3/5
-///     std::format("{:.2HalfEven}", Rational { 23653, 200 })         118.26
-///     std::format("{:.2HalfAwayFromZero}", Rational { 23653, 200 }) 118.27
-///     std::format("{:.2HalfEven}", Rational { 4 })                  4.00
-///     std::format("{:~.3HalfEven}", Rational { 1, 3 })              ≈0.333
-///     std::format("{:~.3HalfEven}", Rational { 3, 5 })              0.6
-///     std::format("{:>8}", Rational { 3, 5 })                       "     0.6"
-///     std::format("{:*^7}", Rational { 3, 5 })                      **0.6**
-///
-/// and for a `Measured<Q>`, the same number in `Q`'s declared unit, followed
-/// by a space and the unit's symbol when it has one, or `(not measured)` when
-/// it is absent -- here with `Q` declared in `unit::Kilojoule`, whose symbol
-/// is `kJ` and which declares one decimal:
-///
-///     std::format("{}", Measured<Q> { Rational { 26, 5 } })            5.2 kJ
-///     std::format("{:/}", Measured<Q> { Rational { 26, 5 } })          26/5 kJ
-///     std::format("{:.3HalfEven}", Measured<Q> { Rational { 26, 5 } }) 5.200 kJ
-///     std::format("{:~HalfEven}", Measured<Q> { Rational { 1, 3 } })   ≈0.3 kJ
-///     std::format("{:~.3HalfEven}", Measured<Q> { Rational { 1, 3 } }) ≈0.333 kJ
-///     std::format("{}", Measured<Q>::absent())                         (not measured)
-///
-/// - **Nothing**, `{}`: the exact decimal where the value has one, and the
-///   fraction in lowest terms where it does not -- `NumberStyle::exact_decimal()`.
-/// - **`/`**: always the fraction -- `NumberStyle::fraction()`.
-/// - **`.N Mode`**: rounded to N decimal places, 0 to 18, in the rounding mode
-///   named, and padded with zeros to N places: `decimal_text`. An explicit
-///   request to round, so no `≈` is written, even when rounding changed the
-///   value.
-/// - **`~.N Mode`**: the exact decimal where the value has one, unpadded;
-///   otherwise rounded to N places in the mode named, and marked `≈` --
-///   `NumberStyle::approximate_decimal(Mode)` at N decimals.
-/// - **`~Mode`**, for a `Measured<Q>` only: the same, at the decimals `Q`'s unit
-///   declares (`declared_decimals`), exactly as `number_text(measured,
-///   NumberStyle::approximate_decimal(Mode))` spells it. A `Rational` has no
-///   unit to take the places from, so it needs `~.N Mode`.
-///
-/// The mode names are `RoundingMode`'s enumerators, spelled exactly as they
-/// are there, and nothing else: `HalfAwayFromZero`, `HalfTowardZero`,
-/// `HalfEven`, `Ceiling`, `Floor`, `TowardZero`, `AwayFromZero`. **There is no
-/// default mode.** Every rounding names one, because the same number rounds
-/// differently under different methods -- 2.5 is 3 under `HalfAwayFromZero`
-/// and 2 under `HalfEven` -- and a format that chose one silently would decide
-/// a question the method's author has to answer (see `docs/numbers.md`).
-///
-/// **Width counts code points, not bytes.** `≈`, `°C` and `µm` each take one
-/// column per character, as the eye counts them, so `{:>8}` of 21.3 in degrees
-/// Celsius is `" 21.3 °C"`, seven characters and one fill, although `°` is two
-/// bytes in UTF-8. The fill is one Unicode scalar value -- a code point that
-/// is not a surrogate -- in well-formed UTF-8, any but `{` and `}`: it is
-/// copied into the output, so an overlong encoding, a surrogate's or one past
-/// U+10FFFF is refused. The alignment `<` puts the text left, `>` right (the
-/// default) and `^` in the middle, the odd fill going to the right. The width
-/// is a whole number of at most nine digits, written directly: a width taken
-/// from an argument, `{:{}}`, is refused, as is `0`-padding.
-///
-/// ## What goes wrong, and how it shows
-///
-/// A spec is checked where it is parsed, and each mistake is refused by a
-/// function named for it:
-///
-/// - `formula_number_format_needs_a_rounding_mode`: a rounding with no mode --
-///   `{:.2}`, `{:~.3}`, `{:~}`.
-/// - `formula_number_format_places_out_of_range`: more than 18 places --
-///   `{:.19HalfEven}` -- or `~Mode` on a `Measured` whose unit declares
-///   decimals outside -18 to 18.
-/// - `formula_number_format_spec_not_understood`: anything else the grammar
-///   does not allow -- an unknown mode, `{:x}`, `{:08}`, `{:{}}` -- and `~Mode`
-///   without `.N` on a `Rational`.
-///
-/// In a literal format string, which `std::format` checks while compiling,
-/// the mistake is a **compile error** that names that function: the check
-/// cannot call it, because it is not `constexpr`. A format string built at run
-/// time and passed to `std::vformat` is checked when it is used instead, and
-/// the same function throws `std::format_error`, whose `what()` starts
-/// `formula: ` and says what to write instead.
-///
-/// **Spelling a value can still fail, in one case no spec check can see.**
-/// `~Mode` on a `Measured` whose unit declares negative decimals -- rounding
-/// to tens, or thousands -- rounds through exact arithmetic (`checked_round`),
-/// which divides the value by 10^-decimals. A value whose denominator times
-/// that power of ten -- less any factor of it the numerator cancels --
-/// exceeds the integer range overflows there, even when the rounded result is
-/// small: `from_double_exact(0.1)`, which is
-/// 3602879701896397/2^55, in a unit declaring -3 decimals is one. `format`
-/// then throws `std::format_error`, whose `what()` starts `formula: this number
-/// cannot be spelled as the format asks`, rather than write a text that is
-/// neither the value nor the rounding the spec asked for. Every other form,
-/// and every form of a `Rational`, spells at 0 to 18 places, where nothing
-/// overflows.
+/// **The reference is on the two specialisations**,
+/// `std::formatter<formula::Rational, char>` and
+/// `std::formatter<formula::Measured<Q>, char>`: the spec's grammar, one
+/// example per form with the text it writes, the seven rounding-mode names
+/// and why no mode is assumed, how the width counts, how a spec the grammar
+/// does not allow fails, and when writing a value throws. The guide
+/// `docs/display.md`, section "Formatting with `std::format`", sets it out
+/// for a reader with the output of a real program beside each form.
 ///
 /// **The library owns these two specialisations of `std::formatter`.** A
 /// consumer who specialises `std::formatter<formula::Rational, char>` or
@@ -177,9 +83,9 @@ namespace formula::detail
         "within -18 to 18 for ~Mode to round at them -- write .0 to .18");
 }
 
-/// Refuses a number format the grammar in `format.hpp` does not allow. Not
-/// `constexpr`, for the reason `formula_number_format_needs_a_rounding_mode`
-/// gives.
+/// Refuses a number format the grammar does not allow (see the two
+/// `std::formatter` specialisations below). Not `constexpr`, for the reason
+/// `formula_number_format_needs_a_rounding_mode` gives.
 /// @throws std::format_error always.
 [[noreturn]] inline void formula_number_format_spec_not_understood()
 {
@@ -191,9 +97,9 @@ namespace formula::detail
 
 /// Refuses to write a value the format could not spell: `~Mode` on a
 /// `Measured` whose unit declares negative decimals, for a value exact
-/// arithmetic cannot divide by 10^-decimals (see the file comment) -- the one
-/// case the parser's checks cannot see. Reached only at run time, from
-/// `format`.
+/// arithmetic cannot divide by 10^-decimals (see `formatter<Measured<Q>>`)
+/// -- the one case the parser's checks cannot see. Reached only at run time,
+/// from `format`.
 /// @throws std::format_error always.
 [[noreturn]] inline void number_format_failed(ArithmeticError spellingFailure)
 {
@@ -203,7 +109,8 @@ namespace formula::detail
     throw std::format_error("formula: this number cannot be spelled as the format asks");
 }
 
-/// What a number format's body asks for (see `format.hpp`'s grammar).
+/// What a number format's body asks for (see the grammar on the
+/// `std::formatter` specialisations below).
 enum class NumberFormatBody : std::uint8_t
 {
     /// Nothing: the exact decimal, else the fraction.
@@ -328,9 +235,9 @@ inline constexpr RoundingModeName RoundingModeNames[] {
 }
 
 /// @p specText -- the part of a replacement field after its `:`, up to its
-/// `}` -- parsed as `format.hpp`'s grammar. Refuses, by calling the guard
-/// named for the mistake, anything that grammar does not allow: at compile
-/// time that is a compile error, at run time a `std::format_error`.
+/// `}` -- parsed as the specialisations' grammar says. Refuses, by calling
+/// the guard named for the mistake, anything that grammar does not allow: at
+/// compile time that is a compile error, at run time a `std::format_error`.
 ///
 /// Whether a body fits the type formatted -- `~Mode` without `.N` needs a
 /// `Measured` -- is the formatter's to check, not this function's.
@@ -572,6 +479,9 @@ namespace std
 /// is a compile error naming the guard; under `std::vformat` the guard throws
 /// `std::format_error`, whose `what()` starts `formula: `.
 ///
+/// The guide, `docs/display.md`, section "Formatting with `std::format`",
+/// sets this reference out with a real program's output beside each form.
+///
 /// Owned by this library: a consumer's own specialisation of it would define
 /// it twice, which breaks the one-definition rule.
 template <>
@@ -667,6 +577,9 @@ struct formatter<formula::Rational, char>
 /// at -3 decimals is one. `format` then throws `std::format_error`, whose
 /// `what()` starts `formula: this number cannot be spelled as the format
 /// asks`.
+///
+/// The guide, `docs/display.md`, section "Formatting with `std::format`",
+/// sets this reference out with a real program's output beside each form.
 ///
 /// Owned by this library: a consumer's own specialisation of it would define
 /// it twice, which breaks the one-definition rule.

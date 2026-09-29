@@ -147,6 +147,12 @@ may break it, and each such change is recorded here.
   changes. The style travels with the vocabulary, the one argument every `render_node` already
   receives, so a consumer's own two-argument `render_node` hands it on unchanged and can read it
   with `number_style_of(vocabulary)`.
+- `docs/display.md`, a guide to displaying numbers, and its example `examples/display.cpp`: decimals
+  in a trace, in a rendered formula and in its documentation, `number_text()` and `decimal_text()`,
+  and a reference for `std::format` of a `Rational` and a `Measured` -- every form of the spec with
+  the text it writes, the rounding modes, the width in code points, and what a bad spec does. Each
+  output block on the page is checked against the example's output, and each code block against
+  its source.
 
 ### Changed
 

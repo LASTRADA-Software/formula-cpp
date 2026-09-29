@@ -233,3 +233,25 @@ add_test(NAME docs.opaque-and-retry-snippets
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/opaque_and_retry.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/opaque-and-retry.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
+# docs/display.md quotes this program's output verbatim. Pinned here, in the
+# order the program prints them: a value with no exact decimal kept as its
+# fraction, then rounded and marked, then padded; a comparison stated exactly
+# beside a rounded input; the typed tare as a decimal in the formula's text;
+# number_text of an absent value; the std::format reference's exact decimal,
+# fraction and marked rounding; and a spec refused at run time in the
+# library's words.
+formula_add_example(display display.cpp [==[#3 / #6 = 134/1185.*#3 / #6 = ≈0\.113.*m_d = 144\.0 g.*67/6 % \(at most 12 %\).*\(m_w - m_d\) / \(m_d - 25\.5 g\).*not measured: \(not measured\).*Rational \{ 3, 5 \}\)  +0\.6.*Rational \{ 1, 3 \}\)  +1/3.*Rational \{ 1, 3 \}\)  +≈0\.333.*formula: this number format rounds but names no rounding mode.*all checks passed: yes]==])
+
+# Every ```text block of docs/display.md must be lines the example really
+# prints, and every ```cpp block lines of its source.
+add_test(NAME docs.display-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-display>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.display-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/display.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")

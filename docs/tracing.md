@@ -684,6 +684,7 @@ struct StepLimit
 struct TraceRenderOptions
 {
     StepLimit maxSteps;
+    NumberStyle numbers = NumberStyle::fraction();
 };
 ```
 
@@ -696,7 +697,9 @@ either a diagnostic or an unbounded render. `StepLimit` has no default
 constructor, so there is no zero for `{}` to produce; `{.maxSteps = 10}` and
 `{25}` both still work, because `StepLimit`'s own constructor is not
 `explicit`. Every other option this library exposes with a sensible default
-gets one; this one does not, because a sensible default does not exist. An
+gets one -- `numbers`, the notation every value is written in, defaults to
+fractions, and [Displaying numbers](display.md) shows the decimal styles --
+while this one does not, because a sensible default does not exist. An
 unbounded render of a derivation with a hundred thousand steps once collapsed
 into one wall of text long enough to be practically unusable -- the same
 failure mode `trace.hpp`'s flat, index-addressed arena exists to make
