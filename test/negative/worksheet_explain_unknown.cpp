@@ -9,6 +9,7 @@
 // This must not compile.
 #include <formula-cpp/calculation.hpp>
 #include <formula-cpp/trace.hpp>
+
 namespace
 {
 namespace unit = formula::unit;

@@ -76,8 +76,9 @@ may break it, and each such change is recorded here.
   definition's derivation, recorded afresh from the values the worksheet holds, so it describes them
   even where a value was reused rather than calculated again; a calculated value it reads is one
   step, its source `Derived`, and has a block of its own. An override or an input is one step. A
-  value only a `when()` branch not taken reads gets no block, and a failed value is a block like any
-  other. Recording the blocks calculates nothing again.
+  value the evaluation never reached -- read only in a `when()` branch not taken, or to the right of
+  an operand that failed -- gets no block, and a failed value is a block like any other. Recording
+  the blocks calculates nothing again.
 - A calculation as text, in `render.hpp`: `render(calculation, vocabulary)` writes one `symbol =
   expression` line per definition, in the order the definitions are calculated, in any dialect;
   `describe_graph` lists the inputs and then what each calculated value reads, the arrows aligned;

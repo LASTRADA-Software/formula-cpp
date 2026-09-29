@@ -59,13 +59,13 @@
 // `worksheet` of it, from an environment with and without an override,
 // asked for one value and for two, by type and by variable, set, set on a
 // worksheet about to be discarded, copied with an override by `with`, the
-// override cleared, with its counters and every query, and its derivation,
-// `explain_worksheet`, rendered by `render_derivation`; the calculation
-// rendered, and its graph by `describe_graph` and `to_dot`; and a
-// quantity declared by alias at global scope, so that its tag is one more
-// global. A
-// template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
-// computed what it should.
+// override cleared, with its counters and every query, and its derivation
+// by `explain_worksheet`, rendered by `render_derivation`; the calculation
+// rendered, and its graph by `describe_graph` and `to_dot`; and a quantity
+// declared by alias at global scope, so that its tag is one more global. A
+// template it does not reach is not guarded by it.
+// `consumer_globals_run_tests.cpp` checks that each of these computed what
+// it should.
 //
 // Measured against the headers before their names were changed: cl 19.51
 // reported 292 declarations across 30 headers with the probe's first

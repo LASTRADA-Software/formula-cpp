@@ -4558,9 +4558,10 @@ namespace detail
 /// reads is one step -- that value's own block, further on, says how it was
 /// reached. An overridden value's block is the one step of its value typed
 /// in, and a value read only through it gets no block. The inputs read come
-/// last, one step each. A value only a `when()` branch not taken would have
-/// read gets no block, and a failed value is a block like any other, its
-/// failure in `error` and in its trace.
+/// last, one step each. A value the evaluation never reached -- read only
+/// in a `when()` branch not taken, or to the right of an operand that
+/// failed -- gets no block, and a failed value is a block like any other,
+/// its failure in `error` and in its trace.
 ///
 /// **Always the current values.** The derivation is recorded afresh on
 /// every call, from the values the worksheet holds once @p Result is up to
@@ -4570,10 +4571,14 @@ namespace detail
 /// counts as it does; recording the blocks calculates nothing again.
 ///
 /// **A value an overlay replaced.** An overlay's fixed constant or derived
-/// quantity in a definition reads nothing of the quantity it stands for, so
-/// its step reports the worksheet's value for that quantity as the value
-/// it replaced only when the definition also reads that quantity itself --
-/// never a value the worksheet did not bring up to date for the definition.
+/// quantity in a definition reads nothing of the quantity it stands for. Its
+/// step says where the worksheet's value for that quantity came from, and
+/// whether it held one -- never the value -- only when the definition itself
+/// declares a read of that quantity, anywhere, even in a `when()` branch not
+/// taken; so it never speaks of a value the worksheet did not bring up to
+/// date for the definition. Saying so reads that quantity, which then has a
+/// block of its own, even where the definition's own read of it lies in a
+/// branch not taken.
 template <Described Result, typename Calc, Vocabulary V = DefaultVocabulary>
 [[nodiscard]] ExplainedWorksheet<Result, Calc, V> explain_worksheet(Worksheet<Calc>& sheet,
                                                                    V const& vocabulary = V {})

@@ -8,11 +8,13 @@
 //
 // A worksheet of a calculation refused for a cycle: the cycle's message is
 // the one, and the worksheet -- over an environment that misses the input
-// and holds an entry nobody reads, set, asked, and asked about and cleared
-// of an override of an input -- says nothing more.
+// and holds an entry nobody reads, set, asked, asked about and cleared of an
+// override of an input, and asked for the derivation of a quantity it does
+// not hold and of one it defines -- says nothing more.
 //
 // This must not compile.
 #include <formula-cpp/calculation.hpp>
+#include <formula-cpp/trace.hpp>
 
 namespace
 {
@@ -51,5 +53,8 @@ int main()
         formula::worksheet(circular, formula::environment(formula::Measured<Unrelated> { formula::Rational { 1 } }));
     sheet.set(formula::Measured<Unrelated> { formula::Rational { 2 } });
     sheet.clear_override<Factor>();
+    if (!formula::explain_worksheet<Unrelated>(sheet).entries.empty()
+        || !formula::explain_worksheet<Share>(sheet).entries.empty())
+        return 2;
     return sheet.checked_calculate<Unrelated>().has_value() || sheet.is_overridden<Factor>() ? 0 : 1;
 }

@@ -373,6 +373,33 @@ TEST_CASE("a value only a when() branch not taken reads has no block", "[calcula
     CHECK(named_block(taken, "s").value == rat(3, 2));
 }
 
+TEST_CASE("a value to the right of an operand that failed has no block", "[calculation][worksheet][trace]")
+{
+    // The doubled share adds the halved factor to the share. The other
+    // factor is zero, so the share fails, and the sum stops there: the
+    // halved factor is calculated, but the answer is not reached through it,
+    // and it has no block.
+    constexpr auto rightOfFailure = formula::calculation(formula::define<Share>(var<Factor> / var<Other>),
+                                                         formula::define<Halved>(var<Factor> * rat(1, 2)),
+                                                         formula::define<Doubled>(var<Share> + var<Halved>));
+    auto sheet = formula::worksheet(
+        rightOfFailure, formula::environment(formula::Measured<Factor> { rat(3) }, formula::Measured<Other> { rat(0) }));
+    auto const failed = formula::explain_worksheet<Doubled>(sheet);
+    REQUIRE_FALSE(failed.outcome.has_value());
+    CHECK(failed.outcome.error() == formula::ArithmeticError::DivisionByZero);
+    CHECK(sheet.recomputed() == 3);
+    CHECK(block_symbols(failed) == std::vector<std::string_view> { "s_2", "s", "k", "k_o" });
+    CHECK(variable_step(named_block(failed, "s_2"), "s_h") == nullptr);
+
+    // Once the share holds a value, the sum reads the halved factor too.
+    sheet.set(formula::Measured<Other> { rat(2) });
+    auto const reached = formula::explain_worksheet<Doubled>(sheet);
+    REQUIRE(reached.outcome.has_value());
+    CHECK(reached.outcome->measurement() == formula::Measured<Doubled> { rat(3) });
+    CHECK(block_symbols(reached) == std::vector<std::string_view> { "s_2", "s_h", "s", "k", "k_o" });
+    CHECK(named_block(reached, "s_h").value == rat(3, 2));
+}
+
 TEST_CASE("a failed value is a block like any other", "[calculation][worksheet][trace]")
 {
     auto sheet = guarded_sheet(rat(3), rat(0));
@@ -466,6 +493,93 @@ TEST_CASE("a value an overlay replaced is reported only where the definition rea
     REQUIRE(readStep != nullptr);
     CHECK(readStep->inputSource == formula::ValueSource::Measured);
     CHECK_FALSE(readStep->replacedEntryEmpty);
+}
+
+TEST_CASE("a calculated value an overlay replaced is reported only once the worksheet brought it up to date",
+          "[calculation][worksheet][trace][overlay]")
+{
+    constexpr auto fixedShare = std::get<0>(fixedFactor.variantSet.cases).expression;
+    auto const inputs = formula::environment(formula::Measured<Width> { rat(97) },
+                                             formula::Measured<Depth> { rat(100) },
+                                             formula::Measured<Other> { rat(139, 100) });
+
+    // The factor is calculated from the width and the depth, and the share
+    // reads only the fixed constant standing for it: asking for the share
+    // never calculates the factor, and the constant's step says nothing of
+    // it.
+    constexpr auto unreadCalculation = formula::calculation(formula::define<Factor>(var<Width> / var<Depth>),
+                                                            formula::define<Share>(fixedShare));
+    auto unreadSheet = formula::worksheet(unreadCalculation, inputs);
+    auto const unread = formula::explain_worksheet<Share>(unreadSheet);
+    REQUIRE(unread.outcome.has_value());
+    CHECK(unread.outcome->measurement() == formula::Measured<Share> { rat(103 * 139, 100 * 100) });
+    CHECK(unreadSheet.recomputed() == 1);
+    CHECK(block_symbols(unread) == std::vector<std::string_view> { "s", "k_o" });
+    formula::Step<formula::Rational> const* const unreadStep =
+        step_of_kind(unread.entries.front(), formula::StepKind::OverriddenConstant);
+    REQUIRE(unreadStep != nullptr);
+    CHECK_FALSE(unreadStep->inputSource.has_value());
+
+    // The share reads the factor itself as well, 97/100 plus 103/100 times
+    // 139/100: the factor is calculated first, and the constant's step says
+    // the value it replaced was calculated.
+    constexpr auto readingCalculation = formula::calculation(formula::define<Factor>(var<Width> / var<Depth>),
+                                                             formula::define<Share>(var<Factor> + fixedShare));
+    auto sheet = formula::worksheet(readingCalculation, inputs);
+    auto const calculated = formula::explain_worksheet<Share>(sheet);
+    REQUIRE(calculated.outcome.has_value());
+    CHECK(calculated.outcome->measurement() == formula::Measured<Share> { rat(24017, 10000) });
+    CHECK(sheet.recomputed() == 2);
+    CHECK(block_symbols(calculated) == std::vector<std::string_view> { "s", "k", "b", "d", "k_o" });
+    CHECK(named_block(calculated, "k").kind == formula::WorksheetEntryKind::Calculated);
+    formula::Step<formula::Rational> const* const calculatedStep =
+        step_of_kind(calculated.entries.front(), formula::StepKind::OverriddenConstant);
+    REQUIRE(calculatedStep != nullptr);
+    CHECK(calculatedStep->inputSource == formula::ValueSource::Derived);
+    CHECK_FALSE(calculatedStep->replacedEntryEmpty);
+
+    // The factor overridden by hand, 101/100: the value the constant
+    // replaced was typed in, and what the factor was calculated from is no
+    // longer read.
+    sheet.set(formula::entered(formula::Measured<Factor> { rat(101, 100) }));
+    auto const overridden = formula::explain_worksheet<Share>(sheet);
+    REQUIRE(overridden.outcome.has_value());
+    CHECK(overridden.outcome->measurement() == formula::Measured<Share> { rat(24417, 10000) });
+    CHECK(block_symbols(overridden) == std::vector<std::string_view> { "s", "k", "k_o" });
+    CHECK(named_block(overridden, "k").kind == formula::WorksheetEntryKind::Overridden);
+    formula::Step<formula::Rational> const* const overriddenStep =
+        step_of_kind(overridden.entries.front(), formula::StepKind::OverriddenConstant);
+    REQUIRE(overriddenStep != nullptr);
+    CHECK(overriddenStep->inputSource == formula::ValueSource::ManuallyEntered);
+    CHECK_FALSE(overriddenStep->replacedEntryEmpty);
+}
+
+TEST_CASE("an empty entry an overlay replaced is reported as empty, and has a block even from a branch not taken",
+          "[calculation][worksheet][trace][overlay]")
+{
+    constexpr auto fixedShare = std::get<0>(fixedFactor.variantSet.cases).expression;
+
+    // The factor is an input left empty. The share reads the fixed constant
+    // standing for it on the branch taken, and the factor itself only on the
+    // branch not taken: the constant's step says the entry it replaced held
+    // no value, and saying so read the factor, which has its block.
+    constexpr auto branchCalculation = formula::calculation(formula::define<Share>(
+        formula::when(var<Other> > formula::constant<unit::One>(rat(0)), fixedShare, var<Factor>)));
+    auto sheet = formula::worksheet(
+        branchCalculation,
+        formula::environment(formula::Measured<Factor>::absent(), formula::Measured<Other> { rat(139, 100) }));
+    auto const explained = formula::explain_worksheet<Share>(sheet);
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->measurement() == formula::Measured<Share> { rat(103 * 139, 100 * 100) });
+    formula::Step<formula::Rational> const* const emptyStep =
+        step_of_kind(explained.entries.front(), formula::StepKind::OverriddenConstant);
+    REQUIRE(emptyStep != nullptr);
+    CHECK(emptyStep->replacedEntryEmpty);
+    CHECK(emptyStep->inputSource == formula::ValueSource::Measured);
+    CHECK(block_symbols(explained) == std::vector<std::string_view> { "s", "k_o", "k" });
+    formula::WorksheetEntry const& factor = named_block(explained, "k");
+    CHECK(factor.kind == formula::WorksheetEntryKind::Input);
+    CHECK_FALSE(factor.value.has_value());
 }
 
 TEST_CASE("a derivation renders each block under its header, and the inputs last", "[calculation][worksheet][trace]")

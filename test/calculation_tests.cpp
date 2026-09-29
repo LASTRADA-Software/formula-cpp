@@ -958,6 +958,9 @@ TEST_CASE("a value that fails again with the same error counts as unchanged", "[
     // reads only the share, is reused; the halved value reads the factor too,
     // and is calculated again.
     sheet.set(formula::Measured<Factor> { rat(4) });
+    std::expected<formula::Outcome<Share>, formula::ArithmeticError> const share = sheet.checked_calculate<Share>();
+    REQUIRE_FALSE(share.has_value());
+    CHECK(share.error() == formula::ArithmeticError::DivisionByZero);
     std::expected<formula::Outcome<Doubled>, formula::ArithmeticError> const doubled =
         sheet.checked_calculate<Doubled>();
     REQUIRE_FALSE(doubled.has_value());
