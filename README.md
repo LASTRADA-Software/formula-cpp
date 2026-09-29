@@ -260,6 +260,7 @@ because all of it came from the same line of code.
 | [Citations and rendering](docs/citations.md) | `documented()`, the three dialects, generated documentation |
 | [Tracing and audit trails](docs/tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
 | [Displaying numbers](docs/display.md) | Decimals in traces and rendered formulas, exact unless an approximation is asked for, and std::format for Rational and Measured |
+| [Calculations and worksheets](docs/calculations.md) | Named values defined by expressions, a dependency graph checked at compile time, a worksheet that recalculates only what a change reaches, what-if copies, overrides, and a derivation per named value |
 | [Rounding and conditionals](docs/rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](docs/constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Lookup tables](docs/lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
@@ -298,6 +299,7 @@ and still growing. The public API may change until 1.0.
 | Opaque operations (least squares), bounded retry | shipped |
 | Named base dimensions such as money | next release |
 | Decimals in traces, rendered formulas and `std::format` | next release |
+| Calculations: definitions, dependency graph, incremental worksheets | next release |
 
 ## Requirements
 

@@ -431,3 +431,10 @@ yourself.
 
 `examples/composition.cpp` is this, complete and runnable; its output is
 where the blocks above come from.
+
+Composition writes a named formula into every formula that uses it, so a
+sub-result two formulas share is evaluated once for each, and nothing
+remembers it. When the named parts are values in their own right -- a bill or
+a report of many values, each built on the ones before -- define each once
+instead, and let a worksheet calculate each once and recalculate only what a
+change reaches: [Calculations and worksheets](calculations.md).

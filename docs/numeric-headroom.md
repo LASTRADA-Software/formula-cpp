@@ -138,6 +138,7 @@ Each program's largest integers over everything it evaluates at run time.
 | example `expressions` | 3 | 2 | 0 | 60 |
 | example `citations` | 4 | 10 | 6 | 53 |
 | example `composition` | 10 | 10 | 9 | 53 |
+| example `electricity_bill` | 31 | 26 | 31 | 32 |
 | example `tracing` | 10 | 10 | 9 | 53 |
 | example `rounding_and_conditionals` | 27 | 20 | 27 | 36 |
 | example `constraints` | 26 | 20 | 26 | 37 |

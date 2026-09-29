@@ -66,6 +66,7 @@ for it, in the mode the method specifies.
 | [Citations and rendering](citations.md) | `documented()`, the three dialects, generated documentation |
 | [Tracing and audit trails](tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
 | [Displaying numbers](display.md) | Decimals in traces and rendered formulas, exact unless an approximation is asked for, and std::format for Rational and Measured |
+| [Calculations and worksheets](calculations.md) | Named values defined by expressions, a dependency graph checked at compile time, a worksheet that recalculates only what a change reaches, what-if copies, overrides, and a derivation per named value |
 | [Rounding and conditionals](rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Lookup tables](lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
@@ -114,5 +115,6 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Opaque operations (least squares), bounded retry | shipped |
 | Named base dimensions such as money | next release |
 | Decimals in traces, rendered formulas and `std::format` | next release |
+| Calculations: definitions, dependency graph, incremental worksheets | next release |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).

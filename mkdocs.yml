@@ -38,6 +38,7 @@ nav:
   - Citations and rendering: citations.md
   - Tracing and audit trails: tracing.md
   - Displaying numbers: display.md
+  - Calculations and worksheets: calculations.md
   - Rounding and conditionals: rounding-and-conditionals.md
   - Constraints and verdicts: constraints.md
   - Lookup tables: lookup-tables.md
