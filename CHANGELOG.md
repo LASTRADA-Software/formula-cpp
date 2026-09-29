@@ -69,6 +69,15 @@ may break it, and each such change is recorded here.
   quantity given as a measurement; asking about a quantity the calculation neither defines nor reads;
   and `clear_override` or `is_overridden` of an input, which is set again rather than overridden --
   whether its value was typed in is the `source()` of what `calculate` answers for it.
+- `explain_worksheet<Q>(sheet, vocabulary)`, in `trace.hpp`, asks a worksheet for `Q` and records
+  how the answer was reached, as an `ExplainedWorksheet`: the answer, failure included, and one
+  `WorksheetEntry` per named value -- `Q`'s first, then each calculated value it was reached through,
+  each before the values it reads, and last the inputs read. A calculated value's block is its
+  definition's derivation, recorded afresh from the values the worksheet holds, so it describes them
+  even where a value was reused rather than calculated again; a calculated value it reads is one
+  step, its source `Derived`, and has a block of its own. An override or an input is one step. A
+  value only a `when()` branch not taken reads gets no block, and a failed value is a block like any
+  other. Recording the blocks calculates nothing again.
 
 ### Changed
 

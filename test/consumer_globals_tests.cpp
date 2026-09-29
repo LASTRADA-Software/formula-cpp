@@ -59,7 +59,8 @@
 // `worksheet` of it, from an environment with and without an override,
 // asked for one value and for two, by type and by variable, set, set on a
 // worksheet about to be discarded, copied with an override by `with`, the
-// override cleared, with its counters and every query; and a
+// override cleared, with its counters and every query, and its derivation,
+// xplain_worksheet; and a
 // quantity declared by alias at global scope, so that its tag is one more
 // global. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
@@ -1004,6 +1005,18 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::affected_by<Force>(strengthSheet, north) == std::array<std::string_view, 1> { "f_c" }
         && formula::depends_on<Strength, EdgeX>(strengthSheet) && !formula::depends_on<Factor, Force>(strengthSheet)
         && formula::dependencies_of<Force>(strengthSheet).empty());
+
+    // The strength's derivation: its block, the factor's it reads, and the
+    // two inputs, in the vocabulary.
+    auto const strengthDerivation = formula::explain_worksheet<Strength>(strengthSheet, north);
+    probe.checks.push_back(
+        strengthDerivation.outcome.has_value() && strengthDerivation.entries.size() == 4
+        && strengthDerivation.entries[0].symbol == "f_c" && strengthDerivation.entries[1].symbol == "k"
+        && strengthDerivation.entries[2].symbol == "P" && strengthDerivation.entries[3].symbol == "x_m"
+        && strengthDerivation.entries[0].kind == formula::WorksheetEntryKind::Calculated
+        && strengthDerivation.entries[0].value == formula::Rational { 20 }
+        && strengthDerivation.entries[2].kind == formula::WorksheetEntryKind::Input
+        && !strengthDerivation.entries[0].trace.empty());
 
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};

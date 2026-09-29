@@ -91,6 +91,7 @@ add_executable(formula-cpp-tests
     least_squares_tests.cpp
     retry_tests.cpp
     calculation_tests.cpp
+    calculation_trace_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -2542,6 +2543,10 @@ formula_add_negative_test(worksheet_of_refused_calculation
            "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
            "formula: clear_override or is_overridden names an input of the calculation"
            "no matching")
+formula_add_negative_test(worksheet_explain_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity" "no matching")
 formula_add_negative_test(worksheet_view_missed_read
     "formula: this environment provides no value for this quantity"
     EXPECT_COUNT 1

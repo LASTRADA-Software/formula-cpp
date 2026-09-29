@@ -12,6 +12,7 @@
 /// that one as well to print it.
 
 #include <formula-cpp/binning.hpp>
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -43,6 +44,7 @@
 #include <initializer_list>
 #include <optional>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -4391,5 +4393,201 @@ template <typename Rep = Rational,
     std::expected<RetryOutcome<R>, RetryFailure> retryOutcome =
         checked_evaluate_retry<Rational>(retrying, environment, RecordingSink<Rational, V> { recorded, vocabulary });
     return ExplainedRetry<R> { std::move(retryOutcome), std::move(recorded) };
+}
+
+/// What a block of a worksheet's derivation stands for.
+enum class WorksheetEntryKind : std::uint8_t
+{
+    /// A value its definition calculated: the block is the definition's
+    /// derivation.
+    Calculated,
+    /// A calculated quantity overridden by hand: the block is one step, the
+    /// value typed in.
+    Overridden,
+    /// An input of the calculation: the block is one step, its value as the
+    /// worksheet holds it.
+    Input,
+};
+
+/// One block of a worksheet's derivation: one named value, and how it was
+/// reached.
+///
+/// Plain data, as `Trace` is: `explain_worksheet` fills it, and a caller may
+/// edit one by hand as it may edit any `Step`.
+struct WorksheetEntry
+{
+    /// How the quantity is written, as the vocabulary `explain_worksheet` was
+    /// given says. Points into static storage, as `Step::symbol` does.
+    std::string_view symbol {};
+    /// The quantity's position among the calculation's quantities: the
+    /// inputs first, in the order first read, then the defined quantities in
+    /// the order given.
+    std::size_t slot {};
+    /// What the block stands for.
+    WorksheetEntryKind kind {};
+    /// The quantity's declared unit, which `value` is stated in.
+    Unit unit {};
+    /// The value the worksheet holds for the quantity, in `unit`. Empty when
+    /// it holds none -- an input not measured, or a value calculated from
+    /// one -- and when calculating it failed.
+    std::optional<Rational> value {};
+    /// Why calculating the value failed; empty when it did not.
+    std::optional<ArithmeticError> error {};
+    /// How the value was reached. For a calculated value, the derivation of
+    /// its definition, whose root is the value, in the coherent SI unit; a
+    /// calculated value it reads is one `Variable` step whose `inputSource`
+    /// is `Derived`, the value's own block saying how it was reached. For an
+    /// override or an input, one `Variable` step.
+    Trace<Rational> trace {};
+};
+
+/// A worksheet's answer for @p Result, and its derivation: one block per
+/// named value the answer was reached through.
+///
+/// Plain data, as `Trace` is: `explain_worksheet` fills it, and a caller may
+/// edit one by hand.
+template <Described Result, typename Calc, Vocabulary V = DefaultVocabulary>
+struct ExplainedWorksheet
+{
+    /// Exactly what `checked_calculate<Result>()` answered, failure included,
+    /// as `ExplainedSeries` holds its series' failure.
+    std::expected<Outcome<Result>, ArithmeticError> outcome;
+    /// The blocks: @p Result's first, then each calculated value it was
+    /// reached through, each before the values it reads -- the reverse of the
+    /// order the worksheet calculates them in -- and last the inputs read, in
+    /// the order the calculation numbers them.
+    std::vector<WorksheetEntry> entries {};
+    /// The calculation whose values these are, so that a block can be shown
+    /// beside the definition it derives.
+    ///
+    /// Deliberately no `{}` default member initialiser: it holds expressions
+    /// -- see `Corrections` (`lookup.hpp`).
+    Calc calculation;
+    /// The vocabulary every symbol here is written in.
+    FORMULA_NO_UNIQUE_ADDRESS V vocabulary;
+};
+
+namespace detail
+{
+    /// The block of @p sheet's derivation for the value in slot @p Slot,
+    /// which @p sheet has brought up to date. A calculated value's
+    /// definition is evaluated again against the values it reads, and each
+    /// read it makes sets that value's bit in @p wanted, so that its own
+    /// block follows; an override or an input is read as one variable.
+    template <std::size_t Slot, typename Calc, Vocabulary V>
+    [[nodiscard]] WorksheetEntry worksheet_block(Worksheet<Calc>& sheet, std::uint64_t& wanted, V const& vocabulary)
+    {
+        using Sheet = Worksheet<Calc>;
+        using Graph = typename WorksheetGraphOf<Sheet>::type;
+        using Q = QuantityAt<Slot, typename Graph::slots>;
+
+        WorksheetEntry namedBlock {};
+        namedBlock.symbol = symbol_of<Q>(vocabulary);
+        namedBlock.slot = Slot;
+        namedBlock.unit = Describe<Q>::unit;
+
+        std::expected<Outcome<Q>, ArithmeticError> const held = sheet.template checked_calculate<Q>();
+        if (held.has_value())
+        {
+            Measured<Q> const heldMeasurement = held->measurement();
+            namedBlock.value = heldMeasurement.stored();
+        }
+        else
+            namedBlock.error = held.error();
+
+        if constexpr (Slot < Graph::inputCount)
+            namedBlock.kind = WorksheetEntryKind::Input;
+        else if (!sheet.template is_overridden<Q>())
+        {
+            namedBlock.kind = WorksheetEntryKind::Calculated;
+            std::uint64_t made = 0;
+            static_cast<void>(formula::checked_evaluate<Q>(
+                std::get<Slot - Graph::inputCount>(sheet.calculation().definitions).expression,
+                WorksheetView<Sheet, Graph::reads[Slot]> { &sheet, &made },
+                RecordingSink<Rational, V> { namedBlock.trace, vocabulary }));
+            wanted |= made;
+            return namedBlock;
+        }
+        else
+            namedBlock.kind = WorksheetEntryKind::Overridden;
+
+        static_cast<void>(formula::checked_evaluate<Q>(var<Q>,
+                                                       WorksheetView<Sheet, std::uint64_t { 1 } << Slot> { &sheet, nullptr },
+                                                       RecordingSink<Rational, V> { namedBlock.trace, vocabulary }));
+        return namedBlock;
+    }
+
+    /// Appends to @p blocks the blocks of the calculated values @p wanted
+    /// names, from the last in dependency order to the first: each value's
+    /// block comes before the blocks of the values it reads, which it adds to
+    /// @p wanted. @p FromEnd counts back from the end of the order.
+    template <typename Calc, Vocabulary V, std::size_t... FromEnd>
+    void explain_calculated(Worksheet<Calc>& sheet,
+                            std::uint64_t& wanted,
+                            std::vector<WorksheetEntry>& blocks,
+                            V const& vocabulary,
+                            std::index_sequence<FromEnd...>)
+    {
+        using Graph = typename WorksheetGraphOf<Worksheet<Calc>>::type;
+        ((((wanted >> Graph::order[Graph::slotCount - 1 - FromEnd]) & 1u) != 0
+              ? blocks.push_back(worksheet_block<Graph::order[Graph::slotCount - 1 - FromEnd]>(sheet, wanted, vocabulary))
+              : void()),
+         ...);
+    }
+
+    /// Appends to @p blocks the blocks of the inputs @p wanted names, in slot
+    /// order.
+    template <typename Calc, Vocabulary V, std::size_t... Slots>
+    void explain_inputs(Worksheet<Calc>& sheet,
+                        std::uint64_t& wanted,
+                        std::vector<WorksheetEntry>& blocks,
+                        V const& vocabulary,
+                        std::index_sequence<Slots...>)
+    {
+        ((((wanted >> Slots) & 1u) != 0 ? blocks.push_back(worksheet_block<Slots>(sheet, wanted, vocabulary)) : void()),
+         ...);
+    }
+} // namespace detail
+
+/// Asks @p sheet for @p Result, and records how the answer was reached: one
+/// block per named value, written as @p vocabulary says.
+///
+/// **One block per named value.** @p Result's block comes first. A
+/// calculated value's block is its definition's derivation, evaluated again
+/// against the values the worksheet holds, in which a calculated value it
+/// reads is one step -- that value's own block, further on, says how it was
+/// reached. An overridden value's block is the one step of its value typed
+/// in, and a value read only through it gets no block. The inputs read come
+/// last, one step each. A value only a `when()` branch not taken would have
+/// read gets no block, and a failed value is a block like any other, its
+/// failure in `error` and in its trace.
+///
+/// **Always the current values.** The derivation is recorded afresh on
+/// every call, from the values the worksheet holds once @p Result is up to
+/// date, so it describes them even where a value was reused rather than
+/// calculated again: each block's root is the value the worksheet holds.
+/// Asking brings @p Result up to date, as `checked_calculate` does, and
+/// counts as it does; recording the blocks calculates nothing again.
+///
+/// **A value an overlay replaced.** An overlay's fixed constant or derived
+/// quantity in a definition reads nothing of the quantity it stands for, so
+/// its step reports the worksheet's value for that quantity as the value
+/// it replaced only when the definition also reads that quantity itself --
+/// never a value the worksheet did not bring up to date for the definition.
+template <Described Result, typename Calc, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedWorksheet<Result, Calc, V> explain_worksheet(Worksheet<Calc>& sheet,
+                                                                   V const& vocabulary = V {})
+{
+    using Graph = typename detail::WorksheetGraphOf<Worksheet<Calc>>::type;
+    std::expected<Outcome<Result>, ArithmeticError> answered = sheet.template checked_calculate<Result>();
+    std::vector<WorksheetEntry> blocks {};
+    if constexpr (Graph::valid && Graph::template holds<Result>)
+    {
+        std::uint64_t wanted = std::uint64_t { 1 } << Graph::template slot_of<Result>;
+        detail::explain_calculated(
+            sheet, wanted, blocks, vocabulary, std::make_index_sequence<Graph::slotCount - Graph::inputCount> {});
+        detail::explain_inputs(sheet, wanted, blocks, vocabulary, std::make_index_sequence<Graph::inputCount> {});
+    }
+    return ExplainedWorksheet<Result, Calc, V> { std::move(answered), std::move(blocks), sheet.calculation(), vocabulary };
 }
 } // namespace formula
