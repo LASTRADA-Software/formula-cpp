@@ -23,7 +23,7 @@
 ///    unusable wall of text; a default limit is a limit someone forgets, and
 ///    a required one is a limit someone chooses.
 ///  - It never shows a value in a unit nobody entered. Every `Step` holds its
-///    value in the coherent SI unit of its dimension so that steps are
+///    value in the coherent unit of its dimension so that steps are
 ///    comparable, and remembers the unit it was *declared* in; this converts
 ///    back before showing a number, so a volume entered as 180 l reads
 ///    `180 l` and not `9/50`.
@@ -1368,7 +1368,7 @@ namespace detail
     }
 
     /// @p storedValue -- a step's own, or one element of a series step's -- converted
-    /// from the coherent SI unit of @p recorded's dimension into the unit the
+    /// from the coherent unit of @p recorded's dimension into the unit the
     /// step was declared in, with that unit's symbol, or `(not measured)` when
     /// it is empty. Shared by `step_value_text` and `series_step_line`, so that
     /// an element of a series reads exactly as a single value of the same
@@ -1398,7 +1398,7 @@ namespace detail
 
     /// What a step produced, as a person should read it.
     ///
-    /// The value is stored in the coherent SI unit of the step's dimension;
+    /// The value is stored in the coherent unit of the step's dimension;
     /// this converts it back into the unit the step was declared in and
     /// appends that unit's symbol, so an input entered as 180 l reads
     /// `180 l`. A step that failed shows why, and one with no value at all

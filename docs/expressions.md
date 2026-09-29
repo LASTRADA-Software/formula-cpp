@@ -254,10 +254,12 @@ w/c = 0.500000 (entered)
 Two entry points evaluate a formula, and they answer different questions:
 
 - **`formula::checked_evaluate_si<Rep>(node, environment)`** is the
-  representation-agnostic core. Every leaf is converted to the coherent SI
-  unit of its dimension on the way in, the tree is evaluated there, and the
-  answer comes back as `Rep` -- exact `formula::Rational` by default, or
-  `double` when a formula needs values an exact rational cannot hold.
+  representation-agnostic core. Every leaf is converted to the coherent unit
+  of its dimension -- the SI unit, times one of each
+  [named base dimension](dimensions.md#base-dimensions-the-si-does-not-have)
+  it carries -- on the way in, the tree is evaluated there, and the answer
+  comes back as `Rep` -- exact `formula::Rational` by default, or `double`
+  when a formula needs values an exact rational cannot hold.
 - **`formula::checked_evaluate<Result>(expression, environment)`** is the
   auditable entry point, and it is **always exact**: it evaluates in
   `Rational`, converts the answer once into `Result`'s own declared unit, and
@@ -270,7 +272,7 @@ Two entry points evaluate a formula, and they answer different questions:
 directly, with `Overflow` deliberately not reported by that arithmetic itself
 (`inf` is what a `double` says, and the caller asked for `double`). That is
 not the same as saying a `double` evaluation never sees `Overflow`: every leaf
-is converted to the coherent SI unit in exact `Rational` before it is handed
+is converted to the coherent unit in exact `Rational` before it is handed
 to `RepTraits<double>`, and that conversion can overflow -- a quantity whose
 declared unit puts it near the edge of the representable range reports
 `Overflow` from `checked_evaluate_si<double>` exactly as it would from the

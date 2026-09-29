@@ -91,7 +91,7 @@ namespace detail
             return std::size_t { std::remove_cvref_t<S>::length };
     }();
 
-    /// A sample, evaluated: its present values in the coherent SI unit, each
+    /// A sample, evaluated: its present values in the coherent unit, each
     /// one's zero-based position in the sample as entered, and how many there
     /// are. The first `count` entries of each array are meaningful.
     ///
@@ -389,7 +389,7 @@ template <typename Rep = Rational, SampleSource S, typename Env, typename Sink =
 
 namespace detail
 {
-    /// The mean of @p drawnSample's determinations, in the coherent SI unit: their
+    /// The mean of @p drawnSample's determinations, in the coherent unit: their
     /// total over their count. An empty sample is `DivisionByZero`. A total
     /// that overflows fails, and @p failedAt learns the position of the
     /// determination it overflowed at.
@@ -448,7 +448,7 @@ namespace detail
     }
 } // namespace detail
 
-/// Averages the sample's determinations: their total, in the coherent SI
+/// Averages the sample's determinations: their total, in the coherent
 /// unit, over their count. A failed sample's error is relayed; an absent one
 /// makes the mean absent; an empty one is `DivisionByZero`. A total that
 /// overflows fails the mean, and the trace names the determination at which

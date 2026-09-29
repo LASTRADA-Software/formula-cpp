@@ -123,10 +123,10 @@ template <Unit U, detail::FixedString Justification, Node Operand>
     return NumericValueNode<U, Justification, Operand> { {}, operand };
 }
 
-/// Evaluates the operand and converts its (coherent-SI) value into `U`. The
-/// converted number is returned as-is, in `Rep`, and never converted back --
-/// unlike every other node in this library, the whole point here is that the
-/// dimension is gone.
+/// Evaluates the operand and converts its value from the coherent unit into
+/// `U`. The converted number is returned as-is, in `Rep`, and never converted
+/// back -- unlike every other node in this library, the whole point here is
+/// that the dimension is gone.
 template <typename Rep = Rational,
           Unit U,
           detail::FixedString Justification,

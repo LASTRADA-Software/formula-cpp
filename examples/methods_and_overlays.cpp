@@ -6,8 +6,8 @@
 //
 //   1. A method: three variants, each tagged with the specimen shape it
 //      applies to, and one rounding rule. `evaluate_method<Cube>` selects by
-//      tag, rounds by the method's rule, answers in coherent SI, and the trace
-//      says which variant ran and whose rounding rule it was.
+//      tag, rounds by the method's rule, answers in the coherent unit, and the
+//      trace says which variant ran and whose rounding rule it was.
 //   2. Overlays: a northern jurisdiction fixes a constant and reports in its
 //      own unit; a southern one derives a quantity, replaces a variant's
 //      formula wholesale, and drops a variant it does not use; an eastern one
@@ -129,9 +129,9 @@ inline constexpr formula::Citation eastScope { .reference = "Example Standard 3:
 
 /// The north fixes the shape factor at 0.863 where the base method reads it
 /// from the specimen, and reports in newtons per square millimetre to two
-/// decimals. A method answers in coherent SI whatever its rule; the rule's unit
-/// is the unit a jurisdiction REPORTS in, and it must measure the method's
-/// dimension.
+/// decimals. A method answers in the coherent unit whatever its rule; the
+/// rule's unit is the unit a jurisdiction REPORTS in, and it must measure the
+/// method's dimension.
 inline constexpr auto north =
     formula::overlay(formula::with_constant<ShapeFactor>(rat(863, 1000), northConstant),
                      formula::with_rounding<unit::NewtonPerSquareMillimetre,

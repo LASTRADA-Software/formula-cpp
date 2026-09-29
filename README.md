@@ -174,7 +174,7 @@ std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 1
 4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
 ```
 
-Every value is shown in the unit it was declared in, not the coherent SI unit
+Every value is shown in the unit it was declared in, not the coherent unit
 the arithmetic actually ran on — that is `9/50` cubic metres above, and nobody
 typed cubic metres. When the environment overrides the result instead of
 letting the formula derive it, `explained.trace` comes back empty — nothing

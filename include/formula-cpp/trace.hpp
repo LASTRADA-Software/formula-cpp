@@ -279,7 +279,7 @@ enum class StepKind : std::uint8_t
     /// Raw observations counted into classes (`BinnedNode`): one count per
     /// class in `Step::elements`; the classes' unit in `Step::sourceUnit`,
     /// their extent in `Step::coveredRange`, and the observations binned, in
-    /// the coherent SI unit, in `Step::domainElements`. A failure's
+    /// the coherent unit, in `Step::domainElements`. A failure's
     /// `Step::failedElement` is the **observation** it arose at, not a
     /// count. Checked on GCC under `-Wshadow`: the node is `BinnedNode` and
     /// its factory `binned`.
@@ -709,7 +709,7 @@ namespace detail
         /// For a rejected determination, or a failed pass that failed at one:
         /// its zero-based position as entered.
         std::optional<std::size_t> position {};
-        /// For a rejected determination: its value, in the coherent SI unit.
+        /// For a rejected determination: its value, in the coherent unit.
         std::optional<Rep> rejectedValue {};
         /// For a rejected determination: its statistic -- abs(x - mean), or
         /// (x - mean)^2 when `squared`.
@@ -917,11 +917,11 @@ struct Step
     /// wraps for a `Documented`, `ReplacedVariant` or `VariantSelected` step --
     /// each passes its operand's value through unchanged, so it states it as
     /// that operand's line does, whenever that line is the wrapped node's own
-    /// and not the operands of a consumer's node -- and the coherent SI unit of
+    /// and not the operands of a consumer's node -- and the coherent unit of
     /// `dimension` for anything else computed, which has no declared unit of
     /// its own.
     ///
-    /// `value` is always in the coherent SI unit, so that steps are
+    /// `value` is always in the coherent unit, so that steps are
     /// comparable; this is what a renderer converts back to before showing a
     /// number to a person. Without it a derivation restates every input in a
     /// unit nobody typed: someone who entered 180 l reads `9/50`, which is
@@ -961,7 +961,7 @@ struct Step
     /// discriminator, not a quantity, so there is no key unit to name.
     Unit sourceUnit {};
 
-    /// What the step produced, in the coherent SI unit of `dimension`. Empty
+    /// What the step produced, in the coherent unit of `dimension`. Empty
     /// when the value was **absent** -- which is not an error and must not be
     /// rendered as one.
     std::optional<Rep> value {};
@@ -1251,7 +1251,7 @@ struct Step
     std::vector<std::size_t> operands {};
 
     /// For a series step (`SeriesVariable`): every element it produced, in
-    /// the series' own order and in the coherent SI unit of `dimension`, each
+    /// the series' own order and in the coherent unit of `dimension`, each
     /// empty when that element was not measured. `value` stays empty for a
     /// series step, so that no renderer can mistake a series for one absent
     /// number; `trace_render.hpp` reads these instead, and spends one unit of
@@ -1262,8 +1262,8 @@ struct Step
     /// Empty for every step that is not a series.
     ///
     /// For `ConformityChecked`: the subject's elements, the values judged,
-    /// likewise in SI, so that each outcome can state the value it judged in
-    /// the check's own unit. Empty when the subject failed.
+    /// likewise in the coherent unit, so that each outcome can state the value
+    /// it judged in the check's own unit. Empty when the subject failed.
     std::vector<std::optional<Rep>> elements {};
 
     /// For a series step that failed: the ZERO-BASED position of the element
@@ -1297,11 +1297,11 @@ struct Step
     bool tieBroken {};
 
     /// For `CurvePairing` and `CurveSplice`: the curve's points, in the
-    /// coherent SI unit of `sourceUnit`'s dimension, each at the position of
+    /// coherent unit of `sourceUnit`'s dimension, each at the position of
     /// its value in `elements`. Empty for every other kind, and for a curve
     /// that failed -- unless `curveBreak` names a rule, when they are the
     /// points that broke it. For `Binning`: the observations it binned, in
-    /// the coherent SI unit of `sourceUnit`'s dimension, in the order made.
+    /// the coherent unit of `sourceUnit`'s dimension, in the order made.
     std::vector<std::optional<Rep>> domainElements {};
 
     /// For `CurveSplice`: the direction its values had to run in.
@@ -1376,9 +1376,9 @@ struct OpaqueOutputValue
     Dimension dimension {};
     /// The unit it is shown in: the declared unit of the first input step of
     /// its dimension, as a sum is shown in its series' unit, and the coherent
-    /// SI unit otherwise.
+    /// unit otherwise.
     Unit unit {};
-    /// Its value, in the coherent SI unit of `dimension`; empty when the call
+    /// Its value, in the coherent unit of `dimension`; empty when the call
     /// was absent or failed.
     std::optional<Rep> value {};
 };
@@ -2185,7 +2185,7 @@ namespace detail
     ///
     /// The operand's recorded value is the **same** `Rational` the node was
     /// handed: `produced` stores `**result` verbatim, and both are in the
-    /// coherent SI unit of the operand's dimension. So locating it against
+    /// coherent unit of the operand's dimension. So locating it against
     /// the table here reaches the same row the evaluation reached.
     template <typename Rep>
     [[nodiscard]] std::optional<Rep> sole_operand_value(std::vector<Step<Rep>> const& steps, Step<Rep> const& step)
@@ -2246,7 +2246,7 @@ namespace detail
     /// line that is *repeated* rather than reused is the conversion of the
     /// operand's value into the key unit, which `checked_evaluate_si` does
     /// immediately before its own `find_band` call; a test whose key unit is
-    /// not the coherent SI unit of its operand's dimension is what keeps the
+    /// not the coherent unit of its operand's dimension is what keeps the
     /// two honest.
     template <typename Rep, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
     void record_lookup(BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const&,
@@ -2433,7 +2433,7 @@ namespace detail
         }
     }
 
-    /// @p point, a point of a curve in the coherent SI unit, as a declared
+    /// @p point, a point of a curve in the coherent unit, as a declared
     /// `Breakpoint` in @p pointUnit, or nothing when it cannot be stated there.
     [[nodiscard]] inline std::optional<Breakpoint> point_in(Rational point, Unit pointUnit) noexcept
     {
@@ -2690,7 +2690,7 @@ namespace detail
     }
     /// Fills in a binning step: the classes' unit and extent, from the node's
     /// type, and the observations it binned, off its operand's step -- in
-    /// the coherent SI unit, as that step holds them. Nothing of the
+    /// the coherent unit, as that step holds them. Nothing of the
     /// observations when their step failed or is not there.
     template <SeriesNode S, typename Rep>
     void record_binning(Step<Rep>& binningStep, std::vector<Step<Rep>> const& steps)
@@ -2984,7 +2984,7 @@ class RecordingSink
         nodeStep.kind = detail::StepKindOf<N>::value;
         nodeStep.dimension = N::dimension;
 
-        // Anything computed has no declared unit, so the coherent SI one is
+        // Anything computed has no declared unit, so the coherent one is
         // the truthful answer; a variable overrides it with the unit its
         // quantity is declared in. `requires { N::unit; }` now also selects
         // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode` and
@@ -3020,8 +3020,9 @@ class RecordingSink
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             nodeStep.unit = N::unit;
         // A pass's mean reads in its sample's unit, as the pass line beside it
-        // does: grams for a series of masses, bare SI for a computed series,
-        // and bare SI for a unit with no symbol (`detail::borrowable_for_a_point`).
+        // does: grams for a series of masses, the coherent unit for a computed
+        // series, and the coherent unit for a unit with no symbol
+        // (`detail::borrowable_for_a_point`).
         // The innermost rejection in progress is the one it is bound to.
         if constexpr (detail::StepKindOf<N>::value == StepKind::PassMean)
             if (!_trace->rejectionsInProgress.empty())
@@ -3132,7 +3133,7 @@ class RecordingSink
         // then its operands -- a Celsius reading under a temperature rise, or
         // a volume under a density -- whose unit would state the value as
         // something it is not. And, at run time, exactly one step was claimed
-        // and it is of this step's dimension. Otherwise the coherent SI unit
+        // and it is of this step's dimension. Otherwise the coherent unit
         // set above stands, as for anything else computed.
         if constexpr (detail::PassesThroughRecordedStep<N>)
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
@@ -3776,7 +3777,7 @@ class RecordingSink
     }
 
     /// Records one step for raw observations, carrying every observation made
-    /// in `Step::elements`, in the coherent SI unit, shown in the unit the
+    /// in `Step::elements`, in the coherent unit, shown in the unit the
     /// quantity is declared in under the symbol this sink's vocabulary gives
     /// it. A failure records its error and the observation it arose at, and
     /// no observations. Observations are a leaf: the step claims nothing.

@@ -256,7 +256,7 @@ namespace detail
     /// must be forwarded here**; `retry_tests.cpp` lists the members by hand
     /// and fails for one that is not.
     ///
-    /// Values are in the coherent SI unit, in @p Rep, as every evaluator's.
+    /// Values are in the coherent unit, in @p Rep, as every evaluator's.
     /// @p R is the retry's result quantity, the only one `previous_attempt`
     /// and `this_attempt` may name (`RequireRetriedQuantity`); @p Max the
     /// attempts it allows, the length of the series `attempt_input` reads.
@@ -1383,7 +1383,7 @@ namespace detail
 
 /// The determination of @p Q recorded for the attempt that is running:
 /// element `attempt() - 1` of the environment's series of @p Q, whose length
-/// is the retry's attempt limit, in the coherent SI unit. An absent element
+/// is the retry's attempt limit, in the coherent unit. An absent element
 /// is absent here, and marked on the attempt's environment, so that the
 /// retry ends `NotRecorded` rather than `NotJudgeable`. A series of another
 /// length draws the environment's own message, naming both lengths, once.

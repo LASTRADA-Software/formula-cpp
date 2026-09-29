@@ -88,7 +88,7 @@ namespace detail
 /// element**, not a shorter series, so the length never comes from runtime
 /// data. Each element keeps `Measured<Q>`'s invariant -- in `Q`'s declared
 /// unit, no unit of its own -- so a series is `N` measurements and nothing
-/// more; converting to the coherent SI unit is the evaluator's business.
+/// more; converting to the coherent unit is the evaluator's business.
 ///
 /// Holds values, never expression nodes.
 template <Described Q, std::size_t N>

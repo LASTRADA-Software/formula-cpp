@@ -71,11 +71,11 @@ auto const cube = formula::evaluate_method<Cube>(compressiveStrength, specimen);
 cube:   5500000 Pa
 ```
 
-**A method answers in coherent SI**, here pascals, like every `Evaluated`
+**A method answers in the coherent unit**, here pascals, like every `Evaluated`
 value in this library. The rule rounded the value in megapascals, to one
 decimal (5.5477... MPa became 5.5 MPa), and the answer is that rounded value
 expressed in pascals. A method has no typed result. It knows only its variants'
-dimension, so its answer is a number in the coherent SI unit of that dimension.
+dimension, so its answer is a number in the coherent unit of that dimension.
 
 Traced, the selection is a step of its own, the root of the derivation, with
 the rounded variant beneath it. The rounding step says whose rule it was:
@@ -269,7 +269,7 @@ north cube: 4590000 Pa
 
 **What "changing the declared unit" means for a method.** The design
 specification asks that a jurisdiction can change the unit a result is
-declared in. A method's answer is always coherent SI, so what a jurisdiction
+declared in. A method's answer is always in the coherent unit, so what a jurisdiction
 changes is the unit it **reports** in, which is the unit of its rounding rule.
 The north rounds in N/mm² to two decimals where the base method rounds in MPa
 to one, and the trace says whose rule that was.

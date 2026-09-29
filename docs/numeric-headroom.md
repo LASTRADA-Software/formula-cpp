@@ -36,7 +36,7 @@ so the census recommends 128-bit intermediate arithmetic.
 
 **Whether 128-bit intermediate arithmetic is enough depends on where the last
 conversion happens.** Wider intermediates help only when every value that is
-stored fits 64 bits. The evaluator works in coherent SI and converts to the
+stored fits 64 bits. The evaluator works in the coherent unit and converts to the
 result's declared unit last. For most of the variances that overflow at 6
 decimal places, and for every cylinder strength that overflows, the exact
 value *in SI* (kg², Pa) needs 64 bits or more; in the declared unit (g², MPa)
@@ -234,7 +234,7 @@ standard deviations square twice, and are the first to run out.
 
 `tools/census/exact_sizes.py` draws the same samples with Python's exact
 `fractions` and sizes the exact, fully reduced results twice: in the
-coherent SI unit the evaluator works in (kg², Pa), and in the result's
+coherent unit the evaluator works in (kg², Pa), and in the result's
 declared unit (g², MPa), the unit `checked_evaluate` returns. The census test
 and CTest's `census.exact-sizes-self-check` hold both generators to the same
 literals, and `census.exact-sizes` holds these figures:
@@ -318,7 +318,7 @@ larger size does. So no number of points is safe to state; an overflowing
 fit is `Overflow`, never a line. It has no traced fallback in `double`: a
 curve evaluates only in `Rational`, so `checked_evaluate_si<double>` over a
 fit is refused. `LinearLeastSquares::compute<double>` can be called
-directly, on numbers already in coherent SI, but nothing it returns is
+directly, on numbers already in coherent units, but nothing it returns is
 checked, traced, rendered or documented.
 
 ## Which cases decide

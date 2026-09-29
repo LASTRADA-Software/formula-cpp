@@ -20,7 +20,7 @@
 /// allocating inside it would turn `bad_alloc` into `std::terminate`.
 ///
 /// **A failure names its element.** A series evaluates to
-/// `EvaluatedSeries<Rep, N>`: every element in the coherent SI unit, or a
+/// `EvaluatedSeries<Rep, N>`: every element in the coherent unit, or a
 /// `SeriesFailure` carrying the arithmetic error and, when the failure belongs
 /// to one element, that element's zero-based position. There is no partial
 /// series -- a series with one wrong element is not a series of right ones --
@@ -472,7 +472,7 @@ namespace detail
 ///
 /// Rounding happens **in `U`**, exactly as `RoundNode`'s does, through the same
 /// `RepRounding<Rep>::round_in`: each element is converted from the coherent
-/// SI unit into `U`, rounded there, and converted back.
+/// unit into `U`, rounded there, and converted back.
 ///
 /// **A count mismatch gates the unit check off**, and an operand already
 /// refused gates both: each would otherwise report one mistake twice.
@@ -713,7 +713,7 @@ template <Node N>
     return singleValue;
 }
 
-/// An evaluated series in the coherent SI unit of its dimension: one value per
+/// An evaluated series in the coherent unit of its dimension: one value per
 /// element, each absent when the element was never measured.
 template <typename Rep, std::size_t N>
 struct SeriesValue
@@ -836,7 +836,7 @@ namespace detail
 } // namespace detail
 
 /// Looks the series for `Q` up in `environment` and converts each present
-/// element to the coherent SI unit of its dimension.
+/// element to the coherent unit of its dimension.
 ///
 /// The environment refuses, at compile time and in this library's words, a
 /// quantity it holds as a single value and a series of another length than
@@ -968,7 +968,7 @@ namespace detail
     }
 } // namespace detail
 
-/// Reads each value of a per-element constant into the coherent SI unit of its
+/// Reads each value of a per-element constant into the coherent unit of its
 /// dimension. Every element is present; a conversion that overflows fails the
 /// series at that element.
 template <typename Rep = Rational, Unit U, std::size_t N, typename Env, typename Sink = NullSink>

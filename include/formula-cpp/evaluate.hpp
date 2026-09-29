@@ -4,16 +4,17 @@
 /// @file
 /// Turning a formula and a set of inputs into an outcome.
 ///
-/// Every leaf is converted to the **coherent SI unit** of its dimension on the
-/// way in, the tree is evaluated there, and the result is converted once at the
-/// end into the declared unit of the quantity it was asked to produce. Both
+/// Every leaf is converted to the **coherent unit** of its dimension -- the SI
+/// unit, times one of each named base dimension it has -- on the way in, the
+/// tree is evaluated there, and the result is converted once at the end into
+/// the declared unit of the quantity it was asked to produce. Both
 /// conversions are the exact multiply-then-divide of the unit layer, so 180 l
 /// plus 300 l is exactly 480 l and not 479.999999.
 ///
 /// Two entry points, deliberately different:
 ///
 ///  - `checked_evaluate_si<Rep>` is the representation-agnostic core. It answers
-///    in the coherent SI unit and in whatever `Rep` the caller asked for --
+///    in the coherent unit and in whatever `Rep` the caller asked for --
 ///    exact `Rational` by default, `double` when a formula needs values exact
 ///    rationals cannot hold.
 ///  - `checked_evaluate<Result>` is the auditable one. It is always exact,
@@ -35,8 +36,8 @@ namespace formula
 {
 
 /// The coherent unit of a dimension: magnitude one, offset zero, no symbol --
-/// the SI unit, times one of each named base dimension it has, since the unit
-/// named after a base is one of it.
+/// the SI unit, times one of each named base dimension it has: the unit named
+/// after a base, which by convention has magnitude one.
 ///
 /// Every `Unit` already states its own exact conversion to this one, so it is
 /// the single scale on which values from different units can meet.
@@ -108,12 +109,12 @@ struct RepTraits<Rational>
 /// `inf` and the caller asked for `double`. That is not the last word on
 /// `Overflow` for this representation, though -- `detail::in_si` converts
 /// every leaf in exact `Rational` before handing it to `RepTraits<Rep>::from`,
-/// so a leaf whose conversion to the coherent SI unit overflows still fails
+/// so a leaf whose conversion to the coherent unit overflows still fails
 /// the whole evaluation, `double` included.
 template <>
 struct RepTraits<double>
 {
-    /// Converts an exact `Rational` (already in the coherent SI unit) to `double`.
+    /// Converts an exact `Rational` (already in the coherent unit) to `double`.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> from(Rational exact) noexcept
     {
         return exact.to_double();
@@ -227,7 +228,7 @@ namespace detail
         return Evaluated<Rep> { std::unexpected { arithmeticFailure } };
     }
 
-    /// A `Rational` stated in @p from, converted to the coherent SI unit and
+    /// A `Rational` stated in @p from, converted to the coherent unit and
     /// then into @p Rep.
     template <typename Rep>
     [[nodiscard]] constexpr Evaluated<Rep> in_si(Rational value, Unit from) noexcept
@@ -262,7 +263,7 @@ namespace detail
 } // namespace detail
 
 /// Looks `Q` up in `environment` and, if present, converts it to the coherent
-/// SI unit of its dimension.
+/// unit of its dimension.
 ///
 /// Just before `produced`, and whether or not the value is present, a sink
 /// that asks is told where the value came from -- see
@@ -287,7 +288,7 @@ template <typename Rep = Rational, Described Q, typename Env, typename Sink = Nu
     return evaluated;
 }
 
-/// A literal coefficient is always present; converts it to the coherent SI unit.
+/// A literal coefficient is always present; converts it to the coherent unit.
 template <typename Rep = Rational, Unit U, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ConstantNode<U> const& node,
                                                            Env const&,

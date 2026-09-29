@@ -27,7 +27,7 @@
 /// interpolating lookup uses (`detail::locate_key`, `lookup.hpp`) and computes
 /// the value with the one formula for it (`detail::interpolate_between`):
 /// the rule is written once. Off the ends of the domain is a miss, never an
-/// extrapolation or a clamp. It is carried out in the coherent SI unit, since
+/// extrapolation or a clamp. It is carried out in the coherent unit, since
 /// a computed domain has no declared unit of its own to carry it out in; a
 /// linear interpolation's answer does not depend on the scale either axis is
 /// stated in. Its exact arithmetic can: a point that is exact in its declared
@@ -460,7 +460,7 @@ template <CurveExpression C, Node At>
     return InterpolateAlongNode<C, At> { {}, curveExpression, at };
 }
 
-/// An evaluated curve in the coherent SI units of its dimensions: each point
+/// An evaluated curve in the coherent units of its dimensions: each point
 /// and each value, either absent when it was never measured.
 template <typename Rep, std::size_t N>
 struct CurveValue
@@ -598,7 +598,7 @@ namespace detail
 
     /// The value along a curve at @p atKey, and where it sat: the curve's points
     /// @p domainPoints and values @p values, every one present and the points
-    /// strictly ascending, in the coherent SI unit. The one scan is
+    /// strictly ascending, in the coherent unit. The one scan is
     /// `locate_key`, and the one formula `interpolate_between`, both an
     /// interpolating lookup's (`lookup.hpp`); a miss is `DomainError`.
     ///
@@ -632,7 +632,7 @@ namespace detail
     }
 } // namespace detail
 
-/// Reads each point of a declared domain into the coherent SI unit of its
+/// Reads each point of a declared domain into the coherent unit of its
 /// dimension. Every point is present; a conversion that overflows fails the
 /// series at that point. Any `Rep`: a domain alone compares nothing.
 template <typename Rep = Rational, Unit U, BreakpointTable Points, typename Env, typename Sink = NullSink>
@@ -859,7 +859,7 @@ class CurveOutcome
 
 namespace detail
 {
-    /// Each present element of @p elements, from the coherent SI unit of
+    /// Each present element of @p elements, from the coherent unit of
     /// @p dimension into @p Q's declared unit; nothing when a conversion
     /// fails, with the element it failed at.
     template <Described Q, std::size_t N>

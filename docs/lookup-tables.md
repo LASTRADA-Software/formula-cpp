@@ -735,7 +735,7 @@ being included or excluded, so it needs neither a band's `to under` nor a
 curve's closed `to`.
 
 Both lookup steps report in the unit their own table is stated in — `1051/10 %`,
-`863/10 %` — while lines 4 and 6 report the products in coherent SI, because an
+`863/10 %` — while lines 4 and 6 report the products in the coherent unit, because an
 intermediate that no quantity declares a unit for has none to be shown in. That
 is ordinary trace behaviour rather than anything to do with tables; see
 [Tracing and audit trails](tracing.md).

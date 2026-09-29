@@ -511,11 +511,11 @@ namespace detail
 /// base is its own dimension: euros and yen never convert into each other --
 /// an exchange rate is data, a quantity in yen per euro.
 ///
-/// The name is also the symbol of the base's coherent unit, the unit of
-/// magnitude one: the unit named after the base is one of it, and a cent is
-/// a hundredth of it. It must be an ASCII letter followed by ASCII letters or
-/// digits, shorter than `SymbolCapacity`, and not the symbol of an SI base
-/// unit; each refusal is a compile error naming the rule -- see the
+/// The name is also the symbol of the base's coherent unit: by convention the
+/// unit named after the base has magnitude one, and a cent a hundredth. The
+/// name must be an ASCII letter followed by ASCII letters or digits, shorter
+/// than `SymbolCapacity`, and not the symbol of an SI base unit; each refusal
+/// is a compile error naming the rule -- see the
 /// `formula_base_dimension_name_...` functions. `consteval`, so a bad name can
 /// never reach run time; a helper that forwards a name here must be
 /// `consteval` too.

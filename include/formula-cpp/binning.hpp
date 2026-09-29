@@ -102,7 +102,7 @@ template <Described Q, std::size_t Capacity>
 inline constexpr ObservationsVarNode<Q, Capacity> observations {};
 
 /// Raw observations read and converted: the first `count` of `elements`, each
-/// in the coherent SI unit of its dimension. Default-initialised: no
+/// in the coherent unit of its dimension. Default-initialised: no
 /// observations.
 template <typename Rep, std::size_t Capacity>
 struct ObservationsValue
@@ -259,7 +259,7 @@ namespace detail
             sink.observations_produced(node, evaluated);
         };
 
-    /// Reads @p node's observations from @p environment into the coherent SI
+    /// Reads @p node's observations from @p environment into the coherent
     /// unit, and tells @p sink what was read, if it asks. A conversion that
     /// overflows fails at that observation.
     template <typename Rep, Described Q, std::size_t Capacity, typename Env, typename Sink>

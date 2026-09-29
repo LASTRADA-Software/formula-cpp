@@ -50,7 +50,7 @@
 /// "change the declared unit"; `measured.hpp` makes a `Measured<Q>` a value in
 /// `Q`'s declared unit that carries no unit of its own, so a number can never
 /// disagree with its label, and that invariant stands. A method has no typed
-/// result to relabel in any case: `evaluate_method` answers in the coherent SI
+/// result to relabel in any case: `evaluate_method` answers in the coherent
 /// unit of the variants' dimension, and the unit a jurisdiction *reports* in
 /// is its rounding unit, which `with_rounding` changes. What a jurisdiction
 /// cannot change is the dimension a method reports -- `replace_variant`
@@ -453,7 +453,7 @@ namespace detail
 } // namespace detail
 
 /// An overridden constant evaluates to the overlay's value, converted from
-/// `Q`'s declared unit to the coherent SI unit like any other leaf, and never
+/// `Q`'s declared unit to the coherent unit like any other leaf, and never
 /// consults the environment -- see `OverriddenConstantNode` for why. The sink
 /// is told about the node as its own type, so that a trace can say the value
 /// was fixed by an overlay rather than read from the specimen.

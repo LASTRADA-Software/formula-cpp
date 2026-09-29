@@ -104,7 +104,7 @@ f_c through the context: 30000000 Pa
 f_c through this record's environment: 30000000 Pa
 ```
 
-Values are answered in coherent SI, as everywhere in this library: 30 MPa is
+Values are answered in the coherent unit, as everywhere in this library: 30 MPa is
 30000000 Pa.
 
 ## Reading a value, or computing over another specimen

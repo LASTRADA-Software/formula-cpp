@@ -14,7 +14,7 @@
 /// decoration. "To two decimal places" means nothing about a quantity until
 /// you say two decimal places *of what*: a length rounded to two places in
 /// metres and the same length rounded to two places in millimetres are
-/// different numbers. The evaluator works in the coherent SI unit of each
+/// different numbers. The evaluator works in the coherent unit of each
 /// dimension, so a node converts into its stated unit, rounds there, and
 /// converts back.
 

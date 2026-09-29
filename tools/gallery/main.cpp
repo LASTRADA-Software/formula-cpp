@@ -820,8 +820,8 @@ int main(int argc, char** argv)
     // ---- A method's selected variant, and the same method overlaid ----
     //
     // Traced through a RecordingSink: a method is evaluated by
-    // `evaluate_method`, which answers in coherent SI and names, in the trace,
-    // the variant it selected and whose rounding rule it applied.
+    // `evaluate_method`, which answers in the coherent unit and names, in the
+    // trace, the variant it selected and whose rounding rule it applied.
 
     out << "## Worked derivation: a method's selected variant, and the same method overlaid\n\n";
     out << "`F` = 226 kN, `a` = 150 mm, `k_s` = 1043/1000, the cube variant selected by tag. The method rounds by "

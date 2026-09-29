@@ -36,7 +36,7 @@ constexpr auto toTwoSignificantDigits =
 
 The unit is not decoration. "To one decimal place" means nothing about a
 quantity until you say one decimal place *of what*: the evaluator works in
-the coherent SI unit of each dimension, so a length is normally carried in
+the coherent unit of each dimension, so a length is normally carried in
 metres, and "one decimal place" of a metre and of a millimetre are different
 thresholds by three orders of magnitude. A rounding node converts into the
 unit it names, rounds there, and converts back -- and naming a unit that does
@@ -200,7 +200,7 @@ tie rule can be the entire reason a value is 13 rather than 12.
 
 Note too that step 5's own value, `1/40`, carries no `mm` -- a `when()`
 step is a computed value like any other, and every computed step is shown in
-the coherent SI unit of its dimension with no symbol at all, the same rule
+the coherent unit of its dimension with no symbol at all, the same rule
 [Tracing and audit trails](tracing.md) explains for `#1 / #2` in a plain
 division. For a second worked derivation of a conditional -- a different
 formula, a different threshold, still naming the branch it took -- see

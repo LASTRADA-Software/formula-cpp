@@ -227,41 +227,53 @@ on the division it wraps.
 
 The two leaves read `180 l` and `300 l`, not the `9/50` and `3/10` cubic
 metres the arithmetic actually runs on. Every `Step` stores its value in the
-**coherent SI unit** of its dimension -- the one scale every step's value can
-be compared on -- but also remembers the unit it was *declared* in, and
-`render_trace` converts back before printing. `Step`'s own comment explains why
-the recorder, not the renderer, has to be the one holding that unit:
+**coherent unit** of its dimension (the SI unit, times one of each
+[named base dimension](dimensions.md#base-dimensions-the-si-does-not-have) it
+carries) -- the one scale every step's value can be compared on -- but also
+remembers the unit it was *declared* in, and `render_trace` converts back
+before printing. `Step`'s own comment explains why the recorder, not the
+renderer, has to be the one holding that unit:
 
 ```cpp
 /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
-/// for a variable, the constant's own unit for a constant, the unit of
-/// the step it wraps for a `Documented`, `ReplacedVariant` or
-/// `VariantSelected` step -- each passes its operand's value through
-/// unchanged, so it states it as that operand's line does, whenever that
-/// line is the wrapped node's own and not the operands of a consumer's
-/// node -- and the coherent SI unit of `dimension` for anything else
-/// computed, which has no declared unit of its own.
+/// for a variable or an overridden constant, the constant's own unit for
+/// a constant, the node's own unit for a `Round`, `RoundSignificant`,
+/// `RoundedRoot` or `RoundingRuleApplied` step, the unit of the step it
+/// wraps for a `Documented`, `ReplacedVariant` or `VariantSelected` step --
+/// each passes its operand's value through unchanged, so it states it as
+/// that operand's line does, whenever that line is the wrapped node's own
+/// and not the operands of a consumer's node -- and the coherent unit of
+/// `dimension` for anything else computed, which has no declared unit of
+/// its own.
 ///
-/// `value` is always in the coherent SI unit, so that steps are
+/// `value` is always in the coherent unit, so that steps are
 /// comparable; this is what a renderer converts back to before showing a
 /// number to a person. Without it a derivation restates every input in a
 /// unit nobody typed: someone who entered 180 l reads `9/50`, which is
 /// the same volume and a worse record. The renderer cannot recover this
 /// on its own -- by the time a `Step` exists the quantity type is erased,
 /// so the recorder captures it here.
+///
+/// **Deliberately not the unit `NumericValue` was read in.** That unit
+/// measures the *operand's* dimension (`Megapascal`, say), while a
+/// `NumericValueNode`'s own `dimension` is always `Scalar` -- assigning it
+/// here would make the renderer's `checked_convert(value, coherent(dimension),
+/// unit)` compare a `Scalar` `from` against a non-`Scalar` `to` and refuse
+/// every such step with a dimension-mismatch error, hiding the very number
+/// this node exists to produce. See `sourceUnit` below for that unit.
 Unit unit {};
 ```
 
 (`trace.hpp`.) A quantity's C++ type exists only while the evaluator is
 walking that quantity's own node; by the time `RecordingSink::produced` builds
 a `Step` for it, the type is gone and only the runtime `Unit` value survives.
-Capturing anything less at that point -- the coherent SI unit alone, say --
+Capturing anything less at that point -- the coherent unit alone, say --
 would make `render_trace` unable to ever show `180 l` again; it would show
 `9/50 m3`, arithmetically identical and a strictly worse record of what
 someone actually typed.
 
 A step that is a plain computation, `#1 / #2` above, carries no declared unit
-of its own -- it's whatever the coherent SI unit of its dimension is, which
+of its own -- it's whatever the coherent unit of its dimension is, which
 `test/trace_render_tests.cpp` pins directly for a squared mass over a volume:
 
 ```
@@ -324,7 +336,7 @@ it documents does"`.) A jurisdiction's replaced variant is the same: its line
 reads as the replacement's own. Over a consumer's node that hands the sink on
 to its operands (see below), there is no line of the node's own to read as --
 only its operands', none of which holds its value -- so the documented step
-states its value in coherent SI, as any computed step does.
+states its value in the coherent unit, as any computed step does.
 
 A step that failed shows why instead of a value, and a step with no value at
 all -- an absent measurement, which is not an error -- says so rather than

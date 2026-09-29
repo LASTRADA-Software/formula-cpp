@@ -238,7 +238,7 @@ namespace detail
         std::tuple<Bindings...> _bindings;
     };
 
-    /// A precision limit's level, as pass 1 produced it, in the coherent SI
+    /// A precision limit's level, as pass 1 produced it, in the coherent
     /// unit of @p LevelDimension -- the binding `precision_level` reads.
     ///
     /// The dimension is part of the type so that the placeholder can refuse

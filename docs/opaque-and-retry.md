@@ -48,7 +48,7 @@ struct SeriesSpan
 ```
 
 **The computation receives values and returns values.** `compute` is handed
-each input already evaluated, in the coherent SI unit of its dimension, as a
+each input already evaluated, in the coherent unit of its dimension, as a
 `std::span` over the representation -- `Rational` for an exact evaluation,
 `double` for a floating one. It is never handed the environment. An operation
 that could read the environment could read an input the formula does not
@@ -219,7 +219,7 @@ every size, regenerated with every build. **A fit that overflows has no
 traced fallback in `double`.** A curve evaluates only in `Rational`, so
 `checked_evaluate_si<double>` over a fit is refused where it is written.
 `LinearLeastSquares::compute<double>` can be called directly, on numbers the
-caller has put in coherent SI, but it returns bare numbers: nothing checks
+caller has put in coherent units, but it returns bare numbers: nothing checks
 their dimensions, and nothing reaches the trace or the page.
 
 ## A citation is required
