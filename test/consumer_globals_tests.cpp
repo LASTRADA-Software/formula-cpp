@@ -61,7 +61,10 @@
 // worksheet about to be discarded, copied with an override by `with`, the
 // override cleared, with its counters and every query, and its derivation
 // by `explain_worksheet`, rendered by `render_derivation`; the calculation
-// rendered and documented, and its graph by `describe_graph` and `to_dot`;
+// rendered and documented, with and without a number style, and its graph
+// by `describe_graph` and `to_dot`; a worksheet over a quantity in a
+// currency of the consumer's own, asked, derived in exact decimals, and
+// with an override cleared on a worksheet about to be discarded;
 // a measured value spelled by `number_text` in each notation, with
 // `checked_number_text`, `decimal_text`, `fraction_text` and
 // `exact_decimal_text`; a `Rational` and a measured value written by
@@ -243,6 +246,18 @@ struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit
 {
 };
 struct AgreedEdge: formula::Quantity<AgreedEdge, "x_a", "agreed edge", unit::Millimetre>
+{
+};
+
+// A currency of the consumer's own, a base dimension the SI does not have,
+// and a fee in it before and after tax.
+inline constexpr formula::Unit ProbeEuro { .dimension = formula::base_dimension("EUR"),
+                                           .symbolText = formula::symbol("EUR"),
+                                           .decimals = 2 };
+struct NetFee: formula::Quantity<NetFee, "fee_n", "a fee before tax", ProbeEuro>
+{
+};
+struct GrossFee: formula::Quantity<GrossFee, "fee_g", "a fee after tax", ProbeEuro>
 {
 };
 
@@ -1045,6 +1060,35 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && strengthPage.symbols[0].symbol == "k" && strengthPage.symbols[0].calculatedAs.has_value()
                            && strengthPage.symbols[1].symbol == "f_c" && strengthPage.symbols[2].symbol == "x_m"
                            && strengthPage.symbols[3].symbol == "P" && !strengthPage.symbols[3].calculatedAs.has_value());
+
+    // The same, with the numbers in a style: it has none to spell, so the
+    // text is the same.
+    formula::RenderOptions const exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+    std::string const styledStrength = formula::render(strengthCalculation, north, exactDecimals);
+    formula::Documentation const styledPage = formula::document(strengthCalculation, north, exactDecimals);
+    probe.checks.push_back(styledStrength == formula::render(strengthCalculation, north)
+                           && styledPage.formula == styledStrength && styledPage.symbols.size() == 4);
+
+    // A worksheet over a fee in a currency of the consumer's own: 12.50 EUR
+    // with 19 % tax is 14.875 EUR, its derivation in exact decimals; and the
+    // fee with tax typed in, cleared on a worksheet about to be discarded.
+    constexpr auto feeCalculation =
+        formula::calculation(formula::define<GrossFee>(var<NetFee> * formula::Rational { 119, 100 }));
+    auto feeSheet = formula::worksheet(
+        feeCalculation, formula::environment(formula::Measured<NetFee> { formula::Rational { 25, 2 } }));
+    auto const grossFee = feeSheet.calculate<GrossFee>();
+    std::string const feeDerivation = formula::render_derivation(
+        formula::explain_worksheet<GrossFee>(feeSheet), { .maxSteps = 10, .numbers = exactDecimals.numbers });
+    auto const clearedFee =
+        formula::worksheet(feeCalculation,
+                           formula::environment(formula::Measured<NetFee> { formula::Rational { 25, 2 } }))
+            .set(formula::entered(formula::Measured<GrossFee> { formula::Rational { 20 } }))
+            .clear_override<GrossFee>()
+            .calculate<GrossFee>();
+    probe.checks.push_back(grossFee.measurement().value() == formula::Rational { 119, 8 }
+                           && feeDerivation.starts_with("fee_g = fee_n * 1.19 = 14.875 EUR\n")
+                           && clearedFee.measurement() == grossFee.measurement()
+                           && std::format("{}", grossFee.measurement()) == "14.875 EUR");
 
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};
