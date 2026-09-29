@@ -15,7 +15,7 @@ actual output, not worked out by hand.
 
 ## Why a variable is a type
 
-Phase 3 already made a *dimension* a compile-time thing:
+A *dimension* is already a compile-time thing:
 `formula::RequireSameDimension<Left, Right>` lets code refuse, at compile
 time, to combine two values whose dimensions differ -- adding a volume to a
 mass fails to compile, with both exponent vectors spelled out in the
@@ -284,9 +284,9 @@ an absent measurement, converted: still absent
 ## Bounds, precision and conversion
 
 `formula::checked_within_bounds` and `formula::checked_round_to_declared`
-are overloaded for `Measured<Q>` alongside phase 3's `Rational`-and-`Unit`
-forms, and both keep the same absence rule: rounding an absent measurement
-leaves it absent,
+are overloaded for `Measured<Q>` alongside the `Rational`-and-`Unit` forms of
+[Dimensions and units](dimensions.md), and both keep the same absence rule:
+rounding an absent measurement leaves it absent,
 
 ```
 an absent measurement, rounded: still absent

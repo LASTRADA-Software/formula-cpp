@@ -628,7 +628,7 @@ half-open interval everywhere in this library — in the plain rendering, in
 Markdown, in LaTeX, and in the trace.
 
 **It is spelled that way because the obvious mathematical notation is Markdown
-link syntax.** Phase 8 of this project rendered a rounding step as
+link syntax.** An earlier draft of this library rendered a rounding step as
 `round[to 1 dp of mm](d)`; in CommonMark that is `[text](url)`, and renderers
 silently dropped the operand and published a broken line. A test now asserts
 that no Markdown rendering contains `](` or a bare `[`, and a bracketed interval

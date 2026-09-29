@@ -6,8 +6,8 @@
 quantity (`formula::Environment`), and two ways to turn a formula and an
 environment into a number (`formula::checked_evaluate_si`,
 `formula::checked_evaluate`). The result is never a bare number: it is
-`formula::Outcome<Q>`, a value, an absence, or -- once a later phase adds
-constraints -- a verdict or an invalidation, each carrying where it came from.
+`formula::Outcome<Q>`, a value, an absence, a verdict or an invalidation, each
+carrying where it came from.
 This page explains how to write a formula, where a dimensional mistake shows
 up, how the environment supplies and withholds values, how absence and
 provenance travel through evaluation, and how to choose between an exact and
@@ -219,9 +219,11 @@ is a sum type with four alternatives (`formula::OutcomeKind`):
   empty `Value` and call it a number.
 - **`Verdict`** and **`Invalid`** -- a decision rather than a number
   (`"reject the specimen"`) or a reason a result was discarded entirely.
-  Nothing in the expression layer produces either yet: they exist so that a
-  later phase's constraints have somewhere to put their answer, without a
-  fifth alternative meaning "everything above, but different".
+  Evaluating a formula produces neither. Outlier rejection
+  ([Statistics, outliers and precision](statistics.md)) and bounded retry
+  ([Opaque operations and bounded retry](opaque-and-retry.md)) report a
+  `Verdict` through this type, so that a decision has somewhere to go without
+  a fifth alternative meaning "everything above, but different".
 
 `Outcome::is_overridden()` is true exactly when `is_value()` and the source
 is `ManuallyEntered` -- there is deliberately no separate `Overridden`
@@ -282,8 +284,8 @@ is 37 °C. A quantity that represents a *difference* -- a temperature swing, not
 a temperature -- must declare a non-offset unit such as kelvin; declaring it in
 an affine unit asks the library a different question than the one intended.
 `test/evaluate_tests.cpp`'s `"evaluate: an offset unit converts a point, not a
-difference"` pins today's behaviour, so a later phase changes it deliberately
-rather than by accident.
+difference"` pins today's behaviour, so a change to it is deliberate rather than
+accidental.
 
 ## Powers, roots and pi
 

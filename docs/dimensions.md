@@ -116,14 +116,14 @@ A `formula::Unit` is a small aggregate, and every field earns its place:
 | `decimals` | the declared display precision |
 | `bounds` | an optional valid range, in the unit's own scale |
 
-Like `Dimension`, `Unit` is structural on purpose: phase 4's quantity type
-names its unit as a template argument, so `Unit` has to stay a single
-ordinary type usable as one. That rules out `std::string_view` for the symbol
-(private members, not structural) and `Rational` for the magnitude and offset
-(same reason) -- hence plain fixed-size integer and character-array fields
-here, with the convenient types (`Rational`, `std::string_view`) appearing
-only at the point of use, via `formula::view()` and the conversion functions
-below.
+Like `Dimension`, `Unit` is structural on purpose: a quantity (see
+[Quantities and measurements](quantities.md)) names its unit as a template
+argument, so `Unit` has to stay a single ordinary type usable as one. That
+rules out `std::string_view` for the symbol (private members, not structural)
+and `Rational` for the magnitude and offset (same reason) -- hence plain
+fixed-size integer and character-array fields here, with the convenient types
+(`Rational`, `std::string_view`) appearing only at the point of use, via
+`formula::view()` and the conversion functions below.
 
 The `formula::unit::` namespace declares fifty-six of these: the coherent SI
 units (`Metre`, `Kilogram`, `Second`, `Kelvin`, `Newton`, `Pascal`, `Watt`, ...)

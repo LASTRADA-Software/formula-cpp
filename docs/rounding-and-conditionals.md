@@ -44,9 +44,9 @@ not measure the operand's own dimension (rounding a mass "to 0.1 mm", say) is
 a compile error, the same way a dimensional mismatch anywhere else in this
 library is one.
 
-`RoundingMode` itself is not new -- it has been part of `rounding.hpp` since
-phase 2, and a rounding node is simply that mode exposed as a position in the
-tree rather than a call you make on a number you already hold.
+`RoundingMode` itself is not new -- it is the mode `rounding.hpp` already takes
+(see [Numbers](numbers.md)), and a rounding node is simply that mode exposed as
+a position in the tree rather than a call you make on a number you already hold.
 
 ## The reason this is a node at all
 

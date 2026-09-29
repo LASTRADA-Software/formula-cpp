@@ -347,9 +347,11 @@ The result is then `Overflow`, never a wrong number. See
 
 - **Another laboratory's record.** Reproducibility compares results from
   other laboratories; here such a result is an ordinary input the author
-  supplies. Reading another test's record is a later phase.
+  supplies. Reading another test's record is a different feature: see
+  [Other samples and other tests](records.md).
 - **Retrying with a further determination.** "If the two results differ by
-  more than r, make a third determination" is a retry, a later phase. It
+  more than r, make a third determination" is a retry, which
+  [Opaque operations and bounded retry](opaque-and-retry.md) covers. It
   differs from rejection in kind: rejection changes *which data* enter an
   aggregate; a retry makes *another determination* and computes an
   expression again.

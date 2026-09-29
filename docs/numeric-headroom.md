@@ -114,8 +114,8 @@ The figures are deterministic: the census program prints the same on cl
 19.51 and gcc 13.3, and the clang and gcc presets hold it to the same pins.
 The examples table below is cl's. clang and gcc evaluate a `const` local's
 constant initialiser at compile time, where cl runs it, so under them a
-program can report fewer integers -- today `expressions` reads one bit fewer.
-The test holds every compiler to at least this table's headroom.
+program can report fewer integers -- today `expressions` leaves one bit more
+headroom. The test holds every compiler to at least this table's headroom.
 
 ## The census
 
@@ -167,8 +167,9 @@ leaves.
 The fixtures are the shared fixtures of the statistics tests: masses of
 about 40 g read to 0.1 g. The spread is `rounded_sqrt` of the variance; its
 unsigned bits are out of 64. The 64-point curve reads invented screen
-openings from 101 to 461 mm. The last two rows are phase 15's least-squares
-fit on its own test fixtures; the fit over every size is below.
+openings from 101 to 461 mm. The last two rows are the least-squares fit
+([Opaque operations and bounded retry](opaque-and-retry.md)) on its own test
+fixtures; the fit over every size is below.
 
 <!-- census:statistics -->
 
@@ -293,8 +294,8 @@ These are asserted by the census program's own tests.
 ### Least squares (realistic, and one stress control)
 
 `linear_least_squares` sums, over the points, squares and products of each
-point's coordinates, centred on their means. The data are the phase 15
-spike's shapes, in seconds and newtons so that the fit sees them
+point's coordinates, centred on their means. The data come in three
+shapes, in seconds and newtons so that the fit sees them
 unconverted: readings at 1 decimal place; readings at 3 decimal places of a
 few thousand newtons, a load cell's; and a different denominator on every
 point, the stress control. Every size from 2 to 128 points is fitted through

@@ -70,7 +70,7 @@ is exactly the caller who must instead read `kind()`, or `is_satisfied()`
 *and* `is_violated()` *and* `is_not_checked()` *and* `is_invalid()`, and
 decide what an unresolved check means for their own report.
 
-## The case this phase exists for: a measurement nobody took
+## The case this feature exists for: a measurement nobody took
 
 Here is the same constraint checked against three environments -- one where
 strength was measured at 45 MPa, one at 20 MPa, and one where strength was
@@ -90,7 +90,7 @@ which report:
 no strength measured: not checked
 ```
 
-The third line is the one this whole phase exists for. Nobody measured the
+The third line is the one this whole feature exists for. Nobody measured the
 strength, so the predicate `f >= 273/10 MPa` never resolved -- it is not true and
 it is not false, because there is no `f` to compare against 27.3 MPa at all.
 `check()` reports `NotChecked`, never `Satisfied`.

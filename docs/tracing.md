@@ -755,7 +755,7 @@ are not sequenced. Walk a `Trace` in sequence, never concurrently.
 
 ## The extension point: your node evaluates, but is it traced?
 
-Phase 5 published a two-parameter extension point -- a consumer writes their
+Evaluation has a two-parameter extension point -- a consumer writes their
 own node kind and a `checked_evaluate_si(node, environment)` overload for it,
 found by ADL. Adding a sink parameter to every overload the library ships
 could have broken every such overload by making it invisible to the

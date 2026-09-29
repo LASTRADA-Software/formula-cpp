@@ -131,9 +131,10 @@ The design specification sketches the selector as `formula::when<Cube>(expr)`.
 This library spells it `variant<Cube>(expr)` because of measured evidence, not
 preference. `conditional.hpp` already ships `when(predicate, then, else)`: a
 runtime-predicate ternary, a different question with a different arity. When
-both were declared in namespace `formula`, the phase-11 spike measured the
-following on cl 19.51, clang-cl 22.1.3, clang++ 20.1.8, g++ 13.3 and g++-14
-14.2.0 (`method.hpp`'s file comment records the measurement):
+both were declared in namespace `formula`, a measurement made while this
+selector was being designed found the following on cl 19.51, clang-cl 22.1.3,
+clang++ 20.1.8, g++ 13.3 and g++-14 14.2.0 (`method.hpp`'s file comment records
+the measurement):
 
 - `when<P>(pred, then, else)` binds `P` to the ternary's first template
   parameter and **compiles silently** on all five. An author who believes
@@ -711,9 +712,9 @@ interface: type erasure, a virtual call per formula. The trace would not survive
 `RecordingSink`'s `entered` and `produced` are member templates on the node
 type, and a member template cannot be virtual. So an erased formula would have
 to name one concrete sink type, one `Rep` and one vocabulary in its virtual
-signature, permanently, for every consumer. The phase-11 spike built that shape
-for replacement and recorded its cost; `add_derived`, added later, meets the
-same obstacle for the same reason. The rule here follows: the set of
+signature, permanently, for every consumer. An experiment made while overlays
+were being designed built that shape for replacement and recorded its cost;
+`add_derived`, added later, meets the same obstacle for the same reason. The rule here follows: the set of
 jurisdictions is closed and lives in the type, and which one applies to a
 sample is a runtime index. That fits a registry "per customer, per region, per
 contract" for everything except a formula nobody compiled.
