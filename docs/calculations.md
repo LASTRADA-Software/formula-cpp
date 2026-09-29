@@ -24,9 +24,12 @@ current inputs.
 The worked example is `examples/electricity_bill.cpp`: a household's monthly
 electricity bill, from what three appliances draw, what the solar panels
 yield, the grid price, the feed-in tariff and a base fee, to the total with
-tax. The page holds three kinds of quoted block. **Code** is copied from the
-example's source, and `docs.calculations-snippets` fails unless each code
-block appears there as a run of consecutive lines, compared without their
+tax. The page holds three kinds of quoted block. **Program output** is copied
+verbatim from that program's actual output, and `docs.calculations-output`
+fails unless each of these blocks is a run of consecutive lines the program
+prints, exactly as quoted (`cmake/CheckGuideOutput.cmake`). **Code** is copied
+from the example's source, and `docs.calculations-snippets` fails unless each
+code block appears there as a run of consecutive lines, compared without their
 indentation (`cmake/CheckGuideSnippets.cmake`). A code block that is
 deliberately *not* from the example -- each misuse under
 [What is refused](#what-is-refused) -- carries a
@@ -123,6 +126,38 @@ reads. A quantity that is read and never defined is an **input**: the bill
 has ten, from the fridge's power to the base fee, in the order the
 definitions first read them.
 
+`render` writes the calculation out, one `symbol = expression` line per
+definition in the order it calculates them, in any of the three dialects.
+The example asks for its numbers as decimals where that is their exact value
+([Displaying numbers](display.md)):
+
+```cpp
+formula::NumberStyle const decimals = formula::NumberStyle::exact_decimal();
+```
+
+```cpp
+std::printf("the calculation, in the order it calculates:\n%s\n\n",
+            formula::render(bill, formula::DefaultVocabulary {}, { .numbers = decimals }).c_str());
+```
+
+```text
+fridge_kw = fridge_w
+fridge_kwh = fridge_kw * fridge_h
+oven_kwh = oven_kw * oven_h
+heater_kwh = heater_kw * heater_h
+daily_load = fridge_kwh + oven_kwh + heater_kwh
+monthly_load = daily_load * 30
+self_used = solar * 0.8
+exported = solar - self_used
+net_draw = monthly_load - self_used
+grid_cost = net_draw * price
+feed_in_credit = exported * feed_in
+energy_cost = grid_cost - feed_in_credit
+subtotal = energy_cost + base_fee
+vat = subtotal * 0.19
+total = round(subtotal + vat, to 0 dp of ct)
+```
+
 **Each definition is checked where it is written.** Its expression must
 measure what its quantity measures: the net draw is an energy, and a
 definition that multiplied an energy by a price would be a cost, and does not
@@ -150,6 +185,12 @@ std::printf("upstream of net_draw : %s\n", listed(formula::upstream_of<NetDraw>(
 std::printf("read by self_used    : %s\n", listed(formula::dependents_of<SelfUsed>(bill)).c_str());
 ```
 
+```text
+affected by price    : grid_cost, energy_cost, subtotal, vat, total
+upstream of net_draw : fridge_w, fridge_h, oven_kw, oven_h, heater_kw, heater_h, solar, fridge_kw, fridge_kwh, oven_kwh, heater_kwh, daily_load, monthly_load, self_used
+read by self_used    : exported, net_draw
+```
+
 `affected_by<Q>` is every value a change of `Q` reaches, and `upstream_of<Q>`
 every value `Q` is reached from; `dependents_of<Q>` and `dependencies_of<Q>`
 are the direct readers and reads only, `inputs_of` the inputs, and
@@ -169,14 +210,50 @@ boxes and the calculated values as ellipses:
 std::printf("its graph:\n%s\n", formula::describe_graph(bill).c_str());
 ```
 
+```text
+inputs: fridge_w, fridge_h, oven_kw, oven_h, heater_kw, heater_h, solar, price, feed_in, base_fee
+fridge_kw      <- fridge_w
+fridge_kwh     <- fridge_h, fridge_kw
+oven_kwh       <- oven_kw, oven_h
+heater_kwh     <- heater_kw, heater_h
+daily_load     <- fridge_kwh, oven_kwh, heater_kwh
+monthly_load   <- daily_load
+self_used      <- solar
+exported       <- solar, self_used
+net_draw       <- monthly_load, self_used
+grid_cost      <- price, net_draw
+feed_in_credit <- feed_in, exported
+energy_cost    <- grid_cost, feed_in_credit
+subtotal       <- base_fee, energy_cost
+vat            <- subtotal
+total          <- subtotal, vat
+```
+
 ```cpp
 std::string const drawn = formula::to_dot(bill);
 ```
 
-`render(bill)` writes the calculation itself, one `symbol = expression` line
-per definition in the order it calculates them, in any of the three dialects,
-and `document(bill)` makes its documentation page, whose symbol table gives
-each calculated value its definition
+It opens with the inputs,
+
+```text
+digraph calculation {
+  rankdir=LR;
+  node [fontname="Helvetica"];
+  q0 [label="fridge_w", shape=box];
+  q1 [label="fridge_h", shape=box];
+```
+
+and ends with the arrows into the tax and the total:
+
+```text
+  q22 -> q23;
+  q22 -> q24;
+  q23 -> q24;
+}
+```
+
+`document(bill)` makes the calculation's documentation page, whose symbol
+table gives each calculated value its definition
 ([Citations and rendering](citations.md)).
 
 ## A worksheet
@@ -217,6 +294,24 @@ typed in by hand. Asked for several values at once, it answers with a
 auto const [total, netDraw] = sheet.calculate<Total, NetDraw>();
 ```
 
+The example spells each answer with `std::format` (`format.hpp`,
+[Displaying numbers](display.md)): the total, which the bill rounds to whole
+cents, padded to them, and the net draw as its exact decimal, each with its
+unit:
+
+```cpp
+std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
+            step,
+            total.measurement(),
+            netDraw.measurement(),
+            counted.recomputed,
+            counted.reused)
+```
+
+```text
+first run:                 total 118.26 EUR, net draw 279 kWh, recomputed 15, reused 0
+```
+
 The same question can name the variables instead of their types:
 
 ```cpp
@@ -246,6 +341,10 @@ not calculated at all.
 sheet.set(formula::Measured<Price> { Rational { 1, 4 } });
 ```
 
+```text
+price 0.25 EUR/kWh:        total 95.02 EUR, net draw 279 kWh, recomputed 5, reused 0
+```
+
 Nothing is calculated when an input is set. The worksheet marks every value
 the change can reach as out of date, and the next question calculates those
 of them it needs. After a new price, the grid cost and what is built on it --
@@ -259,10 +358,18 @@ second time marks nothing, and the next question calculates nothing:
 sheet.set(formula::Measured<Price> { Rational { 1, 4 } });
 ```
 
+```text
+the same price again:      total 95.02 EUR, net draw 279 kWh, recomputed 0, reused 0
+```
+
 A new base fee reaches three values, the subtotal, the tax and the total:
 
 ```cpp
 sheet.set(formula::Measured<BaseFee> { Rational { 15 } });
+```
+
+```text
+base fee 15 EUR:           total 98.00 EUR, net draw 279 kWh, recomputed 3, reused 0
 ```
 
 **A value that comes out the same stops the change there.** Several inputs
@@ -270,6 +377,10 @@ can be set at once; here the fridge draws twice the power for half the time:
 
 ```cpp
 sheet.set(formula::Measured<FridgeW> { Rational { 400 } }, formula::Measured<FridgeH> { Rational { 12 } });
+```
+
+```text
+fridge 400 W for 12 h:     total 98.00 EUR, net draw 279 kWh, recomputed 2, reused 8
 ```
 
 The fridge's power in kilowatts is calculated again, and so is its energy a
@@ -291,8 +402,18 @@ auto sunnier = sheet.with(formula::Measured<Solar> { Rational { 200 } });
 
 The copy holds everything the worksheet had calculated, so a question to it
 calculates only what the change reaches: nine values, for 85.14 EUR and
-239 kWh drawn. Its counters start where the worksheet's stood. Asked again,
-the worksheet itself still answers 98.00 EUR and calculates nothing.
+239 kWh drawn. Its counters start where the worksheet's stood.
+
+```text
+with 200 kWh of sun:       total 85.14 EUR, net draw 239 kWh, recomputed 9
+```
+
+Asked again, the worksheet itself still answers 98.00 EUR and calculates
+nothing:
+
+```text
+the worksheet itself:      total 98.00 EUR, net draw 279 kWh, recomputed 0, reused 0
+```
 
 ## How a value was reached
 
@@ -302,7 +423,20 @@ out for a person:
 
 ```cpp
 auto const fridgeEnergy = formula::explain_worksheet<FridgeKwh>(sheet);
-std::string const fridgeText = formula::render_derivation(fridgeEnergy, { .maxSteps = 12 });
+std::string const fridgeText =
+    formula::render_derivation(fridgeEnergy, { .maxSteps = 12, .numbers = decimals });
+```
+
+```text
+fridge_kwh = fridge_kw * fridge_h = 4.8 kWh
+  1. fridge_kw = 0.4 kW, calculated
+  2. fridge_h = 12 h
+  3. #1 * #2 = 17280000
+fridge_kw = fridge_w = 0.4 kW
+  1. fridge_w = 400 W
+inputs
+  fridge_w = 400 W
+  fridge_h = 12 h
 ```
 
 `Q`'s block comes first: its definition, evaluated step by step as a trace
@@ -312,7 +446,9 @@ value's own block, further on, says how it was reached. The inputs read come
 last, one line each. A value the evaluation never reached -- read only in a
 `when()` branch not taken, or to the right of an operand that failed -- gets
 no block. One step limit bounds every line, as `render_trace`'s does, and a
-last line says how many were left out.
+last line says how many were left out. `.numbers` spells every number as it
+spells a trace's -- here the decimals the example named, so the fridge's
+power reads 0.4 kW rather than 2/5 kW.
 
 **A derivation is never stale.** It is recorded afresh on every call, from the
 values the worksheet holds, never kept from when a value was calculated. After
@@ -338,6 +474,10 @@ with `entered(...)`, as a value typed in:
 sheet.set(formula::entered(formula::Measured<NetDraw> { Rational { 250 } }));
 ```
 
+```text
+net draw typed in:         total 89.37 EUR, net draw 250 kWh, recomputed 5, reused 0
+```
+
 The value typed in stands in place of the calculated one: what is built on it
 is calculated again from it -- five values, for 89.37 EUR -- its source reads
 `ManuallyEntered`, and what the net draw was calculated from is no longer
@@ -347,6 +487,10 @@ self_used`. `clear_override` goes back to calculating it:
 
 ```cpp
 sheet.clear_override<NetDraw>();
+```
+
+```text
+the override cleared:      total 98.00 EUR, net draw 279 kWh, recomputed 6, reused 0
 ```
 
 The net draw is calculated again, 279 kWh, and so are the five values built on
@@ -371,12 +515,20 @@ inline constexpr auto sharing = formula::calculation(
             var<Share>)));
 ```
 
-98.00 EUR shared by three is 32.67 EUR each. With nobody to share it, the
-share divides by zero, and the share in cents, which reads it, fails with it:
+```text
+98.00 EUR shared by 3: 32.67 EUR each
+```
+
+With nobody to share it, the share divides by zero, and the share in cents,
+which reads it, fails with it:
 
 ```cpp
 shares.set(formula::Measured<Occupants> { Rational { 0 } });
 auto const [share, shareInCents] = shares.checked_calculate<Share, ShareInCents>();
+```
+
+```text
+shared by nobody: share: division by zero, in cents: division by zero
 ```
 
 `calculate` throws the same failure, as an `ArithmeticException` whose
@@ -394,10 +546,33 @@ catch (formula::ArithmeticException const& failure)
 }
 ```
 
+```text
+calculate<ShareInCents>() threw: division by zero
+```
+
 A failure is not calculated again until something it read changes, and a
 value calculated again that fails with the same error counts as unchanged. Its
 derivation is a block like any other, the failure in its header and in the
-step that read it.
+step that read it:
+
+```cpp
+auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
+std::printf("\nhow the failure was reached:\n%s",
+            formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }).c_str());
+```
+
+```text
+share_ct = round(share, to 0 dp of ct) = division by zero
+  1. share = division by zero, calculated
+  2. round(#1, to 0 dp of ct) = division by zero [nearest, ties away from zero]
+share = shared_cost / occupants = division by zero
+  1. shared_cost = 98 EUR
+  2. occupants = 0
+  3. #1 / #2 = division by zero
+inputs
+  shared_cost = 98 EUR
+  occupants = 0
+```
 
 **Absence is not failure.** An input given as `Measured<Q>::absent()` makes
 what reads it absent, as it makes a formula's result absent

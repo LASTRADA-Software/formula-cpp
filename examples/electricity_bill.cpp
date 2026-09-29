@@ -26,6 +26,7 @@
 //     live there -- a division by zero reaching the value that reads it.
 
 #include <formula-cpp/calculation.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
@@ -33,9 +34,9 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <cstdio>
 #include <expected>
+#include <format>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -210,29 +211,6 @@ inline constexpr auto sharing = formula::calculation(
         formula::rounded<EuroCent, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Share>)));
 
-/// @p amount as the bill states it: a decimal of @p places places when that
-/// is its exact value -- 118.26, 279 -- and its exact fraction otherwise.
-std::string shown(Rational amount, int places)
-{
-    std::int64_t scale = 1;
-    for (int place = 0; place < places; ++place)
-        scale *= 10;
-    std::int64_t const numerator = amount.numerator();
-    std::int64_t const denominator = amount.denominator();
-    if ((numerator * scale) % denominator != 0)
-        return std::to_string(numerator) + "/" + std::to_string(denominator);
-    std::int64_t const scaled = numerator * scale / denominator;
-    std::int64_t const magnitude = scaled < 0 ? -scaled : scaled;
-    std::string digits = std::to_string(magnitude / scale);
-    if (places > 0)
-    {
-        std::string fractionDigits = std::to_string(magnitude % scale);
-        fractionDigits.insert(0, static_cast<std::size_t>(places) - fractionDigits.size(), '0');
-        digits += "." + fractionDigits;
-    }
-    return scaled < 0 ? "-" + digits : digits;
-}
-
 /// @p names, comma-separated.
 template <std::size_t N>
 std::string listed(std::array<std::string_view, N> const& names)
@@ -266,8 +244,13 @@ int main()
         ok = ok && condition;
     };
 
+    // Every number shown as a decimal where that is its exact value: the
+    // self-use share 0.8, the fridge's 4.8 kWh a day.
+    formula::NumberStyle const decimals = formula::NumberStyle::exact_decimal();
+
     // ---- 1. The calculation, and what reads what ----
-    std::printf("the calculation, in the order it calculates:\n%s\n\n", formula::render(bill).c_str());
+    std::printf("the calculation, in the order it calculates:\n%s\n\n",
+                formula::render(bill, formula::DefaultVocabulary {}, { .numbers = decimals }).c_str());
     std::printf("its graph:\n%s\n", formula::describe_graph(bill).c_str());
 
     std::printf("affected by price    : %s\n", listed(formula::affected_by<Price>(bill)).c_str());
@@ -303,12 +286,15 @@ int main()
         Counters const counted { .recomputed = after.recomputed - before.recomputed,
                                  .reused = after.reused - before.reused };
         before = after;
-        std::printf("%-26s total %s EUR, net draw %s kWh, recomputed %zu, reused %zu\n",
-                    step,
-                    shown(total.measurement().value(), 2).c_str(),
-                    shown(netDraw.measurement().value(), 0).c_str(),
-                    counted.recomputed,
-                    counted.reused);
+        // The total is in whole cents already; .2 pads it to them: 98.00 EUR.
+        std::printf("%s\n",
+                    std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
+                                step,
+                                total.measurement(),
+                                netDraw.measurement(),
+                                counted.recomputed,
+                                counted.reused)
+                        .c_str());
         return std::pair { total.measurement().value(), counted };
     };
 
@@ -348,7 +334,8 @@ int main()
     // The fridge's energy a day was recalculated, and its derivation is
     // recorded afresh from the values the worksheet holds now: 400 W for 12 h.
     auto const fridgeEnergy = formula::explain_worksheet<FridgeKwh>(sheet);
-    std::string const fridgeText = formula::render_derivation(fridgeEnergy, { .maxSteps = 12 });
+    std::string const fridgeText =
+        formula::render_derivation(fridgeEnergy, { .maxSteps = 12, .numbers = decimals });
     std::printf("\nhow the fridge's energy a day was reached:\n%s", fridgeText.c_str());
     check("the derivation reads the current 400 W",
           fridgeText.find("fridge_w = 400 W") != std::string::npos
@@ -360,10 +347,13 @@ int main()
     auto sunnier = sheet.with(formula::Measured<Solar> { Rational { 200 } });
     Counters const copied = counters_of(sunnier);
     auto const [sunnierTotal, sunnierDraw] = sunnier.calculate(var<Total>, var<NetDraw>);
-    std::printf("\nwith 200 kWh of sun:       total %s EUR, net draw %s kWh, recomputed %zu\n",
-                shown(sunnierTotal.measurement().value(), 2).c_str(),
-                shown(sunnierDraw.measurement().value(), 0).c_str(),
-                sunnier.recomputed() - copied.recomputed);
+    std::printf("\n%s\n",
+                std::format("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}",
+                            "with 200 kWh of sun:",
+                            sunnierTotal.measurement(),
+                            sunnierDraw.measurement(),
+                            sunnier.recomputed() - copied.recomputed)
+                    .c_str());
     check("85.14 EUR and 239 kWh on the copy, nine recalculated",
           sunnierTotal.measurement().value() == Rational { 8514, 100 }
               && sunnierDraw.measurement().value() == Rational { 239 }
@@ -394,9 +384,9 @@ int main()
     auto shares = formula::worksheet(sharing,
                                      formula::environment(formula::Measured<SharedCost> { Rational { 98 } },
                                                           formula::Measured<Occupants> { Rational { 3 } }));
-    Rational const eachInCents = shares.calculate<ShareInCents>().measurement().value();
-    std::printf("\n98.00 EUR shared by 3: %s EUR each\n", shown(eachInCents, 2).c_str());
-    check("32.67 EUR each", eachInCents == Rational { 3267, 100 });
+    formula::Measured<ShareInCents> const eachInCents = shares.calculate<ShareInCents>().measurement();
+    std::printf("\n%s\n", std::format("98.00 EUR shared by 3: {} each", eachInCents).c_str());
+    check("32.67 EUR each", eachInCents.value() == Rational { 3267, 100 });
 
     // Nobody to share it: the share divides by zero, and the share in cents,
     // which reads it, fails with it.
@@ -425,7 +415,7 @@ int main()
 
     auto const failedShare = formula::explain_worksheet<ShareInCents>(shares);
     std::printf("\nhow the failure was reached:\n%s",
-                formula::render_derivation(failedShare, { .maxSteps = 12 }).c_str());
+                formula::render_derivation(failedShare, { .maxSteps = 12, .numbers = decimals }).c_str());
 
     std::printf("\nall checks passed: %s\n", ok ? "yes" : "no");
     return ok ? 0 : 1;

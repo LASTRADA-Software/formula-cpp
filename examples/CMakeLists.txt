@@ -63,20 +63,28 @@ formula_add_example(citations citations.cpp "all checks passed: yes")
 formula_add_example(composition composition.cpp "all checks passed: yes")
 
 # docs/calculations.md quotes this program's output. Pinned here, in the order
-# the program prints them: how many values each step of the worksheet
-# recalculated and reused -- the first run, a new price, the same price again, a
-# new base fee, the fridge's early cutoff, the what-if copy and the worksheet
-# left as it was -- and, in the example's second calculation, the division by
-# zero reaching the value that reads it.
-formula_add_example(electricity_bill electricity_bill.cpp [==[first run: .*recomputed 15, reused 0.*price 0\.25 EUR/kWh: .*recomputed 5, reused 0.*the same price again: .*recomputed 0, reused 0.*base fee 15 EUR: .*recomputed 3, reused 0.*fridge 400 W for 12 h: .*recomputed 2, reused 8.*fridge_w = 400 W.*with 200 kWh of sun: .*recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*shared by nobody: share: division by zero, in cents: division by zero.*all checks passed: yes]==])
+# the program prints them: the four totals -- the first run's, after a new
+# price, after a new base fee, and on the what-if copy -- and how many values
+# each step of the worksheet recalculated and reused: the first run, a new
+# price, the same price again, a new base fee, the fridge's early cutoff, the
+# what-if copy and the worksheet left as it was. Then the derivation reading
+# the fridge's current 400 W, and, in the example's second calculation, the
+# division by zero reaching the value that reads it.
+formula_add_example(electricity_bill electricity_bill.cpp [==[first run: .*total 118\.26 EUR, net draw 279 kWh, recomputed 15, reused 0.*price 0\.25 EUR/kWh: .*total 95\.02 EUR, .*recomputed 5, reused 0.*the same price again: .*recomputed 0, reused 0.*base fee 15 EUR: .*total 98\.00 EUR, .*recomputed 3, reused 0.*fridge 400 W for 12 h: .*recomputed 2, reused 8.*fridge_w = 400 W.*with 200 kWh of sun: .*total 85\.14 EUR, net draw 239 kWh, recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*shared by nobody: share: division by zero, in cents: division by zero.*all checks passed: yes]==])
 
-# Every ```cpp block of docs/calculations.md must appear in the example's
-# source as consecutive lines, indentation aside -- see the script.
+# Every ```text block of docs/calculations.md must be a run of lines the
+# example prints, and every ```cpp block a run of lines of its source.
+add_test(NAME docs.calculations-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-electricity_bill>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/calculations.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
 add_test(NAME docs.calculations-snippets
     COMMAND "${CMAKE_COMMAND}"
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/electricity_bill.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/calculations.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
 formula_add_example(tracing tracing.cpp "all checks passed: yes")
 formula_add_example(rounding_and_conditionals rounding_and_conditionals.cpp "all checks passed: yes")
 
