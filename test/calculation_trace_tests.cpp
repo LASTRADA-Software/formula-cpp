@@ -4,6 +4,8 @@
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
+#include <formula-cpp/precision.hpp>
+#include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
@@ -11,6 +13,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -216,6 +219,97 @@ struct OverPreciseLength: formula::Quantity<OverPreciseLength, "l_u", "a length 
 /// reads it.
 inline constexpr auto overPrecise = formula::calculation(formula::define<OverPreciseLength>(var<Width> * rat(2)),
                                                          formula::define<Depth>(var<OverPreciseLength> + var<Width>));
+
+struct LimitedShare: formula::Quantity<LimitedShare, "x_l", "an invented share, limited by its precision", unit::One>
+{
+};
+struct CitedShare: formula::Quantity<CitedShare, "x_d", "an invented share, citing a clause", unit::One>
+{
+};
+struct RoundedShare: formula::Quantity<RoundedShare, "x_r", "an invented share, rounded", unit::One>
+{
+};
+struct SharesAdded: formula::Quantity<SharesAdded, "x_t", "the invented shares, added", unit::One>
+{
+};
+struct FixedShare: formula::Quantity<FixedShare, "x_f", "an invented share over a fixed factor", unit::One>
+{
+};
+
+/// Every node that reads the worksheet, in one calculation: the typed factor
+/// 2/3; a share whose derived factor stands for it but computes the width
+/// over the depth, plus the factor itself; `when()` taken both ways; a
+/// precision limit, whose level reads the factor; a documented value; a
+/// rounding; all of those added; and a share whose fixed factor stands for
+/// the typed one.
+inline constexpr auto everyRead = formula::calculation(
+    formula::define<Factor>(formula::constant<unit::One>(rat(2, 3))),
+    formula::define<Share>(std::get<0>(derivedFactor.variantSet.cases).expression + var<Factor>),
+    formula::define<Halved>(formula::when(var<Other> > formula::constant<unit::One>(rat(0)), var<Factor>, var<Share>)),
+    formula::define<Doubled>(formula::when(var<Other> < formula::constant<unit::One>(rat(0)), var<Factor>, var<Share>)
+                             + var<Halved>),
+    formula::define<LimitedShare>(formula::precision_limit<formula::PrecisionKind::Repeatability>(
+        var<Factor>, rat(1, 50) * formula::precision_level<Factor> + var<Halved>)),
+    formula::define<CitedShare>(formula::documented(var<Halved>, clause)),
+    formula::define<RoundedShare>(
+        formula::rounded<unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(var<Factor>
+                                                                                                    * var<Other>)),
+    formula::define<SharesAdded>(var<Doubled> + var<LimitedShare> + var<CitedShare> + var<RoundedShare>),
+    formula::define<FixedShare>(std::get<0>(fixedFactor.variantSet.cases).expression + var<Factor>));
+
+/// `everyRead`'s worksheet over a width of 1, a depth of 3 and another factor
+/// of 2: the derived factor computes 1/3, beside the typed 2/3.
+inline auto every_read_sheet()
+{
+    return formula::worksheet(everyRead,
+                              formula::environment(formula::Measured<Width> { rat(1) },
+                                                   formula::Measured<Depth> { rat(3) },
+                                                   formula::Measured<Other> { rat(2) }));
+}
+
+/// The symbol of the block among @p entries for the quantity in slot
+/// @p slot, or empty when none is.
+std::optional<std::string_view> slot_symbol(std::vector<formula::WorksheetEntry> const& entries, std::size_t slot)
+{
+    for (formula::WorksheetEntry const& shown: entries)
+        if (shown.slot == slot)
+            return shown.symbol;
+    return std::nullopt;
+}
+
+/// Whether @p read, a step's entry in `readSlots`, is the slot of the
+/// quantity @p symbol writes, among @p entries' blocks.
+bool reads_own_slot(std::vector<formula::WorksheetEntry> const& entries, std::size_t read, std::string_view symbol)
+{
+    return read != formula::NothingRead && slot_symbol(entries, read) == symbol;
+}
+
+/// Checks each step of each block of @p entries against what it read: a
+/// `Variable` step, its own quantity's slot; an overlay's constant or
+/// derived quantity, its own quantity's slot or none; any other step, none.
+/// Adds the kind of each step checked to @p kindsSeen.
+void check_read_slots(std::vector<formula::WorksheetEntry> const& entries, std::vector<formula::StepKind>& kindsSeen)
+{
+    for (formula::WorksheetEntry const& shown: entries)
+    {
+        INFO("the block for " << shown.symbol);
+        REQUIRE(shown.readSlots.size() == shown.trace.steps.size());
+        for (std::size_t stepIndex = 0; stepIndex < shown.trace.steps.size(); ++stepIndex)
+        {
+            formula::Step<formula::Rational> const& recorded = shown.trace.steps[stepIndex];
+            std::size_t const read = shown.readSlots[stepIndex];
+            INFO("step " << (stepIndex + 1) << ", " << recorded.symbol << ", read " << read);
+            kindsSeen.push_back(recorded.kind);
+            if (recorded.kind == formula::StepKind::Variable)
+                CHECK(reads_own_slot(entries, read, recorded.symbol));
+            else if (recorded.kind == formula::StepKind::OverriddenConstant
+                     || recorded.kind == formula::StepKind::DerivedQuantity)
+                CHECK((read == formula::NothingRead || reads_own_slot(entries, read, recorded.symbol)));
+            else
+                CHECK(read == formula::NothingRead);
+        }
+    }
+}
 } // namespace
 
 TEST_CASE("a worksheet's derivation gives the result first, then what it was reached through, then the inputs",
@@ -1040,6 +1134,66 @@ TEST_CASE("a derivation tells a typed value from a computed one written alike", 
                        "0.333\n")
           != std::string::npos);
     CHECK(rounded.find("\ns = 2/3 = 2/3\n") != std::string::npos);
+}
+
+TEST_CASE("each step of a derivation notes the quantity it read, whatever node read it", "[calculation][worksheet][trace]")
+{
+    // Over every node that reads the worksheet. `render_derivation` reads
+    // only a `Variable` step's entry, and relies on its being the step's own
+    // quantity's slot; an overlay's step notes the entry it replaced, its own
+    // quantity's too; no other step notes a read.
+    auto sheet = every_read_sheet();
+    auto const added = formula::explain_worksheet<SharesAdded>(sheet);
+    auto const fixed = formula::explain_worksheet<FixedShare>(sheet);
+    std::vector<formula::StepKind> kindsSeen;
+    check_read_slots(added.entries, kindsSeen);
+    check_read_slots(fixed.entries, kindsSeen);
+    for (formula::StepKind const reading: { formula::StepKind::Variable,
+                                            formula::StepKind::Conditional,
+                                            formula::StepKind::PrecisionLevel,
+                                            formula::StepKind::PrecisionLimit,
+                                            formula::StepKind::Documented,
+                                            formula::StepKind::Round,
+                                            formula::StepKind::DerivedQuantity,
+                                            formula::StepKind::OverriddenConstant })
+    {
+        INFO("a step of kind " << static_cast<int>(reading));
+        CHECK(std::ranges::find(kindsSeen, reading) != kindsSeen.end());
+    }
+}
+
+TEST_CASE("a derived quantity standing for a typed value is rounded, as the value it computed",
+          "[calculation][worksheet][trace][decimals]")
+{
+    // The share's derived factor stands for the typed factor, 2/3, and reads
+    // it to ask whether the worksheet held one; but its value is the width
+    // over the depth, 1/3, which it computed. It is rounded where the style
+    // rounds, while the typed factor read beside it stays exact.
+    auto sheet = every_read_sheet();
+    auto const explained = formula::explain_worksheet<Share>(sheet);
+    CHECK(formula::render_derivation(
+              explained,
+              { .maxSteps = 20, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) })
+          == "s = k * k_o + k = \xe2\x89\x88"
+             "1.333\n"
+             "  1. b = 1 mm\n"
+             "  2. d = 3 mm\n"
+             "  3. #1 / #2 = \xe2\x89\x88"
+             "0.333\n"
+             "  4. k = #3 = \xe2\x89\x88"
+             "0.333 [derived by jurisdiction overlay: Example Standard 7:2024, 2]\n"
+             "  5. k_o = 2\n"
+             "  6. #4 * #5 = \xe2\x89\x88"
+             "0.667\n"
+             "  7. k = 2/3, calculated\n"
+             "  8. #6 + #7 = \xe2\x89\x88"
+             "1.333\n"
+             "k = 2/3 = 2/3\n"
+             "  1. 2/3\n"
+             "inputs\n"
+             "  b = 1 mm\n"
+             "  d = 3 mm\n"
+             "  k_o = 2\n");
 }
 
 TEST_CASE("a derivation's header says a value is not shown where its style cannot spell it",

@@ -4450,6 +4450,10 @@ struct WorksheetEntry
     /// which a symbol cannot do: a vocabulary may write two quantities alike.
     /// `render_derivation` reads it to state a typed value read by another
     /// block as exactly as that value's own block does.
+    ///
+    /// It is positional: keep it in step with `trace` when editing either. A
+    /// step moved or added without its entry takes another step's slot; a
+    /// `Derived` `Variable` step past its end reads as not typed.
     std::vector<std::size_t> readSlots {};
 };
 
@@ -4482,13 +4486,19 @@ struct ExplainedWorksheet
 namespace detail
 {
     /// @p View, a `WorksheetView`, noting each value read through it in
-    /// @p readSlots: the slot of the quantity read, at the index of the step
-    /// that reads it in @p recording. A sink records a step once the node's
-    /// operands are recorded, and a node reads the worksheet just before its
-    /// own step, with no step recorded in between -- a variable reads its
-    /// value, an overlay's constant or derived quantity asks whether the
-    /// entry it replaced held one -- so the steps recorded so far are that
-    /// step's index.
+    /// @p readSlots: the slot of the quantity read, at the index of the next
+    /// step @p recording will hold -- its step count at the moment of the
+    /// read, never a count of reads, so neither a read no step of its own
+    /// follows nor a step that read nothing shifts a later index.
+    ///
+    /// The notes' correctness rests on one invariant: only a `Variable`
+    /// step's entry is ever read (`render_derivation`), and the variable
+    /// evaluator reads its value -- a failed read included -- just before it
+    /// records its own step, with no step recorded in between. So a
+    /// `Variable` step's entry is its own quantity's slot. No other entry is
+    /// read, whatever it holds: an overlay's constant or derived quantity,
+    /// for one, asks whether the entry it replaced held one, and so holds
+    /// that entry's slot although its own value is not the entry's.
     ///
     /// Forwards everything a definition's evaluation asks of the view, and
     /// nothing else. Holds pointers to the trace and the slots: it lives for

@@ -153,10 +153,12 @@ A worksheet's derivation, `render_derivation`, takes the same
 style. Each block's header states its value in the unit its quantity
 declares, as a line of another block that reads the value states it --
 rounded, padded or exact alike. The block's own last step agrees with the
-header on whether the value is rounded, though where it computed the value
-it states it in the coherent unit, not always with the same unit or
-padding. A typed value is exact on every one of those lines. The header's definition is written as a rendered
-formula is (see below), its typed numbers exact.
+header on whether the value is typed, and a typed value is exact on every one
+of those lines. That is all they agree on: where the last step computed the
+value, it states it in the coherent unit, so it may differ from the header in
+its unit, its padding and its decimals, and one may read `≈` where the other
+does not. The header's definition is written as a rendered formula is (see
+below), its typed numbers exact.
 
 ### A value in a unit nobody declared
 

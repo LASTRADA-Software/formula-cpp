@@ -3206,9 +3206,12 @@ namespace detail
     /// calculation failed; or `(no value)`. Exact only when @p typed, the
     /// block's value being a number typed rather than computed
     /// (`derivation_value_is_typed`), so that the header, the block's root
-    /// and every line reading the value agree on whether it is rounded. A
-    /// computed root states the value in the coherent unit, so it may still
-    /// differ from the header in its unit and its padding.
+    /// and every line reading the value agree on whether it is typed. That
+    /// is all they agree on: a computed root states the value in the
+    /// coherent unit, so it may differ from the header in its unit, its
+    /// padding and its decimals, and one may read `≈` where the other does
+    /// not -- a length of `1 u`, in a unit of a third of a metre, is
+    /// `≈0.333` metres at its root.
     [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown, NumberStyle numberStyle, bool typed)
     {
         if (shown.error.has_value())
@@ -3260,7 +3263,9 @@ namespace detail
 /// states its value in the coherent unit of its dimension, as in
 /// `render_trace` (`docs/tracing.md`, "Reading a derivation"), so it may
 /// read differently from the header above it: `fridge_kwh = fridge_kw *
-/// fridge_h = 24/5 kWh` over `3. #1 * #2 = 17280000`, in joules.
+/// fridge_h = 24/5 kWh` over `3. #1 * #2 = 17280000`, in joules. Under a
+/// rounding style the two may differ in their decimals too, one reading `≈`
+/// where the other does not.
 ///
 /// **Every number is spelled in @p options.numbers**, fractions unless the
 /// caller names another style, as `render_trace` spells a trace's: each
