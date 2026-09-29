@@ -65,6 +65,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/escape.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/evaluate.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/expression.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/format.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/formula.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/function.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/least_squares.hpp"

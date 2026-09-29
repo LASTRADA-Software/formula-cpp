@@ -122,6 +122,17 @@ may break it, and each such change is recorded here.
   is never padded with zeros. A step's value the style cannot spell in its unit reads `(not
   shown: ...)`. `render_trace(trace, { .numbers = ... })` without `.maxSteps` still does not
   compile.
+- `format.hpp`, opt-in and not included by `formula.hpp`, because it needs `<format>`:
+  `std::format` writes a `Rational` and a `Measured` value in the spellings `number_text` gives.
+  `{}` is the exact decimal, or the fraction where there is none (`0.6`, `1/3`, `5.2 kJ`); `{:/}`
+  the fraction; `{:.2HalfEven}` rounds to two places, padded, without a marker (`118.26`);
+  `{:~.3HalfEven}` rounds only an inexact value, and marks it `≈` (`≈0.333`); `{:~HalfEven}` does
+  the same at the decimals a measured value's unit declares. A rounding always names its
+  `RoundingMode`: there is no default. Fill, alignment and width work as for other types, with
+  the width counted in code points, so `°C` and `≈` take one column each. A spec the grammar does
+  not allow is a compile error naming what is wrong in a literal format string, and a
+  `std::format_error` starting `formula: ` under `std::vformat`. The library owns these
+  `std::formatter` specialisations; only `char` is supported.
 
 ### Changed
 

@@ -13,7 +13,9 @@
 # recorded derivation into text -- separately optional from it.
 # detail/latex_math.hpp qualifies as a part of render.hpp: it builds the
 # `std::string` render.hpp puts inside a LaTeX `\mathrm{...}`, and render.hpp
-# is its only includer, which check 2 keeps true.
+# is its only includer, which check 2 keeps true. format.hpp qualifies too --
+# it specialises std::formatter, which needs <format>, and writes its output
+# with a plain loop, so that it includes nothing else from that list itself.
 #
 # Being named here does not, by itself, permit anything: check 2 below
 # enforces that no other header may reach one of these, which is what stops
@@ -25,6 +27,7 @@ set(exemptHeaders
     "${SOURCE_DIR}/include/formula-cpp/trace.hpp"
     "${SOURCE_DIR}/include/formula-cpp/trace_render.hpp"
     "${SOURCE_DIR}/include/formula-cpp/detail/latex_math.hpp"
+    "${SOURCE_DIR}/include/formula-cpp/format.hpp"
 )
 
 file(GLOB_RECURSE headers "${SOURCE_DIR}/include/*.hpp")
@@ -128,6 +131,7 @@ set(exemptAllowances
     "trace.hpp=vector"
     "trace_render.hpp=string"
     "latex_math.hpp=string"
+    "format.hpp=format"
 )
 
 set(overreaches "")

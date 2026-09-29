@@ -93,6 +93,7 @@ add_executable(formula-cpp-tests
     calculation_tests.cpp
     calculation_trace_tests.cpp
     number_text_tests.cpp
+    format_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -960,6 +961,18 @@ formula_add_negative_test(calculation_document_refused
     EXPECT_COUNT 1
     REJECT "formula: attempt_input reads the determination recorded for the attempt that is running"
            "provides no value for this quantity" "no matching")
+
+# A bad spec in a literal std::format string is a compile error naming the
+# guard format.hpp calls for that mistake, and no other guard.
+formula_add_negative_test(format_places_without_mode
+    "formula_number_format_needs_a_rounding_mode"
+    REJECT "formula_number_format_places_out_of_range" "formula_number_format_spec_not_understood")
+formula_add_negative_test(format_places_out_of_range
+    "formula_number_format_places_out_of_range"
+    REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_spec_not_understood")
+formula_add_negative_test(format_spec_not_understood
+    "formula_number_format_spec_not_understood"
+    REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_places_out_of_range")
 
 formula_add_negative_test(band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"

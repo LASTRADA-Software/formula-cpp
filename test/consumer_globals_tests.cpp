@@ -64,9 +64,10 @@
 // rendered and documented, and its graph by `describe_graph` and `to_dot`;
 // a measured value spelled by `number_text` in each notation, with
 // `checked_number_text`, `decimal_text`, `fraction_text` and
-// `exact_decimal`; and a quantity declared by alias at global scope, so
-// that its tag is one more global. A template it does not reach is not
-// guarded by it.
+// `exact_decimal`; a `Rational` and a measured value written by
+// `std::format`, aligned and rounded; and a quantity declared by alias at
+// global scope, so that its tag is one more global. A template it does
+// not reach is not guarded by it.
 // `consumer_globals_run_tests.cpp` checks that each of these computed what
 // it should.
 //
@@ -110,6 +111,7 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <optional>
 #include <span>
 #include <string>
@@ -159,6 +161,7 @@ int index;
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/least_squares.hpp>
@@ -1072,5 +1075,13 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::fraction_text(formula::Rational { -1, 3 }) == "-1/3"
         && formula::has_exact_decimal(formula::Rational { 3, 5 })
         && *formula::exact_decimal(formula::Rational { 3, 5 }) == "0.6");
+
+    // The same values written by std::format: a Rational as its exact
+    // decimal, and the third of an edge right-aligned in ten code points,
+    // rounded to the edge's one decimal with the approximation marker, and
+    // as a fraction.
+    probe.checks.push_back(std::format("{}", formula::Rational { 3, 5 }) == "0.6"
+                           && std::format("{:>10~HalfEven}", thirdEdge) == " \xe2\x89\x88" "150.7 mm"
+                           && std::format("{:/}", thirdEdge) == "452/3 mm");
     return probe;
 }
