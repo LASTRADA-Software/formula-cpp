@@ -98,8 +98,8 @@ may break it, and each such change is recorded here.
   `attempt_input` is refused there, as a formula documented on its own is.
 - `number_text.hpp`, included by `formula.hpp`: a `Rational` spelled as an exact decimal (`0.6`,
   `18.8822`), as a decimal rounded under a named rounding mode (`118.26`), or as a fraction
-  (`3/5`), into a fixed 64-byte `NumberText` -- without allocating, and at compile time as well as
-  at run time. A `NumberStyle` chooses the notation. A decimal is shown only when it is the exact
+  (`3/5`), into a `NumberText` with a fixed 64-byte buffer -- without allocating, and at compile
+  time as well as at run time. A `NumberStyle` chooses the notation. A decimal is shown only when it is the exact
   value, so `1/3` stays `1/3` under `NumberStyle::exact_decimal()`; an approximation is opt-in
   through `NumberStyle::approximate_decimal(mode)`, rounds at the unit's declared decimals and
   always starts with `≈` (`≈0.333`). `number_text` of a `Measured` value adds its unit's symbol

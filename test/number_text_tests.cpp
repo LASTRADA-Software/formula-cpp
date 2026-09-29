@@ -7,6 +7,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -194,6 +196,42 @@ TEST_CASE("a rounded decimal exists where checked_round overflows", "[number_tex
     auto const rounded = formula::checked_round(Rational { IntMax, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven);
     REQUIRE_FALSE(rounded.has_value());
     CHECK(rounded.error() == ArithmeticError::Overflow);
+}
+
+TEST_CASE("the long division never forms ten times a remainder near IntMax", "[number_text]")
+{
+    // A denominator of IntMax leaves a remainder of up to IntMax - 1, and ten
+    // times that is past 2^64: formed directly, it wraps, and
+    // (IntMax - 1)/IntMax -- 0.99999999999999999989... -- would read 0.2 to
+    // one place. All four values round, so none of these texts is exact;
+    // Padded keeps every place, the trailing zeros included.
+    Rational const nearOne { IntMax - 1, IntMax };
+    Rational const nearMinusOne { -(IntMax - 1), IntMax };
+    Rational const nearZero { 1, IntMax };
+    constexpr auto padded = DecimalPadding::Padded;
+
+    NumberText const oneEven = formula::decimal_text(nearOne, DecimalPlaces { 1 }, RoundingMode::HalfEven, padded);
+    NumberText const oneFloor = formula::decimal_text(nearOne, DecimalPlaces { 1 }, RoundingMode::Floor, padded);
+    NumberText const manyEven = formula::decimal_text(nearOne, DecimalPlaces { 18 }, RoundingMode::HalfEven, padded);
+    NumberText const manyTowardZero =
+        formula::decimal_text(nearOne, DecimalPlaces { 18 }, RoundingMode::TowardZero, padded);
+    NumberText const negativeFloor = formula::decimal_text(nearMinusOne, DecimalPlaces { 18 }, RoundingMode::Floor, padded);
+    NumberText const negativeCeiling =
+        formula::decimal_text(nearMinusOne, DecimalPlaces { 18 }, RoundingMode::Ceiling, padded);
+    NumberText const tinyCeiling = formula::decimal_text(nearZero, DecimalPlaces { 18 }, RoundingMode::Ceiling, padded);
+    NumberText const tinyEven = formula::decimal_text(nearZero, DecimalPlaces { 18 }, RoundingMode::HalfEven, padded);
+
+    CHECK(oneEven.view() == "1.0");
+    CHECK(oneFloor.view() == "0.9");
+    CHECK(manyEven.view() == "1.000000000000000000");
+    CHECK(manyTowardZero.view() == "0.999999999999999999");
+    CHECK(negativeFloor.view() == "-1.000000000000000000");
+    CHECK(negativeCeiling.view() == "-0.999999999999999999");
+    CHECK(tinyCeiling.view() == "0.000000000000000001");
+    CHECK(tinyEven.view() == "0.000000000000000000");
+    for (NumberText const* const spelled:
+         { &oneEven, &oneFloor, &manyEven, &manyTowardZero, &negativeFloor, &negativeCeiling, &tinyCeiling, &tinyEven })
+        CHECK_FALSE(spelled->is_exact());
 }
 
 TEST_CASE("more places than DecimalPlaces spans is refused as checked_round refuses it", "[number_text]")
@@ -411,6 +449,15 @@ TEST_CASE("a style that reads the unit's decimals refuses decimals outside what 
     CHECK(approximated.error() == ArithmeticError::Overflow);
     CHECK(approximatedCoarse.error() == ArithmeticError::Overflow);
 
+    // -19 decimals on a value with an exact decimal, 1/2. checked_round never
+    // runs here -- the exact decimal needs no rounding, and padding to a
+    // negative number of places adds nothing -- so only the refusal itself
+    // can say Overflow, where without it both would read 0.5.
+    // Each checked on its own, so that one failing does not hide the other.
+    std::unexpected const refused { ArithmeticError::Overflow };
+    CHECK(formula::checked_number_text(Rational { 1, 2 }, paddedExact, TooCoarse) == refused);
+    CHECK(formula::checked_number_text(Rational { 1, 2 }, evenApproximation, TooCoarse) == refused);
+
     CHECK_THROWS_AS(formula::number_text(Rational { 1, 2 }, paddedExact, TooFine), ArithmeticException);
 }
 
@@ -446,7 +493,7 @@ TEST_CASE("a measured value is its number then its unit's symbol", "[number_text
 TEST_CASE("the longest text this library spells fits its buffer", "[number_text]")
 {
     // The marker, a sign, 19 whole digits, a point, 18 places, a space and a
-    // 16-byte symbol: 59 bytes of the 64 NumberText holds.
+    // 16-byte symbol: 59 bytes of the 64 a NumberText can hold.
     NumberText const widest = formula::number_text(Measured<WidestReading> { Rational { IntMin, 3 } },
                                                    NumberStyle::approximate_decimal(RoundingMode::HalfEven));
     CHECK(widest.view() == "\xe2\x89\x88" "-3074457345618258602.666666666666666667 abcdefghijklmnop");

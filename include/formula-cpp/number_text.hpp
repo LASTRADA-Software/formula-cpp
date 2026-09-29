@@ -36,9 +36,9 @@
 namespace formula
 {
 
-/// Bytes a `NumberText` holds. The longest text this header spells is 59
-/// bytes -- the marker, a sign, 19 whole digits, a point and 18 places, then
-/// a space and a unit symbol of `SymbolCapacity` bytes -- and a
+/// Bytes of text a `NumberText` can hold. The longest text this header
+/// spells is 59 bytes -- the marker, a sign, 19 whole digits, a point and 18
+/// places, then a space and a unit symbol of `SymbolCapacity` bytes -- and a
 /// `static_assert` below keeps that true.
 inline constexpr std::size_t NumberTextCapacity = 64;
 
@@ -61,9 +61,10 @@ namespace detail
 /// A number spelled into a fixed buffer: usable at compile time, and never
 /// allocating.
 ///
-/// Only the functions in this header make one -- it has no public
-/// constructor and no way to write into it -- so `is_exact()` is always this
-/// header's statement about how the text was made, never a caller's.
+/// Made only by the functions in this header, or copied from one they
+/// returned: its default constructor is private and it has no public member
+/// that writes into it, so `is_exact()` is this header's statement about how
+/// the text was made, not a caller's.
 class NumberText
 {
   public:
