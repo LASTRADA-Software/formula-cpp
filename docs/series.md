@@ -100,9 +100,11 @@ names the two screens the answer lay between:
 
 A computed step has no declared unit, as a computed single value has none, so
 it reads in the **coherent unit**: the SI unit of its dimension, with no prefix
-([Expressions and evaluation](expressions.md)). For a percentage that is a
-plain fraction, so 447/1250 is 35.76 % and 6927/10625 is 27708/425 %. For a
-mass it is the kilogram.
+([Expressions and evaluation](expressions.md)), times one of each
+[named base dimension](dimensions.md#base-dimensions-the-si-does-not-have) it
+carries -- the euro, for an amount in euros. For a percentage that is a plain
+fraction, so 447/1250 is 35.76 % and 6927/10625 is 27708/425 %. For a mass it
+is the kilogram.
 
 A few computed steps are still in their series' unit, and say so: a running
 total, a `sum` and a range read in the unit of the series they add up, and a

@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/method.hpp>
+#include <formula-cpp/number_text.hpp>
+#include <formula-cpp/overlay.hpp>
+#include <formula-cpp/rejection.hpp>
+#include <formula-cpp/render.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
 #include <string_view>
+#include <tuple>
 
 namespace
 {
@@ -957,4 +966,355 @@ TEST_CASE("a per-element rounding documents as its series, with every granularit
     REQUIRE(page.symbols.size() == 1);
     CHECK(page.symbols[0].shape == formula::ValueShape::Series);
     CHECK(page.symbols[0].length == 3);
+}
+
+// ------------------------------------------------------------ calculations
+
+namespace
+{
+struct Binder: formula::Quantity<Binder, "V_b", "an invented binder content", formula::unit::Litre>
+{
+};
+struct Additive: formula::Quantity<Additive, "V_a", "an invented additive content", formula::unit::Litre>
+{
+};
+struct MixRatio: formula::Quantity<MixRatio, "w", "an invented water/binder ratio", formula::unit::One>
+{
+};
+struct MixPerCent: formula::Quantity<MixPerCent, "w_p", "an invented water/binder ratio, per cent", formula::unit::One>
+{
+};
+struct Surplus: formula::Quantity<Surplus, "V_s", "an invented surplus of water over cement", formula::unit::Litre>
+{
+};
+
+// Invented, as every citation in this repository must be.
+inline constexpr formula::Citation ratioClause { .title = "Water/binder ratio",
+                                                 .reference = "Example Standard 3:2022",
+                                                 .section = "4.1" };
+inline constexpr formula::Citation perCentClause { .title = "Water/binder ratio, per cent",
+                                                   .reference = "Example Standard 3:2022",
+                                                   .section = "4.2" };
+
+/// Given against the grain -- the per-cent value first, which reads the
+/// ratio, which reads the binder -- and calculated as the binder, the ratio,
+/// the per-cent value and the surplus. The water and the cement are each read
+/// by two definitions.
+inline constexpr auto mix =
+    formula::calculation(formula::define<MixPerCent>(formula::documented(var<MixRatio> * rat(100), perCentClause)),
+                         formula::define<MixRatio>(formula::documented(var<WaterVolume> / var<Binder>, ratioClause)),
+                         formula::define<Binder>(var<CementVolume> + var<Additive>),
+                         formula::define<Surplus>(var<WaterVolume> - var<CementVolume>));
+
+struct Unrounded
+{
+};
+
+/// A method reading the ratio, and the constant standing for the ratio once
+/// an overlay fixes it at 1/2.
+inline constexpr auto perCentMethod = formula::method(
+    formula::variants(formula::variant<Unrounded>(var<MixRatio> * rat(100))),
+    formula::rounding_rule<formula::unit::One, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(),
+    formula::constraints());
+inline constexpr formula::Citation fixedClause { .reference = "Example Standard 3:2022 NA", .section = "NA.1" };
+inline constexpr auto fixedRatio =
+    std::get<0>(formula::apply(formula::overlay(formula::with_constant<MixRatio>(rat(1, 2), fixedClause)), perCentMethod)
+                    .variantSet.cases)
+        .expression.lhs;
+} // namespace
+
+TEST_CASE("document: a calculation's page is its definitions, in the order they are calculated in",
+          "[document][calculation]")
+{
+    CHECK(formula::document(mix).formula == "V_b = V_c + V_a\nw = V_w / V_b\nw_p = w * 100\nV_s = V_w - V_c");
+    CHECK(formula::document<formula::Dialect::Markdown>(mix).formula
+          == "`V_b` = `V_c` + `V_a`\n\n`w` = `V_w` / `V_b`\n\n`w_p` = `w` * 100\n\n`V_s` = `V_w` - `V_c`");
+}
+
+TEST_CASE("document: a calculation's symbol table is what it calculates, each with its definition, then its inputs",
+          "[document][calculation]")
+{
+    formula::Documentation const page = formula::document(mix);
+
+    // The calculated quantities in the order they are calculated in; then
+    // the inputs, each once, in the order the definitions first read them
+    // when read in that order: the cement and the additive by the binder's,
+    // the water by the ratio's. Neither the water's nor the cement's second
+    // read, by the surplus's, adds a row, nor does the ratio's read of the
+    // binder or the per-cent value's of the ratio.
+    REQUIRE(page.symbols.size() == 7);
+    CHECK(page.symbols[0]
+          == formula::SymbolEntry { .symbol = "V_b",
+                                    .description = "an invented binder content",
+                                    .unit = formula::unit::Litre,
+                                    .calculatedAs = "V_c + V_a" });
+    CHECK(page.symbols[1]
+          == formula::SymbolEntry { .symbol = "w",
+                                    .description = "an invented water/binder ratio",
+                                    .unit = formula::unit::One,
+                                    .calculatedAs = "V_w / V_b" });
+    CHECK(page.symbols[2]
+          == formula::SymbolEntry { .symbol = "w_p",
+                                    .description = "an invented water/binder ratio, per cent",
+                                    .unit = formula::unit::One,
+                                    .calculatedAs = "w * 100" });
+    CHECK(page.symbols[3]
+          == formula::SymbolEntry { .symbol = "V_s",
+                                    .description = "an invented surplus of water over cement",
+                                    .unit = formula::unit::Litre,
+                                    .calculatedAs = "V_w - V_c" });
+    CHECK(page.symbols[4]
+          == formula::SymbolEntry { .symbol = "V_c", .description = "cement content", .unit = formula::unit::Litre });
+    CHECK(page.symbols[5]
+          == formula::SymbolEntry {
+              .symbol = "V_a", .description = "an invented additive content", .unit = formula::unit::Litre });
+    CHECK(page.symbols[6]
+          == formula::SymbolEntry {
+              .symbol = "V_w", .description = "effective water content", .unit = formula::unit::Litre });
+}
+
+TEST_CASE("document: a calculation's citations are its definitions', in the order they are calculated in",
+          "[document][calculation]")
+{
+    // The ratio's before the per-cent value's, though the per-cent value's
+    // definition was given first.
+    formula::Documentation const page = formula::document(mix);
+    REQUIRE(page.citations.size() == 2);
+    CHECK(page.citations[0] == ratioClause);
+    CHECK(page.citations[1] == perCentClause);
+}
+
+TEST_CASE("document: a calculation's definitions are written in the page's dialect and words",
+          "[document][calculation][vocabulary]")
+{
+    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(mix);
+    REQUIRE(latex.symbols.size() == 7);
+    CHECK(latex.symbols[1].calculatedAs == "\\frac{V_w}{V_b}");
+    CHECK(latex.symbols[2].calculatedAs == "w \\cdot 100");
+
+    constexpr auto words = formula::vocabulary(formula::renames<Binder>("B"), formula::renames<WaterVolume>("W"));
+    formula::Documentation const renamed = formula::document(mix, words);
+    CHECK(renamed.formula == "B = V_c + V_a\nw = W / B\nw_p = w * 100\nV_s = W - V_c");
+    REQUIRE(renamed.symbols.size() == 7);
+    CHECK(renamed.symbols[0].symbol == "B");
+    CHECK(renamed.symbols[1].calculatedAs == "W / B");
+    CHECK(renamed.symbols[6].symbol == "W");
+    CHECK(renamed.symbols[6].description == "effective water content");
+}
+
+TEST_CASE("document: a calculated quantity an overlay fixes in a definition is one row, also read only when read",
+          "[document][calculation][overlay]")
+{
+    // The per-cent value reads the constant standing for the ratio, and not
+    // the ratio: one row, calculated and fixed, not also read.
+    constexpr auto fixedOnly = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                    formula::define<MixPerCent>(fixedRatio * rat(100)));
+    formula::Documentation const fixedPage = formula::document(fixedOnly);
+    REQUIRE(fixedPage.symbols.size() == 4);
+    CHECK(fixedPage.symbols[0]
+          == formula::SymbolEntry { .symbol = "w",
+                                    .description = "an invented water/binder ratio",
+                                    .unit = formula::unit::One,
+                                    .fixedValue = rat(1, 2),
+                                    .fixedBy = fixedClause,
+                                    .calculatedAs = "V_w / V_c" });
+    CHECK(fixedPage.symbols[1].symbol == "w_p");
+    CHECK(fixedPage.symbols[1].calculatedAs == "w * 100");
+    CHECK(fixedPage.symbols[2].symbol == "V_w");
+    CHECK(fixedPage.symbols[3].symbol == "V_c");
+
+    // It reads the ratio as well, before or after the constant: also read,
+    // in either order.
+    constexpr auto readFirst = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                    formula::define<MixPerCent>(var<MixRatio> + fixedRatio));
+    constexpr auto fixedFirst = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                     formula::define<MixPerCent>(fixedRatio + var<MixRatio>));
+    struct NamedPage
+    {
+        std::string_view order;
+        formula::Documentation page;
+    };
+    for (NamedPage const& bothPage : { NamedPage { "read first", formula::document(readFirst) },
+                                       NamedPage { "fixed first", formula::document(fixedFirst) } })
+    {
+        INFO(bothPage.order);
+        REQUIRE(bothPage.page.symbols.size() == 4);
+        CHECK(bothPage.page.symbols[0].calculatedAs == "V_w / V_c");
+        CHECK(bothPage.page.symbols[0].fixedValue == rat(1, 2));
+        CHECK(bothPage.page.symbols[0].alsoReadAsInput);
+    }
+}
+
+TEST_CASE("document: a calculated quantity an overlay derives in a definition is one row, with both definitions",
+          "[document][calculation][overlay]")
+{
+    // The per-cent value reads the ratio as an overlay derives it, from the
+    // water and the additive, where the calculation calculates it from the
+    // water and the cement: one row, holding both, and what the overlay
+    // cited. The additive, read only by the overlay's definition, is an
+    // input like any other.
+    constexpr formula::Citation derivedClause { .reference = "Example Standard 3:2022 NA", .section = "NA.2" };
+    constexpr auto derivedRatio =
+        std::get<0>(formula::apply(formula::overlay(formula::add_derived<MixRatio>(var<WaterVolume> / var<Additive>,
+                                                                                   derivedClause)),
+                                   perCentMethod)
+                        .variantSet.cases)
+            .expression.lhs;
+    constexpr auto derivedOnly = formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<CementVolume>),
+                                                      formula::define<MixPerCent>(derivedRatio * rat(100)));
+    formula::Documentation const derivedPage = formula::document(derivedOnly);
+    REQUIRE(derivedPage.symbols.size() == 5);
+    CHECK(derivedPage.symbols[0]
+          == formula::SymbolEntry { .symbol = "w",
+                                    .description = "an invented water/binder ratio",
+                                    .unit = formula::unit::One,
+                                    .derivedAs = "V_w / V_a",
+                                    .derivedBy = derivedClause,
+                                    .calculatedAs = "V_w / V_c" });
+    CHECK(derivedPage.symbols[1].symbol == "w_p");
+    CHECK(derivedPage.symbols[2].symbol == "V_w");
+    CHECK(derivedPage.symbols[3].symbol == "V_c");
+    CHECK(derivedPage.symbols[4].symbol == "V_a");
+}
+
+TEST_CASE("document: a calculation's citation is listed as often as its definitions cite it",
+          "[document][calculation]")
+{
+    // Two definitions citing the same clause: the page lists it twice, as a
+    // single formula's page lists a citation it meets twice.
+    constexpr auto citedTwice = formula::calculation(
+        formula::define<MixRatio>(formula::documented(var<WaterVolume> / var<CementVolume>, ratioClause)),
+        formula::define<Surplus>(formula::documented(var<WaterVolume> - var<CementVolume>, ratioClause)));
+    formula::Documentation const page = formula::document(citedTwice);
+    REQUIRE(page.citations.size() == 2);
+    CHECK(page.citations[0] == ratioClause);
+    CHECK(page.citations[1] == ratioClause);
+}
+
+// ------------------------------------------------------ numbers as decimals
+
+namespace
+{
+struct SizeFactor: formula::Quantity<SizeFactor, "k", "size factor", formula::unit::One>
+{
+};
+struct RetainedMass: formula::Quantity<RetainedMass, "m", "mass retained on a screen", formula::unit::Gram>
+{
+};
+struct Sized
+{
+};
+
+// Invented, as every citation in this repository must be.
+constexpr formula::Citation sizeAnnex { .reference = "Example Standard 7:2019", .section = "B.2" };
+
+/// A strength scaled by a size factor a jurisdiction derives from the
+/// diameter -- over an invented 163.7 mm, a decimal the derivation states.
+constexpr auto sizedStrength =
+    std::get<0>(formula::apply(formula::overlay(formula::add_derived<SizeFactor>(
+                                   var<Diameter> / formula::constant<formula::unit::Millimetre>(rat(1637, 10)), sizeAnnex)),
+                               formula::method(formula::variants(formula::variant<Sized>(var<Strength> * var<SizeFactor>)),
+                                               formula::rounding_rule<formula::unit::Megapascal,
+                                                                      formula::DecimalPlaces { 1 },
+                                                                      formula::RoundingMode::HalfAwayFromZero>(),
+                                               formula::constraints()))
+                    .variantSet.cases)
+        .expression;
+
+/// The mean of three masses without an outlier more than an invented 3/50 of
+/// the pass's mean from it.
+constexpr auto meanWithoutOutliers = formula::sample_mean(
+    formula::
+        without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep, formula::AtMost<1>, formula::KeepAtLeast<2>>(
+            formula::series<RetainedMass, 3>,
+            formula::deviation_from_mean(rat(3, 50) * formula::pass_mean<RetainedMass>),
+            formula::Verdict { "repeat the sieving" },
+            sizeAnnex));
+} // namespace
+
+TEST_CASE("document: RenderOptions writes every number the page states in its style", "[document][decimals]")
+{
+    constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+
+    // The formula's text.
+    formula::Documentation const plain = formula::document(var<Strength> * rat(863, 1000));
+    CHECK(plain.formula == "f * 863/1000");
+    formula::Documentation const decimal =
+        formula::document(var<Strength> * rat(863, 1000), formula::DefaultVocabulary {}, exactDecimals);
+    CHECK(decimal.formula == "f * 0.863");
+    formula::Documentation const latex = formula::document<formula::Dialect::LaTeX>(
+        var<Strength> * rat(863, 1000), formula::DefaultVocabulary {}, exactDecimals);
+    CHECK(latex.formula == "f \\cdot 0.863");
+
+    // A derived quantity's derivation.
+    formula::Documentation const derivedPage = formula::document(sizedStrength);
+    REQUIRE(derivedPage.symbols.size() == 3);
+    REQUIRE(derivedPage.symbols[1].derivedAs.has_value());
+    CHECK(*derivedPage.symbols[1].derivedAs == "d / 1637/10 mm");
+    formula::Documentation const decimalDerivedPage =
+        formula::document(sizedStrength, formula::DefaultVocabulary {}, exactDecimals);
+    REQUIRE(decimalDerivedPage.symbols.size() == 3);
+    CHECK(decimalDerivedPage.symbols[1].symbol == "k");
+    REQUIRE(decimalDerivedPage.symbols[1].derivedAs.has_value());
+    CHECK(*decimalDerivedPage.symbols[1].derivedAs == "d / 163.7 mm");
+
+    // A rejection's limit.
+    formula::Documentation const rejectionPage = formula::document(meanWithoutOutliers);
+    REQUIRE(rejectionPage.rejections.size() == 1);
+    CHECK(rejectionPage.rejections[0].limit == "3/50 * pass mean");
+    formula::Documentation const decimalRejectionPage =
+        formula::document(meanWithoutOutliers, formula::DefaultVocabulary {}, exactDecimals);
+    REQUIRE(decimalRejectionPage.rejections.size() == 1);
+    CHECK(decimalRejectionPage.rejections[0].limit == "0.06 * pass mean");
+    CHECK(decimalRejectionPage.formula
+          == formula::render(meanWithoutOutliers, formula::DefaultVocabulary {}, exactDecimals));
+}
+
+TEST_CASE("document: a calculation's definitions follow RenderOptions, their typed numbers never rounded",
+          "[document][calculation][decimals]")
+{
+    // A water/binder ratio scaled by a typed 4/5, which is 0.8, and a third
+    // of it, a typed 1/3 with no exact decimal.
+    constexpr auto scaledMix =
+        formula::calculation(formula::define<MixRatio>(var<WaterVolume> / var<Binder> * rat(4, 5)),
+                             formula::define<MixPerCent>(var<MixRatio> * rat(1, 3)));
+    constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+    constexpr formula::RenderOptions roundedAndPadded { .numbers = formula::NumberStyle::approximate_decimal(
+                                                            formula::RoundingMode::HalfEven,
+                                                            formula::DecimalPadding::Padded) };
+
+    formula::Documentation const fractions = formula::document(scaledMix);
+    formula::Documentation const decimals = formula::document(scaledMix, formula::DefaultVocabulary {}, exactDecimals);
+    REQUIRE(fractions.symbols.size() >= 2);
+    REQUIRE(decimals.symbols.size() >= 2);
+    REQUIRE(fractions.symbols[0].calculatedAs.has_value());
+    REQUIRE(decimals.symbols[0].calculatedAs.has_value());
+    REQUIRE(decimals.symbols[1].calculatedAs.has_value());
+    CHECK(decimals.symbols[0].symbol == "w");
+    CHECK(fractions.symbols[0].calculatedAs->ends_with(" * 4/5"));
+    CHECK(decimals.symbols[0].calculatedAs->ends_with(" * 0.8"));
+    CHECK(decimals.symbols[1].symbol == "w_p");
+    CHECK(*decimals.symbols[1].calculatedAs == "w * 1/3");
+    // The page's formula is the calculation as render writes it, under the
+    // same options.
+    CHECK(decimals.formula == formula::render(scaledMix, formula::DefaultVocabulary {}, exactDecimals));
+    CHECK(decimals.formula != fractions.formula);
+
+    // A rounding, padding style writes the same page: a typed number is
+    // written exactly, and never padded.
+    formula::Documentation const rounded = formula::document(scaledMix, formula::DefaultVocabulary {}, roundedAndPadded);
+    CHECK(rounded.formula == decimals.formula);
+    REQUIRE(rounded.symbols.size() >= 2);
+    CHECK(rounded.symbols[0].calculatedAs == decimals.symbols[0].calculatedAs);
+    CHECK(rounded.symbols[1].calculatedAs == decimals.symbols[1].calculatedAs);
+
+    // Nor is a typed number in a unit that declares decimals padded to them:
+    // the litre declares one, and a typed 5 l stays 5 l.
+    constexpr auto toppedUp = formula::calculation(
+        formula::define<Surplus>(var<WaterVolume> - var<CementVolume> + formula::constant<formula::unit::Litre>(rat(5))));
+    formula::Documentation const toppedUpPage = formula::document(toppedUp, formula::DefaultVocabulary {}, roundedAndPadded);
+    REQUIRE_FALSE(toppedUpPage.symbols.empty());
+    REQUIRE(toppedUpPage.symbols[0].calculatedAs.has_value());
+    CHECK(toppedUpPage.symbols[0].calculatedAs->ends_with(" + 5 l"));
+    CHECK(toppedUpPage.formula.ends_with(" + 5 l"));
 }

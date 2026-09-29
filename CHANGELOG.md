@@ -6,6 +6,200 @@ may break it, and each such change is recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
+  `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
+  into kilowatt-hours without a rounded factor.
+- `unit::Fahrenheit`, a second affine temperature unit beside `unit::Celsius`. No conversion to or
+  from kelvin or Celsius rounds, so 98.6 degrees Fahrenheit is exactly 37 degrees Celsius and 100
+  degrees Fahrenheit is exactly 340/9 degrees Celsius.
+- Base dimensions an application declares itself, such as money: `base_dimension("EUR")` makes a
+  dimension of its own, so euros can no longer be added to a bare ratio, euros and yen never convert
+  into each other, and energy times euros per energy is euros. `NamedBase` is one such base and its
+  exponent; a `Dimension` holds up to `NamedBaseCapacity` (four) of them, and a product that would
+  need a fifth does not compile. A name is an ASCII letter followed by letters or digits, shorter
+  than 16 bytes and not the symbol of an SI base unit; two uses of one name are one dimension. A
+  trace spells a named base by its name in a coherent unit, ahead of the SI units: `EUR s^2/(m^2 kg)`.
+- An environment can fail a read: the variable evaluator reads it through `checked_get<Q>()` when it
+  has one returning exactly `std::expected<Measured<Q>, ArithmeticError>`, and a failed read is that
+  variable's failure, which travels up the formula as any operand's does. A member of that name with
+  any other return type is not taken for it. The environments a precision limit, a rejection and a
+  retry evaluate in forward it.
+- `define<Q>(expression)`, in the new header `calculation.hpp` (included by `formula.hpp`), binds a
+  quantity to the expression that calculates it and returns a `Definition<Q, Expr>`. The quantities
+  the expression reads are known at compile time: each once, in the order first read, a `when()`
+  listing its condition and both branches, an overlay's derived quantity what its definition reads
+  and a fixed constant nothing. A definition is refused where it is written when its expression
+  measures a dimension other than `Q`'s, is a series, reads a quantity as a series or as raw
+  observations, reads from another record, or holds a node kind of a consumer's own that cannot be
+  seen inside.
+- `calculation(define<A>(...), ...)` builds a `Calculation` whose dependency graph is worked out and
+  checked at compile time. Its inputs are what its definitions read and none of them defines, in the
+  order first read, and `inputs_of` lists them. Its defined quantities are calculated in dependency
+  order, each once everything it reads is known, keeping the order given wherever it can, and
+  `calculation_order` lists them -- the defined quantities only -- in that order. `dependencies_of`,
+  `dependents_of`, `upstream_of` and `affected_by` answer the quantities concerned in dependency
+  order, inputs first. Each of these queries answers symbols as a `std::array<std::string_view, N>`,
+  in a vocabulary's words, and `depends_on` whether one quantity depends on another. A calculation is
+  refused where it is written when it is given something other than a definition, or nothing;
+  defines a quantity twice; holds more than 64 quantities; or holds a definition that reads what it
+  defines, or definitions that read one another in a cycle. A query about a quantity the calculation
+  neither defines nor reads is refused.
+- `worksheet(calculation, environment(...))` builds a `Worksheet`: the calculation's inputs, taken
+  from the environment, and its calculated values, each calculated when first asked for and
+  recalculated only when a change reaches it. `calculate<Q>()` answers an `Outcome<Q>`, throwing
+  `ArithmeticException` for a failed calculation, and `checked_calculate<Q>()` answers
+  `std::expected<Outcome<Q>, ArithmeticError>`; each takes several quantities too, answering a
+  `std::tuple`, or the quantities' variables, as in
+  `auto [total, vat] = sheet.calculate(var<Total>, var<Vat>)`. Each definition is evaluated by
+  `checked_evaluate` against the worksheet's values of just the quantities it reads: a failed value
+  fails what reads it as a failed operand would, except on a `when()` branch not taken, and an absent
+  input leaves what reads it empty. `set(...)` changes inputs, or overrides a calculated value by hand
+  with `entered(Measured<Q> { ... })`, and marks what the change reaches; `clear_override<Q>()` drops
+  an override. On a worksheet about to be discarded, `set` and `clear_override` each answer it
+  changed, so `worksheet(...).set(...)` can be kept or asked at once. `with(...)` answers a changed
+  copy and leaves the worksheet as it was. A value a change reaches is reused when nothing it reads
+  has changed, and a value calculated again to the same answer from the same source counts as
+  unchanged, so that what reads it can be reused in turn; `recomputed()` and `reused()` count both.
+  The calculation's queries take a worksheet as well. A calculated value is kept in its quantity's
+  declared unit, so a conversion the inlined formula never makes can overflow. Refused where it is
+  written, each with one message: an environment with no entry for an input, with an entry the
+  calculation neither reads nor defines, with a series or raw observations, or with a calculated
+  quantity given as a measurement rather than `entered`; `set()` naming one quantity twice, one the
+  calculation neither reads nor defines, a series, or a calculated quantity given as a measurement;
+  asking about a quantity the calculation neither defines nor reads; and `clear_override` or
+  `is_overridden` of an input, which is set again rather than overridden -- whether its value was
+  typed in is the `source()` of what `calculate` answers for it.
+- `explain_worksheet<Q>(sheet, vocabulary)`, in `trace.hpp`, asks a worksheet for `Q` and records
+  how the answer was reached, as an `ExplainedWorksheet`: the answer, failure included, and one
+  `WorksheetEntry` per named value -- `Q`'s first, then each calculated value it was reached through,
+  each before the values it reads, and last the inputs read. A calculated value's block is its
+  definition's derivation, recorded afresh from the values the worksheet holds, so it describes them
+  even where a value was reused rather than calculated again; a calculated value it reads is one
+  step, its source `Derived`, and has a block of its own. An override or an input is one step. A
+  value the evaluation never reached -- read only in a `when()` branch not taken, or to the right of
+  an operand that failed -- gets no block, and a failed value is a block like any other. Recording
+  the blocks calculates nothing again.
+- A calculation as text, in `render.hpp`: `render(calculation, vocabulary)` writes one `symbol =
+  expression` line per definition, in the order the definitions are calculated, in any dialect;
+  `describe_graph` lists the inputs and then what each calculated value reads, the arrows aligned;
+  and `to_dot` writes the graph in Graphviz's DOT language, the inputs as boxes and the calculated
+  values as ellipses, each node labelled with its symbol, a `"` or `\` in it escaped.
+- `render_derivation(explained, { .maxSteps = n })`, in `trace_render.hpp`, renders what
+  `explain_worksheet` recorded: each block under a header `symbol = definition = value` -- or
+  `symbol = value, entered by hand in place of definition` for an override -- with its steps
+  numbered within it as `render_trace` writes them, and the inputs last. One step limit bounds every
+  header, step and input line, and one last line says how many were left out;
+  `render_derivation(explained, {})` does not compile.
+- `document(calculation, vocabulary)`, in `document.hpp`, documents a calculation: its `formula` is
+  the calculation as `render` writes it; its symbol table opens with a row per calculated quantity,
+  in the order they are calculated in, each with its definition in the page's dialect in the new
+  `SymbolEntry::calculatedAs`, and then lists the inputs, each once, in the order the definitions
+  first read them; and its citations are every one the definitions hold. A definition reading
+  `attempt_input` is refused there, as a formula documented on its own is.
+- `number_text.hpp`, included by `formula.hpp`: a `Rational` spelled as an exact decimal (`0.6`,
+  `18.8822`), as a decimal rounded under a named rounding mode (`118.26`), or as a fraction (`3/5`),
+  into a `NumberText` with a fixed 64-byte buffer -- without allocating, and at compile time as well
+  as at run time. A `NumberStyle` chooses the notation. A decimal is shown only when it is the exact
+  value, so `1/3` stays `1/3` under `NumberStyle::exact_decimal()`; an approximation is opt-in
+  through `NumberStyle::approximate_decimal(mode)`, rounds at the unit's declared decimals and
+  always starts with `≈` (`≈0.333`). `number_text` of a `Measured` value adds its unit's symbol
+  (`5.2 kJ`), or reads `(not measured)` when it is absent. `decimal_text` spells exactly what
+  `checked_round` rounds to, and at 0 to 18 places still does where `checked_round`'s own arithmetic
+  overflows. `exact_decimal_text` gives the exact decimal alone, as a `std::optional<NumberText>`
+  empty where the value has none of at most 18 places, and `has_exact_decimal` says whether it has
+  one. `fraction_text` gives the fraction alone, in lowest terms, and `checked_number_text` and
+  `checked_decimal_text` answer `std::expected` where `number_text` and `decimal_text` throw
+  `ArithmeticException`. `ApproximationMarker` is the `≈` an approximation starts with, and
+  `NotMeasuredText` the `(not measured)` an absent value reads.
+- `TraceRenderOptions::numbers`: a trace's numbers as exact decimals (`0.6`), or as rounded
+  decimals marked `≈` (`≈0.333`) when the caller names a rounding mode. Fractions stay the
+  default, so a trace rendered without it reads exactly as before. A decimal is shown only where
+  it is the exact value -- `1/3` stays `1/3` under `NumberStyle::exact_decimal()` -- and whatever
+  the style, a number typed rather than computed is shown exact: a constant or a per-element
+  constant, `pi`, a declared domain, a constant an overlay fixed or derived, a table's row or bound,
+  a permitted value, a limit, and whatever passes one on unchanged: a documented, selected, replaced
+  or conditional step, a record's scope, a precision limit's level and limit, and a curve. So is
+  either side of a comparison a line states beside its verdict. A value in a unit nobody declared
+  -- a computed product or ratio, or a quantity declared in `unit::One`, which is the same unit --
+  is never padded with zeros, and where its default 3 places would round a value other than zero to
+  `≈0` they are extended to its first significant digit, up to 18: a price in euros per joule
+  reads `≈0.0000001`, not `≈0`. A step's value the style cannot spell in its unit reads `(not
+  shown: ...)`. `render_trace(trace, { .numbers = ... })` without `.maxSteps` still does not
+  compile. `render_derivation` spells a worksheet's derivation in the same style: its steps and
+  inputs as a trace's lines, each block's header value as the line that reads it -- rounded,
+  padded or exact alike -- and the header's definition as `render` writes it under
+  `RenderOptions`. A typed value is exact wherever the derivation states it, on the line of another
+  block that reads it as well: the new `WorksheetEntry::readSlots` records, for each step, which of
+  the calculation's quantities it read from the worksheet, so that the line is matched to that
+  value's block even where a vocabulary writes two quantities alike.
+- `format.hpp`, opt-in and not included by `formula.hpp`, because it needs `<format>`:
+  `std::format` writes a `Rational` and a `Measured` value in the spellings `number_text` gives.
+  `{}` is the exact decimal, or the fraction where there is none (`0.6`, `1/3`, `5.2 kJ`); `{:/}`
+  the fraction; `{:.2HalfEven}` rounds to two places, padded, without a marker (`118.26`);
+  `{:~.3HalfEven}` rounds only an inexact value, and marks it `≈` (`≈0.333`); `{:~HalfEven}` does
+  the same at the decimals a measured value's unit declares. A rounding always names its
+  `RoundingMode`: there is no default. Fill, alignment and width work as for other types, with
+  the width counted in code points, so `°C` and `≈` take one column each. A spec the grammar does
+  not allow is a compile error naming what is wrong in a literal format string, and a
+  `std::format_error` starting `formula: ` under `std::vformat`. The fill must be one Unicode scalar
+  value in well-formed UTF-8. `{:~Mode}` of a measured value in a unit declaring negative decimals
+  writes a value with an exact decimal of at most 18 places as it is, and throws `std::format_error`
+  when written if the value has none and exact arithmetic cannot round it there, as
+  `from_double_exact(0.1)` at -3 decimals cannot. The library owns these `std::formatter`
+  specialisations, so the header belongs in every translation unit that formats these types or asks
+  `std::formattable` about them; only `char` is supported.
+- `RenderOptions` for `render()` and `document()`: `render(f, vocabulary, { .numbers =
+  NumberStyle::exact_decimal() })` writes a constant holding 863/1000 as `0.863`, and so every
+  number a formula states -- a table's bounds and rows, a snap's permitted values, a domain's
+  points, a per-element constant's values, an envelope's limits -- and `document()` its formula, a
+  derived quantity's derivation and a rejection's limit; for a calculation, `render` each definition
+  and `document` its formula and each `calculatedAs`. These numbers were typed by the formula's
+  author, so they are written exactly whatever the style: `1/3` stays `1/3` under an approximating
+  style, and none is padded, so `number(Rational { 1, 2 })` reads `0.5`. Without options nothing
+  changes. The style travels with the vocabulary, the one argument every `render_node` already
+  receives, so a consumer's own two-argument `render_node` hands it on unchanged and can read it
+  with `number_style_of(vocabulary)`. `typed_number_style(vocabulary)` is the style every number a
+  formula states is written in -- the vocabulary's, exact only and never padded -- for a consumer's
+  own node that writes a number its author typed.
+- `docs/display.md`, a guide to displaying numbers, and its example `examples/display.cpp`: decimals
+  in a trace, in a rendered formula and in its documentation, `number_text()` and `decimal_text()`,
+  and a reference for `std::format` of a `Rational` and a `Measured` -- every form of the spec with
+  the text it writes, the rounding modes, the width in code points, and what a bad spec does. Each
+  output block on the page is checked against the example's output, and each code block against
+  its source.
+- A guide, *Calculations and worksheets* (`docs/calculations.md`), with `examples/electricity_bill.cpp`:
+  a household's monthly electricity bill as a calculation and a worksheet -- its graph and its
+  documentation page, a first run, changes and what each recalculates, the derivation of a value
+  that was reused, a what-if copy, a value typed in by hand, a failure reaching what reads it, an
+  input nobody measured, and what is refused.
+
+### Changed
+
+- An unqualified call of `fraction_text`, `number_text`, `decimal_text`, `exact_decimal_text`,
+  `define`, `calculation` or `worksheet` now also finds the library's function by argument-dependent
+  lookup, since each takes an argument of a type in namespace `formula`. A consumer's own function
+  of the same name that accepts the same arguments -- a `fraction_text(Rational)` helper, say -- now
+  makes such a call ambiguous, and has to be renamed, as `examples/statistics.cpp`'s was, or called
+  by a qualified name such as `::fraction_text`.
+- `Dimension` gains `namedBases`, after the seven SI exponents, so a designated initialiser of SI
+  exponents still compiles; a structured binding over a `Dimension` now has eight members, not
+  seven. `Dimension` grows from 56 to 152 bytes, `Unit` from 152 to 248, and a trace's
+  `Step<Rational>` from 1008 to 1296, on 64-bit builds.
+- `Symbol`, `SymbolCapacity`, `symbol()` and `view()` are now declared in `dimension.hpp`, which
+  `unit.hpp` includes, so code including either header still finds them.
+- The message of `RequireSameDimension` now ends "..., luminosity, then the named base dimensions by
+  name"; its opening, "formula: these two dimensions are not the same", is unchanged.
+- A currency declared as `dim::Scalar` until now should be declared with `base_dimension` instead,
+  so that the dimension system tells it from a bare ratio.
+- An environment's run-time `source_of<Q>()`, when it has one returning `ValueSource`, now decides
+  the source a trace records for a variable, and for the entry an overlay's constant or derived
+  quantity replaced; `is_entered<Q>` decides only for an environment without one. For an
+  `Environment` the two always agree, so its traces read as before. A variable's step can now
+  record `ValueSource::Derived`, a value its environment calculated: its line ends `, calculated`,
+  and one with no value reads `(no value), calculated` rather than `(not measured)`.
+
 ## [0.1.0] - 2026-09-28
 
 The first release of formula-cpp, a header-only C++23 library for traceable formulas: formulas

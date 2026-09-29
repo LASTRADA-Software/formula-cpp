@@ -31,8 +31,8 @@
 /// is too, and `checked_evaluate_si<double>` on one is refused. What remains
 /// is calling `LinearLeastSquares::compute<double>` directly, and that costs
 /// everything the library otherwise does: it takes bare numbers, which the
-/// caller must have converted to coherent SI by hand, and returns bare
-/// coherent-SI coefficients -- a slope in metres per second, not in a
+/// caller must have converted to coherent units by hand, and returns bare
+/// coefficients in coherent units -- a slope in metres per second, not in a
 /// quantity's declared unit. Nothing checks their dimensions, and nothing is
 /// traced, rendered or documented; the citation goes nowhere.
 ///
@@ -89,7 +89,7 @@ struct LinearLeastSquares
         return std::array { pointsAndValues[1], pointsAndValues[1] / pointsAndValues[0] };
     }
 
-    /// The fit, in coherent SI: @p points and @p pointValues, pair by pair.
+    /// The fit, in coherent units: @p points and @p pointValues, pair by pair.
     template <typename Rep>
     static constexpr std::expected<std::array<Rep, 2>, ArithmeticError> compute(std::span<Rep const> points,
                                                                                 std::span<Rep const> pointValues) noexcept

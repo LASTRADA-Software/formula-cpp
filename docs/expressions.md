@@ -6,8 +6,8 @@
 quantity (`formula::Environment`), and two ways to turn a formula and an
 environment into a number (`formula::checked_evaluate_si`,
 `formula::checked_evaluate`). The result is never a bare number: it is
-`formula::Outcome<Q>`, a value, an absence, or -- once a later phase adds
-constraints -- a verdict or an invalidation, each carrying where it came from.
+`formula::Outcome<Q>`, a value, an absence, a verdict or an invalidation, each
+carrying where it came from.
 This page explains how to write a formula, where a dimensional mistake shows
 up, how the environment supplies and withholds values, how absence and
 provenance travel through evaluation, and how to choose between an exact and
@@ -124,6 +124,16 @@ volume divided by a mass is a perfectly good density -- so only `+` and `-`
 carry this check; `*` and `/` combine the two dimensions instead of requiring
 them to agree.
 
+The check covers money too, once each currency is a base dimension of its own
+([Base dimensions the SI does not have](dimensions.md#base-dimensions-the-si-does-not-have)).
+A price in euros plus a pure number, and a price in euros plus a price in yen,
+have the same SI exponents on both sides -- all zero -- so only the named base
+dimensions tell the sides apart, and each addition fails to compile with
+exactly one error, the message above: `test/negative/money_plus_number.cpp`
+and `test/negative/money_plus_other_currency.cpp` pin both. Multiplying is
+where money composes: a tariff in euros per kilowatt-hour times an energy is
+euros.
+
 ## The environment
 
 `formula::Environment` is a set of inputs keyed by quantity **type**, not by
@@ -219,9 +229,11 @@ is a sum type with four alternatives (`formula::OutcomeKind`):
   empty `Value` and call it a number.
 - **`Verdict`** and **`Invalid`** -- a decision rather than a number
   (`"reject the specimen"`) or a reason a result was discarded entirely.
-  Nothing in the expression layer produces either yet: they exist so that a
-  later phase's constraints have somewhere to put their answer, without a
-  fifth alternative meaning "everything above, but different".
+  Evaluating a formula produces neither. Outlier rejection
+  ([Statistics, outliers and precision](statistics.md)) and bounded retry
+  ([Opaque operations and bounded retry](opaque-and-retry.md)) report a
+  `Verdict` through this type, so that a decision has somewhere to go without
+  a fifth alternative meaning "everything above, but different".
 
 `Outcome::is_overridden()` is true exactly when `is_value()` and the source
 is `ManuallyEntered` -- there is deliberately no separate `Overridden`
@@ -243,10 +255,12 @@ w/c = 0.500000 (entered)
 Two entry points evaluate a formula, and they answer different questions:
 
 - **`formula::checked_evaluate_si<Rep>(node, environment)`** is the
-  representation-agnostic core. Every leaf is converted to the coherent SI
-  unit of its dimension on the way in, the tree is evaluated there, and the
-  answer comes back as `Rep` -- exact `formula::Rational` by default, or
-  `double` when a formula needs values an exact rational cannot hold.
+  representation-agnostic core. Every leaf is converted to the coherent unit
+  of its dimension -- the SI unit, times one of each
+  [named base dimension](dimensions.md#base-dimensions-the-si-does-not-have)
+  it carries -- on the way in, the tree is evaluated there, and the answer
+  comes back as `Rep` -- exact `formula::Rational` by default, or `double`
+  when a formula needs values an exact rational cannot hold.
 - **`formula::checked_evaluate<Result>(expression, environment)`** is the
   auditable entry point, and it is **always exact**: it evaluates in
   `Rational`, converts the answer once into `Result`'s own declared unit, and
@@ -259,7 +273,7 @@ Two entry points evaluate a formula, and they answer different questions:
 directly, with `Overflow` deliberately not reported by that arithmetic itself
 (`inf` is what a `double` says, and the caller asked for `double`). That is
 not the same as saying a `double` evaluation never sees `Overflow`: every leaf
-is converted to the coherent SI unit in exact `Rational` before it is handed
+is converted to the coherent unit in exact `Rational` before it is handed
 to `RepTraits<double>`, and that conversion can overflow -- a quantity whose
 declared unit puts it near the edge of the representable range reports
 `Overflow` from `checked_evaluate_si<double>` exactly as it would from the
@@ -269,19 +283,21 @@ fails at the point of use, naming itself.
 
 Both entry points also convert every leaf as a **point** on its unit's scale,
 never as a difference -- `checked_convert`'s own documentation says so, and
-the evaluator does not qualify it further. An affine unit, of which this
-library ships one, degrees Celsius, therefore behaves as an absolute
-temperature inside a formula, not as a delta: 20 °C minus 15 °C is exactly 5 K
-once both leaves have been converted to the coherent SI unit (kelvin) and
-subtracted there, but reading that same computed 5 K back through a result
-quantity declared in degrees Celsius gives −268,15, because the conversion
-adds the offset the point 5 K sits at, not the offset the interval spans. A
-quantity that represents a *difference* -- a temperature swing, not a
-temperature -- must declare a non-offset unit such as kelvin; declaring it in
+the evaluator does not qualify it further. The library ships two affine units,
+degrees Celsius and degrees Fahrenheit, and each therefore behaves as an
+absolute temperature inside a formula, not as a delta: 20 °C minus 15 °C is
+exactly 5 K once both leaves have been converted to the coherent SI unit
+(kelvin) and subtracted there, but reading that same computed 5 K back through
+a result quantity declared in degrees Celsius gives −268.15, because the
+conversion adds the offset the point 5 K sits at, not the offset the interval
+spans. Degrees Fahrenheit converts a leaf as a point in the same way, with a
+degree of 5/9 K: a leaf of 98.6 °F enters a formula as exactly 310.15 K, which
+is 37 °C. A quantity that represents a *difference* -- a temperature swing, not
+a temperature -- must declare a non-offset unit such as kelvin; declaring it in
 an affine unit asks the library a different question than the one intended.
 `test/evaluate_tests.cpp`'s `"evaluate: an offset unit converts a point, not a
-difference"` pins today's behaviour, so a later phase changes it deliberately
-rather than by accident.
+difference"` pins today's behaviour, so a change to it is deliberate rather than
+accidental.
 
 ## Powers, roots and pi
 
@@ -401,6 +417,11 @@ parenthesis is needed to preserve the meaning:
 ```
 
 Step 5 is the reused formula, carrying its own citation; step 6 consumes it.
+`c_u` is a price in euros, a dimension of its own rather than a bare number
+([Base dimensions the SI does not have](dimensions.md#base-dimensions-the-si-does-not-have)),
+so the cost is in euros too; steps 6 and 7 show no unit only because a
+computed step carries no unit symbol of its own
+([Tracing](tracing.md#reading-a-derivation)).
 
 One asymmetry is worth knowing before you rely on it. Using the same
 sub-formula **twice** in one tree reaches its citation twice, and the citation
@@ -410,3 +431,10 @@ yourself.
 
 `examples/composition.cpp` is this, complete and runnable; its output is
 where the blocks above come from.
+
+Composition writes a named formula into every formula that uses it, so a
+sub-result two formulas share is evaluated once for each, and nothing
+remembers it. When the named parts are values in their own right -- a bill or
+a report of many values, each built on the ones before -- define each once
+instead, and let a worksheet calculate each once and recalculate only what a
+change reaches: [Calculations and worksheets](calculations.md).

@@ -847,7 +847,7 @@ namespace detail
             sink.rejection_finished(end);
         };
 
-    /// The pass bindings: the current pass's mean, in the coherent SI unit of
+    /// The pass bindings: the current pass's mean, in the coherent unit of
     /// @p D, and its size -- what `pass_mean` and `pass_count` read.
     template <typename Rep, Dimension D>
     struct PassBinding

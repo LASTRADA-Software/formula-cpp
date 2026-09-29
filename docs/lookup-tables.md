@@ -628,7 +628,7 @@ half-open interval everywhere in this library — in the plain rendering, in
 Markdown, in LaTeX, and in the trace.
 
 **It is spelled that way because the obvious mathematical notation is Markdown
-link syntax.** Phase 8 of this project rendered a rounding step as
+link syntax.** An earlier draft of this library rendered a rounding step as
 `round[to 1 dp of mm](d)`; in CommonMark that is `[text](url)`, and renderers
 silently dropped the operand and published a broken line. A test now asserts
 that no Markdown rendering contains `](` or a bare `[`, and a bracketed interval
@@ -735,7 +735,7 @@ being included or excluded, so it needs neither a band's `to under` nor a
 curve's closed `to`.
 
 Both lookup steps report in the unit their own table is stated in — `1051/10 %`,
-`863/10 %` — while lines 4 and 6 report the products in coherent SI, because an
+`863/10 %` — while lines 4 and 6 report the products in the coherent unit, because an
 intermediate that no quantity declares a unit for has none to be shown in. That
 is ordinary trace behaviour rather than anything to do with tables; see
 [Tracing and audit trails](tracing.md).

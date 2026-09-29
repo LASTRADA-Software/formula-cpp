@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <formula-cpp/binning.hpp>
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/conformity.hpp>
 #include <formula-cpp/constraint.hpp>
+#include <formula-cpp/curve.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/lookup.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/series.hpp>
+#include <formula-cpp/snap.hpp>
 #include <formula-cpp/vocabulary.hpp>
+
+#include "household_bill.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -1959,4 +1966,387 @@ TEST_CASE("a documented or replaced sum brackets in LaTeX as the bare one does",
                        m);
     constexpr auto replacement = std::get<0>(replaced.variantSet.cases).expression;
     CHECK(formula::render<formula::Dialect::LaTeX>(replacement * rat(2)) == "(\\sum \\frac{{m_r}_{i}}{m_t}) \\cdot 2");
+}
+
+// ------------------------------------------------------------ calculations
+
+namespace
+{
+struct Start: formula::Quantity<Start, "x_0", "an invented start", formula::unit::One>
+{
+};
+struct Low: formula::Quantity<Low, "x_l", "an invented low point", formula::unit::One>
+{
+};
+struct High: formula::Quantity<High, "x_h", "an invented high point", formula::unit::One>
+{
+};
+struct Apex: formula::Quantity<Apex, "x_a", "an invented apex", formula::unit::One>
+{
+};
+
+/// The apex given before the high point it reads, which reads the low
+/// point, which reads the start: calculated in another order than given.
+inline constexpr auto againstTheGrain = formula::calculation(formula::define<Low>(var<Start> + rat(1)),
+                                                             formula::define<Apex>(var<High> + rat(1)),
+                                                             formula::define<High>(var<Low> * rat(2)));
+
+/// A calculation of one constant, which reads nothing.
+inline constexpr auto constantOnly = formula::calculation(formula::define<Start>(formula::number(rat(7))));
+
+struct Lower: formula::Quantity<Lower, "x_lo", "an invented lower point", formula::unit::One>
+{
+};
+struct Upper: formula::Quantity<Upper, "x_hi", "an invented upper point", formula::unit::One>
+{
+};
+struct Top: formula::Quantity<Top, "x_t", "an invented top", formula::unit::One>
+{
+};
+
+/// The top, given first, reads the upper point and then the lower one; the
+/// upper point reads the lower one, and the lower one the start. Given in
+/// the reverse of the order they are calculated in: the upper point holds
+/// the earlier position and is read first, and yet the lower one is
+/// calculated first.
+inline constexpr auto backwards = formula::calculation(formula::define<Top>(var<Upper> + var<Lower>),
+                                                       formula::define<Upper>(var<Lower> * rat(2)),
+                                                       formula::define<Lower>(var<Start> + rat(1)));
+} // namespace
+
+TEST_CASE("render: a calculation is one line per definition, in the order it is calculated in",
+          "[render][calculation]")
+{
+    CHECK(formula::render(againstTheGrain) == "x_l = x_0 + 1\nx_h = x_l * 2\nx_a = x_h + 1");
+    CHECK(formula::render<Dialect::Plain>(againstTheGrain) == formula::render(againstTheGrain));
+    // In Markdown a blank line apart, so that each is a paragraph of its own.
+    CHECK(formula::render<Dialect::Markdown>(againstTheGrain)
+          == "`x_l` = `x_0` + 1\n\n`x_h` = `x_l` * 2\n\n`x_a` = `x_h` + 1");
+    CHECK(formula::render<Dialect::LaTeX>(againstTheGrain) == "x_l = x_0 + 1\nx_h = x_l \\cdot 2\nx_a = x_h + 1");
+
+    CHECK(formula::render(household::bill)
+          == "fridge_kw = fridge_w\n"
+             "fridge_kwh = fridge_kw * fridge_h\n"
+             "oven_kwh = oven_kw * oven_h\n"
+             "heater_kwh = heater_kw * heater_h\n"
+             "daily_load = fridge_kwh + oven_kwh + heater_kwh\n"
+             "monthly_load = daily_load * 30\n"
+             "self_used = solar * 4/5\n"
+             "exported = solar - self_used\n"
+             "net_draw = monthly_load - self_used\n"
+             "grid_cost = net_draw * price\n"
+             "feed_in_credit = exported * feed_in\n"
+             "energy_cost = grid_cost - feed_in_credit\n"
+             "subtotal = energy_cost + base_fee\n"
+             "vat = subtotal * 19/100\n"
+             "total = subtotal + vat");
+}
+
+TEST_CASE("render: a calculation writes its symbols as its vocabulary says", "[render][calculation][vocabulary]")
+{
+    constexpr auto words = formula::vocabulary(formula::renames<Low>("y_l"), formula::renames<Apex>("y_a"));
+    CHECK(formula::render(againstTheGrain, words) == "y_l = x_0 + 1\nx_h = y_l * 2\ny_a = x_h + 1");
+    CHECK(formula::render<Dialect::Markdown>(againstTheGrain, words)
+          == "`y_l` = `x_0` + 1\n\n`x_h` = `y_l` * 2\n\n`y_a` = `x_h` + 1");
+}
+
+TEST_CASE("describe_graph: the inputs, then what each calculated value reads, the arrows aligned",
+          "[render][calculation]")
+{
+    CHECK(formula::describe_graph(againstTheGrain) == "inputs: x_0\n"
+                                                      "x_l <- x_0\n"
+                                                      "x_h <- x_l\n"
+                                                      "x_a <- x_h\n");
+    CHECK(formula::describe_graph(constantOnly) == "inputs: none\n"
+                                                   "x_0 <- nothing\n");
+
+    CHECK(formula::describe_graph(household::bill)
+          == "inputs: fridge_w, fridge_h, oven_kw, oven_h, heater_kw, heater_h, solar, price, feed_in, base_fee\n"
+             "fridge_kw      <- fridge_w\n"
+             "fridge_kwh     <- fridge_h, fridge_kw\n"
+             "oven_kwh       <- oven_kw, oven_h\n"
+             "heater_kwh     <- heater_kw, heater_h\n"
+             "daily_load     <- fridge_kwh, oven_kwh, heater_kwh\n"
+             "monthly_load   <- daily_load\n"
+             "self_used      <- solar\n"
+             "exported       <- solar, self_used\n"
+             "net_draw       <- monthly_load, self_used\n"
+             "grid_cost      <- price, net_draw\n"
+             "feed_in_credit <- feed_in, exported\n"
+             "energy_cost    <- grid_cost, feed_in_credit\n"
+             "subtotal       <- base_fee, energy_cost\n"
+             "vat            <- subtotal\n"
+             "total          <- subtotal, vat\n");
+
+    // The reads in the order they are calculated in: neither in the order of
+    // their positions nor in the order the definition reads them.
+    CHECK(formula::describe_graph(backwards) == "inputs: x_0\n"
+                                                "x_lo <- x_0\n"
+                                                "x_hi <- x_lo\n"
+                                                "x_t  <- x_lo, x_hi\n");
+
+    // In a vocabulary, padded to the longest symbol as written there.
+    constexpr auto words = formula::vocabulary(formula::renames<Apex>("apex"));
+    CHECK(formula::describe_graph(againstTheGrain, words) == "inputs: x_0\n"
+                                                             "x_l  <- x_0\n"
+                                                             "x_h  <- x_l\n"
+                                                             "apex <- x_h\n");
+
+    // Padded by bytes: UTF-8 spells the sigma in two, so its symbol counts
+    // four and shows three.
+    constexpr auto greek = formula::vocabulary(formula::renames<Apex>("\xCF\x83_a"));
+    CHECK(formula::describe_graph(againstTheGrain, greek) == "inputs: x_0\n"
+                                                             "x_l  <- x_0\n"
+                                                             "x_h  <- x_l\n"
+                                                             "\xCF\x83_a <- x_h\n");
+}
+
+TEST_CASE("to_dot: the graph in Graphviz's DOT language", "[render][calculation]")
+{
+    CHECK(formula::to_dot(againstTheGrain) == "digraph calculation {\n"
+                                              "  rankdir=LR;\n"
+                                              "  node [fontname=\"Helvetica\"];\n"
+                                              "  q0 [label=\"x_0\", shape=box];\n"
+                                              "  q1 [label=\"x_l\", shape=ellipse];\n"
+                                              "  q3 [label=\"x_h\", shape=ellipse];\n"
+                                              "  q2 [label=\"x_a\", shape=ellipse];\n"
+                                              "  q0 -> q1;\n"
+                                              "  q1 -> q3;\n"
+                                              "  q3 -> q2;\n"
+                                              "}\n");
+
+    // The arrows into a value in the order they are calculated in: the top
+    // reads the lower point, q3, before the upper one, q2.
+    CHECK(formula::to_dot(backwards) == "digraph calculation {\n"
+                                        "  rankdir=LR;\n"
+                                        "  node [fontname=\"Helvetica\"];\n"
+                                        "  q0 [label=\"x_0\", shape=box];\n"
+                                        "  q3 [label=\"x_lo\", shape=ellipse];\n"
+                                        "  q2 [label=\"x_hi\", shape=ellipse];\n"
+                                        "  q1 [label=\"x_t\", shape=ellipse];\n"
+                                        "  q0 -> q3;\n"
+                                        "  q3 -> q2;\n"
+                                        "  q3 -> q1;\n"
+                                        "  q2 -> q1;\n"
+                                        "}\n");
+
+    // A quote or a backslash in a symbol is escaped, so that it cannot end
+    // the label early.
+    constexpr auto words = formula::vocabulary(formula::renames<Low>("x\"l\\"));
+    CHECK(formula::to_dot(againstTheGrain, words).find("  q1 [label=\"x\\\"l\\\\\", shape=ellipse];\n")
+          != std::string::npos);
+
+    // Two quantities written alike stay two nodes.
+    constexpr auto alike = formula::vocabulary(formula::renames<Low>("x"), formula::renames<High>("x"));
+    std::string const twoAlike = formula::to_dot(againstTheGrain, alike);
+    CHECK(twoAlike.find("  q1 [label=\"x\", shape=ellipse];\n") != std::string::npos);
+    CHECK(twoAlike.find("  q3 [label=\"x\", shape=ellipse];\n") != std::string::npos);
+    CHECK(twoAlike.find("  q1 -> q3;\n") != std::string::npos);
+
+    // The bill: ten boxes, fifteen ellipses, and an arrow per read.
+    std::string const billDot = formula::to_dot(household::bill);
+    CHECK(billDot.starts_with("digraph calculation {\n  rankdir=LR;\n  node [fontname=\"Helvetica\"];\n"
+                           "  q0 [label=\"fridge_w\", shape=box];\n"));
+    CHECK(billDot.find("  q9 [label=\"base_fee\", shape=box];\n  q10 [label=\"fridge_kw\", shape=ellipse];\n")
+          != std::string::npos);
+    CHECK(billDot.ends_with("  q23 -> q24;\n}\n"));
+    std::size_t arrows = 0;
+    for (std::size_t found = billDot.find(" -> "); found != std::string::npos; found = billDot.find(" -> ", found + 1))
+        ++arrows;
+    CHECK(arrows == 27);
+}
+
+// ------------------------------------------------------ numbers as decimals
+//
+// `RenderOptions` (render.hpp): every number a formula states written in the
+// style asked for -- exactly, and never padded, whatever that style says,
+// because each was typed by the formula's author.
+
+namespace
+{
+/// 863/1000, typed as the decimal it is.
+constexpr auto scaledStrength =
+    var<Strength> * formula::constant<unit::One>(formula::Rational::from_decimal(863, -3).value());
+
+constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+constexpr formula::RenderOptions approximated { .numbers =
+                                                formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) };
+constexpr formula::RenderOptions padded { .numbers = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded) };
+
+/// Invented permitted openings, and the same points as a declared domain: one
+/// with a decimal, one whole, one with two decimals -- more than millimetres
+/// declare -- so a decimal dropped, padded or cut short shows.
+inline constexpr BreakpointTable<3> DecimalOpenings { breakpoint(1031, 10), breakpoint(127), breakpoint(3263, 20) };
+
+/// Invented limits in millimetres, each with one decimal.
+constexpr formula::Envelope<2> decimalEnvelope {
+    formula::LimitRow { formula::unbounded, formula::limit(rat(51, 10)) },
+    formula::LimitRow { formula::limit(rat(11, 10)), formula::limit(rat(23, 10)) },
+};
+constexpr auto decimalLimits = formula::conformity<unit::Millimetre>(
+    formula::series<Diameter, 2>, decimalEnvelope, formula::Verdict { "reject the specimen" });
+
+/// An invented limit no decimal ends, and an invented whole one in
+/// millimetres, which declare one decimal.
+constexpr formula::Envelope<1> thirdEnvelope { formula::LimitRow { formula::unbounded, formula::limit(rat(1, 3)) } };
+constexpr auto thirdLimit = formula::conformity<unit::Millimetre>(
+    formula::series<Diameter, 1>, thirdEnvelope, formula::Verdict { "reject the specimen" });
+constexpr formula::Envelope<1> wholeEnvelope { formula::LimitRow { formula::limit(rat(13)), formula::unbounded } };
+constexpr auto wholeLimit = formula::conformity<unit::Millimetre>(
+    formula::series<Diameter, 1>, wholeEnvelope, formula::Verdict { "reject the specimen" });
+
+/// Invented bounds and points holding a third and whole millimetres: an
+/// approximating style would round the one and a padding style pad the
+/// others, were either applied to a number its author typed.
+inline constexpr BandTable<2> ThirdBands { band(1, 3, 7, 1), band(7, 1, 13, 1) };
+inline constexpr BreakpointTable<2> ThirdPoints { breakpoint(1, 3), breakpoint(7) };
+} // namespace
+
+TEST_CASE("render: RenderOptions writes a constant as an exact decimal, in every dialect", "[render][decimals]")
+{
+    CHECK(formula::render<Dialect::Plain>(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "f * 0.863");
+    CHECK(formula::render<Dialect::Markdown>(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "`f` * 0.863");
+    CHECK(formula::render<Dialect::LaTeX>(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "f \\cdot 0.863");
+    // Plain text unless a dialect is named, as every other overload.
+    CHECK(formula::render(scaledStrength, formula::DefaultVocabulary {}, exactDecimals) == "f * 0.863");
+    // The default options write exactly what render() without them writes.
+    CHECK(formula::render(scaledStrength, formula::DefaultVocabulary {}, {}) == "f * 863/1000");
+    CHECK(formula::render(scaledStrength) == "f * 863/1000");
+    // A value with no exact decimal stays the fraction it is.
+    CHECK(formula::render(var<Strength> * rat(1, 3), formula::DefaultVocabulary {}, exactDecimals) == "f * 1/3");
+}
+
+TEST_CASE("render: a typed number is never approximated, whatever the style", "[render][decimals]")
+{
+    // Under an approximating style a trace would round 1/3 to ≈0.333 in
+    // unit::One's three places; a formula states it as typed.
+    CHECK(formula::render(var<Strength> * formula::number(rat(1, 3)), formula::DefaultVocabulary {}, approximated)
+          == "f * 1/3");
+    CHECK(formula::render(scaledStrength, formula::DefaultVocabulary {}, approximated) == "f * 0.863");
+    // A table whose rows and bounds all have exact decimals is written in
+    // them, unmarked. Tables holding numbers no decimal ends are in the case
+    // after next.
+    CHECK(formula::render(bandedLookup(), formula::DefaultVocabulary {}, approximated)
+          == "lookup(d, 2.11 to under 2.77 mm gives 0.863, 2.77 to under 9.73 mm gives 1.381, 9.73 to under 30.7 mm "
+             "gives 1.043)");
+}
+
+TEST_CASE("render: a typed number is never padded, whatever the style", "[render][decimals]")
+{
+    // A pure number's unit, unit::One, is one nobody declared, so its three
+    // decimals are no one's statement of precision: 0.5, never 0.500.
+    CHECK(formula::render(var<Strength> * formula::number(rat(1, 2)), formula::DefaultVocabulary {}, padded) == "f * 0.5");
+    // Nor is a constant in a unit that declares decimals padded to them:
+    // typed as 5, kilojoules' one decimal would make it 5.0.
+    CHECK(formula::render(formula::constant<unit::Kilojoule>(rat(5)), formula::DefaultVocabulary {}, padded) == "5 kJ");
+    CHECK(formula::render(formula::constant<unit::Millimetre>(rat(1031, 10)), formula::DefaultVocabulary {}, padded)
+          == "103.1 mm");
+}
+
+TEST_CASE("render: every number a table or a list states follows RenderOptions", "[render][decimals]")
+{
+    // The three lookup kinds: bounds, keys and corrections alike.
+    CHECK(formula::render(bandedLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "lookup(d, 2.11 to under 2.77 mm gives 0.863, 2.77 to under 9.73 mm gives 1.381, 9.73 to under 30.7 mm "
+             "gives 1.043)");
+    CHECK(formula::render<Dialect::LaTeX>(bandedLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "\\operatorname{lookup}(d,\\allowbreak \\mathrm{2.11\\ to\\ under\\ 2.77\\ mm\\ gives\\ 0.863},"
+             "\\allowbreak \\mathrm{2.77\\ to\\ under\\ 9.73\\ mm\\ gives\\ 1.381},\\allowbreak "
+             "\\mathrm{9.73\\ to\\ under\\ 30.7\\ mm\\ gives\\ 1.043})");
+    CHECK(formula::render(shapeLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "lookup(key Cylinder, key Cube gives 2.791 MPa, key Cylinder gives 43 MPa, key Prism gives 1.373 MPa)");
+    CHECK(formula::render(curveLookup(), formula::DefaultVocabulary {}, exactDecimals)
+          == "interpolate(d, at 2.39 mm gives 0.873 MPa, at 7.37 mm gives -1.139 MPa, at 19.3 mm gives 1.217 MPa)");
+
+    // A per-element constant's values.
+    constexpr auto offsets = formula::series_constant<unit::Millimetre>(rat(7, 10), rat(19, 10));
+    CHECK(formula::render(offsets) == "values(7/10 mm, 19/10 mm)");
+    CHECK(formula::render(offsets, formula::DefaultVocabulary {}, exactDecimals) == "values(0.7 mm, 1.9 mm)");
+
+    // A snap's permitted values and a declared domain's points.
+    constexpr auto snappedDiameter =
+        formula::snapped<unit::Millimetre, DecimalOpenings, formula::SnapTie::TowardLower>(var<Diameter>);
+    CHECK(formula::render(snappedDiameter) == "snap(d, to 1031/10, 127, 3263/20 mm)");
+    CHECK(formula::render(snappedDiameter, formula::DefaultVocabulary {}, exactDecimals)
+          == "snap(d, to 103.1, 127, 163.15 mm)");
+    constexpr auto openingDomain = formula::domain<unit::Millimetre, DecimalOpenings>;
+    CHECK(formula::render(openingDomain) == "domain(1031/10, 127, 3263/20 mm)");
+    CHECK(formula::render(openingDomain, formula::DefaultVocabulary {}, exactDecimals) == "domain(103.1, 127, 163.15 mm)");
+
+    // A binning's classes.
+    constexpr auto binnedDiameters = formula::binned<unit::Millimetre, SizeBands>(formula::observations<Diameter, 3>);
+    CHECK(formula::render(binnedDiameters, formula::DefaultVocabulary {}, exactDecimals)
+          == "bin(d(i), 2.11 to under 2.77 mm, 2.77 to under 9.73 mm, 9.73 to under 30.7 mm)");
+
+    // An envelope's limits -- and one with no exact decimal, which stays the
+    // fraction it is.
+    CHECK(formula::render(decimalLimits) == "conform(d(i), at most 51/10 mm, from 11/10 to 23/10 mm)");
+    CHECK(formula::render(decimalLimits, formula::DefaultVocabulary {}, exactDecimals)
+          == "conform(d(i), at most 5.1 mm, from 1.1 to 2.3 mm)");
+    CHECK(formula::render(thirdLimit, formula::DefaultVocabulary {}, exactDecimals) == "conform(d(i), at most 1/3 mm)");
+}
+
+TEST_CASE("render: no table or list rounds or pads a number its author typed, whatever the style", "[render][decimals]")
+{
+    // Every table and list site holds a third, which an approximating style
+    // would round, or whole millimetres or megapascals, which a padding style
+    // would pad to their one declared decimal: each reads as typed under both.
+    constexpr auto thirdsBanded =
+        banded_lookup<unit::Millimetre, ThirdBands, unit::One>(var<Diameter>, { rat(1, 3), rat(5) });
+    constexpr auto thirdsKeyed =
+        exact_lookup<ShapeKeys, unit::Megapascal>(MouldShape::Cylinder, { rat(1, 3), rat(43), rat(1373, 1000) });
+    constexpr auto thirdsCurve =
+        interpolating_lookup<unit::Millimetre, ThirdPoints, unit::Megapascal>(var<Diameter>, { rat(1, 3), rat(5) });
+    constexpr auto thirdsValues = formula::series_constant<unit::Millimetre>(rat(1, 3), rat(7));
+    constexpr auto thirdsSnap =
+        formula::snapped<unit::Millimetre, ThirdPoints, formula::SnapTie::TowardLower>(var<Diameter>);
+    constexpr auto thirdsDomain = formula::domain<unit::Millimetre, ThirdPoints>;
+    constexpr auto thirdsBinned = formula::binned<unit::Millimetre, ThirdBands>(formula::observations<Diameter, 3>);
+    for (formula::RenderOptions const renderOptions: { approximated, padded })
+    {
+        CHECK(formula::render(thirdsBanded, formula::DefaultVocabulary {}, renderOptions)
+              == "lookup(d, 1/3 to under 7 mm gives 1/3, 7 to under 13 mm gives 5)");
+        CHECK(formula::render(thirdsKeyed, formula::DefaultVocabulary {}, renderOptions)
+              == "lookup(key Cylinder, key Cube gives 1/3 MPa, key Cylinder gives 43 MPa, key Prism gives 1.373 MPa)");
+        CHECK(formula::render(thirdsCurve, formula::DefaultVocabulary {}, renderOptions)
+              == "interpolate(d, at 1/3 mm gives 1/3 MPa, at 7 mm gives 5 MPa)");
+        CHECK(formula::render(thirdsValues, formula::DefaultVocabulary {}, renderOptions) == "values(1/3 mm, 7 mm)");
+        CHECK(formula::render(thirdsSnap, formula::DefaultVocabulary {}, renderOptions) == "snap(d, to 1/3, 7 mm)");
+        CHECK(formula::render(thirdsDomain, formula::DefaultVocabulary {}, renderOptions) == "domain(1/3, 7 mm)");
+        CHECK(formula::render(thirdsBinned, formula::DefaultVocabulary {}, renderOptions)
+              == "bin(d(i), 1/3 to under 7 mm, 7 to under 13 mm)");
+        CHECK(formula::render(thirdLimit, formula::DefaultVocabulary {}, renderOptions) == "conform(d(i), at most 1/3 mm)");
+        CHECK(formula::render(wholeLimit, formula::DefaultVocabulary {}, renderOptions) == "conform(d(i), at least 13 mm)");
+    }
+}
+
+TEST_CASE("render: a calculation's typed numbers follow RenderOptions, never rounded or padded",
+          "[render][calculation][decimals]")
+{
+    // The bill states two typed numbers, 4/5 and 19/100, both exact decimals:
+    // under an exact-decimal style they read 0.8 and 0.19, and every other
+    // line reads as it does without options.
+    std::string const fractionBill = formula::render(household::bill);
+    std::string const decimalBill = formula::render(household::bill, formula::DefaultVocabulary {}, exactDecimals);
+    std::string expected = fractionBill;
+    expected.replace(expected.find("solar * 4/5"), std::string_view { "solar * 4/5" }.size(), "solar * 0.8");
+    expected.replace(expected.find("subtotal * 19/100"), std::string_view { "subtotal * 19/100" }.size(), "subtotal * 0.19");
+    CHECK(decimalBill == expected);
+    // A rounding style writes them the same: a typed number is never rounded.
+    CHECK(formula::render(household::bill, formula::DefaultVocabulary {}, approximated) == decimalBill);
+    // In every dialect: in Markdown a blank line apart, as without options.
+    CHECK(formula::render<Dialect::Markdown>(household::bill, formula::DefaultVocabulary {}, exactDecimals)
+              .find("\n\n`self_used` = `solar` * 0.8\n\n")
+          != std::string::npos);
+    // A typed number with no exact decimal stays its fraction under any style.
+    constexpr auto thirdAbove = formula::calculation(formula::define<Low>(var<Start> + rat(1, 3)));
+    CHECK(formula::render(thirdAbove, formula::DefaultVocabulary {}, exactDecimals) == "x_l = x_0 + 1/3");
+    CHECK(formula::render(thirdAbove, formula::DefaultVocabulary {}, approximated) == "x_l = x_0 + 1/3");
+    // Nor is a typed number in a unit that declares decimals padded to them:
+    // the euro declares two, and a typed fee of 5 EUR stays 5 EUR.
+    constexpr auto withFee = formula::calculation(
+        formula::define<household::Total>(var<household::Subtotal> + formula::constant<household::Euro>(rat(5))));
+    constexpr formula::RenderOptions exactPadded { .numbers = formula::NumberStyle::exact_decimal(
+                                                       formula::DecimalPadding::Padded) };
+    CHECK(formula::render(withFee, formula::DefaultVocabulary {}, exactPadded) == "total = subtotal + 5 EUR");
 }

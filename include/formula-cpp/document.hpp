@@ -12,6 +12,7 @@
 /// itself.
 
 #include <formula-cpp/binning.hpp>
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/critical_value.hpp>
@@ -34,6 +35,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -99,10 +102,23 @@ struct SymbolEntry
     /// Whether the row is derived is `derivedAs`'s to say, not this.
     Citation derivedBy {};
 
+    /// The expression a calculation calculates this quantity by, rendered in
+    /// the dialect `document()` was asked for; empty for a quantity no
+    /// calculation calculates -- an input of one, and every row of a page
+    /// documenting anything else.
+    ///
+    /// Not `derivedAs`, which is an overlay's definition, cited, standing in
+    /// one formula for a quantity it would otherwise read: this is the
+    /// calculation's own, whose result every definition reading the quantity
+    /// reads. A quantity an overlay fixed or derived inside a definition of a
+    /// calculation that also calculates it has both, on one row.
+    std::optional<std::string> calculatedAs {};
+
     /// For a fixed or derived row: whether the formula ALSO reads this
-    /// quantity from the environment somewhere, besides where an overlay fixed
-    /// or defined it. False for a row that is neither, which is read and
-    /// nothing else.
+    /// quantity plainly somewhere -- from the environment, or, for a quantity
+    /// a calculation calculates, its calculated value -- besides where an
+    /// overlay fixed or defined it. False for a row that is neither, which is
+    /// read and nothing else.
     ///
     /// Only a formula assembled by hand has both -- `apply` substitutes every
     /// use -- and then a row saying only "fixed at 863/1000" would hide that the
@@ -197,7 +213,9 @@ struct Documentation
     /// before the definitions it is built from.
     std::vector<Citation> citations {};
     /// The variables the formula reads, each once, in the order they first
-    /// appear when the formula is read left to right.
+    /// appear when the formula is read left to right -- after, for a
+    /// calculation, the quantities it calculates (see the `Calculation`
+    /// overload of `document`).
     std::vector<SymbolEntry> symbols {};
     /// One entry per formula a jurisdiction replaced wholesale
     /// (`ReplacedVariantNode`, `overlay.hpp`), in the order met: what the
@@ -1192,6 +1210,76 @@ namespace detail
         }
         std::apply([&](auto const&... inputs) { (collect(walk, inputs), ...); }, node.call.inputs);
     }
+
+    /// Asks `RequireAttemptInputOnlyInRetry` of each of the definitions
+    /// @p Ds: a calculation documented is no retry's, as a formula
+    /// documented on its own is not.
+    template <typename... Ds>
+    struct CalculationDocumentChecks
+    {
+        static_assert((RequireAttemptInputOnlyInRetry<std::remove_cv_t<decltype(Ds::expression)>>::value && ...));
+
+        /// True: every check is asked above.
+        static constexpr bool value = true;
+    };
+
+    /// Walks the definitions of @p definitionSet for the rows and citations
+    /// they hold, in the order the calculation calculates them in, which
+    /// @p Placed counts along.
+    template <Vocabulary V, typename... Ds, std::size_t... Placed>
+    void collect_definitions(Walk<V>& walk, Calculation<Ds...> const& definitionSet, std::index_sequence<Placed...>)
+    {
+        using Graph = CalculationGraph<Ds...>;
+        (collect(walk,
+                 std::get<Graph::order[Graph::inputCount + Placed] - Graph::inputCount>(definitionSet.definitions)
+                     .expression),
+         ...);
+    }
+
+    /// The row of the quantity the definition at @p Defined calculates,
+    /// with that definition: the row the walk of the definitions gave the
+    /// quantity -- read, or fixed or derived by an overlay -- when it gave
+    /// one, and a plain one when it did not. The walk's row is marked in
+    /// @p taken, so that it is not listed a second time.
+    ///
+    /// Merged after the walk rather than added before it: a row already there
+    /// when an overlay's constant is met is taken for one a plain read added
+    /// (`collect` for `OverriddenConstantNode`), which a calculated row is
+    /// not.
+    template <std::size_t Defined, Vocabulary V, typename... Ds>
+    [[nodiscard]] SymbolEntry calculated_row(Walk<V> const& walk,
+                                             Calculation<Ds...> const& definitionSet,
+                                             std::vector<bool>& taken)
+    {
+        using Q = typename std::tuple_element_t<Defined, std::tuple<Ds...>>::quantity;
+        SymbolEntry calculatedEntry { .symbol = symbol_of<Q>(walk.vocabulary),
+                                      .description = Describe<Q>::description,
+                                      .unit = Describe<Q>::unit };
+        for (std::size_t walkedRow = 0; walkedRow < walk.seenQuantities.size(); ++walkedRow)
+            if (walk.seenQuantities[walkedRow].quantity == &quantityIdentity<Q>
+                && walk.seenQuantities[walkedRow].role == nullptr)
+            {
+                calculatedEntry = walk.documentation.symbols[walkedRow];
+                taken[walkedRow] = true;
+            }
+        calculatedEntry.calculatedAs =
+            render_in(walk.dialect, std::get<Defined>(definitionSet.definitions).expression, walk.vocabulary);
+        return calculatedEntry;
+    }
+
+    /// The rows of the quantities @p definitionSet calculates, each with its
+    /// definition, in the order the calculation calculates them in, which
+    /// @p Placed counts along.
+    template <Vocabulary V, typename... Ds, std::size_t... Placed>
+    [[nodiscard]] std::vector<SymbolEntry> calculated_rows(Walk<V> const& walk,
+                                                           Calculation<Ds...> const& definitionSet,
+                                                           std::vector<bool>& taken,
+                                                           std::index_sequence<Placed...>)
+    {
+        using Graph = CalculationGraph<Ds...>;
+        return { calculated_row<Graph::order[Graph::inputCount + Placed] - Graph::inputCount>(
+            walk, definitionSet, taken)... };
+    }
 } // namespace detail
 
 /// Documents @p node: renders it in dialect @p D and walks it for the
@@ -1386,6 +1474,70 @@ template <Dialect D = Dialect::Plain, Unit U, SeriesNode S>
 [[nodiscard]] Documentation document(Conformity<U, S> const& node)
 {
     return document<D>(node, DefaultVocabulary {});
+}
+
+/// Documents the calculation @p definitionSet: renders it in dialect @p D,
+/// one line per definition as `render` writes a calculation, and walks each
+/// definition for the citations and symbol table a documentation page
+/// needs.
+///
+/// The symbol table opens with one row per calculated quantity, in the
+/// order the calculation calculates them in, each with its definition
+/// rendered in dialect @p D (`SymbolEntry::calculatedAs`). The inputs
+/// follow, each once, in the order the definitions first read them when
+/// read in that order -- the order they first appear in `formula`, which can
+/// differ from the order `inputs_of` and `describe_graph` list them in, the
+/// order the calculation first met them in its definitions as given. The
+/// citations are what the `Node` overload collects from each definition --
+/// each `documented()` citation among them -- definition by definition in
+/// that order, each definition's outermost first, and each as often as it
+/// is met.
+///
+/// Every symbol is written as @p vocabulary says, as in the `Node`
+/// overload. A calculation refused where it was written is documented as
+/// an empty page, and nothing more is said of it. A definition reading
+/// `attempt_input` is refused here, as a formula documented on its own is.
+template <Dialect D = Dialect::Plain, typename... Ds, Vocabulary V>
+[[nodiscard]] Documentation document(Calculation<Ds...> const& definitionSet, V const& vocabulary)
+{
+    using Graph = detail::CalculationGraph<Ds...>;
+    static_assert(std::conditional_t<Graph::valid, detail::CalculationDocumentChecks<Ds...>, std::true_type>::value);
+    detail::Walk<V> walk { .documentation = Documentation { .formula = render<D>(definitionSet, vocabulary) },
+                           .seenQuantities = {},
+                           .dialect = D,
+                           .vocabulary = vocabulary };
+    if constexpr (Graph::valid)
+    {
+        detail::collect_definitions(walk, definitionSet, std::make_index_sequence<sizeof...(Ds)> {});
+        std::vector<bool> taken(walk.documentation.symbols.size(), false);
+        std::vector<SymbolEntry> pageRows =
+            detail::calculated_rows(walk, definitionSet, taken, std::make_index_sequence<sizeof...(Ds)> {});
+        for (std::size_t walkedRow = 0; walkedRow < taken.size(); ++walkedRow)
+            if (!taken[walkedRow])
+                pageRows.push_back(std::move(walk.documentation.symbols[walkedRow]));
+        walk.documentation.symbols = std::move(pageRows);
+    }
+    return std::move(walk.documentation);
+}
+
+/// Documents a calculation in the default vocabulary, which renames
+/// nothing.
+template <Dialect D = Dialect::Plain, typename... Ds>
+[[nodiscard]] Documentation document(Calculation<Ds...> const& node)
+{
+    return document<D>(node, DefaultVocabulary {});
+}
+/// Documents @p node as `document<D>(node, vocabulary)` does, with every
+/// number the page writes -- in the formula's text, a derived quantity's
+/// derivation and a criterion's limit -- written as @p renderOptions says
+/// (`RenderOptions`, `render.hpp`). Everything else on the page is the same
+/// either way: a constant an overlay fixed is held as a `Rational`
+/// (`SymbolEntry::fixedValue`), for the caller to write as it chooses.
+template <Dialect D = Dialect::Plain, typename X, Vocabulary V>
+    requires requires(X const& written, V const& writtenIn) { document<D>(written, writtenIn); }
+[[nodiscard]] Documentation document(X const& node, V const& vocabulary, RenderOptions renderOptions)
+{
+    return document<D>(node, detail::styled(vocabulary, renderOptions.numbers));
 }
 
 } // namespace formula

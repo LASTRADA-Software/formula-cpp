@@ -5,13 +5,16 @@
 // Generic physics only, no standard cited: composing dimensions from named
 // constants rather than spelling exponents, a dimension only a rational
 // exponent can express, an exact round-tripping conversion, the affine case a
-// temperature scale needs, a unit's declared display precision applied to a
-// computed value, and a bounds check that tells "never checked" apart from
-// "checked and passed".
+// temperature scale needs on both affine scales, an energy unit whose factor to
+// the joule is a whole number, a unit's declared display precision applied to a
+// computed value, a bounds check that tells "never checked" apart from
+// "checked and passed", and a base dimension the SI does not have: money.
 
 #include <formula-cpp/formula.hpp>
 
 #include <cstdio>
+#include <expected>
+#include <string_view>
 
 namespace
 {
@@ -20,20 +23,22 @@ using formula::Exponent;
 
 /// Prints one base dimension's exponent as "^p" when integral, "^(p/q)" when
 /// not, and nothing at all when the exponent is zero.
-void print_exponent(char const* baseName, Exponent value)
+void print_exponent(std::string_view baseName, Exponent value)
 {
     if (formula::is_zero(value))
         return;
+    int const nameLength = static_cast<int>(baseName.size());
     if (formula::is_integer(value))
-        std::printf(" %s^%d", baseName, value.numerator);
+        std::printf(" %.*s^%d", nameLength, baseName.data(), value.numerator);
     else
-        std::printf(" %s^(%d/%d)", baseName, value.numerator, value.denominator);
+        std::printf(" %.*s^(%d/%d)", nameLength, baseName.data(), value.numerator, value.denominator);
 }
 
-/// Prints a Dimension as its seven-exponent vector, base dimensions omitted
-/// when their exponent is zero. There is no formula::operator<<: the library
-/// keeps <ostream>/<format> out of its public headers, so a consumer that
-/// wants to print a Dimension writes this itself, as this example does.
+/// Prints a Dimension as its seven-exponent vector and then its named base
+/// dimensions, each omitted when its exponent is zero. There is no
+/// formula::operator<<: the library keeps <ostream>/<format> out of its public
+/// headers, so a consumer that wants to print a Dimension writes this itself,
+/// as this example does.
 void print_dimension(char const* label, Dimension value)
 {
     std::printf("%s =", label);
@@ -44,6 +49,9 @@ void print_dimension(char const* label, Dimension value)
     print_exponent("Theta", value.temperature);
     print_exponent("N", value.amount);
     print_exponent("J", value.luminosity);
+    // A slot not in use holds a zero exponent, which prints nothing.
+    for (formula::NamedBase const& base: value.namedBases)
+        print_exponent(formula::view(base.name), base.exponent);
     if (formula::is_dimensionless(value))
         std::printf(" (dimensionless)");
     std::printf("\n");
@@ -96,7 +104,7 @@ int main()
     bool const volumeRoundTrips = volumeBackInLitres == volumeInLitres;
     std::printf("volume round trip exact: %s\n", volumeRoundTrips ? "yes" : "no");
 
-    // ---- 4. The affine case: 100 degC to K and back ----
+    // ---- 4. The affine case: 100 degC to K and back, then degF to degC ----
     //
     // Conversion moves a POINT on a scale, not a difference: 100 degC is not
     // 100 K, it is 100 K above the offset between the two scales.
@@ -111,7 +119,34 @@ int main()
     bool const temperatureRoundTrips = tempBackInCelsius == tempInCelsius;
     std::printf("temperature round trip exact: %s\n", temperatureRoundTrips ? "yes" : "no");
 
-    // ---- 5. A unit's declared precision applied to a computed value ----
+    // The second affine scale. -40 is where degrees Fahrenheit and degrees
+    // Celsius meet, so it converts to itself. 100 degF is a number of degrees
+    // Celsius that is a fraction, 340/9, not a terminating decimal, and it is
+    // kept as that fraction: converting divides by 9 and rounds nothing.
+    Rational const minusFortyInFahrenheit = *Rational::make(-40, 1);
+    Rational const minusFortyInCelsius = formula::convert(minusFortyInFahrenheit, unit::Fahrenheit, unit::Celsius);
+    Rational const hundredInFahrenheit = *Rational::make(100, 1);
+    Rational const hundredFahrenheitInCelsius = formula::convert(hundredInFahrenheit, unit::Fahrenheit, unit::Celsius);
+
+    std::printf("-40 degF = %lld degC\n", static_cast<long long>(minusFortyInCelsius.numerator()));
+    std::printf("100 degF = %lld/%lld degC\n",
+                static_cast<long long>(hundredFahrenheitInCelsius.numerator()),
+                static_cast<long long>(hundredFahrenheitInCelsius.denominator()));
+    bool const fahrenheitConvertsExactly = minusFortyInCelsius == *Rational::make(-40, 1)
+                                           && hundredFahrenheitInCelsius == *Rational::make(340, 9);
+
+    // ---- 5. Power and energy: a kilowatt-hour is exactly 3600000 joules ----
+    //
+    // A watt-hour is the energy of one watt sustained for an hour, 3600
+    // joules, and a kilowatt-hour is a thousand of them: the factor is a whole
+    // number, so the conversion needs no rounded constant.
+    Rational const oneKilowattHour = *Rational::make(1, 1);
+    Rational const kilowattHourInJoules = formula::convert(oneKilowattHour, unit::KilowattHour, unit::Joule);
+
+    std::printf("1 kWh = %lld J\n", static_cast<long long>(kilowattHourInJoules.numerator()));
+    bool const kilowattHourIsExact = kilowattHourInJoules == *Rational::make(3600000, 1);
+
+    // ---- 6. A unit's declared precision applied to a computed value ----
     //
     // A generic density and a generic volume, multiplied to a mass -- the
     // point is that the RESULT of a calculation, not a literal, gets rounded
@@ -129,13 +164,13 @@ int main()
                 formula::declared_decimals(unit::Kilogram).value,
                 roundedMass.to_double());
 
-    // 450/7 kg is 64,2857..., which at kilogram's three declared places is
-    // 64,286. Asserted, not merely printed: the documentation quotes this
+    // 450/7 kg is 64.2857..., which at kilogram's three declared places is
+    // 64.286. Asserted, not merely printed: the documentation quotes this
     // number, and without a check here changing the rounding mode silently
     // changes it while the example still reports success.
     bool const massRoundsAsDocumented = roundedMass == *Rational::from_decimal(64286, -3);
 
-    // ---- 6. Bounds: NotChecked is not a verdict, WithinBounds is ----
+    // ---- 7. Bounds: NotChecked is not a verdict, WithinBounds is ----
     constexpr Unit BoundedGauge { .dimension = dim::Scalar,
                                   .magnitudeNumerator = 1,
                                   .magnitudeDenominator = 100,
@@ -151,9 +186,51 @@ int main()
     bool const boundsBehaveAsDocumented =
         unboundedVerdict == BoundsCheck::NotChecked && boundedVerdict == BoundsCheck::WithinBounds;
 
+    // ---- 8. A base dimension the SI does not have: money ----
+    //
+    // A currency is not a bare number, so it gets a base dimension of its
+    // own, named by the application: base_dimension("EUR"). The unit named
+    // after the base has magnitude one, and a cent is a hundredth of it. A tariff
+    // in euros per energy times an energy is euros; and euros never convert
+    // into yen, because an exchange rate is data -- a quantity in yen per euro
+    // -- not a conversion factor.
+    Dimension const euros = formula::base_dimension("EUR");
+    Dimension const tariff = euros / dim::Energy;
+    Dimension const tariffTimesEnergy = tariff * dim::Energy;
+    print_dimension("tariff (EUR / energy)", tariff);
+    print_dimension("tariff * energy", tariffTimesEnergy);
+
+    constexpr Unit Euro { .dimension = formula::base_dimension("EUR"),
+                          .symbolText = formula::symbol("EUR"),
+                          .decimals = 2 };
+    constexpr Unit EuroCent { .dimension = formula::base_dimension("EUR"),
+                              .magnitudeNumerator = 1,
+                              .magnitudeDenominator = 100,
+                              .symbolText = formula::symbol("ct"),
+                              .decimals = 0 };
+    constexpr Unit Yen { .dimension = formula::base_dimension("JPY"),
+                         .symbolText = formula::symbol("JPY"),
+                         .decimals = 0 };
+
+    Rational const priceInEuros = *Rational::make(250, 1);
+    Rational const priceInCents = formula::convert(priceInEuros, Euro, EuroCent);
+    Rational const priceBackInEuros = formula::convert(priceInCents, EuroCent, Euro);
+    std::expected<Rational, formula::ArithmeticError> const priceInYen =
+        formula::checked_convert(priceInEuros, Euro, Yen);
+
+    std::printf("250 EUR = %lld ct\n", static_cast<long long>(priceInCents.numerator()));
+    std::printf("... converted back = %lld EUR\n", static_cast<long long>(priceBackInEuros.numerator()));
+    std::printf("250 EUR to JPY: %s\n",
+                priceInYen.has_value() ? "converted" : formula::describe(priceInYen.error()).data());
+    bool const moneyBehavesAsDocumented = tariffTimesEnergy == euros && !(tariff == euros)
+                                          && priceInCents == *Rational::make(25000, 1)
+                                          && priceBackInEuros == priceInEuros && !priceInYen.has_value()
+                                          && priceInYen.error() == formula::ArithmeticError::DomainError;
+
     // ---- summary ----
     bool const allChecksPassed = compositionMatches && rootIsHalfPower && volumeRoundTrips && temperatureRoundTrips
-                                  && massRoundsAsDocumented && boundsBehaveAsDocumented;
+                                  && fahrenheitConvertsExactly && kilowattHourIsExact && massRoundsAsDocumented
+                                  && boundsBehaveAsDocumented && moneyBehavesAsDocumented;
     std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

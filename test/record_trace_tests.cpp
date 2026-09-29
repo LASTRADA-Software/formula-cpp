@@ -333,16 +333,20 @@ TEST_CASE("a scope reported without its origin records none, and says so", "[rec
 
 TEST_CASE("a step costs what it cost before records were traced", "[record-trace]")
 {
-    // 1008 bytes on master, measured on cl, g++ 13 and 14, and clang++ with
-    // libstdc++ and libc++, all 64-bit. This phase's per-step facts -- the
-    // source, whether a replaced entry was empty, and the record's number --
-    // fit in padding `Step` already had; each origin and each lineage
-    // comparison lives once, in the trace's side tables. A checked standard
-    // library's containers are larger, and so is every step there, on master
-    // as here, so only an unchecked 64-bit build pins the number.
+    // 1296 bytes, measured on cl, clang-cl, g++ 13 and 14, and clang++ with
+    // libstdc++, all 64-bit. It was 1008 until a `Dimension` could carry named base
+    // dimensions: each of its four slots holds a 16-byte name and an 8-byte
+    // exponent, so a `Dimension` grew from 56 bytes to 152 and a `Unit` from
+    // 152 to 248, and a step holds one dimension and two units -- 3 x 96 = 288
+    // bytes more. Records' per-step facts -- the source, whether a replaced
+    // entry was empty, and the record's number -- still fit in padding `Step`
+    // already had; each origin and each lineage comparison lives once, in the
+    // trace's side tables. A checked standard library's containers are larger,
+    // and so is every step there, so only an unchecked 64-bit build pins the
+    // number.
 #if (defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0) || defined(_GLIBCXX_DEBUG)
     SUCCEED("a checked standard library's containers change every step's size, so nothing is pinned here");
 #else
-    STATIC_REQUIRE((sizeof(void*) != 8 || sizeof(formula::Step<formula::Rational>) == 1008));
+    STATIC_REQUIRE((sizeof(void*) != 8 || sizeof(formula::Step<formula::Rational>) == 1296));
 #endif
 }

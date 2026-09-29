@@ -36,7 +36,7 @@ so the census recommends 128-bit intermediate arithmetic.
 
 **Whether 128-bit intermediate arithmetic is enough depends on where the last
 conversion happens.** Wider intermediates help only when every value that is
-stored fits 64 bits. The evaluator works in coherent SI and converts to the
+stored fits 64 bits. The evaluator works in the coherent unit and converts to the
 result's declared unit last. For most of the variances that overflow at 6
 decimal places, and for every cylinder strength that overflows, the exact
 value *in SI* (kg², Pa) needs 64 bits or more; in the declared unit (g², MPa)
@@ -114,9 +114,8 @@ The figures are deterministic: the census program prints the same on cl
 19.51 and gcc 13.3, and the clang and gcc presets hold it to the same pins.
 The examples table below is cl's. clang and gcc evaluate a `const` local's
 constant initialiser at compile time, where cl runs it, so under them a
-program can report fewer integers -- today `dimensions_and_units` and
-`expressions` each read one bit fewer. The test holds every compiler to at
-least this table's headroom.
+program can report fewer integers -- today `expressions` leaves one bit more
+headroom. The test holds every compiler to at least this table's headroom.
 
 ## The census
 
@@ -134,11 +133,12 @@ Each program's largest integers over everything it evaluates at run time.
 |---|---|---|---|---|
 | example `simple` | 4 | 10 | 6 | 53 |
 | example `exact_numbers` | 9 | 10 | 9 | 53 |
-| example `dimensions_and_units` | 20 | 10 | 19 | 43 |
+| example `dimensions_and_units` | 22 | 10 | 22 | 41 |
 | example `quantities` | 4 | 10 | 9 | 53 |
 | example `expressions` | 3 | 2 | 0 | 60 |
 | example `citations` | 4 | 10 | 6 | 53 |
 | example `composition` | 10 | 10 | 9 | 53 |
+| example `electricity_bill` | 31 | 26 | 31 | 32 |
 | example `tracing` | 10 | 10 | 9 | 53 |
 | example `rounding_and_conditionals` | 27 | 20 | 27 | 36 |
 | example `constraints` | 26 | 20 | 26 | 37 |
@@ -148,6 +148,7 @@ Each program's largest integers over everything it evaluates at run time.
 | example `series` | 15 | 15 | 15 | 48 |
 | example `records` | 25 | 25 | 25 | 38 |
 | example `opaque_and_retry` | 48 | 60 | 60 | 3 |
+| example `display` | 15 | 17 | 17 | 46 |
 | the gallery generator | 29 | 27 | 29 | 34 |
 
 <!-- /census:examples -->
@@ -168,8 +169,9 @@ leaves.
 The fixtures are the shared fixtures of the statistics tests: masses of
 about 40 g read to 0.1 g. The spread is `rounded_sqrt` of the variance; its
 unsigned bits are out of 64. The 64-point curve reads invented screen
-openings from 101 to 461 mm. The last two rows are phase 15's least-squares
-fit on its own test fixtures; the fit over every size is below.
+openings from 101 to 461 mm. The last two rows are the least-squares fit
+([Opaque operations and bounded retry](opaque-and-retry.md)) on its own test
+fixtures; the fit over every size is below.
 
 <!-- census:statistics -->
 
@@ -234,7 +236,7 @@ standard deviations square twice, and are the first to run out.
 
 `tools/census/exact_sizes.py` draws the same samples with Python's exact
 `fractions` and sizes the exact, fully reduced results twice: in the
-coherent SI unit the evaluator works in (kg², Pa), and in the result's
+coherent unit the evaluator works in (kg², Pa), and in the result's
 declared unit (g², MPa), the unit `checked_evaluate` returns. The census test
 and CTest's `census.exact-sizes-self-check` hold both generators to the same
 literals, and `census.exact-sizes` holds these figures:
@@ -294,8 +296,8 @@ These are asserted by the census program's own tests.
 ### Least squares (realistic, and one stress control)
 
 `linear_least_squares` sums, over the points, squares and products of each
-point's coordinates, centred on their means. The data are the phase 15
-spike's shapes, in seconds and newtons so that the fit sees them
+point's coordinates, centred on their means. The data come in three
+shapes, in seconds and newtons so that the fit sees them
 unconverted: readings at 1 decimal place; readings at 3 decimal places of a
 few thousand newtons, a load cell's; and a different denominator on every
 point, the stress control. Every size from 2 to 128 points is fitted through
@@ -318,7 +320,7 @@ larger size does. So no number of points is safe to state; an overflowing
 fit is `Overflow`, never a line. It has no traced fallback in `double`: a
 curve evaluates only in `Rational`, so `checked_evaluate_si<double>` over a
 fit is refused. `LinearLeastSquares::compute<double>` can be called
-directly, on numbers already in coherent SI, but nothing it returns is
+directly, on numbers already in coherent units, but nothing it returns is
 checked, traced, rendered or documented.
 
 ## Which cases decide

@@ -1,0 +1,581 @@
+# Displaying numbers
+
+formula-cpp computes exactly: every value is a `Rational`, and by default a
+trace, a rendered formula and a documentation page write one as a fraction,
+`863/1000`. That text is always exact and always reproducible, but a reader
+expects `0.863`. This page shows how to get
+decimals on each surface, and the one rule that governs all of them: **a
+decimal is written only where it is the exact value, and a rounded one only
+where you ask for it.**
+
+The four ways a number reaches text, each covered below:
+
+- a **trace**, and a [worksheet's derivation](calculations.md#how-a-value-was-reached),
+  through `TraceRenderOptions::numbers`;
+- a **rendered formula** and its **documentation**, through `RenderOptions`;
+- **`number_text()`** and **`decimal_text()`**, which need neither `<format>`
+  nor an allocation;
+- **`std::format`**, for a `Rational` or a `Measured<Q>`, once
+  `<formula-cpp/format.hpp>` is included.
+
+The worked example is `examples/display.cpp`: a soil specimen's moisture
+content, from its wet and dried masses in a dish. **Program output** on this
+page is copied verbatim from that program's output, and `docs.display-output`
+fails unless each output block is a run of consecutive lines the program
+prints, exactly as quoted (`cmake/CheckGuideOutput.cmake`). **Code** is copied
+from the example's source, and `docs.display-snippets` fails unless each code
+block appears there as a run of consecutive lines, compared without their
+indentation (`cmake/CheckGuideSnippets.cmake`). A code block deliberately not
+from the example carries a `<!-- snippet: not from the example -->` comment
+directly above it; one on this page does, a spec that must not compile.
+
+Every number on this page is invented.
+
+## Why decimals are opt-in, and never approximate
+
+`3/5` is `0.6`, exactly: a decimal that ends. `1/3` has no such decimal, and
+`0.333` is not `1/3` -- it is a different number, one nobody can reproduce
+from the page it is printed on. So under an exact-decimal style the library
+writes `0.6` beside `1/3`, both exact, rather than `0.6` beside `0.333`, one of
+them a claim the arithmetic never made.
+
+A rounded decimal is still available, because a reader often wants one. It is
+**opt-in**: you ask for it by naming a rounding mode, since the same number
+rounds differently under different methods ([Exact numbers](numbers.md#rounding)),
+and the library never picks one for you. Where a style rounds only the values
+that need it -- a trace's, `number_text`'s, `std::format`'s `~` -- a rounded
+value is **always marked**: `≈0.113`, never `0.113`, so it cannot pass for the
+exact one. Only a rounding you ask for outright, to a number of places
+(`decimal_text`, `std::format`'s `.N`), is written unmarked, as you asked.
+
+Traces, rendered formulas and documentation keep fractions unless asked. Text
+a program wrote before these options existed -- an archived audit trail, a
+pinned test -- reads exactly as it did, unless the program asks for decimals.
+
+## Decimals in a trace
+
+The moisture content is the water the specimen lost over its dry mass, the
+dish's 25.5 g taken off:
+
+```cpp
+inline constexpr auto moistureContent =
+    (var<WetMass> - var<DryMass>) / (var<DryMass> - formula::constant<unit::Gram>(rat(51, 2)));
+
+inline constexpr auto specimen =
+    formula::environment(formula::Measured<WetMass> { rat(787, 5) }, formula::Measured<DryMass> { rat(144) });
+```
+
+`rat(n, d)` is the example's shorthand for `Rational { n, d }`. The example
+evaluates the formula and records every step into a `Trace`
+([Tracing](tracing.md)):
+
+```cpp
+formula::Trace<> trace {};
+auto const moisture =
+    formula::checked_evaluate<MoistureContent>(moistureContent, specimen, formula::RecordingSink<> { trace });
+```
+
+`render_trace` takes the style in `TraceRenderOptions::numbers`. One trace,
+four ways:
+
+```cpp
+NumberStyle const exactStyle = NumberStyle::exact_decimal();
+NumberStyle const roundedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
+NumberStyle const paddedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded);
+std::string const fractions = formula::render_trace(trace, { .maxSteps = 20 });
+std::string const exactDecimals = formula::render_trace(trace, { .maxSteps = 20, .numbers = exactStyle });
+std::string const rounded = formula::render_trace(trace, { .maxSteps = 20, .numbers = roundedStyle });
+std::string const padded = formula::render_trace(trace, { .maxSteps = 20, .numbers = paddedStyle });
+```
+
+```text
+-- fractions, the default --
+1. m_w = 787/5 g
+2. m_d = 144 g
+3. #1 - #2 = 67/5000
+4. m_d = 144 g
+5. 51/2 g
+6. #4 - #5 = 237/2000
+7. #3 / #6 = 134/1185
+```
+
+```text
+-- exact decimals --
+1. m_w = 157.4 g
+2. m_d = 144 g
+3. #1 - #2 = 0.0134
+4. m_d = 144 g
+5. 25.5 g
+6. #4 - #5 = 0.1185
+7. #3 / #6 = 134/1185
+```
+
+```text
+-- rounded where no decimal ends --
+1. m_w = 157.4 g
+2. m_d = 144 g
+3. #1 - #2 = 0.0134
+4. m_d = 144 g
+5. 25.5 g
+6. #4 - #5 = 0.1185
+7. #3 / #6 = ≈0.113
+```
+
+```text
+-- rounded and padded --
+1. m_w = 157.4 g
+2. m_d = 144.0 g
+3. #1 - #2 = 0.0134
+4. m_d = 144.0 g
+5. 25.5 g
+6. #4 - #5 = 0.1185
+7. #3 / #6 = ≈0.113
+```
+
+The three styles, each a `NumberStyle`:
+
+| Style | Writes | Line 7 above |
+|---|---|---|
+| `NumberStyle::fraction()` | every value as a fraction in lowest terms -- the default | `134/1185` |
+| `NumberStyle::exact_decimal()` | the exact decimal where the value has one, otherwise the fraction | `134/1185` |
+| `NumberStyle::approximate_decimal(mode)` | the exact decimal where there is one, otherwise the value rounded in `mode` at its unit's declared decimals, marked `≈` | `≈0.113` |
+
+A unit's **declared decimals** are the precision its definition states
+([Declared precision and bounds](dimensions.md#declared-precision-and-bounds)):
+the gram declares one, the percent one. Both decimal styles take a second
+argument, `DecimalPadding`. `Trimmed`, the default, writes a decimal as short
+as it is; `Padded` pads it with zeros to its unit's declared decimals, so a
+column of grams reads `144.0 g` beside `157.4 g`. Padding never cuts a decimal
+short: a value with more decimals than its unit declares keeps every one of
+them, as the padded trace of the dish's weighings below shows.
+
+A worksheet's derivation, `render_derivation`
+([How a value was reached](calculations.md#how-a-value-was-reached)), takes the same
+`TraceRenderOptions`. Its steps and inputs read as a trace's lines do in the
+style. Each block's header states its value in the unit its quantity
+declares, as a line of another block that reads the value states it --
+rounded, padded or exact alike. The block's own last step agrees with the
+header on whether the value is typed, and a typed value is exact on every one
+of those lines. That is all they agree on: where the last step computed the
+value, it states it in the coherent unit, so it may differ from the header in
+its unit, its padding and its decimals, and one may read `≈` where the other
+does not. The header's definition is written as a rendered formula is (see
+below), its typed numbers exact.
+
+### A value in a unit nobody declared
+
+Line 3 reads `0.0134`, with no unit. A value the arithmetic computed -- a
+difference, a product, a ratio -- is stated in the coherent unit of its
+dimension, here the kilogram: `0.0134` is the 13.4 g the specimen lost. Nobody
+declared that unit for this formula, so its decimals are `Unit`'s default of 3,
+which is no one's statement of precision. Such a value is **never padded** --
+the padded trace in the next section writes a computed 0.12 kg as `0.12`, not
+`0.120` -- and when it is rounded it keeps those **3 places** (bar one
+exception, below): line 7's ratio reads `≈0.113`.
+
+Three places of a kilogram can hide almost everything. The dish's mass, the
+mean of three weighings in grams, is computed in kilograms:
+
+```cpp
+// The mean of three weighings: their sum times a typed 1/3, which has no exact decimal.
+inline constexpr auto dishMass = formula::sum(formula::series<DishWeighing, 3>) * formula::number(rat(1, 3));
+```
+
+Its trace, rendered in the rounded and padded style:
+
+```text
+1. t = 4.21 g; 4.23 g; 4.26 g
+2. sum(#1) = 12.7 g
+3. 1/3
+4. #2 * #3 = ≈0.004
+```
+
+A series' sum keeps its quantity's unit: line 2 is in grams. The product on
+line 4 is not: it is 0.004233... kg, rounded to 3 places of a kilogram, and
+not padded: `≈0.004`. Line 1's weighings keep their second decimal, though the
+gram declares one: padding never cuts a decimal short. The `≈` says line 4 was
+rounded; the result itself, read in the unit its quantity declares, keeps what
+matters:
+
+```text
+the dish's mass in its declared grams: ≈4.2 g
+```
+
+Where those 3 places would round a value other than zero to `≈0`, which says
+nothing of it, they are extended to its first significant digit, up to 18
+places, and the `≈` stays. A price worked out in euros per kilowatt-hour is
+stated in euros per joule: 3401/33480000000 reads `≈0.0000001`, not `≈0`. A
+value in a unit someone declared keeps that unit's places, whatever they
+round to.
+
+### What no style rounds
+
+**A number the author typed is written exactly, whatever the style**: a
+constant (the moisture trace's line 5, `25.5 g`), a table's bound or row, a
+permitted value, a limit. Rounding it would print a number nobody wrote. The
+dish's typed 1/3 has no exact decimal, and even the rounding style writes it
+`1/3` (line 3 above).
+
+**Nor is either side of a comparison that a trace line states beside its
+verdict.** Two specimens' moisture contents, checked against a limit of at
+most 12 %:
+
+```cpp
+inline constexpr auto moistureLimit = formula::conformity<unit::Percent>(
+    formula::series<MoistureContent, 2>, atMostTwelve, formula::Verdict { "dry the specimen again" });
+```
+
+```text
+1. w = ≈11.2 %; ≈12 %
+2. conform(#1) [1 satisfied, 67/6 % (at most 12 %); 2 violated, 289/24 % (at most 12 %): dry the specimen again]
+```
+
+Line 1, the input, is rounded at the percent's one declared decimal: the
+second specimen's 289/24 %, 12.0416... %, rounds to 12.0 and reads `≈12 %`,
+its zero trimmed, since this style does not pad. Line 2 states both
+values it compared exactly, `67/6 %` and `289/24 %`. Rounded, the second would
+read `≈12 % (at most 12 %)` beside the verdict *violated* -- a comparison that
+contradicts itself -- so a compared value is never shown rounded.
+
+## Decimals in a rendered formula and its documentation
+
+`render()` and `document()` take the style in `RenderOptions`, beside the
+[vocabulary](citations.md#whose-symbols-a-jurisdictions-vocabulary) that says
+how each quantity's symbol is written (`DefaultVocabulary {}` renames nothing).
+They take it for a formula and for a
+[calculation](calculations.md#defining-named-values) alike:
+`render(calculation, vocabulary, options)` writes each definition's numbers in
+it, and `document(calculation, vocabulary, options)` its formula and each
+calculated quantity's `calculatedAs`.
+
+For the moisture content:
+
+```cpp
+formula::RenderOptions const decimals { .numbers = NumberStyle::exact_decimal() };
+std::string const defaultText = formula::render(moistureContent);
+std::string const decimalText = formula::render(moistureContent, formula::DefaultVocabulary {}, decimals);
+std::string const latexText =
+    formula::render<formula::Dialect::LaTeX>(moistureContent, formula::DefaultVocabulary {}, decimals);
+formula::Documentation const page = formula::document(moistureContent, formula::DefaultVocabulary {}, decimals);
+```
+
+```text
+default:        (m_w - m_d) / (m_d - 51/2 g)
+exact decimals: (m_w - m_d) / (m_d - 25.5 g)
+LaTeX:          \frac{m_w - m_d}{m_d - 25.5\,\mathrm{g}}
+document():     (m_w - m_d) / (m_d - 25.5 g)
+```
+
+**Every number in a formula's text was typed by its author** -- a constant, a
+table's bound or row, a permitted value, a limit -- so every one is written as
+typed: exactly, and never padded. `NumberStyle::exact_decimal(DecimalPadding::Padded)`
+and `NumberStyle::approximate_decimal(mode)` are accepted and act here as
+`NumberStyle::exact_decimal()`: no `≈` appears in a formula. `document()`
+writes every number on its page the same way: its formula, a derived
+quantity's derivation (`derivedAs`, [Methods and overlays](methods-and-overlays.md))
+and a rejection's limit. The dish's mass states a typed 1/3, and a rejection of
+its weighings a typed limit of 1/30 of the pass's mean
+([Statistics](statistics.md)):
+
+```cpp
+inline constexpr auto dishMean = formula::sample_mean(
+    formula::without_outliers<formula::PerPass::MostExtreme,
+                              formula::OnLimit::Keep,
+                              formula::AtMost<1>,
+                              formula::KeepAtLeast<2>>(
+        formula::series<DishWeighing, 3>,
+        formula::deviation_from_mean(rat(1, 30) * formula::pass_mean<DishWeighing>),
+        formula::Verdict { "weigh the dish again" }));
+```
+
+Under the rounding style, both stay fractions:
+
+```cpp
+formula::RenderOptions const rounding { .numbers = roundedStyle };
+std::string const dishFormula = formula::render(dishMass, formula::DefaultVocabulary {}, rounding);
+formula::Documentation const dishPage = formula::document(dishMean, formula::DefaultVocabulary {}, rounding);
+```
+
+```text
+formula, rounded style:           sum(t(i)) * 1/3
+rejection's limit, rounded style: 1/30 * pass mean
+```
+
+**A trace pads where a formula does not, on purpose.** A trace's lines state
+values in a column, where a uniform number of decimals is what padding is for.
+A tare typed as a whole 24 g, under a padding style:
+
+```text
+formula, padded style: m_d - 24 g
+trace, padded style:
+1. m_d = 144.0 g
+2. 24.0 g
+3. #1 - #2 = 0.12
+```
+
+The formula states the 24 its author typed; the trace pads it to the gram's one
+decimal, as it pads every value in grams. Line 3, 0.12 kg in a unit nobody
+declared, is not padded to that unit's default 3 decimals.
+
+The style reaches every node through the vocabulary, the one argument every
+`render_node` already receives -- your own included
+([a consumer's own node](citations.md#whose-symbols-a-jurisdictions-vocabulary)).
+`number_style_of(vocabulary)` reads the style it carries. A node of yours that
+writes a number its author typed should write it as every node of the
+library writes a formula's numbers, in `typed_number_style(vocabulary)`: that
+style, exact only and never padded -- `NumberStyle::fraction()` stays itself,
+and every decimal style becomes `NumberStyle::exact_decimal()`.
+
+## `number_text` and `decimal_text`
+
+`number_text()` spells a `Rational` in a unit, or a `Measured<Q>` in its
+quantity's unit, in a `NumberStyle` -- the same spelling a trace line gives.
+`decimal_text()` rounds to a number of places you name, in a mode you name,
+and writes exactly what [`checked_round`](numbers.md#rounding) rounds to. Both live in
+`number_text.hpp`, which `formula.hpp` includes, and both:
+
+- need **no `<format>`** and no `<string>`: the result is a `NumberText`, a
+  fixed 64-byte buffer, so they **allocate nothing**;
+- are **`constexpr`**, so a spelling can be checked at compile time:
+
+```cpp
+static_assert(formula::number_text(Rational { 3, 5 }, NumberStyle::exact_decimal(), unit::One) == "0.6");
+static_assert(formula::number_text(Rational { 1, 3 }, NumberStyle::exact_decimal(), unit::One) == "1/3");
+```
+
+The example spells the specimen's moisture content, `w`, and a moisture
+content nobody measured:
+
+```cpp
+formula::Measured<MoistureContent> const w = moisture->measurement();
+formula::Measured<MoistureContent> const notMeasured = formula::Measured<MoistureContent>::absent();
+formula::NumberText const measuredText = formula::number_text(w, roundedStyle);
+formula::NumberText const absentText = formula::number_text(notMeasured, roundedStyle);
+formula::NumberText const twoPlaces =
+    formula::decimal_text(w.value(), formula::DecimalPlaces { 2 }, RoundingMode::HalfEven, DecimalPadding::Padded);
+```
+
+```text
+measured:     ≈11.3 %
+not measured: (not measured)
+two places:   11.31
+```
+
+A `Measured` value that is absent reads `(not measured)`, in every style.
+
+A `NumberText`'s characters are read through `view()`, on a named object --
+`view()` on a temporary does not compile, since the view would outlive the
+buffer. The example prints each one so:
+
+```cpp
+/// Prints @p label and @p spelled, a number `number_text` or `decimal_text` wrote.
+void print_spelled(char const* label, formula::NumberText const& spelled)
+{
+    std::printf("%s%.*s\n", label, static_cast<int>(spelled.view().size()), spelled.view().data());
+}
+```
+
+**When a number cannot be spelled.** `decimal_text` throws
+`ArithmeticException` for more than 18 places, and where rounding to whole
+tens or thousands overflows. `number_text` throws it where its rounding
+overflows so, and for a padded or approximating style in a unit whose
+declared decimals lie outside -18 to 18. Each has a `checked_` form,
+`checked_decimal_text` and `checked_number_text`, that returns the
+`ArithmeticError` in a `std::expected` instead of throwing. A trace never
+throws for a number: a line whose value its style cannot spell reads
+`(not shown: ...)`, the reason in place of the dots, and a bound or a limit
+the author typed falls back to its exact fraction. A formula's text writes
+every number exact and unpadded, which cannot fail.
+
+**Prefer them** in code that must not pull in `<format>` -- a header of your
+own that consumers include everywhere -- in a spelling checked at compile
+time, and where you already hold the `NumberStyle` a trace was rendered in,
+so that a report and its trace spell each value alike. Reach for
+`std::format` when the number is one part of a longer text.
+
+## Formatting with `std::format`
+
+### Opting in
+
+```cpp
+#include <formula-cpp/format.hpp>
+```
+
+`formula.hpp` does not include it: it includes `<format>`, which a consumer
+who only evaluates numbers should not compile in every translation unit.
+**Include it in every translation unit that formats a `Rational` or a
+`Measured`, or asks whether it can** (`std::formattable`). The header declares
+explicit specialisations of `std::formatter`, and an explicit specialisation
+must be seen before any use that would otherwise instantiate the primary
+template; translation units that disagree about it make the program
+ill-formed, with no diagnostic required. **The library owns these two
+specialisations** -- `std::formatter<formula::Rational, char>` and
+`std::formatter<formula::Measured<Q>, char>` -- so a consumer must not
+specialise them too. Only `char` is supported: a unit's symbol is UTF-8.
+
+### The spec
+
+In the table and the reference below, `w` is the specimen's moisture content,
+2680/237 %, and `notMeasured` one nobody measured, both from the previous
+section; `wetMass`, `oven` and `grain` are measured here:
+
+```cpp
+formula::Measured<WetMass> const wetMass { rat(787, 5) };
+formula::Measured<OvenTemperature> const oven { rat(583, 10) };
+formula::Measured<GrainSize> const grain { rat(217) };
+```
+
+| Spec | Meaning | Example | Output |
+|---|---|---|---|
+| `{}` | the exact decimal, otherwise the fraction | `std::format("{}", Rational { 3, 5 })` | `0.6` |
+| `{}` | a value with no exact decimal stays its fraction | `std::format("{}", Rational { 1, 3 })` | `1/3` |
+| `{:/}` | always the fraction | `std::format("{:/}", Rational { 3, 5 })` | `3/5` |
+| `{:.2HalfEven}` | rounded to 2 places in the mode named, padded, not marked | `std::format("{:.2HalfEven}", Rational { 23653, 200 })` | `118.26` |
+| `{:~.3HalfEven}` | the exact decimal where there is one, otherwise rounded to 3 places and marked | `std::format("{:~.3HalfEven}", Rational { 1, 3 })` | `≈0.333` |
+| `{:~HalfEven}` | for a `Measured` only: the same, at its unit's declared decimals | `std::format("{:~HalfEven}", w)` | `≈11.3 %` |
+| `{:>8}` | right-aligned in 8 code points; `<` left, `^` centred | `std::format("{:>8}", Rational { 3, 5 })` | `"     0.6"` |
+| `{:*^7}` | centred, filled with `*` | `std::format("{:*^7}", Rational { 3, 5 })` | `**0.6**` |
+| a `Measured` | the number in its quantity's unit, then the unit's symbol | `std::format("{}", wetMass)` | `157.4 g` |
+| an absent `Measured` | `(not measured)`, whatever the body | `std::format("{}", notMeasured)` | `(not measured)` |
+
+The example prints every row, and checks each against the text in its
+source:
+
+```text
+std::format("{}", Rational { 3, 5 })                           0.6
+std::format("{}", Rational { 1, 3 })                           1/3
+std::format("{:/}", Rational { 3, 5 })                         3/5
+std::format("{:.2HalfEven}", Rational { 23653, 200 })          118.26
+std::format("{:.2HalfAwayFromZero}", Rational { 23653, 200 })  118.27
+std::format("{:.2HalfEven}", Rational { 4 })                   4.00
+std::format("{:~.3HalfEven}", Rational { 1, 3 })               ≈0.333
+std::format("{:~.3HalfEven}", Rational { 3, 5 })               0.6
+std::format("{:>8}", Rational { 3, 5 })                        "     0.6"
+std::format("{:*^7}", Rational { 3, 5 })                       **0.6**
+std::format("{}", wetMass)                                     157.4 g
+std::format("{}", w)                                           2680/237 %
+std::format("{:~HalfEven}", w)                                 ≈11.3 %
+std::format("{:.2HalfEven}", w)                                11.31 %
+std::format("{}", notMeasured)                                 (not measured)
+std::format("{:>8~.3HalfEven}", Rational { 1, 3 })             "  ≈0.333"
+std::format("{:>8}", oven)                                     " 58.3 °C"
+std::format("{:>8}", grain)                                    "  217 µm"
+```
+
+The whole grammar:
+
+```
+spec  ::= [[fill] align] [width] [body]         fill: one Unicode scalar value; align: < > ^ (default >)
+body  ::= ''                   exact decimal, else fraction      0.6   1/3    157.4 g
+        | '/'                  fraction                           3/5   1/3
+        | '.' N Mode           rounded to N (0..18), padded       {:.2HalfEven} -> 118.26
+        | '~' ['.' N] Mode     exact where exact, else ≈ rounded  {:~.3HalfEven} -> ≈0.333
+Mode  ::= HalfAwayFromZero | HalfTowardZero | HalfEven | Ceiling | Floor | TowardZero | AwayFromZero
+```
+
+A `Rational` has no unit to take places from, so `~` on a `Rational` needs
+`.N`: `{:~.3HalfEven}`, never `{:~HalfEven}`.
+
+### Rounding modes, and why none is assumed
+
+The mode is one of `RoundingMode`'s seven enumerators, spelled exactly as it
+is there: `HalfAwayFromZero`, `HalfTowardZero`, `HalfEven`, `Ceiling`,
+`Floor`, `TowardZero`, `AwayFromZero`. **There is no default.** The same
+number rounds differently under different methods -- 118.265 is `118.27` under
+`HalfAwayFromZero` and `118.26` under `HalfEven`, as the reference shows, and
+2.5 is 3 or 2 ([Exact numbers](numbers.md#rounding)) -- and which method
+applies is the method's author's decision, not a format's. So `{:.2}` does not
+compile.
+
+### Exact, fraction, or `≈`
+
+- `{}` writes the exact decimal where the value has one, and the fraction
+  otherwise. It never rounds.
+- `{:/}` always writes the fraction.
+- `{:.N Mode}` asks for a rounding outright: it rounds to N places, pads to
+  them, and writes no marker, as `decimal_text` does.
+- `{:~.N Mode}` and `{:~Mode}` write the exact decimal where there is one,
+  unpadded; only a value with none is rounded, and it is marked `≈`.
+
+`≈` never appears unless the spec asks for a rounding with `~`.
+
+### Fill, alignment and width count code points
+
+The width counts code points, not bytes, so a value holding `≈`, `°C` or `µm`
+lines up with one that does not, on every toolchain: `"  ≈0.333"`, `" 58.3 °C"`
+and `"  217 µm"` above are each eight characters, although `≈` is three bytes
+and `°` and `µ` two. The fill is one Unicode scalar value, any but `{` and
+`}`; the odd fill character of a centred value goes after it. The width is a
+whole number of at most nine digits written in the spec: a width taken from an
+argument, `{:{}}`, is refused, and so is `0`-padding, which a fraction cannot
+take.
+
+### What goes wrong, and how it shows
+
+A spec the grammar does not allow is refused by a function named for the
+mistake:
+
+| Refused by | Which specs | Write instead |
+|---|---|---|
+| `formula_number_format_needs_a_rounding_mode` | a rounding that names no mode: `{:.2}`, `{:~.3}`, `{:~}` | a mode after the places, or after `~`: `{:.2HalfEven}`, `{:~.3HalfEven}`, `{:~HalfEven}` |
+| `formula_number_format_places_out_of_range` | more than 18 places, `{:.19HalfEven}`; and `{:~HalfEven}` on a `Measured` whose unit declares more than 18 decimals, or fewer than -18 -- a spec that names no places at all, so the unit's are out of range | `.0` to `.18`: `{:~.3HalfEven}` rounds at 3 places, whatever the unit declares |
+| `formula_number_format_spec_not_understood` | anything else the grammar does not allow: a mode misspelled or mis-cased (`{:.2Half}`, `{:.2halfeven}`), a type such as `{:x}`, `0`-padding (`{:08}`), a width from an argument (`{:{}}`) or of more than nine digits, a fill that is not one Unicode scalar value or is `{`, and `{:~HalfEven}` on a `Rational` | a spec the grammar above allows; for a `Rational`, `~` with places: `{:~.3HalfEven}` |
+
+**In a literal format string it is a compile error**, because `std::format`
+checks a literal spec while compiling and the refusing function is not
+`constexpr`. The repository's own negative case holds this line:
+
+<!-- snippet: not from the example -->
+```cpp
+std::string const written = std::format("{:.2}", formula::Rational { 1, 3 });
+```
+
+MSVC's `cl.exe` (19.51, the `cl-debug` preset) reports it -- the first three
+lines, verbatim but for the paths, which are shown relative to the repository,
+before the call stack of the evaluation:
+
+```
+test\negative\format_places_without_mode.cpp(17): error C7595: 'std::basic_format_string<char,formula::Rational>::basic_format_string': call to immediate function is not a constant expression
+include\formula-cpp/format.hpp(333): note: failure was caused by call of undefined function or one not declared 'constexpr'
+include\formula-cpp/format.hpp(333): note: see usage of 'formula::detail::formula_number_format_needs_a_rounding_mode'
+```
+
+clang and g++ name the same function, in their own words.
+
+**A spec built at run time is checked when it is used**, and the same function
+throws `std::format_error`, whose message starts `formula: ` and says what to
+write instead (`check` is the example's own assertion, which counts a failure):
+
+```cpp
+std::string_view const noMode = "{:.2}";
+try
+{
+    (void) std::vformat(noMode, std::make_format_args(w));
+    check(false, "a rounding with no mode is refused");
+}
+catch (std::format_error const& refusal)
+{
+    std::printf("\nstd::vformat(\"{:.2}\", ...) throws std::format_error:\n%s\n\n", refusal.what());
+    check(std::string_view { refusal.what() }.starts_with("formula: "), "the refusal starts formula: ");
+}
+```
+
+```text
+std::vformat("{:.2}", ...) throws std::format_error:
+formula: this number format rounds but names no rounding mode -- write one after the places, as in {:.2HalfEven}; there is no default, because one number rounds differently under different methods
+```
+
+One case is refused only when a value is written, because no spec check can
+see it: `{:~Mode}` on a `Measured` whose unit declares negative decimals --
+rounding to tens or thousands. A value with an exact decimal of at most 18
+places is written as it is and never rounded: 1/10^18 at -3 decimals is
+`0.000000000000000001`. Any other value is rounded through exact arithmetic,
+which overflows for one with a large denominator, such as
+`Rational::from_double_exact(0.1)` at -3 decimals. `std::format` then throws
+`std::format_error` too, starting `formula: this number cannot be spelled as
+the format asks`; it never writes a text that is neither the value nor the
+rounding the spec asked for. No spec rounds such a value to tens or
+thousands. Write `{:~.0HalfEven}` instead to round it to whole units -- a
+rounding to 0 to 18 places is spelled by long division, which cannot
+overflow, so `from_double_exact(0.1)` reads `≈0` -- or `{:/}` for its exact
+fraction, or catch the `std::format_error`.

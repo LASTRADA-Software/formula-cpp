@@ -82,7 +82,7 @@
 /// coefficient is stated in, which is not the unit of any expression
 /// containing it, and no other node publishes one at all. The declared unit
 /// is a property of the quantity a method *reports*, and a method has no
-/// typed result that names one: `evaluate_method` answers in the coherent SI
+/// typed result that names one: `evaluate_method` answers in the coherent
 /// unit of the variants' dimension (see `overlay.hpp`). **So nothing enforces
 /// the unit half.** The dimension half is enforced here, where the variants
 /// are; the unit a method is read in is its rounding rule's, which the
@@ -1908,7 +1908,7 @@ template <typename Rep = Rational,
 }
 
 /// Evaluates the variant of @p m tagged `Tag`, rounded by @p m's own rounding
-/// rule, in the coherent SI unit of its dimension -- the same unit every
+/// rule, in the coherent unit of its dimension -- the same unit every
 /// `Evaluated<Rep>` in this library is in.
 ///
 /// `Tag` is never deduced: which variant applies is a property of the

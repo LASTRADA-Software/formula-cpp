@@ -2,8 +2,9 @@
 #pragma once
 
 /// @file
-/// Units: a dimension, an exact conversion to the coherent SI unit, a display
-/// symbol, a declared decimal precision and optional validity bounds.
+/// Units: a dimension, an exact conversion to the coherent unit -- the SI unit,
+/// times one of each named base -- a display symbol, a declared decimal
+/// precision and optional validity bounds.
 ///
 /// Every type here is *structural*, so a unit can be a non-type template
 /// parameter -- a quantity's declaration names its unit as a template argument.
@@ -15,100 +16,12 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
 
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <expected>
 #include <string_view>
 
 namespace formula
 {
-
-/// Bytes available for a unit symbol, including the terminator. Enough for the
-/// UTF-8 spellings that occur in practice: `m3`, `°C` (3 bytes), `µm` (3). A
-/// symbol that does not fit is a compile error (see `symbol()`), never a
-/// silent truncation; bump this deliberately if a real symbol ever needs more.
-inline constexpr std::size_t SymbolCapacity = 16;
-
-/// A fixed-capacity symbol. An array of a structural type is structural, which a
-/// `std::string_view` is not -- and unlike a `FixedString<N>` template this keeps
-/// `Unit` a single non-template type, so every unit has the same type.
-struct Symbol
-{
-    /// The symbol's UTF-8 bytes, zero-terminated as produced by `symbol()`;
-    /// read with `view()`, which does not assume that and scans instead of
-    /// trusting a terminator -- `Symbol` is a public aggregate, so a caller
-    /// can fill `characters` directly and leave no room for one.
-    char characters[SymbolCapacity] {};
-
-    /// Memberwise equality -- the full `SymbolCapacity` bytes, terminator
-    /// included when the value is one `symbol()` produced.
-    [[nodiscard]] constexpr bool operator==(Symbol const&) const noexcept = default;
-};
-
-namespace detail
-{
-    /// Deliberately NOT `constexpr`, for the same reason as
-    /// `formula_exponent_out_of_range` in dimension.hpp: `symbol()` runs in
-    /// exactly the same context -- a constant expression building a constant
-    /// that determines a `Unit`'s type -- and has exactly the same consequence
-    /// when it goes wrong. Truncating instead of refusing would let two
-    /// distinct symbols collapse into the same `Symbol` object and therefore
-    /// the same NTTP type, and could split a multi-byte UTF-8 character in
-    /// half. Calling this makes the enclosing expression a non-constant one,
-    /// so the mistake is a compile error at the point of use. Defined, not
-    /// merely declared, because a runtime call must still link; reaching it at
-    /// runtime is a programming error with no recovery.
-    [[noreturn]] inline void formula_unit_symbol_too_long()
-    {
-        std::abort();
-    }
-} // namespace detail
-
-/// Builds a Symbol from a byte string. Refuses -- see
-/// `formula_unit_symbol_too_long` -- rather than truncating when the text does
-/// not fit in `SymbolCapacity` bytes including the terminator; every symbol
-/// shipped by this library is well within the limit.
-[[nodiscard]] constexpr Symbol symbol(char const* spelling) noexcept
-{
-    Symbol built {};
-    std::size_t characterIndex = 0;
-    while (spelling[characterIndex] != '\0')
-    {
-        if (characterIndex + 1 >= SymbolCapacity)
-            detail::formula_unit_symbol_too_long();
-        built.characters[characterIndex] = spelling[characterIndex];
-        ++characterIndex;
-    }
-    return built;
-}
-
-/// Reads a Symbol back as a view. The storage has to be structural; this does not.
-///
-/// The scan is bounded by `SymbolCapacity` rather than left to the terminator,
-/// and that is not belt-and-braces. `Symbol` is a public aggregate -- it has to
-/// be, or `Unit` is not structural and cannot be a template argument -- so a
-/// caller can fill `characters` directly, and exactly `SymbolCapacity` bytes of
-/// text is a legal initialiser that leaves no room for a terminator. Handing
-/// that to `std::string_view { value.characters }` reads until it happens to
-/// find a zero somewhere after the array. Measured on a `Symbol` followed by
-/// seven bytes of padding: 23 characters returned from a 16-byte array, the
-/// neighbours included. A symbol built by `symbol()` is always terminated, but
-/// this function cannot assume its argument came from there.
-[[nodiscard]] constexpr std::string_view view(Symbol const& unitSymbol) noexcept
-{
-    std::size_t symbolLength = 0;
-    while (symbolLength < SymbolCapacity && unitSymbol.characters[symbolLength] != '\0')
-        ++symbolLength;
-    return std::string_view { unitSymbol.characters, symbolLength };
-}
-
-/// Deleted: binding a temporary here would return a view into a `Symbol` that
-/// is already destroyed by the time the caller reads through it -- e.g.
-/// `view(symbol("mm"))`. Measured silent on cl /W4, clang-cl /W4 and
-/// `clang++ -Wall -Wextra -Wdangling`. Bind the `Symbol` to a named local
-/// first, then call `view()` on that.
-std::string_view view(Symbol&&) = delete;
 
 /// Optional validity range, in the unit's own scale, as exact rationals.
 struct Bounds
@@ -139,25 +52,28 @@ struct Bounds
 
 /// A unit of measurement.
 ///
-/// The conversion to the coherent SI unit is affine and exact:
+/// The conversion to the coherent unit of its dimension is affine and exact:
 ///
-///     value_in_SI = value * (magnitudeNumerator / magnitudeDenominator)
-///                         + (offsetNumerator / offsetDenominator)
+///     value_in_coherent = value * (magnitudeNumerator / magnitudeDenominator)
+///                               + (offsetNumerator / offsetDenominator)
 ///
 /// stated as integer pairs so the whole descriptor stays structural, and applied
 /// by multiply-then-divide so that 30 MPa is exactly 30000000 Pa and converts
-/// back to exactly 30.
+/// back to exactly 30. The coherent unit is the SI unit of the dimension, or,
+/// for a dimension with named bases, the SI unit times one of each: the unit
+/// named after a base has magnitude one, and a hundredth of it -- a cent of a
+/// euro -- has magnitude 1/100.
 struct Unit
 {
     /// What this unit measures.
     Dimension dimension {};
-    /// Numerator of the multiplicative factor to the coherent SI unit.
+    /// Numerator of the multiplicative factor to the coherent unit.
     std::int64_t magnitudeNumerator = 1;
-    /// Denominator of the multiplicative factor to the coherent SI unit.
+    /// Denominator of the multiplicative factor to the coherent unit.
     std::int64_t magnitudeDenominator = 1;
-    /// Numerator of the additive offset to the coherent SI unit.
+    /// Numerator of the additive offset to the coherent unit.
     std::int64_t offsetNumerator = 0;
-    /// Denominator of the additive offset to the coherent SI unit.
+    /// Denominator of the additive offset to the coherent unit.
     std::int64_t offsetDenominator = 1;
     /// How the unit is written: `mm`, `°C`, and so on.
     Symbol symbolText {};
@@ -361,12 +277,30 @@ namespace unit
 
     /// The coherent SI unit of thermodynamic temperature.
     inline constexpr Unit Kelvin { .dimension = dim::Temperature, .symbolText = symbol("K"), .decimals = 2 };
-    /// The affine unit, and the reason `Unit` carries an offset at all.
+    /// One of the two affine units, and the reason `Unit` carries an offset at
+    /// all; `Fahrenheit` is the other. Zero degrees Celsius is 273.15 kelvin.
+    /// Conversion moves a point on the scale, not a difference, so one degree
+    /// Celsius converts to 274.15 kelvin, not to one kelvin; `checked_convert`
+    /// does not convert differences.
     inline constexpr Unit Celsius { .dimension = dim::Temperature,
                                     .offsetNumerator = 27315,
                                     .offsetDenominator = 100,
                                     .symbolText = symbol("\xc2\xb0" "C"),
                                     .decimals = 1 };
+    /// The other affine unit. A degree is exactly 5/9 of a kelvin, and zero
+    /// degrees Fahrenheit is exactly 459.67 * 5/9 = 45967/180 kelvin, so no
+    /// conversion rounds: 32 degrees is 273.15 kelvin, and -40 degrees is -40
+    /// degrees Celsius. Converting to Celsius divides by 9, so a reading is
+    /// often a fraction that is not a terminating decimal, and is kept as that
+    /// fraction: 100 degrees is 340/9 degrees Celsius, not a rounded 37.78. Like
+    /// `Celsius`, it converts a point, not a difference. One decimal, `Celsius`'s.
+    inline constexpr Unit Fahrenheit { .dimension = dim::Temperature,
+                                       .magnitudeNumerator = 5,
+                                       .magnitudeDenominator = 9,
+                                       .offsetNumerator = 45967,
+                                       .offsetDenominator = 180,
+                                       .symbolText = symbol("\xc2\xb0" "F"),
+                                       .decimals = 1 };
 
     /// The coherent SI unit of force. One decimal rather than `Pascal`'s
     /// none: a newton is a coarse enough unit that reporting a tenth of one is
@@ -423,6 +357,28 @@ namespace unit
                                       .magnitudeNumerator = 1000,
                                       .symbolText = symbol("kJ"),
                                       .decimals = 1 };
+    /// The coherent SI unit of power: a joule per second. One decimal, as
+    /// `Joule` has.
+    inline constexpr Unit Watt { .dimension = dim::Power, .symbolText = symbol("W"), .decimals = 1 };
+    /// One thousand watts. Three decimals, so that the last digit is one watt.
+    inline constexpr Unit Kilowatt { .dimension = dim::Power,
+                                     .magnitudeNumerator = 1000,
+                                     .symbolText = symbol("kW"),
+                                     .decimals = 3 };
+    /// The energy of one watt sustained for an hour: exactly 3600 joules. An
+    /// energy, not a power -- the two are different dimensions and the type
+    /// system keeps them apart. One decimal, `Joule`'s.
+    inline constexpr Unit WattHour { .dimension = dim::Energy,
+                                     .magnitudeNumerator = 3600,
+                                     .symbolText = symbol("Wh"),
+                                     .decimals = 1 };
+    /// One thousand watt-hours: exactly 3600000 joules, the unit an electricity
+    /// bill is usually written in. Three decimals, so that the last digit is one
+    /// watt-hour.
+    inline constexpr Unit KilowattHour { .dimension = dim::Energy,
+                                         .magnitudeNumerator = 3600000,
+                                         .symbolText = symbol("kWh"),
+                                         .decimals = 3 };
 
     /// The coherent SI unit of frequency. One decimal: a loading frequency is
     /// set and reported to a tenth of a hertz.
@@ -567,9 +523,10 @@ struct RequireSameUnitDimension
 /// Applies integer factors by multiply-then-divide rather than a precomputed
 /// floating-point factor, so 30 MPa is exactly 30000000 Pa and converts back to
 /// exactly 30. The offset makes the conversion affine, which is what degrees
-/// Celsius need; for units without one it is zero and drops out.
+/// Celsius and degrees Fahrenheit need; for units without one it is zero and
+/// drops out.
 ///
-/// Converts a POINT on the scale, not a difference: 1 degC becomes 274,15 K, not
+/// Converts a POINT on the scale, not a difference: 1 degC becomes 274.15 K, not
 /// 1 K. A difference-preserving conversion is a different operation and is not
 /// this one.
 ///

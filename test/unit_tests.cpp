@@ -58,6 +58,11 @@ static_assert(unit::Litre.dimension == dim::Volume);
 static_assert(unit::CubicMetre.dimension == dim::Volume);
 static_assert(unit::Kilogram.dimension == dim::Mass);
 static_assert(unit::Celsius.dimension == dim::Temperature);
+static_assert(unit::Fahrenheit.dimension == dim::Temperature);
+static_assert(unit::Watt.dimension == dim::Power);
+static_assert(unit::Kilowatt.dimension == dim::Power);
+static_assert(unit::WattHour.dimension == dim::Energy);
+static_assert(unit::KilowattHour.dimension == dim::Energy);
 static_assert(unit::Pascal.dimension == dim::Pressure);
 static_assert(unit::One.dimension == dim::Scalar);
 static_assert(unit::Percent.dimension == dim::Scalar);
@@ -77,8 +82,11 @@ static_assert(unit::Minute.magnitudeNumerator == 60 && unit::Minute.magnitudeDen
 static_assert(unit::Hour.magnitudeNumerator == 3600 && unit::Hour.magnitudeDenominator == 1);
 static_assert(unit::Percent.magnitudeNumerator == 1 && unit::Percent.magnitudeDenominator == 100);
 
-// The affine one, which is why an offset field exists at all: 0 degC is 273,15 K.
+// The affine one, which is why an offset field exists at all: 0 degC is 273.15 K.
 static_assert(unit::Celsius.offsetNumerator == 27315 && unit::Celsius.offsetDenominator == 100);
+// The other one: zero degrees Fahrenheit is 459.67 * 5/9 = 45967/180 K, and a degree is 5/9 K.
+static_assert(unit::Fahrenheit.offsetNumerator == 45967 && unit::Fahrenheit.offsetDenominator == 180);
+static_assert(unit::Fahrenheit.magnitudeNumerator == 5 && unit::Fahrenheit.magnitudeDenominator == 9);
 
 // ---- a Unit is a template argument, which is what phase 4 needs ----
 
@@ -140,6 +148,11 @@ TEST_CASE("units report a readable symbol", "[unit]")
     CHECK(formula::view(unit::Litre.symbolText) == std::string_view { "l" });
     CHECK(formula::view(unit::Kilogram.symbolText) == std::string_view { "kg" });
     CHECK(formula::view(unit::Celsius.symbolText) == std::string_view { "\xc2\xb0" "C" });
+    CHECK(formula::view(unit::Fahrenheit.symbolText) == std::string_view { "\xc2\xb0" "F" });
+    CHECK(formula::view(unit::Watt.symbolText) == std::string_view { "W" });
+    CHECK(formula::view(unit::Kilowatt.symbolText) == std::string_view { "kW" });
+    CHECK(formula::view(unit::WattHour.symbolText) == std::string_view { "Wh" });
+    CHECK(formula::view(unit::KilowattHour.symbolText) == std::string_view { "kWh" });
     CHECK(formula::view(unit::Percent.symbolText) == std::string_view { "%" });
 }
 
@@ -213,6 +226,7 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
         { unit::Day, dim::Time, 86400, 1, 0 },
         { unit::Kelvin, dim::Temperature, 1, 1, 2 },
         { unit::Celsius, dim::Temperature, 1, 1, 1 },
+        { unit::Fahrenheit, dim::Temperature, 5, 9, 1 },
         { unit::Newton, dim::Force, 1, 1, 1 },
         { unit::Kilonewton, dim::Force, 1000, 1, 2 },
         { unit::Pascal, dim::Pressure, 1, 1, 0 },
@@ -222,6 +236,10 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
         { unit::Gigapascal, dim::Pressure, 1000000000, 1, 1 },
         { unit::Joule, dim::Energy, 1, 1, 1 },
         { unit::Kilojoule, dim::Energy, 1000, 1, 1 },
+        { unit::Watt, dim::Power, 1, 1, 1 },
+        { unit::Kilowatt, dim::Power, 1000, 1, 3 },
+        { unit::WattHour, dim::Energy, 3600, 1, 1 },
+        { unit::KilowattHour, dim::Energy, 3600000, 1, 3 },
         { unit::Hertz, dim::Frequency, 1, 1, 1 },
         { unit::MetrePerSecond, dim::Velocity, 1, 1, 3 },
         { unit::MillimetrePerMinute, dim::Velocity, 1, 60000, 2 },
@@ -236,7 +254,7 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
         { unit::MillipascalSecond, dim::DynamicViscosity, 1, 1000, 1 },
         { unit::SquareMillimetrePerSecond, dim::KinematicViscosity, 1, 1000000, 1 },
     };
-    CHECK(std::size(table) == 51); // every named unit, not a subset
+    CHECK(std::size(table) == 56); // every named unit, not a subset
 
     for (Expected const& row: table)
     {
@@ -256,11 +274,11 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
     std::size_t convertedRows = 0;
     for (Expected const& row: table)
     {
-        // Celsius is affine, so one degree Celsius is not one kelvin times a
-        // magnitude; its offset is pinned by the static_asserts further down
-        // instead. Counted rather than silently skipped -- see the round-trip
-        // case below for why a `continue` that nobody counts is how a loop
-        // quietly stops testing anything.
+        // Celsius and Fahrenheit are affine, so one degree of either is not one
+        // kelvin times a magnitude; their offsets are pinned by the
+        // static_asserts further down instead. Counted rather than silently
+        // skipped -- see the round-trip case below for why a `continue` that
+        // nobody counts is how a loop quietly stops testing anything.
         if (row.actual.offsetNumerator != 0)
             continue;
 
@@ -270,7 +288,7 @@ TEST_CASE("every named unit's dimension, magnitude and declared decimals match t
         CHECK(*inSi == *Rational::make(row.magnitudeNumerator, row.magnitudeDenominator));
         ++convertedRows;
     }
-    CHECK(convertedRows == std::size(table) - 1); // Celsius is the only affine one
+    CHECK(convertedRows == std::size(table) - 2); // Celsius and Fahrenheit are the affine ones
 }
 
 TEST_CASE("every named unit's symbol is readable, unique and safe to render", "[unit]")
@@ -308,6 +326,7 @@ TEST_CASE("every named unit's symbol is readable, unique and safe to render", "[
                          unit::Day,
                          unit::Kelvin,
                          unit::Celsius,
+                         unit::Fahrenheit,
                          unit::Newton,
                          unit::Kilonewton,
                          unit::Pascal,
@@ -317,6 +336,10 @@ TEST_CASE("every named unit's symbol is readable, unique and safe to render", "[
                          unit::Gigapascal,
                          unit::Joule,
                          unit::Kilojoule,
+                         unit::Watt,
+                         unit::Kilowatt,
+                         unit::WattHour,
+                         unit::KilowattHour,
                          unit::Hertz,
                          unit::MetrePerSecond,
                          unit::MillimetrePerMinute,
@@ -330,7 +353,7 @@ TEST_CASE("every named unit's symbol is readable, unique and safe to render", "[
                          unit::PascalSecond,
                          unit::MillipascalSecond,
                          unit::SquareMillimetrePerSecond };
-    CHECK(std::size(all) == 51);
+    CHECK(std::size(all) == 56);
 
     for (Unit const& u: all)
     {
@@ -484,7 +507,7 @@ static_assert(converted(1, 1, unit::Kilonewton, unit::Newton) == *Rational::make
 // A loading rate: 50 mm/min is exactly 1/1200 m/s -- and back, with nothing lost.
 static_assert(converted(50, 1, unit::MillimetrePerMinute, unit::MetrePerSecond) == *Rational::make(1, 1200));
 static_assert(converted(1, 1200, unit::MetrePerSecond, unit::MillimetrePerMinute) == *Rational::make(50, 1));
-// A density: 2,4 g/cm3 is exactly 2400 kg/m3.
+// A density: 2.4 g/cm3 is exactly 2400 kg/m3.
 static_assert(converted(12, 5, unit::GramPerCubicCentimetre, unit::KilogramPerCubicMetre)
               == *Rational::make(2400, 1));
 static_assert(converted(2400, 1, unit::KilogramPerCubicMetre, unit::GramPerCubicCentimetre)
@@ -540,6 +563,41 @@ static_assert(converted(1, 1, unit::Celsius, unit::Kelvin) == *Rational::make(27
 static_assert(converted(37, 1, unit::Celsius, unit::Celsius) == *Rational::make(37, 1));
 static_assert(converted(5, 2, unit::Litre, unit::Litre) == *Rational::make(5, 2));
 
+// The second affine unit. -40 is where the two scales meet; 32 and 212 are the
+// freezing and boiling points of water, which together fix the factor and the
+// offset; and 98.6 is 493/5.
+static_assert(converted(-40, 1, unit::Fahrenheit, unit::Celsius) == *Rational::make(-40, 1));
+static_assert(converted(-40, 1, unit::Celsius, unit::Fahrenheit) == *Rational::make(-40, 1));
+static_assert(converted(32, 1, unit::Fahrenheit, unit::Celsius) == *Rational::make(0, 1));
+static_assert(converted(212, 1, unit::Fahrenheit, unit::Celsius) == *Rational::make(100, 1));
+static_assert(converted(493, 5, unit::Fahrenheit, unit::Celsius) == *Rational::make(37, 1));
+static_assert(converted(37, 1, unit::Celsius, unit::Fahrenheit) == *Rational::make(493, 5));
+// Points, not differences: 0 degF is 45967/180 K, and one degree above it is
+// 46067/180 K, not 5/9 K.
+static_assert(converted(0, 1, unit::Fahrenheit, unit::Kelvin) == *Rational::make(45967, 180));
+static_assert(converted(1, 1, unit::Fahrenheit, unit::Kelvin) == *Rational::make(46067, 180));
+static_assert(converted(32, 1, unit::Fahrenheit, unit::Kelvin) == *Rational::make(27315, 100));
+static_assert(converted(27315, 100, unit::Kelvin, unit::Fahrenheit) == *Rational::make(32, 1));
+// A fraction of a degree stays exact: 100 degF is 340/9 degC, not a rounded 37.78.
+static_assert(converted(100, 1, unit::Fahrenheit, unit::Celsius) == *Rational::make(340, 9));
+static_assert(converted(1, 1, unit::Fahrenheit, unit::Fahrenheit) == *Rational::make(1, 1));
+
+// Power and energy: the watt-hour is 3600 J, so a kilowatt-hour is 3.6 MJ and a
+// thousand watt-hours.
+static_assert(converted(1, 1, unit::Kilowatt, unit::Watt) == *Rational::make(1000, 1));
+static_assert(converted(1, 1, unit::WattHour, unit::Joule) == *Rational::make(3600, 1));
+static_assert(converted(1, 1, unit::KilowattHour, unit::Joule) == *Rational::make(3600000, 1));
+static_assert(converted(1, 1, unit::KilowattHour, unit::WattHour) == *Rational::make(1000, 1));
+static_assert(converted(1, 1, unit::KilowattHour, unit::Kilojoule) == *Rational::make(3600, 1));
+static_assert(converted(3600, 1, unit::Kilojoule, unit::KilowattHour) == *Rational::make(1, 1));
+// A power and an energy are different dimensions, though a kilowatt and a
+// kilowatt-hour differ only by a factor of time.
+static_assert(!formula::SameDimension<unit::Kilowatt.dimension, unit::KilowattHour.dimension>);
+static_assert(!formula::SameDimension<unit::Watt.dimension, unit::Joule.dimension>);
+static_assert(formula::RequireSameUnitDimension<unit::KilowattHour, unit::Joule>::value);
+static_assert(formula::RequireSameUnitDimension<unit::Kilowatt, unit::Watt>::value);
+static_assert(formula::RequireSameUnitDimension<unit::Fahrenheit, unit::Celsius>::value);
+
 // The compile-time guard's positive path. `RequireSameUnitDimension` is only
 // exercised negatively by test/negative/unit_dimension_mismatch.cpp, which proves
 // it rejects; this proves it accepts, and that it accepts two units that differ
@@ -576,6 +634,10 @@ TEST_CASE("conversion round-trips exactly, in both directions", "[unit]")
                            { unit::Kilonewton, unit::Newton },
                            { unit::Gigapascal, unit::Kilopascal },
                            { unit::Kilojoule, unit::Joule },
+                           { unit::Kilowatt, unit::Watt },
+                           { unit::KilowattHour, unit::Joule },
+                           { unit::WattHour, unit::Kilojoule },
+                           { unit::Fahrenheit, unit::Celsius },
                            { unit::MillimetrePerMinute, unit::MetrePerSecond },
                            { unit::GramPerCubicCentimetre, unit::KilogramPerCubicMetre },
                            { unit::GramPerSquareMetre, unit::KilogramPerSquareMetre },
@@ -822,7 +884,7 @@ TEST_CASE("every bounds outcome still has its own distinct wording", "[unit]")
 
 TEST_CASE("rounding to a unit's declared precision uses that unit's decimals", "[unit]")
 {
-    Rational const value = *Rational::make(123456, 1000); // 123,456
+    Rational const value = *Rational::make(123456, 1000); // 123.456
 
     CHECK(*formula::checked_round_to_declared(value, unit::Litre, formula::RoundingMode::HalfAwayFromZero)
           == *Rational::from_decimal(1235, -1));
@@ -935,4 +997,86 @@ TEST_CASE("a unit template argument has the same identity in every translation u
                                   .symbolText = formula::symbol("l"),
                                   .decimals = 1 };
     CHECK(formula_test::consume_litre(formula_test::TaggedUnit<LitreRebuilt> { 10 }) == 11);
+}
+
+// ---- money: base dimensions the application names ----
+//
+// The library ships no currencies, so these units are this file's own: euros
+// and yen, each a named base dimension, and a cent, a hundredth of a euro. The
+// tariff is in euros per kilowatt-hour, `unit::KilowattHour` being the
+// library's.
+
+namespace
+{
+constexpr Dimension EuroAmount = formula::base_dimension("EUR");
+constexpr Dimension YenAmount = formula::base_dimension("JPY");
+
+constexpr Unit Euro { .dimension = EuroAmount, .symbolText = formula::symbol("EUR"), .decimals = 2 };
+constexpr Unit EuroCent { .dimension = EuroAmount,
+                          .magnitudeNumerator = 1,
+                          .magnitudeDenominator = 100,
+                          .symbolText = formula::symbol("ct"),
+                          .decimals = 0 };
+constexpr Unit Yen { .dimension = YenAmount, .symbolText = formula::symbol("JPY"), .decimals = 0 };
+constexpr Unit EuroPerKilowattHour { .dimension = EuroAmount / dim::Energy,
+                                     .magnitudeNumerator = 1,
+                                     .magnitudeDenominator = 3600000,
+                                     .symbolText = formula::symbol("EUR/kWh"),
+                                     .decimals = 4 };
+} // namespace
+
+// A cent is a hundredth of a euro, both ways, exactly.
+static_assert(converted(250, 1, Euro, EuroCent) == *Rational::make(25000, 1));
+static_assert(converted(25000, 1, EuroCent, Euro) == *Rational::make(250, 1));
+static_assert(formula::RequireSameUnitDimension<Euro, EuroCent>::value);
+
+// Euros never become yen: each currency is its own dimension, and an exchange
+// rate is data, not a conversion factor.
+static_assert(!formula::checked_convert(Rational { 1 }, Euro, Yen).has_value());
+static_assert(formula::checked_convert(Rational { 1 }, Euro, Yen).error() == ArithmeticError::DomainError);
+
+// A kilowatt-hour at a tariff in euros per kilowatt-hour is euros.
+static_assert(unit::KilowattHour.dimension * EuroPerKilowattHour.dimension == Euro.dimension);
+
+// Yen are rounded to whole yen, euros to the cent: 245/2 is 122.5, which a
+// unit declaring two decimals would keep as it is.
+static_assert(*formula::checked_round_to_declared(*Rational::make(245, 2), Yen, formula::RoundingMode::HalfAwayFromZero)
+              == *Rational::make(123, 1));
+static_assert(*formula::checked_round_to_declared(*Rational::make(12345, 1000), Euro,
+                                                  formula::RoundingMode::HalfAwayFromZero)
+              == *Rational::make(1235, 100));
+
+TEST_CASE("euros convert to cents and back exactly and never to yen", "[unit][money]")
+{
+    auto const inCents = formula::checked_convert(Rational { 250 }, Euro, EuroCent);
+    REQUIRE(inCents.has_value());
+    CHECK(*inCents == Rational { 25000 });
+    auto const backInEuros = formula::checked_convert(*inCents, EuroCent, Euro);
+    REQUIRE(backInEuros.has_value());
+    CHECK(*backInEuros == Rational { 250 });
+
+    auto const inYen = formula::checked_convert(Rational { 1 }, Euro, Yen);
+    REQUIRE_FALSE(inYen.has_value());
+    CHECK(inYen.error() == ArithmeticError::DomainError);
+
+    CHECK(*formula::checked_round_to_declared(*Rational::make(245, 2), Yen, formula::RoundingMode::HalfAwayFromZero)
+          == Rational { 123 });
+}
+
+TEST_CASE("a unit carrying a named base dimension has the same identity in every translation unit", "[unit][money]")
+{
+    // Declared in unit_cross_tu.hpp with its dimension spelt euros per energy,
+    // defined in unit_cross_tu_b.cpp as euros times euros, over euros times
+    // energy, raised to the first power, and called here with euros times
+    // energy to the minus one. A call spelt as a different type would not
+    // compile here, and a definition spelt as one would be an overload the
+    // call cannot reach, so the program would not link: compiling and linking
+    // at all is the assertion.
+    constexpr Unit TariffRebuilt { .dimension = EuroAmount * formula::power(dim::Energy, -1),
+                                   .magnitudeNumerator = 1,
+                                   .magnitudeDenominator = 3600000,
+                                   .symbolText = formula::symbol("EUR/kWh"),
+                                   .decimals = 4 };
+    static_assert(TariffRebuilt == EuroPerKilowattHour);
+    CHECK(formula_test::consume_tariff_unit(formula_test::TaggedUnit<TariffRebuilt> { 20 }) == 22);
 }

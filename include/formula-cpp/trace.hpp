@@ -12,6 +12,7 @@
 /// that one as well to print it.
 
 #include <formula-cpp/binning.hpp>
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -43,6 +44,7 @@
 #include <initializer_list>
 #include <optional>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -279,7 +281,7 @@ enum class StepKind : std::uint8_t
     /// Raw observations counted into classes (`BinnedNode`): one count per
     /// class in `Step::elements`; the classes' unit in `Step::sourceUnit`,
     /// their extent in `Step::coveredRange`, and the observations binned, in
-    /// the coherent SI unit, in `Step::domainElements`. A failure's
+    /// the coherent unit, in `Step::domainElements`. A failure's
     /// `Step::failedElement` is the **observation** it arose at, not a
     /// count. Checked on GCC under `-Wshadow`: the node is `BinnedNode` and
     /// its factory `binned`.
@@ -709,7 +711,7 @@ namespace detail
         /// For a rejected determination, or a failed pass that failed at one:
         /// its zero-based position as entered.
         std::optional<std::size_t> position {};
-        /// For a rejected determination: its value, in the coherent SI unit.
+        /// For a rejected determination: its value, in the coherent unit.
         std::optional<Rep> rejectedValue {};
         /// For a rejected determination: its statistic -- abs(x - mean), or
         /// (x - mean)^2 when `squared`.
@@ -917,11 +919,11 @@ struct Step
     /// wraps for a `Documented`, `ReplacedVariant` or `VariantSelected` step --
     /// each passes its operand's value through unchanged, so it states it as
     /// that operand's line does, whenever that line is the wrapped node's own
-    /// and not the operands of a consumer's node -- and the coherent SI unit of
+    /// and not the operands of a consumer's node -- and the coherent unit of
     /// `dimension` for anything else computed, which has no declared unit of
     /// its own.
     ///
-    /// `value` is always in the coherent SI unit, so that steps are
+    /// `value` is always in the coherent unit, so that steps are
     /// comparable; this is what a renderer converts back to before showing a
     /// number to a person. Without it a derivation restates every input in a
     /// unit nobody typed: someone who entered 180 l reads `9/50`, which is
@@ -961,7 +963,7 @@ struct Step
     /// discriminator, not a quantity, so there is no key unit to name.
     Unit sourceUnit {};
 
-    /// What the step produced, in the coherent SI unit of `dimension`. Empty
+    /// What the step produced, in the coherent unit of `dimension`. Empty
     /// when the value was **absent** -- which is not an error and must not be
     /// rendered as one.
     std::optional<Rep> value {};
@@ -1194,17 +1196,19 @@ struct Step
 
     /// For `Variable`: whether the value was measured or typed in by a
     /// person, as the environment's entry says -- `Measured<Q>` or
-    /// `Entered<Q>` (`environment.hpp`). For `OverriddenConstant` and
-    /// `DerivedQuantity`: the same, of the environment's entry the overlay's
-    /// constant or definition replaced -- whether or not that entry held a
-    /// value, which `replacedEntryEmpty` says -- and empty when the
-    /// environment has no entry for the quantity at all. For
-    /// `SeriesVariable`: the same, of the whole series -- a measured series
-    /// or `entered(measured_series<Q>(...))`. For `AttemptInput`: the same, of
-    /// the series the attempt's determination was read from. Never
-    /// `Derived`: an input is not computed. Empty for every other kind, and
-    /// for an environment that cannot say (one without `is_entered`), which
-    /// is recorded as not known rather than guessed.
+    /// `Entered<Q>` (`environment.hpp`) -- or `Derived` when the environment
+    /// says, through its own `source_of<Q>()`, that it calculated the value
+    /// itself (`detail::known_source`, `evaluate.hpp`); `Environment` never
+    /// does. For `OverriddenConstant` and `DerivedQuantity`: the same, of the
+    /// environment's entry the overlay's constant or definition replaced --
+    /// whether or not that entry held a value, which `replacedEntryEmpty`
+    /// says -- and empty when the environment has no entry for the quantity
+    /// at all. For `SeriesVariable`: measured or typed in, of the whole
+    /// series -- a measured series or `entered(measured_series<Q>(...))`. For
+    /// `AttemptInput`: the same, of the series the attempt's determination
+    /// was read from. Empty for every other kind, and for an environment that
+    /// cannot say (one with neither `source_of` nor `is_entered`), which is
+    /// recorded as not known rather than guessed.
     std::optional<ValueSource> inputSource {};
 
     /// For `OverriddenConstant` and `DerivedQuantity`: true when the
@@ -1251,7 +1255,7 @@ struct Step
     std::vector<std::size_t> operands {};
 
     /// For a series step (`SeriesVariable`): every element it produced, in
-    /// the series' own order and in the coherent SI unit of `dimension`, each
+    /// the series' own order and in the coherent unit of `dimension`, each
     /// empty when that element was not measured. `value` stays empty for a
     /// series step, so that no renderer can mistake a series for one absent
     /// number; `trace_render.hpp` reads these instead, and spends one unit of
@@ -1262,8 +1266,8 @@ struct Step
     /// Empty for every step that is not a series.
     ///
     /// For `ConformityChecked`: the subject's elements, the values judged,
-    /// likewise in SI, so that each outcome can state the value it judged in
-    /// the check's own unit. Empty when the subject failed.
+    /// likewise in the coherent unit, so that each outcome can state the value
+    /// it judged in the check's own unit. Empty when the subject failed.
     std::vector<std::optional<Rep>> elements {};
 
     /// For a series step that failed: the ZERO-BASED position of the element
@@ -1297,11 +1301,11 @@ struct Step
     bool tieBroken {};
 
     /// For `CurvePairing` and `CurveSplice`: the curve's points, in the
-    /// coherent SI unit of `sourceUnit`'s dimension, each at the position of
+    /// coherent unit of `sourceUnit`'s dimension, each at the position of
     /// its value in `elements`. Empty for every other kind, and for a curve
     /// that failed -- unless `curveBreak` names a rule, when they are the
     /// points that broke it. For `Binning`: the observations it binned, in
-    /// the coherent SI unit of `sourceUnit`'s dimension, in the order made.
+    /// the coherent unit of `sourceUnit`'s dimension, in the order made.
     std::vector<std::optional<Rep>> domainElements {};
 
     /// For `CurveSplice`: the direction its values had to run in.
@@ -1376,9 +1380,9 @@ struct OpaqueOutputValue
     Dimension dimension {};
     /// The unit it is shown in: the declared unit of the first input step of
     /// its dimension, as a sum is shown in its series' unit, and the coherent
-    /// SI unit otherwise.
+    /// unit otherwise.
     Unit unit {};
-    /// Its value, in the coherent SI unit of `dimension`; empty when the call
+    /// Its value, in the coherent unit of `dimension`; empty when the call
     /// was absent or failed.
     std::optional<Rep> value {};
 };
@@ -2185,7 +2189,7 @@ namespace detail
     ///
     /// The operand's recorded value is the **same** `Rational` the node was
     /// handed: `produced` stores `**result` verbatim, and both are in the
-    /// coherent SI unit of the operand's dimension. So locating it against
+    /// coherent unit of the operand's dimension. So locating it against
     /// the table here reaches the same row the evaluation reached.
     template <typename Rep>
     [[nodiscard]] std::optional<Rep> sole_operand_value(std::vector<Step<Rep>> const& steps, Step<Rep> const& step)
@@ -2246,7 +2250,7 @@ namespace detail
     /// line that is *repeated* rather than reused is the conversion of the
     /// operand's value into the key unit, which `checked_evaluate_si` does
     /// immediately before its own `find_band` call; a test whose key unit is
-    /// not the coherent SI unit of its operand's dimension is what keeps the
+    /// not the coherent unit of its operand's dimension is what keeps the
     /// two honest.
     template <typename Rep, Unit KeyUnit, BandTable Bands, Unit ResultUnit, Node Operand>
     void record_lookup(BandedLookupNode<KeyUnit, Bands, ResultUnit, Operand> const&,
@@ -2433,7 +2437,7 @@ namespace detail
         }
     }
 
-    /// @p point, a point of a curve in the coherent SI unit, as a declared
+    /// @p point, a point of a curve in the coherent unit, as a declared
     /// `Breakpoint` in @p pointUnit, or nothing when it cannot be stated there.
     [[nodiscard]] inline std::optional<Breakpoint> point_in(Rational point, Unit pointUnit) noexcept
     {
@@ -2589,7 +2593,18 @@ namespace detail
     /// offset, has no symbol, is dimensionless -- a ratio is not a percentage
     /// because some input was one, as `opaque_output_unit` rules for a
     /// dimensionless output -- or already holds a slash (`m/s/s` reads two
-    /// ways), or when the symbol or the magnitude would not fit.
+    /// ways), or when the symbol, the magnitude or the dimension would not
+    /// fit -- the dimension when the quotient's own named base dimensions
+    /// would number more than `NamedBaseCapacity`: a name both units carry
+    /// counts once, or not at all when its exponents cancel. That is judged
+    /// with `merged_dimension`, not `operator/`, whose guard aborts when
+    /// reached at run time, as this is. An exponent overflow is not judged:
+    /// `merged_dimension` combines exponents through `reduced`, as `operator/`
+    /// always did, and its guard ends the program when a combined exponent,
+    /// in lowest terms, would not fit `std::int32_t` -- a very large
+    /// numerator, or two denominators whose product, in lowest terms, still
+    /// exceeds `INT32_MAX`: a length to the 1/46349 over a length to the
+    /// -1/46351 needs 92700/2148322499.
     [[nodiscard]] inline std::optional<Unit> unit_quotient(Unit const& over, Unit const& under) noexcept
     {
         if (over.offsetNumerator != 0 || under.offsetNumerator != 0 || over.dimension == dim::Scalar
@@ -2607,7 +2622,10 @@ namespace detail
                                         Rational { under.magnitudeNumerator, under.magnitudeDenominator });
         if (!magnitude.has_value())
             return std::nullopt;
-        Unit quotientUnit { .dimension = over.dimension / under.dimension,
+        MergedDimension const quotientDimension = merged_dimension(over.dimension, under.dimension, true);
+        if (!quotientDimension.fits)
+            return std::nullopt;
+        Unit quotientUnit { .dimension = quotientDimension.dimension,
                             .magnitudeNumerator = magnitude->numerator(),
                             .magnitudeDenominator = magnitude->denominator(),
                             .decimals = over.decimals < under.decimals ? under.decimals : over.decimals };
@@ -2633,8 +2651,8 @@ namespace detail
     ///     dimension, so that a slope along a curve of millimetres over
     ///     seconds reads `mm/s` (`unit_quotient`) -- at most one way up can
     ///     match, since the output is not dimensionless;
-    ///  3. else the coherent SI unit, which the trace spells out
-    ///     (`coherent_unit_text`, `trace_render.hpp`).
+    ///  3. else the coherent unit -- SI, times one of each named base -- which
+    ///     the trace spells out (`coherent_unit_text`, `trace_render.hpp`).
     ///
     /// Three exceptions keep a borrowed unit honest. A unit with an offset is
     /// never borrowed: an output of an input's dimension is not in general a
@@ -2677,7 +2695,7 @@ namespace detail
     }
     /// Fills in a binning step: the classes' unit and extent, from the node's
     /// type, and the observations it binned, off its operand's step -- in
-    /// the coherent SI unit, as that step holds them. Nothing of the
+    /// the coherent unit, as that step holds them. Nothing of the
     /// observations when their step failed or is not there.
     template <SeriesNode S, typename Rep>
     void record_binning(Step<Rep>& binningStep, std::vector<Step<Rep>> const& steps)
@@ -2836,7 +2854,8 @@ class RecordingSink
     }
 
     /// Told, by the variable evaluator (`evaluate.hpp`), whether the value it
-    /// just read was measured or typed in; `produced` puts it on the step.
+    /// just read was measured, typed in or calculated; `produced` puts it on
+    /// the step.
     /// Optional, as `branch_taken` is: a sink without it pays nothing.
     ///
     /// Public, because the evaluator is not this class's friend. A caller
@@ -2971,7 +2990,7 @@ class RecordingSink
         nodeStep.kind = detail::StepKindOf<N>::value;
         nodeStep.dimension = N::dimension;
 
-        // Anything computed has no declared unit, so the coherent SI one is
+        // Anything computed has no declared unit, so the coherent one is
         // the truthful answer; a variable overrides it with the unit its
         // quantity is declared in. `requires { N::unit; }` now also selects
         // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode` and
@@ -3007,8 +3026,9 @@ class RecordingSink
         else if constexpr (detail::StepKindOf<N>::value != StepKind::NumericValue && requires { N::unit; })
             nodeStep.unit = N::unit;
         // A pass's mean reads in its sample's unit, as the pass line beside it
-        // does: grams for a series of masses, bare SI for a computed series,
-        // and bare SI for a unit with no symbol (`detail::borrowable_for_a_point`).
+        // does: grams for a series of masses, the coherent unit for a computed
+        // series, and the coherent unit for a unit with no symbol
+        // (`detail::borrowable_for_a_point`).
         // The innermost rejection in progress is the one it is bound to.
         if constexpr (detail::StepKindOf<N>::value == StepKind::PassMean)
             if (!_trace->rejectionsInProgress.empty())
@@ -3119,7 +3139,7 @@ class RecordingSink
         // then its operands -- a Celsius reading under a temperature rise, or
         // a volume under a density -- whose unit would state the value as
         // something it is not. And, at run time, exactly one step was claimed
-        // and it is of this step's dimension. Otherwise the coherent SI unit
+        // and it is of this step's dimension. Otherwise the coherent unit
         // set above stands, as for anything else computed.
         if constexpr (detail::PassesThroughRecordedStep<N>)
             if (nodeStep.operands.size() == 1 && _trace->steps[nodeStep.operands.front()].dimension == N::dimension)
@@ -3763,7 +3783,7 @@ class RecordingSink
     }
 
     /// Records one step for raw observations, carrying every observation made
-    /// in `Step::elements`, in the coherent SI unit, shown in the unit the
+    /// in `Step::elements`, in the coherent unit, shown in the unit the
     /// quantity is declared in under the symbol this sink's vocabulary gives
     /// it. A failure records its error and the observation it arose at, and
     /// no observations. Observations are a leaf: the step claims nothing.
@@ -4373,5 +4393,316 @@ template <typename Rep = Rational,
     std::expected<RetryOutcome<R>, RetryFailure> retryOutcome =
         checked_evaluate_retry<Rational>(retrying, environment, RecordingSink<Rational, V> { recorded, vocabulary });
     return ExplainedRetry<R> { std::move(retryOutcome), std::move(recorded) };
+}
+
+/// What a block of a worksheet's derivation stands for.
+enum class WorksheetEntryKind : std::uint8_t
+{
+    /// A value its definition calculated: the block is the definition's
+    /// derivation.
+    Calculated,
+    /// A calculated quantity overridden by hand: the block is one step, the
+    /// value typed in.
+    Overridden,
+    /// An input of the calculation: the block is one step, its value as the
+    /// worksheet holds it.
+    Input,
+};
+
+/// What `WorksheetEntry::readSlots` holds for a step that read nothing from
+/// the worksheet.
+inline constexpr std::size_t NothingRead = static_cast<std::size_t>(-1);
+
+/// One block of a worksheet's derivation: one named value, and how it was
+/// reached.
+///
+/// Plain data, as `Trace` is: `explain_worksheet` fills it, and a caller may
+/// edit one by hand as it may edit any `Step`.
+struct WorksheetEntry
+{
+    /// How the quantity is written, as the vocabulary `explain_worksheet` was
+    /// given says. Points into static storage, as `Step::symbol` does.
+    std::string_view symbol {};
+    /// The quantity's position among the calculation's quantities: the
+    /// inputs first, in the order first read, then the defined quantities in
+    /// the order given.
+    std::size_t slot {};
+    /// What the block stands for.
+    WorksheetEntryKind kind {};
+    /// The quantity's declared unit, which `value` is stated in.
+    Unit unit {};
+    /// The value the worksheet holds for the quantity, in `unit`. Empty when
+    /// it holds none -- an input not measured, or a value calculated from
+    /// one -- and when calculating it failed.
+    std::optional<Rational> value {};
+    /// Why calculating the value failed; empty when it did not.
+    std::optional<ArithmeticError> error {};
+    /// How the value was reached. For a calculated value, the derivation of
+    /// its definition, whose root is the value, in the coherent unit; a
+    /// calculated value it reads is one `Variable` step whose `inputSource`
+    /// is `Derived`, the value's own block saying how it was reached. For an
+    /// override or an input, one `Variable` step.
+    Trace<Rational> trace {};
+    /// For each step of `trace`, in order, the slot of the quantity that step
+    /// read from the worksheet -- an input, a calculated value or an override
+    /// -- or `NothingRead` for a step that read nothing. It matches a step
+    /// reading a calculated value to that value's own block by the quantity,
+    /// which a symbol cannot do: a vocabulary may write two quantities alike.
+    /// `render_derivation` reads it to state a typed value read by another
+    /// block as exactly as that value's own block does.
+    ///
+    /// It is positional: keep it in step with `trace` when editing either. A
+    /// step moved or added without its entry takes another step's slot; a
+    /// `Derived` `Variable` step past its end reads as not typed.
+    std::vector<std::size_t> readSlots {};
+};
+
+/// A worksheet's answer for @p Result, and its derivation: one block per
+/// named value the answer was reached through.
+///
+/// Plain data, as `Trace` is: `explain_worksheet` fills it, and a caller may
+/// edit one by hand.
+template <Described Result, typename Calc, Vocabulary V = DefaultVocabulary>
+struct ExplainedWorksheet
+{
+    /// Exactly what `checked_calculate<Result>()` answered, failure included,
+    /// as `ExplainedSeries` holds its series' failure.
+    std::expected<Outcome<Result>, ArithmeticError> outcome;
+    /// The blocks: @p Result's first, then each calculated value it was
+    /// reached through, each before the values it reads -- the reverse of the
+    /// order the worksheet calculates them in -- and last the inputs read, in
+    /// the order the calculation numbers them.
+    std::vector<WorksheetEntry> entries {};
+    /// The calculation whose values these are, so that a block can be shown
+    /// beside the definition it derives.
+    ///
+    /// Deliberately no `{}` default member initialiser: it holds expressions
+    /// -- see `Corrections` (`lookup.hpp`).
+    Calc calculation;
+    /// The vocabulary every symbol here is written in.
+    FORMULA_NO_UNIQUE_ADDRESS V vocabulary;
+};
+
+namespace detail
+{
+    /// @p View, a `WorksheetView`, noting each value read through it in
+    /// @p readSlots: the slot of the quantity read, at the index of the next
+    /// step @p recording will hold -- its step count at the moment of the
+    /// read, never a count of reads, so neither a read no step of its own
+    /// follows nor a step that read nothing shifts a later index.
+    ///
+    /// The notes' correctness rests on one invariant: only a `Variable`
+    /// step's entry is ever read (`render_derivation`), and the variable
+    /// evaluator reads its value -- a failed read included -- just before it
+    /// records its own step, with no step recorded in between. So a
+    /// `Variable` step's entry is its own quantity's slot. No other entry is
+    /// read, whatever it holds: an overlay's constant or derived quantity,
+    /// for one, asks whether the entry it replaced held one, and so holds
+    /// that entry's slot although its own value is not the entry's.
+    ///
+    /// Forwards everything a definition's evaluation asks of the view, and
+    /// nothing else. Holds pointers to the trace and the slots: it lives for
+    /// one evaluation, inside the call that made it.
+    template <typename View, typename Graph>
+    class NotedWorksheetView
+    {
+      public:
+        /// Views through @p viewed, noting each read in @p readSlots at the
+        /// index of the next step of @p recording.
+        constexpr NotedWorksheetView(View viewed,
+                                     Trace<Rational> const* recording,
+                                     std::vector<std::size_t>* readSlots) noexcept:
+            _viewed { viewed },
+            _recording { recording },
+            _readSlots { readSlots }
+        {
+        }
+
+        /// Whether the view provides @p Q.
+        template <Described Q>
+        static constexpr bool provides = View::template provides<Q>;
+
+        /// Whether the view's value for @p Q was typed in, as the view says.
+        template <Described Q>
+        static constexpr bool is_entered = View::template is_entered<Q>;
+
+        /// Whether the view's series for @p Q was typed in, as the view says.
+        template <Described Q>
+        static constexpr bool is_entered_series = View::template is_entered_series<Q>;
+
+        /// The view's value for @p Q, the read noted.
+        template <Described Q>
+        [[nodiscard]] Measured<Q> get() const
+        {
+            note<Q>();
+            return _viewed.template get<Q>();
+        }
+
+        /// The view's value for @p Q, or why calculating it failed, the read
+        /// noted.
+        template <Described Q>
+        [[nodiscard]] std::expected<Measured<Q>, ArithmeticError> checked_get() const
+        {
+            note<Q>();
+            return _viewed.template checked_get<Q>();
+        }
+
+        /// Where the view's value for @p Q came from. Not a read.
+        template <Described Q>
+        [[nodiscard]] constexpr ValueSource source_of() const noexcept
+        {
+            return _viewed.template source_of<Q>();
+        }
+
+      private:
+        /// Notes a read of @p Q at the index of the next step.
+        template <Described Q>
+        void note() const
+        {
+            if constexpr (View::template provides<Q>)
+            {
+                std::size_t const readingStep = _recording->steps.size();
+                if (_readSlots->size() <= readingStep)
+                    _readSlots->resize(readingStep + 1, NothingRead);
+                (*_readSlots)[readingStep] = Graph::template slot_of<Q>;
+            }
+        }
+
+        View _viewed;
+        Trace<Rational> const* _recording;
+        std::vector<std::size_t>* _readSlots;
+    };
+
+    /// The block of @p sheet's derivation for the value in slot @p Slot,
+    /// which @p sheet has brought up to date. A calculated value's
+    /// definition is evaluated again against the values it reads, and each
+    /// read it makes sets that value's bit in @p wanted, so that its own
+    /// block follows; an override or an input is read as one variable.
+    template <std::size_t Slot, typename Calc, Vocabulary V>
+    [[nodiscard]] WorksheetEntry worksheet_block(Worksheet<Calc>& sheet, std::uint64_t& wanted, V const& vocabulary)
+    {
+        using Sheet = Worksheet<Calc>;
+        using Graph = typename WorksheetGraphOf<Sheet>::type;
+        using Q = QuantityAt<Slot, typename Graph::slots>;
+
+        WorksheetEntry namedBlock {};
+        namedBlock.symbol = symbol_of<Q>(vocabulary);
+        namedBlock.slot = Slot;
+        namedBlock.unit = Describe<Q>::unit;
+
+        std::expected<Outcome<Q>, ArithmeticError> const held = sheet.template checked_calculate<Q>();
+        if (held.has_value())
+        {
+            Measured<Q> const heldMeasurement = held->measurement();
+            namedBlock.value = heldMeasurement.stored();
+        }
+        else
+            namedBlock.error = held.error();
+
+        if constexpr (Slot < Graph::inputCount)
+            namedBlock.kind = WorksheetEntryKind::Input;
+        else if (!sheet.template is_overridden<Q>())
+        {
+            namedBlock.kind = WorksheetEntryKind::Calculated;
+            std::uint64_t made = 0;
+            using DefinitionView = WorksheetView<Sheet, Graph::reads[Slot]>;
+            static_cast<void>(formula::checked_evaluate<Q>(
+                std::get<Slot - Graph::inputCount>(sheet.calculation().definitions).expression,
+                NotedWorksheetView<DefinitionView, Graph> { DefinitionView { &sheet, &made },
+                                                            &namedBlock.trace,
+                                                            &namedBlock.readSlots },
+                RecordingSink<Rational, V> { namedBlock.trace, vocabulary }));
+            namedBlock.readSlots.resize(namedBlock.trace.steps.size(), NothingRead);
+            wanted |= made;
+            return namedBlock;
+        }
+        else
+            namedBlock.kind = WorksheetEntryKind::Overridden;
+
+        using OwnView = WorksheetView<Sheet, std::uint64_t { 1 } << Slot>;
+        static_cast<void>(formula::checked_evaluate<Q>(
+            var<Q>,
+            NotedWorksheetView<OwnView, Graph> { OwnView { &sheet, nullptr }, &namedBlock.trace, &namedBlock.readSlots },
+            RecordingSink<Rational, V> { namedBlock.trace, vocabulary }));
+        namedBlock.readSlots.resize(namedBlock.trace.steps.size(), NothingRead);
+        return namedBlock;
+    }
+
+    /// Appends to @p blocks the blocks of the calculated values @p wanted
+    /// names, from the last in dependency order to the first: each value's
+    /// block comes before the blocks of the values it reads, which it adds to
+    /// @p wanted. @p FromEnd counts back from the end of the order.
+    template <typename Calc, Vocabulary V, std::size_t... FromEnd>
+    void explain_calculated(Worksheet<Calc>& sheet,
+                            std::uint64_t& wanted,
+                            std::vector<WorksheetEntry>& blocks,
+                            V const& vocabulary,
+                            std::index_sequence<FromEnd...>)
+    {
+        using Graph = typename WorksheetGraphOf<Worksheet<Calc>>::type;
+        ((((wanted >> Graph::order[Graph::slotCount - 1 - FromEnd]) & 1u) != 0
+              ? blocks.push_back(worksheet_block<Graph::order[Graph::slotCount - 1 - FromEnd]>(sheet, wanted, vocabulary))
+              : void()),
+         ...);
+    }
+
+    /// Appends to @p blocks the blocks of the inputs @p wanted names, in slot
+    /// order.
+    template <typename Calc, Vocabulary V, std::size_t... Slots>
+    void explain_inputs(Worksheet<Calc>& sheet,
+                        std::uint64_t& wanted,
+                        std::vector<WorksheetEntry>& blocks,
+                        V const& vocabulary,
+                        std::index_sequence<Slots...>)
+    {
+        ((((wanted >> Slots) & 1u) != 0 ? blocks.push_back(worksheet_block<Slots>(sheet, wanted, vocabulary)) : void()),
+         ...);
+    }
+} // namespace detail
+
+/// Asks @p sheet for @p Result, and records how the answer was reached: one
+/// block per named value, written as @p vocabulary says.
+///
+/// **One block per named value.** @p Result's block comes first. A
+/// calculated value's block is its definition's derivation, evaluated again
+/// against the values the worksheet holds, in which a calculated value it
+/// reads is one step -- that value's own block, further on, says how it was
+/// reached. An overridden value's block is the one step of its value typed
+/// in, and a value read only through it gets no block. The inputs read come
+/// last, one step each. A value the evaluation never reached -- read only
+/// in a `when()` branch not taken, or to the right of an operand that
+/// failed -- gets no block, and a failed value is a block like any other,
+/// its failure in `error` and in its trace.
+///
+/// **Always the current values.** The derivation is recorded afresh on
+/// every call, from the values the worksheet holds once @p Result is up to
+/// date, so it describes them even where a value was reused rather than
+/// calculated again: each block's root is the value the worksheet holds.
+/// Asking brings @p Result up to date, as `checked_calculate` does, and
+/// counts as it does; recording the blocks calculates nothing again.
+///
+/// **A value an overlay replaced.** An overlay's fixed constant or derived
+/// quantity in a definition reads nothing of the quantity it stands for. Its
+/// step says where the worksheet's value for that quantity came from, and
+/// whether it held one -- never the value -- only when the definition itself
+/// declares a read of that quantity, anywhere in it; so it never speaks of a
+/// value the worksheet did not bring up to date for the definition. Saying
+/// so reads that quantity, which then has a block of its own, even where the
+/// definition's own read of it lies in a `when()` branch not taken.
+template <Described Result, typename Calc, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedWorksheet<Result, Calc, V> explain_worksheet(Worksheet<Calc>& sheet,
+                                                                   V const& vocabulary = V {})
+{
+    using Graph = typename detail::WorksheetGraphOf<Worksheet<Calc>>::type;
+    std::expected<Outcome<Result>, ArithmeticError> answered = sheet.template checked_calculate<Result>();
+    std::vector<WorksheetEntry> blocks {};
+    if constexpr (Graph::valid && Graph::template holds<Result>)
+    {
+        std::uint64_t wanted = std::uint64_t { 1 } << Graph::template slot_of<Result>;
+        detail::explain_calculated(
+            sheet, wanted, blocks, vocabulary, std::make_index_sequence<Graph::slotCount - Graph::inputCount> {});
+        detail::explain_inputs(sheet, wanted, blocks, vocabulary, std::make_index_sequence<Graph::inputCount> {});
+    }
+    return ExplainedWorksheet<Result, Calc, V> { std::move(answered), std::move(blocks), sheet.calculation(), vocabulary };
 }
 } // namespace formula

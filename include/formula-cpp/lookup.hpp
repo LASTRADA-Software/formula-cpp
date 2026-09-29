@@ -408,7 +408,7 @@
 /// of the guarantee, and an earlier revision of this comment claimed more: that
 /// a row whose value is representable can never come back as an `Overflow` at
 /// all. It can. `checked_evaluate_si` still hands the answer to
-/// `detail::in_si`, which converts it out of `ResultUnit` into the coherent SI
+/// `detail::in_si`, which converts it out of `ResultUnit` into the coherent
 /// unit, and **a unit conversion is arithmetic** -- a row stating `2^62`
 /// kilometres is a perfectly representable `Rational` that overflows on the way
 /// to metres. That path is shared with the banded and the exact lookup, which

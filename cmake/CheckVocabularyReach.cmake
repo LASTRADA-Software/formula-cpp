@@ -14,7 +14,7 @@
 # through `render`, `document` and the trace under a crossed-over vocabulary,
 # and `render.hpp` refuses a one-argument `render_node` of this library's at
 # compile time. What this script refuses, outside a whole-line comment, in
-# the four headers below:
+# the five headers below:
 #
 #  - `::symbol` as a whole name, which is how `Describe<Q>::symbol` (at any
 #    nesting of template arguments), `N::quantity::symbol` (a CRTP quantity's
@@ -31,6 +31,7 @@
 # the guarantee.
 
 set(surfaces
+    "${SOURCE_DIR}/include/formula-cpp/calculation.hpp"
     "${SOURCE_DIR}/include/formula-cpp/render.hpp"
     "${SOURCE_DIR}/include/formula-cpp/document.hpp"
     "${SOURCE_DIR}/include/formula-cpp/trace.hpp"

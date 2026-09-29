@@ -23,7 +23,7 @@
 ///    underneath it would switch a method's rounding rule too, since
 ///    `RoundingRuleNode` derives from `RoundNode`.
 ///
-/// The rounding happens in `U`, never in coherent SI: the radicand is
+/// The rounding happens in `U`, never in the coherent unit: the radicand is
 /// converted into `U` squared first, exactly as a `RoundNode` converts into its
 /// own unit. "To 2 dp of g" of a mass whose variance is stored in kg^2 is not
 /// "to 2 dp of kg".
@@ -252,9 +252,9 @@ namespace detail
         return Rational::from_decimal(static_cast<Rational::Int>(keptDigits), -places.value);
     }
 
-    /// The square root of @p radicandInSi, a value in the coherent SI unit of
+    /// The square root of @p radicandInSi, a value in the coherent unit of
     /// `unit`'s dimension squared, rounded in @p unit and returned in the
-    /// coherent SI unit of `unit`'s dimension.
+    /// coherent unit of `unit`'s dimension.
     ///
     /// The conversions are `checked_convert`'s, into and out of `unit`'s factor
     /// and its square -- never a ratio written out here. `unit` has no offset:

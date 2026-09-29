@@ -16,8 +16,9 @@
 //     travels upward through composition rather than being lost at the seam;
 //   - the trace naming the inner formula as its own cited step, so an auditor
 //     can see the sub-result the outer formula consumed;
-//   - a unit this library does not ship (a currency), because Unit is an
-//     ordinary aggregate a caller can declare;
+//   - a unit this library does not ship (a currency) in a base dimension of
+//     its own, because Unit is an ordinary aggregate a caller can declare and
+//     base_dimension() makes the dimension;
 //   - one asymmetry worth knowing before you rely on it: reusing the same
 //     sub-formula twice lists its citation twice, while its symbols still
 //     appear once.
@@ -37,15 +38,19 @@ namespace unit = formula::unit;
 using formula::var;
 
 // A unit this library does not ship. `Unit` is a plain aggregate, so a caller
-// declares one the same way the library declares Metre. Its dimension is
-// Scalar: the seven base dimensions are physical, and money is not among them,
-// so a currency is dimensionless here -- it carries its own symbol and its own
-// display precision, but the dimension system will not stop you adding euros
-// to a bare ratio. Adding euros to a length it does stop, because Length is a
-// dimension it knows.
-inline constexpr formula::Unit Euro { .dimension = formula::dim::Scalar,
+// declares one the same way the library declares Metre. Money is not among the
+// seven SI base dimensions, so the euro gets a base dimension of its own:
+// base_dimension("EUR") names one, and the unit named after it is one euro.
+// The dimension system then refuses euros plus a bare ratio, or euros plus
+// yen, as it refuses euros plus a length.
+inline constexpr formula::Unit Euro { .dimension = formula::base_dimension("EUR"),
                                       .symbolText = formula::symbol("EUR"),
                                       .decimals = 2 };
+
+// Money is not a bare number. `var<UnitPrice> + formula::Rational { 1, 2 }`
+// does not compile -- test/negative/money_plus_number.cpp pins the library's
+// message for it.
+static_assert(!formula::SameDimension<Euro.dimension, formula::dim::Scalar>);
 
 using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
 using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;

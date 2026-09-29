@@ -10,6 +10,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1222,4 +1223,123 @@ TEST_CASE("asking whether a retry compares or adds is answered, not refused", "[
                                   formula::detail::RefusedRetryValue<formula::dim::Mass>>);
     STATIC_REQUIRE(
         std::is_same_v<decltype(-std::declval<Retried>()), formula::detail::RefusedRetryValue<formula::dim::Mass>>);
+}
+
+namespace
+{
+/// The step of the fixpoint, 6.08 g, from an environment of a consumer's own
+/// that works it out: `checked_get` answers it -- or, when @p Fails, fails
+/// with `DomainError` -- and `source_of` says it was calculated. Its `get`
+/// answers 1009 g and its `is_entered` says nothing was typed in, so an
+/// attempt that read either instead of the hooks would show it.
+template <bool Fails>
+struct CalculatedStep
+{
+    template <formula::Described Q>
+    static constexpr bool is_entered = false;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return formula::Measured<Q> { rat(1009) };
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr std::expected<formula::Measured<Q>, formula::ArithmeticError> checked_get() const noexcept
+    {
+        if constexpr (Fails)
+            return std::unexpected { formula::ArithmeticError::DomainError };
+        else
+            return formula::Measured<Q> { rat(152, 25) };
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::ValueSource source_of() const noexcept
+    {
+        return formula::ValueSource::Derived;
+    }
+};
+
+/// The same step from an environment with neither hook: `get` and
+/// `is_entered` only, which says the step was typed in and the estimate was
+/// not.
+struct PlainStep
+{
+    template <formula::Described Q>
+    static constexpr bool is_entered = std::is_same_v<Q, StepSize>;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return formula::Measured<Q> { rat(152, 25) };
+    }
+};
+
+template <typename Env>
+concept FailsReads = requires(Env const& asked) { asked.template checked_get<StepSize>(); };
+
+template <typename Env>
+concept SaysSource = requires(Env const& asked) { asked.template source_of<StepSize>(); };
+
+// w_k = s + w_{k-1} / 2 from 0 g, with s = 6.08 g read from the environment:
+// accepted at 11.4 g, as the halving fixpoint is. s = 1009 g would never
+// settle within four attempts.
+constexpr auto calculatedStep = formula::retry<Estimate, 4, formula::FirstJudged::AtFirstAttempt>(
+    fromZero, formula::var<StepSize> + formula::previous_attempt<Estimate> / rat(2), settled, repeat, cite);
+} // namespace
+
+TEST_CASE("the attempt's environment forwards a read's source and its failure when the specimen's has them", "[retry]")
+{
+    using Forwarding = formula::detail::
+        AttemptEnvironment<CalculatedStep<false>, formula::Rational, Estimate, formula::AttemptPhase::Attempting, 4>;
+    using Plain =
+        formula::detail::AttemptEnvironment<Specimen, formula::Rational, Estimate, formula::AttemptPhase::Attempting, 4>;
+    STATIC_REQUIRE(FailsReads<Forwarding>);
+    STATIC_REQUIRE(SaysSource<Forwarding>);
+    STATIC_REQUIRE_FALSE(FailsReads<Plain>);
+    STATIC_REQUIRE(SaysSource<Plain>);
+
+    constexpr auto ran = formula::checked_evaluate_retry(calculatedStep, CalculatedStep<false> {});
+    STATIC_REQUIRE(ran->end() == formula::RetryEnd::Accepted);
+    STATIC_REQUIRE(ran->outcome().measurement().value() == rat(57, 5));
+    // The first attempt's read fails, and so does the retry, there.
+    STATIC_REQUIRE(formula::checked_evaluate_retry(calculatedStep, CalculatedStep<true> {}).error()
+                   == formula::RetryFailure { formula::ArithmeticError::DomainError, 0 });
+
+    // Every attempt's read of the step says it was calculated.
+    auto const explained = formula::explain_retry(calculatedStep, CalculatedStep<false> {});
+    std::size_t calculatedReads = 0;
+    for (formula::Step<> const& each: explained.trace.steps)
+        if (each.kind == formula::StepKind::Variable)
+        {
+            CHECK(each.inputSource == formula::ValueSource::Derived);
+            ++calculatedReads;
+        }
+    CHECK(calculatedReads == 4);
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 60 }).find("s_w = 152/25 g, calculated\n")
+          != std::string::npos);
+}
+
+TEST_CASE("the attempt's environment has neither hook when the specimen's has neither", "[retry]")
+{
+    using Neither =
+        formula::detail::AttemptEnvironment<PlainStep, formula::Rational, Estimate, formula::AttemptPhase::Attempting, 4>;
+    STATIC_REQUIRE_FALSE(FailsReads<Neither>);
+    STATIC_REQUIRE_FALSE(SaysSource<Neither>);
+
+    // It still evaluates and traces, and is_entered decides every read's
+    // source: typed in, as the specimen says.
+    auto const explained = formula::explain_retry(calculatedStep, PlainStep {});
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->end() == formula::RetryEnd::Accepted);
+    std::size_t typedReads = 0;
+    for (formula::Step<> const& each: explained.trace.steps)
+        if (each.kind == formula::StepKind::Variable)
+        {
+            CHECK(each.inputSource == formula::ValueSource::ManuallyEntered);
+            ++typedReads;
+        }
+    CHECK(typedReads == 4);
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 60 }).find("s_w = 152/25 g, entered by hand\n")
+          != std::string::npos);
 }

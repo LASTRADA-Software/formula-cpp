@@ -90,6 +90,10 @@ add_executable(formula-cpp-tests
     opaque_cross_tu_b.cpp
     least_squares_tests.cpp
     retry_tests.cpp
+    calculation_tests.cpp
+    calculation_trace_tests.cpp
+    number_text_tests.cpp
+    format_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -277,9 +281,37 @@ formula_add_negative_test(exponent_out_of_range "formula_exponent_out_of_range")
 
 formula_add_negative_test(dimension_mismatch
     "formula: these two dimensions are not the same")
+formula_add_negative_test(dimension_named_base_mismatch
+    "formula: these two dimensions are not the same")
+
+# Named base dimensions. A product or quotient needing more than four is the
+# same NAME-not-message case as the exponent sentinels above, and follows
+# them: no EXPECT_COUNT.
+formula_add_negative_test(dimension_too_many_named_bases "formula_dimension_has_too_many_named_bases")
+formula_add_negative_test(dimension_too_many_named_bases_divided "formula_dimension_has_too_many_named_bases")
+formula_add_negative_test(expression_too_many_named_bases "formula_dimension_has_too_many_named_bases")
+
+# A base name is a function argument, which no `static_assert` can see, so each
+# rule `base_dimension` enforces is a non-`constexpr` sentinel named after it.
+# No EXPECT_COUNT: clang and clang-cl report a failed `consteval` call twice,
+# once for the constant it initialises and once for the call, each naming the
+# sentinel, while cl and g++ report it once.
+formula_add_negative_test(base_dimension_name_empty "formula_base_dimension_name_must_not_be_empty")
+# A 16-byte name would also overflow symbol(); the base's own rule must be the one that fires.
+formula_add_negative_test(base_dimension_name_too_long "formula_base_dimension_name_too_long"
+    REJECT "formula_unit_symbol_too_long")
+formula_add_negative_test(base_dimension_name_not_identifier
+    "formula_base_dimension_name_must_be_a_letter_then_letters_or_digits")
+formula_add_negative_test(base_dimension_name_si_symbol
+    "formula_base_dimension_name_is_an_si_base_unit_symbol")
 
 formula_add_negative_test(unit_dimension_mismatch
     "formula: these two units measure different dimensions")
+
+# Money: two units whose SI exponents are the same, told apart only by their
+# named base dimensions.
+formula_add_negative_test(unit_currency_mismatch
+    "formula: these two units measure different dimensions" EXPECT_COUNT 1)
 
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately
@@ -314,6 +346,13 @@ formula_add_negative_test(describe_dimension_mismatch
 formula_add_negative_test(expression_add_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
 
+# Money: sides whose SI exponents are the same, told apart only by their named
+# base dimensions -- euros against a pure number, and against yen.
+formula_add_negative_test(money_plus_number
+    "formula: the two sides of this addition or subtraction measure different dimensions" EXPECT_COUNT 1)
+formula_add_negative_test(money_plus_other_currency
+    "formula: the two sides of this addition or subtraction measure different dimensions" EXPECT_COUNT 1)
+
 formula_add_negative_test(expression_inconsistent_describe
     "describes a dimension its own unit does not measure")
 
@@ -338,6 +377,11 @@ formula_add_negative_test(quantity_alias_environment_missing
 
 formula_add_negative_test(evaluate_result_dimension_mismatch
     "does not measure the dimension this expression computes")
+
+# Money: a result quantity in yen for an expression in euros, the SI exponents
+# of both being the same.
+formula_add_negative_test(evaluate_result_other_currency
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1)
 
 # Series (`series.hpp`, `environment.hpp`). Each refusal is gated so that one
 # mistake draws one message, and each REJECT names the message that would be
@@ -732,6 +776,10 @@ formula_add_negative_test(critical_value_count_not_scalar
     "formula: this critical value's count is not dimensionless"
     REJECT "sample-size table" "stated in a unit other than a bare number")
 
+formula_add_negative_test(critical_value_count_in_euros
+    "formula: this critical value's count is not dimensionless"
+    REJECT "sample-size table" "stated in a unit other than a bare number")
+
 # A dimensionless count in a unit other than a bare number. Gated on the
 # count being dimensionless, so `count_not_scalar` above REJECTs this message.
 formula_add_negative_test(critical_value_count_in_percent
@@ -899,6 +947,32 @@ formula_add_negative_test(rounded_sqrt_rep_double
 # type whose constructor is deleted, so that name is the one substring common
 # to all of them.
 formula_add_negative_test(render_trace_no_step_limit "StepLimit")
+# The same hole, with a number style named and the step limit left out: the
+# style's default member initialiser must not make the limit optional.
+formula_add_negative_test(render_trace_numbers_without_step_limit "StepLimit")
+formula_add_negative_test(calculation_render_derivation_no_step_limit "StepLimit"
+    REJECT "no matching" "cannot convert argument")
+formula_add_negative_test(calculation_document_attempt_input
+    "formula: attempt_input reads the determination recorded for the attempt that is running"
+    EXPECT_COUNT 1
+    REJECT "provides no value for this quantity" "no matching")
+formula_add_negative_test(calculation_document_refused
+    "formula: these definitions read one another in a cycle, so none of them can be calculated first"
+    EXPECT_COUNT 1
+    REJECT "formula: attempt_input reads the determination recorded for the attempt that is running"
+           "provides no value for this quantity" "no matching")
+
+# A bad spec in a literal std::format string is a compile error naming the
+# guard format.hpp calls for that mistake, and no other guard.
+formula_add_negative_test(format_places_without_mode
+    "formula_number_format_needs_a_rounding_mode"
+    REJECT "formula_number_format_places_out_of_range" "formula_number_format_spec_not_understood")
+formula_add_negative_test(format_places_out_of_range
+    "formula_number_format_places_out_of_range"
+    REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_spec_not_understood")
+formula_add_negative_test(format_spec_not_understood
+    "formula_number_format_spec_not_understood"
+    REJECT "formula_number_format_needs_a_rounding_mode" "formula_number_format_places_out_of_range")
 
 formula_add_negative_test(band_gap
     "formula: this band table has a gap or overlap between two adjacent bands"
@@ -2319,6 +2393,192 @@ formula_add_negative_test(retry_attempt_input_documented_outside
     "formula: attempt_input reads the determination recorded for the attempt that is running"
     EXPECT_COUNT 1
     REJECT "provides no value for this quantity" "no matching")
+
+# A definition, refused where it is written.
+formula_add_negative_test(calculation_definition_dimension_mismatch
+    "formula: this definition's expression measures a different dimension from the quantity it defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside" "no matching")
+formula_add_negative_test(calculation_definition_of_series
+    "formula: define<Q> takes an expression of one value, and this is a series"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition's expression measures a different dimension from the quantity it defines"
+           "formula: a calculation holds single values, and this definition reads a quantity as a series"
+           "no matching")
+formula_add_negative_test(calculation_definition_reads_series
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation"
+           "formula: this definition's expression measures a different dimension from the quantity it defines"
+           "no matching")
+formula_add_negative_test(calculation_definition_reads_observations
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation" "no matching")
+formula_add_negative_test(calculation_definition_reads_record
+    "formula: a calculation's definitions read the worksheet's own values, and this one reads from another record with from_record"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation" "no matching")
+formula_add_negative_test(calculation_definition_unseen_node
+    "formula: this definition holds a node kind the calculation cannot see inside"
+    EXPECT_COUNT 1
+    REJECT "has no detail::LevelChildren specialisation"
+           "formula: this definition's expression measures a different dimension from the quantity it defines"
+           "no matching")
+formula_add_negative_test(calculation_library_kind_without_entry
+    "formula: this library node kind has no detail::LevelChildren specialisation"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside")
+
+# A calculation, refused where it is written, and its queries.
+formula_add_negative_test(calculation_argument_not_a_definition
+    "formula: calculation(...) takes only definitions made by define<Q>(expression)"
+    EXPECT_COUNT 1
+    REJECT "formula: a calculation defines at least one quantity"
+           "formula: this calculation neither defines nor reads this quantity"
+           "no type named" "is not a member" "no matching")
+formula_add_negative_test(calculation_of_nothing
+    "formula: a calculation defines at least one quantity; calculation() with no definitions calculates nothing"
+    EXPECT_COUNT 1
+    REJECT "formula: calculation(...) takes only definitions made by define<Q>(expression)" "no matching")
+formula_add_negative_test(calculation_defines_twice
+    "formula: this calculation defines the same quantity more than once"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: these definitions read one another in a cycle"
+           "formula: a calculation holds at most 64 quantities"
+           "formula: this calculation neither defines nor reads this quantity")
+formula_add_negative_test(calculation_self_reference
+    "formula: this definition reads the quantity it defines, so it can never be calculated"
+    EXPECT_COUNT 1
+    REJECT "formula: these definitions read one another in a cycle"
+           "formula: this calculation neither defines nor reads this quantity")
+formula_add_negative_test(calculation_cycle
+    "formula: these definitions read one another in a cycle, so none of them can be calculated first"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: this calculation neither defines nor reads this quantity")
+formula_add_negative_test(calculation_over_capacity
+    "formula: a calculation holds at most 64 quantities, inputs and definitions together, and this one holds more"
+    EXPECT_COUNT 1
+    REJECT "formula: these definitions read one another in a cycle"
+           "formula: this calculation neither defines nor reads this quantity" "shift")
+formula_add_negative_test(calculation_query_unknown_quantity
+    "formula: this calculation neither defines nor reads this quantity"
+    EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(calculation_defines_twice_reading_itself
+    "formula: this calculation defines the same quantity more than once"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: these definitions read one another in a cycle")
+formula_add_negative_test(calculation_over_capacity_reading_itself
+    "formula: a calculation holds at most 64 quantities, inputs and definitions together, and this one holds more"
+    EXPECT_COUNT 1
+    REJECT "formula: this definition reads the quantity it defines"
+           "formula: these definitions read one another in a cycle")
+formula_add_negative_test(calculation_reads_itself_on_a_cycle
+    "formula: this definition reads the quantity it defines, so it can never be calculated"
+    EXPECT_COUNT 1
+    REJECT "formula: these definitions read one another in a cycle")
+formula_add_negative_test(calculation_query_after_refused_definition
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: these definitions read one another in a cycle")
+
+# A worksheet, refused where it is made, set or asked.
+formula_add_negative_test(worksheet_input_missing
+    "formula: this worksheet's environment provides no value for an input of its calculation"
+    EXPECT_COUNT 1
+    REJECT "formula: this environment provides no value for this quantity" "no matching")
+formula_add_negative_test(worksheet_entry_unread
+    "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment provides no value for an input of its calculation" "no matching")
+formula_add_negative_test(worksheet_entry_misnamed
+    "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment provides no value for an input of its calculation" "no matching")
+formula_add_negative_test(worksheet_calculated_as_measurement
+    "formula: this quantity is calculated by the worksheet's calculation, and was given as a measurement"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+           "formula: this worksheet's environment provides no value for an input of its calculation"
+           "no matching")
+formula_add_negative_test(worksheet_set_calculated_as_measurement
+    "formula: this quantity is calculated by the worksheet's calculation, and was given as a measurement"
+    EXPECT_COUNT 1
+    REJECT "formula: set() names a quantity this worksheet's calculation neither reads nor defines" "no matching")
+formula_add_negative_test(worksheet_series_entry
+    "formula: a worksheet holds single values, and this entry is a series or raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment provides no value for an input of its calculation"
+           "holds a series for this quantity, not a single value"
+           "no matching")
+formula_add_negative_test(worksheet_set_series
+    "formula: a worksheet holds single values, and this entry is a series or raw observations"
+    EXPECT_COUNT 1
+    REJECT "formula: set() names a quantity this worksheet's calculation neither reads nor defines"
+           "holds a series for this quantity, not a single value"
+           "to non-scalar type" "no viable conversion" "cannot convert from"
+           "no matching")
+formula_add_negative_test(worksheet_set_twice
+    "formula: set() was given the same quantity more than once"
+    EXPECT_COUNT 1
+    REJECT "formula: set() names a quantity this worksheet's calculation neither reads nor defines" "tuple index"
+           "no matching")
+formula_add_negative_test(worksheet_set_unknown
+    "formula: set() names a quantity this worksheet's calculation neither reads nor defines"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment supplies a quantity its calculation neither reads nor defines"
+           "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+           "tuple index" "no matching")
+formula_add_negative_test(worksheet_result_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: clear_override or is_overridden names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_is_overridden_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: clear_override or is_overridden names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_clear_override_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity"
+           "formula: clear_override or is_overridden names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_is_overridden_input
+    "formula: clear_override or is_overridden names an input of the calculation"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's calculation neither defines nor reads the quantity asked for" "no matching")
+formula_add_negative_test(worksheet_clear_input_override
+    "formula: clear_override or is_overridden names an input of the calculation"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's calculation neither defines nor reads the quantity asked for" "no matching")
+formula_add_negative_test(worksheet_of_refused_calculation
+    "formula: these definitions read one another in a cycle, so none of them can be calculated first"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet's environment"
+           "formula: set() names a quantity this worksheet's calculation neither reads nor defines"
+           "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+           "formula: clear_override or is_overridden names an input of the calculation"
+           "no matching")
+formula_add_negative_test(worksheet_explain_unknown
+    "formula: this worksheet's calculation neither defines nor reads the quantity asked for"
+    EXPECT_COUNT 1
+    REJECT "formula: this calculation neither defines nor reads this quantity" "no matching")
+formula_add_negative_test(worksheet_view_missed_read
+    "formula: this environment provides no value for this quantity"
+    EXPECT_COUNT 1
+    REJECT "formula: this worksheet" "no matching")
 add_test(NAME hygiene.version
     COMMAND "${CMAKE_COMMAND}"
             -D "VERSION_HEADER=${PROJECT_SOURCE_DIR}/include/formula-cpp/version.hpp"

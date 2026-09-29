@@ -52,8 +52,21 @@
 /// name a case or a row, not a quantity; a vocabulary leaves both alone. Nor
 /// does it change `Measured<Q>::quantity_symbol()` (`measured.hpp`), which
 /// reports `Describe<Q>`'s metadata and renders nothing.
+///
+/// **A vocabulary also carries how a formula's text writes its numbers.**
+/// `render()` and `document()` given `RenderOptions` (`render.hpp`) wrap the
+/// vocabulary they were given with the style asked for, and hand that on as
+/// the vocabulary; `render_derivation` (`trace_render.hpp`) wraps the
+/// worksheet's vocabulary so on every call, default options included, to
+/// write each block's definition. It is the one argument that already
+/// reaches every node, a consumer's own `render_node` included, so no
+/// signature a consumer overloads had to change. Symbols are resolved
+/// through the wrapped vocabulary exactly as before, and
+/// `number_style_of(vocabulary)` reads the style -- `NumberStyle::fraction()`
+/// for a vocabulary nothing wrapped.
 
 #include <formula-cpp/detail/name_text.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/quantity.hpp>
 
 #include <cstddef>
@@ -375,10 +388,35 @@ namespace detail
 
     template <typename... Es>
     inline constexpr bool isVocabulary<ScopedVocabulary<Es...>> = true;
+
+    /// A vocabulary carrying the number style `RenderOptions` asked for: what
+    /// `render()` and `document()` hand every node in place of the vocabulary
+    /// they were given, when they were given options (see this file's
+    /// comment). Made by `styled`, which never wraps one twice.
+    template <typename V>
+    struct StyledVocabulary
+    {
+        /// The vocabulary every symbol is resolved through.
+        V wrapped;
+        /// How a number in the formula's text is written: `number_style_of`.
+        NumberStyle numbers;
+
+        /// How @p Q is written: exactly as the wrapped vocabulary writes it.
+        template <Described Q>
+        [[nodiscard]] constexpr std::string_view symbol() const noexcept
+        {
+            return wrapped.template symbol<Q>();
+        }
+    };
+
+    /// A styled vocabulary is a vocabulary exactly when the one it wraps is.
+    template <typename V>
+    inline constexpr bool isVocabulary<StyledVocabulary<V>> = isVocabulary<V>;
 } // namespace detail
 
 /// A vocabulary this library knows how to read: `DefaultVocabulary` or a
-/// `ScopedVocabulary`. Closed, because every surface that takes one resolves
+/// `ScopedVocabulary` -- or either, carrying a number style (`RenderOptions`,
+/// `render.hpp`). Closed, because every surface that takes one resolves
 /// symbols through `symbol_of` and nothing else.
 template <typename V>
 concept Vocabulary = detail::isVocabulary<std::remove_cv_t<V>>;
@@ -390,5 +428,68 @@ template <Described Q, Vocabulary V>
 {
     return vocabulary.template symbol<Q>();
 }
+
+/// How a formula's text written under a vocabulary states a number:
+/// `NumberStyle::fraction()` -- the text every surface wrote before number
+/// styles existed -- for `DefaultVocabulary` and a `ScopedVocabulary`. A
+/// consumer's own `render_node` that writes a number asks here, so that it
+/// follows `RenderOptions` as this library's nodes do. A number the author
+/// typed -- every number a formula's text states -- is written in
+/// `typed_number_style(vocabulary)`, as this library's own nodes write
+/// theirs: never rounded, never padded (`RenderOptions`, `render.hpp`).
+template <Vocabulary V>
+[[nodiscard]] constexpr NumberStyle number_style_of(V const&) noexcept
+{
+    return NumberStyle::fraction();
+}
+
+/// The style a vocabulary carries once `render()` or `document()` was given
+/// `RenderOptions`: the one `RenderOptions::numbers` named.
+template <Vocabulary V>
+[[nodiscard]] constexpr NumberStyle number_style_of(detail::StyledVocabulary<V> const& styledVocabulary) noexcept
+{
+    return styledVocabulary.numbers;
+}
+
+/// The style a formula's text under @p vocabulary writes a number its author
+/// typed in: `number_style_of(vocabulary)`, exact only and never padded.
+/// Every number a formula states was typed -- a constant, a table's row or
+/// bound, a permitted value, a limit -- and is stated as typed: a rounding
+/// would be a number nobody wrote, and a padding zero a precision nobody
+/// stated. So `NumberStyle::fraction()` stays itself, and every decimal
+/// style, padded or approximating, becomes `NumberStyle::exact_decimal()`:
+/// `1/3` stays `1/3`, and `number(1/2)` reads `0.5`, never `0.500`.
+///
+/// Every number this library's own nodes write into a formula's text is
+/// written in this style; a consumer's own `render_node` that writes a number
+/// its author typed should write it in this style too, with `number_text`.
+template <Vocabulary V>
+[[nodiscard]] constexpr NumberStyle typed_number_style(V const& vocabulary) noexcept
+{
+    NumberStyle const exactOnly = number_style_of(vocabulary).exact_only();
+    if (exactOnly.notation() == NumberNotation::ExactDecimal)
+        return NumberStyle::exact_decimal(DecimalPadding::Trimmed);
+    return exactOnly;
+}
+
+namespace detail
+{
+    /// @p vocabulary carrying @p numberStyle.
+    template <Vocabulary V>
+    [[nodiscard]] constexpr StyledVocabulary<V> styled(V const& vocabulary, NumberStyle numberStyle) noexcept
+    {
+        return StyledVocabulary<V> { .wrapped = vocabulary, .numbers = numberStyle };
+    }
+
+    /// A styled vocabulary carrying @p numberStyle instead: styled once, never
+    /// twice, so that `render(x, v, options)` of a vocabulary already styled
+    /// states the style it was given last.
+    template <Vocabulary V>
+    [[nodiscard]] constexpr StyledVocabulary<V> styled(StyledVocabulary<V> const& vocabulary,
+                                                       NumberStyle numberStyle) noexcept
+    {
+        return StyledVocabulary<V> { .wrapped = vocabulary.wrapped, .numbers = numberStyle };
+    }
+} // namespace detail
 
 } // namespace formula

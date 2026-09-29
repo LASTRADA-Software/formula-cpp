@@ -149,6 +149,28 @@ last two lines are the reason that matters: the same number rounds to 1.2 or
 1.1 depending on the rule the method specifies, and the library makes you say
 which.
 
+### A decimal only where it is exact, a rounding only where you ask
+
+```cpp
+#include <formula-cpp/format.hpp>
+```
+
+```text
+std::format("{}", Rational { 3, 5 })                           0.6
+std::format("{}", Rational { 1, 3 })                           1/3
+std::format("{:/}", Rational { 3, 5 })                         3/5
+std::format("{:.2HalfEven}", Rational { 23653, 200 })          118.26
+std::format("{:.2HalfAwayFromZero}", Rational { 23653, 200 })  118.27
+std::format("{:.2HalfEven}", Rational { 4 })                   4.00
+std::format("{:~.3HalfEven}", Rational { 1, 3 })               ≈0.333
+std::format("{:~.3HalfEven}", Rational { 3, 5 })               0.6
+```
+
+`1/3` has no decimal, so it stays `1/3`: `0.333` would be a different number.
+A rounding names its mode — there is no default — and `~` marks it `≈`.
+Traces and rendered formulas take the same choice; see
+[Displaying numbers](docs/display.md).
+
 ### The library documents itself
 
 `document()` walks a formula for its rendered text, its citations and its
@@ -174,7 +196,7 @@ std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 1
 4. #3 = 3/5 [Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)]
 ```
 
-Every value is shown in the unit it was declared in, not the coherent SI unit
+Every value is shown in the unit it was declared in, not the coherent unit
 the arithmetic actually ran on — that is `9/50` cubic metres above, and nobody
 typed cubic metres. When the environment overrides the result instead of
 letting the formula derive it, `explained.trace` comes back empty — nothing
@@ -232,11 +254,13 @@ because all of it came from the same line of code.
 | Guide | What it covers |
 |---|---|
 | [Exact numbers](docs/numbers.md) | `Rational`, the rounding modes, why exactness is the default |
-| [Dimensions and units](docs/dimensions.md) | Compile-time dimensional analysis, exact unit conversion |
+| [Dimensions and units](docs/dimensions.md) | Compile-time dimensional analysis, exact unit conversion, and base dimensions the SI does not have, such as money |
 | [Quantities](docs/quantities.md) | Declaring a quantity, `Describe`, measurements that may be absent |
 | [Writing formulas](docs/expressions.md) | Operators, evaluation, environments, overrides |
 | [Citations and rendering](docs/citations.md) | `documented()`, the three dialects, generated documentation |
 | [Tracing and audit trails](docs/tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
+| [Displaying numbers](docs/display.md) | Decimals in traces and rendered formulas, exact unless an approximation is asked for, and std::format for Rational and Measured |
+| [Calculations and worksheets](docs/calculations.md) | Named values defined by expressions, a dependency graph checked at compile time, a worksheet that recalculates only what a change reaches, what-if copies, overrides, and a derivation per named value |
 | [Rounding and conditionals](docs/rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](docs/constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
 | [Lookup tables](docs/lookup-tables.md) | The three table kinds, validation that refuses a gap, and why a miss is not a number |
@@ -273,6 +297,10 @@ and still growing. The public API may change until 1.0.
 | Statistics, precision limits, outlier rejection | shipped |
 | Other samples and other tests: records, context, lineage | shipped |
 | Opaque operations (least squares), bounded retry | shipped |
+| Power, energy and Fahrenheit units | next release |
+| Named base dimensions such as money | next release |
+| Decimals in traces, rendered formulas and `std::format` | next release |
+| Calculations: definitions, dependency graph, incremental worksheets | next release |
 
 ## Requirements
 

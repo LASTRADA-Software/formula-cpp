@@ -29,9 +29,9 @@ int main()
               << " = " << volumeInLitres.numerator() << '/' << volumeInLitres.denominator() << " l\n";
     std::cout << "round trip exact: " << (roundTripped == volumeInMillilitres ? "yes" : "no") << '\n';
 
-    // 0,4 of a minute, exactly.
+    // 0.4 of a minute, exactly.
     Rational const durationInMinutes { 2, 5 };
-    Rational const flowRate = volumeInLitres / durationInMinutes; // 9/8 l/min, i.e. 1,125
+    Rational const flowRate = volumeInLitres / durationInMinutes; // 9/8 l/min, i.e. 1.125
 
     // The method says: report to two decimal places, rounding half away from zero.
     // That rounding is part of the method, so it happens here, not at print time.

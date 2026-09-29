@@ -43,10 +43,62 @@ endfunction()
 formula_add_example(simple simple.cpp "w/c = 0.600000 \\(computed\\)")
 formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes")
 formula_add_example(dimensions_and_units dimensions_and_units.cpp "all checks passed: yes")
+
+# Every ```text block of docs/dimensions.md must be a run of lines the example
+# prints, and every ```cpp block a run of lines of its source, unless it is
+# marked as not from the example.
+add_test(NAME docs.dimensions-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-dimensions_and_units>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/dimensions.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.dimensions-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/dimensions_and_units.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/dimensions.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
 formula_add_example(quantities quantities.cpp "all checks passed: yes")
 formula_add_example(expressions expressions.cpp "all checks passed: yes")
 formula_add_example(citations citations.cpp "all checks passed: yes")
 formula_add_example(composition composition.cpp "all checks passed: yes")
+
+# docs/calculations.md quotes this program's output. Pinned here, in the order
+# the program prints them: the four totals -- the first run's, after a new
+# price, after a new base fee, and on the what-if copy -- and how many values
+# each step of the worksheet recalculated and reused: the first run, a new
+# price, the same price again, a new base fee, the fridge's early cutoff, the
+# what-if copy and the worksheet left as it was. Then the derivation of the
+# daily load, which the fridge's change reused, reading the fridge's current
+# 400 W; the grid cost's derivation stating the value typed in by hand, cut
+# short with its footer; and, in the example's second calculation, the division
+# by zero reaching the value that reads it, the failure not calculated again,
+# the same failure again counted as no change, and an input nobody counted.
+#
+# Twice, one line must follow another: the daily load's first line its title,
+# and the footer the net draw's line. A bracket argument cannot spell a line
+# break, so it is spelled once here -- with the CR that Windows' output has.
+set(lineBreak "\r?\n")
+string(CONCAT billOutput
+    [==[first run: .*total 118\.26 EUR, net draw 279 kWh, recomputed 15, reused 0.*price 0\.25 EUR/kWh: .*total 95\.02 EUR, .*recomputed 5, reused 0.*the same price again: .*recomputed 0, reused 0.*base fee 15 EUR: .*total 98\.00 EUR, .*recomputed 3, reused 0.*fridge 400 W for 12 h: .*recomputed 2, reused 8.*how the daily load was reached:]==]
+    "${lineBreak}"
+    [==[daily_load = fridge_kwh \+ oven_kwh \+ heater_kwh = 13\.3 kWh.*fridge_w = 400 W.*with 200 kWh of sun: .*total 85\.14 EUR, net draw 239 kWh, recomputed 9.*the worksheet itself: .*recomputed 0, reused 0.*net_draw = 250 kWh, entered by hand in place of monthly_load - self_used]==]
+    "${lineBreak}"
+    [==[\.\.\. 1 further step not shown.*shared by nobody: share: division by zero, in cents: division by zero.*asked again: recomputed 0.*100\.00 EUR, still shared by nobody: recomputed 1, reused 1.*occupants not counted: share \(not measured\), in cents \(not measured\).*all checks passed: yes]==])
+formula_add_example(electricity_bill electricity_bill.cpp "${billOutput}")
+
+# Every ```text block of docs/calculations.md must be a run of lines the
+# example prints, and every ```cpp block a run of lines of its source.
+add_test(NAME docs.calculations-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-electricity_bill>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/calculations.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.calculations-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/electricity_bill.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/calculations.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
 formula_add_example(tracing tracing.cpp "all checks passed: yes")
 formula_add_example(rounding_and_conditionals rounding_and_conditionals.cpp "all checks passed: yes")
 
@@ -232,4 +284,37 @@ add_test(NAME docs.opaque-and-retry-snippets
     COMMAND "${CMAKE_COMMAND}"
             -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/opaque_and_retry.cpp"
             -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/opaque-and-retry.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
+
+# docs/display.md quotes this program's output verbatim. Pinned here, in the
+# order the program prints them: a value with no exact decimal kept as its
+# fraction, then rounded and marked, then padded; a comparison stated exactly
+# beside a rounded input; the typed tare as a decimal in the formula's text;
+# number_text of an absent value; the std::format reference's exact decimal,
+# fraction and marked rounding; and a spec refused at run time in the
+# library's words.
+formula_add_example(display display.cpp [==[#3 / #6 = 134/1185.*#3 / #6 = ≈0\.113.*m_d = 144\.0 g.*67/6 % \(at most 12 %\).*\(m_w - m_d\) / \(m_d - 25\.5 g\).*not measured: \(not measured\).*Rational \{ 3, 5 \}\)  +0\.6.*Rational \{ 1, 3 \}\)  +1/3.*Rational \{ 1, 3 \}\)  +≈0\.333.*formula: this number format rounds but names no rounding mode.*all checks passed: yes]==])
+
+# Every ```text block of docs/display.md must be lines the example really
+# prints, and every ```cpp block lines of its source. CALL_TABLES also judges
+# the guide's std::format table: each row's call and output must be a line the
+# example prints.
+add_test(NAME docs.display-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-display>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
+            -D "CALL_TABLES=ON"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+# README.md's ```text blocks are judged against this example too: its
+# std::format block is this program's output, and any ```text block added to
+# README later must be as well.
+add_test(NAME docs.readme-display-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-display>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/README.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.display-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/display.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/display.md"
             -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")

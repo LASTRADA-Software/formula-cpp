@@ -25,4 +25,14 @@ struct TaggedUnit
 
 int consume_litre(TaggedUnit<formula::unit::Litre> tagged);
 
+/// A tariff in euros per kilowatt-hour: a unit whose dimension carries a named
+/// base. Declared here with the dimension spelt euros per energy, defined in
+/// unit_cross_tu_b.cpp with it spelt another way, and called from
+/// unit_tests.cpp with a third.
+int consume_tariff_unit(TaggedUnit<formula::Unit { .dimension = formula::base_dimension("EUR") / formula::dim::Energy,
+                                                   .magnitudeNumerator = 1,
+                                                   .magnitudeDenominator = 3600000,
+                                                   .symbolText = formula::symbol("EUR/kWh"),
+                                                   .decimals = 4 }> tagged);
+
 } // namespace formula_test

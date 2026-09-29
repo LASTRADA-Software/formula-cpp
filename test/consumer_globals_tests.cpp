@@ -53,10 +53,26 @@
 // unbound record, untraced and traced into `render_trace`, gated on
 // `same_lineage` through `checked_explain`, rendered and documented, with
 // `lineage_of` and `origin_of` reading the trace's side tables, and under an
-// overlay's constant and derived quantity, traced; and a quantity declared by
-// alias at global scope, so that its tag is one more global. A
-// template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
-// computed what it should.
+// overlay's constant and derived quantity, traced; `define` of the formula
+// above and of a variant an overlay derived a quantity in, with what each
+// reads, and a `calculation` of two with every query over its graph; a
+// `worksheet` of it, from an environment with and without an override,
+// asked for one value and for two, by type and by variable, set, set on a
+// worksheet about to be discarded, copied with an override by `with`, the
+// override cleared, with its counters and every query, and its derivation
+// by `explain_worksheet`, rendered by `render_derivation`; the calculation
+// rendered and documented, with and without a number style, and its graph
+// by `describe_graph` and `to_dot`; a worksheet over a quantity in a
+// currency of the consumer's own, asked, derived in exact decimals, and
+// with an override cleared on a worksheet about to be discarded;
+// a measured value spelled by `number_text` in each notation, with
+// `checked_number_text`, `decimal_text`, `fraction_text` and
+// `exact_decimal_text`; a `Rational` and a measured value written by
+// `std::format`, aligned and rounded; and a quantity declared by alias at
+// global scope, so that its tag is one more global. A template it does
+// not reach is not guarded by it.
+// `consumer_globals_run_tests.cpp` checks that each of these computed what
+// it should.
 //
 // Measured against the headers before their names were changed: cl 19.51
 // reported 292 declarations across 30 headers with the probe's first
@@ -98,6 +114,7 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <optional>
 #include <span>
 #include <string>
@@ -132,6 +149,7 @@ int index;
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/binning.hpp>
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -146,6 +164,7 @@ int index;
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/least_squares.hpp>
@@ -153,6 +172,7 @@ int index;
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
@@ -226,6 +246,18 @@ struct Strength: formula::Quantity<Strength, "f_c", "compressive strength", unit
 {
 };
 struct AgreedEdge: formula::Quantity<AgreedEdge, "x_a", "agreed edge", unit::Millimetre>
+{
+};
+
+// A currency of the consumer's own, a base dimension the SI does not have,
+// and a fee in it before and after tax.
+inline constexpr formula::Unit ProbeEuro { .dimension = formula::base_dimension("EUR"),
+                                           .symbolText = formula::symbol("EUR"),
+                                           .decimals = 2 };
+struct NetFee: formula::Quantity<NetFee, "fee_n", "a fee before tax", ProbeEuro>
+{
+};
+struct GrossFee: formula::Quantity<GrossFee, "fee_g", "a fee after tax", ProbeEuro>
 {
 };
 
@@ -921,6 +953,143 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                       .find("103 mm, from record Reference (sample 23, test 3), entered by hand\n")
                                   != std::string::npos);
 
+    // Definitions of the formula touching every node kind and of the
+    // variant an overlay derived the factor in: what each reads, and the
+    // formula it holds, evaluated.
+    constexpr auto definedStrength = formula::define<Strength>(everything);
+    constexpr auto definedDerived = formula::define<Strength>(std::get<0>(derived.variantSet.cases).expression);
+    auto const fromDefinition = formula::checked_evaluate<Strength>(definedStrength.expression, specimen);
+    probe.checks.push_back(
+        std::is_same_v<std::remove_cv_t<decltype(definedStrength)>::reads,
+                       formula::detail::QuantityList<Force, EdgeX, Factor>>
+        && std::is_same_v<std::remove_cv_t<decltype(definedDerived)>::reads, formula::detail::QuantityList<EdgeX, Force>>
+        && fromDefinition.has_value() && checked.has_value() && *fromDefinition == *checked);
+
+    // A calculation of two definitions, and every query over its graph, in
+    // a vocabulary: the edge and the force are its inputs, the factor is
+    // calculated before the strength that reads it.
+    constexpr auto strengthCalculation =
+        formula::calculation(formula::define<Strength>(var<Factor> * var<Force> / (var<EdgeX> * var<EdgeX>)),
+                             formula::define<Factor>(var<EdgeX> / var<EdgeX>));
+    probe.checks.push_back(
+        formula::inputs_of(strengthCalculation, north) == std::array<std::string_view, 2> { "P", "x_m" }
+        && formula::calculation_order(strengthCalculation) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::dependencies_of<Strength>(strengthCalculation, north)
+               == std::array<std::string_view, 3> { "P", "x_m", "k" }
+        && formula::dependents_of<EdgeX>(strengthCalculation) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::upstream_of<Strength>(strengthCalculation).size() == 3
+        && formula::affected_by<Force>(strengthCalculation, north) == std::array<std::string_view, 1> { "f_c" }
+        && formula::depends_on<Strength, EdgeX>(strengthCalculation)
+        && !formula::depends_on<Factor, Force>(strengthCalculation)
+        // Nothing to name: an input reads nothing, and nothing reads the
+        // strength.
+        && formula::dependencies_of<Force>(strengthCalculation).empty()
+        && formula::dependents_of<Strength>(strengthCalculation, north).empty());
+
+    // A worksheet of that calculation: 100 kN on a 100 mm edge is 10 MPa,
+    // 200 kN 20 MPa, and half the factor, typed in, halves it again.
+    auto strengthSheet =
+        formula::worksheet(strengthCalculation,
+                           formula::environment(formula::Measured<Force> { formula::Rational { 100000 } },
+                                                formula::Measured<EdgeX> { formula::Rational { 100 } }));
+    auto const firstStrength = strengthSheet.checked_calculate<Strength>();
+    strengthSheet.set(formula::Measured<Force> { formula::Rational { 200000 } });
+    auto const [setStrength, setFactor] = strengthSheet.calculate<Strength, Factor>();
+    auto const [checkedStrength, checkedForce] = strengthSheet.checked_calculate(var<Strength>, var<Force>);
+    auto halvedCopy = strengthSheet.with(formula::entered(formula::Measured<Factor> { formula::Rational { 1, 2 } }));
+    auto const halvedStrength = halvedCopy.calculate(var<Strength>);
+    bool const halvedOverridden = halvedCopy.is_overridden<Factor>();
+    halvedCopy.clear_override<Factor>();
+    auto const restoredStrength = halvedCopy.calculate<Strength>();
+    auto const widerStrength =
+        formula::worksheet(strengthCalculation,
+                           formula::environment(formula::Measured<Force> { formula::Rational { 100000 } },
+                                                formula::Measured<EdgeX> { formula::Rational { 100 } },
+                                                formula::entered(formula::Measured<Factor> { formula::Rational { 1 } })))
+            .set(formula::Measured<EdgeX> { formula::Rational { 200 } })
+            .checked_calculate<Strength>();
+    probe.checks.push_back(
+        firstStrength.has_value() && firstStrength->measurement().value() == formula::Rational { 10 }
+        && setStrength.measurement().value() == formula::Rational { 20 }
+        && setFactor.measurement().value() == formula::Rational { 1 } && checkedStrength.has_value()
+        && checkedStrength->measurement().value() == formula::Rational { 20 } && checkedForce.has_value()
+        && checkedForce->source() == formula::ValueSource::Measured
+        && halvedStrength.measurement().value() == formula::Rational { 10 } && halvedOverridden
+        && !halvedCopy.is_overridden<Factor>() && restoredStrength.measurement().value() == formula::Rational { 20 }
+        && widerStrength.has_value() && widerStrength->measurement().value() == formula::Rational { 5, 2 }
+        && strengthSheet.recomputed() == 3 && strengthSheet.reused() == 0 && halvedCopy.recomputed() == 6);
+    probe.checks.push_back(
+        formula::inputs_of(strengthSheet, north) == std::array<std::string_view, 2> { "P", "x_m" }
+        && formula::calculation_order(strengthSheet) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::dependencies_of<Strength>(strengthSheet, north)
+               == std::array<std::string_view, 3> { "P", "x_m", "k" }
+        && formula::dependents_of<EdgeX>(strengthSheet) == std::array<std::string_view, 2> { "k", "f_c" }
+        && formula::upstream_of<Strength>(strengthSheet).size() == 3
+        && formula::affected_by<Force>(strengthSheet, north) == std::array<std::string_view, 1> { "f_c" }
+        && formula::depends_on<Strength, EdgeX>(strengthSheet) && !formula::depends_on<Factor, Force>(strengthSheet)
+        && formula::dependencies_of<Force>(strengthSheet).empty());
+
+    // The strength's derivation: its block, the factor's it reads, and the
+    // two inputs, in the vocabulary.
+    auto const strengthDerivation = formula::explain_worksheet<Strength>(strengthSheet, north);
+    probe.checks.push_back(
+        strengthDerivation.outcome.has_value() && strengthDerivation.entries.size() == 4
+        && strengthDerivation.entries[0].symbol == "f_c" && strengthDerivation.entries[1].symbol == "k"
+        && strengthDerivation.entries[2].symbol == "P" && strengthDerivation.entries[3].symbol == "x_m"
+        && strengthDerivation.entries[0].kind == formula::WorksheetEntryKind::Calculated
+        && strengthDerivation.entries[0].value == formula::Rational { 20 }
+        && strengthDerivation.entries[2].kind == formula::WorksheetEntryKind::Input
+        && !strengthDerivation.entries[0].trace.empty());
+
+    // The calculation as text: its definitions, its graph described and in
+    // DOT, and the strength's derivation rendered.
+    std::string const strengthRendered = formula::render<formula::Dialect::Markdown>(strengthCalculation, north);
+    std::string const strengthGraph = formula::describe_graph(strengthCalculation, north);
+    std::string const strengthDot = formula::to_dot(strengthCalculation, north);
+    std::string const strengthDerivationText = formula::render_derivation(strengthDerivation, { .maxSteps = 3 });
+    probe.checks.push_back(strengthRendered.starts_with("`k` = ") && strengthGraph.starts_with("inputs: P, x_m\n")
+                           && strengthDot.starts_with("digraph calculation {\n")
+                           && strengthDerivationText.starts_with("f_c = ")
+                           && strengthDerivationText.ends_with(" further steps not shown\n"));
+
+    // The calculation documented: the calculated rows first, each with its
+    // definition, then the inputs in the order the definitions read them.
+    formula::Documentation const strengthPage =
+        formula::document<formula::Dialect::Markdown>(strengthCalculation, north);
+    probe.checks.push_back(strengthPage.formula == strengthRendered && strengthPage.symbols.size() == 4
+                           && strengthPage.symbols[0].symbol == "k" && strengthPage.symbols[0].calculatedAs.has_value()
+                           && strengthPage.symbols[1].symbol == "f_c" && strengthPage.symbols[2].symbol == "x_m"
+                           && strengthPage.symbols[3].symbol == "P" && !strengthPage.symbols[3].calculatedAs.has_value());
+
+    // The same, with the numbers in a style: it has none to spell, so the
+    // text is the same.
+    formula::RenderOptions const exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+    std::string const styledStrength = formula::render(strengthCalculation, north, exactDecimals);
+    formula::Documentation const styledPage = formula::document(strengthCalculation, north, exactDecimals);
+    probe.checks.push_back(styledStrength == formula::render(strengthCalculation, north)
+                           && styledPage.formula == styledStrength && styledPage.symbols.size() == 4);
+
+    // A worksheet over a fee in a currency of the consumer's own: 12.50 EUR
+    // with 19 % tax is 14.875 EUR, its derivation in exact decimals; and the
+    // fee with tax typed in, cleared on a worksheet about to be discarded.
+    constexpr auto feeCalculation =
+        formula::calculation(formula::define<GrossFee>(var<NetFee> * formula::Rational { 119, 100 }));
+    auto feeSheet = formula::worksheet(
+        feeCalculation, formula::environment(formula::Measured<NetFee> { formula::Rational { 25, 2 } }));
+    auto const grossFee = feeSheet.calculate<GrossFee>();
+    std::string const feeDerivation = formula::render_derivation(
+        formula::explain_worksheet<GrossFee>(feeSheet), { .maxSteps = 10, .numbers = exactDecimals.numbers });
+    auto const clearedFee =
+        formula::worksheet(feeCalculation,
+                           formula::environment(formula::Measured<NetFee> { formula::Rational { 25, 2 } }))
+            .set(formula::entered(formula::Measured<GrossFee> { formula::Rational { 20 } }))
+            .clear_override<GrossFee>()
+            .calculate<GrossFee>();
+    probe.checks.push_back(grossFee.measurement().value() == formula::Rational { 119, 8 }
+                           && feeDerivation.starts_with("fee_g = fee_n * 1.19 = 14.875 EUR\n")
+                           && clearedFee.measurement() == grossFee.measurement()
+                           && std::format("{}", grossFee.measurement()) == "14.875 EUR");
+
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};
     auto const doubledEdge = formula::checked_evaluate<AliasEdge>(
@@ -930,5 +1099,33 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(doubledEdge.has_value() && doubledEdge->measurement().value() == formula::Rational { 278 }
                            && formula::render_trace(aliasTrace, { .maxSteps = 5 }).starts_with("1. x_g = 139 mm\n")
                            && formula::render(var<AliasEdge> * formula::Rational { 2 }) == "x_g * 2");
+
+    // A measured value spelled as text in the edge's millimetres, which
+    // declare one decimal: 150 mm padded, 452/3 mm as a fraction -- asked
+    // for, and as the exact decimal it has none of -- and rounded to 150.7,
+    // and an absent edge; and the functions they are made of.
+    formula::Measured<EdgeX> const thirdEdge { formula::Rational { 452, 3 } };
+    probe.checks.push_back(
+        formula::number_text(edge, formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded)) == "150.0 mm"
+        && formula::number_text(thirdEdge, formula::NumberStyle::fraction()) == "452/3 mm"
+        && formula::number_text(thirdEdge, formula::NumberStyle::exact_decimal()) == "452/3 mm"
+        && formula::number_text(thirdEdge, formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven))
+               == "\xe2\x89\x88" "150.7 mm"
+        && formula::checked_number_text(formula::Measured<EdgeX>::absent(), formula::NumberStyle {}).value()
+               == formula::NotMeasuredText
+        && formula::decimal_text(formula::Rational { 23653, 200 }, formula::DecimalPlaces { 2 },
+                                 formula::RoundingMode::HalfEven, formula::DecimalPadding::Padded)
+               == "118.26"
+        && formula::fraction_text(formula::Rational { -1, 3 }) == "-1/3"
+        && formula::has_exact_decimal(formula::Rational { 3, 5 })
+        && *formula::exact_decimal_text(formula::Rational { 3, 5 }) == "0.6");
+
+    // The same values written by std::format: a Rational as its exact
+    // decimal, and the third of an edge right-aligned in ten code points,
+    // rounded to the edge's one decimal with the approximation marker, and
+    // as a fraction.
+    probe.checks.push_back(std::format("{}", formula::Rational { 3, 5 }) == "0.6"
+                           && std::format("{:>10~HalfEven}", thirdEdge) == " \xe2\x89\x88" "150.7 mm"
+                           && std::format("{:/}", thirdEdge) == "452/3 mm");
     return probe;
 }

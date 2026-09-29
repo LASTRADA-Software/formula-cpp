@@ -46,13 +46,12 @@ using formula::var;
     return Rational { numerator, denominator };
 }
 
-/// @p value as `numerator/denominator`, or the whole number.
-[[nodiscard]] std::string fraction_text(Rational value)
+/// @p value as `formula::fraction_text` spells it -- `numerator/denominator`,
+/// or the whole number -- in a `std::string`, for `printf`.
+[[nodiscard]] std::string fraction_string(Rational value)
 {
-    std::string text = std::to_string(value.numerator());
-    if (value.denominator() != 1)
-        text += "/" + std::to_string(value.denominator());
-    return text;
+    formula::NumberText const spelled = formula::fraction_text(value);
+    return std::string { spelled.view() };
 }
 
 // ---- Quantities -------------------------------------------------------------------
@@ -229,12 +228,12 @@ int main()
     auto const rangeValue = formula::checked_evaluate<Spread>(range, sixMasses);
     auto const spreadValue = formula::checked_evaluate<Spread>(spread, sixMasses);
     check(meanValue && countValue && varianceValue && rangeValue && spreadValue, "every statistic of six masses is a value");
-    std::printf("%s = %s g\n", formula::render(mean).c_str(), fraction_text(meanValue->measurement().value()).c_str());
-    std::printf("%s = %s\n", formula::render(count).c_str(), fraction_text(countValue->measurement().value()).c_str());
+    std::printf("%s = %s g\n", formula::render(mean).c_str(), fraction_string(meanValue->measurement().value()).c_str());
+    std::printf("%s = %s\n", formula::render(count).c_str(), fraction_string(countValue->measurement().value()).c_str());
     std::printf(
-        "%s = %s g2\n", formula::render(variance).c_str(), fraction_text(varianceValue->measurement().value()).c_str());
-    std::printf("%s = %s g\n", formula::render(range).c_str(), fraction_text(rangeValue->measurement().value()).c_str());
-    std::printf("%s = %s g\n", formula::render(spread).c_str(), fraction_text(spreadValue->measurement().value()).c_str());
+        "%s = %s g2\n", formula::render(variance).c_str(), fraction_string(varianceValue->measurement().value()).c_str());
+    std::printf("%s = %s g\n", formula::render(range).c_str(), fraction_string(rangeValue->measurement().value()).c_str());
+    std::printf("%s = %s g\n", formula::render(spread).c_str(), fraction_string(spreadValue->measurement().value()).c_str());
     std::printf("LaTeX: %s\n\n", formula::render<formula::Dialect::LaTeX>(spread).c_str());
     check(meanValue->measurement().value() == rat(413, 10), "the mean is 41.3 g");
     check(varianceValue->measurement().value() == rat(427, 125), "the variance divides by n - 1: 427/125 g2");
@@ -252,8 +251,8 @@ int main()
         formula::checked_evaluate<Determinations>(formula::sample_count(formula::observations<Mass, 8>), observed);
     check(observedMean && observedCount, "the observations' statistics are values");
     std::printf("observations of 8 at most, 6 made: mean %s g, count %s\n",
-                fraction_text(observedMean->measurement().value()).c_str(),
-                fraction_text(observedCount->measurement().value()).c_str());
+                fraction_string(observedMean->measurement().value()).c_str(),
+                fraction_string(observedCount->measurement().value()).c_str());
     check(observedCount->measurement().value() == rat(6), "the count is the six made, not the capacity");
 
     // Nine for eight places: refused, never truncated to fit.
@@ -281,7 +280,7 @@ int main()
     auto const settled = formula::checked_evaluate_rejection<Mass>(withoutOutliers, sixMasses);
     check(settled.has_value(), "the rejection settles");
     std::printf("result: %s g, %zu rejected in %zu passes\n\n",
-                fraction_text(settled->outcome().measurement().value()).c_str(),
+                fraction_string(settled->outcome().measurement().value()).c_str(),
                 settled->rejected().size(),
                 settled->passes());
     check(settled->outcome().measurement().value() == rat(321, 8), "the mean of the four kept, 321/8 g");
@@ -308,7 +307,7 @@ int main()
                 tied->rejected()[0].position + 1,
                 tied->rejected()[1].position + 1,
                 tied->rejected()[0].pass,
-                fraction_text(tied->outcome().measurement().value()).c_str());
+                fraction_string(tied->outcome().measurement().value()).c_str());
 
     auto const threeMade = formula::environment(formula::MeasuredObservations<Mass, 8>(rat(40), rat(40), rat(41)));
     formula::Trace<> shortTrace {};

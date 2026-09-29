@@ -50,7 +50,7 @@
 /// "change the declared unit"; `measured.hpp` makes a `Measured<Q>` a value in
 /// `Q`'s declared unit that carries no unit of its own, so a number can never
 /// disagree with its label, and that invariant stands. A method has no typed
-/// result to relabel in any case: `evaluate_method` answers in the coherent SI
+/// result to relabel in any case: `evaluate_method` answers in the coherent
 /// unit of the variants' dimension, and the unit a jurisdiction *reports* in
 /// is its rounding unit, which `with_rounding` changes. What a jurisdiction
 /// cannot change is the dimension a method reports -- `replace_variant`
@@ -138,6 +138,7 @@
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/detail/type_list.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
@@ -453,7 +454,7 @@ namespace detail
 } // namespace detail
 
 /// An overridden constant evaluates to the overlay's value, converted from
-/// `Q`'s declared unit to the coherent SI unit like any other leaf, and never
+/// `Q`'s declared unit to the coherent unit like any other leaf, and never
 /// consults the environment -- see `OverriddenConstantNode` for why. The sink
 /// is told about the node as its own type, so that a trace can say the value
 /// was fixed by an overlay rather than read from the specimen.
@@ -475,7 +476,8 @@ namespace detail
     /// jurisdiction's. A sink reading `input_source` as "this value was typed
     /// in" is therefore never told it for a constant. Each hook is asked for
     /// only when the sink defines it, and the source only when the
-    /// environment can answer `Env::is_entered<Q>`.
+    /// environment can say, as a variable's is (`known_source`,
+    /// `evaluate.hpp`).
     template <Described Q, typename Env, typename ReplacingNode, typename Sink>
     constexpr void report_replaced_entry(ReplacingNode const& node, Env const& environment, Sink& sink) noexcept
     {
@@ -483,9 +485,8 @@ namespace detail
             if constexpr (Env::template provides<Q>)
             {
                 if constexpr (requires { sink.replaced_entry_source(node, ValueSource::Measured); }
-                              && requires { Env::template is_entered<Q>; })
-                    sink.replaced_entry_source(
-                        node, Env::template is_entered<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured);
+                              && KnowsSource<Env, Q>)
+                    sink.replaced_entry_source(node, known_source<Q>(environment));
                 if constexpr (requires { sink.replaced_entry_empty(node); })
                     if (environment.template get<Q>().is_absent())
                         sink.replaced_entry_empty(node);
@@ -1487,13 +1488,13 @@ namespace detail
     struct ConstantRewrite<Sub, DerivedQuantityNode<P, Expr>>
     {
         /// How the definition is rewritten, when the node is kept.
-        using Definition = ConstantRewriteOf<Sub, Expr>;
+        using DefinitionRewrite = ConstantRewriteOf<Sub, Expr>;
         /// Whether this node is `Q`'s own, and so replaced whole.
         static constexpr bool isQ = std::is_same_v<typename Sub::quantity, P>;
 
         /// Known when replaced whole -- nothing of it survives to hide a use
         /// -- and otherwise when its definition is.
-        static constexpr bool known = isQ || Definition::known;
+        static constexpr bool known = isQ || DefinitionRewrite::known;
         /// Whether this is `Q`'s -- a use @p Sub counts, see
         /// `countsSubstitutedUse` -- or its definition uses `Q`.
         ///
@@ -1504,10 +1505,10 @@ namespace detail
         /// -- put there by a later definition of another quantity, a cycle --
         /// is evaluated, reading the environment. `overlay_derived_cycle`
         /// pins it.
-        static constexpr bool mentions = (isQ && countsSubstitutedUse<Sub>) || Definition::mentions;
+        static constexpr bool mentions = (isQ && countsSubstitutedUse<Sub>) || DefinitionRewrite::mentions;
         /// The substitution when it is `Q`'s, and the same quantity over the
         /// rewritten definition otherwise.
-        using type = std::conditional_t<isQ, Substituted<Sub>, DerivedQuantityNode<P, typename Definition::type>>;
+        using type = std::conditional_t<isQ, Substituted<Sub>, DerivedQuantityNode<P, typename DefinitionRewrite::type>>;
 
         /// The rewritten node, keeping its citation when it is kept.
         [[nodiscard]] static constexpr type apply(DerivedQuantityNode<P, Expr> const& original,
@@ -1516,7 +1517,7 @@ namespace detail
             if constexpr (isQ)
                 return substitute(overriding);
             else
-                return OverlayNodeAccess::derived<P>(Definition::apply(original.expression(), overriding),
+                return OverlayNodeAccess::derived<P>(DefinitionRewrite::apply(original.expression(), overriding),
                                                      original.source());
         }
     };
@@ -2279,33 +2280,6 @@ namespace detail
                           ThenRewrite::apply(original.thenBranch, overriding),
                           ElseRewrite::apply(original.elseBranch, overriding) };
         }
-    };
-
-    /// A list of quantity types -- what `SubstitutedIn` answers.
-    template <typename... Qs>
-    struct QuantityList
-    {
-    };
-
-    /// The concatenation of quantity lists.
-    template <typename... Lists>
-    struct JoinQuantities
-    {
-        /// The empty join.
-        using type = QuantityList<>;
-    };
-
-    template <typename... Qs>
-    struct JoinQuantities<QuantityList<Qs...>>
-    {
-        /// One list, unchanged.
-        using type = QuantityList<Qs...>;
-    };
-
-    template <typename... As, typename... Bs, typename... Rest>
-    struct JoinQuantities<QuantityList<As...>, QuantityList<Bs...>, Rest...>:
-        JoinQuantities<QuantityList<As..., Bs...>, Rest...>
-    {
     };
 
     /// The quantities that have a node a substitution left -- an overridden

@@ -459,9 +459,8 @@ constexpr auto settledEstimate = formula::retry<IteratedEstimate, 4, formula::Fi
 
 /// An exact rational as text: `4`, or `3/5` when it is not whole.
 ///
-/// Not reused from render.hpp's own `detail::number_text`, which does exactly
-/// this: that name lives in an implementation-detail namespace, and this
-/// program is a consumer of the library, not a part of it.
+/// `formula::fraction_text` (`number_text.hpp`) spells the same text; this
+/// helper predates it.
 [[nodiscard]] std::string exact_text(formula::Rational value)
 {
     if (value.denominator() == 1)
@@ -820,8 +819,8 @@ int main(int argc, char** argv)
     // ---- A method's selected variant, and the same method overlaid ----
     //
     // Traced through a RecordingSink: a method is evaluated by
-    // `evaluate_method`, which answers in coherent SI and names, in the trace,
-    // the variant it selected and whose rounding rule it applied.
+    // `evaluate_method`, which answers in the coherent unit and names, in the
+    // trace, the variant it selected and whose rounding rule it applied.
 
     out << "## Worked derivation: a method's selected variant, and the same method overlaid\n\n";
     out << "`F` = 226 kN, `a` = 150 mm, `k_s` = 1043/1000, the cube variant selected by tag. The method rounds by "

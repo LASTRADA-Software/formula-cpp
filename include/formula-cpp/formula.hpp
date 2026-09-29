@@ -7,10 +7,13 @@
 /// translation unit. `render.hpp` and `document.hpp` do require these headers
 /// for documentation generation; they are deliberately not included here, so
 /// that arithmetic-only consumers stay lean and pay nothing for text a
-/// consumer who wants it asks for by name.
+/// consumer who wants it asks for by name. `format.hpp`, which teaches
+/// `std::format` to write a `Rational` and a `Measured`, is left out for
+/// the same reason: it needs `<format>`.
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/binning.hpp>
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -31,6 +34,7 @@
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>

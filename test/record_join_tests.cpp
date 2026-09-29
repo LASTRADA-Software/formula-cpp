@@ -293,6 +293,48 @@ TEST_CASE("an overlay's constant that replaced an entry typed in empty says so, 
 
 namespace
 {
+/// An environment of a consumer's own that holds every quantity -- 1000 N of
+/// force, and 1 for anything else -- and says at run time, through
+/// `source_of`, that each was typed in; its static `is_entered` says none
+/// was.
+struct TypedInAtRunTime
+{
+    template <formula::Described Q>
+    static constexpr bool provides = true;
+
+    template <formula::Described Q>
+    static constexpr bool is_entered = false;
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::Measured<Q> get() const noexcept
+    {
+        return formula::Measured<Q> { formula::Rational { std::is_same_v<Q, Force> ? 1'000 : 1 } };
+    }
+
+    template <formula::Described Q>
+    [[nodiscard]] constexpr formula::ValueSource source_of() const noexcept
+    {
+        return formula::ValueSource::ManuallyEntered;
+    }
+};
+} // namespace
+
+TEST_CASE("an overlay's constant takes the replaced entry's source from the environment's run-time answer",
+          "[record-join]")
+{
+    // Kills: the replaced entry's source taken from `is_entered` when the
+    // environment also answers `source_of`, which would say nothing of a
+    // value typed in.
+    auto const [fixed, text] = fixed_step_over(TypedInAtRunTime {});
+    INFO(text);
+    CHECK(fixed.inputSource == formula::ValueSource::ManuallyEntered);
+    CHECK(text.find("k_s = 97/100 [fixed by jurisdiction overlay: Example Standard 14:2022 NA, NA.1, replacing a value "
+                    "entered by hand]")
+          != std::string::npos);
+}
+
+namespace
+{
 struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", unit::Gram>
 {
 };

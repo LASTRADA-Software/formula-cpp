@@ -87,7 +87,7 @@ class Measured
     /// destroyed by the time the caller reads it -- confirmed with
     /// AddressSanitizer (`stack-use-after-scope`) and silent on cl /W4,
     /// clang-cl /W4 and `clang++ -Weverything`. Same hazard and same fix as
-    /// `view(Symbol&&)` in `unit.hpp`.
+    /// `view(Symbol&&)` in `dimension.hpp`.
     [[nodiscard]] constexpr std::optional<Rational> const& stored() const& noexcept { return _value; }
 
     /// Deleted: see above. Bind the `Measured` to a named local first.

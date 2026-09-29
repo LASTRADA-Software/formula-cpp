@@ -36,7 +36,7 @@ constexpr auto toTwoSignificantDigits =
 
 The unit is not decoration. "To one decimal place" means nothing about a
 quantity until you say one decimal place *of what*: the evaluator works in
-the coherent SI unit of each dimension, so a length is normally carried in
+the coherent unit of each dimension, so a length is normally carried in
 metres, and "one decimal place" of a metre and of a millimetre are different
 thresholds by three orders of magnitude. A rounding node converts into the
 unit it names, rounds there, and converts back -- and naming a unit that does
@@ -44,9 +44,9 @@ not measure the operand's own dimension (rounding a mass "to 0.1 mm", say) is
 a compile error, the same way a dimensional mismatch anywhere else in this
 library is one.
 
-`RoundingMode` itself is not new -- it has been part of `rounding.hpp` since
-phase 2, and a rounding node is simply that mode exposed as a position in the
-tree rather than a call you make on a number you already hold.
+`RoundingMode` itself is not new -- it is the mode `rounding.hpp` already takes
+(see [Numbers](numbers.md)), and a rounding node is simply that mode exposed as
+a position in the tree rather than a call you make on a number you already hold.
 
 ## The reason this is a node at all
 
@@ -200,7 +200,7 @@ tie rule can be the entire reason a value is 13 rather than 12.
 
 Note too that step 5's own value, `1/40`, carries no `mm` -- a `when()`
 step is a computed value like any other, and every computed step is shown in
-the coherent SI unit of its dimension with no symbol at all, the same rule
+the coherent unit of its dimension with no symbol at all, the same rule
 [Tracing and audit trails](tracing.md) explains for `#1 / #2` in a plain
 division. For a second worked derivation of a conditional -- a different
 formula, a different threshold, still naming the branch it took -- see

@@ -165,7 +165,7 @@ template <Node Left, Node Right>
 
 /// The truth value of @p predicate, or absence when either side is absent.
 ///
-/// Evaluates both sides to the coherent SI unit of their (shared) dimension
+/// Evaluates both sides to the coherent unit of their (shared) dimension
 /// -- the same scale `checked_evaluate_si` already puts every operand on --
 /// so the comparison is exact and needs no rounding policy: comparing two
 /// `Rational`s is exact by construction, and inventing a tolerance here would

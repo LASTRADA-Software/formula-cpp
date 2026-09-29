@@ -72,8 +72,9 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 /// compiles. `RecordingSink` defines them all:
 ///
 ///     sink.branch_taken(node, thenTaken);           // a `when` chose a branch
-///     sink.input_source(varNode, source);           // a variable was measured or typed in
-///     sink.series_input_source(seriesNode, source); // the same, of a whole series
+///     sink.input_source(varNode, source);           // a variable was measured, typed in
+///                                                   // or calculated
+///     sink.series_input_source(seriesNode, source); // measured or typed in, of a whole series
 ///     sink.replaced_entry_source(node, source);     // an overlay's constant or derived
 ///                                                   // quantity replaced an entry of this source
 ///     sink.replaced_entry_empty(node);              // ... and that entry held no value

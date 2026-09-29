@@ -4,16 +4,17 @@
 /// @file
 /// Turning a formula and a set of inputs into an outcome.
 ///
-/// Every leaf is converted to the **coherent SI unit** of its dimension on the
-/// way in, the tree is evaluated there, and the result is converted once at the
-/// end into the declared unit of the quantity it was asked to produce. Both
+/// Every leaf is converted to the **coherent unit** of its dimension -- the SI
+/// unit, times one of each named base dimension it has -- on the way in, the
+/// tree is evaluated there, and the result is converted once at the end into
+/// the declared unit of the quantity it was asked to produce. Both
 /// conversions are the exact multiply-then-divide of the unit layer, so 180 l
-/// plus 300 l is exactly 480 l and not 479,999999.
+/// plus 300 l is exactly 480 l and not 479.999999.
 ///
 /// Two entry points, deliberately different:
 ///
 ///  - `checked_evaluate_si<Rep>` is the representation-agnostic core. It answers
-///    in the coherent SI unit and in whatever `Rep` the caller asked for --
+///    in the coherent unit and in whatever `Rep` the caller asked for --
 ///    exact `Rational` by default, `double` when a formula needs values exact
 ///    rationals cannot hold.
 ///  - `checked_evaluate<Result>` is the auditable one. It is always exact,
@@ -28,13 +29,16 @@
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
 
+#include <concepts>
 #include <expected>
 #include <optional>
 
 namespace formula
 {
 
-/// The coherent SI unit of a dimension: magnitude one, offset zero, no symbol.
+/// The coherent unit of a dimension: magnitude one, offset zero, no symbol --
+/// the SI unit, times one of each named base dimension it has: the unit named
+/// after a base, which by convention has magnitude one.
 ///
 /// Every `Unit` already states its own exact conversion to this one, so it is
 /// the single scale on which values from different units can meet.
@@ -106,12 +110,12 @@ struct RepTraits<Rational>
 /// `inf` and the caller asked for `double`. That is not the last word on
 /// `Overflow` for this representation, though -- `detail::in_si` converts
 /// every leaf in exact `Rational` before handing it to `RepTraits<Rep>::from`,
-/// so a leaf whose conversion to the coherent SI unit overflows still fails
+/// so a leaf whose conversion to the coherent unit overflows still fails
 /// the whole evaluation, `double` included.
 template <>
 struct RepTraits<double>
 {
-    /// Converts an exact `Rational` (already in the coherent SI unit) to `double`.
+    /// Converts an exact `Rational` (already in the coherent unit) to `double`.
     [[nodiscard]] static constexpr std::expected<double, ArithmeticError> from(Rational exact) noexcept
     {
         return exact.to_double();
@@ -225,7 +229,7 @@ namespace detail
         return Evaluated<Rep> { std::unexpected { arithmeticFailure } };
     }
 
-    /// A `Rational` stated in @p from, converted to the coherent SI unit and
+    /// A `Rational` stated in @p from, converted to the coherent unit and
     /// then into @p Rep.
     template <typename Rep>
     [[nodiscard]] constexpr Evaluated<Rep> in_si(Rational value, Unit from) noexcept
@@ -244,48 +248,129 @@ namespace detail
 
 namespace detail
 {
-    /// Tells @p sink whether the value @p environment holds for `Q` was
-    /// measured or typed in, through the optional hook
-    /// `sink.input_source(node, source)` -- only when the sink defines it
-    /// and the environment can answer `Env::is_entered<Q>`. A consumer's own
-    /// environment type without `is_entered` still evaluates, and its trace
-    /// then records no source rather than a guessed one.
-    template <Described Q, typename Env, typename Sink>
-    constexpr void report_input_source(VarNode<Q> const& node, Sink& sink) noexcept
+    /// Whether @p Env says at run time where its value for @p Q came from,
+    /// through a member `source_of<Q>()` returning exactly `ValueSource`.
+    /// `Environment` has one, and so do the library's own wrappers of an
+    /// environment whenever what they wrap has one. A member of that name
+    /// returning anything else -- a reference, or a type that merely converts
+    /// to `ValueSource` -- is not this hook, as `ReportsReadFailure` says of
+    /// its own: such an environment is asked `is_entered<Q>` instead, as one
+    /// with no `source_of` is.
+    template <typename Env, typename Q>
+    concept RunTimeSource = requires(Env const& asked) {
+        { asked.template source_of<Q>() } -> std::same_as<ValueSource>;
+    };
+
+    /// Whether @p Env can say where its value for @p Q came from at all: at
+    /// run time (`RunTimeSource`), or statically, through `Env::is_entered<Q>`.
+    template <typename Env, typename Q>
+    concept KnowsSource = RunTimeSource<Env, Q> || requires { Env::template is_entered<Q>; };
+
+    /// Where @p environment says its value for `Q` came from: its
+    /// `source_of<Q>()` when it has one, and otherwise `ManuallyEntered` or
+    /// `Measured` as `Env::is_entered<Q>` says.
+    ///
+    /// The run-time answer is preferred because it can say more than the
+    /// static one: an environment whose values change after it is built can
+    /// say `Derived` of a value it calculated, or change whether a value was
+    /// typed in. For every environment this library builds -- `Environment`,
+    /// a record context, and the environments a precision limit, a rejection
+    /// and a retry evaluate in -- the two answers agree for every quantity it
+    /// holds.
+    template <Described Q, typename Env>
+        requires KnowsSource<Env, Q>
+    [[nodiscard]] constexpr ValueSource known_source(Env const& environment) noexcept
     {
-        if constexpr (requires { sink.input_source(node, ValueSource::Measured); }
-                      && requires { Env::template is_entered<Q>; })
-            sink.input_source(node, Env::template is_entered<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured);
+        if constexpr (RunTimeSource<Env, Q>)
+            return environment.template source_of<Q>();
+        else
+            return Env::template is_entered<Q> ? ValueSource::ManuallyEntered : ValueSource::Measured;
+    }
+
+    /// Whether @p Env can report that reading @p Q failed, through a member
+    /// `checked_get<Q>()` whose return type is exactly
+    /// `std::expected<Measured<Q>, ArithmeticError>`. A member of that name
+    /// returning anything else -- another error type, a reference, a plain
+    /// `Measured<Q>` -- is not this hook, and the variable evaluator reads
+    /// such an environment through `get<Q>()` as it reads any other.
+    template <typename Env, typename Q>
+    concept ReportsReadFailure = requires(Env const& asked) {
+        { asked.template checked_get<Q>() } -> std::same_as<std::expected<Measured<Q>, ArithmeticError>>;
+    };
+
+    /// Tells @p sink where the value @p environment holds for `Q` came from,
+    /// through the optional hook `sink.input_source(node, source)` -- only
+    /// when the sink defines it and the environment can say
+    /// (`known_source`). A consumer's own environment type with neither
+    /// `source_of` nor `is_entered` still evaluates, and its trace then
+    /// records no source rather than a guessed one.
+    template <Described Q, typename Env, typename Sink>
+    constexpr void report_input_source(VarNode<Q> const& node, Env const& environment, Sink& sink) noexcept
+    {
+        if constexpr (requires { sink.input_source(node, ValueSource::Measured); } && KnowsSource<Env, Q>)
+            sink.input_source(node, known_source<Q>(environment));
+    }
+
+    /// What a variable produces once the value it read is in hand: nothing
+    /// when @p measured is absent, and otherwise that value converted to the
+    /// coherent unit. Either way the sink is told where the value came
+    /// from (`report_input_source`) just before `produced`.
+    template <typename Rep, Described Q, typename Env, typename Sink>
+    [[nodiscard]] constexpr Evaluated<Rep> produce_read(VarNode<Q> const& node,
+                                                        Measured<Q> const& measured,
+                                                        Env const& environment,
+                                                        Sink& sink) noexcept
+    {
+        if (measured.is_absent())
+        {
+            Evaluated<Rep> const absent = nothing<Rep>();
+            report_input_source<Q>(node, environment, sink);
+            sink.produced(node, absent);
+            return absent;
+        }
+        Evaluated<Rep> const evaluated = in_si<Rep>(*measured.stored(), Describe<Q>::unit);
+        report_input_source<Q>(node, environment, sink);
+        sink.produced(node, evaluated);
+        return evaluated;
     }
 } // namespace detail
 
 /// Looks `Q` up in `environment` and, if present, converts it to the coherent
-/// SI unit of its dimension.
+/// unit of its dimension.
 ///
 /// Just before `produced`, and whether or not the value is present, a sink
 /// that asks is told where the value came from -- see
 /// `detail::report_input_source`.
+///
+/// **An environment that can fail a read** says so through a member
+/// `checked_get<Q>()` returning exactly `std::expected<Measured<Q>,
+/// ArithmeticError>` (`detail::ReportsReadFailure`), which is then read
+/// instead of `get<Q>()`. A failed read is this variable's failure: the sink
+/// is told the source and then that the variable failed, and the error
+/// travels up the formula as any operand's failure does -- a parent relays
+/// it, and an untaken `when()` branch never reads it. `Environment` has no
+/// such member, since none of its reads can fail.
 template <typename Rep = Rational, Described Q, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(VarNode<Q> const& node,
                                                            Env const& environment,
                                                            Sink sink = {}) noexcept
 {
     sink.entered(node);
-    Measured<Q> const measured = environment.template get<Q>();
-    if (measured.is_absent())
+    if constexpr (detail::ReportsReadFailure<Env, Q>)
     {
-        Evaluated<Rep> const absent = detail::nothing<Rep>();
-        detail::report_input_source<Q, Env>(node, sink);
-        sink.produced(node, absent);
-        return absent;
+        std::expected<Measured<Q>, ArithmeticError> const checkedRead = environment.template checked_get<Q>();
+        if (!checkedRead.has_value())
+        {
+            detail::report_input_source<Q>(node, environment, sink);
+            return detail::report_failure<Rep>(node, sink, checkedRead.error());
+        }
+        return detail::produce_read<Rep>(node, *checkedRead, environment, sink);
     }
-    Evaluated<Rep> const evaluated = detail::in_si<Rep>(*measured.stored(), Describe<Q>::unit);
-    detail::report_input_source<Q, Env>(node, sink);
-    sink.produced(node, evaluated);
-    return evaluated;
+    else
+        return detail::produce_read<Rep>(node, environment.template get<Q>(), environment, sink);
 }
 
-/// A literal coefficient is always present; converts it to the coherent SI unit.
+/// A literal coefficient is always present; converts it to the coherent unit.
 template <typename Rep = Rational, Unit U, typename Env, typename Sink = NullSink>
 [[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(ConstantNode<U> const& node,
                                                            Env const&,

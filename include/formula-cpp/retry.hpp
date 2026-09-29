@@ -247,16 +247,20 @@ namespace detail
 {
     /// The environment an attempt is evaluated in: the caller's, and where
     /// the retry is. Everything a node asks an environment is forwarded
-    /// unchanged -- the seven public members of `Environment`, and nothing
-    /// else -- so a specimen's data reads the same inside a retry as outside
-    /// it, and its refusals (`RequireProvided`, the series/single cross
-    /// refusals) fire once, in their own words.
+    /// unchanged -- the seven public members of `Environment`, and a read
+    /// that can fail (`checked_get`) when the wrapped environment has one --
+    /// so a specimen's data reads the same inside a retry as outside it, and
+    /// its refusals (`RequireProvided`, the series/single cross refusals) fire
+    /// once, in their own words. `source_of` and `checked_get` are there only
+    /// when the wrapped environment has them, so that the variable evaluator,
+    /// which asks whether an environment has each (`evaluate.hpp`), gets the
+    /// same answer inside a retry as outside it.
     ///
     /// **If a change adds a member of `Environment` that a node calls, it
     /// must be forwarded here**; `retry_tests.cpp` lists the members by hand
     /// and fails for one that is not.
     ///
-    /// Values are in the coherent SI unit, in @p Rep, as every evaluator's.
+    /// Values are in the coherent unit, in @p Rep, as every evaluator's.
     /// @p R is the retry's result quantity, the only one `previous_attempt`
     /// and `this_attempt` may name (`RequireRetriedQuantity`); @p Max the
     /// attempts it allows, the length of the series `attempt_input` reads.
@@ -345,11 +349,23 @@ namespace detail
             return _inner->template get_observations<Q, Capacity>();
         }
 
-        /// Forwarded: `Environment::source_of`.
+        /// Forwarded: `Environment::source_of`, when the wrapped environment
+        /// has it (`RunTimeSource`).
         template <Described Q>
+            requires RunTimeSource<Env, Q>
         [[nodiscard]] constexpr ValueSource source_of() const noexcept
         {
             return _inner->template source_of<Q>();
+        }
+
+        /// Forwarded: a read that can fail, when the wrapped environment has
+        /// one (`ReportsReadFailure`, `evaluate.hpp`). `Environment` has
+        /// none.
+        template <Described Q>
+            requires ReportsReadFailure<Env, Q>
+        [[nodiscard]] constexpr std::expected<Measured<Q>, ArithmeticError> checked_get() const noexcept
+        {
+            return _inner->template checked_get<Q>();
         }
 
         /// Which attempt this is, from 1.
@@ -1383,7 +1399,7 @@ namespace detail
 
 /// The determination of @p Q recorded for the attempt that is running:
 /// element `attempt() - 1` of the environment's series of @p Q, whose length
-/// is the retry's attempt limit, in the coherent SI unit. An absent element
+/// is the retry's attempt limit, in the coherent unit. An absent element
 /// is absent here, and marked on the attempt's environment, so that the
 /// retry ends `NotRecorded` rather than `NotJudgeable`. A series of another
 /// length draws the environment's own message, naming both lengths, once.

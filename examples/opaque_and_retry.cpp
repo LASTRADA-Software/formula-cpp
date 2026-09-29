@@ -49,7 +49,7 @@ using Spread = formula::Quantity<struct SpreadTag, "r_sp", "the spread of the re
 
 // A consumer's operation: a name, the shape of each input, the name of each
 // output, what each output measures given what the inputs measure, and the
-// computation, over values in coherent SI. It never sees the environment.
+// computation, over values in coherent units. It never sees the environment.
 struct SeriesSpan
 {
     static constexpr std::string_view name = "series span";

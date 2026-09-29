@@ -131,7 +131,7 @@ constexpr auto recordsWith(Batch batch, Method method)
                                    method));
 }
 
-/// A value in coherent SI, exactly, with its unit: `30000000 Pa` or `3/2`;
+/// A value in the coherent unit, exactly, with its unit: `30000000 Pa` or `3/2`;
 /// `no answer` when it is absent, and `refused` when it is an error.
 std::string exact(formula::Evaluated<formula::Rational> const& evaluated, std::string_view unitText)
 {

@@ -88,7 +88,7 @@ namespace detail
 /// element**, not a shorter series, so the length never comes from runtime
 /// data. Each element keeps `Measured<Q>`'s invariant -- in `Q`'s declared
 /// unit, no unit of its own -- so a series is `N` measurements and nothing
-/// more; converting to the coherent SI unit is the evaluator's business.
+/// more; converting to the coherent unit is the evaluator's business.
 ///
 /// Holds values, never expression nodes.
 template <Described Q, std::size_t N>
@@ -673,16 +673,24 @@ class Environment
             return MeasuredObservations<Q, Capacity> {};
     }
 
-    /// Where the value for @p Q came from.
+    /// Where the value for @p Q came from: `ManuallyEntered` for a value or a
+    /// series a person typed in (an `Entered` or an `EnteredSeries` entry),
+    /// `Measured` for any other entry.
     ///
-    /// `checked_evaluate` does not call this: it already knows, from
-    /// `Env::is_entered<Result>`, whether the result it is about to return was
-    /// typed in or derived, and decides `ValueSource` from that directly. This
-    /// accessor is the one a future tracing layer (phase 7) will consult for an
-    /// *input's* provenance instead, which is a question the evaluator never
-    /// asks today. Consequently `ValueSource::Measured` -- correct as it is
-    /// here -- cannot appear in any `Outcome` this phase produces; only
-    /// `Derived` and `ManuallyEntered` do.
+    /// Asked, through `detail::known_source` (`evaluate.hpp`), for a sink
+    /// that records where a value came from: by the evaluator of a `var<Q>`,
+    /// of the value it reads (`detail::report_input_source`), and by the
+    /// evaluators of an overlay's fixed constant and derived quantity, of the
+    /// entry each replaced (`detail::report_replaced_entry`, `overlay.hpp`).
+    /// Both prefer it to `is_entered<Q>` because an environment of another
+    /// type can answer it at run time, and say `Derived` of a value it
+    /// calculated; for this type the two always agree. `checked_evaluate`
+    /// does not call it for the result: it already knows, from
+    /// `Env::is_entered<Result>`, whether the result it is about to return
+    /// was typed in or derived. So `ValueSource::Measured` -- correct as it
+    /// is here -- appears on a trace's steps, and never as the source of an
+    /// `Outcome` that `checked_evaluate` returns; only `Derived` and
+    /// `ManuallyEntered` do.
     template <Described Q>
     [[nodiscard]] constexpr ValueSource source_of() const noexcept
     {

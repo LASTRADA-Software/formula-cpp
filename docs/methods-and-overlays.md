@@ -71,11 +71,11 @@ auto const cube = formula::evaluate_method<Cube>(compressiveStrength, specimen);
 cube:   5500000 Pa
 ```
 
-**A method answers in coherent SI**, here pascals, like every `Evaluated`
+**A method answers in the coherent unit**, here pascals, like every `Evaluated`
 value in this library. The rule rounded the value in megapascals, to one
 decimal (5.5477... MPa became 5.5 MPa), and the answer is that rounded value
 expressed in pascals. A method has no typed result. It knows only its variants'
-dimension, so its answer is a number in the coherent SI unit of that dimension.
+dimension, so its answer is a number in the coherent unit of that dimension.
 
 Traced, the selection is a step of its own, the root of the derivation, with
 the rounded variant beneath it. The rounding step says whose rule it was:
@@ -131,9 +131,10 @@ The design specification sketches the selector as `formula::when<Cube>(expr)`.
 This library spells it `variant<Cube>(expr)` because of measured evidence, not
 preference. `conditional.hpp` already ships `when(predicate, then, else)`: a
 runtime-predicate ternary, a different question with a different arity. When
-both were declared in namespace `formula`, the phase-11 spike measured the
-following on cl 19.51, clang-cl 22.1.3, clang++ 20.1.8, g++ 13.3 and g++-14
-14.2.0 (`method.hpp`'s file comment records the measurement):
+both were declared in namespace `formula`, a measurement made while this
+selector was being designed found the following on cl 19.51, clang-cl 22.1.3,
+clang++ 20.1.8, g++ 13.3 and g++-14 14.2.0 (`method.hpp`'s file comment records
+the measurement):
 
 - `when<P>(pred, then, else)` binds `P` to the ternary's first template
   parameter and **compiles silently** on all five. An author who believes
@@ -268,7 +269,7 @@ north cube: 4590000 Pa
 
 **What "changing the declared unit" means for a method.** The design
 specification asks that a jurisdiction can change the unit a result is
-declared in. A method's answer is always coherent SI, so what a jurisdiction
+declared in. A method's answer is always in the coherent unit, so what a jurisdiction
 changes is the unit it **reports** in, which is the unit of its rounding rule.
 The north rounds in N/mm² to two decimals where the base method rounds in MPa
 to one, and the trace says whose rule that was.
@@ -711,9 +712,9 @@ interface: type erasure, a virtual call per formula. The trace would not survive
 `RecordingSink`'s `entered` and `produced` are member templates on the node
 type, and a member template cannot be virtual. So an erased formula would have
 to name one concrete sink type, one `Rep` and one vocabulary in its virtual
-signature, permanently, for every consumer. The phase-11 spike built that shape
-for replacement and recorded its cost; `add_derived`, added later, meets the
-same obstacle for the same reason. The rule here follows: the set of
+signature, permanently, for every consumer. An experiment made while overlays
+were being designed built that shape for replacement and recorded its cost;
+`add_derived`, added later, meets the same obstacle for the same reason. The rule here follows: the set of
 jurisdictions is closed and lives in the type, and which one applies to a
 sample is a runtime index. That fits a registry "per customer, per region, per
 contract" for everything except a formula nobody compiled.

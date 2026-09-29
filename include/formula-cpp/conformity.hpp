@@ -405,7 +405,7 @@ namespace detail
     /// (whether or not the element was measured -- the row is the error),
     /// `NotChecked` for an element nobody measured, and otherwise `Satisfied`
     /// or `Violated` against the closed bounds, each limit read from @p unit
-    /// into the coherent SI unit the element is in.
+    /// into the coherent unit the element is in.
     template <typename Rep>
     [[nodiscard]] constexpr ConstraintOutcome judge_element(std::optional<Rep> const& element,
                                                             LimitRow limitRow,

@@ -506,6 +506,81 @@ TEST_CASE("a consumer's two-argument render_node receives the vocabulary", "[voc
     CHECK(formula::render(expression, south) == "scaled(E)");
 }
 
+TEST_CASE("a vocabulary carrying a number style is still the vocabulary it wraps", "[vocabulary][decimals]")
+{
+    using NorthVocabulary = std::remove_cv_t<decltype(north)>;
+    using formula::detail::StyledVocabulary;
+    STATIC_REQUIRE(formula::Vocabulary<StyledVocabulary<formula::DefaultVocabulary>>);
+    STATIC_REQUIRE(formula::Vocabulary<StyledVocabulary<NorthVocabulary>>);
+    STATIC_REQUIRE_FALSE(formula::Vocabulary<StyledVocabulary<int>>);
+
+    // A vocabulary nothing styled states fractions, as every surface did
+    // before styles existed.
+    STATIC_REQUIRE(formula::number_style_of(formula::DefaultVocabulary {}) == formula::NumberStyle::fraction());
+    STATIC_REQUIRE(formula::number_style_of(north) == formula::NumberStyle::fraction());
+
+    // Styled, it carries the style and still writes the jurisdiction's words.
+    constexpr auto decimalNorth = formula::detail::styled(north, formula::NumberStyle::exact_decimal());
+    STATIC_REQUIRE(formula::number_style_of(decimalNorth) == formula::NumberStyle::exact_decimal());
+    STATIC_REQUIRE(formula::symbol_of<Strength>(decimalNorth) == "R");
+    STATIC_REQUIRE(formula::symbol_of<Diameter>(decimalNorth) == "d");
+
+    // Styled again, it carries the style given last, wrapped once.
+    constexpr auto restyled = formula::detail::styled(decimalNorth, formula::NumberStyle::fraction());
+    STATIC_REQUIRE(std::is_same_v<std::remove_cv_t<decltype(restyled)>, StyledVocabulary<NorthVocabulary>>);
+    STATIC_REQUIRE(formula::number_style_of(restyled) == formula::NumberStyle::fraction());
+    STATIC_REQUIRE(formula::symbol_of<Strength>(restyled) == "R");
+}
+
+TEST_CASE("a typed number's style is the vocabulary's, exact only and never padded", "[vocabulary][decimals]")
+{
+    using formula::DecimalPadding;
+    using formula::NumberStyle;
+    using formula::RoundingMode;
+    // Fractions stay fractions, styled or not.
+    STATIC_REQUIRE(formula::typed_number_style(formula::DefaultVocabulary {}) == NumberStyle::fraction());
+    STATIC_REQUIRE(formula::typed_number_style(formula::detail::styled(north, NumberStyle::fraction()))
+                   == NumberStyle::fraction());
+    // Every decimal style -- exact or approximating, trimmed or padded --
+    // states a typed number as the trimmed exact decimal.
+    for (NumberStyle const carried : { NumberStyle::exact_decimal(),
+                                       NumberStyle::exact_decimal(DecimalPadding::Padded),
+                                       NumberStyle::approximate_decimal(RoundingMode::Ceiling),
+                                       NumberStyle::approximate_decimal(RoundingMode::Floor, DecimalPadding::Padded) })
+        CHECK(formula::typed_number_style(formula::detail::styled(north, carried)) == NumberStyle::exact_decimal());
+    // So a third stays a third, and a half has no padding zeros, in a unit
+    // declaring three decimals.
+    constexpr NumberStyle typed = formula::typed_number_style(
+        formula::detail::styled(north, NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded)));
+    STATIC_REQUIRE(formula::number_text(rat(1, 3), typed, unit::One) == "1/3");
+    STATIC_REQUIRE(formula::number_text(rat(1, 2), typed, unit::One) == "0.5");
+}
+
+TEST_CASE("a number style leaves every symbol in the vocabulary's words", "[vocabulary][decimals]")
+{
+    constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+    constexpr auto scaled = f * formula::constant<unit::One>(rat(863, 1000));
+    CHECK(formula::render(scaled, north, exactDecimals) == "R / E * 0.863");
+    CHECK(formula::render(scaled, south, exactDecimals) == "E / R * 0.863");
+    CHECK(formula::render<formula::Dialect::Markdown>(scaled, south, exactDecimals) == "`E` / `R` * 0.863");
+
+    formula::Documentation const page = formula::document(scaled, south, exactDecimals);
+    CHECK(page.formula == "E / R * 0.863");
+    REQUIRE(page.symbols.size() == 2);
+    CHECK(page.symbols[0].symbol == "E");
+    CHECK(page.symbols[0].description == "compressive strength");
+    CHECK(page.symbols[1].symbol == "R");
+}
+
+TEST_CASE("a consumer's two-argument render_node hands the number style on with the vocabulary", "[vocabulary][decimals]")
+{
+    constexpr auto expression = Scaled<decltype(formula::constant<unit::One>(rat(863, 1000)))> {
+        {}, formula::constant<unit::One>(rat(863, 1000))
+    };
+    CHECK(formula::render(expression) == "scaled(863/1000)");
+    CHECK(formula::render(expression, south, { .numbers = formula::NumberStyle::exact_decimal() }) == "scaled(0.863)");
+}
+
 namespace
 {
 template <formula::Dialect D>
@@ -947,6 +1022,46 @@ TEST_CASE("every node kind documents in the vocabulary, in every dialect", "[voc
     }
 }
 
+TEST_CASE("every node kind writes its numbers in the style asked for, in the vocabulary", "[vocabulary][decimals]")
+{
+    // The every-kind expressions again, as exact decimals: every number each
+    // states changes, and every symbol stays the jurisdiction's. Rows,
+    // corrections, permitted values, domain points and per-element values
+    // alike; the sizes of a critical value and the places of a rounding are
+    // counts, not numbers a style writes.
+    constexpr formula::RenderOptions exactDecimals { .numbers = formula::NumberStyle::exact_decimal() };
+    constexpr auto cube = std::get<0>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(cube, everyVocabulary, exactDecimals)
+          == "(if E >= R then (-(E / R)^2 + root3(E / R * E / R * E / R)^3) * round(E / R, to 1 dp of %) "
+             "* round(E / R, to 2 sf of %) else numeric(E, in MPa) * lookup(D, 103 to under 163 mm gives 1.127, "
+             "163 to under 331 mm gives 1.973) * interpolate(D, at 103 mm gives 1.043, at 331 mm gives 2.917)) "
+             "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1.087, key Rough gives 1.249) "
+             "* snap(x_n, to 1.437, 1.537, 1.637) "
+             "+ round(sqrt(E / R * x_n), to 1 dp of %) "
+             "* critical(2, at 2, 3) * abs(E / R) * r(level; level = E / R)");
+    constexpr auto curveVariant = std::get<3>(everyOverlaid.variantSet.cases).expression;
+    CHECK(formula::render(curveVariant, everyVocabulary, exactDecimals)
+          == "snap(interpolate(splice(curve(domain(1, 2, 4), m_n(i) / M_n), curve(domain(5), values(0.05)), "
+             "non-decreasing), at x_n), to 0.005, 0.01)");
+
+    // The page says the same, in every dialect, and names no declared symbol.
+    formula::Documentation const page = formula::document(cube, everyVocabulary, exactDecimals);
+    CHECK(page.formula == formula::render(cube, everyVocabulary, exactDecimals));
+    REQUIRE(page.symbols.size() == 5);
+    CHECK(page.symbols[0].symbol == "E");
+    CHECK(page.symbols[4].symbol == "x_n");
+    for (auto const& documentation:
+         { formula::document<formula::Dialect::Markdown>(cube, everyVocabulary, exactDecimals),
+           formula::document<formula::Dialect::LaTeX>(cube, everyVocabulary, exactDecimals),
+           formula::document<formula::Dialect::Markdown>(curveVariant, everyVocabulary, exactDecimals),
+           formula::document<formula::Dialect::LaTeX>(curveVariant, everyVocabulary, exactDecimals) })
+    {
+        CHECK(declares_no_symbol(documentation.formula));
+        for (formula::SymbolEntry const& row: documentation.symbols)
+            CHECK(declares_no_symbol(row.symbol));
+    }
+}
+
 TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 {
     // The lines that name a quantity, found by what they say rather than
@@ -1137,6 +1252,35 @@ TEST_CASE("a precision limit's checks see inside every node kind", "[vocabulary]
     STATIC_REQUIRE_FALSE(formula::detail::level_check_sees_every_node<
                          decltype(formula::precision_limit<formula::PrecisionKind::Repeatability>(
                              var<Strength>, Gauge {} * var<Strength>))>());
+}
+
+TEST_CASE("a definition's reads walk sees inside every single-value node kind", "[vocabulary][calculation]")
+{
+    // The every-kind method's two single-value variants, overlaid, and the
+    // method's rounding around the first. A node kind the walk could not see
+    // inside, or one without its `LevelChildren` entry, would refuse here at
+    // compile time. The other four variants read a series or raw
+    // observations, which a calculation refuses.
+    using Cube = std::remove_cvref_t<decltype(std::get<0>(everyOverlaid.variantSet.cases).expression)>;
+    using Cylinder = std::remove_cvref_t<decltype(std::get<1>(everyOverlaid.variantSet.cases).expression)>;
+    using Rounded = formula::
+        RoundingRuleNode<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero, Cube>;
+    using formula::detail::CalculationReads;
+    using formula::detail::CalculationReadsOf;
+    using formula::detail::QuantityList;
+
+    // The cube reads the strength and the modulus throughout, and the
+    // diameter in its lookups and in the size factor's definition. Neither
+    // overlaid factor is read: the size factor is derived from the diameter,
+    // and the national factor is fixed. The precision limit's limit
+    // expression is its placeholder alone, which reads nothing.
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<Cube>, QuantityList<EveryStrength, EveryModulus, EveryDiameter>>);
+    STATIC_REQUIRE(CalculationReads<Cube>::accepted);
+    // The cylinder's replacement reads the modulus first.
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<Cylinder>, QuantityList<EveryModulus, EveryStrength>>);
+    STATIC_REQUIRE(CalculationReads<Cylinder>::accepted);
+    STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<Rounded>, QuantityList<EveryStrength, EveryModulus, EveryDiameter>>);
+    STATIC_REQUIRE(CalculationReads<Rounded>::accepted);
 }
 
 TEST_CASE("a constraint over the overlaid quantities traces and documents in the vocabulary",

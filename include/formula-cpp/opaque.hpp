@@ -24,10 +24,10 @@
 /// **compute receives evaluated values only, never the environment; that is
 /// what lets the trace show every input and an overlay reach every use of a
 /// quantity.** Every input is evaluated by the library, in order, into the
-/// coherent SI unit: a single value arrives as `Rep`, a series as
+/// coherent unit: a single value arrives as `Rep`, a series as
 /// `std::span<Rep const>`, and a curve as two spans, its points first and then
 /// its values. Nothing is converted on the way out either: each output is in
-/// the coherent SI unit of the dimension the operation declares for it.
+/// the coherent unit of the dimension the operation declares for it.
 ///
 /// **Absence is strict**, as it is for a series: an absent single value, or an absent
 /// element anywhere in a series or a curve, makes the whole call absent, and
@@ -144,7 +144,7 @@ struct OpaqueCallInfo
     std::span<Dimension const> dimensions {};
 };
 
-/// What evaluating an opaque call produces: every output in the coherent SI
+/// What evaluating an opaque call produces: every output in the coherent
 /// unit of its dimension, nothing (an input was absent), or the failure.
 template <typename Rep, std::size_t M>
 using OpaqueEvaluated = std::expected<std::optional<std::array<Rep, M>>, OpaqueCallFailure>;
@@ -221,7 +221,7 @@ namespace detail
 ///  - `template <typename Rep> static constexpr std::expected<std::array<Rep,
 ///    M>, ArithmeticError> compute(...) noexcept`, taking a single value as
 ///    `Rep`, a series as `std::span<Rep const>` and a curve as two spans,
-///    points first -- every value in the coherent SI unit.
+///    points first -- every value in the coherent unit.
 ///
 /// **`compute` must be a function of its arguments alone.** Nothing in its
 /// signature lets it read the environment, but nothing in C++ stops it
@@ -443,7 +443,7 @@ namespace detail
         std::size_t at = 0;
         (
             [&] {
-                for (Dimension const contributed: OpaqueInput<Inputs>::dimensions)
+                for (Dimension const& contributed: OpaqueInput<Inputs>::dimensions)
                     gathered[at++] = contributed;
             }(),
             ...);

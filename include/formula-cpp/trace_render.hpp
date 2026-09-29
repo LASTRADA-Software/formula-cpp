@@ -23,13 +23,24 @@
 ///    unusable wall of text; a default limit is a limit someone forgets, and
 ///    a required one is a limit someone chooses.
 ///  - It never shows a value in a unit nobody entered. Every `Step` holds its
-///    value in the coherent SI unit of its dimension so that steps are
+///    value in the coherent unit of its dimension so that steps are
 ///    comparable, and remembers the unit it was *declared* in; this converts
 ///    back before showing a number, so a volume entered as 180 l reads
 ///    `180 l` and not `9/50`.
+///  - It never shows an approximation as exact. Numbers are fractions unless
+///    `TraceRenderOptions::numbers` asks for decimals, and a decimal is shown
+///    only where it is the exact value -- `3/5` reads `0.6`, `1/3` stays
+///    `1/3` -- unless the caller asks for an approximation by naming its
+///    rounding mode, and then the rounded value carries `≈`. Some numbers
+///    are never rounded even then: a number typed rather than computed -- a
+///    constant, a table's row or bound, a permitted value, a limit, and a
+///    step that only passes one on -- and either side of a comparison a line
+///    states beside its verdict. A value in a unit nobody declared, a
+///    computed product or ratio, is never padded with zeros.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/error.hpp>
+#include <formula-cpp/number_text.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
@@ -44,7 +55,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -87,6 +100,30 @@ struct TraceRenderOptions
     /// `render_trace(trace, {})` value-initialise it to zero and render
     /// nothing at all, silently, rather than fail to compile.
     StepLimit maxSteps;
+
+    /// How every number a line states is spelled. Fractions unless a caller asks.
+    ///
+    /// `NumberStyle::exact_decimal()` writes a decimal wherever that is the
+    /// exact value and the fraction elsewhere; `approximate_decimal(mode)`
+    /// rounds the rest in `mode` at the unit's declared decimals and marks
+    /// each with `ApproximationMarker`. Whatever the style, a number typed
+    /// rather than computed, and either side of a comparison a line states,
+    /// are shown exact (`NumberStyle::exact_only`), and a value in a unit
+    /// nobody declared is never padded; where its default 3 places would
+    /// round a value other than zero to `≈0`, they are extended to its first
+    /// significant digit, up to 18 (`checked_shown_text`). A value the style
+    /// cannot spell in its unit -- one padded or rounded in a unit whose
+    /// declared decimals lie outside -18 to 18, say -- reads `(not shown:
+    /// ...)`, as a value its unit cannot show does; a bound or a limit the
+    /// author typed falls back to its exact fraction instead.
+    ///
+    /// `render_derivation` spells a worksheet's derivation in it too: its
+    /// headers, its steps and its inputs.
+    ///
+    /// Defaulted, unlike `maxSteps`: fractions are how a trace has always
+    /// read, and a caller who names no style gets exactly that. The default
+    /// does not reopen `{}`: `maxSteps` still has to be stated.
+    NumberStyle numbers = NumberStyle::fraction();
 };
 
 namespace detail
@@ -109,8 +146,8 @@ namespace detail
     /// open a clause, nor an author's newline end a line. The semicolon,
     /// because a verdict's clause is `[<label>; <whose constraint>]`: a label
     /// holding `; jurisdiction overlay: ...` would otherwise name a second,
-    /// false owner beside the true one. The backslash, so that an author's `\[` cannot pass for an
-    /// escaped bracket.
+    /// false owner beside the true one. The backslash, so that an author's
+    /// `\[` cannot pass for an escaped bracket.
     ///
     /// **What it does not do.** It stops author text from breaking a line's
     /// structure, not from holding a clause's words: a `documented()` citation
@@ -123,10 +160,18 @@ namespace detail
     /// or the line separator U+2028 is written as it is, since it cannot
     /// break the ASCII structure the library writes.
     ///
-    /// Applied by `step_line`, once, to every piece of author text a step
-    /// holds -- see `EscapedStep`, `unit_symbol_text` and, for a record's role
-    /// and a lineage attribute's name, `tag_words` -- and nowhere else: the
-    /// words this file writes itself go into the line as they are.
+    /// Applied to every piece of author text a trace line states, on the way
+    /// from `step_line`: once to each such field of the step and of a citation,
+    /// in `EscapedStep` and `EscapedCitation`, with `unit_symbol_text` and, for
+    /// a record's role and a lineage attribute's name, `tag_words`; and
+    /// directly by the lines that state author text the step does not hold --
+    /// a rejection's verdict label (`rejection_line`), an opaque operation's
+    /// and its outputs' names (`opaque_call_line`, `opaque_output_line`), a
+    /// retry's verdict label (`retry_concluded_line`), a named base
+    /// dimension's name (`coherent_unit_text`) and the symbol a derivation
+    /// block's header names (`render_derivation`). The words this file writes
+    /// itself go into the line as they are. A rendered formula in a
+    /// derivation block's header is made safe by `line_safe_text` instead.
     [[nodiscard]] inline std::string escaped_author_text(std::string_view authored)
     {
         constexpr std::string_view hexDigits = "0123456789abcdef";
@@ -538,13 +583,18 @@ namespace detail
     /// half-open interval in this library, so that a derivation and the
     /// formula it derives cannot name one band two ways. That ruling, and the
     /// published defect that bought it, are in `render.hpp`'s file comment.
-    [[nodiscard]] inline std::string half_open_range_text(LookupRange const& lookupRange, std::string_view keySymbol)
+    [[nodiscard]] inline std::string half_open_range_text(LookupRange const& lookupRange,
+                                                          std::string_view keySymbol,
+                                                          Unit const& keyUnit,
+                                                          NumberStyle numberStyle)
     {
         return band_text(Band { lookupRange.lowNumerator,
                                 lookupRange.lowDenominator,
                                 lookupRange.highNumerator,
                                 lookupRange.highDenominator },
-                         keySymbol);
+                         keySymbol,
+                         keyUnit,
+                         numberStyle);
     }
 
     /// A **closed** range an interpolating curve runs over: `209/10 to 293/10 mm`.
@@ -563,11 +613,15 @@ namespace detail
     /// every other declared bound in this library is printed with, so a curve
     /// whose first row was typed `1474/200` reads `737/100` here exactly as it
     /// does in `render()`.
-    [[nodiscard]] inline std::string closed_range_text(LookupRange const& lookupRange, std::string_view keySymbol)
+    [[nodiscard]] inline std::string closed_range_text(LookupRange const& lookupRange,
+                                                       std::string_view keySymbol,
+                                                       Unit const& keyUnit,
+                                                       NumberStyle numberStyle)
     {
-        return number_with_unit(declared_number_text(lookupRange.lowNumerator, lookupRange.lowDenominator) + " to "
-                                    + declared_number_text(lookupRange.highNumerator, lookupRange.highDenominator),
-                                keySymbol);
+        return number_with_unit(
+            declared_number_text(lookupRange.lowNumerator, lookupRange.lowDenominator, keyUnit, numberStyle) + " to "
+                + declared_number_text(lookupRange.highNumerator, lookupRange.highDenominator, keyUnit, numberStyle),
+            keySymbol);
     }
 
     /// The two rows an interpolating answer came from: `between 331/100 and
@@ -589,10 +643,15 @@ namespace detail
     /// `closed_range_text`'s `to`. The numbers go through
     /// `declared_number_text` like every other declared bound, so a row typed
     /// `14/4` reads `7/2` here exactly as it does in `render()`.
-    [[nodiscard]] inline std::string segment_text(Segment const& lookupSegment, std::string_view keySymbol)
+    [[nodiscard]] inline std::string segment_text(Segment const& lookupSegment,
+                                                  std::string_view keySymbol,
+                                                  Unit const& keyUnit,
+                                                  NumberStyle numberStyle)
     {
-        std::string const lowText = declared_number_text(lookupSegment.low.numerator, lookupSegment.low.denominator);
-        std::string const highText = declared_number_text(lookupSegment.high.numerator, lookupSegment.high.denominator);
+        std::string const lowText =
+            declared_number_text(lookupSegment.low.numerator, lookupSegment.low.denominator, keyUnit, numberStyle);
+        std::string const highText =
+            declared_number_text(lookupSegment.high.numerator, lookupSegment.high.denominator, keyUnit, numberStyle);
         if (lowText == highText)
             return "on the row at " + number_with_unit(lowText, keySymbol);
         return "between " + number_with_unit(lowText + " and " + highText, keySymbol);
@@ -635,10 +694,14 @@ namespace detail
     /// Each kind says it in its own terms, because the three misses are
     /// genuinely different questions: a value in none of a table's bands, a
     /// key in none of its rows, a value off the ends of a curve.
+    ///
+    /// @p keySymbol is `recorded.sourceUnit`'s symbol, escaped; the table's
+    /// bounds are numbers in that unit.
     [[nodiscard]] inline std::string lookup_miss_text(Trace<Rational> const& trace,
                                                       std::size_t stepIndex,
                                                       Step<Rational> const& recorded,
-                                                      std::string_view keySymbol)
+                                                      std::string_view keySymbol,
+                                                      NumberStyle numberStyle)
     {
         if (recorded.kind == StepKind::ExactLookup)
             return "no row has this key";
@@ -652,20 +715,22 @@ namespace detail
         if (!recorded.coveredRange.has_value())
             return recorded.kind == StepKind::BandedLookup ? "the table declares no bands" : "the curve declares no rows";
 
+        Unit const& keyUnit = recorded.sourceUnit;
         if (recorded.kind == StepKind::BandedLookup)
-            return "in no band; the bands cover " + half_open_range_text(*recorded.coveredRange, keySymbol);
+            return "in no band; the bands cover "
+                   + half_open_range_text(*recorded.coveredRange, keySymbol, keyUnit, numberStyle);
 
         // A curve with exactly one row covers that one key and nothing else,
         // and "runs 15/2 to 15/2 mm" would describe it as a range it is not.
         // `at <key>` is the spelling `render()` gives a breakpoint, for the
         // same reason: a row is a point.
-        std::string const lowText =
-            declared_number_text(recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator);
-        std::string const highText =
-            declared_number_text(recorded.coveredRange->highNumerator, recorded.coveredRange->highDenominator);
+        std::string const lowText = declared_number_text(
+            recorded.coveredRange->lowNumerator, recorded.coveredRange->lowDenominator, keyUnit, numberStyle);
+        std::string const highText = declared_number_text(
+            recorded.coveredRange->highNumerator, recorded.coveredRange->highDenominator, keyUnit, numberStyle);
         if (lowText == highText)
             return "outside the curve, whose only row is at " + number_with_unit(lowText, keySymbol);
-        return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keySymbol);
+        return "outside the curve, which runs " + closed_range_text(*recorded.coveredRange, keySymbol, keyUnit, numberStyle);
     }
 
     /// A lookup step's trailing clause: which row it selected, or -- when it
@@ -695,7 +760,8 @@ namespace detail
     /// @p stepIndex are read only for the step's side-table record.
     [[nodiscard]] inline std::string lookup_suffix(Trace<Rational> const& trace,
                                                    std::size_t stepIndex,
-                                                   Step<Rational> const& recorded)
+                                                   Step<Rational> const& recorded,
+                                                   NumberStyle numberStyle)
     {
         std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
         switch (recorded.lookupFailure)
@@ -717,12 +783,13 @@ namespace detail
                 if (recorded.kind == StepKind::SampleSizeLookup && recorded.value.has_value() && !recorded.operands.empty())
                     return " [critical value at n = " + std::to_string(recorded.lookupKey) + "]";
                 if (recorded.selectedBand.has_value())
-                    return " [" + band_text(*recorded.selectedBand, keySymbol) + "]";
+                    return " [" + band_text(*recorded.selectedBand, keySymbol, recorded.sourceUnit, numberStyle) + "]";
                 if (recorded.selectedSegment.has_value())
-                    return " [" + segment_text(*recorded.selectedSegment, keySymbol) + "]";
+                    return " [" + segment_text(*recorded.selectedSegment, keySymbol, recorded.sourceUnit, numberStyle)
+                           + "]";
                 return {};
             case LookupFailure::Missed:
-                return " [" + lookup_miss_text(trace, stepIndex, recorded, keySymbol) + "]";
+                return " [" + lookup_miss_text(trace, stepIndex, recorded, keySymbol, numberStyle) + "]";
             case LookupFailure::Computation:
                 return " [the interpolation itself overflowed, not anything below it]";
             case LookupFailure::Conversion:
@@ -1360,17 +1427,31 @@ namespace detail
                + variant_narrowing_clause(recorded) + "]";
     }
 
+    /// A value no line can spell, and why: `(not shown: <reason>)`. The one
+    /// spelling of it, for a value its unit cannot show and for a value its
+    /// style cannot spell in that unit alike.
+    [[nodiscard]] inline std::string not_shown_text(ArithmeticError whyNot)
+    {
+        return "(not shown: " + std::string { describe(whyNot) } + ")";
+    }
+
     /// @p storedValue -- a step's own, or one element of a series step's -- converted
-    /// from the coherent SI unit of @p recorded's dimension into the unit the
-    /// step was declared in, with that unit's symbol, or `(not measured)` when
-    /// it is empty. Shared by `step_value_text` and `series_step_line`, so that
-    /// an element of a series reads exactly as a single value of the same
-    /// quantity does.
+    /// from the coherent unit of @p recorded's dimension into the unit the
+    /// step was declared in, with that unit's symbol, or `(not measured)`
+    /// (`NotMeasuredText`) when it is empty. Shared by `step_value_text` and
+    /// `series_step_line`, so that an element of a series reads exactly as a
+    /// single value of the same quantity does.
+    ///
+    /// The number is spelled in @p numberStyle (`checked_shown_text`: never
+    /// padded in a unit nobody declared); a style that cannot spell it in the
+    /// step's unit is reported as the conversion's failure is, `(not shown:
+    /// ...)`. The fraction style never fails.
     [[nodiscard]] inline std::string value_in_declared_unit(Step<Rational> const& recorded,
-                                                            std::optional<Rational> const& storedValue)
+                                                            std::optional<Rational> const& storedValue,
+                                                            NumberStyle numberStyle)
     {
         if (!storedValue.has_value())
-            return "(not measured)";
+            return std::string { NotMeasuredText };
 
         std::expected<Rational, ArithmeticError> const shown =
             checked_convert(*storedValue, coherent(recorded.dimension), recorded.unit);
@@ -1380,9 +1461,12 @@ namespace detail
         // honest answer: the alternative is a number in a scale the line
         // claims it is not in.
         if (!shown)
-            return "(not shown: " + std::string { describe(shown.error()) } + ")";
+            return not_shown_text(shown.error());
+        std::expected<NumberText, ArithmeticError> const spelled = checked_shown_text(*shown, numberStyle, recorded.unit);
+        if (!spelled)
+            return not_shown_text(spelled.error());
 
-        std::string valueText = number_text(*shown);
+        std::string valueText { spelled->view() };
         std::string const unitSymbol = unit_symbol_text(recorded.unit);
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol;
@@ -1391,16 +1475,16 @@ namespace detail
 
     /// What a step produced, as a person should read it.
     ///
-    /// The value is stored in the coherent SI unit of the step's dimension;
+    /// The value is stored in the coherent unit of the step's dimension;
     /// this converts it back into the unit the step was declared in and
     /// appends that unit's symbol, so an input entered as 180 l reads
     /// `180 l`. A step that failed shows why, and one with no value at all
     /// says so -- absence is not an error and must not be rendered as one.
-    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded)
+    [[nodiscard]] inline std::string step_value_text(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
         if (recorded.error.has_value())
             return std::string { describe(*recorded.error) };
-        return value_in_declared_unit(recorded, recorded.value);
+        return value_in_declared_unit(recorded, recorded.value, numberStyle);
     }
 
     /// Whether @p kind is a series step, whose values are `Step::elements` and
@@ -1415,12 +1499,180 @@ namespace detail
                || stepKind == StepKind::ObservationsVariable || stepKind == StepKind::Binning;
     }
 
+    /// Whether a step of @p stepKind states, as its value, a number typed
+    /// rather than computed: a constant -- the author's, the library's
+    /// rational `pi`, or one an overlay fixed -- a per-element constant, a
+    /// declared domain, the permitted value a snap chose, and the row a
+    /// banded, exact or critical-value lookup read from its table. **The one
+    /// list of them**, which `value_is_typed` and `curve_part_is_typed` build
+    /// on: `escaped_step_line` spells such a value in `exact_only()`, as
+    /// every bound, row and limit a line quotes is spelled, so that no style
+    /// shows a typed number rounded -- a constant typed as `1/3` never reads
+    /// `≈0.333`, nor a snapped value two ways on one line.
+    /// An interpolating lookup's value is not here: it is computed between
+    /// two rows, and is neither of them.
+    [[nodiscard]] constexpr bool states_typed_value(StepKind stepKind) noexcept
+    {
+        return stepKind == StepKind::Constant || stepKind == StepKind::PiConstant
+               || stepKind == StepKind::OverriddenConstant || stepKind == StepKind::SeriesConstant
+               || stepKind == StepKind::SeriesDomain || stepKind == StepKind::SnappedToPermitted
+               || stepKind == StepKind::BandedLookup || stepKind == StepKind::ExactLookup
+               || stepKind == StepKind::SampleSizeLookup;
+    }
+
+    /// The step whose value @p trace's step @p stepIndex passes on unchanged,
+    /// when it computes nothing of its own: a documented formula, a selected
+    /// or a replaced variant and a derived quantity, each over its one
+    /// operand; a conditional over the branch that ran, its last operand; a
+    /// record's scope over the derivation it read, its last operand that is
+    /// not a lineage attribute (as the recorder reads it for the scope's
+    /// unit); a precision limit's pass 1 over the level expression and its
+    /// pass 2 over the limit expression, each its last operand; and a level
+    /// placeholder over the level it read, the step its record names
+    /// (`Trace::precisionRecords`).
+    ///
+    /// Only when that step holds this one's value, in this one's dimension.
+    /// A consumer's node that forwards the sink records no step of its own,
+    /// so a documented formula or a branch over one claims that node's
+    /// operand instead -- a constant under a rise above a reference -- whose
+    /// value is not the one passed on. The recorder refuses that operand's
+    /// unit for the same reason (`trace.hpp`'s `PassesThroughRecordedStep`);
+    /// the value is what tells the two apart here. Empty for every other
+    /// step, and for an operand that is not an earlier step: `Trace` is a
+    /// public aggregate, and following a later one could go round in a
+    /// circle.
+    [[nodiscard]] inline std::optional<std::size_t> value_passed_from(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        Step<Rational> const& passing = trace.steps[stepIndex];
+        std::optional<std::size_t> passedFrom;
+        switch (passing.kind)
+        {
+            case StepKind::Documented:
+            case StepKind::VariantSelected:
+            case StepKind::ReplacedVariant:
+            case StepKind::DerivedQuantity:
+                if (passing.operands.size() == 1)
+                    passedFrom = passing.operands.front();
+                break;
+            case StepKind::Conditional:
+                if (passing.branch != Branch::Neither && !passing.operands.empty())
+                    passedFrom = passing.operands.back();
+                break;
+            case StepKind::RecordScope:
+                for (std::size_t const operandIndex: passing.operands)
+                    if (operandIndex < stepIndex && trace.steps[operandIndex].kind != StepKind::LineageChecked)
+                        passedFrom = operandIndex;
+                break;
+            case StepKind::PrecisionLevel:
+            case StepKind::PrecisionLimit:
+                if (PrecisionRecord const* const precisionRecord = record_for_step(trace.precisionRecords, stepIndex))
+                {
+                    if (precisionRecord->role == PrecisionStepRole::LevelPass && !passing.operands.empty())
+                        passedFrom = passing.operands.back();
+                    // Pass 2 names the level step first and the limit
+                    // expression's last, as `precision_expression` reads it.
+                    else if (precisionRecord->role == PrecisionStepRole::LimitPass && passing.operands.size() >= 2)
+                        passedFrom = passing.operands.back();
+                    else if (precisionRecord->role == PrecisionStepRole::Placeholder)
+                        passedFrom = precisionRecord->levelStep;
+                }
+                break;
+            default:
+                break;
+        }
+        if (!passedFrom.has_value() || *passedFrom >= stepIndex)
+            return std::nullopt;
+        Step<Rational> const& passedStep = trace.steps[*passedFrom];
+        if (!(passedStep.value == passing.value) || !(passedStep.dimension == passing.dimension))
+            return std::nullopt;
+        return passedFrom;
+    }
+
+    /// Whether the value @p trace's step @p stepIndex states is a number typed
+    /// rather than computed: its own kind says so (`states_typed_value`), or
+    /// it passes on the value of a step whose kind does (`value_passed_from`),
+    /// however many such steps stand between. Decided from the steps
+    /// themselves, so that one number reads the same on every line that
+    /// states it: a documented constant typed as `1/3` reads `1/3` on both
+    /// its lines, not `1/3` and then `≈0.333`.
+    [[nodiscard]] inline bool value_is_typed(Trace<Rational> const& trace, std::size_t stepIndex)
+    {
+        std::size_t stated = stepIndex;
+        // Each step passed from is an earlier one, so this ends.
+        while (!states_typed_value(trace.steps[stated].kind))
+        {
+            std::optional<std::size_t> const passedFrom = value_passed_from(trace, stated);
+            if (!passedFrom.has_value())
+                return false;
+            stated = *passedFrom;
+        }
+        return true;
+    }
+
+    /// Which of a curve's two series a question is about: its points or its
+    /// values.
+    enum class CurvePart : std::uint8_t
+    {
+        /// Its points, `Step::domainElements`.
+        Points,
+        /// Its values, `Step::elements`.
+        Values,
+    };
+
+    /// Whether every one of @p curvePart of the curve step @p stepIndex is a
+    /// typed number (`value_is_typed`): a pairing's points are its first
+    /// operand's elements and its values its second's -- a declared domain, a
+    /// per-element constant -- and a splice's are both its curves'. As for
+    /// `value_passed_from`, only when those operands hold what the curve
+    /// does: a pairing's points or values equal to its operand's elements,
+    /// and every point, or every point with its value, of a splice one of
+    /// its two curves'. False for a step of any other kind, and for operands
+    /// that are not two earlier steps.
+    [[nodiscard]] inline bool curve_part_is_typed(Trace<Rational> const& trace,
+                                                  std::size_t stepIndex,
+                                                  CurvePart curvePart)
+    {
+        Step<Rational> const& curveStep = trace.steps[stepIndex];
+        if (curveStep.operands.size() != 2 || curveStep.operands.front() >= stepIndex
+            || curveStep.operands.back() >= stepIndex)
+            return false;
+        Step<Rational> const& firstStep = trace.steps[curveStep.operands.front()];
+        Step<Rational> const& secondStep = trace.steps[curveStep.operands.back()];
+        if (curveStep.kind == StepKind::CurvePairing)
+        {
+            if (curvePart == CurvePart::Points)
+                return curveStep.domainElements == firstStep.elements
+                       && value_is_typed(trace, curveStep.operands.front());
+            return curveStep.elements == secondStep.elements && value_is_typed(trace, curveStep.operands.back());
+        }
+        if (curveStep.kind != StepKind::CurveSplice)
+            return false;
+        // Whether @p spliced's pair at @p at -- its point, and with it its
+        // value when the values are asked about -- is one of @p joined's.
+        auto const pairFound = [curvePart](Step<Rational> const& spliced, std::size_t at, Step<Rational> const& joined) {
+            for (std::size_t each = 0; each < joined.domainElements.size(); ++each)
+                if (joined.domainElements[each] == spliced.domainElements[at]
+                    && (curvePart == CurvePart::Points
+                        || (each < joined.elements.size() && at < spliced.elements.size()
+                            && joined.elements[each] == spliced.elements[at])))
+                    return true;
+            return false;
+        };
+        for (std::size_t at = 0; at < curveStep.domainElements.size(); ++at)
+            if (!pairFound(curveStep, at, firstStep) && !pairFound(curveStep, at, secondStep))
+                return false;
+        return curve_part_is_typed(trace, curveStep.operands.front(), curvePart)
+               && curve_part_is_typed(trace, curveStep.operands.back(), curvePart);
+    }
+
     /// Where a series step's failure arose, counted from one: `at element 3`,
     /// or `at observation 3` when `Step::failureSite` says the position is an
     /// observation -- raw observations and a binning. A binning
     /// that found no class for it says which, and what the classes cover:
-    /// `[331 m in no class; the classes cover 0 to under 331 m]`.
-    [[nodiscard]] inline std::string failed_position_text(Step<Rational> const& recorded)
+    /// `[331 m in no class; the classes cover 0 to under 331 m]` -- both sides
+    /// of that comparison in `numberStyle.exact_only()`, so that a value
+    /// shown rounded can never read as inside a class it missed.
+    [[nodiscard]] inline std::string failed_position_text(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
         if (!recorded.failedElement.has_value())
             return {};
@@ -1435,8 +1687,11 @@ namespace detail
         observationShape.dimension = recorded.sourceUnit.dimension;
         observationShape.unit = recorded.sourceUnit;
         std::string const keySymbol = unit_symbol_text(recorded.sourceUnit);
-        return positionText + " [" + value_in_declared_unit(observationShape, recorded.domainElements[failedAt])
-               + " in no class; the classes cover " + half_open_range_text(*recorded.coveredRange, keySymbol) + "]";
+        NumberStyle const comparedStyle = numberStyle.exact_only();
+        return positionText + " ["
+               + value_in_declared_unit(observationShape, recorded.domainElements[failedAt], comparedStyle)
+               + " in no class; the classes cover "
+               + half_open_range_text(*recorded.coveredRange, keySymbol, recorded.sourceUnit, comparedStyle) + "]";
     }
 
     /// A series step's line, without its number: the expression, an `=`, and
@@ -1452,7 +1707,9 @@ namespace detail
     /// Reads `Step::elements` and never `Step::value`, which a series step
     /// leaves empty: consulting it would print `(not measured)` for a series
     /// every element of which was measured.
-    [[nodiscard]] inline std::string series_step_line(ShownStep const& recorded, std::size_t& budget)
+    [[nodiscard]] inline std::string series_step_line(ShownStep const& recorded,
+                                                      std::size_t& budget,
+                                                      NumberStyle numberStyle)
     {
         // A per-element constant's line is its values alone, as a scalar
         // constant's is its value alone: `1 kg; 2 kg`, not the tautology
@@ -1472,7 +1729,8 @@ namespace detail
             originText += ", entered by hand";
         std::string lineText = listsItself ? std::string {} : step_expression(recorded) + " = ";
         if (recorded.error.has_value())
-            return lineText + std::string { describe(*recorded.error) } + failed_position_text(recorded) + originText;
+            return lineText + std::string { describe(*recorded.error) } + failed_position_text(recorded, numberStyle)
+                   + originText;
         std::size_t const elementCount = recorded.elements.size();
         if (elementCount == 0)
             return lineText + "(no elements)" + originText;
@@ -1483,7 +1741,7 @@ namespace detail
         {
             if (at > 0)
                 lineText += "; ";
-            lineText += value_in_declared_unit(recorded, recorded.elements[at]);
+            lineText += value_in_declared_unit(recorded, recorded.elements[at], numberStyle);
         }
         if (listed < elementCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(elementCount - listed) + " more";
@@ -1498,26 +1756,29 @@ namespace detail
     /// values in `unit`.
     ///
     /// A curve's point @p point, in the step's `sourceUnit`.
-    [[nodiscard]] inline std::string curve_point_text(Step<Rational> const& recorded, std::optional<Rational> const& point)
+    [[nodiscard]] inline std::string curve_point_text(Step<Rational> const& recorded,
+                                                      std::optional<Rational> const& point,
+                                                      NumberStyle numberStyle)
     {
         // A point is shown as a value of the point's own dimension and unit.
         Step<Rational> pointShape {};
         pointShape.dimension = recorded.sourceUnit.dimension;
         pointShape.unit = recorded.sourceUnit;
-        return value_in_declared_unit(pointShape, point);
+        return value_in_declared_unit(pointShape, point, numberStyle);
     }
 
     /// The rule a failed curve broke and the point it broke it at:
     /// `[duplicate domain point 163 m]`, `[domain does not ascend at 113 m]`
     /// or `[breaks non-decreasing at 103 m]`. Nothing when the step names no rule
     /// or holds no point at its failed element.
-    [[nodiscard]] inline std::string curve_break_suffix(Step<Rational> const& recorded)
+    [[nodiscard]] inline std::string curve_break_suffix(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
         if (recorded.curveBreak == CurveBreak::None || !recorded.failedElement.has_value()
             || *recorded.failedElement >= recorded.domainElements.size()
             || !recorded.domainElements[*recorded.failedElement].has_value())
             return {};
-        std::string const pointText = curve_point_text(recorded, recorded.domainElements[*recorded.failedElement]);
+        std::string const pointText =
+            curve_point_text(recorded, recorded.domainElements[*recorded.failedElement], numberStyle);
         switch (recorded.curveBreak)
         {
             case CurveBreak::DuplicatePoint:
@@ -1535,14 +1796,23 @@ namespace detail
     /// A failed curve shows its error and, when it belongs to one element,
     /// that element counted from one, then the rule it broke there and the
     /// point (`curve_break_suffix`).
-    [[nodiscard]] inline std::string curve_step_line(ShownStep const& recorded, std::size_t& budget)
+    ///
+    /// The points are spelled in @p pointStyle and the values in
+    /// @p valueStyle: `escaped_step_line` gives either `exact_only()` when it
+    /// comes from a typed series (`curve_part_is_typed`), so that a declared
+    /// domain's points read here as on the domain's own line.
+    [[nodiscard]] inline std::string curve_step_line(ShownStep const& recorded,
+                                                     std::size_t& budget,
+                                                     NumberStyle pointStyle,
+                                                     NumberStyle valueStyle)
     {
         std::string lineText = step_expression(recorded) + " = ";
         if (recorded.error.has_value())
         {
             lineText += describe(*recorded.error);
             if (recorded.failedElement.has_value())
-                lineText += " at element " + std::to_string(*recorded.failedElement + 1) + curve_break_suffix(recorded);
+                lineText += " at element " + std::to_string(*recorded.failedElement + 1)
+                            + curve_break_suffix(recorded, pointStyle);
             return lineText;
         }
         std::size_t const pairCount = recorded.elements.size();
@@ -1555,8 +1825,8 @@ namespace detail
         {
             if (at > 0)
                 lineText += "; ";
-            lineText += curve_point_text(recorded, recorded.domainElements[at]) + ": "
-                        + value_in_declared_unit(recorded, recorded.elements[at]);
+            lineText += curve_point_text(recorded, recorded.domainElements[at], pointStyle) + ": "
+                        + value_in_declared_unit(recorded, recorded.elements[at], valueStyle);
         }
         if (listed < pairCount)
             lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(pairCount - listed) + " more";
@@ -1568,13 +1838,17 @@ namespace detail
     /// 163 m]` -- `segment_text`, an interpolating lookup's words -- and on a miss
     /// `[outside the curve, which runs 103 to 241 m]`. Nothing when
     /// nothing was located: a failed or absent curve or point.
-    [[nodiscard]] inline std::string curve_interpolation_suffix(Step<Rational> const& recorded)
+    [[nodiscard]] inline std::string curve_interpolation_suffix(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
         std::string const pointSymbol = unit_symbol_text(recorded.sourceUnit);
+        // The points the value lay between, or the ends it lay outside, are
+        // one side of the comparison the clause states: `declared_number_text`
+        // spells them in `exact_only()`.
         if (recorded.selectedSegment.has_value())
-            return " [" + segment_text(*recorded.selectedSegment, pointSymbol) + "]";
+            return " [" + segment_text(*recorded.selectedSegment, pointSymbol, recorded.sourceUnit, numberStyle) + "]";
         if (recorded.coveredRange.has_value())
-            return " [outside the curve, which runs " + closed_range_text(*recorded.coveredRange, pointSymbol) + "]";
+            return " [outside the curve, which runs "
+                   + closed_range_text(*recorded.coveredRange, pointSymbol, recorded.sourceUnit, numberStyle) + "]";
         return {};
     }
 
@@ -1643,30 +1917,44 @@ namespace detail
     /// tie, toward higher]`; `[on 127 m]` for an exact hit; and on a miss
     /// `[outside the permitted set, 103 m to 241 m]`. Nothing
     /// when nothing was snapped -- a failed or absent operand.
-    [[nodiscard]] inline std::string snap_suffix(Step<Rational> const& recorded)
+    ///
+    /// The permitted values are the author's (`declared_number_text`), and
+    /// the one it snapped to, named after `nearer`, is one of them: it is
+    /// spelled in `numberStyle.exact_only()` too, so that it reads exactly as
+    /// the neighbour it names -- and as the step's own value, a typed number
+    /// (`states_typed_value`), reads before the bracket.
+    [[nodiscard]] inline std::string snap_suffix(Step<Rational> const& recorded, NumberStyle numberStyle)
     {
         std::string const keySymbol = unit_symbol_text(recorded.unit);
+        Unit const& keyUnit = recorded.unit;
         if (recorded.selectedSegment.has_value())
         {
             Segment const& neighbours = *recorded.selectedSegment;
-            std::string const lowText =
-                number_with_unit(declared_number_text(neighbours.low.numerator, neighbours.low.denominator), keySymbol);
-            std::string const highText =
-                number_with_unit(declared_number_text(neighbours.high.numerator, neighbours.high.denominator), keySymbol);
+            std::string const lowText = number_with_unit(
+                declared_number_text(neighbours.low.numerator, neighbours.low.denominator, keyUnit, numberStyle), keySymbol);
+            std::string const highText = number_with_unit(
+                declared_number_text(neighbours.high.numerator, neighbours.high.denominator, keyUnit, numberStyle),
+                keySymbol);
             if (neighbours.low == neighbours.high)
                 return " [on " + lowText + "]";
             if (recorded.tieBroken)
                 return " [" + lowText + " to " + highText + "; tie, " + std::string { describe(recorded.snapTie) } + "]";
-            std::string const nearer =
-                recorded.value.has_value() ? value_in_declared_unit(recorded, recorded.value) : std::string { "neither" };
+            std::string const nearer = recorded.value.has_value()
+                                           ? value_in_declared_unit(recorded, recorded.value, numberStyle.exact_only())
+                                           : std::string { "neither" };
             return " [" + lowText + " to " + highText + "; nearer " + nearer + "]";
         }
         if (recorded.coveredRange.has_value())
         {
             LookupRange const& covered = *recorded.coveredRange;
             return " [outside the permitted set, "
-                   + number_with_unit(declared_number_text(covered.lowNumerator, covered.lowDenominator), keySymbol) + " to "
-                   + number_with_unit(declared_number_text(covered.highNumerator, covered.highDenominator), keySymbol) + "]";
+                   + number_with_unit(
+                       declared_number_text(covered.lowNumerator, covered.lowDenominator, keyUnit, numberStyle), keySymbol)
+                   + " to "
+                   + number_with_unit(
+                       declared_number_text(covered.highNumerator, covered.highDenominator, keyUnit, numberStyle),
+                       keySymbol)
+                   + "]";
         }
         return {};
     }
@@ -1721,24 +2009,32 @@ namespace detail
     /// The rows are master data read at run time, so a derivation that
     /// omitted them would not say what was judged; a hand-built trace with
     /// no row for an element prints the outcome alone.
+    ///
+    /// The value and its row are the two sides of the comparison the outcome
+    /// states, so both are spelled in `numberStyle.exact_only()`: a value
+    /// shown rounded beside a limit could read as on the other side of it.
     [[nodiscard]] inline std::string conformity_line(ShownStep const& recorded,
                                                      std::span<LimitRow const> limits,
-                                                     std::size_t& budget)
+                                                     std::size_t& budget,
+                                                     NumberStyle numberStyle)
     {
         std::size_t const outcomeCount = recorded.elementOutcomes.size();
         std::size_t const listed = budget < outcomeCount ? budget : outcomeCount;
         budget -= listed;
+        NumberStyle const comparedStyle = numberStyle.exact_only();
         std::string lineText = step_expression(recorded) + " [";
         for (std::size_t at = 0; at < listed; ++at)
         {
             if (at > 0)
                 lineText += "; ";
-            std::string const rowClause = at < limits.size()
-                                              ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit)) + ")"
-                                              : std::string {};
-            std::string const valueClause = at < recorded.elements.size() && recorded.elements[at].has_value()
-                                                ? ", " + value_in_declared_unit(recorded, recorded.elements[at])
-                                                : std::string {};
+            std::string const rowClause =
+                at < limits.size()
+                    ? " (" + limit_row_text(limits[at], unit_symbol_text(recorded.unit), recorded.unit, comparedStyle) + ")"
+                    : std::string {};
+            std::string const valueClause =
+                at < recorded.elements.size() && recorded.elements[at].has_value()
+                    ? ", " + value_in_declared_unit(recorded, recorded.elements[at], comparedStyle)
+                    : std::string {};
             lineText += element_outcome_text(at, recorded.elementOutcomes[at], valueClause, rowClause);
         }
         if (listed < outcomeCount)
@@ -1863,11 +2159,18 @@ namespace detail
     /// @p si, a value in the coherent unit of @p recorded's dimension -- or of
     /// its square, when @p squared -- in @p recorded's unit (or its square),
     /// with the unit's symbol: `27/10 g`, `729/100 g2`. Refuses to print, as
-    /// `value_in_declared_unit` does, a value its unit cannot show.
-    [[nodiscard]] inline std::string rejection_value_text(Step<Rational> const& recorded, Rational si, bool squared)
+    /// `value_in_declared_unit` does, a value its unit cannot show, or one
+    /// @p numberStyle cannot spell in it. A square declares no decimals of its
+    /// own, so a squared value is never padded, as a value in a unit nobody
+    /// declared is not (`checked_shown_text`); rounded, it would round at the
+    /// unit's decimals.
+    [[nodiscard]] inline std::string rejection_value_text(Step<Rational> const& recorded,
+                                                          Rational si,
+                                                          bool squared,
+                                                          NumberStyle numberStyle)
     {
         if (!squared)
-            return value_in_declared_unit(recorded, si);
+            return value_in_declared_unit(recorded, si, numberStyle);
         Unit const shownUnit = recorded.unit;
         std::expected<Rational, ArithmeticError> const magnitude =
             Rational::make(shownUnit.magnitudeNumerator, shownUnit.magnitudeDenominator);
@@ -1876,8 +2179,12 @@ namespace detail
         std::expected<Rational, ArithmeticError> const shown =
             magnitudeSquared.has_value() ? checked_div(si, *magnitudeSquared) : magnitudeSquared;
         if (!shown)
-            return "(not shown: " + std::string { describe(shown.error()) } + ")";
-        std::string valueText = number_text(*shown);
+            return not_shown_text(shown.error());
+        std::expected<NumberText, ArithmeticError> const spelled =
+            checked_number_text(*shown, trimmed(numberStyle), shownUnit);
+        if (!spelled)
+            return not_shown_text(spelled.error());
+        std::string valueText { spelled->view() };
         std::string const unitSymbol = unit_symbol_text(shownUnit);
         if (!unitSymbol.empty())
             valueText += " " + unitSymbol + "2";
@@ -1890,14 +2197,17 @@ namespace detail
     /// of Celsius readings is a difference, 106/25 kelvin, and in degrees
     /// Celsius it would read as a reading, off by the offset. Squared, in the
     /// coherent unit's square likewise, as the deviation beside it is.
-    [[nodiscard]] inline std::string deviation_text(Step<Rational> const& recorded, Rational si, bool squared)
+    [[nodiscard]] inline std::string deviation_text(Step<Rational> const& recorded,
+                                                    Rational si,
+                                                    bool squared,
+                                                    NumberStyle numberStyle)
     {
         if (detail::borrowable(recorded.unit))
-            return rejection_value_text(recorded, si, squared);
+            return rejection_value_text(recorded, si, squared, numberStyle);
         Step<Rational> differenceShape {};
         differenceShape.dimension = recorded.dimension;
         differenceShape.unit = coherent(recorded.dimension);
-        return rejection_value_text(differenceShape, si, squared);
+        return rejection_value_text(differenceShape, si, squared, numberStyle);
     }
 
     /// `element 4 of 6`, or `elements 4 and 6 of 6`, or `elements 2, 4 and 6
@@ -1948,9 +2258,15 @@ namespace detail
     /// read from @p trace at @p stepIndex, and its author text -- the verdict
     /// and the citation -- is escaped here, as `EscapedStep` escapes a
     /// step's own.
+    ///
+    /// Both sides of the comparison a rejection states -- the statistic and
+    /// its limit -- are spelled in `numberStyle.exact_only()`: two values
+    /// shown rounded could read as equal beside a `>` that decided between
+    /// them.
     [[nodiscard]] inline std::string rejection_line(Trace<Rational> const& trace,
                                                     std::size_t stepIndex,
-                                                    ShownStep const& recorded)
+                                                    ShownStep const& recorded,
+                                                    NumberStyle numberStyle)
     {
         detail::RejectionRecord<Rational> const* const rejectionRecord = record_for_step(trace.rejectionRecords, stepIndex);
         if (rejectionRecord == nullptr)
@@ -1966,7 +2282,8 @@ namespace detail
                 if (passOutOfRange || rejectionRecord->sampleSize > rejectionRecord->originalSize)
                     return "pass (its record is invalid)";
                 return "pass " + std::to_string(rejectionRecord->pass) + ": " + std::to_string(rejectionRecord->sampleSize)
-                       + (rejectionRecord->sampleSize == 1 ? " value" : " values") + ", mean " + step_value_text(recorded);
+                       + (rejectionRecord->sampleSize == 1 ? " value" : " values") + ", mean "
+                       + step_value_text(recorded, numberStyle);
             case StepKind::OutlierRejected: {
                 if (!rejectionRecord->position.has_value() || !rejectionRecord->rejectedValue.has_value()
                     || !rejectionRecord->statistic.has_value() || !rejectionRecord->limit.has_value())
@@ -1974,24 +2291,28 @@ namespace detail
                 if (*rejectionRecord->position >= rejectionRecord->originalSize || passOutOfRange)
                     return "rejected element (its record is invalid)";
                 std::string const comparison = rejectionRecord->onLimit == OnLimit::Keep ? " > " : " >= ";
+                NumberStyle const comparedStyle = numberStyle.exact_only();
+                // A gap over a range is a pure number, in no unit.
                 std::string const decided =
                     rejectionRecord->criterion == CriterionKind::GapToRange
-                        ? "gap / range = " + number_text(*rejectionRecord->statistic) + comparison
-                              + number_text(*rejectionRecord->limit) + " (gap to range)"
+                        ? "gap / range = " + styled_number_text(*rejectionRecord->statistic, comparedStyle, unit::One)
+                              + comparison + styled_number_text(*rejectionRecord->limit, comparedStyle, unit::One)
+                              + " (gap to range)"
                     : rejectionRecord->squared
-                        ? "(x - mean)^2 = " + deviation_text(recorded, *rejectionRecord->statistic, true) + comparison
-                              + "limit^2 * s^2 = " + deviation_text(recorded, *rejectionRecord->limit, true)
+                        ? "(x - mean)^2 = " + deviation_text(recorded, *rejectionRecord->statistic, true, comparedStyle)
+                              + comparison + "limit^2 * s^2 = "
+                              + deviation_text(recorded, *rejectionRecord->limit, true, comparedStyle)
                               + " (deviation in standard deviations)"
-                        : "abs(x - mean) = " + deviation_text(recorded, *rejectionRecord->statistic, false)
-                              + comparison + deviation_text(recorded, *rejectionRecord->limit, false)
+                        : "abs(x - mean) = " + deviation_text(recorded, *rejectionRecord->statistic, false, comparedStyle)
+                              + comparison + deviation_text(recorded, *rejectionRecord->limit, false, comparedStyle)
                               + " (deviation from mean)";
                 return "rejected "
                        + elements_text({ *rejectionRecord->position },
                                        rejectionRecord->originalSize,
                                        rejectionRecord->ofObservations)
                        + " ("
-                       + rejection_value_text(recorded, *rejectionRecord->rejectedValue, false) + ") in pass "
-                       + std::to_string(rejectionRecord->pass) + ": " + decided;
+                       + rejection_value_text(recorded, *rejectionRecord->rejectedValue, false, numberStyle)
+                       + ") in pass " + std::to_string(rejectionRecord->pass) + ": " + decided;
             }
             case StepKind::RejectionSettled:
                 if (passOutOfRange
@@ -2101,10 +2422,19 @@ namespace detail
         std::optional<std::size_t> failedInput {};
     };
 
-    /// The coherent SI unit of @p dimension, spelt from its base units:
+    /// The coherent unit of @p dimension, spelt from its base units:
     /// `m/s`, `kg/m^3`, `kg/(m s^2)`, `m^(1/2)`; empty for a dimensionless
     /// one. For an opaque output shown in no input's unit, so that a slope in
     /// metres per second does not read as a pure number.
+    ///
+    /// A named base dimension is spelt by its name -- the name is also the
+    /// symbol of its coherent unit -- ahead of the SI units on its side of the
+    /// slash, in the dimension's own order: `EUR`, `EUR s^2/(m^2 kg)` for euros
+    /// per joule, `1/JPY`, `EUR/JPY`, `EUR^(1/2)`. First, because a tariff is
+    /// read as money per energy, not as seconds squared of money per metre.
+    /// Each name goes through `escaped_author_text`: `base_dimension()` admits
+    /// only letters and digits, but a hand-filled `namedBases` can hold
+    /// anything.
     [[nodiscard]] inline std::string coherent_unit_text(Dimension dimension)
     {
         struct BaseUnit
@@ -2127,18 +2457,21 @@ namespace detail
         std::string above;
         std::string below;
         std::size_t belowCount = 0;
-        for (BaseUnit const& base: bases)
-        {
-            if (base.exponent.numerator > 0)
-                above +=
-                    (above.empty() ? "" : " ") + unitPower(base.symbol, base.exponent.numerator, base.exponent.denominator);
-            else if (base.exponent.numerator < 0)
+        auto const place = [&](std::string_view symbolText, Exponent baseExponent) {
+            if (baseExponent.numerator > 0)
+                above += (above.empty() ? "" : " ")
+                         + unitPower(symbolText, baseExponent.numerator, baseExponent.denominator);
+            else if (baseExponent.numerator < 0)
             {
-                below +=
-                    (below.empty() ? "" : " ") + unitPower(base.symbol, -base.exponent.numerator, base.exponent.denominator);
+                below += (below.empty() ? "" : " ")
+                         + unitPower(symbolText, -baseExponent.numerator, baseExponent.denominator);
                 ++belowCount;
             }
-        }
+        };
+        for (std::size_t slot = 0; named_base_in_use(dimension, slot); ++slot)
+            place(escaped_author_text(view(dimension.namedBases[slot].name)), dimension.namedBases[slot].exponent);
+        for (BaseUnit const& base: bases)
+            place(base.symbol, base.exponent);
         if (below.empty())
             return above;
         return (above.empty() ? std::string { "1" } : above) + "/" + (belowCount > 1 ? "(" + below + ")" : below);
@@ -2149,12 +2482,13 @@ namespace detail
     /// (`coherent_unit_text`), for an opaque output.
     [[nodiscard]] inline std::string opaque_value_text(Dimension dimension,
                                                        Unit shownUnit,
-                                                       std::optional<Rational> const& storedValue)
+                                                       std::optional<Rational> const& storedValue,
+                                                       NumberStyle numberStyle)
     {
         Step<Rational> outputShape {};
         outputShape.dimension = dimension;
         outputShape.unit = shownUnit;
-        std::string valueText = value_in_declared_unit(outputShape, storedValue);
+        std::string valueText = value_in_declared_unit(outputShape, storedValue, numberStyle);
         if (storedValue.has_value() && view(shownUnit.symbolText).empty() && !(dimension == dim::Scalar))
             valueText += " " + coherent_unit_text(dimension);
         return valueText;
@@ -2208,7 +2542,8 @@ namespace detail
     /// row's names are escaped here, with the same function.
     [[nodiscard]] inline std::string opaque_call_line(ShownStep const& recorded,
                                                       OpaqueLine const& opaqueLine,
-                                                      std::size_t& budget)
+                                                      std::size_t& budget,
+                                                      NumberStyle numberStyle)
     {
         OpaqueStepData<Rational> const* const callRow = opaqueLine.call;
         std::string lineText = step_expression(recorded);
@@ -2225,7 +2560,7 @@ namespace detail
         if (recorded.error.has_value())
             lineText += describe(*recorded.error);
         else if (callRow == nullptr || callRow->outputs.empty() || !callRow->outputs.front().value.has_value())
-            lineText += "(not measured)";
+            lineText += NotMeasuredText;
         else
         {
             std::size_t const outputCount = callRow->outputs.size();
@@ -2237,7 +2572,7 @@ namespace detail
                 if (at > 0)
                     lineText += "; ";
                 lineText += escaped_author_text(shownOutput.name) + " = "
-                            + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value);
+                            + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value, numberStyle);
             }
             if (listed < outputCount)
                 lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outputCount - listed) + " more";
@@ -2272,7 +2607,9 @@ namespace detail
     /// or, when one side failed before the other was evaluated, the one that
     /// failed -- and `rejected`, `cannot be judged`, the failing side's error,
     /// or `not judged`.
-    [[nodiscard]] inline std::string retry_attempt_line(ShownStep const& recorded, RetryLine const& retryLine)
+    [[nodiscard]] inline std::string retry_attempt_line(ShownStep const& recorded,
+                                                        RetryLine const& retryLine,
+                                                        NumberStyle numberStyle)
     {
         std::string lineText = retryLine.attempt == nullptr
                                    ? std::string { "attempt: " }
@@ -2287,7 +2624,7 @@ namespace detail
                                  && retryLine.attempt->judgement == AttemptJudgement::NotRecorded;
         if (notRecorded && !recorded.value.has_value())
             return lineText + " = (not recorded)";
-        lineText += " = " + step_value_text(recorded);
+        lineText += " = " + step_value_text(recorded, numberStyle);
         if (retryLine.attempt == nullptr || recorded.error.has_value())
             return lineText;
         AttemptJudgement const judged = retryLine.attempt->judgement;
@@ -2332,19 +2669,21 @@ namespace detail
     /// by zero`, `d_a = retry: attempt 3 not recorded` -- and always its citation, `(no citation given)` when it
     /// cited nothing. The verdict is author text, escaped here, as
     /// `step_line` escapes what a `Step` holds.
-    [[nodiscard]] inline std::string retry_concluded_line(ShownStep const& recorded, RetryLine const& retryLine)
+    [[nodiscard]] inline std::string retry_concluded_line(ShownStep const& recorded,
+                                                          RetryLine const& retryLine,
+                                                          NumberStyle numberStyle)
     {
         std::string lineText = step_expression(recorded) + " = retry";
         std::string const attemptWords =
             retryLine.lastAttempt.has_value() ? "attempt " + std::to_string(*retryLine.lastAttempt) : std::string {};
         if (retryLine.retry == nullptr)
-            lineText += " = " + step_value_text(recorded);
+            lineText += " = " + step_value_text(recorded, numberStyle);
         else
             switch (retryLine.retry->end)
             {
                 case RetryEnd::Accepted:
                     lineText += ": accepted at " + attemptWords + " of " + std::to_string(retryLine.retry->attemptLimit)
-                                + " = " + step_value_text(recorded);
+                                + " = " + step_value_text(recorded, numberStyle);
                     break;
                 // The attempts it claimed, not the limit: a trace that shows
                 // fewer never says more ran.
@@ -2363,7 +2702,7 @@ namespace detail
                 case RetryEnd::Failed:
                     lineText += retryLine.lastAttempt.has_value() ? ": failed at " + attemptWords
                                                                   : std::string { ": failed at its starting value" };
-                    lineText += ": " + step_value_text(recorded);
+                    lineText += ": " + step_value_text(recorded, numberStyle);
                     break;
                 // The recorder never writes this end -- an entered result
                 // leaves the trace empty -- but a row built by hand may.
@@ -2384,16 +2723,18 @@ namespace detail
     /// clause its line would read as though an input were passed on
     /// unchanged. Judged by the operand step's kind (`OpaqueLine::overCall`),
     /// never by the presence of a row.
-    [[nodiscard]] inline std::string opaque_output_line(ShownStep const& recorded, OpaqueLine const& opaqueLine)
+    [[nodiscard]] inline std::string opaque_output_line(ShownStep const& recorded,
+                                                        OpaqueLine const& opaqueLine,
+                                                        NumberStyle numberStyle)
     {
         std::string outputText = step_expression(recorded);
         if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
             && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
             outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
                          + sole_operand(recorded);
-        std::string const valueText = recorded.error.has_value()
-                                          ? std::string { describe(*recorded.error) }
-                                          : opaque_value_text(recorded.dimension, recorded.unit, recorded.value);
+        std::string const valueText =
+            recorded.error.has_value() ? std::string { describe(*recorded.error) }
+                                       : opaque_value_text(recorded.dimension, recorded.unit, recorded.value, numberStyle);
         return outputText + " = " + valueText + (opaqueLine.overCall ? "" : " [inside not shown]");
     }
 
@@ -2453,7 +2794,8 @@ namespace detail
     /// a justification for `NumericValue`, the tie-breaking rule
     /// for the three rounding kinds, the granularity, provenance and tie rule
     /// for a method's rounding rule, the overlay that fixed an overridden
-    /// constant, for a `Conditional` whose predicate never
+    /// constant, `, entered by hand` or `, calculated` for a variable whose
+    /// value was not measured, for a `Conditional` whose predicate never
     /// resolved `[no branch]`, and for the three lookup kinds the row selected
     /// or the failure's origin (see `lookup_suffix`).
     ///
@@ -2478,18 +2820,28 @@ namespace detail
     ///
     /// Renders an `EscapedStep`'s copy, never the step itself -- see
     /// `step_line`, which makes it.
+    ///
+    /// @p numberStyle is the style `render_trace` was given, and every helper
+    /// below that spells a number takes it as a parameter -- the one way a
+    /// style travels, since several of them show a value through a `Step`
+    /// they build themselves, a curve's point or an opaque output. The step's
+    /// own value is spelled in its `exact_only()` instead when it is a number
+    /// typed rather than computed (`value_is_typed`), and so are a curve's
+    /// points or values that come from a typed series (`curve_part_is_typed`).
     [[nodiscard]] inline std::string escaped_step_line(Trace<Rational> const& trace,
                                                        std::size_t stepIndex,
                                                        ShownStep const& recorded,
                                                        std::size_t& budget,
+                                                       NumberStyle numberStyle,
                                                        std::span<LimitRow const> limits)
     {
+        NumberStyle const valueStyle = value_is_typed(trace, stepIndex) ? numberStyle.exact_only() : numberStyle;
         // A retry's attempt and its conclusion read their side tables.
         if (recorded.kind == StepKind::RetryAttempt || recorded.kind == StepKind::RetryConcluded)
         {
             RetryLine const retryLine = retry_line_of(trace, stepIndex);
-            return recorded.kind == StepKind::RetryAttempt ? retry_attempt_line(recorded, retryLine)
-                                                           : retry_concluded_line(recorded, retryLine);
+            return recorded.kind == StepKind::RetryAttempt ? retry_attempt_line(recorded, retryLine, numberStyle)
+                                                           : retry_concluded_line(recorded, retryLine, numberStyle);
         }
         // The previous attempt at the first attempt of a retry with no
         // starting value: the author's mistake, which says so.
@@ -2507,31 +2859,35 @@ namespace detail
         // An opaque call's line is its outputs, and ends saying its inside is
         // not shown; an output's names the output.
         if (recorded.kind == StepKind::OpaqueOperation)
-            return opaque_call_line(recorded, opaqueLine, budget);
+            return opaque_call_line(recorded, opaqueLine, budget, numberStyle);
         if (recorded.kind == StepKind::OpaqueOutput)
-            return opaque_output_line(recorded, opaqueLine);
+            return opaque_output_line(recorded, opaqueLine, numberStyle);
         // A series first, before anything reads `value`: its values are its
         // elements.
         // A per-element rounding ends with its mode, as a scalar rounding
         // does -- after the elements, however many were shown.
         if (recorded.kind == StepKind::ElementwiseRound)
-            return series_step_line(recorded, budget) + rounding_mode_suffix(recorded.mode);
+            return series_step_line(recorded, budget, valueStyle) + rounding_mode_suffix(recorded.mode);
         // A conformity check has outcomes, not a value, and spends the
         // element budget on them as a series does on its elements.
         if (recorded.kind == StepKind::ConformityChecked)
-            return conformity_line(recorded, limits, budget);
+            return conformity_line(recorded, limits, budget, numberStyle);
         if (is_series(recorded.kind))
-            return series_step_line(recorded, budget);
+            return series_step_line(recorded, budget, valueStyle);
         // A curve's values are its pairs, which spend the element budget as
         // a series' elements do.
         if (recorded.kind == StepKind::CurvePairing || recorded.kind == StepKind::CurveSplice)
-            return curve_step_line(recorded, budget);
+            return curve_step_line(
+                recorded,
+                budget,
+                curve_part_is_typed(trace, stepIndex, CurvePart::Points) ? numberStyle.exact_only() : numberStyle,
+                curve_part_is_typed(trace, stepIndex, CurvePart::Values) ? numberStyle.exact_only() : numberStyle);
         if (recorded.kind == StepKind::Constraint)
             return constraint_expression(recorded) + constraint_outcome_suffix(recorded);
         if (recorded.kind == StepKind::AcceptanceChecked)
             return acceptance_expression(recorded) + acceptance_suffix(recorded);
         if (is_rejection_step(recorded.kind))
-            return rejection_line(trace, stepIndex, recorded);
+            return rejection_line(trace, stepIndex, recorded, numberStyle);
         // A comparison, not a quantity: the attribute and both keys, then the
         // verdict after a comma, as a typed-in input's source is given.
         if (recorded.kind == StepKind::LineageChecked)
@@ -2544,6 +2900,13 @@ namespace detail
         bool const enteredButEmpty = recorded.kind == StepKind::Variable
                                      && recorded.inputSource == ValueSource::ManuallyEntered
                                      && !recorded.value.has_value() && !recorded.error.has_value();
+        // A value the environment calculated was never going to be measured
+        // either: an empty one reads "(no value)" -- the calculation had
+        // nothing to give it -- and ", calculated" below still says whose
+        // value it is.
+        bool const calculatedButEmpty = recorded.kind == StepKind::Variable
+                                        && recorded.inputSource == ValueSource::Derived
+                                        && !recorded.value.has_value() && !recorded.error.has_value();
         // A read from a record that was bound, withheld because a lineage key
         // was unknown: nothing was read, so "(not measured)" would be false of
         // a record whose values may well have been measured. Its line holds no
@@ -2551,9 +2914,10 @@ namespace detail
         bool const withheld = recorded.kind == StepKind::RecordScope && recorded.readFrom.has_value()
                               && recorded.readFrom->is_bound() && recorded.operands.empty()
                               && !recorded.value.has_value() && !recorded.error.has_value();
-        std::string const valueText = enteredButEmpty ? std::string { "(entered by hand as empty)" }
-                                      : withheld      ? std::string { "(not read: lineage not checked)" }
-                                                      : step_value_text(recorded);
+        std::string const valueText = enteredButEmpty      ? std::string { "(entered by hand as empty)" }
+                                      : calculatedButEmpty ? std::string { "(no value)" }
+                                      : withheld           ? std::string { "(not read: lineage not checked)" }
+                                                           : step_value_text(recorded, valueStyle);
         std::string annotation;
         if (recorded.kind == StepKind::Documented)
             annotation = citation_suffix(recorded.citation);
@@ -2584,9 +2948,9 @@ namespace detail
                                                                   : ", replacing a value entered by hand]")
                              : overridden_constant_suffix(recorded.citation);
         else if (recorded.kind == StepKind::SnappedToPermitted)
-            annotation = snap_suffix(recorded);
+            annotation = snap_suffix(recorded, numberStyle);
         else if (recorded.kind == StepKind::CurveInterpolation)
-            annotation = curve_interpolation_suffix(recorded);
+            annotation = curve_interpolation_suffix(recorded, numberStyle);
         // A derived quantity that replaced a value a person typed in says so,
         // in the clause that says who derived it, as a fixed constant does.
         else if (recorded.kind == StepKind::DerivedQuantity)
@@ -2604,12 +2968,19 @@ namespace detail
         else if ((recorded.kind == StepKind::Variable || recorded.kind == StepKind::AttemptInput)
                  && recorded.inputSource == ValueSource::ManuallyEntered && !enteredButEmpty)
             annotation = ", entered by hand";
+        // A value the environment calculated from its other values says so,
+        // after a comma, as a typed-in one does: it was neither measured nor
+        // typed in, and a reader looking for where it came from looks for its
+        // calculation. Said of an empty or a failed value too: where a value
+        // came from does not change with what it holds.
+        else if (recorded.kind == StepKind::Variable && recorded.inputSource == ValueSource::Derived)
+            annotation = ", calculated";
         // Present for a lookup that succeeded as well as for one that failed,
         // unlike the three suffixes above: on a hit it names the band the
         // value fell in, and on a failure it is the only thing separating a
         // miss from a relayed error. See `lookup_suffix`.
         else if (is_lookup(recorded.kind))
-            annotation = lookup_suffix(trace, stepIndex, recorded);
+            annotation = lookup_suffix(trace, stepIndex, recorded, numberStyle);
         else if (recorded.kind == StepKind::PrecisionLevel)
             annotation = precision_suffix(trace, stepIndex);
         // A mean or a variance whose total overflowed names the determination
@@ -2664,16 +3035,19 @@ namespace detail
     /// record the step was read from and its lineage comparison are read
     /// from @p trace's own side tables (`Trace::origins`,
     /// `Trace::lineageChecks`) into the copy -- see `ShownStep`.
+    /// @p numberStyle is how the line spells every number it states, handed
+    /// on to `escaped_step_line`.
     [[nodiscard]] inline std::string step_line(Trace<Rational> const& trace,
                                                std::size_t stepIndex,
                                                std::size_t& budget,
+                                               NumberStyle numberStyle,
                                                std::span<LimitRow const> limits = {})
     {
         Step<Rational> const& recorded = trace.steps[stepIndex];
         std::optional<Step<Rational>> const asShown = as_rendered(recorded, trace.steps);
         EscapedStep const escaped { asShown.has_value() ? *asShown : recorded, origin_of(trace, recorded),
                                     lineage_of(trace, stepIndex) };
-        return escaped_step_line(trace, stepIndex, escaped.step, budget, limits);
+        return escaped_step_line(trace, stepIndex, escaped.step, budget, numberStyle, limits);
     }
 } // namespace detail
 
@@ -2693,6 +3067,10 @@ namespace detail
 /// footer then counts the steps not shown at all. One number, chosen by the
 /// caller, bounds everything printed: a 256-element series printed in full on
 /// one line is the unusable line the limit exists to prevent.
+///
+/// Every number is spelled in @p options.numbers -- fractions unless the
+/// caller asks for decimals; see `TraceRenderOptions::numbers` for which
+/// numbers are shown exact whatever the style.
 ///
 /// Only an exact (`Rational`) trace can be rendered. Converting a value back
 /// into the unit it was declared in is the unit layer's exact
@@ -2716,7 +3094,8 @@ template <typename Rep = Rational>
         --budget;
         renderedTrace += std::to_string(shown + 1);
         renderedTrace += ". ";
-        renderedTrace += detail::step_line(trace, shown, budget, detail::conformity_limits_of(trace, shown));
+        renderedTrace +=
+            detail::step_line(trace, shown, budget, options.numbers, detail::conformity_limits_of(trace, shown));
         renderedTrace += "\n";
         ++shown;
     }
@@ -2733,6 +3112,261 @@ template <typename Rep = Rational>
     }
 
     return renderedTrace;
+}
+
+namespace detail
+{
+    /// @p shownText with a backslash, and every character that could end a
+    /// line, escaped as `escaped_author_text` escapes them -- and brackets
+    /// and semicolons left as they are. For a rendered formula in a
+    /// derivation's header: `render` writes its own brackets and
+    /// semicolons, which must read as written, while the author's symbols in
+    /// it may hold anything, and none of it may end the line.
+    [[nodiscard]] inline std::string line_safe_text(std::string_view shownText)
+    {
+        std::string escaped;
+        escaped.reserve(shownText.size());
+        for (char const glyph: shownText)
+        {
+            auto const byte = static_cast<unsigned char>(glyph);
+            if (glyph == '\\' || byte < 0x20 || byte == 0x7f)
+                escaped += escaped_author_text(std::string_view { &glyph, 1 });
+            else
+                escaped += glyph;
+        }
+        return escaped;
+    }
+
+    /// Each definition of @p definitionSet as plain text, every symbol
+    /// written as @p vocabulary says, in the order given; @p Is counts them.
+    template <typename... Ds, Vocabulary V, std::size_t... Is>
+    [[nodiscard]] std::array<std::string, sizeof...(Ds)> rendered_definitions(Calculation<Ds...> const& definitionSet,
+                                                                              V const& vocabulary,
+                                                                              std::index_sequence<Is...>)
+    {
+        return { line_safe_text(render<Dialect::Plain>(std::get<Is>(definitionSet.definitions).expression, vocabulary))... };
+    }
+
+    /// Whether @p shown's step @p stepIndex reads, from the worksheet, a
+    /// calculated value whose own block's value is typed: a `Variable` step
+    /// whose source is `Derived`, matched to that value's block by the slot it
+    /// read (`WorksheetEntry::readSlots`), which @p typedSlots sets. False for
+    /// a step whose slot is unknown, as in an entry edited by hand.
+    [[nodiscard]] inline bool reads_typed_block(WorksheetEntry const& shown, std::size_t stepIndex, std::uint64_t typedSlots)
+    {
+        Step<Rational> const& readingStep = shown.trace.steps[stepIndex];
+        if (readingStep.kind != StepKind::Variable || readingStep.inputSource != ValueSource::Derived)
+            return false;
+        if (stepIndex >= shown.readSlots.size() || shown.readSlots[stepIndex] >= 64)
+            return false;
+        return ((typedSlots >> shown.readSlots[stepIndex]) & 1u) != 0;
+    }
+
+    /// Whether the value @p shown's step @p stepIndex states is a number typed
+    /// rather than computed: as `value_is_typed` decides within the block, or
+    /// where the step, or a step whose value it passes on, reads a calculated
+    /// value whose own block's value is typed (`reads_typed_block`). So a
+    /// typed value is stated alike wherever the derivation states it: in its
+    /// block's header, on its root's line, and on each line of another block
+    /// that reads it.
+    [[nodiscard]] inline bool derivation_value_is_typed(WorksheetEntry const& shown,
+                                                        std::size_t stepIndex,
+                                                        std::uint64_t typedSlots)
+    {
+        std::size_t stated = stepIndex;
+        // Each step passed from is an earlier one, so this ends.
+        while (!states_typed_value(shown.trace.steps[stated].kind) && !reads_typed_block(shown, stated, typedSlots))
+        {
+            std::optional<std::size_t> const passedFrom = value_passed_from(shown.trace, stated);
+            if (!passedFrom.has_value())
+                return false;
+            stated = *passedFrom;
+        }
+        return true;
+    }
+
+    /// The slots of @p entries' calculated blocks whose value is typed -- its
+    /// root's, as `derivation_value_is_typed` decides -- as a set of bits.
+    /// Each block comes before the blocks of the values it reads, so walking
+    /// them from the last decides every value a block reads before the block.
+    [[nodiscard]] inline std::uint64_t typed_block_slots(std::vector<WorksheetEntry> const& entries)
+    {
+        std::uint64_t typedSlots = 0;
+        for (auto shown = entries.rbegin(); shown != entries.rend(); ++shown)
+            if (shown->kind == WorksheetEntryKind::Calculated && !shown->trace.empty() && shown->slot < 64
+                && derivation_value_is_typed(*shown, shown->trace.root(), typedSlots))
+                typedSlots |= std::uint64_t { 1 } << shown->slot;
+        return typedSlots;
+    }
+
+    /// The value of @p shown's block as its header states it: in the unit it
+    /// was declared in, with that unit's symbol, spelled in @p numberStyle as
+    /// a trace line spells a value (`checked_shown_text`), or `(not shown:
+    /// ...)` where the style cannot spell it in that unit; why its
+    /// calculation failed; or `(no value)`. Exact only when @p typed, the
+    /// block's value being a number typed rather than computed
+    /// (`derivation_value_is_typed`), so that the header, the block's root
+    /// and every line reading the value agree on whether it is typed. That
+    /// is all they agree on: a computed root states the value in the
+    /// coherent unit, so it may differ from the header in its unit, its
+    /// padding and its decimals, and one may read `≈` where the other does
+    /// not -- a length of `1 u`, in a unit of a third of a metre, is
+    /// `≈0.333` metres at its root.
+    [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown, NumberStyle numberStyle, bool typed)
+    {
+        if (shown.error.has_value())
+            return std::string { describe(*shown.error) };
+        if (!shown.value.has_value())
+            return "(no value)";
+        std::expected<NumberText, ArithmeticError> const spelled =
+            checked_shown_text(*shown.value, typed ? numberStyle.exact_only() : numberStyle, shown.unit);
+        if (!spelled)
+            return not_shown_text(spelled.error());
+        std::string valueText { spelled->view() };
+        std::string const unitSymbol = unit_symbol_text(shown.unit);
+        if (!unitSymbol.empty())
+            valueText += " " + unitSymbol;
+        return valueText;
+    }
+
+    /// The header of @p shown's block, @p definitionText being its
+    /// definition as rendered and its value spelled in @p numberStyle,
+    /// exact when @p typed (`block_value_text`): `symbol = definition =
+    /// value` for a value calculated, and `symbol = value, entered by hand
+    /// in place of definition` for one overridden.
+    [[nodiscard]] inline std::string block_header(WorksheetEntry const& shown,
+                                                  std::string const& definitionText,
+                                                  NumberStyle numberStyle,
+                                                  bool typed)
+    {
+        std::string const symbolText = escaped_author_text(shown.symbol);
+        if (shown.kind == WorksheetEntryKind::Overridden)
+            return symbolText + " = "
+                   + (shown.value.has_value() ? block_value_text(shown, numberStyle, typed) + ", entered by hand"
+                                              : std::string { "(entered by hand as empty)" })
+                   + " in place of " + definitionText;
+        return symbolText + " = " + definitionText + " = " + block_value_text(shown, numberStyle, typed);
+    }
+} // namespace detail
+
+/// Renders @p explained, a worksheet's derivation, as text a person reads,
+/// bounded by @p options.maxSteps.
+///
+/// Each calculated value's block opens with a header, `symbol = definition =
+/// value` -- the definition as `render` writes it, and the value in the unit
+/// the quantity was declared in, or why calculating it failed, or `(no
+/// value)` -- followed by its steps, indented and numbered from one within
+/// the block, each line as `render_trace` writes it. An overridden value's
+/// block is the header alone: `symbol = value, entered by hand in place of
+/// definition`. The inputs read follow under a line `inputs`, one indented
+/// line each, as `render_trace` writes a variable's step. A computed step
+/// states its value in the coherent unit of its dimension, as in
+/// `render_trace` (`docs/tracing.md`, "Reading a derivation"), so it may
+/// read differently from the header above it: `fridge_kwh = fridge_kw *
+/// fridge_h = 24/5 kWh` over `3. #1 * #2 = 17280000`, in joules. Under a
+/// rounding style the two may differ in their decimals too, one reading `≈`
+/// where the other does not.
+///
+/// **Every number is spelled in @p options.numbers**, fractions unless the
+/// caller names another style, as `render_trace` spells a trace's: each
+/// step and input line exactly as `render_trace` writes it in that style;
+/// each header's definition as `render` writes it under `RenderOptions`
+/// with that style, its typed numbers exact and never padded; and each
+/// header's value as a trace line states a value in its unit, rounded and
+/// marked `≈` only where the style asks and the block's value was computed
+/// rather than typed, and `(not shown: ...)` where the style cannot spell it
+/// there. A typed value is exact wherever the derivation states it: in its
+/// block's header, on its root's line, and on each line of another block
+/// that reads it (`WorksheetEntry::readSlots`) -- where it reads as its
+/// header does, both in the unit the quantity was declared in.
+///
+/// **One budget bounds it all.** Every header, step and input line spends
+/// one unit of @p options.maxSteps, and a step showing a series spends one
+/// more on each element it shows, as in `render_trace`. When it runs out,
+/// one last line says how many headers, steps and input lines were left
+/// out: `... 12 further steps not shown`. `render_derivation(explained,
+/// {})` does not compile, for the reason `StepLimit` gives.
+///
+/// Nothing is rendered for a derivation with no blocks.
+template <Described Result, typename... Ds, Vocabulary V>
+[[nodiscard]] std::string render_derivation(ExplainedWorksheet<Result, Calculation<Ds...>, V> const& explained,
+                                            TraceRenderOptions options)
+{
+    using Graph = detail::CalculationGraph<Ds...>;
+    std::string derivationText;
+    if constexpr (Graph::valid)
+    {
+        std::array<std::string, sizeof...(Ds)> const definitionTexts =
+            detail::rendered_definitions(explained.calculation,
+                                         detail::styled(explained.vocabulary, options.numbers),
+                                         std::index_sequence_for<Ds...> {});
+        std::uint64_t const typedSlots = detail::typed_block_slots(explained.entries);
+        std::size_t budget = options.maxSteps.value;
+        std::size_t notShown = 0;
+        bool inputsHeaded = false;
+        for (WorksheetEntry const& shown: explained.entries)
+        {
+            if (shown.kind == WorksheetEntryKind::Input)
+            {
+                if (budget == 0)
+                {
+                    ++notShown;
+                    continue;
+                }
+                --budget;
+                if (!inputsHeaded)
+                    derivationText += "inputs\n";
+                inputsHeaded = true;
+                derivationText += "  ";
+                derivationText += shown.trace.empty()
+                                      ? detail::escaped_author_text(shown.symbol) + " = "
+                                            + detail::block_value_text(shown, options.numbers, false)
+                                      : detail::step_line(shown.trace, shown.trace.root(), budget, options.numbers);
+                derivationText += "\n";
+                continue;
+            }
+
+            std::size_t const stepCount = shown.kind == WorksheetEntryKind::Calculated ? shown.trace.steps.size() : 0;
+            if (budget == 0)
+            {
+                notShown += 1 + stepCount;
+                continue;
+            }
+            --budget;
+            bool const defined = shown.slot >= Graph::inputCount && shown.slot < Graph::slotCount;
+            derivationText += detail::block_header(
+                shown,
+                defined ? definitionTexts[shown.slot - Graph::inputCount] : std::string { "(no definition)" },
+                options.numbers,
+                !shown.trace.empty() && detail::derivation_value_is_typed(shown, shown.trace.root(), typedSlots));
+            derivationText += "\n";
+            for (std::size_t stepIndex = 0; stepIndex < stepCount; ++stepIndex)
+            {
+                if (budget == 0)
+                {
+                    notShown += stepCount - stepIndex;
+                    break;
+                }
+                --budget;
+                derivationText += "  " + std::to_string(stepIndex + 1) + ". ";
+                // A line whose value is typed only because it reads a typed
+                // value from another block is exact, as that block is.
+                bool const readsTyped = !detail::value_is_typed(shown.trace, stepIndex)
+                                        && detail::derivation_value_is_typed(shown, stepIndex, typedSlots);
+                derivationText += detail::step_line(shown.trace,
+                                                    stepIndex,
+                                                    budget,
+                                                    readsTyped ? options.numbers.exact_only() : options.numbers,
+                                                    detail::conformity_limits_of(shown.trace, stepIndex));
+                derivationText += "\n";
+            }
+        }
+
+        if (notShown > 0)
+            derivationText += "... " + std::to_string(notShown)
+                              + (notShown == 1 ? " further step not shown\n" : " further steps not shown\n");
+    }
+    return derivationText;
 }
 
 } // namespace formula
