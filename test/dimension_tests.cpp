@@ -167,6 +167,88 @@ static_assert(std::is_same_v<Tagged<Dimension { .length = exponent(2, 4) }>,
                              Tagged<Dimension { .length = exponent(1, 2) }>>,
               "uncanonical exponents would split one dimension into two types");
 
+// ---- named base dimensions ----
+//
+// Base dimensions the application declares itself -- here two currencies and
+// three invented bases. Each is a dimension of its own, and every property
+// above has to hold for them too: the operators keep the named bases in one
+// canonical order, so two spellings of a dimension are still one type.
+
+using formula::NamedBase;
+using formula::symbol;
+
+constexpr Dimension EUR = formula::base_dimension("EUR");
+constexpr Dimension JPY = formula::base_dimension("JPY");
+
+static_assert(EUR == formula::base_dimension("EUR"), "the name is the identity, byte for byte");
+static_assert(EUR != JPY, "two currencies are two dimensions");
+static_assert(EUR != dim::Scalar, "euros are not a bare ratio");
+static_assert(!formula::is_dimensionless(EUR));
+// Also the check g++ 13.3 and 14.2 fail when the merge copies a slot's
+// exponent out of a `const` local: see `merged_dimension`.
+static_assert(std::is_same_v<Tagged<EUR * dim::Energy / dim::Energy>, Tagged<EUR>>);
+static_assert(EUR * JPY == JPY * EUR);
+static_assert(std::is_same_v<Tagged<EUR * JPY>, Tagged<JPY * EUR>>, "the order of a product is not part of its type");
+static_assert((EUR / JPY) * JPY == EUR);
+static_assert(std::is_same_v<Tagged<EUR / EUR>, Tagged<dim::Scalar>>);
+static_assert(dim::Energy * (EUR / dim::Energy) == EUR, "kWh times EUR per kWh is EUR");
+static_assert(power(EUR, 0) == dim::Scalar);
+static_assert(nth_root(power(EUR, 2), 2) == EUR);
+static_assert(nth_root(EUR, 2).namedBases[0].exponent == exponent(1, 2));
+
+// Sorted by name, whichever order the operands came in, and packed: a slot
+// that falls out is closed up, and every slot after the last one in use is
+// `NamedBase {}` again.
+static_assert((JPY * EUR).namedBases[0].name == symbol("EUR"));
+static_assert((JPY * EUR).namedBases[1].name == symbol("JPY"));
+static_assert((JPY * EUR).namedBases[2] == NamedBase {});
+static_assert(((EUR * JPY) / EUR).namedBases[0] == NamedBase { symbol("JPY"), exponent(1) });
+static_assert(((EUR * JPY) / EUR).namedBases[1] == NamedBase {});
+// The right operand of a quotient is negated whether it sorts before or after the left one.
+static_assert((EUR / JPY).namedBases[1] == NamedBase { symbol("JPY"), exponent(-1) });
+static_assert((JPY / EUR).namedBases[0] == NamedBase { symbol("EUR"), exponent(-1) });
+static_assert((JPY / EUR).namedBases[1] == NamedBase { symbol("JPY"), exponent(1) });
+
+// Capacity: four distinct bases fit, a fifth does not -- multiplied or divided
+// in -- and a base that cancels frees its slot before the count is taken.
+constexpr Dimension AcmeCredit = formula::base_dimension("AcmeCredit");
+constexpr Dimension Token = formula::base_dimension("Token");
+constexpr Dimension Voucher = formula::base_dimension("Voucher");
+constexpr Dimension FourBases = Voucher * JPY * AcmeCredit * EUR;
+static_assert(FourBases.namedBases[0].name == symbol("AcmeCredit"));
+static_assert(FourBases.namedBases[3].name == symbol("Voucher"));
+static_assert(!formula::detail::merged_dimension(FourBases, Token, false).fits);
+static_assert(!formula::detail::merged_dimension(FourBases, Token, true).fits);
+static_assert(formula::detail::merged_dimension(FourBases / JPY, Token, false).fits);
+static_assert((FourBases / JPY * Token).namedBases[2].name == symbol("Token"));
+static_assert(formula::detail::merged_dimension(FourBases, Token / Voucher, false).fits,
+              "five names go in, one cancels, four come out");
+
+// The longest name that fits, and digits after the first letter.
+static_assert(formula::base_dimension("AcmeLoyaltyUnit").namedBases[0].name == symbol("AcmeLoyaltyUnit"));
+static_assert(formula::base_dimension("Credit2").namedBases[0].name == symbol("Credit2"));
+
+// g++ 13.3 and 14.2 miscompile what copy_then_overwrite_last_slot() does when
+// `Dimension::namedBases` is default-initialised as `{}` rather than as four
+// spelled-out elements: the copy's write reaches the original, whose last
+// slot's exponent becomes 0/0, and the original stops being the same template
+// argument as an equal dimension spelled another way. Only the type identity
+// below notices at compile time -- `Original == ...` still holds -- and only
+// g++ can fail it: cl, clang-cl and clang++ never showed the fault.
+constexpr Dimension Original = formula::base_dimension("Original");
+
+consteval Dimension copy_then_overwrite_last_slot()
+{
+    Dimension copied = Original;
+    copied.namedBases[formula::NamedBaseCapacity - 1].exponent = exponent(0);
+    return copied;
+}
+
+constexpr Dimension Overwritten = copy_then_overwrite_last_slot();
+static_assert(Overwritten == Original, "writing an unused slot's zero exponent back changes nothing");
+static_assert(std::is_same_v<Tagged<Original>, Tagged<Original * dim::Energy / dim::Energy>>,
+              "writing to a copy must leave the original the same template argument");
+
 TEST_CASE("dimension algebra composes the way physics does", "[dimension]")
 {
     // Each derived constant is stated as the exponent vector physics says it has,
@@ -190,7 +272,8 @@ TEST_CASE("dimension algebra composes the way physics does", "[dimension]")
     CHECK(dim::KinematicViscosity == Dimension { .length = exponent(2), .time = exponent(-1) });
 
     // The four base dimensions none of these touch must stay at exactly zero --
-    // a stray exponent there is invisible to every check above.
+    // a stray exponent there is invisible to every check above -- and so must
+    // the named bases: a first slot not in use means no named base at all.
     for (Dimension const& d: { dim::Velocity, dim::Acceleration, dim::Force, dim::Pressure, dim::Energy,
                                dim::Power, dim::Frequency, dim::Density, dim::MassPerArea, dim::ForcePerLength,
                                dim::DynamicViscosity, dim::KinematicViscosity })
@@ -199,6 +282,7 @@ TEST_CASE("dimension algebra composes the way physics does", "[dimension]")
         CHECK(d.temperature == exponent(0));
         CHECK(d.amount == exponent(0));
         CHECK(d.luminosity == exponent(0));
+        CHECK(d.namedBases[0] == formula::NamedBase {});
     }
 }
 
@@ -238,13 +322,15 @@ TEST_CASE("the derived dimensions that read alike are still not equal", "[dimens
     // the library already had. A pairwise sweep, because a new dimension that
     // silently equals an existing one would let the type system pass a value of
     // one where the other was meant -- the single failure this whole layer
-    // exists to prevent.
+    // exists to prevent. Two currencies and a tariff join it: a named base must
+    // not equal any SI dimension, another named base, or itself per energy.
     Dimension const named[] = { dim::Scalar,           dim::Length,        dim::Mass,
                                 dim::Time,             dim::Area,          dim::Volume,
                                 dim::Density,          dim::Velocity,      dim::Acceleration,
                                 dim::Force,            dim::Pressure,      dim::Energy,
                                 dim::Power,            dim::Frequency,     dim::MassPerArea,
-                                dim::ForcePerLength,   dim::DynamicViscosity, dim::KinematicViscosity };
+                                dim::ForcePerLength,   dim::DynamicViscosity, dim::KinematicViscosity,
+                                EUR,                   JPY,                EUR / dim::Energy };
     for (std::size_t i = 0; i < std::size(named); ++i)
         for (std::size_t j = i + 1; j < std::size(named); ++j)
         {
@@ -259,7 +345,8 @@ TEST_CASE("multiplying by a dimension and dividing by it again is an identity", 
                               dim::Time,             dim::Area,           dim::Volume,
                               dim::Density,          dim::Force,          dim::Pressure,
                               dim::Energy,           dim::Power,          dim::MassPerArea,
-                              dim::ForcePerLength,   dim::DynamicViscosity, dim::KinematicViscosity };
+                              dim::ForcePerLength,   dim::DynamicViscosity, dim::KinematicViscosity,
+                              EUR,                   JPY,                 EUR / dim::Energy };
     for (Dimension const& a: all)
     {
         for (Dimension const& b: all)
@@ -296,4 +383,19 @@ TEST_CASE("a dimension template argument has the same identity in every translat
     // differently but equal -- so this linking at all is the assertion.
     CHECK(formula_test::consume_volume(formula_test::Tagged<dim::Area * dim::Length> { 10 }) == 11);
     CHECK(formula_test::consume_root_of_area(formula_test::Tagged<dim::Length> { 20 }) == 22);
+
+    // With named bases: each is declared in the header with one spelling,
+    // defined in dimension_cross_tu_b.cpp with a second and called here with a
+    // third, so the three must mangle alike for this to link.
+    CHECK(formula_test::consume_tariff(formula_test::Tagged<EUR * power(dim::Energy, -1)> { 30 }) == 33);
+    CHECK(formula_test::consume_yen_euro(formula_test::Tagged<(EUR / dim::Time) * (dim::Time * JPY)> { 40 }) == 44);
+}
+
+TEST_CASE("a copy written during constant evaluation leaves its original intact", "[dimension]")
+{
+    // The run-time half of the check on copy_then_overwrite_last_slot() above:
+    // the object g++ emitted for the original, read back.
+    CHECK(Original.namedBases[formula::NamedBaseCapacity - 1] == NamedBase {});
+    CHECK(Original.namedBases[formula::NamedBaseCapacity - 1].exponent.denominator == 1);
+    CHECK(Original == Original * dim::Energy / dim::Energy);
 }

@@ -3,8 +3,8 @@
 
 /// @file
 /// Dimensional analysis: a structural exponent vector over the seven SI base
-/// dimensions, usable as a non-type template parameter so that a dimension is
-/// part of a type rather than a runtime tag.
+/// dimensions and up to four named ones, usable as a non-type template
+/// parameter so that a dimension is part of a type rather than a runtime tag.
 
 #include <cstddef>
 #include <cstdint>
@@ -268,12 +268,49 @@ namespace detail
 /// first, then call `view()` on that.
 std::string_view view(Symbol&&) = delete;
 
-/// An exponent vector over the seven SI base dimensions.
+/// How many named base dimensions one `Dimension` can hold at once: a tariff in
+/// euros per kilowatt-hour needs one, an exchange rate between two currencies
+/// two. A product that would need a fifth is a compile error -- see
+/// `formula_dimension_has_too_many_named_bases` -- never a silently dropped base.
+inline constexpr std::size_t NamedBaseCapacity = 4;
+
+/// A base dimension the SI does not have, declared by the application -- money
+/// in one currency is the usual one -- together with its exponent in the
+/// `Dimension` that holds it.
+///
+/// Make one with `base_dimension()`, never by hand; see `Dimension` for the
+/// canonical form a hand-built value would bypass.
+struct NamedBase
+{
+    /// The base's name, compared byte for byte: two libraries that both declare
+    /// `base_dimension("EUR")` mean the same dimension. It is also the symbol of
+    /// the base's coherent unit -- the unit of magnitude one is written `EUR`.
+    Symbol name {};
+    /// The exponent of this base. Never zero in a slot that is in use.
+    Exponent exponent {};
+
+    /// Memberwise equality: the name, all `SymbolCapacity` bytes, and the exponent.
+    [[nodiscard]] constexpr bool operator==(NamedBase const&) const noexcept = default;
+};
+
+/// An exponent vector over the seven SI base dimensions and up to
+/// `NamedBaseCapacity` base dimensions the application names itself.
 ///
 /// Structural, so it can be a non-type template parameter -- which is the point:
 /// a dimension belongs to a *type*, checked when the program is compiled, not to
-/// a value checked when it runs. Verified on MSVC, clang-cl and clang++,
+/// a value checked when it runs. Verified on MSVC, clang-cl, clang++ and g++,
 /// including that two translation units agree on the mangling.
+///
+/// The named bases are kept in one canonical form, which is what lets
+/// memberwise equality stand for equality of dimensions: the slots in use come
+/// first, each with a non-zero exponent; their names are strictly ascending,
+/// compared byte by byte as `unsigned char` over all `SymbolCapacity` bytes; and
+/// every slot after the last one in use equals `NamedBase {}`. `base_dimension()`
+/// and every operator below produce that form. Filling `namedBases` by hand
+/// bypasses it and is a mistake, as aggregate initialisation of an `Exponent`
+/// is: euros times yen with the two names in the other order is the same
+/// dimension but a different object, and as template arguments the two name
+/// different types.
 struct Dimension
 {
     /// Exponent on length (SI base unit: metre).
@@ -290,52 +327,280 @@ struct Dimension
     Exponent amount {};
     /// Exponent on luminous intensity (SI base unit: candela).
     Exponent luminosity {};
+    /// The named base dimensions, in the canonical form the class comment
+    /// describes. Last, so that a designated initialiser of SI exponents alone,
+    /// `Dimension { .length = exponent(1) }`, still compiles.
+    ///
+    /// The four elements are spelled out rather than written `{}`, and that is a
+    /// workaround, not style. With `{}`, g++ 13.3 and 14.2 miscompile a constant
+    /// evaluation that copies a dimension holding a named base and then writes
+    /// the copy's last slot: the ORIGINAL's last slot changes as well, its
+    /// exponent becoming 0/0 in the emitted object, and the original stops being
+    /// the same template argument as an equal dimension spelled another way.
+    /// Measured; cl, clang-cl and clang++ were unaffected, and this spelling
+    /// removes it on both g++ versions. `dimension_tests.cpp` keeps the case,
+    /// and only g++ can fail it.
+    NamedBase namedBases[NamedBaseCapacity] { NamedBase {}, NamedBase {}, NamedBase {}, NamedBase {} };
+    static_assert(NamedBaseCapacity == 4,
+                  "formula: namedBases spells out one NamedBase {} per slot; list exactly NamedBaseCapacity of them");
 
-    /// Memberwise equality across all seven exponents.
+    /// Memberwise equality: the seven SI exponents and every named-base slot.
     [[nodiscard]] constexpr bool operator==(Dimension const&) const noexcept = default;
 };
 
-/// Multiplying quantities adds their dimensions' exponents.
+namespace detail
+{
+    /// Deliberately NOT `constexpr`, like `formula_exponent_out_of_range`: a
+    /// product or quotient that would need more than `NamedBaseCapacity` named
+    /// bases calls this, so building such a dimension -- always a constant
+    /// expression -- fails to compile and the diagnostic names this function.
+    /// Defined because a runtime call must still link; reaching it at runtime
+    /// is a programming error with no recovery.
+    [[noreturn]] inline void formula_dimension_has_too_many_named_bases()
+    {
+        std::abort();
+    }
+
+    /// `base_dimension("")`: a base needs a name. Same mechanism as above.
+    [[noreturn]] inline void formula_base_dimension_name_must_not_be_empty()
+    {
+        std::abort();
+    }
+
+    /// A base name of `SymbolCapacity` bytes or more: it would not fit in a
+    /// `Symbol` with its terminator. Same mechanism as above.
+    [[noreturn]] inline void formula_base_dimension_name_too_long()
+    {
+        std::abort();
+    }
+
+    /// A base name that is not an ASCII letter followed by ASCII letters or
+    /// digits. The name is also its coherent unit's symbol, and that symbol is
+    /// joined into compound unit text with spaces, `/`, `^` and parentheses and
+    /// printed into Markdown, where `_`, `*` and `[` are markup; a name made of
+    /// letters and digits cannot collide with any of them. Same mechanism as
+    /// above.
+    [[noreturn]] inline void formula_base_dimension_name_must_be_a_letter_then_letters_or_digits()
+    {
+        std::abort();
+    }
+
+    /// A base name that is the symbol of an SI base unit -- `m`, `kg`, `s`, `A`,
+    /// `K`, `mol` or `cd` -- so that a named base would read as metres,
+    /// kilograms and the rest. Same mechanism as above.
+    [[noreturn]] inline void formula_base_dimension_name_is_an_si_base_unit_symbol()
+    {
+        std::abort();
+    }
+
+    /// The result of `merged_dimension`: the merged dimension, and whether its
+    /// named bases fit in `NamedBaseCapacity`. When `fits` is false,
+    /// `dimension` is incomplete and must not be used.
+    struct MergedDimension
+    {
+        /// The combined dimension; complete only when `fits` is true.
+        Dimension dimension {};
+        /// False when the result would need more than `NamedBaseCapacity` named bases.
+        bool fits = true;
+    };
+
+    /// Orders two base names byte by byte as `unsigned char` over all
+    /// `SymbolCapacity` bytes: negative, zero or positive as the left name
+    /// sorts before, equal to or after the right one. Bytes after a terminator
+    /// are zero in every `Symbol` that `symbol()` built, so a name sorts before
+    /// every longer name it is a prefix of.
+    [[nodiscard]] constexpr int compare_base_names(Symbol const& leftName, Symbol const& rightName) noexcept
+    {
+        for (std::size_t byteAt = 0; byteAt < SymbolCapacity; ++byteAt)
+        {
+            auto const leftByte = static_cast<unsigned char>(leftName.characters[byteAt]);
+            auto const rightByte = static_cast<unsigned char>(rightName.characters[byteAt]);
+            if (leftByte != rightByte)
+                return leftByte < rightByte ? -1 : 1;
+        }
+        return 0;
+    }
+
+    /// Whether `slot` of `dimensionValue` holds a named base. The slots in use
+    /// come first, so the first slot that does not ends the list.
+    [[nodiscard]] constexpr bool named_base_in_use(Dimension const& dimensionValue, std::size_t slot) noexcept
+    {
+        return slot < NamedBaseCapacity && !is_zero(dimensionValue.namedBases[slot].exponent);
+    }
+
+    /// The product of two dimensions, or their quotient when `dividing`: the SI
+    /// exponents added or subtracted as ever, and the two named-base lists
+    /// merged in one pass. Both lists are sorted, so two cursors walk them
+    /// together: the smaller name is emitted -- the right operand's negated
+    /// when dividing -- and equal names are emitted once with the two
+    /// exponents combined, or not at all when they cancel. Cancelling happens
+    /// before counting, so `(EUR / USD) * (USD / JPY)` fits even though four
+    /// names go in. The result is built in a fresh value, never by editing a
+    /// copy of an operand (see `Dimension::namedBases` for why that matters on
+    /// g++). Exponent overflow goes through `reduced`'s guard as everywhere else.
+    [[nodiscard]] constexpr MergedDimension merged_dimension(Dimension const& leftOperand,
+                                                             Dimension const& rightOperand,
+                                                             bool dividing) noexcept
+    {
+        auto const combined = [dividing](Exponent leftExponent, Exponent rightExponent) noexcept {
+            return dividing ? leftExponent - rightExponent : leftExponent + rightExponent;
+        };
+
+        MergedDimension merged {};
+        merged.dimension.length = combined(leftOperand.length, rightOperand.length);
+        merged.dimension.mass = combined(leftOperand.mass, rightOperand.mass);
+        merged.dimension.time = combined(leftOperand.time, rightOperand.time);
+        merged.dimension.current = combined(leftOperand.current, rightOperand.current);
+        merged.dimension.temperature = combined(leftOperand.temperature, rightOperand.temperature);
+        merged.dimension.amount = combined(leftOperand.amount, rightOperand.amount);
+        merged.dimension.luminosity = combined(leftOperand.luminosity, rightOperand.luminosity);
+
+        std::size_t leftSlot = 0;
+        std::size_t rightSlot = 0;
+        std::size_t filledSlots = 0;
+        for (;;)
+        {
+            bool const leftInUse = named_base_in_use(leftOperand, leftSlot);
+            bool const rightInUse = named_base_in_use(rightOperand, rightSlot);
+            if (!leftInUse && !rightInUse)
+                return merged;
+            // Negative: take the left name next; positive: the right; zero: both, one name.
+            int const order = !rightInUse  ? -1
+                              : !leftInUse ? 1
+                                           : compare_base_names(leftOperand.namedBases[leftSlot].name,
+                                                                rightOperand.namedBases[rightSlot].name);
+            NamedBase const& taken = order > 0 ? rightOperand.namedBases[rightSlot] : leftOperand.namedBases[leftSlot];
+            // Not `const`, deliberately. g++ 13.3 and 14.2 keep a local's `const`
+            // in the value they copy out of it, so a slot built from a `const
+            // Exponent` local becomes a different template argument from the
+            // equal slot `base_dimension()` builds -- measured: `EUR * Energy /
+            // Energy` stopped being the same type as `EUR`.
+            Exponent takenExponent =
+                order < 0   ? taken.exponent
+                : order > 0 ? (dividing ? -taken.exponent : taken.exponent)
+                            : combined(taken.exponent, rightOperand.namedBases[rightSlot].exponent);
+            if (order <= 0)
+                ++leftSlot;
+            if (order >= 0)
+                ++rightSlot;
+            // Only one name on both sides can reach zero here: a slot in use never
+            // holds a zero exponent, and negating one does not make it zero.
+            if (is_zero(takenExponent))
+                continue;
+            if (filledSlots == NamedBaseCapacity)
+            {
+                merged.fits = false;
+                return merged;
+            }
+            merged.dimension.namedBases[filledSlots] = NamedBase { taken.name, takenExponent };
+            ++filledSlots;
+        }
+    }
+} // namespace detail
+
+/// Declares a base dimension the SI does not have -- `base_dimension("EUR")` --
+/// with exponent one.
+///
+/// **Identity is the name, byte for byte.** Two parts of a program, or two
+/// libraries, that both write `base_dimension("EUR")` get the same dimension,
+/// which for a three-letter currency code is what is wanted. For a generic
+/// word, pick a distinctive name ("AcmeCredit" rather than "credit"). Each
+/// base is its own dimension: euros and yen never convert into each other --
+/// an exchange rate is data, a quantity in yen per euro.
+///
+/// The name is also the symbol of the base's coherent unit, the unit of
+/// magnitude one: the unit named after the base is one of it, and a cent is
+/// a hundredth of it. It must be an ASCII letter followed by ASCII letters or
+/// digits, shorter than `SymbolCapacity`, and not the symbol of an SI base
+/// unit; each refusal is a compile error naming the rule -- see the
+/// `formula_base_dimension_name_...` functions. `consteval`, so a bad name can
+/// never reach run time; a helper that forwards a name here must be
+/// `consteval` too.
+[[nodiscard]] consteval Dimension base_dimension(char const* baseName) noexcept
+{
+    if (baseName[0] == '\0')
+        detail::formula_base_dimension_name_must_not_be_empty();
+    for (std::size_t nameLength = 0; baseName[nameLength] != '\0'; ++nameLength)
+    {
+        if (nameLength + 1 >= SymbolCapacity)
+            detail::formula_base_dimension_name_too_long();
+        char const spelt = baseName[nameLength];
+        bool const isLetter = (spelt >= 'A' && spelt <= 'Z') || (spelt >= 'a' && spelt <= 'z');
+        bool const isLaterDigit = nameLength > 0 && spelt >= '0' && spelt <= '9';
+        if (!isLetter && !isLaterDigit)
+            detail::formula_base_dimension_name_must_be_a_letter_then_letters_or_digits();
+    }
+    char const* const siBaseUnitSymbols[] = { "m", "kg", "s", "A", "K", "mol", "cd" };
+    for (char const* const siBaseUnitSymbol: siBaseUnitSymbols)
+        if (symbol(baseName) == symbol(siBaseUnitSymbol))
+            detail::formula_base_dimension_name_is_an_si_base_unit_symbol();
+
+    Dimension based {};
+    based.namedBases[0] = NamedBase { symbol(baseName), exponent(1) };
+    return based;
+}
+
+/// Multiplying quantities adds their dimensions' exponents, the named bases'
+/// included. A product needing more than `NamedBaseCapacity` named bases fails
+/// to compile, naming `formula_dimension_has_too_many_named_bases`.
 [[nodiscard]] constexpr Dimension operator*(Dimension leftOperand, Dimension rightOperand) noexcept
 {
-    return { leftOperand.length + rightOperand.length,
-             leftOperand.mass + rightOperand.mass,
-             leftOperand.time + rightOperand.time,
-             leftOperand.current + rightOperand.current,
-             leftOperand.temperature + rightOperand.temperature,
-             leftOperand.amount + rightOperand.amount,
-             leftOperand.luminosity + rightOperand.luminosity };
+    detail::MergedDimension const merged = detail::merged_dimension(leftOperand, rightOperand, false);
+    if (!merged.fits)
+        detail::formula_dimension_has_too_many_named_bases();
+    return merged.dimension;
 }
 
-/// Dividing subtracts them.
+/// Dividing subtracts them, with the same limit on named bases.
 [[nodiscard]] constexpr Dimension operator/(Dimension leftOperand, Dimension rightOperand) noexcept
 {
-    return { leftOperand.length - rightOperand.length,
-             leftOperand.mass - rightOperand.mass,
-             leftOperand.time - rightOperand.time,
-             leftOperand.current - rightOperand.current,
-             leftOperand.temperature - rightOperand.temperature,
-             leftOperand.amount - rightOperand.amount,
-             leftOperand.luminosity - rightOperand.luminosity };
+    detail::MergedDimension const merged = detail::merged_dimension(leftOperand, rightOperand, true);
+    if (!merged.fits)
+        detail::formula_dimension_has_too_many_named_bases();
+    return merged.dimension;
 }
 
-/// Raising a quantity to an integer power scales every exponent of its dimension.
+/// Raising a quantity to an integer power scales every exponent of its
+/// dimension, the named bases' included. The zeroth power is the scalar
+/// dimension outright: scaling a named base's exponent to zero would leave a
+/// slot in use with a zero exponent, which is not canonical.
 [[nodiscard]] constexpr Dimension power(Dimension dimensionValue, std::int32_t exponentOfPower) noexcept
 {
-    return { dimensionValue.length * exponentOfPower,      dimensionValue.mass * exponentOfPower,
-             dimensionValue.time * exponentOfPower,        dimensionValue.current * exponentOfPower,
-             dimensionValue.temperature * exponentOfPower, dimensionValue.amount * exponentOfPower,
-             dimensionValue.luminosity * exponentOfPower };
+    if (exponentOfPower == 0)
+        return Dimension {};
+    Dimension powered {};
+    powered.length = dimensionValue.length * exponentOfPower;
+    powered.mass = dimensionValue.mass * exponentOfPower;
+    powered.time = dimensionValue.time * exponentOfPower;
+    powered.current = dimensionValue.current * exponentOfPower;
+    powered.temperature = dimensionValue.temperature * exponentOfPower;
+    powered.amount = dimensionValue.amount * exponentOfPower;
+    powered.luminosity = dimensionValue.luminosity * exponentOfPower;
+    for (std::size_t slot = 0; detail::named_base_in_use(dimensionValue, slot); ++slot)
+        powered.namedBases[slot] = NamedBase { dimensionValue.namedBases[slot].name,
+                                               dimensionValue.namedBases[slot].exponent * exponentOfPower };
+    return powered;
 }
 
 /// The nth root. Integer exponents cannot express the result at all -- the
 /// square root of an area is a length, but the square root of a length is
-/// length to the one half, and norm formulas do take such roots.
+/// length to the one half, and norm formulas do take such roots. A named
+/// base's exponent is divided the same way; degree zero is refused by the
+/// exponent guard before any named base is looked at.
 [[nodiscard]] constexpr Dimension nth_root(Dimension dimensionValue, std::int32_t degree) noexcept
 {
-    return { dimensionValue.length / degree,    dimensionValue.mass / degree,        dimensionValue.time / degree,
-             dimensionValue.current / degree,   dimensionValue.temperature / degree, dimensionValue.amount / degree,
-             dimensionValue.luminosity / degree };
+    Dimension rooted {};
+    rooted.length = dimensionValue.length / degree;
+    rooted.mass = dimensionValue.mass / degree;
+    rooted.time = dimensionValue.time / degree;
+    rooted.current = dimensionValue.current / degree;
+    rooted.temperature = dimensionValue.temperature / degree;
+    rooted.amount = dimensionValue.amount / degree;
+    rooted.luminosity = dimensionValue.luminosity / degree;
+    for (std::size_t slot = 0; detail::named_base_in_use(dimensionValue, slot); ++slot)
+        rooted.namedBases[slot] = NamedBase { dimensionValue.namedBases[slot].name,
+                                              dimensionValue.namedBases[slot].exponent / degree };
+    return rooted;
 }
 
 /// True for a quantity with no dependence on any base dimension -- a pure ratio.
@@ -344,7 +609,7 @@ struct Dimension
     return dimensionValue == Dimension {};
 }
 
-/// Named dimensions. Users compose these rather than spelling exponents, which
+/// Dimension constants. Users compose these rather than spelling exponents, which
 /// keeps the representation swappable.
 namespace dim
 {
@@ -448,11 +713,14 @@ struct RequireSameDimension
     // "in this diagnostic", not "above": clang puts the vectors inside this very
     // error line, in its `due to requirement` clause, and again in a note below;
     // cl puts them only in a note below. Measured on all three. Nothing prints
-    // them above the message, so do not send the reader to look there.
+    // them above the message, so do not send the reader to look there. A named
+    // base's name is printed as text by g++ (`Symbol{"EUR"}`) but as character
+    // codes by clang (`{69, 85, 82, 0, ...}`) and cl (`char69,85,82,0,...`).
     static_assert(Left == Right,
                   "formula: these two dimensions are not the same; the offending exponent vectors "
                   "appear in this diagnostic as the template arguments of RequireSameDimension, in "
-                  "the order length, mass, time, current, temperature, amount, luminosity");
+                  "the order length, mass, time, current, temperature, amount, luminosity, then the "
+                  "named base dimensions by name");
 
     /// Always `true` once reached -- the `static_assert` above already failed
     /// compilation otherwise. Present so `::value` is the spelling that instantiates

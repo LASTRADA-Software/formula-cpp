@@ -277,6 +277,25 @@ formula_add_negative_test(exponent_out_of_range "formula_exponent_out_of_range")
 
 formula_add_negative_test(dimension_mismatch
     "formula: these two dimensions are not the same")
+formula_add_negative_test(dimension_named_base_mismatch
+    "formula: these two dimensions are not the same")
+
+# Named base dimensions: the same NAME-not-message case as the exponent
+# sentinels above -- a base name is a function argument, which no
+# `static_assert` can see, so each rule is a non-`constexpr` sentinel named
+# after it. No EXPECT_COUNT: clang and clang-cl report a failed `consteval` call
+# twice, once for the constant it initialises and once for the call, each
+# naming the sentinel, while cl and g++ report it once.
+formula_add_negative_test(dimension_too_many_named_bases "formula_dimension_has_too_many_named_bases")
+formula_add_negative_test(expression_too_many_named_bases "formula_dimension_has_too_many_named_bases")
+formula_add_negative_test(base_dimension_name_empty "formula_base_dimension_name_must_not_be_empty")
+# A 16-byte name would also overflow symbol(); the base's own rule must be the one that fires.
+formula_add_negative_test(base_dimension_name_too_long "formula_base_dimension_name_too_long"
+    REJECT "formula_unit_symbol_too_long")
+formula_add_negative_test(base_dimension_name_not_identifier
+    "formula_base_dimension_name_must_be_a_letter_then_letters_or_digits")
+formula_add_negative_test(base_dimension_name_si_symbol
+    "formula_base_dimension_name_is_an_si_base_unit_symbol")
 
 formula_add_negative_test(unit_dimension_mismatch
     "formula: these two units measure different dimensions")

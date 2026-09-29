@@ -443,7 +443,7 @@ namespace detail
         std::size_t at = 0;
         (
             [&] {
-                for (Dimension const contributed: OpaqueInput<Inputs>::dimensions)
+                for (Dimension const& contributed: OpaqueInput<Inputs>::dimensions)
                     gathered[at++] = contributed;
             }(),
             ...);

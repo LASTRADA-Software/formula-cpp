@@ -14,6 +14,25 @@ may break it, and each such change is recorded here.
 - `unit::Fahrenheit`, a second affine temperature unit beside `unit::Celsius`. No conversion to or
   from kelvin or Celsius rounds, so 98.6 degrees Fahrenheit is exactly 37 degrees Celsius and 100
   degrees Fahrenheit is exactly 340/9 degrees Celsius.
+- Base dimensions an application declares itself, such as money: `base_dimension("EUR")` makes a
+  dimension of its own, so euros can no longer be added to a bare ratio, euros and yen never convert
+  into each other, and energy times euros per energy is euros. `NamedBase` is one such base and its
+  exponent; a `Dimension` holds up to `NamedBaseCapacity` (four) of them, and a product that would
+  need a fifth does not compile. A name is an ASCII letter followed by letters or digits, shorter
+  than 16 bytes and not the symbol of an SI base unit; two uses of one name are one dimension.
+
+### Changed
+
+- `Dimension` gains `namedBases`, after the seven SI exponents, so a designated initialiser of SI
+  exponents still compiles; a structured binding over a `Dimension` now has eight members, not
+  seven. `Dimension` grows from 56 to 152 bytes, `Unit` from 152 to 248, and a trace's
+  `Step<Rational>` from 1008 to 1296, on 64-bit builds.
+- `Symbol`, `SymbolCapacity`, `symbol()` and `view()` are now declared in `dimension.hpp`, which
+  `unit.hpp` includes, so code including either header still finds them.
+- The message of `RequireSameDimension` now ends "..., luminosity, then the named base dimensions by
+  name"; its opening, "formula: these two dimensions are not the same", is unchanged.
+- A currency declared as `dim::Scalar` until now should be declared with `base_dimension` instead,
+  so that the dimension system tells it from a bare ratio.
 
 ## [0.1.0] - 2026-09-28
 
