@@ -124,6 +124,15 @@ volume divided by a mass is a perfectly good density -- so only `+` and `-`
 carry this check; `*` and `/` combine the two dimensions instead of requiring
 them to agree.
 
+The check covers money too, once each currency is a base dimension of its own
+([Base dimensions the SI does not have](dimensions.md#base-dimensions-the-si-does-not-have)).
+A price in euros plus a pure number, and a price in euros plus a price in yen,
+have the same SI exponents on both sides -- all zero -- so only the named base
+dimensions tell the sides apart, and each addition is refused once, with the
+message above: `test/negative/money_plus_number.cpp` and
+`test/negative/money_plus_other_currency.cpp` pin both. Multiplying is where
+money composes: a tariff in euros per kilowatt-hour times an energy is euros.
+
 ## The environment
 
 `formula::Environment` is a set of inputs keyed by quantity **type**, not by
@@ -405,6 +414,10 @@ parenthesis is needed to preserve the meaning:
 ```
 
 Step 5 is the reused formula, carrying its own citation; step 6 consumes it.
+`c_u` is a price in euros, a dimension of its own rather than a bare number
+([Base dimensions the SI does not have](dimensions.md#base-dimensions-the-si-does-not-have)),
+so the cost is in euros too; steps 6 and 7 show no unit only because a
+computed step carries none ([Tracing](tracing.md#reading-a-derivation)).
 
 One asymmetry is worth knowing before you rely on it. Using the same
 sub-formula **twice** in one tree reaches its citation twice, and the citation

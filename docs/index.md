@@ -60,7 +60,7 @@ for it, in the mode the method specifies.
 | Guide | What it covers |
 |---|---|
 | [Exact numbers](numbers.md) | `Rational`, the rounding modes, why exactness is the default |
-| [Dimensions and units](dimensions.md) | Compile-time dimensional analysis, exact unit conversion |
+| [Dimensions and units](dimensions.md) | Compile-time dimensional analysis, exact unit conversion, and base dimensions the SI does not have, such as money |
 | [Quantities and measurements](quantities.md) | Declaring a quantity, `Describe`, measurements that may be absent |
 | [Expressions and evaluation](expressions.md) | Operators, environments, outcomes, overrides |
 | [Citations and rendering](citations.md) | `documented()`, the three dialects, generated documentation |
@@ -98,7 +98,7 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Area | State |
 |---|---|
 | Exact rational arithmetic, rounding modes | shipped |
-| Dimensions with rational exponents, units, exact conversion | shipped |
+| Dimensions with rational exponents and named base dimensions such as money, units, exact conversion | shipped |
 | Quantities, metadata, absent measurements | shipped |
 | Formulas, operators, environments, evaluation | shipped |
 | Citations, rendering dialects, generated documentation | shipped |

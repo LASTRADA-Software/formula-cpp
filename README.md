@@ -232,7 +232,7 @@ because all of it came from the same line of code.
 | Guide | What it covers |
 |---|---|
 | [Exact numbers](docs/numbers.md) | `Rational`, the rounding modes, why exactness is the default |
-| [Dimensions and units](docs/dimensions.md) | Compile-time dimensional analysis, exact unit conversion |
+| [Dimensions and units](docs/dimensions.md) | Compile-time dimensional analysis, exact unit conversion, and base dimensions the SI does not have, such as money |
 | [Quantities](docs/quantities.md) | Declaring a quantity, `Describe`, measurements that may be absent |
 | [Writing formulas](docs/expressions.md) | Operators, evaluation, environments, overrides |
 | [Citations and rendering](docs/citations.md) | `documented()`, the three dialects, generated documentation |
@@ -260,7 +260,7 @@ and still growing. The public API may change until 1.0.
 | Area | State |
 |---|---|
 | Exact rational arithmetic, rounding modes | shipped |
-| Dimensions with rational exponents, units, exact conversion | shipped |
+| Dimensions with rational exponents and named base dimensions such as money, units, exact conversion | shipped |
 | Quantities, metadata, absent measurements | shipped |
 | Formulas, operators, environments, evaluation | shipped |
 | Citations, rendering dialects, generated documentation | shipped |

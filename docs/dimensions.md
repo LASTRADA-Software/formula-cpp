@@ -4,8 +4,9 @@
 and a unit descriptor built on top of it, `formula::Unit`. This page explains
 why a dimension is a type rather than a runtime tag, how to compose one, why
 its exponents are rational rather than integer, what a `Unit` carries, how
-conversion between units stays exact, and where the declared-precision and
-bounds machinery sits. The worked example below is
+conversion between units stays exact, where the declared-precision and
+bounds machinery sits, and how an application declares a base dimension the
+SI does not have, such as money. The worked example below is
 `examples/dimensions_and_units.cpp`; every block on this page that is
 formatted as program output is copied verbatim from that program's actual
 output, not worked out by hand. A couple of numeric facts that the example
@@ -16,9 +17,12 @@ program had printed them.
 ## Why dimensions are types
 
 A `Dimension` is an exponent vector over the seven SI base quantities --
-length, mass, time, current, temperature, amount and luminosity -- and it is
-*structural*: every member public, recursively, which is what lets it be used
-as a non-type template parameter. That is the point of the design, not an
+length, mass, time, current, temperature, amount and luminosity -- and up to
+four base dimensions the SI does not have, which the application names itself:
+money in one currency is the usual one (see
+[Base dimensions the SI does not have](#base-dimensions-the-si-does-not-have)).
+It is *structural*: every member public, recursively, which is what lets it be
+used as a non-type template parameter. That is the point of the design, not an
 implementation detail. A quantity's unit names its dimension as part of the
 quantity's *type*, so a mismatch between two dimensions is something the
 compiler catches while reading the declaration, not something a running
@@ -31,11 +35,15 @@ the specialisation is not instantiating it, so a bare alias checks nothing,
 but writing `RequireSameDimension<Left, Right>::value` forces the
 instantiation and the compiler prints the two exponent vectors themselves as
 part of the error -- not two anonymous type names, the actual numbers, in the
-order length, mass, time, current, temperature, amount, luminosity. Adding a
-volume to a mass (`RequireSameDimension<dim::Volume, dim::Mass>::value`) fails
-to compile with both vectors spelled out in the diagnostic. `formula::Unit`
-has the analogous `RequireSameUnitDimension<From, To>` for conversions between
-units of different dimensions.
+order length, mass, time, current, temperature, amount, luminosity, then the
+named base dimensions by name. Adding a volume to a mass
+(`RequireSameDimension<dim::Volume, dim::Mass>::value`) fails to compile with
+both vectors spelled out in the diagnostic. A named base appears there as its
+name and its exponent, and how legibly depends on the compiler: g++ prints
+`formula::Symbol{"EUR"}`, while cl, clang-cl and clang++ print the name's
+character codes, `69, 85, 82` for `EUR`. `formula::Unit` has the analogous
+`RequireSameUnitDimension<From, To>` for conversions between units of
+different dimensions.
 
 **The guard fires only when the type is completed.** `using Checked =
 RequireSameDimension<A, B>;` and a function parameter of that type compile
@@ -72,8 +80,9 @@ composed dimensions match the named constants: yes
 ```
 
 Composing from constants rather than writing exponents by hand keeps the
-representation swappable -- if `Dimension` ever grew an eighth base quantity,
-every one of these call sites stays correct without being touched.
+representation swappable, and that has been put to the test: `Dimension` has
+since grown past the seven SI base quantities, to hold the named base
+dimensions described below, and not one of these call sites had to change.
 
 ## Rational exponents
 
@@ -109,8 +118,8 @@ A `formula::Unit` is a small aggregate, and every field earns its place:
 
 | Field | Purpose |
 |---|---|
-| `dimension` | which physical quantity this unit measures |
-| `magnitudeNumerator` / `magnitudeDenominator` | the exact multiplicative factor to the coherent SI unit, as an integer ratio |
+| `dimension` | which quantity this unit measures |
+| `magnitudeNumerator` / `magnitudeDenominator` | the exact multiplicative factor to the coherent unit -- the coherent SI unit, times one of each named base dimension -- as an integer ratio |
 | `offsetNumerator` / `offsetDenominator` | the exact additive offset, for an affine scale such as degrees Celsius or degrees Fahrenheit |
 | `symbolText` | a fixed-capacity display symbol (a `Symbol`, not a `std::string_view`) |
 | `decimals` | the declared display precision |
@@ -134,7 +143,10 @@ alongside scaled ones (`Millimetre`, `Tonne`, `Hour`, `Megapascal`,
 deliberately the same magnitude under two names -- `Megapascal` and
 `NewtonPerSquareMillimetre`, `PartsPerMillion` and `MilligramPerKilogram` --
 because both spellings are in ordinary use, and a test pins that each pair
-converts into the other exactly.
+converts into the other exactly. None of them is a currency: which currencies
+an application deals in, and to how many decimals each is shown, is its own
+policy, and it declares those units itself (see
+[Base dimensions the SI does not have](#base-dimensions-the-si-does-not-have)).
 
 Power and energy have four of them: `Watt` and `Kilowatt` measure `dim::Power`,
 `WattHour` and `KilowattHour` measure `dim::Energy`. A watt-hour is the energy
@@ -302,6 +314,126 @@ holds nothing. A reading nobody took and a range nobody declared are
 different facts, for the same reason `NotChecked` is not `WithinBounds`. `formula::describe(BoundsCheck)` gives each outcome its own
 non-empty, mutually distinct wording, as shown above.
 
+## Base dimensions the SI does not have
+
+The seven SI base quantities describe physics, and formulas are often about
+money as well: a tariff in euros per kilowatt-hour, a price per tonne. A
+currency is not a bare number. Declared as one -- a `Unit` of `dim::Scalar` --
+a price in euros could be added to a ratio, or to a price in yen, and the
+dimension system would have nothing to object to. So an application declares a
+base dimension of its own for each currency it deals in, with
+`formula::base_dimension`, and composes it like any other. From the example:
+
+```cpp
+Dimension const euros = formula::base_dimension("EUR");
+Dimension const tariff = euros / dim::Energy;
+Dimension const tariffTimesEnergy = tariff * dim::Energy;
+```
+
+```
+tariff (EUR / energy) = L^-2 M^-1 T^2 EUR^1
+tariff * energy = EUR^1
+```
+
+The example prints a named base after the seven SI exponents, by its name. A
+tariff is euros over an energy -- `L^-2 M^-1 T^2` from the joule, `EUR^1` from
+the base -- and times an energy it is euros again: the same value as
+`base_dimension("EUR")` itself, which the example checks.
+
+**Identity is the name, byte for byte.** Two parts of a program, or two
+libraries, that both write `base_dimension("EUR")` get the same dimension --
+the same value, and the same template argument -- so a quantity one of them
+declares in euros is a quantity the other accepts. For a three-letter currency
+code that is what you want. For a generic word it may not be: another
+library's `base_dimension("credit")` would be yours, whatever it meant by it,
+so pick a distinctive name ("AcmeCredit" rather than "credit").
+
+Agreeing on the dimension is half of it; agreeing on its units is the other
+half, and a convention covers that: **the unit named after a base has
+magnitude one.** A euro is the coherent unit of euros, and a cent is a
+hundredth of it. The library cannot enforce the convention -- a `Unit` is an
+aggregate anyone may fill in -- but every conversion between two units of one
+base relies on it, as conversions between lengths rely on the metre having
+magnitude one. The coherent unit of any dimension is then the coherent SI
+unit times one of each of its named bases, and it is the unit every value is
+carried in while a formula is evaluated. The example declares three units:
+
+```cpp
+constexpr Unit Euro { .dimension = formula::base_dimension("EUR"),
+                      .symbolText = formula::symbol("EUR"),
+                      .decimals = 2 };
+constexpr Unit EuroCent { .dimension = formula::base_dimension("EUR"),
+                          .magnitudeNumerator = 1,
+                          .magnitudeDenominator = 100,
+                          .symbolText = formula::symbol("ct"),
+                          .decimals = 0 };
+constexpr Unit Yen { .dimension = formula::base_dimension("JPY"),
+                     .symbolText = formula::symbol("JPY"),
+                     .decimals = 0 };
+```
+
+and converts 250 euros into cents, back into euros, and then into yen:
+
+```
+250 EUR = 25000 ct
+... converted back = 250 EUR
+250 EUR to JPY: argument outside the domain of the operation
+```
+
+**Each currency is a base of its own.** Euros and yen never convert into each
+other: `checked_convert` refuses them as it refuses any two units of different
+dimensions, with `ArithmeticError::DomainError`, and
+`RequireSameUnitDimension<Euro, Yen>::value` does not compile. That is
+deliberate. An exchange rate is not a property of two units; it changes from
+day to day and is agreed per transaction. It is data -- a quantity in yen per
+euro, of dimension `base_dimension("JPY") / base_dimension("EUR")` -- which a
+formula multiplies by, and which the trace records like any other input. For
+the same reason there is no `dim::Money`: one money dimension could not tell
+euros from yen. In a formula the same rules hold at the formula's own source
+line; [Expressions and evaluation](expressions.md#where-a-dimensional-error-appears)
+shows the two additions it refuses. The library itself declares no currency:
+`formula::unit` is generic physics, and the currencies and their decimals are
+the application's.
+
+**Names.** A base's name must be an ASCII letter followed by ASCII letters or
+digits, at most 15 bytes long -- it is a `Symbol`, as a unit's symbol is --
+and not the symbol of an SI base unit: `m`, `kg`, `s`, `A`, `K`, `mol` or `cd`,
+since a base named `m` would read as metres wherever it is printed. And it is
+printed: it is the symbol of the base's coherent unit, written into a trace
+beside spaces, `/`, `^` and parentheses, and into Markdown, where `_`, `*` and
+`[` are markup -- hence letters and digits only. `base_dimension` is
+`consteval`, so a name that breaks a rule is always a compile error, and the
+error names the rule: `formula_base_dimension_name_must_not_be_empty`,
+`formula_base_dimension_name_too_long`,
+`formula_base_dimension_name_must_be_a_letter_then_letters_or_digits` or
+`formula_base_dimension_name_is_an_si_base_unit_symbol`. A helper that passes
+a name on to `base_dimension` must be `consteval` as well.
+
+**Capacity, and cancellation.** One dimension holds at most four named bases
+(`NamedBaseCapacity`): a tariff needs one, an exchange rate two. Composition
+merges the two lists by name. A name both sides carry has its exponents added
+or subtracted, and a name whose exponent comes to zero drops out before
+anything is counted, so `(EUR / USD) * (USD / JPY)` is `EUR / JPY`: two bases,
+not three. A product or quotient that still needs a fifth fails to compile,
+naming `formula_dimension_has_too_many_named_bases` -- where a `Dimension` is
+composed in a constant expression, and where a formula multiplies quantities
+whose dimensions would need it
+(`test/negative/expression_too_many_named_bases.cpp`). The bases are kept
+sorted by name, so `EUR * JPY` and `JPY * EUR` are one value
+and one template argument. Filling `namedBases` by hand bypasses that order,
+which is why a dimension should only ever be built with `base_dimension` and
+the operators.
+
+**In a coherent unit, the name is the symbol.** A computed step in a trace
+carries no unit symbol of its own (see
+[Tracing and audit trails](tracing.md#reading-a-derivation)), but where the
+trace does spell a coherent unit out -- for an opaque operation's output that
+no input's unit fits ([Opaque operations and bounded retry](opaque-and-retry.md))
+-- a named base is written by its name, ahead of the SI units on its side of
+the slash: `EUR s^2/(m^2 kg)` for euros per joule, then `1/JPY`, `EUR/JPY`,
+`EUR^(1/2)`. The money comes first because a tariff is read as money per
+energy.
+
 ## Limits
 
 `Exponent`'s numerator and denominator are `std::int32_t`. Building one with a
@@ -327,8 +459,23 @@ second compiles cleanly and terminates at run time. So write dimensions in
 constant expressions and you get the error at the point you wrote the mistake;
 build one from runtime input and you get a crash instead of a wrong answer.
 
+`NamedBaseCapacity` is 4: a `Dimension` holds at most four named bases at
+once, counted after cancellation. A fifth is refused through a sentinel of
+the same kind, `formula_dimension_has_too_many_named_bases` -- a compile error
+in a constant expression, an abort at run time -- never by dropping a base. A
+named base's exponent is an `Exponent`, with the limits above.
+
 `SymbolCapacity` is 16 bytes **including the terminator** -- 15 usable
-characters, not 16. `Unit`'s `magnitudeNumerator`, `magnitudeDenominator`,
+characters, not 16 -- and a base's name is a `Symbol` too, so it is at most 15
+bytes long. The name is checked only where it is made, and `base_dimension` is
+`consteval`, so its four sentinels are always compile errors, never aborts:
+`formula_base_dimension_name_must_not_be_empty`,
+`formula_base_dimension_name_too_long`,
+`formula_base_dimension_name_must_be_a_letter_then_letters_or_digits` and
+`formula_base_dimension_name_is_an_si_base_unit_symbol`. A `namedBases` array
+filled by hand is checked by none of them.
+
+`Unit`'s `magnitudeNumerator`, `magnitudeDenominator`,
 `offsetNumerator`, `offsetDenominator` and the four fields of `Bounds` are all
 `std::int64_t`, the same width as `Rational`'s own numerator and denominator.
 
