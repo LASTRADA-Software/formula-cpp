@@ -32,6 +32,7 @@
 
 #include <formula-cpp/band.hpp>
 #include <formula-cpp/binning.hpp>
+#include <formula-cpp/calculation.hpp>
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/conditional.hpp>
 #include <formula-cpp/conformity.hpp>
@@ -59,12 +60,15 @@
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -2317,4 +2321,181 @@ template <Described R, std::size_t Max, FirstJudged J, typename Start, typename 
 {
     return render<Dialect::Plain>(node);
 }
+
+namespace detail
+{
+    /// Each definition of the calculation of @p Ds as its line, `symbol =
+    /// expression`, in the order the definitions were given; @p Is counts
+    /// them.
+    template <Dialect D, typename... Ds, Vocabulary V, std::size_t... Is>
+    [[nodiscard]] std::array<std::string, sizeof...(Ds)> definition_lines(Calculation<Ds...> const& definitionSet,
+                                                                          V const& vocabulary,
+                                                                          std::index_sequence<Is...>)
+    {
+        return { (render<D>(var<typename Ds::quantity>, vocabulary) + " = "
+                  + render<D>(std::get<Is>(definitionSet.definitions).expression, vocabulary))... };
+    }
+
+    /// @p symbolText as a quoted identifier of the DOT language: between
+    /// double quotes, each `"` and `\` in it preceded by a `\`.
+    [[nodiscard]] inline std::string dot_quoted(std::string_view symbolText)
+    {
+        std::string quoted = "\"";
+        for (char const glyph: symbolText)
+        {
+            if (glyph == '"' || glyph == '\\')
+                quoted += '\\';
+            quoted += glyph;
+        }
+        return quoted + "\"";
+    }
+} // namespace detail
+
+/// Renders the calculation @p definitionSet in dialect @p D, writing every
+/// symbol as @p vocabulary says: one line per definition, `symbol =
+/// expression`, in the order the calculation calculates them -- each after
+/// the values it reads. The lines are separated by a newline, and by a blank
+/// line in Markdown, where lines a single newline apart run on as one
+/// paragraph; the last has none after it. Nothing for a calculation refused
+/// where it was written.
+template <Dialect D, typename... Ds, Vocabulary V>
+[[nodiscard]] std::string render(Calculation<Ds...> const& definitionSet, V const& vocabulary)
+{
+    using Graph = detail::CalculationGraph<Ds...>;
+    std::string renderedCalculation;
+    if constexpr (Graph::valid)
+    {
+        std::array<std::string, sizeof...(Ds)> const definitionLines =
+            detail::definition_lines<D>(definitionSet, vocabulary, std::index_sequence_for<Ds...> {});
+        for (std::size_t placed = Graph::inputCount; placed < Graph::slotCount; ++placed)
+        {
+            if (!renderedCalculation.empty())
+                renderedCalculation += D == Dialect::Markdown ? "\n\n" : "\n";
+            renderedCalculation += definitionLines[Graph::order[placed] - Graph::inputCount];
+        }
+    }
+    return renderedCalculation;
+}
+
+/// Renders a calculation as plain text, writing symbols as @p vocabulary
+/// says.
+template <typename... Ds, Vocabulary V>
+[[nodiscard]] std::string render(Calculation<Ds...> const& node, V const& vocabulary)
+{
+    return render<Dialect::Plain>(node, vocabulary);
+}
+
+/// Renders a calculation in dialect @p D, in the default vocabulary.
+template <Dialect D, typename... Ds>
+[[nodiscard]] std::string render(Calculation<Ds...> const& node)
+{
+    return render<D>(node, DefaultVocabulary {});
+}
+
+/// Renders a calculation as plain text.
+template <typename... Ds>
+[[nodiscard]] std::string render(Calculation<Ds...> const& node)
+{
+    return render<Dialect::Plain>(node);
+}
+
+/// The dependency graph of @p definitionSet as plain text, every symbol
+/// written as @p vocabulary says: a first line naming the inputs, in the
+/// order the calculation numbers them -- `inputs: fridge_w, fridge_h` --
+/// and then one line per defined quantity, in the order it is calculated
+/// in, naming what it reads, in that order too -- `fridge_kwh <- fridge_h,
+/// fridge_kw`. The symbol each such line begins with is padded with spaces
+/// to the longest of them, so that the arrows line up. `none` stands for no
+/// input, and `nothing` for a definition that reads nothing. Every line ends
+/// in a newline. Nothing for a calculation refused where it was written.
+template <typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::string describe_graph(Calculation<Ds...> const&, V const& vocabulary = V {})
+{
+    using Graph = detail::CalculationGraph<Ds...>;
+    std::string graphText;
+    if constexpr (Graph::valid)
+    {
+        std::array<std::string_view, Graph::slotCount> const everySymbol =
+            detail::slot_symbols(static_cast<typename Graph::slots const*>(nullptr), vocabulary);
+        graphText += "inputs: ";
+        for (std::size_t placed = 0; placed < Graph::inputCount; ++placed)
+            graphText += std::string { placed == 0 ? "" : ", " } + std::string { everySymbol[Graph::order[placed]] };
+        if (Graph::inputCount == 0)
+            graphText += "none";
+        graphText += "\n";
+
+        std::size_t widestSymbol = 0;
+        for (std::size_t placed = Graph::inputCount; placed < Graph::slotCount; ++placed)
+            if (everySymbol[Graph::order[placed]].size() > widestSymbol)
+                widestSymbol = everySymbol[Graph::order[placed]].size();
+        for (std::size_t placed = Graph::inputCount; placed < Graph::slotCount; ++placed)
+        {
+            std::size_t const definedSlot = Graph::order[placed];
+            std::string definedLine { everySymbol[definedSlot] };
+            definedLine.resize(widestSymbol, ' ');
+            definedLine += " <- ";
+            bool readsAny = false;
+            for (std::size_t readPlace = 0; readPlace < Graph::slotCount; ++readPlace)
+            {
+                std::size_t const readSlot = Graph::order[readPlace];
+                if (((Graph::reads[definedSlot] >> readSlot) & 1u) == 0)
+                    continue;
+                definedLine += std::string { readsAny ? ", " : "" } + std::string { everySymbol[readSlot] };
+                readsAny = true;
+            }
+            if (!readsAny)
+                definedLine += "nothing";
+            graphText += definedLine + "\n";
+        }
+    }
+    return graphText;
+}
+
+/// The dependency graph of @p definitionSet in the DOT language of Graphviz,
+/// every symbol written as @p vocabulary says: `dot -Tsvg` draws it, the
+/// inputs on the left as boxes and the calculated values as ellipses, each
+/// arrow from a value to one that reads it. It opens `digraph calculation {`,
+/// then `rankdir=LR;` and `node [fontname="Helvetica"];`, then one line per
+/// node -- `q0 [label="x_0", shape=box];` -- and one per arrow -- `q0 ->
+/// q1;` -- each indented by two spaces, and closes with `}`; every line ends
+/// in a newline.
+///
+/// Each node is named by its quantity's position among the calculation's
+/// quantities, `q0` for the first, and labelled with its symbol, so that two
+/// quantities written alike stay two nodes; a `"` or `\` in a symbol is
+/// preceded by a `\`. The nodes come in the order the quantities are
+/// calculated in, the inputs first, and the arrows by the value that reads,
+/// in that order too. Nothing for a calculation refused where it was
+/// written.
+template <typename... Ds, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::string to_dot(Calculation<Ds...> const&, V const& vocabulary = V {})
+{
+    using Graph = detail::CalculationGraph<Ds...>;
+    std::string dotText;
+    if constexpr (Graph::valid)
+    {
+        std::array<std::string_view, Graph::slotCount> const everySymbol =
+            detail::slot_symbols(static_cast<typename Graph::slots const*>(nullptr), vocabulary);
+        dotText += "digraph calculation {\n  rankdir=LR;\n  node [fontname=\"Helvetica\"];\n";
+        for (std::size_t placed = 0; placed < Graph::slotCount; ++placed)
+        {
+            std::size_t const shownSlot = Graph::order[placed];
+            dotText += "  q" + std::to_string(shownSlot) + " [label=" + detail::dot_quoted(everySymbol[shownSlot])
+                       + (shownSlot < Graph::inputCount ? ", shape=box];\n" : ", shape=ellipse];\n");
+        }
+        for (std::size_t placed = Graph::inputCount; placed < Graph::slotCount; ++placed)
+        {
+            std::size_t const definedSlot = Graph::order[placed];
+            for (std::size_t readPlace = 0; readPlace < Graph::slotCount; ++readPlace)
+            {
+                std::size_t const readSlot = Graph::order[readPlace];
+                if (((Graph::reads[definedSlot] >> readSlot) & 1u) != 0)
+                    dotText += "  q" + std::to_string(readSlot) + " -> q" + std::to_string(definedSlot) + ";\n";
+            }
+        }
+        dotText += "}\n";
+    }
+    return dotText;
+}
+
 } // namespace formula

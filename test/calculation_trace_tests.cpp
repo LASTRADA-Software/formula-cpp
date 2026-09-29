@@ -5,6 +5,7 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include "household_bill.hpp"
 
@@ -16,6 +17,7 @@
 #include <expected>
 #include <initializer_list>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <vector>
@@ -47,6 +49,10 @@ struct Doubled: formula::Quantity<Doubled, "s_2", "an invented share, doubled", 
 {
 };
 struct Width: formula::Quantity<Width, "b", "an invented width", unit::Millimetre>
+{
+};
+/// A share whose declared symbol ends in a newline, as no symbol should.
+struct AwkwardShare: formula::Quantity<AwkwardShare, "s\n", "an invented share, awkwardly written", unit::One>
 {
 };
 struct Depth: formula::Quantity<Depth, "d", "an invented depth", unit::Millimetre>
@@ -460,4 +466,145 @@ TEST_CASE("a value an overlay replaced is reported only where the definition rea
     REQUIRE(readStep != nullptr);
     CHECK(readStep->inputSource == formula::ValueSource::Measured);
     CHECK_FALSE(readStep->replacedEntryEmpty);
+}
+
+TEST_CASE("a derivation renders each block under its header, and the inputs last", "[calculation][worksheet][trace]")
+{
+    auto sheet = guarded_sheet(rat(3), rat(2));
+    auto const explained = formula::explain_worksheet<Doubled>(sheet);
+    std::string const everything = "s_2 = s * 2 = 3\n"
+                                   "  1. s = 3/2, calculated\n"
+                                   "  2. 2\n"
+                                   "  3. #1 * #2 = 3\n"
+                                   "s = k / k_o = 3/2\n"
+                                   "  1. k = 3\n"
+                                   "  2. k_o = 2\n"
+                                   "  3. #1 / #2 = 3/2\n"
+                                   "inputs\n"
+                                   "  k = 3\n"
+                                   "  k_o = 2\n";
+    // Ten lines: two headers, six steps, two inputs.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 10 }) == everything);
+    CHECK(formula::render_derivation(explained, { .maxSteps = 100 }) == everything);
+}
+
+TEST_CASE("a derivation's one budget counts every header, step and input line", "[calculation][worksheet][trace]")
+{
+    auto sheet = guarded_sheet(rat(3), rat(2));
+    auto const explained = formula::explain_worksheet<Doubled>(sheet);
+
+    // One short: the last input.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 9 }) == "s_2 = s * 2 = 3\n"
+                                                                      "  1. s = 3/2, calculated\n"
+                                                                      "  2. 2\n"
+                                                                      "  3. #1 * #2 = 3\n"
+                                                                      "s = k / k_o = 3/2\n"
+                                                                      "  1. k = 3\n"
+                                                                      "  2. k_o = 2\n"
+                                                                      "  3. #1 / #2 = 3/2\n"
+                                                                      "inputs\n"
+                                                                      "  k = 3\n"
+                                                                      "... 1 further step not shown\n");
+    // Out after the second header: its three steps and both inputs are left
+    // out, and so is the line naming the inputs.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 5 }) == "s_2 = s * 2 = 3\n"
+                                                                      "  1. s = 3/2, calculated\n"
+                                                                      "  2. 2\n"
+                                                                      "  3. #1 * #2 = 3\n"
+                                                                      "s = k / k_o = 3/2\n"
+                                                                      "... 5 further steps not shown\n");
+    // Out inside the first block.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 2 }) == "s_2 = s * 2 = 3\n"
+                                                                      "  1. s = 3/2, calculated\n"
+                                                                      "... 8 further steps not shown\n");
+    CHECK(formula::render_derivation(explained, { .maxSteps = 0 }) == "... 10 further steps not shown\n");
+}
+
+TEST_CASE("a derivation's header states a failure, an empty value and an override", "[calculation][worksheet][trace]")
+{
+    // The share fails, and the doubled share with it.
+    auto failing = guarded_sheet(rat(3), rat(0));
+    std::string const failed = formula::render_derivation(formula::explain_worksheet<Doubled>(failing), { 100 });
+    CHECK(failed.starts_with("s_2 = s * 2 = division by zero\n"
+                             "  1. s = division by zero, calculated\n"));
+    CHECK(failed.find("\ns = k / k_o = division by zero\n") != std::string::npos);
+    CHECK(failed.ends_with("inputs\n"
+                           "  k = 3\n"
+                           "  k_o = 0\n"));
+
+    // The factor not measured: nothing calculated from it has a value.
+    auto dark = formula::worksheet(guarded,
+                                   formula::environment(formula::Measured<Factor>::absent(),
+                                                        formula::Measured<Other> { rat(2) }));
+    CHECK(formula::render_derivation(formula::explain_worksheet<Share>(dark), { 100 }) == "s = k / k_o = (no value)\n"
+                                                                                          "  1. k = (not measured)\n"
+                                                                                          "  2. k_o = 2\n"
+                                                                                          "  3. #1 / #2 = (not measured)\n"
+                                                                                          "inputs\n"
+                                                                                          "  k = (not measured)\n"
+                                                                                          "  k_o = 2\n");
+
+    // An override is its header alone, and says what it stands in place of.
+    using namespace household;
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    sheet.set(formula::entered(formula::Measured<NetDraw> { rat(250) }));
+    CHECK(formula::render_derivation(formula::explain_worksheet<NetDraw>(sheet), { 100 })
+          == "net_draw = 250 kWh, entered by hand in place of monthly_load - self_used\n");
+    sheet.set(formula::entered(formula::Measured<NetDraw>::absent()));
+    CHECK(formula::render_derivation(formula::explain_worksheet<NetDraw>(sheet), { 100 })
+          == "net_draw = (entered by hand as empty) in place of monthly_load - self_used\n");
+}
+
+TEST_CASE("a bill's derivation, in its vocabulary, cut short", "[calculation][worksheet][trace][vocabulary]")
+{
+    using namespace household;
+    constexpr auto words = formula::vocabulary(formula::renames<Total>("C_bill"));
+    auto sheet = formula::worksheet(bill, bill_environment(billValues));
+    sheet.set(formula::entered(formula::Measured<Price> { rat(1, 4) }));
+    auto const explained = formula::explain_worksheet<Total>(sheet, words);
+
+    // Fifteen headers, 45 steps and ten inputs: seventy lines, four shown.
+    CHECK(formula::render_derivation(explained, { .maxSteps = 4 }) == "C_bill = subtotal + vat = 190043/2000 EUR\n"
+                                                                      "  1. subtotal = 1597/20 EUR, calculated\n"
+                                                                      "  2. vat = 30343/2000 EUR, calculated\n"
+                                                                      "  3. #1 + #2 = 190043/2000\n"
+                                                                      "... 66 further steps not shown\n");
+
+    // In full: the inputs close it, the typed-in price saying so.
+    std::string const full = formula::render_derivation(explained, { .maxSteps = 70 });
+    CHECK(full.find("further step") == std::string::npos);
+    CHECK(full.find("\nfridge_kw = fridge_w = 1/5 kW\n  1. fridge_w = 200 W\n") != std::string::npos);
+    CHECK(full.ends_with("inputs\n"
+                         "  fridge_w = 200 W\n"
+                         "  fridge_h = 24 h\n"
+                         "  oven_kw = 5/2 kW\n"
+                         "  oven_h = 1 h\n"
+                         "  heater_kw = 3/2 kW\n"
+                         "  heater_h = 4 h\n"
+                         "  solar = 150 kWh\n"
+                         "  price = 1/4 EUR/kWh, entered by hand\n"
+                         "  feed_in = 2/25 EUR/kWh\n"
+                         "  base_fee = 25/2 EUR\n"));
+}
+
+TEST_CASE("author text in a derivation's header cannot end its line", "[calculation][worksheet][trace]")
+{
+    // A share whose declared symbol ends in a newline: every line it appears
+    // on shows the newline escaped, and no line is broken by it.
+    constexpr auto awkward = formula::calculation(formula::define<AwkwardShare>(var<Factor> / var<Other>),
+                                                  formula::define<Doubled>(var<AwkwardShare> * rat(2)));
+    auto sheet = formula::worksheet(
+        awkward, formula::environment(formula::Measured<Factor> { rat(3) }, formula::Measured<Other> { rat(2) }));
+    CHECK(formula::render_derivation(formula::explain_worksheet<Doubled>(sheet), { 100 })
+          == "s_2 = s\\n * 2 = 3\n"
+             "  1. s\\n = 3/2, calculated\n"
+             "  2. 2\n"
+             "  3. #1 * #2 = 3\n"
+             "s\\n = k / k_o = 3/2\n"
+             "  1. k = 3\n"
+             "  2. k_o = 2\n"
+             "  3. #1 / #2 = 3/2\n"
+             "inputs\n"
+             "  k = 3\n"
+             "  k_o = 2\n");
 }

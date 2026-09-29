@@ -60,7 +60,8 @@
 // asked for one value and for two, by type and by variable, set, set on a
 // worksheet about to be discarded, copied with an override by `with`, the
 // override cleared, with its counters and every query, and its derivation,
-// xplain_worksheet; and a
+// `explain_worksheet`, rendered by `render_derivation`; the calculation
+// rendered, and its graph by `describe_graph` and `to_dot`; and a
 // quantity declared by alias at global scope, so that its tag is one more
 // global. A
 // template it does not reach is not guarded by it. `consumer_globals_run_tests.cpp` checks that each of these
@@ -1017,6 +1018,17 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && strengthDerivation.entries[0].value == formula::Rational { 20 }
         && strengthDerivation.entries[2].kind == formula::WorksheetEntryKind::Input
         && !strengthDerivation.entries[0].trace.empty());
+
+    // The calculation as text: its definitions, its graph described and in
+    // DOT, and the strength's derivation rendered.
+    std::string const strengthRendered = formula::render<formula::Dialect::Markdown>(strengthCalculation, north);
+    std::string const strengthGraph = formula::describe_graph(strengthCalculation, north);
+    std::string const strengthDot = formula::to_dot(strengthCalculation, north);
+    std::string const strengthDerivationText = formula::render_derivation(strengthDerivation, { .maxSteps = 3 });
+    probe.checks.push_back(strengthRendered.starts_with("`k` = ") && strengthGraph.starts_with("inputs: P, x_m\n")
+                           && strengthDot.starts_with("digraph calculation {\n")
+                           && strengthDerivationText.starts_with("f_c = ")
+                           && strengthDerivationText.ends_with(" further steps not shown\n"));
 
     // A quantity declared by alias, evaluated, traced and rendered.
     formula::Trace<> aliasTrace {};

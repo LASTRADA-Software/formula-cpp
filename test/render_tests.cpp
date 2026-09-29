@@ -8,6 +8,8 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/vocabulary.hpp>
 
+#include "household_bill.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
@@ -1959,4 +1961,139 @@ TEST_CASE("a documented or replaced sum brackets in LaTeX as the bare one does",
                        m);
     constexpr auto replacement = std::get<0>(replaced.variantSet.cases).expression;
     CHECK(formula::render<formula::Dialect::LaTeX>(replacement * rat(2)) == "(\\sum \\frac{{m_r}_{i}}{m_t}) \\cdot 2");
+}
+
+// ------------------------------------------------------------ calculations
+
+namespace
+{
+struct Start: formula::Quantity<Start, "x_0", "an invented start", formula::unit::One>
+{
+};
+struct Low: formula::Quantity<Low, "x_l", "an invented low point", formula::unit::One>
+{
+};
+struct High: formula::Quantity<High, "x_h", "an invented high point", formula::unit::One>
+{
+};
+struct Apex: formula::Quantity<Apex, "x_a", "an invented apex", formula::unit::One>
+{
+};
+
+/// The apex given before the high point it reads, which reads the low
+/// point, which reads the start: calculated in another order than given.
+inline constexpr auto againstTheGrain = formula::calculation(formula::define<Low>(var<Start> + rat(1)),
+                                                             formula::define<Apex>(var<High> + rat(1)),
+                                                             formula::define<High>(var<Low> * rat(2)));
+
+/// A calculation of one constant, which reads nothing.
+inline constexpr auto constantOnly = formula::calculation(formula::define<Start>(formula::number(rat(7))));
+} // namespace
+
+TEST_CASE("render: a calculation is one line per definition, in the order it is calculated in",
+          "[render][calculation]")
+{
+    CHECK(formula::render(againstTheGrain) == "x_l = x_0 + 1\nx_h = x_l * 2\nx_a = x_h + 1");
+    CHECK(formula::render<Dialect::Plain>(againstTheGrain) == formula::render(againstTheGrain));
+    // In Markdown a blank line apart, so that each is a paragraph of its own.
+    CHECK(formula::render<Dialect::Markdown>(againstTheGrain)
+          == "`x_l` = `x_0` + 1\n\n`x_h` = `x_l` * 2\n\n`x_a` = `x_h` + 1");
+    CHECK(formula::render<Dialect::LaTeX>(againstTheGrain) == "x_l = x_0 + 1\nx_h = x_l \\cdot 2\nx_a = x_h + 1");
+
+    CHECK(formula::render(household::bill)
+          == "fridge_kw = fridge_w\n"
+             "fridge_kwh = fridge_kw * fridge_h\n"
+             "oven_kwh = oven_kw * oven_h\n"
+             "heater_kwh = heater_kw * heater_h\n"
+             "daily_load = fridge_kwh + oven_kwh + heater_kwh\n"
+             "monthly_load = daily_load * 30\n"
+             "self_used = solar * 4/5\n"
+             "exported = solar - self_used\n"
+             "net_draw = monthly_load - self_used\n"
+             "grid_cost = net_draw * price\n"
+             "feed_in_credit = exported * feed_in\n"
+             "energy_cost = grid_cost - feed_in_credit\n"
+             "subtotal = energy_cost + base_fee\n"
+             "vat = subtotal * 19/100\n"
+             "total = subtotal + vat");
+}
+
+TEST_CASE("render: a calculation writes its symbols as its vocabulary says", "[render][calculation][vocabulary]")
+{
+    constexpr auto words = formula::vocabulary(formula::renames<Low>("y_l"), formula::renames<Apex>("y_a"));
+    CHECK(formula::render(againstTheGrain, words) == "y_l = x_0 + 1\nx_h = y_l * 2\ny_a = x_h + 1");
+    CHECK(formula::render<Dialect::Markdown>(againstTheGrain, words)
+          == "`y_l` = `x_0` + 1\n\n`x_h` = `y_l` * 2\n\n`y_a` = `x_h` + 1");
+}
+
+TEST_CASE("describe_graph: the inputs, then what each calculated value reads, the arrows aligned",
+          "[render][calculation]")
+{
+    CHECK(formula::describe_graph(againstTheGrain) == "inputs: x_0\n"
+                                                      "x_l <- x_0\n"
+                                                      "x_h <- x_l\n"
+                                                      "x_a <- x_h\n");
+    CHECK(formula::describe_graph(constantOnly) == "inputs: none\n"
+                                                   "x_0 <- nothing\n");
+
+    CHECK(formula::describe_graph(household::bill)
+          == "inputs: fridge_w, fridge_h, oven_kw, oven_h, heater_kw, heater_h, solar, price, feed_in, base_fee\n"
+             "fridge_kw      <- fridge_w\n"
+             "fridge_kwh     <- fridge_h, fridge_kw\n"
+             "oven_kwh       <- oven_kw, oven_h\n"
+             "heater_kwh     <- heater_kw, heater_h\n"
+             "daily_load     <- fridge_kwh, oven_kwh, heater_kwh\n"
+             "monthly_load   <- daily_load\n"
+             "self_used      <- solar\n"
+             "exported       <- solar, self_used\n"
+             "net_draw       <- monthly_load, self_used\n"
+             "grid_cost      <- price, net_draw\n"
+             "feed_in_credit <- feed_in, exported\n"
+             "energy_cost    <- grid_cost, feed_in_credit\n"
+             "subtotal       <- base_fee, energy_cost\n"
+             "vat            <- subtotal\n"
+             "total          <- subtotal, vat\n");
+
+    // In a vocabulary, padded to the longest symbol as written there.
+    constexpr auto words = formula::vocabulary(formula::renames<Apex>("apex"));
+    CHECK(formula::describe_graph(againstTheGrain, words) == "inputs: x_0\n"
+                                                             "x_l  <- x_0\n"
+                                                             "x_h  <- x_l\n"
+                                                             "apex <- x_h\n");
+}
+
+TEST_CASE("to_dot: the graph in Graphviz's DOT language", "[render][calculation]")
+{
+    CHECK(formula::to_dot(againstTheGrain) == "digraph calculation {\n"
+                                              "  rankdir=LR;\n"
+                                              "  node [fontname=\"Helvetica\"];\n"
+                                              "  q0 [label=\"x_0\", shape=box];\n"
+                                              "  q1 [label=\"x_l\", shape=ellipse];\n"
+                                              "  q3 [label=\"x_h\", shape=ellipse];\n"
+                                              "  q2 [label=\"x_a\", shape=ellipse];\n"
+                                              "  q0 -> q1;\n"
+                                              "  q1 -> q3;\n"
+                                              "  q3 -> q2;\n"
+                                              "}\n");
+
+    // A quote or a backslash in a symbol is escaped, so that it cannot end
+    // the label early.
+    constexpr auto words = formula::vocabulary(formula::renames<Low>("x\"l\\"));
+    CHECK(formula::to_dot(againstTheGrain, words).find("  q1 [label=\"x\\\"l\\\\\", shape=ellipse];\n")
+          != std::string::npos);
+
+    // Two quantities written alike stay two nodes.
+    constexpr auto alike = formula::vocabulary(formula::renames<Low>("x"), formula::renames<High>("x"));
+    std::string const twoAlike = formula::to_dot(againstTheGrain, alike);
+    CHECK(twoAlike.find("  q1 [label=\"x\", shape=ellipse];\n") != std::string::npos);
+    CHECK(twoAlike.find("  q3 [label=\"x\", shape=ellipse];\n") != std::string::npos);
+    CHECK(twoAlike.find("  q1 -> q3;\n") != std::string::npos);
+
+    // The bill: ten boxes, fifteen ellipses, and an arrow per read.
+    std::string const billDot = formula::to_dot(household::bill);
+    CHECK(billDot.starts_with("digraph calculation {\n  rankdir=LR;\n  node [fontname=\"Helvetica\"];\n"
+                           "  q0 [label=\"fridge_w\", shape=box];\n"));
+    CHECK(billDot.find("  q9 [label=\"base_fee\", shape=box];\n  q10 [label=\"fridge_kw\", shape=ellipse];\n")
+          != std::string::npos);
+    CHECK(billDot.ends_with("  q23 -> q24;\n}\n"));
 }

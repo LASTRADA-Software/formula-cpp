@@ -44,7 +44,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -126,14 +128,15 @@ namespace detail
     /// Applied to every piece of author text a trace line states, on the way
     /// from `step_line`: once to each such field of the step and of a citation,
     /// in `EscapedStep` and `EscapedCitation`, with `unit_symbol_text` and, for
-    /// a record's role and a lineage
-    /// attribute's name, `tag_words`; and directly by the lines that state
-    /// author text the step does not hold -- a rejection's verdict label
-    /// (`rejection_line`), an opaque operation's and its outputs' names
-    /// (`opaque_call_line`, `opaque_output_line`), a retry's verdict label
-    /// (`retry_concluded_line`) and a named base dimension's name
-    /// (`coherent_unit_text`). The words this file writes itself go into the
-    /// line as they are.
+    /// a record's role and a lineage attribute's name, `tag_words`; and
+    /// directly by the lines that state author text the step does not hold --
+    /// a rejection's verdict label (`rejection_line`), an opaque operation's
+    /// and its outputs' names (`opaque_call_line`, `opaque_output_line`), a
+    /// retry's verdict label (`retry_concluded_line`), a named base
+    /// dimension's name (`coherent_unit_text`) and the symbol a derivation
+    /// block's header names (`render_derivation`). The words this file writes
+    /// itself go into the line as they are. A rendered formula in a
+    /// derivation block's header is made safe by `line_safe_text` instead.
     [[nodiscard]] inline std::string escaped_author_text(std::string_view authored)
     {
         constexpr std::string_view hexDigits = "0123456789abcdef";
@@ -2768,6 +2771,159 @@ template <typename Rep = Rational>
     }
 
     return renderedTrace;
+}
+
+
+namespace detail
+{
+    /// @p shownText with a backslash, and every character that could end a
+    /// line, escaped as `escaped_author_text` escapes them -- and brackets
+    /// and semicolons left as they are. For a rendered formula in a
+    /// derivation's header: `render` writes its own brackets and
+    /// semicolons, which must read as written, while the author's symbols in
+    /// it may hold anything, and none of it may end the line.
+    [[nodiscard]] inline std::string line_safe_text(std::string_view shownText)
+    {
+        std::string escaped;
+        escaped.reserve(shownText.size());
+        for (char const glyph: shownText)
+        {
+            auto const byte = static_cast<unsigned char>(glyph);
+            if (glyph == '\\' || byte < 0x20 || byte == 0x7f)
+                escaped += escaped_author_text(std::string_view { &glyph, 1 });
+            else
+                escaped += glyph;
+        }
+        return escaped;
+    }
+
+    /// Each definition of @p definitionSet as plain text, every symbol
+    /// written as @p vocabulary says, in the order given; @p Is counts them.
+    template <typename... Ds, Vocabulary V, std::size_t... Is>
+    [[nodiscard]] std::array<std::string, sizeof...(Ds)> rendered_definitions(Calculation<Ds...> const& definitionSet,
+                                                                              V const& vocabulary,
+                                                                              std::index_sequence<Is...>)
+    {
+        return { line_safe_text(render<Dialect::Plain>(std::get<Is>(definitionSet.definitions).expression, vocabulary))... };
+    }
+
+    /// The value of @p shown's block as its header states it: in the unit it
+    /// was declared in, with that unit's symbol; why its calculation failed;
+    /// or `(no value)`.
+    [[nodiscard]] inline std::string block_value_text(WorksheetEntry const& shown)
+    {
+        if (shown.error.has_value())
+            return std::string { describe(*shown.error) };
+        if (!shown.value.has_value())
+            return "(no value)";
+        std::string valueText = number_text(*shown.value);
+        std::string const unitSymbol = unit_symbol_text(shown.unit);
+        if (!unitSymbol.empty())
+            valueText += " " + unitSymbol;
+        return valueText;
+    }
+
+    /// The header of @p shown's block, @p definitionText being its
+    /// definition as rendered: `symbol = definition = value` for a value
+    /// calculated, and `symbol = value, entered by hand in place of
+    /// definition` for one overridden.
+    [[nodiscard]] inline std::string block_header(WorksheetEntry const& shown, std::string const& definitionText)
+    {
+        std::string const symbolText = escaped_author_text(shown.symbol);
+        if (shown.kind == WorksheetEntryKind::Overridden)
+            return symbolText + " = "
+                   + (shown.value.has_value() ? block_value_text(shown) + ", entered by hand"
+                                              : std::string { "(entered by hand as empty)" })
+                   + " in place of " + definitionText;
+        return symbolText + " = " + definitionText + " = " + block_value_text(shown);
+    }
+} // namespace detail
+
+/// Renders @p explained, a worksheet's derivation, as text a person reads,
+/// bounded by @p options.maxSteps.
+///
+/// Each calculated value's block opens with a header, `symbol = definition =
+/// value` -- the definition as `render` writes it, and the value in the unit
+/// the quantity was declared in, or why calculating it failed, or `(no
+/// value)` -- followed by its steps, indented and numbered from one within
+/// the block, each line as `render_trace` writes it. An overridden value's
+/// block is the header alone: `symbol = value, entered by hand in place of
+/// definition`. The inputs read follow under a line `inputs`, one indented
+/// line each, as `render_trace` writes a variable's step.
+///
+/// **One budget bounds it all.** Every header, step and input line spends
+/// one unit of @p options.maxSteps, and a step showing a series spends one
+/// more on each element it shows, as in `render_trace`. When it runs out,
+/// one last line says how many headers, steps and input lines were left
+/// out: `... 12 further steps not shown`. `render_derivation(explained,
+/// {})` does not compile, for the reason `StepLimit` gives.
+///
+/// Nothing is rendered for a derivation with no blocks.
+template <Described Result, typename... Ds, Vocabulary V>
+[[nodiscard]] std::string render_derivation(ExplainedWorksheet<Result, Calculation<Ds...>, V> const& explained,
+                                            TraceRenderOptions options)
+{
+    using Graph = detail::CalculationGraph<Ds...>;
+    std::string derivationText;
+    if constexpr (Graph::valid)
+    {
+        std::array<std::string, sizeof...(Ds)> const definitionTexts =
+            detail::rendered_definitions(explained.calculation, explained.vocabulary, std::index_sequence_for<Ds...> {});
+        std::size_t budget = options.maxSteps.value;
+        std::size_t notShown = 0;
+        bool inputsHeaded = false;
+        for (WorksheetEntry const& shown: explained.entries)
+        {
+            if (shown.kind == WorksheetEntryKind::Input)
+            {
+                if (budget == 0)
+                {
+                    ++notShown;
+                    continue;
+                }
+                --budget;
+                if (!inputsHeaded)
+                    derivationText += "inputs\n";
+                inputsHeaded = true;
+                derivationText += "  ";
+                derivationText += shown.trace.empty()
+                                      ? detail::escaped_author_text(shown.symbol) + " = " + detail::block_value_text(shown)
+                                      : detail::step_line(shown.trace, shown.trace.root(), budget);
+                derivationText += "\n";
+                continue;
+            }
+
+            std::size_t const stepCount = shown.kind == WorksheetEntryKind::Calculated ? shown.trace.steps.size() : 0;
+            if (budget == 0)
+            {
+                notShown += 1 + stepCount;
+                continue;
+            }
+            --budget;
+            bool const defined = shown.slot >= Graph::inputCount && shown.slot < Graph::slotCount;
+            derivationText += detail::block_header(
+                shown, defined ? definitionTexts[shown.slot - Graph::inputCount] : std::string { "(no definition)" });
+            derivationText += "\n";
+            for (std::size_t stepIndex = 0; stepIndex < stepCount; ++stepIndex)
+            {
+                if (budget == 0)
+                {
+                    notShown += stepCount - stepIndex;
+                    break;
+                }
+                --budget;
+                derivationText += "  " + std::to_string(stepIndex + 1) + ". ";
+                derivationText += detail::step_line(
+                    shown.trace, stepIndex, budget, detail::conformity_limits_of(shown.trace, stepIndex));
+                derivationText += "\n";
+            }
+        }
+
+        if (notShown > 0)
+            derivationText += "... " + std::to_string(notShown)
+                              + (notShown == 1 ? " further step not shown\n" : " further steps not shown\n");
+    }
+    return derivationText;
 }
 
 } // namespace formula

@@ -78,6 +78,17 @@ may break it, and each such change is recorded here.
   step, its source `Derived`, and has a block of its own. An override or an input is one step. A
   value only a `when()` branch not taken reads gets no block, and a failed value is a block like any
   other. Recording the blocks calculates nothing again.
+- A calculation as text, in `render.hpp`: `render(calculation, vocabulary)` writes one `symbol =
+  expression` line per definition, in the order the definitions are calculated, in any dialect;
+  `describe_graph` lists the inputs and then what each calculated value reads, the arrows aligned;
+  and `to_dot` writes the graph in Graphviz's DOT language, the inputs as boxes and the calculated
+  values as ellipses, each node labelled with its symbol, a `"` or `\` in it escaped.
+- `render_derivation(explained, { .maxSteps = n })`, in `trace_render.hpp`, renders what
+  `explain_worksheet` recorded: each block under a header `symbol = definition = value` -- or
+  `symbol = value, entered by hand in place of definition` for an override -- with its steps
+  numbered within it as `render_trace` writes them, and the inputs last. One step limit bounds every
+  header, step and input line, and one last line says how many were left out;
+  `render_derivation(explained, {})` does not compile.
 
 ### Changed
 
