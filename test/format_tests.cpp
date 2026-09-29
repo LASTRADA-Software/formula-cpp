@@ -43,6 +43,14 @@ struct OverPreciseLength: formula::Quantity<OverPreciseLength, "l_u", "a length 
 {
 };
 
+/// A unit declaring fewer decimals than `DecimalPlaces` spans: -19. Invented.
+inline constexpr formula::Unit UnderPrecise { .dimension = formula::dim::Length,
+                                              .symbolText = formula::symbol("v"),
+                                              .decimals = -19 };
+struct UnderPreciseLength: formula::Quantity<UnderPreciseLength, "l_v", "a length in an under-precise unit", UnderPrecise>
+{
+};
+
 /// A unit declaring -3 decimals -- a value rounded at it is rounded to thousands. Invented.
 inline constexpr formula::Unit Coarse { .dimension = formula::dim::Length,
                                         .symbolText = formula::symbol("ku"),
@@ -226,6 +234,8 @@ TEST_CASE("a spec the grammar does not allow is refused at run time, in the libr
     Measured<OverPreciseLength> const overPrecise { Rational { 1, 3 } };
     CHECK(refusalOf("{:~HalfEven}", overPrecise).starts_with("formula: a number format rounds to 0 to 18 decimal places"));
     CHECK(std::format("{:~.3HalfEven}", overPrecise) == "\xe2\x89\x88" "0.333 u");
+    CHECK(refusalOf("{:~HalfEven}", Measured<UnderPreciseLength> { third })
+              .starts_with("formula: a number format rounds to 0 to 18 decimal places"));
     CHECK(refusalOf("{:~HalfEven}", Measured<ImpactWork> { third }).empty());
 
     // `~Mode` at a unit's negative decimals divides the value by 10^3 in
