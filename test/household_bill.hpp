@@ -2,9 +2,10 @@
 #pragma once
 
 // A household's monthly electricity bill: ten inputs and fifteen calculated
-// values, the calculation the worksheet tests share. The units this library
-// does not ship are declared here, as any caller may declare one; money is
-// dimensionless, as examples/composition.cpp explains.
+// values, the calculation the worksheet tests share. Its units are declared
+// here, as any caller may declare one, and its money is a bare number;
+// examples/electricity_bill.cpp states the same bill in the library's units,
+// with currencies of their own.
 //
 // In an unnamed namespace, as each test's own fixtures are: every test file
 // that includes it gets a copy of its own.

@@ -421,7 +421,7 @@ TEST_CASE("a derivation after an early cutoff describes the current inputs", "[c
     formula::WorksheetEntry const* const fridgeKwh = block_of(explained, "fridge_kwh");
     REQUIRE(fridgeKw != nullptr);
     REQUIRE(fridgeKwh != nullptr);
-    // In the coherent unit: 400 W, and 12 h is 43,200 s.
+    // In the coherent unit: 400 W, and 12 h is 43200 s.
     CHECK(named_step(*fridgeKw, "fridge_w").value == rat(400));
     CHECK(named_step(*fridgeKwh, "fridge_kw").value == rat(400));
     CHECK(named_step(*fridgeKwh, "fridge_h").value == rat(43200));
