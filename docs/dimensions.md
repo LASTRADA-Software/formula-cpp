@@ -72,7 +72,7 @@ Dimension const density = dim::Mass / volume;
 
 prints, and matches the named constants exactly:
 
-```
+```text
 area (length * length) = L^2
 volume (area * length) = L^3
 density (mass / volume) = L^-3 M^1
@@ -98,7 +98,7 @@ denominator always positive) rather than a plain integer:
 Dimension const rootOfLength = formula::nth_root(dim::Length, 2);
 ```
 
-```
+```text
 sqrt(length) = L^(1/2)
 sqrt(length) has exponent one half: yes
 ```
@@ -158,7 +158,7 @@ factor of time, but they are different dimensions: the type system keeps a
 power and an energy apart. The worked example converts one kilowatt-hour, and
 its output below really is copied from the program:
 
-```
+```text
 1 kWh = 3600000 J
 ```
 
@@ -191,7 +191,7 @@ read `converted(30, 1, unit::Megapascal, unit::Pascal)` and
 The worked example does perform this round trip on a volume, though, and its
 output below really is copied from the program:
 
-```
+```text
 450 l = 9/20 m3
 ... converted back = 450 l
 volume round trip exact: yes
@@ -260,7 +260,7 @@ The worked example converts 100 degC, and its output below really is copied from
 the program, confirming the round trip holds anyway, offset included. The last
 two lines are the two Fahrenheit conversions above:
 
-```
+```text
 100 degC = 7463/20 K
 ... converted back = 100 degC
 temperature round trip exact: yes
@@ -273,13 +273,14 @@ temperature round trip exact: yes
 Every unit declares a display precision (`decimals`) and, optionally, a valid
 range (`bounds`), and both apply to a *computed* value, not just to a literal:
 
+<!-- snippet: not from the example -->
 ```cpp
 Rational const computedMass = genericDensity * volumeInCubicMetres;   // 450/7 kg
 Rational const roundedMass =
     *formula::checked_round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
 ```
 
-```
+```text
 computed mass = 450/7 kg
 rounded to kg's declared precision (3 places) = 64.286 kg
 ```
@@ -300,7 +301,7 @@ against that unit's declared `bounds`, and returns one of five
 anything, and reporting it as "within bounds" would make an unvalidated value
 indistinguishable from one that was actually checked and passed:
 
-```
+```text
 unbounded unit (litre) reports: no bounds declared for this unit
 bounded gauge at 42%: within the declared bounds
 ```
@@ -330,7 +331,7 @@ Dimension const tariff = euros / dim::Energy;
 Dimension const tariffTimesEnergy = tariff * dim::Energy;
 ```
 
-```
+```text
 tariff (EUR / energy) = L^-2 M^-1 T^2 EUR^1
 tariff * energy = EUR^1
 ```
@@ -374,7 +375,7 @@ constexpr Unit Yen { .dimension = formula::base_dimension("JPY"),
 
 and converts 250 euros into cents, back into euros, and then into yen:
 
-```
+```text
 250 EUR = 25000 ct
 ... converted back = 250 EUR
 250 EUR to JPY: argument outside the domain of the operation
@@ -449,6 +450,7 @@ depends on where you are:
   the case the negative-compile tests pin.
 - **At run time**, from a value the compiler cannot see, the sentinel aborts.
 
+<!-- snippet: not from the example -->
 ```cpp
 constexpr auto bad = formula::exponent(1, 0);   // does not compile
 auto const alsoBad = formula::exponent(1, argc - 1);   // compiles; aborts if argc == 1

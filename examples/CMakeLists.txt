@@ -43,6 +43,20 @@ endfunction()
 formula_add_example(simple simple.cpp "w/c = 0.600000 \\(computed\\)")
 formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes")
 formula_add_example(dimensions_and_units dimensions_and_units.cpp "all checks passed: yes")
+
+# Every ```text block of docs/dimensions.md must be a run of lines the example
+# prints, and every ```cpp block a run of lines of its source, unless it is
+# marked as not from the example.
+add_test(NAME docs.dimensions-output
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_EXE=$<TARGET_FILE:formula-cpp-example-dimensions_and_units>"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/dimensions.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideOutput.cmake")
+add_test(NAME docs.dimensions-snippets
+    COMMAND "${CMAKE_COMMAND}"
+            -D "EXAMPLE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/dimensions_and_units.cpp"
+            -D "GUIDE=${PROJECT_SOURCE_DIR}/docs/dimensions.md"
+            -P "${PROJECT_SOURCE_DIR}/cmake/CheckGuideSnippets.cmake")
 formula_add_example(quantities quantities.cpp "all checks passed: yes")
 formula_add_example(expressions expressions.cpp "all checks passed: yes")
 formula_add_example(citations citations.cpp "all checks passed: yes")
