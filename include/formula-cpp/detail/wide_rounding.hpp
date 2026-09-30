@@ -42,7 +42,9 @@ template <std::size_t L>
 [[nodiscard]] constexpr WideRatio<L> reduced(WideRatio<L> const& unreduced) noexcept
 {
     if (unreduced.numerator.is_zero())
-        return WideRatio<L> { false, WideUnsigned<L> {}, WideUnsigned<L>::from_u64(1) };
+        return WideRatio<L> {
+            .negative = false, .numerator = WideUnsigned<L> {}, .denominator = WideUnsigned<L>::from_u64(1)
+        };
     WideUnsigned<L> const common = gcd(unreduced.numerator, unreduced.denominator);
     return WideRatio<L> { unreduced.negative, divmod(unreduced.numerator, common).quotient,
                           divmod(unreduced.denominator, common).quotient };

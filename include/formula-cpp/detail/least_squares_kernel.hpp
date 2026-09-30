@@ -139,20 +139,16 @@ template <std::size_t L>
     return common;
 }
 
-/// Adds @p addend into @p runningTotal; false when either overflowed. The
+/// @p runningTotal plus @p addend; nothing when either overflowed. The
 /// `type_identity_t` keeps `L` deduced from the total alone, so a plain
 /// `WideSigned` converts to the optional.
 template <std::size_t L>
-[[nodiscard]] constexpr bool accumulate(WideSigned<L>& runningTotal,
-                                        std::type_identity_t<std::optional<WideSigned<L>>> const& addend) noexcept
+[[nodiscard]] constexpr std::optional<WideSigned<L>> accumulate(
+    WideSigned<L> const& runningTotal, std::type_identity_t<std::optional<WideSigned<L>>> const& addend) noexcept
 {
     if (!addend.has_value())
-        return false;
-    std::optional<WideSigned<L>> const grown = add_checked_or_none(runningTotal, *addend);
-    if (!grown.has_value())
-        return false;
-    runningTotal = *grown;
-    return true;
+        return std::nullopt;
+    return add_checked_or_none(runningTotal, *addend);
 }
 
 /// Whether every value of @p observed equals the first: compared with `==`
@@ -244,20 +240,33 @@ template <std::size_t K>
         if (!scaledResponse.has_value())
             return std::unexpected { ArithmeticError::Overflow };
 
-        bool held = accumulate(sums.responseTotal, scaledResponse);
-        held = held && accumulate(sums.responseSquareTotal, mul_checked_or_none(*scaledResponse, *scaledResponse));
-        for (std::size_t regressorAt = 0; regressorAt < K && held; ++regressorAt)
-        {
-            held = accumulate(sums.regressorTotals[regressorAt], scaledRegressors[regressorAt]);
-            held = held
-                   && accumulate(sums.responseCrossTotals[regressorAt],
-                                 mul_checked_or_none(scaledRegressors[regressorAt], *scaledResponse));
-            for (std::size_t otherAt = regressorAt; otherAt < K && held; ++otherAt)
-                held = accumulate(sums.crossTotals[regressorAt][otherAt],
-                                  mul_checked_or_none(scaledRegressors[regressorAt], scaledRegressors[otherAt]));
-        }
-        if (!held)
+        std::optional<Sum> const responseTotal = accumulate(sums.responseTotal, scaledResponse);
+        std::optional<Sum> const responseSquareTotal =
+            accumulate(sums.responseSquareTotal, mul_checked_or_none(*scaledResponse, *scaledResponse));
+        if (!responseTotal.has_value() || !responseSquareTotal.has_value())
             return std::unexpected { ArithmeticError::Overflow };
+        sums.responseTotal = *responseTotal;
+        sums.responseSquareTotal = *responseSquareTotal;
+        for (std::size_t regressorAt = 0; regressorAt < K; ++regressorAt)
+        {
+            std::optional<Sum> const regressorTotal =
+                accumulate(sums.regressorTotals[regressorAt], scaledRegressors[regressorAt]);
+            std::optional<Sum> const responseCrossTotal = accumulate(
+                sums.responseCrossTotals[regressorAt], mul_checked_or_none(scaledRegressors[regressorAt], *scaledResponse));
+            if (!regressorTotal.has_value() || !responseCrossTotal.has_value())
+                return std::unexpected { ArithmeticError::Overflow };
+            sums.regressorTotals[regressorAt] = *regressorTotal;
+            sums.responseCrossTotals[regressorAt] = *responseCrossTotal;
+            for (std::size_t otherAt = regressorAt; otherAt < K; ++otherAt)
+            {
+                std::optional<Sum> const crossTotal = accumulate(
+                    sums.crossTotals[regressorAt][otherAt],
+                    mul_checked_or_none(scaledRegressors[regressorAt], scaledRegressors[otherAt]));
+                if (!crossTotal.has_value())
+                    return std::unexpected { ArithmeticError::Overflow };
+                sums.crossTotals[regressorAt][otherAt] = *crossTotal;
+            }
+        }
     }
     return sums;
 }
@@ -337,14 +346,16 @@ template <std::size_t L>
 template <std::size_t L>
 [[nodiscard]] constexpr WideRatio<L> points_ratio(std::size_t rowCount) noexcept
 {
-    return WideRatio<L> { false, WideUnsigned<L>::from_u64(rowCount), WideUnsigned<L>::from_u64(1) };
+    return WideRatio<L> { .negative = false,
+                          .numerator = WideUnsigned<L>::from_u64(rowCount),
+                          .denominator = WideUnsigned<L>::from_u64(1) };
 }
 
 /// A non-negative integer as a signed one.
 template <std::size_t L>
 [[nodiscard]] constexpr WideSigned<L> as_signed(WideUnsigned<L> const& magnitudeOnly) noexcept
 {
-    return WideSigned<L> { false, magnitudeOnly };
+    return WideSigned<L> { .negative = false, .magnitude = magnitudeOnly };
 }
 
 /// The line through the points, in the closed form of the sums: the
@@ -399,7 +410,7 @@ template <std::size_t K, std::size_t L>
 [[nodiscard]] constexpr std::expected<std::array<WideSigned<L>, K + 1>, ArithmeticError> fraction_free_solve(
     std::array<std::array<WideSigned<L>, K + 1>, K> augmented) noexcept
 {
-    WideSigned<L> previousPivot { false, WideUnsigned<L>::from_u64(1) };
+    WideSigned<L> previousPivot { .negative = false, .magnitude = WideUnsigned<L>::from_u64(1) };
     for (std::size_t stage = 0; stage < K; ++stage)
     {
         std::size_t pivotAt = stage;
@@ -476,7 +487,7 @@ template <std::size_t K>
     if (!solved.has_value())
         return std::unexpected { solved.error() };
     Sum const& determinant = (*solved)[K];
-    Sum const rowTotal { false, WideUnsigned<W>::from_u64(rowCount) };
+    Sum const rowTotal { .negative = false, .magnitude = WideUnsigned<W>::from_u64(rowCount) };
     Sum const responseDenominator = widened<W>(as_signed(sums.responseDenominator));
     Sum const responseTotal = widened<W>(sums.responseTotal);
     Sum const responseSpread = widened<W>(centred.responseSpread);
@@ -501,8 +512,11 @@ template <std::size_t K>
         constantNumerator = constantNumerator.has_value() && totalTimesNumerator.has_value()
                                 ? sub_checked_or_none(*constantNumerator, *totalTimesNumerator)
                                 : std::nullopt;
-        if (!accumulate(determinationNumerator, mul_checked_or_none(widened<W>(centred.responseCoSpread[stage]), (*solved)[stage])))
+        std::optional<Sum> const grownDetermination = accumulate(
+            determinationNumerator, mul_checked_or_none(widened<W>(centred.responseCoSpread[stage]), (*solved)[stage]));
+        if (!grownDetermination.has_value())
             return std::unexpected { ArithmeticError::Overflow };
+        determinationNumerator = *grownDetermination;
     }
     std::optional<Sum> const rowsTimesDenominator = mul_checked_or_none(rowTotal, responseDenominator);
     std::optional<Sum> const constantDenominator =
@@ -531,7 +545,9 @@ template <std::size_t K>
     std::expected<RegressionSums<K>, ArithmeticError> const sums = regression_sums<K>(regressorColumns, responses);
     if (!sums.has_value())
         return std::unexpected { sums.error() };
-    WideSigned<regressionSumLimbs> const rowCount { false, WideUnsigned<regressionSumLimbs>::from_u64(responses.size()) };
+    WideSigned<regressionSumLimbs> const rowCount {
+        .negative = false, .magnitude = WideUnsigned<regressionSumLimbs>::from_u64(responses.size())
+    };
     std::expected<CentredSums<K>, ArithmeticError> const centred = centred_sums<K>(*sums, rowCount);
     if (!centred.has_value())
         return std::unexpected { centred.error() };

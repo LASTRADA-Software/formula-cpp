@@ -296,7 +296,7 @@ struct LinearLeastSquares
         }
 
         // n Sxx - Sx^2, n Sxy - Sx Sy and Sy Sxx - Sx Sxy.
-        Signed const pointCount { false, Wide::from_u64(domainPoints.size()) };
+        Signed const pointCount { .negative = false, .magnitude = Wide::from_u64(domainPoints.size()) };
         std::optional<Signed> const countedSquares = detail::mul_checked_or_none(pointCount, sumOfSquares);
         std::optional<Signed> const squaredSum = detail::mul_checked_or_none(sumOfPoints, sumOfPoints);
         std::optional<Signed> const countedProducts = detail::mul_checked_or_none(pointCount, sumOfProducts);

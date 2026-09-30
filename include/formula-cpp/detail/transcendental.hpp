@@ -192,15 +192,24 @@ namespace formula::detail
         }
     }
 
-    /// |ln(a/b)| enclosed in units of 2^-128, and whether ln(a/b) is negative (a < b).
+    /// Which side of zero a logarithm lies on: below it for an argument below one.
+    enum class LogarithmSign : std::uint8_t
+    {
+        /// The argument is above one.
+        Positive,
+        /// The argument is below one: the logarithm's ends are its magnitude's, negated and exchanged.
+        Negative,
+    };
+
+    /// |ln(a/b)| enclosed in units of 2^-128, and on which side of zero ln(a/b) lies.
     struct LogarithmMagnitude
     {
         /// The lower end of |ln(a/b)| * 2^128.
         KernelWord lower;
         /// The upper end.
         KernelWord upper;
-        /// Whether the logarithm is below zero.
-        bool negative;
+        /// `Negative` for a < b.
+        LogarithmSign sign;
     };
 
     /// The enclosure of |ln(@p positive)| -- see the file comment. @pre @p positive > 0 and != 1.
@@ -208,8 +217,8 @@ namespace formula::detail
     {
         auto larger = static_cast<std::uint64_t>(positive.numerator());
         auto smaller = static_cast<std::uint64_t>(positive.denominator());
-        bool const negative = larger < smaller;
-        if (negative)
+        LogarithmSign const logarithmSign = larger < smaller ? LogarithmSign::Negative : LogarithmSign::Positive;
+        if (logarithmSign == LogarithmSign::Negative)
             std::swap(larger, smaller);
         // B = smaller * 2^doublings <= larger < 2B. Both are below 2^63, so the shift stays in 64 bits.
         int doublings = static_cast<int>(std::bit_width(larger)) - static_cast<int>(std::bit_width(smaller));
@@ -232,15 +241,19 @@ namespace formula::detail
         std::optional<KernelWord> const upperEnd = add_checked_or_none(*ln2Above, *twiceSlacked);
         if (!lowerEnd || !upperEnd)
             return std::nullopt;
-        return LogarithmMagnitude { *lowerEnd, *upperEnd, negative };
+        return LogarithmMagnitude { .lower = *lowerEnd, .upper = *upperEnd, .sign = logarithmSign };
     }
 
-    /// An enclosure from the magnitudes of its ends, over 2^128, and the sign.
-    [[nodiscard]] constexpr Enclosure signed_enclosure(KernelWord const& nearer, KernelWord const& farther, bool negative) noexcept
+    /// An enclosure from the magnitudes of its ends, over 2^128, on the side of zero @p logarithmSign says.
+    [[nodiscard]] constexpr Enclosure signed_enclosure(KernelWord const& nearer,
+                                                       KernelWord const& farther,
+                                                       LogarithmSign logarithmSign) noexcept
     {
-        if (negative)
-            return { { true, farther, KernelOne }, { true, nearer, KernelOne } };
-        return { { false, nearer, KernelOne }, { false, farther, KernelOne } };
+        if (logarithmSign == LogarithmSign::Negative)
+            return { .lower = { .negative = true, .numerator = farther, .denominator = KernelOne },
+                     .upper = { .negative = true, .numerator = nearer, .denominator = KernelOne } };
+        return { .lower = { .negative = false, .numerator = nearer, .denominator = KernelOne },
+                 .upper = { .negative = false, .numerator = farther, .denominator = KernelOne } };
     }
 
     /// ln(@p positive), enclosed. @pre @p positive > 0 and != 1.
@@ -249,7 +262,7 @@ namespace formula::detail
         std::optional<LogarithmMagnitude> const natural = natural_log_magnitude(positive);
         if (!natural)
             return std::nullopt;
-        return signed_enclosure(natural->lower, natural->upper, natural->negative);
+        return signed_enclosure(natural->lower, natural->upper, natural->sign);
     }
 
     /// log10(@p positive) = ln(@p positive) * log10(e), enclosed. @pre @p positive > 0, not a power of ten.
@@ -265,7 +278,7 @@ namespace formula::detail
         std::optional<KernelWord> const farther = add_small_checked_or_none(shift_right(*upperProduct, KernelFractionBits), 1U);
         if (!farther)
             return std::nullopt;
-        return signed_enclosure(shift_right(*lowerProduct, KernelFractionBits), *farther, natural->negative);
+        return signed_enclosure(shift_right(*lowerProduct, KernelFractionBits), *farther, natural->sign);
     }
 
     /// exp(@p argument), enclosed -- see the file comment. @pre @p argument != 0 and -43 <= @p argument <= 44.
@@ -332,11 +345,13 @@ namespace formula::detail
             std::optional<KernelWord> const farther = shift_left_checked_or_none(*slacked, shifts);
             if (!nearer || !farther)
                 return std::nullopt;
-            return Enclosure { { false, *nearer, KernelOne }, { false, *farther, KernelOne } };
+            return Enclosure { .lower = { .negative = false, .numerator = *nearer, .denominator = KernelOne },
+                               .upper = { .negative = false, .numerator = *farther, .denominator = KernelOne } };
         }
         std::optional<KernelWord> const denominatorPower = shift_left_checked_or_none(KernelOne, shifts);
         if (!denominatorPower)
             return std::nullopt;
-        return Enclosure { { false, *series, *denominatorPower }, { false, *slacked, *denominatorPower } };
+        return Enclosure { .lower = { .negative = false, .numerator = *series, .denominator = *denominatorPower },
+                           .upper = { .negative = false, .numerator = *slacked, .denominator = *denominatorPower } };
     }
 } // namespace formula::detail
