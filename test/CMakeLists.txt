@@ -51,6 +51,7 @@ add_executable(formula-cpp-tests
     trace_render_tests.cpp
     rounding_node_tests.cpp
     rounded_root_tests.cpp
+    transcendental_tests.cpp
     critical_value_tests.cpp
     precision_tests.cpp
     predicate_tests.cpp
