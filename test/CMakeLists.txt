@@ -713,6 +713,24 @@ formula_add_negative_test(overlay_derived_on_series_quantity
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
 
+# A logarithm or an exponential of a quantity: refused once, through each
+# factory and around them, and silent over an operand refused already.
+formula_add_negative_test(transcendental_ln_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_log10_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_exp_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_no_factory_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_refused_operand
+    "formula: this curve is read at a point that does not measure the dimension of its domain"
+    REJECT "formula: the argument of this logarithm or exponential is not dimensionless")
+# Two mistakes, two messages: the logarithm's own refusal does not hide the
+# sum's, since fixing either leaves the other.
+formula_add_negative_test(transcendental_then_addition
+    "formula: the two sides of this addition or subtraction measure different dimensions")
+
 formula_add_negative_test(documented_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
 

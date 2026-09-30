@@ -2,13 +2,17 @@
 #pragma once
 
 /// @file
-/// Function nodes: integer powers, roots, and pi.
+/// Function nodes: integer powers, roots, pi, logarithms and the exponential.
 ///
 /// Powers and roots act on the dimension as well as the number -- the square of
 /// a length is an area, the cube root of a volume is a length -- which is why
 /// they are nodes rather than free functions a caller applies to an evaluated
 /// number. A root may also produce a fractional exponent, which is exactly why
 /// `Dimension` carries rational exponents.
+///
+/// Logarithms and the exponential are nodes for the page's and the trace's
+/// sake. They act on no dimension because they accept none -- the argument must
+/// be a bare number -- and are exact only where their value is rational.
 
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -17,6 +21,10 @@
 #include <formula-cpp/sink.hpp>
 
 #include <cmath>
+#include <cstdint>
+#include <expected>
+#include <optional>
+#include <string_view>
 
 namespace formula
 {
@@ -85,6 +93,100 @@ struct PiNode: NodeBase
     static constexpr Dimension dimension = dim::Scalar;
 };
 
+/// Which function a `TranscendentalNode` takes of its argument.
+enum class Transcendental : std::uint8_t
+{
+    /// The natural logarithm, `ln`: to base e.
+    NaturalLogarithm,
+    /// The decimal logarithm, `log10`: to base 10.
+    DecimalLogarithm,
+    /// The exponential, `exp`: e raised to the argument.
+    Exponential,
+};
+
+namespace detail
+{
+    /// Fails to compile when the argument of a logarithm or an exponential is not dimensionless: of a
+    /// quantity, ln(2 m) would be ln 2 + ln(m), a number that changes with the unit the quantity is read
+    /// in.
+    ///
+    /// Asked only of an operand not refused already (`refused_already`), so that an operand refused for
+    /// another reason draws that refusal alone. Here, beside `RequirePositiveRootDegree`, and not in
+    /// `expression.hpp`, whose line numbers the guides quote.
+    template <typename Operand>
+    struct RequireDimensionlessArgument
+    {
+        static_assert(refused_already<Operand>() || is_dimensionless(Operand::dimension),
+                      "formula: the argument of this logarithm or exponential is not dimensionless; ln, log10 "
+                      "and exp take a bare number, and of a quantity they would change with the unit it is read "
+                      "in -- divide it by a reference value of its own dimension, or read it with "
+                      "numeric_value_of; the argument appears in this diagnostic as the template argument of "
+                      "RequireDimensionlessArgument");
+
+        static constexpr bool value = true;
+    };
+
+    /// How a formula writes @p function -- `ln`, `log10`, `exp` -- in plain text, in Markdown and in a
+    /// trace: the one spelling `render.hpp` and `trace_render.hpp` both read, so that a derivation names
+    /// the function its formula names.
+    [[nodiscard]] constexpr std::string_view transcendental_name(Transcendental function) noexcept
+    {
+        switch (function)
+        {
+            case Transcendental::NaturalLogarithm:
+                return "ln";
+            case Transcendental::DecimalLogarithm:
+                return "log10";
+            case Transcendental::Exponential:
+                return "exp";
+        }
+        return "unknown function";
+    }
+
+    /// k when @p positive is exactly 10^k, and nothing otherwise. Read off the reduced fraction: a power
+    /// of ten is a power of ten over 1, or 1 over a power of ten, so k runs from -18 to 18, the powers of
+    /// ten `Rational::Int` holds. @pre @p positive is above zero.
+    [[nodiscard]] constexpr std::optional<int> power_of_ten_exponent(Rational positive) noexcept
+    {
+        bool const whole = positive.denominator() == 1;
+        if (!whole && positive.numerator() != 1)
+            return std::nullopt;
+        Rational::Int remaining = whole ? positive.numerator() : positive.denominator();
+        int tens = 0;
+        while (remaining % 10 == 0)
+        {
+            remaining /= 10;
+            ++tens;
+        }
+        if (remaining != 1)
+            return std::nullopt;
+        return whole ? tens : -tens;
+    }
+} // namespace detail
+
+/// The natural logarithm, the decimal logarithm or the exponential -- @p F -- of @p Operand, a
+/// dimensionless expression. The result is dimensionless too.
+template <Transcendental F, Node Operand>
+struct TranscendentalNode: NodeBase
+{
+    static_assert(detail::RequireDimensionlessArgument<Operand>::value);
+
+    /// The argument: a bare number.
+    ///
+    /// Named `operand`, as `ConstantRewriteOperand` (`overlay.hpp`) reads it, and deliberately no `{}`
+    /// default member initialiser -- see `Corrections` (`lookup.hpp`).
+    Operand operand;
+
+    /// Which function this is. Named `function`: the trace recorder reads a node's `exponent`, `degree`,
+    /// `places`, `digits`, `mode`, `unit` and `keyUnit` by name, and this node declares none of them.
+    static constexpr Transcendental function = F;
+    /// A bare number, as the argument is.
+    static constexpr Dimension dimension = dim::Scalar;
+    /// Whether its operand was refused -- see `detail::refused_already`. Its own check is not counted:
+    /// `ln(L) + m`, over a length and a mass, is two mistakes, and the sum says so too.
+    static constexpr detail::RefusedFlag refused = detail::refused_already<Operand>();
+};
+
 /// `operand` raised to the integer power `Exponent`: `pow<2>(var<Length>)`.
 template <int Exponent, Node Operand>
 [[nodiscard]] constexpr auto pow(Operand operand) noexcept
@@ -115,6 +217,28 @@ template <int Degree, Node Operand>
 
 /// The spelling of pi in a formula.
 inline constexpr PiNode pi {};
+
+/// The natural logarithm of `operand`, a dimensionless expression:
+/// `ln(var<Count> / var<InitialCount>)`. Takes a formula node only -- a bare `Rational` is not one.
+template <Node Operand>
+[[nodiscard]] constexpr auto ln(Operand operand) noexcept
+{
+    return TranscendentalNode<Transcendental::NaturalLogarithm, Operand> { {}, operand };
+}
+
+/// The decimal logarithm of `operand`, a dimensionless expression.
+template <Node Operand>
+[[nodiscard]] constexpr auto log10(Operand operand) noexcept
+{
+    return TranscendentalNode<Transcendental::DecimalLogarithm, Operand> { {}, operand };
+}
+
+/// The exponential of `operand`, a dimensionless expression: e raised to it.
+template <Node Operand>
+[[nodiscard]] constexpr auto exp(Operand operand) noexcept
+{
+    return TranscendentalNode<Transcendental::Exponential, Operand> { {}, operand };
+}
 
 // ---------------------------------------------------------------- evaluation
 
@@ -161,6 +285,39 @@ struct RepFunctions<Rational>
     {
         return Pi;
     }
+
+    /// The natural logarithm of `argument`, exactly: 0 at 1. Every other positive rational has an
+    /// irrational logarithm, which is `Inexact`; zero and below have none, which is `DomainError`.
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> natural_log(Rational argument) noexcept
+    {
+        if (argument.sign() <= 0)
+            return std::unexpected { ArithmeticError::DomainError };
+        if (argument == Rational { 1 })
+            return Rational {};
+        return std::unexpected { ArithmeticError::Inexact };
+    }
+
+    /// The decimal logarithm of `argument`, exactly: k at 10^k, for k from -18 to 18. Every other positive
+    /// rational has an irrational one, which is `Inexact`; zero and below have none, which is
+    /// `DomainError`.
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> decimal_log(Rational argument) noexcept
+    {
+        if (argument.sign() <= 0)
+            return std::unexpected { ArithmeticError::DomainError };
+        std::optional<int> const tens = detail::power_of_ten_exponent(argument);
+        if (tens.has_value())
+            return Rational { *tens };
+        return std::unexpected { ArithmeticError::Inexact };
+    }
+
+    /// e raised to `argument`, exactly: 1 at 0. At every other rational it is irrational, however large,
+    /// which is `Inexact`.
+    [[nodiscard]] static constexpr std::expected<Rational, ArithmeticError> exponential(Rational argument) noexcept
+    {
+        if (argument.is_zero())
+            return Rational { 1 };
+        return std::unexpected { ArithmeticError::Inexact };
+    }
 };
 
 /// Binary floating-point powers, roots and pi.
@@ -189,6 +346,32 @@ struct RepFunctions<double>
     [[nodiscard]] static std::expected<double, ArithmeticError> pi_value() noexcept
     {
         return 3.141592653589793238462643383279502884;
+    }
+
+    /// The natural logarithm, via `std::log`. `DomainError` for zero, a negative value and NaN, all three
+    /// caught by `!(argument > 0.0)` before the standard library is called.
+    [[nodiscard]] static std::expected<double, ArithmeticError> natural_log(double argument) noexcept
+    {
+        if (!(argument > 0.0))
+            return std::unexpected { ArithmeticError::DomainError };
+        return std::log(argument);
+    }
+
+    /// The decimal logarithm, via `std::log10` -- qualified, as every call here is: inside namespace
+    /// `formula` an unqualified `log10` or `exp` finds `formula::log10` or `formula::exp`, which take a
+    /// formula node, and looks no further. `DomainError` as for `natural_log`.
+    [[nodiscard]] static std::expected<double, ArithmeticError> decimal_log(double argument) noexcept
+    {
+        if (!(argument > 0.0))
+            return std::unexpected { ArithmeticError::DomainError };
+        return std::log10(argument);
+    }
+
+    /// The exponential, via `std::exp`. A result too large for `double` is `+inf`, and passes, as `raise`'s
+    /// does: the caller asked for `double`.
+    [[nodiscard]] static std::expected<double, ArithmeticError> exponential(double argument) noexcept
+    {
+        return std::exp(argument);
     }
 };
 
@@ -252,6 +435,49 @@ template <typename Rep = Rational, typename Env, typename Sink = NullSink>
     std::expected<Rep, ArithmeticError> const piValue = RepFunctions<Rep>::pi_value();
     Evaluated<Rep> const evaluated =
         piValue.has_value() ? detail::present<Rep>(*piValue) : Evaluated<Rep> { std::unexpected { piValue.error() } };
+    sink.produced(node, evaluated);
+    return evaluated;
+}
+
+namespace detail
+{
+    /// @p F of @p argument through `RepFunctions<Rep>`: the one place the three functions are told
+    /// apart, for the plain node and, under a representation other than `Rational`, the rounded one.
+    template <Transcendental F, typename Rep>
+    [[nodiscard]] constexpr std::expected<Rep, ArithmeticError> transcendental_of(Rep argument) noexcept
+    {
+        if constexpr (F == Transcendental::NaturalLogarithm)
+            return RepFunctions<Rep>::natural_log(argument);
+        else if constexpr (F == Transcendental::DecimalLogarithm)
+            return RepFunctions<Rep>::decimal_log(argument);
+        else
+            return RepFunctions<Rep>::exponential(argument);
+    }
+} // namespace detail
+
+/// Evaluates the argument, then takes `F` of it via `RepFunctions<Rep>`. An absent argument leaves the
+/// node absent and a failed one fails it, before the function is asked anything.
+template <typename Rep = Rational, Transcendental F, Node Operand, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(TranscendentalNode<F, Operand> const& node,
+                                                           Env const& environment,
+                                                           Sink sink = {}) noexcept
+{
+    sink.entered(node);
+    Evaluated<Rep> const evaluatedOperand = detail::dispatch<Rep>(node.operand, environment, sink);
+    if (!evaluatedOperand.has_value())
+    {
+        return detail::report_failure<Rep>(node, sink, evaluatedOperand.error());
+    }
+    if (!evaluatedOperand->has_value())
+    {
+        Evaluated<Rep> const absent = detail::nothing<Rep>();
+        sink.produced(node, absent);
+        return absent;
+    }
+
+    std::expected<Rep, ArithmeticError> const taken = detail::transcendental_of<F, Rep>(**evaluatedOperand);
+    Evaluated<Rep> const evaluated =
+        taken.has_value() ? detail::present<Rep>(*taken) : Evaluated<Rep> { std::unexpected { taken.error() } };
     sink.produced(node, evaluated);
     return evaluated;
 }

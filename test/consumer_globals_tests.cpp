@@ -17,7 +17,8 @@
 // including the header is enough for those. The probe below instantiates:
 // evaluation of every node kind -- arithmetic with a bare number on either
 // side, negation, powers and every root, pi, rounding both ways, a rounded
-// square root, a conditional, the escape hatch, the three lookups, a
+// square root, a logarithm, a decimal logarithm and an exponential, exactly
+// and in double, a conditional, the escape hatch, the three lookups, a
 // critical value, an absolute value and a two-pass precision limit --
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
@@ -514,6 +515,15 @@ ConsumerGlobalsProbe probe_consumer_globals()
             var<Factor> * formula::Rational { 2 }),
         specimen);
     probe.checks.push_back(spreadNode.is_value() && spreadNode.measurement().value() == formula::Rational { 141, 100 });
+    // Logarithms and exponentials where each is exact -- exp(ln 1) is 1 and log10 1000 is 3 -- and the
+    // double route where none is: ln 2.
+    auto const logarithmic = formula::evaluate<Factor>(
+        formula::exp(formula::ln(var<Factor>)) * formula::log10(var<Factor> * formula::Rational { 1000 }), specimen);
+    auto const approximateLogarithm =
+        formula::checked_evaluate_si<double>(formula::ln(var<Factor> * formula::Rational { 2 }), specimen);
+    probe.checks.push_back(logarithmic.is_value() && logarithmic.measurement().value() == formula::Rational { 3 });
+    probe.checks.push_back(approximateLogarithm.has_value() && approximateLogarithm->has_value()
+                           && **approximateLogarithm > 0.69 && **approximateLogarithm < 0.70);
     pages += formula::render(-var<Force>) + formula::render(formula::pi * var<Force>)
              + formula::render<formula::Dialect::LaTeX>(formula::cbrt(var<Force>));
 

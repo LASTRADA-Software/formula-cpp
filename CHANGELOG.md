@@ -206,9 +206,22 @@ may break it, and each such change is recorded here.
   layer cannot hold* -- such a value is written only as the rounding its formula declares, exact and
   without `≈`, and refused without one -- and `docs/opaque-and-retry.md` a section on
   `rounded_output`, with the fit's trace and the fifteen-point fit it answers.
+- `ln(x)`, `log10(x)` and `exp(x)` (`function.hpp`) take the natural logarithm, the
+  decimal logarithm and the exponential of a formula. The argument must be dimensionless -- a quantity
+  divided by a reference value of its own dimension, or a number read with `numeric_value_of` -- and a
+  dimensioned one does not compile. A percentage is dimensionless and read as a fraction, so `log10` of
+  1000 % is 1. Evaluated exactly, each answers where its value is rational -- ln 1 = 0, exp 0 = 1,
+  log10 10^k = k for k from -18 to 18 -- and is `ArithmeticError::Inexact` elsewhere; the logarithm of
+  zero or of a negative value is `DomainError`. `checked_evaluate_si<double>` answers with `std::log`,
+  `std::log10` and `std::exp`. `RepFunctions` gains `natural_log`, `decimal_log` and `exponential`,
+  which a representation of a consumer's own needs only to evaluate these.
 
 ### Changed
 
+- An unqualified call of `ln`, `log10` or `exp` whose argument is a formula node now
+  finds the library's function by argument-dependent lookup; one whose argument is a number still finds
+  only the standard library's, which the library's refuses. A consumer's own function of one of these
+  names that accepts a formula node now makes such a call ambiguous.
 - An unqualified call of `fraction_text`, `number_text`, `decimal_text`, `exact_decimal_text`,
   `define`, `calculation` or `worksheet` now also finds the library's function by argument-dependent
   lookup, since each takes an argument of a type in namespace `formula`. A consumer's own function
