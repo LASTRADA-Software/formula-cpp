@@ -41,9 +41,11 @@
 #include <formula-cpp/vocabulary.hpp>
 #include <formula-cpp/yields.hpp>
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <initializer_list>
 #include <optional>
 #include <string_view>
