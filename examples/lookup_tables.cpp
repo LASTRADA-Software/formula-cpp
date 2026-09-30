@@ -72,7 +72,7 @@ inline constexpr formula::BandTable<3> SizeBands {
 // This is the caller's reconciliation to do, and there is deliberately no
 // closed-upper-bound flag on `Band` to do it with (band.hpp says why).
 inline constexpr formula::BandTable<1> TopRowInclusive {
-    formula::band(173, 211.1_r), // 173 to under 211.1 mm -- 211 mm IS in it
+    formula::band(173_r, 211.1_r), // 173 to under 211.1 mm -- 211 mm IS in it
 };
 
 // ---- The exact table --------------------------------------------------------

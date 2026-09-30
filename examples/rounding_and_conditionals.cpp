@@ -22,11 +22,6 @@
 // fictional Example Standard references, exactly as every other example in
 // this repository is.
 
-#include <formula-cpp/formula.hpp>
-#include <formula-cpp/render.hpp>
-#include <formula-cpp/trace.hpp>
-#include <formula-cpp/trace_render.hpp>
-
 #include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>

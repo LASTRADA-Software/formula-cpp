@@ -130,7 +130,7 @@ to 211 mm inclusive" is written with its high bound at 211.1 mm:
 
 ```cpp
 inline constexpr formula::BandTable<1> TopRowInclusive {
-    formula::band(173, 211.1_r), // 173 to under 211.1 mm -- 211 mm IS in it
+    formula::band(173_r, 211.1_r), // 173 to under 211.1 mm -- 211 mm IS in it
 };
 ```
 
@@ -160,7 +160,9 @@ claim). Both are refused at compile time.
 This is not a claim about the library; it is a file in it.
 `test/negative/lookup_band_gap.cpp` declares a four-row table with a gap in its
 *middle* pair — a defect at either end is the easy case — and CI asserts both
-that it fails to build and that it fails for the stated reason:
+that it fails to build and that it fails for the stated reason. The test spells
+the bounds as integer pairs, which is what `band(0, 127)` stores; it is written
+the long way on purpose, to exercise that overload:
 
 ```cpp
     inline constexpr formula::BandTable<4> GappedTable {
