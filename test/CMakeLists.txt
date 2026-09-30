@@ -718,6 +718,9 @@ formula_add_negative_test(series_cumulative_of_single_value_as_series
 formula_add_negative_test(series_round_of_single_value
     "rounded_elementwise rounds each element of a series, and this is a single value, not a series"
     REJECT "no matching" "this expression is a series, not a single value")
+formula_add_negative_test(series_round_named_of_single_value
+    "rounded_elementwise rounds each element of a series, and this is a single value, not a series" EXPECT_COUNT 1
+    REJECT "no matching" "this expression is a series, not a single value")
 
 # A per-element rounding with a table of the wrong length, which
 # gates the unit check off, and one with a unit of the wrong dimension.

@@ -717,4 +717,6 @@ TEST_CASE("DecimalRounding: the same rounded output as the three arguments it na
         decltype(formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
             spanCall));
     STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+    constexpr formula::DecimalRounding hundredthGram { unit::Gram, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven };
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::rounded_output<"span", hundredthGram>(spanCall)), ByValue>);
 }

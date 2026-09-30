@@ -1314,5 +1314,51 @@ ConsumerGlobalsProbe probe_consumer_globals()
         probe.checks.push_back(declaredEdge.is_value() && declaredEdge.measurement().value() == formula::Rational { 62, 5 }
                                && declaredMillimetre.places == formula::DecimalPlaces { 1 });
     }
+    // Every other spelling that takes a rounding named once, beside its
+    // three-argument form.
+    {
+        constexpr formula::DecimalRounding tenthEdge { unit::Millimetre,
+                                                       formula::DecimalPlaces { 1 },
+                                                       formula::RoundingMode::HalfAwayFromZero };
+        constexpr formula::SignificantRounding twoFigureEdge { unit::Millimetre,
+                                                               formula::SignificantDigits { 2 },
+                                                               formula::RoundingMode::HalfAwayFromZero };
+        constexpr formula::DecimalRounding hundredthPlain { unit::One,
+                                                            formula::DecimalPlaces { 2 },
+                                                            formula::RoundingMode::HalfAwayFromZero };
+        auto const namedEnvironment = formula::environment(formula::Measured<EdgeX> { formula::Rational { 1'236, 100 } });
+        // 12.36 mm to two significant digits is 12 mm.
+        auto const inFigures = formula::evaluate<EdgeX>(formula::rounded_to_digits<twoFigureEdge>(var<EdgeX>), namedEnvironment);
+        probe.checks.push_back(inFigures.is_value() && inFigures.measurement().value() == formula::Rational { 12 });
+        probe.checks.push_back(
+            std::is_same_v<decltype(formula::rounding_rule<tenthEdge>()),
+                           decltype(formula::rounding_rule<unit::Millimetre,
+                                                           formula::DecimalPlaces { 1 },
+                                                           formula::RoundingMode::HalfAwayFromZero>())>
+            && std::is_same_v<decltype(formula::with_rounding<tenthEdge>(formula::Citation { .reference = "Example Standard 3" })),
+                              decltype(formula::with_rounding<unit::Millimetre,
+                                                              formula::DecimalPlaces { 1 },
+                                                              formula::RoundingMode::HalfAwayFromZero>(
+                                  formula::Citation { .reference = "Example Standard 3" }))>);
+        // The span of 163 and 127 mm is 36 mm, whole under a tenth's rounding.
+        auto const namedSpan = formula::checked_evaluate<EdgeX>(
+            formula::rounded_output<"span", tenthEdge>(
+                formula::opaque<EdgeSpan>({ .reference = "Example Standard 3" }, formula::series<EdgeX, 2>)),
+            spanEdges);
+        probe.checks.push_back(namedSpan.has_value() && namedSpan->measurement().value() == formula::Rational { 36 });
+        // The root of 2 to 0.01 is 1.41.
+        auto const namedRoot = formula::evaluate<Factor>(
+            formula::rounded_sqrt<hundredthPlain>(var<Factor> * formula::Rational { 2 }), specimen);
+        probe.checks.push_back(namedRoot.is_value() && namedRoot.measurement().value() == formula::Rational { 141, 100 });
+        auto const everyEdge = formula::rounded_elementwise<tenthEdge>(formula::series<EdgeX, 2>);
+        probe.checks.push_back(formula::checked_evaluate_series<EdgeX>(everyEdge, spanEdges).has_value()
+                               && std::is_same_v<std::remove_const_t<decltype(everyEdge)>,
+                                                 decltype(formula::rounded_elementwise<
+                                                          unit::Millimetre,
+                                                          formula::PlacesTable<2> { formula::DecimalPlaces { 1 },
+                                                                                    formula::DecimalPlaces { 1 } },
+                                                          formula::RoundingMode::HalfAwayFromZero>(
+                                                     formula::series<EdgeX, 2>))>);
+    }
     return probe;
 }

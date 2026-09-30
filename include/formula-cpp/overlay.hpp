@@ -754,11 +754,7 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode, bool Stated = false>
 template <DecimalRounding R, bool Stated = false>
 [[nodiscard]] constexpr RoundingOverride<R.unit, R.places, R.mode> with_rounding() noexcept
 {
-    static_assert(Stated,
-                  "formula: with_rounding<U, Places, Mode>() was given no citation; a rounding rule is a "
-                  "jurisdiction's decision, and a trace must say whose -- pass the Citation of the clause that "
-                  "states it");
-    return RoundingOverride<R.unit, R.places, R.mode> {};
+    return with_rounding<R.unit, R.places, R.mode, Stated>();
 }
 
 /// The operation `replace_variant<Tag>(expression, source)` builds: replace the

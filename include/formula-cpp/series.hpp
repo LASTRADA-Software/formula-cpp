@@ -53,6 +53,7 @@
 #include <optional>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -525,13 +526,22 @@ template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
 
 namespace detail
 {
+    /// A `PlacesTable` of @p N entries, every one @p everyElement. Built from
+    /// an index pack and not by filling a value-initialised array: on cl that
+    /// instantiates a compiler-internal helper, which warned (C4459) that its
+    /// `i` hides a consumer's global of that name.
+    template <std::size_t... Indices>
+    [[nodiscard]] constexpr PlacesTable<sizeof...(Indices)> uniform_places_of(DecimalPlaces everyElement,
+                                                                             std::index_sequence<Indices...>) noexcept
+    {
+        return PlacesTable<sizeof...(Indices)> { (static_cast<void>(Indices), everyElement)... };
+    }
+
     /// A `PlacesTable` of @p N entries, every one @p everyElement.
     template <std::size_t N>
     [[nodiscard]] constexpr PlacesTable<N> uniform_places(DecimalPlaces everyElement) noexcept
     {
-        PlacesTable<N> tabulated {};
-        tabulated.fill(everyElement);
-        return tabulated;
+        return uniform_places_of(everyElement, std::make_index_sequence<N> {});
     }
 } // namespace detail
 

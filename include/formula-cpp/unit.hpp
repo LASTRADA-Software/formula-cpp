@@ -114,12 +114,6 @@ struct SignificantRounding
     RoundingMode mode;
 };
 
-/// A rounding to the decimal places @p roundedIn declares, under @p roundingMode.
-[[nodiscard]] constexpr DecimalRounding declared_rounding(Unit roundedIn, RoundingMode roundingMode) noexcept
-{
-    return DecimalRounding { roundedIn, DecimalPlaces { roundedIn.decimals }, roundingMode };
-}
-
 /// Named units. The `decimals` values are ordinary engineering defaults, not
 /// requirements from any standard; a caller that needs a different precision
 /// states it at the point of use.
@@ -692,6 +686,15 @@ inline constexpr bool formats_by_describe<BoundsCheck> = true;
 [[nodiscard]] constexpr DecimalPlaces declared_decimals(Unit unitOfValue) noexcept
 {
     return DecimalPlaces { unitOfValue.decimals };
+}
+
+/// A rounding to the decimal places @p roundedIn declares, under @p roundingMode.
+/// A unit whose declared decimals lie outside -18 to 18 is not refused here:
+/// `checked_round` returns `ArithmeticError::Overflow` for that many places, so
+/// evaluating the rounding does.
+[[nodiscard]] constexpr DecimalRounding declared_rounding(Unit roundedIn, RoundingMode roundingMode) noexcept
+{
+    return DecimalRounding { roundedIn, declared_decimals(roundedIn), roundingMode };
 }
 
 /// Rounds @p magnitude to the precision its unit declares.

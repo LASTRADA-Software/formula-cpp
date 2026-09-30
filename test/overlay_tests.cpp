@@ -1454,6 +1454,8 @@ TEST_CASE("DecimalRounding: the same overlay operation as the three arguments it
                                                      formula::DecimalPlaces { 2 },
                                                      formula::RoundingMode::HalfAwayFromZero>(formula::Citation {}));
     STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+    constexpr formula::DecimalRounding tenthMpa { unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero };
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::with_rounding<tenthMpa>(formula::Citation {})), ByValue>);
 
     // The citation is carried through, not dropped on the way.
     constexpr auto cited = formula::with_rounding<hundredthMpa>(roundingAnnex);

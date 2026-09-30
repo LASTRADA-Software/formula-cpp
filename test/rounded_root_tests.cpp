@@ -274,4 +274,6 @@ TEST_CASE("DecimalRounding: the same rounded root as the three arguments it name
     using ByTriple =
         decltype(formula::rounded_sqrt<unit::Gram, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero>(var<MassSquared>));
     STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+    constexpr formula::DecimalRounding tenthGram { unit::Gram, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::rounded_sqrt<tenthGram>(var<MassSquared>)), ByValue>);
 }
