@@ -842,7 +842,7 @@ template <typename Tag>
 {
     formula::Trace<> trace {};
     (void) formula::evaluate_method<Tag>(everyOverlaid, everyInputs, formula::RecordingSink { trace, everyVocabulary });
-    return formula::render_trace(trace, { .maxSteps = 120 });
+    return formula::render_trace(trace, { .maxSteps = 100 });
 }
 
 [[nodiscard]] bool declares_no_symbol(std::string_view text)
@@ -1077,11 +1077,14 @@ TEST_CASE("every node kind writes its numbers in the style asked for, in the voc
 TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
 {
     // The lines that name a quantity, found by what they say rather than
-    // pinned whole: the rest of this derivation, some sixty steps, is
+    // pinned whole: the rest of this derivation, 99 steps, is
     // arithmetic, and pi's rational approximation would pin nothing about
     // vocabularies.
     std::string const cube = everyTraceOf<EveryCube>();
     CHECK(declares_no_symbol(cube));
+    // The whole derivation: `everyTraceOf` caps its rendering just above the last step, so a longer
+    // trace is cut and this line is missing.
+    CHECK(cube.find("99. #98 = 1358653/5 % [variant EveryCube (1st of 6), selected by tag]\n") != std::string::npos);
     CHECK(cube.starts_with("1. E = 30 MPa\n"
                            "2. R = 12 MPa\n"));
     CHECK(cube.find("34. D = 241 mm\n") != std::string::npos);

@@ -203,7 +203,8 @@ may break it, and each such change is recorded here.
   overflows at 57 of those sizes, the first at 34. A different denominator on every point outgrows
   the 256 bits from 58 points, and the answer is `Overflow` (`docs/numeric-headroom.md`).
 - The guides explain values the exact layer cannot hold: `docs/display.md` gains *Values the exact
-  layer cannot hold* -- such a value is written only as the rounding its formula declares, exact and
+  layer cannot hold* -- such a value, a root, a logarithm, an exponential or the output of a fit
+  computed in wider integers, is written only as the rounding its formula declares, exact and
   without `≈`, and refused without one -- and `docs/opaque-and-retry.md` a section on
   `rounded_output`, with the fit's trace and the fifteen-point fit it answers.
 - `ln(x)`, `log10(x)` and `exp(x)` (`function.hpp`) take the natural logarithm, the
@@ -231,6 +232,8 @@ may break it, and each such change is recorded here.
   They render as `round(ln(x), to 4 dp)`, in LaTeX `\operatorname{round}_{4}(\ln\left(x\right))`, and a trace
   writes each as one step whose value is the rounded decimal and whose bracket names the mode:
   `round(ln(#1), to 4 dp) = 6931/10000 [nearest, ties away from zero]`.
+- A section, *Logarithms and exponentials*, in *Expressions and evaluation* (`docs/expressions.md`), and a
+  gallery entry, a logarithmic reduction rounded exactly to 0.01.
 
 ### Changed
 

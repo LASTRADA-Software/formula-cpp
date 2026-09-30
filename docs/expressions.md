@@ -378,6 +378,132 @@ constexpr auto broken = formula::root<0>(formula::var<Area>);
 // operation" -- pinned verbatim in test/negative/function_zero_root_degree.cpp.
 ```
 
+## Logarithms and exponentials
+
+`formula::ln(operand)`, `formula::log10(operand)` and `formula::exp(operand)`
+take the natural logarithm, the decimal logarithm and the exponential of a
+formula. They are nodes, as a power and a root are: the page shows `ln(x)`, a
+trace names the step, and an overlay's constant reaches inside. Unlike a power,
+they do nothing to a dimension, because they accept none.
+
+### The argument is a bare number
+
+The logarithm of 2 m would be ln 2 + ln(m), a number that changes with the
+unit the length is read in, so an argument that has a dimension does not
+compile. g++ 14 reports:
+
+```text
+static assertion failed: formula: the argument of this logarithm or exponential is not dimensionless; ln, log10 and exp take a bare number, and of a quantity they would change with the unit it is read in -- divide it by a reference value of its own dimension, or read it with numeric_value_of; the argument appears in this diagnostic as the template argument of RequireDimensionlessArgument
+```
+
+(`test/negative/transcendental_ln_dimensioned.cpp` pins the message's opening
+words, and `hygiene.documented-diagnostic-text` that the line above is still
+a message the library states.)
+
+There are two ways to a bare number. Divide by a reference value of the same
+dimension, here a length over a reference length of 2 m:
+
+```cpp
+constexpr auto growth = formula::ln(var<Length> / formula::constant<formula::unit::Metre>(formula::Rational { 2 }));
+```
+
+Or, where a method states its formula over a bare number, read a quantity in a
+named unit with `numeric_value_of`
+([the traced escape hatch](rounding-and-conditionals.md#the-traced-escape-hatch-numeric_value_of)).
+A percentage is dimensionless, and is read in the coherent unit, as every
+value is:
+
+```cpp
+// 1000 % is the number 10, so its decimal logarithm is 1 -- not 3, which reading it in percent gives.
+constexpr auto tenfold = formula::environment(formula::Measured<Share> { rat(1000) });
+STATIC_REQUIRE(**formula::checked_evaluate_si<formula::Rational>(formula::log10(var<Share>), tenfold) == rat(1));
+```
+
+(`test/function_tests.cpp`,
+`"function: a percentage is read in the coherent unit under a logarithm"`.)
+
+### Where the value is exact
+
+| Function | Exact at | Elsewhere, in `Rational` |
+|---|---|---|
+| `ln(x)` | x = 1: 0 | `Inexact` |
+| `log10(x)` | x = 10^k, k from -18 to 18: k -- `1000` and `1/1000` alike | `Inexact` |
+| `exp(x)` | x = 0: 1 | `Inexact`, however large |
+
+`Inexact` is the exact layer refusing to approximate, as it refuses
+`sqrt(2)`. `checked_evaluate_si<double>` answers with `std::log`,
+`std::log10` and `std::exp`. As a bounded fact rather than program output --
+pinned in
+`"function: the double representation answers where the exact one refuses"`
+-- it puts ln 2 strictly between 0.69314718 and 0.69314719.
+
+### Declaring a precision
+
+Where the method states the precision the value is reported at, the exact
+layer gives that instead: `rounded_ln<places, mode>(x)`,
+`rounded_log10<places, mode>(x)` and `rounded_exp<places, mode>(x)` are the
+decimal the true value rounds to, computed with integer arithmetic
+([values the exact layer cannot hold](display.md#values-the-exact-layer-cannot-hold)).
+They are single nodes of their own, not opaque operations. They have no unit,
+since the argument and the result are bare numbers:
+
+```cpp
+CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfAwayFromZero>(Rational { 2 }) == Rational { 6931, 10000 });
+CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfTowardZero>(Rational { 2 }) == Rational { 6931, 10000 });
+CHECK(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { 2 }) == Rational { 6931, 10000 });
+```
+
+(`test/rounded_transcendental_tests.cpp`,
+`"rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2 with the directions paired the other way"`,
+whose `lnAt` helper evaluates `rounded_ln<Places, Mode>` at the given ratio.)
+
+The places are the method's own, and at most 18; the result must fit a
+`Rational` there, which at 18 places means a magnitude below about 9.2, so
+the `log10` of a count near 10^18 is reported at 17. Only ln 1, log10 10^k and
+exp 0 can tie, and the mode breaks the tie as `rounded<>` does: `log10` of
+10^15 at -1 places is 20, 10 or 20 under `HalfAwayFromZero`,
+`HalfTowardZero` and `HalfEven`. A rounding the computation cannot decide --
+a value within its width, under 2^-118 (relative, for `exp`), of a rounding
+boundary -- is `Overflow`, never a guess. `rounded<...>(ln(x))` is not
+`rounded_ln`: the plain logarithm fails before the rounding sees a value, as
+`rounded<...>(sqrt(x))` does.
+
+### What goes wrong
+
+| Case | `ln`, `log10` | `exp` | `rounded_ln`, `rounded_log10`, `rounded_exp` |
+|---|---|---|---|
+| argument absent | absent | absent | absent |
+| argument failed | its error | its error | its error |
+| argument zero or below | `DomainError` | -- | `DomainError` (the logarithms) |
+| not a point where the value is rational | `Inexact` | `Inexact` | the rounded decimal |
+| result too large at the declared places, or places outside -18 to 18 | -- | -- | `Overflow` |
+| rounding not decidable | -- | -- | `Overflow` |
+| `checked_evaluate_si<double>` | `std::log`, `std::log10`; `DomainError` for zero, below and NaN | `std::exp`; too large is `+inf` | does not compile, as `rounded_sqrt` does not |
+
+### How they read
+
+| Node | Plain | Markdown | LaTeX |
+|---|---|---|---|
+| `ln(x)` | `ln(x)` | ``ln(`x`)`` | `\ln\left(x\right)` |
+| `log10(x)` | `log10(x)` | ``log10(`x`)`` | `\log_{10}\left(x\right)` |
+| `exp(x)` | `exp(x)` | ``exp(`x`)`` | `\exp\left(x\right)` |
+| `rounded_ln<DecimalPlaces { 4 }, mode>(x)` | `round(ln(x), to 4 dp)` | ``round(ln(`x`), to 4 dp)`` | `\operatorname{round}_{4}(\ln\left(x\right))` |
+
+The exponential is `\exp`, not `e^{x}`: a power renders its base as an atom,
+so `pow<2>(exp(x))` would read `e^{x}^{2}`, which LaTeX refuses. The call is
+an atom to what holds it, so `pow<2>(ln(x))` reads `ln(x)^2`. The mode is not
+part of the formula's text, as for `rounded<>`; a trace's line carries it.
+
+### A real power
+
+`pow(base, exponent)` in a formula, with an exponent computed from data, is
+not offered. A constant rational exponent is already `pow<P>(root<Q>(x))`,
+dimension-checked and exact wherever the answer is rational. A data exponent
+is `exp(y ln x)`, written `rounded_exp<...>(y * rounded_ln<...>(x))` where a
+precision is to be declared, so that both roundings are visible. A dimensioned
+base under a run-time exponent would have no compile-time dimension. A real
+power, if one is added, would be named `power`, not `pow`.
+
 ## Composing a formula from other formulas
 
 A formula is an ordinary value, so it stands wherever a variable or a

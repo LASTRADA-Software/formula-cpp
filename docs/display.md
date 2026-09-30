@@ -240,18 +240,22 @@ contradicts itself -- so a compared value is never shown rounded.
 
 ### Values the exact layer cannot hold
 
-A square root is irrational almost everywhere, and the exact sums behind a
-line fitted through 34 readings at three decimals can already leave the 64-bit
-integers of `Rational`
+A square root, a logarithm or an exponential is irrational almost everywhere,
+and the exact sums behind a line fitted through 34 readings at three decimals
+can already leave the 64-bit integers of `Rational`
 ([numeric headroom](numeric-headroom.md#least-squares-realistic-and-one-stress-control)).
 The library does not approximate such values. A formula that needs one
 **declares the precision it is reported at** -- a unit, decimal places and a
 rounding mode, as `rounded<>` does -- and the library computes the decimal the
-true value rounds to: `rounded_sqrt` for a root, and `rounded_output` for an
-output of an [opaque operation](opaque-and-retry.md#rounded-where-it-is-used)
-that computes in wider integers, as `linear_least_squares` does. Any other
-operation's output is computed in `Rational`, and fails with `Overflow` where
-the exact output would.
+true value rounds to: `rounded_sqrt` for a root, `rounded_ln`, `rounded_log10`
+and `rounded_exp` for a
+[logarithm or an exponential](expressions.md#declaring-a-precision) -- fused
+nodes computed by an integer kernel, not opaque operations -- and
+`rounded_output` for an output of an
+[opaque operation](opaque-and-retry.md#rounded-where-it-is-used) that computes
+in wider integers, as `linear_least_squares` does. Any other operation's
+output is computed in `Rational`, and fails with `Overflow` where the exact
+output would.
 
 - **The rounded decimal is the step's value, and it is exact.** It is the
   correct rounding of the true value, found with integer arithmetic alone --
@@ -260,14 +264,17 @@ the exact output would.
   rounding of a value a step holds; this rounding is the formula's, stated in
   the expression, its mode in the brackets:
   `round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]`
-  -- 0.6786 mm/s exactly.
+  -- 0.6786 mm/s exactly -- and the natural logarithm of a ratio of 0.05 reads
+  `round(ln(#1), to 4 dp) = -2.9957 [nearest, ties to even]`.
 - **The true value is written nowhere.** An opaque call evaluated for a
   rounded output names its outputs without values --
   `linear least squares(#3) = intercept, slope: rounded where used` -- and each
   output's own line states its rounding.
 - **Without a declared precision, these values are refused, never
-  approximated.** `sqrt(2)` is `Inexact`, and `opaque_output<"slope">(fit)` is
-  the exact slope or `Overflow`.
+  approximated.** `sqrt(2)` is `Inexact`, and so is `ln(2)`: a logarithm
+  answers only where it is rational -- ln 1, and `log10` of a power of ten --
+  and is `Inexact` elsewhere, as `exp(x)` is everywhere but 0.
+  `opaque_output<"slope">(fit)` is the exact slope or `Overflow`.
 - **Only a rational value can tie**, and its tie is broken by the mode as
   `checked_round` breaks it.
 - **A rounding that cannot be decided fails** with `Overflow` -- never a guess.

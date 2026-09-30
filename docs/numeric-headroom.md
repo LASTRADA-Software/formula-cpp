@@ -104,6 +104,11 @@ built with it off disassembles identically to one built before the hooks
 existed, and gains one linker directive, the mismatch check (cl 19.51,
 `/O2`).
 
+The logarithm and exponential kernel (`detail/transcendental.hpp`) carries
+no hooks: it computes in the wide words of `detail/wide_int.hpp`, outside the
+census, and only the rounded decimal it answers is counted, made by
+`Rational::from_decimal` as `rounded_sqrt`'s and `rounded_output`'s are.
+
 The census does not see evaluations that happen at compile time
 (`constexpr`): a constant evaluation cannot report to a tally. They fit --
 an overflow there is still a refused result -- but their headroom is not

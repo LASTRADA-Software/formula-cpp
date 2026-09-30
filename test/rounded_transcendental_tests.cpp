@@ -206,6 +206,8 @@ TEST_CASE("rounded_transcendental: a value a double cannot tell from a boundary 
     CHECK(log10At<DecimalPlaces { 17 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 })
           == Rational::from_decimal(1'799'999'999'999'999'999, -17));
     CHECK(log10At<DecimalPlaces { 17 }, RoundingMode::HalfEven>(Rational { 999'999'999'999'999'999 }) == Rational { 18 });
+    // At 18 places the result, 1.8 * 10^19 in units of 10^-18, does not fit a Rational.
+    CHECK(log10At<DecimalPlaces { 18 }, RoundingMode::Floor>(Rational { 999'999'999'999'999'999 }) == overflow);
 }
 
 TEST_CASE("rounded_transcendental: a rounding the kernel cannot decide is Overflow", "[rounded_transcendental]")
