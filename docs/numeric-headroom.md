@@ -121,8 +121,9 @@ measured. Nine examples evaluate some of their formulas that way:
 `constraints`, `dimensions_and_units`, `expressions`, `lookup_tables`,
 `quantities`, `records`, `rounding_and_conditionals`, `series` and `statistics`.
 A row that reads 0 | 0 | 0 and the full 63 bits means the program counted no
-integer at run time. For `quantities` that is because every check it makes is
-a compile-time one, so there is nothing for the census to tally. `expressions`
+integer at run time. For `quantities` that is because it evaluates its
+formulas at compile time; the one thing it does at run time, combining an
+absent input, computes no integer, so there is nothing for the census to tally. `expressions`
 evaluates one formula at run time, and that evaluation returns a value a
 person entered without computing it, so its row reports no integer either.
 
