@@ -197,6 +197,11 @@ may break it, and each such change is recorded here.
   `round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]`. The rounded
   decimal is the step's exact value, so no number style marks it `≈`. A failure the call carried
   reads as the call's on the output's line too. `OpaqueStepData` records `values` and `answered`.
+- `rounded_output<"slope", ...>(linear_least_squares(...))` answers where the exact route overflows:
+  the fit is computed in 256-bit integers for it, so that on readings at 3 decimal places of a few
+  thousand newtons it answers at every size from 2 to 128 points, where `opaque_output<"slope">`
+  overflows at 57 of those sizes, the first at 34. A different denominator on every point outgrows
+  the 256 bits from 58 points, and the answer is `Overflow` (`docs/numeric-headroom.md`).
 
 ### Changed
 

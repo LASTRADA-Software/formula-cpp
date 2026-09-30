@@ -26,6 +26,13 @@
 /// intermediate beyond `Rational`'s range returns `Overflow`, never a wrong
 /// number.
 ///
+/// **Rounded where it is used, it answers further.**
+/// `rounded_output<"slope", U, Places, Mode>(fit)` runs `compute_exact`, the
+/// same line from uncentred 256-bit integer sums, and reports the slope at the
+/// precision the method declares: on those readings at every size from 2 to
+/// 128 points. A different denominator on every point outgrows even that from
+/// 58 points, and the answer is `Overflow`.
+///
 /// **In `double`, the fit is the consumer's own route, outside the
 /// library.** A curve is evaluated only in `Rational` (`curve.hpp`), so a fit
 /// is too, and `checked_evaluate_si<double>` on one is refused. What remains
@@ -34,7 +41,8 @@
 /// caller must have converted to coherent units by hand, and returns bare
 /// coefficients in coherent units -- a slope in metres per second, not in a
 /// quantity's declared unit. Nothing checks their dimensions, and nothing is
-/// traced, rendered or documented; the citation goes nowhere.
+/// traced, rendered or documented; the citation goes nowhere. Where the exact
+/// fit overflows, `rounded_output` is the traced answer, not `double`.
 ///
 /// **Fewer than two distinct points** -- none, one, or points all equal --
 /// have no line through them, and the fit returns its own `DomainError`,
@@ -51,6 +59,8 @@
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/detail/wide_int.hpp>
+#include <formula-cpp/detail/wide_rounding.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -174,6 +184,111 @@ struct LinearLeastSquares
         if (!fittedIntercept.has_value())
             return std::unexpected { fittedIntercept.error() };
         return std::array { *fittedIntercept, *fittedSlope };
+    }
+
+    /// The width `compute_exact` works in: eight limbs, 256 bits.
+    static constexpr std::size_t exact_limbs = 8;
+
+    /// The fit, exactly, for a `rounded_output`: intercept then slope, in
+    /// coherent units, as fractions of `exact_limbs`-limb integers, not
+    /// reduced. The same line as `compute`'s, from uncentred integer sums
+    /// rather than centred ones: each series is first brought to one common
+    /// denominator -- `X = x Dx`, `Y = y Dy` -- and then, with `n` points,
+    ///
+    ///     slope     = (n Sxy - Sx Sy) Dx / ((n Sxx - Sx^2) Dy)
+    ///     intercept = (Sy Sxx - Sx Sxy)   / ((n Sxx - Sx^2) Dy)
+    ///
+    /// where `Sx` is the sum of `X`, `Sxy` of `X Y`, and so on. Nothing is
+    /// rounded here; `rounded_output` rounds the one output it is asked for.
+    ///
+    /// The same refusals as `compute`, decided the same way: spans of
+    /// different lengths, and fewer than two distinct points, are the fit's own
+    /// `DomainError`. A common denominator, a sum or a product that leaves 256
+    /// bits is `Overflow` -- on readings with a different denominator on every
+    /// point from 58 points (`docs/numeric-headroom.md`), never a wrong line.
+    static constexpr std::expected<std::array<detail::WideRatio<exact_limbs>, 2>, ArithmeticError> compute_exact(
+        std::span<Rational const> domainPoints, std::span<Rational const> pointValues) noexcept
+    {
+        using Wide = detail::WideUnsigned<exact_limbs>;
+        using Signed = detail::WideSigned<exact_limbs>;
+        if (domainPoints.size() != pointValues.size())
+            return std::unexpected { ArithmeticError::DomainError };
+        bool anotherPoint = false;
+        for (Rational const& each: domainPoints)
+            if (!(each == domainPoints[0]))
+                anotherPoint = true;
+        if (!anotherPoint)
+            return std::unexpected { ArithmeticError::DomainError };
+
+        // One common denominator for the points, and one for the values.
+        std::optional<Wide> pointScale = Wide::from_u64(1);
+        std::optional<Wide> valueScale = Wide::from_u64(1);
+        for (std::size_t at = 0; at < domainPoints.size(); ++at)
+        {
+            if (pointScale)
+                pointScale = detail::lcm_checked_or_none(
+                    *pointScale, Wide::from_u64(static_cast<std::uint64_t>(domainPoints[at].denominator())));
+            if (valueScale)
+                valueScale = detail::lcm_checked_or_none(
+                    *valueScale, Wide::from_u64(static_cast<std::uint64_t>(pointValues[at].denominator())));
+        }
+        if (!pointScale || !valueScale)
+            return std::unexpected { ArithmeticError::Overflow };
+
+        // The four integer sums: of X, of Y, of X^2 and of X Y.
+        Signed sumOfPoints {};
+        Signed sumOfValues {};
+        Signed sumOfSquares {};
+        Signed sumOfProducts {};
+        for (std::size_t at = 0; at < domainPoints.size(); ++at)
+        {
+            std::optional<Signed> const scaledPoint = detail::scaled_to_denominator(domainPoints[at], *pointScale);
+            std::optional<Signed> const scaledValue = detail::scaled_to_denominator(pointValues[at], *valueScale);
+            if (!scaledPoint || !scaledValue)
+                return std::unexpected { ArithmeticError::Overflow };
+            std::optional<Signed> const squareTerm = detail::mul_checked_or_none(*scaledPoint, *scaledPoint);
+            std::optional<Signed> const productTerm = detail::mul_checked_or_none(*scaledPoint, *scaledValue);
+            std::optional<Signed> const withPoint = detail::add_checked_or_none(sumOfPoints, *scaledPoint);
+            std::optional<Signed> const withValue = detail::add_checked_or_none(sumOfValues, *scaledValue);
+            std::optional<Signed> const withSquare =
+                squareTerm ? detail::add_checked_or_none(sumOfSquares, *squareTerm) : std::nullopt;
+            std::optional<Signed> const withProduct =
+                productTerm ? detail::add_checked_or_none(sumOfProducts, *productTerm) : std::nullopt;
+            if (!withPoint || !withValue || !withSquare || !withProduct)
+                return std::unexpected { ArithmeticError::Overflow };
+            sumOfPoints = *withPoint;
+            sumOfValues = *withValue;
+            sumOfSquares = *withSquare;
+            sumOfProducts = *withProduct;
+        }
+
+        // n Sxx - Sx^2, n Sxy - Sx Sy and Sy Sxx - Sx Sxy.
+        Signed const pointCount { false, Wide::from_u64(domainPoints.size()) };
+        std::optional<Signed> const countedSquares = detail::mul_checked_or_none(pointCount, sumOfSquares);
+        std::optional<Signed> const squaredSum = detail::mul_checked_or_none(sumOfPoints, sumOfPoints);
+        std::optional<Signed> const countedProducts = detail::mul_checked_or_none(pointCount, sumOfProducts);
+        std::optional<Signed> const crossSum = detail::mul_checked_or_none(sumOfPoints, sumOfValues);
+        std::optional<Signed> const valuesBySquares = detail::mul_checked_or_none(sumOfValues, sumOfSquares);
+        std::optional<Signed> const pointsByProducts = detail::mul_checked_or_none(sumOfPoints, sumOfProducts);
+        if (!countedSquares || !squaredSum || !countedProducts || !crossSum || !valuesBySquares || !pointsByProducts)
+            return std::unexpected { ArithmeticError::Overflow };
+        std::optional<Signed> const pointSpread = detail::sub_checked_or_none(*countedSquares, *squaredSum);
+        std::optional<Signed> const riseTerm = detail::sub_checked_or_none(*countedProducts, *crossSum);
+        std::optional<Signed> const interceptTerm = detail::sub_checked_or_none(*valuesBySquares, *pointsByProducts);
+        if (!pointSpread || !riseTerm || !interceptTerm)
+            return std::unexpected { ArithmeticError::Overflow };
+        // A backstop only: distinct points were checked above.
+        if (pointSpread->negative || pointSpread->magnitude.is_zero())
+            return std::unexpected { ArithmeticError::DomainError };
+
+        std::optional<Wide> const slopeNumerator = detail::mul_checked_or_none(riseTerm->magnitude, *pointScale);
+        std::optional<Wide> const sharedDenominator = detail::mul_checked_or_none(pointSpread->magnitude, *valueScale);
+        if (!slopeNumerator || !sharedDenominator)
+            return std::unexpected { ArithmeticError::Overflow };
+        return std::array {
+            detail::WideRatio<exact_limbs> { interceptTerm->negative, interceptTerm->magnitude, *sharedDenominator },
+            detail::WideRatio<exact_limbs> { riseTerm->negative, *slopeNumerator, *sharedDenominator }
+        };
     }
 };
 

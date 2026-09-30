@@ -302,7 +302,16 @@ unconverted: readings at 1 decimal place; readings at 3 decimal places of a
 few thousand newtons, a load cell's; and a different denominator on every
 point, the stress control. Every size from 2 to 128 points is fitted through
 `LinearLeastSquares::compute`, the fit the node calls, and the node itself
-is checked against it at 33 and 34 points.
+is checked against it at 33 and 34 points. The last two rows fit the same
+shapes the way `rounded_output` does: the slope reported to 4 decimal places
+of N/s, computed by `LinearLeastSquares::compute_exact` in 256-bit integers
+and rounded exactly; the node is checked against that at 57, 58 and 128
+points. For those two rows the last column counts the 64-bit integers only,
+the rounded result and its conversion among them, and not the fit's 256-bit
+intermediates, which the census does not see: they reach 68 bits on the
+readings at 3 decimal places, and up to 249 of the 256 on a different
+denominator for every point, at the sizes that still answer. So a large
+figure there says nothing of how close the fit came to its 256 bits.
 
 <!-- census:least-squares -->
 
@@ -311,17 +320,24 @@ is checked against it at 33 and 34 points.
 | readings at 1 dp (realistic) | 0 of 127 | none | 29 |
 | readings at 3 dp near 2410 N, a load cell's (realistic) | 57 of 127 | 34 points | 0 |
 | a different denominator on every point (stress control) | 114 of 127 | 15 points | 2 |
+| the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic) | 0 of 127 | none | 41 |
+| the slope rounded to 4 dp by rounded_output: a different denominator on every point (stress control) | 71 of 127 | 58 points | 48 |
 
 <!-- /census:least-squares -->
 
 **Overflow depends on the data far more than on the number of points.** At
 3 decimal places the first size to overflow is 34 points, but not every
 larger size does. So no number of points is safe to state; an overflowing
-fit is `Overflow`, never a line. It has no traced fallback in `double`: a
-curve evaluates only in `Rational`, so `checked_evaluate_si<double>` over a
-fit is refused. `LinearLeastSquares::compute<double>` can be called
-directly, on numbers already in coherent units, but nothing it returns is
-checked, traced, rendered or documented.
+fit is `Overflow`, never a line. Where it overflows, a method that states the
+precision it reports the slope at gets that instead, from `rounded_output`:
+exact, traced and documented, at every size here for readings at 3 decimal
+places, and `Overflow` from 58 points on a different denominator for every
+point, where even 256 bits are outgrown. There is no traced fallback in
+`double`: a curve evaluates only in `Rational`, so
+`checked_evaluate_si<double>` over a fit is refused.
+`LinearLeastSquares::compute<double>` can be called directly, on numbers
+already in coherent units, but nothing it returns is checked, traced,
+rendered or documented.
 
 ## Which cases decide
 
@@ -341,9 +357,13 @@ The census builds neither remedy. 128-bit intermediate arithmetic would
 compute each product and sum in 128 bits before reducing; a wider stored
 representation would offer a fixed-width wide-integer `Rational` as a `Rep`.
 [Issue #1](https://github.com/LASTRADA-Software/formula-cpp/issues/1) tracks
-the choice between them. An arbitrary-precision integer is out of scope: it
-allocates, which in `noexcept` code turns running out of memory into
-`std::terminate`, and it cannot run at compile time.
+the choice between them. Beside them, a formula can declare the precision a
+value is reported at, and `rounded_output` computes that decimal in wider
+integers ([Displaying numbers](display.md#values-the-exact-layer-cannot-hold));
+that answers for the one output reported, not for `Rational` itself. An
+arbitrary-precision integer is out of scope: it allocates, which in
+`noexcept` code turns running out of memory into `std::terminate`, and it
+cannot run at compile time.
 
 ## Regression pins
 

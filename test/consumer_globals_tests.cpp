@@ -44,10 +44,11 @@
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
 // opaque operation's output, evaluated exactly and in double, and rounded
-// where it is used, traced, rendered and documented; a least-squares fit; a
-// retry over recorded determinations, evaluated, traced, rendered and
-// documented; and the four table validators; and `record_key`, `sample_id`,
-// `test_id`, `record`, `Record::unbound`, `record_context`, its `this_record`,
+// where it is used, traced, rendered and documented; a least-squares fit,
+// exact and rounded where it is used; a retry over recorded determinations,
+// evaluated, traced, rendered and documented; and the four table validators;
+// and `record_key`, `sample_id`, `test_id`, `record`, `Record::unbound`,
+// `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
 // unbound record, untraced and traced into `render_trace`, gated on
@@ -813,6 +814,11 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                       { .reference = "Example Standard 3" });
     auto const fitSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeFit), specimen);
     probe.checks.push_back(fitSlope.has_value() && fitSlope->measurement().value() == formula::Rational { 73, 110 });
+    // The same slope, 73/110, rounded where it is used through the fit's exact
+    // hook: 0.664 at 3 dp.
+    auto const roundedFitSlope = formula::checked_evaluate<Factor>(
+        formula::rounded_output<"slope", unit::One, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(edgeFit), specimen);
+    probe.checks.push_back(roundedFitSlope.has_value() && roundedFitSlope->measurement().value() == formula::Rational { 83, 125 });
     // A retry over the two recorded edges, evaluated, traced, rendered and
     // documented in all three dialects.
     constexpr auto edgesAgree = formula::when(formula::this_attempt<AgreedEdge> >= formula::previous_attempt<AgreedEdge>,

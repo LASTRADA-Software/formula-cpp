@@ -732,3 +732,166 @@ TEST_CASE("rounded output: a failure reads as the call's own or as carried up fr
           != std::string::npos);
     CHECK(absentText.find("5. round(slope of #4, to 4 dp of mm/s) = (not measured) [nearest, ties to even]\n") != std::string::npos);
 }
+
+namespace
+{
+template <formula::detail::FixedString Name, formula::Unit U, formula::DecimalPlaces Places, formula::RoundingMode Mode,
+          typename Call, typename Env>
+void check_rounded_route(Call const& call, Env const& inputs)
+{
+    auto const fused =
+        formula::checked_evaluate_si<formula::Rational>(formula::rounded_output<Name, U, Places, Mode>(call), inputs);
+    auto const afterwards = formula::checked_evaluate_si<formula::Rational>(
+        formula::rounded<U, Places, Mode>(formula::opaque_output<Name>(call)), inputs);
+    REQUIRE(afterwards.has_value());
+    REQUIRE(fused.has_value());
+    CHECK(**fused == **afterwards);
+}
+
+template <formula::detail::FixedString Name, formula::Unit U, formula::DecimalPlaces Places, typename Call, typename Env>
+void check_rounded_route_in_every_mode(Call const& call, Env const& inputs)
+{
+    check_rounded_route<Name, U, Places, formula::RoundingMode::HalfAwayFromZero>(call, inputs);
+    check_rounded_route<Name, U, Places, formula::RoundingMode::HalfTowardZero>(call, inputs);
+    check_rounded_route<Name, U, Places, formula::RoundingMode::HalfEven>(call, inputs);
+    check_rounded_route<Name, U, Places, formula::RoundingMode::Ceiling>(call, inputs);
+    check_rounded_route<Name, U, Places, formula::RoundingMode::Floor>(call, inputs);
+    check_rounded_route<Name, U, Places, formula::RoundingMode::TowardZero>(call, inputs);
+    check_rounded_route<Name, U, Places, formula::RoundingMode::AwayFromZero>(call, inputs);
+}
+
+/// The intercept of @p call over @p inputs, rounded to 4 dp of mm under @p Mode, in metres.
+template <formula::RoundingMode Mode, typename Call, typename Env>
+[[nodiscard]] formula::Rational rounded_intercept(Call const& call, Env const& inputs)
+{
+    auto const rounded = formula::checked_evaluate_si<formula::Rational>(
+        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }, Mode>(call), inputs);
+    REQUIRE(rounded.has_value());
+    REQUIRE(rounded->has_value());
+    return **rounded;
+}
+} // namespace
+
+TEST_CASE("rounded output: compute_exact states the fit exactly", "[least-squares]")
+{
+    // The hook is taken. A hook that is not noexcept, has fewer than 4 limbs or
+    // returns another type is skipped silently for compute<Rational>, so this
+    // is the only thing that notices one.
+    STATIC_REQUIRE(formula::detail::declares_compute_exact<
+                   formula::LinearLeastSquares,
+                   std::remove_cvref_t<decltype(formula::curve(formula::series<Elapsed, 4>, formula::series<Length, 4>))>>);
+    auto const exact = formula::LinearLeastSquares::compute_exact(std::span<formula::Rational const> { inOrderTimes },
+                                                                  std::span<formula::Rational const> { inOrderLengths });
+    REQUIRE(exact.has_value());
+    CHECK(*formula::detail::narrow_wide_ratio((*exact)[0]) == rat(19, 2'000));  // 9.5 mm in metres
+    CHECK(*formula::detail::narrow_wide_ratio((*exact)[1]) == rat(19, 28'000)); // 19/28 mm/s in m/s
+    // The same refusals as compute: one point, all equal, spans of different lengths.
+    CHECK(formula::LinearLeastSquares::compute_exact(std::span<formula::Rational const> { inOrderTimes }.first(1),
+                                                     std::span<formula::Rational const> { inOrderLengths }.first(1))
+          == std::unexpected { formula::ArithmeticError::DomainError });
+    std::array<formula::Rational, 4> const sameTime { rat(3), rat(3), rat(3), rat(3) };
+    CHECK(formula::LinearLeastSquares::compute_exact(std::span<formula::Rational const> { sameTime },
+                                                     std::span<formula::Rational const> { inOrderLengths })
+              .error()
+          == formula::ArithmeticError::DomainError);
+    CHECK(formula::LinearLeastSquares::compute_exact(std::span<formula::Rational const> { inOrderTimes }.first(3),
+                                                     std::span<formula::Rational const> { inOrderLengths })
+              .error()
+          == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("rounded output: wherever the exact fit answers the rounded fit is it rounded in every mode", "[least-squares]")
+{
+    // The fixture: the slope at 4 dp of mm/s and at 2 dp of mm/min (a factor
+    // that is no power of ten), the intercept at 0 dp of mm (a tie) and to
+    // tens of mm.
+    check_rounded_route_in_every_mode<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }>(fit, fitPoints);
+    check_rounded_route_in_every_mode<"slope", unit::MillimetrePerMinute, formula::DecimalPlaces { 2 }>(fit, fitPoints);
+    check_rounded_route_in_every_mode<"intercept", unit::Millimetre, formula::DecimalPlaces { 0 }>(fit, fitPoints);
+    check_rounded_route_in_every_mode<"intercept", unit::Millimetre, formula::DecimalPlaces { -1 }>(fit, fitPoints);
+    // Five distinct denominators, where the exact route still answers.
+    constexpr auto five = formula::linear_least_squares(
+        formula::curve(formula::series<Elapsed, 5>, formula::series<Length, 5>), { .reference = "Example Standard 12" });
+    auto const fiveInputs = distinct_denominators<5>();
+    check_rounded_route_in_every_mode<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }>(five, fiveInputs);
+    check_rounded_route_in_every_mode<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }>(five, fiveInputs);
+    // The pinned values, so that both routes agreeing on a wrong number cannot pass.
+    auto const slope = formula::checked_evaluate<Rate>(roundedSlope, fitPoints);
+    REQUIRE(slope.has_value());
+    CHECK(slope->measurement().value() == rat(10179, 250)); // 0.6786 mm/s in mm/min
+    auto const toTens = formula::checked_evaluate<Offset>(
+        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { -1 }, formula::RoundingMode::Floor>(
+            fit),
+        fitPoints);
+    REQUIRE(toTens.has_value());
+    CHECK(toTens->measurement().value() == rat(0)); // 9.5 mm down to tens
+}
+
+TEST_CASE("rounded output: the rounded fit answers where the exact fit overflows", "[least-squares]")
+{
+    constexpr auto fifteen = formula::linear_least_squares(
+        formula::curve(formula::series<Elapsed, 15>, formula::series<Length, 15>), { .reference = "Example Standard 12" });
+    auto const exactRoute =
+        formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(fifteen), distinct_denominators<15>());
+    REQUIRE(!exactRoute.has_value());
+    CHECK(exactRoute.error() == formula::ArithmeticError::Overflow);
+    // 1.93724895... mm/s: 1.9372 at 4 dp, 116.232 mm/min; 1.9373 upwards.
+    constexpr auto evenSlope =
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fifteen);
+    auto const even = formula::checked_evaluate<Rate>(evenSlope, distinct_denominators<15>());
+    REQUIRE(even.has_value());
+    CHECK(even->measurement().value() == rat(14529, 125));
+    auto const upwards = formula::checked_evaluate_si<formula::Rational>(
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::Ceiling>(
+            fifteen),
+        distinct_denominators<15>());
+    REQUIRE(upwards.has_value());
+    REQUIRE(upwards->has_value());
+    CHECK(**upwards == rat(19373, 10'000'000));
+    // A negative intercept, -0.017688... mm: the sign decides the directed modes.
+    auto const draws = distinct_denominators<15>();
+    CHECK(rounded_intercept<formula::RoundingMode::HalfEven>(fifteen, draws) == rat(-177, 10'000'000));
+    CHECK(rounded_intercept<formula::RoundingMode::Floor>(fifteen, draws) == rat(-177, 10'000'000));
+    CHECK(rounded_intercept<formula::RoundingMode::AwayFromZero>(fifteen, draws) == rat(-177, 10'000'000));
+    CHECK(rounded_intercept<formula::RoundingMode::Ceiling>(fifteen, draws) == rat(-11, 625'000));
+    CHECK(rounded_intercept<formula::RoundingMode::TowardZero>(fifteen, draws) == rat(-11, 625'000));
+
+    // Under the approximate style other lines carry the marker; the rounded line does not.
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(evenSlope, draws, formula::RecordingSink { recorded });
+    std::string const approximate = formula::render_trace(
+        recorded,
+        { .maxSteps = 100, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) });
+    CHECK(approximate.find("\xe2\x89\x88") != std::string::npos);
+    CHECK(approximate.find("5. round(slope of #4, to 4 dp of mm/s) = 1.9372 mm/s [nearest, ties to even]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("rounded output: a rounded fit that outgrows 256 bits is the operation's Overflow", "[least-squares]")
+{
+    // Measured with this algorithm: 57 points on distinct denominators fit,
+    // 58 do not, in compute_exact itself.
+    constexpr auto fiftySeven = formula::linear_least_squares(
+        formula::curve(formula::series<Elapsed, 57>, formula::series<Length, 57>), { .reference = "Example Standard 12" });
+    constexpr auto fiftyEight = formula::linear_least_squares(
+        formula::curve(formula::series<Elapsed, 58>, formula::series<Length, 58>), { .reference = "Example Standard 12" });
+    constexpr auto slopeOfFiftySeven =
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fiftySeven);
+    constexpr auto slopeOfFiftyEight =
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fiftyEight);
+    CHECK(formula::checked_evaluate_si<formula::Rational>(slopeOfFiftySeven, distinct_denominators<57>()).has_value());
+    formula::Trace<> recorded {};
+    auto const overflowing = formula::detail::dispatch<formula::Rational>(slopeOfFiftyEight, distinct_denominators<58>(),
+                                                                          formula::RecordingSink { recorded });
+    REQUIRE(!overflowing.has_value());
+    CHECK(overflowing.error() == formula::ArithmeticError::Overflow);
+    REQUIRE(formula::opaque_data(recorded, 3) != nullptr);
+    CHECK(formula::opaque_data(recorded, 3)->failure == formula::OpaqueFailure::Own);
+    CHECK(formula::render_trace(recorded, { .maxSteps = 400 })
+              .find("5. round(slope of #4, to 4 dp of mm/s) = overflow in exact arithmetic "
+                    "[the operation itself failed, not any input]\n")
+          != std::string::npos);
+}

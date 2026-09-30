@@ -423,6 +423,76 @@ template <std::size_t N>
     return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
 }
 
+/// The coherent unit of a force over a time, N/s: the rounded fit's unit here.
+inline constexpr formula::Unit newtonPerSecond { .dimension = formula::dim::Force / formula::dim::Time,
+                                                 .symbolText = formula::symbol("N/s"),
+                                                 .decimals = 4 };
+
+/// The slope over the first @p count points of @p shape, rounded to 4 dp of
+/// N/s the way `rounded_output` rounds it -- `LinearLeastSquares::compute_exact`,
+/// then `detail::rounded_in_unit` -- and whether it overflowed.
+template <typename Shape>
+[[nodiscard]] bool rounded_fit_overflows(Shape shape, std::size_t count)
+{
+    std::vector<Rational> times;
+    std::vector<Rational> forces;
+    for (std::size_t at = 0; at < count; ++at)
+    {
+        FitPoint const point = shape(static_cast<std::int64_t>(at));
+        times.push_back(point.x);
+        forces.push_back(point.y);
+    }
+    auto const fitted = formula::LinearLeastSquares::compute_exact(std::span<Rational const> { times },
+                                                                   std::span<Rational const> { forces });
+    if (!fitted.has_value())
+        return fitted.error() == formula::ArithmeticError::Overflow;
+    auto const slope = formula::detail::rounded_in_unit((*fitted)[1], newtonPerSecond, formula::DecimalPlaces { 4 },
+                                                        formula::RoundingMode::HalfEven);
+    return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
+}
+
+/// `scan_fit` for the rounded route.
+template <typename Shape>
+[[nodiscard]] FitScan scan_rounded_fit(Shape shape)
+{
+    FitScan found;
+    for (std::size_t count = 2; count <= 128; ++count)
+    {
+        bool overflowed = false;
+        Used const used = census_of([&] { overflowed = rounded_fit_overflows(shape, count); });
+        if (overflowed)
+            found.overflowing.push_back(count);
+        else
+            found.leastHeadroom = std::min(found.leastHeadroom, used.headroom());
+    }
+    return found;
+}
+
+/// The first @p N points of @p shape through the node --
+/// `rounded_output<"slope", N/s, 4 dp>` of `linear_least_squares` over a curve
+/// -- and whether it overflowed.
+template <std::size_t N, typename Shape>
+[[nodiscard]] bool rounded_fit_node_overflows(Shape shape)
+{
+    std::array<formula::Measured<FitTime>, N> times;
+    std::array<formula::Measured<FitForce>, N> forces;
+    for (std::size_t at = 0; at < N; ++at)
+    {
+        FitPoint const point = shape(static_cast<std::int64_t>(at));
+        times[at] = formula::Measured<FitTime> { point.x };
+        forces[at] = formula::Measured<FitForce> { point.y };
+    }
+    auto const inputs =
+        formula::environment(formula::MeasuredSeries<FitTime, N> { times }, formula::MeasuredSeries<FitForce, N> { forces });
+    constexpr auto fit = formula::linear_least_squares(
+        formula::curve(formula::series<FitTime, N>, formula::series<FitForce, N>), { .reference = "Example Standard 12" });
+    constexpr auto roundedSlope =
+        formula::rounded_output<"slope", newtonPerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fit);
+    auto const slope = formula::checked_evaluate_si<Rational>(roundedSlope, inputs);
+    return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
+}
+
 /// The variance of a six-element sample, and whether it is a value.
 [[nodiscard]] bool variance_is_value(auto const& inputs)
 {
@@ -743,11 +813,18 @@ TEST_CASE("census: least squares over 2 to 128 points", "[census]")
     FitScan const oneDecimal = scan_fit(one_decimal_point);
     FitScan const threeDecimals = scan_fit(three_decimals_point);
     FitScan const distinct = scan_fit(distinct_denominators_point);
+    FitScan const roundedThree = scan_rounded_fit(three_decimals_point);
+    FitScan const roundedDistinct = scan_rounded_fit(distinct_denominators_point);
     emit("least-squares", "| data (invented) | sizes that overflow | first to overflow | least headroom otherwise |");
     emit("least-squares", "|---|---|---|---|");
     emit("least-squares", oneDecimal.row("readings at 1 dp (realistic)"));
     emit("least-squares", threeDecimals.row("readings at 3 dp near 2410 N, a load cell's (realistic)"));
     emit("least-squares", distinct.row("a different denominator on every point (stress control)"));
+    emit("least-squares",
+         roundedThree.row("the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic)"));
+    emit("least-squares",
+         roundedDistinct.row("the slope rounded to 4 dp by rounded_output: "
+                             "a different denominator on every point (stress control)"));
 
     // What the page says, pinned: the spike's first failing sizes, 34 and 15
     // points, hold through the library's fit, and one decimal place never
@@ -761,6 +838,17 @@ TEST_CASE("census: least squares over 2 to 128 points", "[census]")
     CHECK(distinct.overflowing.size() == 114);
     CHECK(!fit_node_overflows<33>());
     CHECK(fit_node_overflows<34>());
+
+    // The rounded route, measured with this algorithm: the realistic readings
+    // never outgrow 256 bits; a different denominator on every point does,
+    // in compute_exact, from 58 points. The node agrees on both sides of 58.
+    CHECK(roundedThree.overflowing.empty());
+    REQUIRE(!roundedDistinct.overflowing.empty());
+    CHECK(roundedDistinct.overflowing.front() == 58);
+    CHECK(roundedDistinct.overflowing.size() == 71);
+    CHECK(!rounded_fit_node_overflows<128>(three_decimals_point));
+    CHECK(!rounded_fit_node_overflows<57>(distinct_denominators_point));
+    CHECK(rounded_fit_node_overflows<58>(distinct_denominators_point));
 }
 
 TEST_CASE("the census draws the samples tools/census/exact_sizes.py draws", "[census]")
