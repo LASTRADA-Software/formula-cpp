@@ -91,11 +91,22 @@ change is recorded here.
   into a mass, or euros into yen, used to compile and get `ArithmeticError::DomainError` at run
   time; it no longer compiles, and the message names the two quantities. A conversion between
   quantities of one dimension is unchanged.
-- An unqualified call of `describe` with a `ConstraintOutcomeKind`, a `RetryEnd`, a `ValueSource`,
-  an `OutcomeKind` or a `FailureSite` now finds the library's function by argument-dependent
-  lookup. A consumer's own `describe` for one of these enums -- a `describe(ConstraintOutcomeKind)`
-  helper, say -- now makes such a call ambiguous, and has to be renamed or removed, as
-  `examples/constraints.cpp`'s was, or called by a qualified name such as `::describe`.
+- An unqualified call with arguments of this library's types now also finds, by argument-dependent
+  lookup, the functions this release adds: `describe` of a `ConstraintOutcomeKind`, a `RetryEnd`, a
+  `ValueSource`, an `OutcomeKind` or a `FailureSite`; `number_of`, `convert_to`, `round_to_declared`
+  and `within_bounds`; `traced`, `trace_of` and `trace_of_si`; and the `explain_*` twins above. A
+  consumer's own function of one of these names, visible where the call is written, meets the
+  library's in one of two ways. A function template of the same name and shape -- a
+  `template <typename R, typename Q> Measured<R> convert_to(Measured<Q>)` helper, say -- is
+  displaced **silently**: the library's is more constrained, so it is chosen, the helper no longer
+  runs, and where the helper returned an absent value on failure the library's `convert_to` throws
+  `ArithmeticException`. A non-template function, or one taking other parameter types -- a
+  `describe(ConstraintOutcomeKind)` helper, or a
+  `template <typename Q> Rational number_of(Measured<Q>)` that takes its argument by value -- makes
+  the call ambiguous. Either way, rename the helper, as `examples/constraints.cpp`'s `describe` was,
+  or call it by a qualified name such as `::convert_to`. And since `_r` is declared in an inline
+  namespace of `formula`, `using namespace formula;` now brings it into scope, where a consumer's
+  own `_r` is ambiguous with it.
 
 ## [0.2.0] - 2026-09-30
 
