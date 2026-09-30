@@ -353,9 +353,10 @@ template <std::size_t L>
 /// pre-checks; a wide operation that overflowed is `Overflow`. The parameters
 /// are named for what they hold, not `points`, which a consumer may declare.
 [[nodiscard]] constexpr std::expected<std::array<WideRatio<regressionSumLimbs>, 4>, ArithmeticError> line_outputs(
-    RegressionSums<1> const& sums, CentredSums<1> const& centred, WideSigned<regressionSumLimbs> const& rowCount) noexcept
+    RegressionSums<1> const& sums, CentredSums<1> const& centred, std::size_t rowCount) noexcept
 {
     using Sum = WideSigned<regressionSumLimbs>;
+    Sum const rowTotal = as_signed(WideUnsigned<regressionSumLimbs>::from_u64(rowCount));
     Sum const& regressorSpread = centred.regressorSpread[0][0];
     Sum const& coSpread = centred.responseCoSpread[0];
     Sum const regressorDenominator = as_signed(sums.regressorDenominators[0]);
@@ -368,7 +369,7 @@ template <std::size_t L>
     std::optional<Sum> const slopeTerm = mul_checked_or_none(sums.regressorTotals[0], coSpread);
     std::optional<Sum> const interceptNumerator =
         heightTerm.has_value() && slopeTerm.has_value() ? sub_checked_or_none(*heightTerm, *slopeTerm) : std::nullopt;
-    std::optional<Sum> const scaledDenominator = mul_checked_or_none(rowCount, responseDenominator);
+    std::optional<Sum> const scaledDenominator = mul_checked_or_none(rowTotal, responseDenominator);
     std::optional<Sum> const interceptDenominator =
         scaledDenominator.has_value() ? mul_checked_or_none(*scaledDenominator, regressorSpread) : std::nullopt;
 
@@ -382,7 +383,7 @@ template <std::size_t L>
         wide_ratio_of(*interceptNumerator, *interceptDenominator),
         wide_ratio_of(*slopeNumerator, *slopeDenominator),
         wide_ratio_of(*determinationNumerator, *determinationDenominator),
-        points_ratio<regressionSumLimbs>(static_cast<std::size_t>(rowCount.magnitude.to_u64().value_or(0))),
+        points_ratio<regressionSumLimbs>(rowCount),
     };
 }
 
@@ -535,7 +536,7 @@ template <std::size_t K>
     if (!centred.has_value())
         return std::unexpected { centred.error() };
     if constexpr (K == 1)
-        return line_outputs(*sums, *centred, rowCount);
+        return line_outputs(*sums, *centred, responses.size());
     else
         return solved_outputs<K>(*sums, *centred, responses.size());
 }
