@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: multiple_least_squares needs at least one regressor
-// REJECT: fits at most 8
-// REJECT: reads each regressor
+// EXPECT: formula: multiple_least_squares takes its regressors wrapped in regressors(...)
+// REJECT: ambiguous
+// REJECT: no matching
 // REJECT: has no output of that name
-// REJECT: constraints not satisfied
-// REJECT: MultipleLeastSquares<0>
 //
-// The last two are g++'s wording of the operation's own constraint on K, so
-// they can only fire on g++; cl words it differently.
-// `regressors()` names none: refused once, and not also as too many regressors,
-// as operands that are not observations, or as a missing output.
+// One regressor handed over without `regressors(...)`, with a `Citation`
+// object: both the overload for one unwrapped regressor and the one for
+// several are viable, and the first is the more specialised. One library
+// message, and not also an ambiguous call, a missing overload or a missing
+// output.
 #include <formula-cpp/least_squares.hpp>
 
 struct Temperature: formula::Quantity<Temperature, "T", "an invented temperature", formula::unit::Celsius>
@@ -26,7 +25,8 @@ inline constexpr auto sample = formula::environment(formula::MeasuredObservation
                                                      formula::MeasuredObservations<Content, 8>(),
                                                      formula::MeasuredObservations<Length, 8>());
 inline constexpr auto fit = formula::multiple_least_squares(
-    formula::regressors(), formula::observations<Length, 8>, { .reference = "Example Standard 12" });
+    formula::observations<Temperature, 8>, formula::observations<Length, 8>,
+    formula::Citation { .reference = "Example Standard 12" });
 
 int main()
 {

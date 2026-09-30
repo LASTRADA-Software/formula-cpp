@@ -2273,6 +2273,8 @@ formula_add_negative_test(multiple_least_squares_series_of_values_quantity
 formula_add_negative_test(multiple_least_squares_series_values
     "formula: multiple_least_squares reads each regressor and the values as raw observations"
     REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
+# "constraints not satisfied" is g++'s wording of the operation's constraint on
+# K, so that REJECT can only fire on g++.
 formula_add_negative_test(multiple_least_squares_no_regressor
     "formula: multiple_least_squares needs at least one regressor"
     REJECT "fits at most 8" "reads each regressor" "has no output of that name" "constraints not satisfied"
@@ -2289,6 +2291,10 @@ formula_add_negative_test(multiple_least_squares_regressor_as_values
 formula_add_negative_test(multiple_least_squares_unwrapped
     "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
     REJECT "no matching" "has no output of that name")
+formula_add_negative_test(multiple_least_squares_one_unwrapped_with_citation
+    "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
+    EXPECT_COUNT 1
+    REJECT "ambiguous" "no matching" "has no output of that name")
 formula_add_negative_test(multiple_least_squares_two_unwrapped
     "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
     REJECT "no matching" "has no output of that name")

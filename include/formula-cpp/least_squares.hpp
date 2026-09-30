@@ -64,8 +64,8 @@
 /// `Overflow`. Correctly rounded through `rounded_output`, which rounds the
 /// kernel's wide result and so answers where the exact route overflows --
 /// within the kernel's width, and beyond it `Overflow`. Approximately in
-/// `double` through `checked_evaluate_si<double>`, untraced. A flat response is its own `DomainError`, so an R² acceptance is
-/// never passed by one.
+/// `double` through `checked_evaluate_si<double>`, untraced. A flat response
+/// is its own `DomainError`, so an R² acceptance is never passed by one.
 ///
 /// **A regression of several regressors** through raw observations,
 /// `multiple_least_squares(regressors(x1, ..., xK), y, citation)` for K from 1
