@@ -4589,6 +4589,52 @@ template <typename Result = detail::ResultOfYields,
         return checked_explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary);
 }
 
+/// The trace of evaluating @p expression for @p Result in @p environmentGiven --
+/// what a `RecordingSink` records during `checked_evaluate<Result>(expression,
+/// environmentGiven, sink)` -- whether the evaluation succeeds or fails; a
+/// failure is the trace's last step. For showing how a number was reached, or
+/// where it could not be: the outcome is not returned, so read it with
+/// `checked_evaluate` or `checked_explain` where it is used.
+///
+/// Every step naming a quantity writes its symbol as @p vocabulary says.
+template <Described Result, Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Trace<Rational> trace_of(Expression const& expression, Env const& environmentGiven, V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink) { return checked_evaluate<Result>(expression, environmentGiven, recordingSink); },
+                  vocabulary)
+        .trace;
+}
+
+/// `trace_of<Q>(boundFormula.expression, environmentGiven, vocabulary)`, `Q`
+/// taken from the `Yields` (`yields.hpp`). `Result` is `Q`'s place for a caller
+/// who names it anyway; any other quantity is refused.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          typename E,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Trace<Rational> trace_of(Yields<Q, E> const& boundFormula, Env const& environmentGiven, V const& vocabulary = V {})
+{
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
+        return Trace<Rational> {}; // refused already, where the mistake is
+    else
+        return trace_of<Q>(boundFormula.expression, environmentGiven, vocabulary);
+}
+
+/// The trace of `checked_evaluate_si<Rational>(expression, environmentGiven,
+/// sink)`: the evaluation in SI units, with no result quantity named.
+template <Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Trace<Rational> trace_of_si(Expression const& expression,
+                                          Env const& environmentGiven,
+                                          V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink)
+                  { return checked_evaluate_si<Rational>(expression, environmentGiven, recordingSink); },
+                  vocabulary)
+        .trace;
+}
+
 /// A retry's result together with every attempt that produced it.
 template <Described R>
 struct ExplainedRetry

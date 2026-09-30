@@ -23,6 +23,7 @@ The 19 programs in `examples/` repeat a few shapes, and those shapes make the li
 - All four addition groups are in scope: literals and inputs; reading and printing; a trace from every verb; stating a rule once.
 - **Bound formulas are in scope.** `yields<Q>(expr)` names the result once. The author still names it; nothing is deduced from the expression.
 - **`std::print` / `std::println` replace printf and iostream** throughout the examples, tools, support code and docs, not only in the examples.
+- `trace_of` gives the trace of an evaluation, success or failure, in one call; it returns no outcome, so a caller who needs one still reads it with `checked_evaluate` or `checked_explain`.
 
 ## Rules nothing here may bend
 

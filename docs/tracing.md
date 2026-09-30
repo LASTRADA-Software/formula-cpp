@@ -240,6 +240,31 @@ was typed in rather than derived leaves `trace` empty, as it does for
 `double` is traced by calling its `checked_evaluate_si<double>` with your own
 `RecordingSink<double>`.
 
+## Just the trace
+
+Code that only shows how a number was reached has no use for the outcome, and
+`traced` spells the lambda out each time. `trace_of` gives the `Trace` alone,
+whether the evaluation succeeded or failed -- a failure is the trace's last
+step:
+
+```cpp
+using formula::var;
+
+auto const steps = formula::trace_of<Density>(var<Mass> / var<Volume>, measurements);
+auto const text = formula::render_trace(steps, { .maxSteps = 100 });
+```
+
+A bound formula names its quantity already, so `trace_of(boundFormula,
+measurements)` needs none, and `trace_of_si(expression, measurements)` traces
+the evaluation in SI units with no result quantity named. All three take the
+vocabulary to write the symbols in as an optional last argument.
+
+The outcome is deliberately not returned. A caller who needs it reads it with
+`checked_evaluate`, and one who needs it together with its trace uses
+`checked_explain`, which holds the trace on success and in its failure's
+`trace` on error. `trace_of` is for display; a number that matters is read
+where the failure can be handled.
+
 ## Reading a derivation
 
 `examples/tracing.cpp` builds the same water/cement ratio

@@ -46,6 +46,10 @@ change is recorded here.
   `checked_evaluate_rejection`, `check`, `check_all` and `check_conformity`, each with the
   vocabulary as an optional last argument. `explain_series` and `explain_retry` return the same
   shape as before.
+- `trace_of<Q>(expression, env)`, `trace_of(boundFormula, env)` and `trace_of_si(expression, env)`:
+  the trace of an evaluation in one call, whether it succeeds or fails, for code that only shows how
+  a number was reached. They return no outcome; read that with `checked_evaluate` or
+  `checked_explain` where it is used. Each takes the vocabulary as an optional last argument.
 - `DecimalRounding` and `SignificantRounding` name a rounding once -- a unit, how many places or
   digits, and a `RoundingMode` -- where the three arguments were repeated at every use:
   `constexpr DecimalRounding tenthMpa { unit::Megapascal, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };`

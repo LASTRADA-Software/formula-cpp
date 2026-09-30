@@ -508,6 +508,11 @@ formula_add_negative_test(yields_rejection_result_dimension_mismatch
 formula_add_negative_test(yields_relabelled
     "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
     REJECT "no matching")
+formula_add_negative_test(trace_of_result_dimension_mismatch
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1)
+formula_add_negative_test(trace_of_yields_relabelled
+    "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
+    REJECT "no matching")
 # Nine verbs, each asked for its own wrong quantity: one refusal each. Each
 # verb gates on names_yields_result, never on RequireYieldsResult's value:
 # with the gate reading that value, clang-cl 22.1.8 compiled both branches

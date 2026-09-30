@@ -24,7 +24,8 @@
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
 // and its predicate, and of formulas an overlay fixed, derived and replaced;
-// `render_trace`; `traced`, `explain_conformity` and `explain_method`;
+// `render_trace`; `traced`, `trace_of`, `trace_of_si`, `explain_conformity` and
+// `explain_method`;
 // `check` and `check_all`; `evaluate_method` of an original
 // and of a replaced variant, and `check_method`, with `RecordingSink` and
 // with a sink of its own; `apply` with every overlay operation; `Outcome`'s
@@ -1383,6 +1384,10 @@ ConsumerGlobalsProbe probe_consumer_globals()
         // series and the rejection above, each evaluated and traced.
         auto const checkedBound = formula::checked_explain(boundStrength, specimen, north);
         probe.checks.push_back(checkedBound.has_value() && checkedBound->outcome == explained.outcome);
+        // Just the trace: of the formula, of the bound formula, and in SI units.
+        probe.checks.push_back(!formula::trace_of<Strength>(everything, specimen, north).empty());
+        probe.checks.push_back(!formula::trace_of(boundStrength, specimen, north).empty());
+        probe.checks.push_back(!formula::trace_of_si(everything, specimen, north).empty());
         constexpr auto boundScreens = formula::yields<EdgeX>(formula::series<EdgeX, 2>);
         probe.checks.push_back(formula::checked_evaluate_series(boundScreens, seriesInputs) == readSeries
                                && formula::explain_series(boundScreens, seriesInputs, north).outcome
