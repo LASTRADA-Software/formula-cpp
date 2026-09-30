@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <expected>
 #include <type_traits>
+#include <utility>
 
 namespace
 {
@@ -238,4 +239,28 @@ TEST_CASE("yields: every verb hands on the sink and the vocabulary it is given",
     auto const renamedRejection = written(formula::explain_rejection<Mass>(rejectionA, fixtureA, renamedMass).trace);
     REQUIRE(renamedRejection != written(formula::explain_rejection<Mass>(rejectionA, fixtureA).trace));
     CHECK(written(formula::explain_rejection(settledMass, fixtureA, renamedMass).trace) == renamedRejection);
+}
+
+TEST_CASE("yields: a bound formula is not an operand, and arithmetic over formulas is untouched", "[yields]")
+{
+    // Asked of a type, arithmetic over a bound formula is answered without
+    // the refusal firing: the refused operators name their return type.
+    using Bound = std::remove_const_t<decltype(ratio)>;
+    using Refused = formula::detail::RefusedBoundValue<formula::Describe<WaterCementRatio>::dimension>;
+    STATIC_REQUIRE(std::is_same_v<decltype(var<WaterVolume> * std::declval<Bound>()), Refused>);
+    STATIC_REQUIRE(std::is_same_v<decltype(std::declval<Bound>() + formula::Rational { 1 }), Refused>);
+    STATIC_REQUIRE(std::is_same_v<decltype(-std::declval<Bound>()), Refused>);
+    STATIC_REQUIRE(formula::detail::refused_already<Refused>());
+
+    // The formula it holds is an operand as any formula is, and so is every
+    // other operand those operators could have taken.
+    using Held = std::remove_const_t<decltype(ratio.expression)>;
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(var<WaterVolume> * ratio.expression),
+                       formula::BinaryNode<formula::BinaryOperator::Multiply, formula::VarNode<WaterVolume>, Held>>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(ratio.expression + formula::Rational { 1 }),
+                       formula::BinaryNode<formula::BinaryOperator::Add, Held, formula::ConstantNode<unit::One>>>);
+    STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<WaterVolume>(var<CementVolume> * ratio.expression, batch))
+                   == formula::Rational { 163 });
 }

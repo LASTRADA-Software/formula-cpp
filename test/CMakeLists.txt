@@ -547,6 +547,9 @@ formula_add_negative_test(yields_retry_evaluate
 formula_add_negative_test(yields_opaque_call_evaluate
     "formula: an opaque call is not a value, since an operation may have several outputs" EXPECT_COUNT 6
     REJECT "no matching")
+formula_add_negative_test(yields_as_operand
+    "formula: a bound formula is not an operand; use its .expression" EXPECT_COUNT 1
+    REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
 formula_add_negative_test(yields_not_a_value
     "formula: this bound formula is not an expression of one value" EXPECT_COUNT 1
     REJECT "no matching")
