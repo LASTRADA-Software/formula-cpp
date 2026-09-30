@@ -1058,6 +1058,31 @@ TEST_CASE("each output of a line through observations rounded where used is the 
           != std::string::npos);
 }
 
+TEST_CASE("a call rounded where used shares the render budget and says how many names were cut",
+          "[least-squares][observations][trace]")
+{
+    constexpr auto slopeRoundedWhereUsed = formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
+                                                                   formula::RoundingMode::HalfEven>(observedFit);
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(slopeRoundedWhereUsed, observedPoints,
+                                                        formula::RecordingSink { recorded });
+    // Eleven units: each input's line and its four observations take ten,
+    // the call's line the eleventh, and it has none left for its names.
+    CHECK(formula::render_trace(recorded, { .maxSteps = 11 })
+          == "1. t = 1 s; 2 s; 4 s; 7 s\n"
+             "2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm\n"
+             "3. linear least squares(#1, #2) = ... 4 more: rounded where used [inside not shown] "
+             "[Rate of change, Example Standard 12, 5.1]\n"
+             "... 1 further step not shown\n");
+    // Thirteen: the call names two outputs and says two more.
+    CHECK(formula::render_trace(recorded, { .maxSteps = 13 })
+          == "1. t = 1 s; 2 s; 4 s; 7 s\n"
+             "2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm\n"
+             "3. linear least squares(#1, #2) = intercept, slope, ... 2 more: rounded where used [inside not shown] "
+             "[Rate of change, Example Standard 12, 5.1]\n"
+             "... 1 further step not shown\n");
+}
+
 TEST_CASE("a logarithm of a fit's exact R^2 is rounded exactly to its declared places",
           "[least-squares][observations][transcendental]")
 {

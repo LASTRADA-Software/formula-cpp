@@ -2573,6 +2573,28 @@ namespace detail
         return " [unknown failure]";
     }
 
+    /// @p calledOutputs, each spelled by @p spelled and spending one unit of
+    /// @p budget, as a series' elements do, joined by @p joiner; a list cut
+    /// short ends `... k more`. For an opaque call's line, which lists its
+    /// outputs with their values, or by name alone on the rounded route.
+    template <typename Spell>
+    [[nodiscard]] std::string opaque_outputs_listed(std::vector<OpaqueOutputValue<Rational>> const& calledOutputs,
+                                                    std::size_t& budget,
+                                                    std::string_view joiner,
+                                                    Spell const& spelled)
+    {
+        std::size_t const outputCount = calledOutputs.size();
+        std::size_t const listed = budget < outputCount ? budget : outputCount;
+        budget -= listed;
+        std::string listText;
+        for (std::size_t at = 0; at < listed; ++at)
+            listText += (at > 0 ? std::string { joiner } : std::string {}) + spelled(calledOutputs[at]);
+        if (listed < outputCount)
+            listText += (listed > 0 ? std::string { joiner } : std::string {}) + "... "
+                        + std::to_string(outputCount - listed) + " more";
+        return listText;
+    }
+
     /// An opaque call's line, without its number: `series span(#1) = lowest
     /// = 103 g; highest = 191 g; span = 88 g [inside not shown] [Spread of
     /// readings, Example Standard 12, 4.2]`.
@@ -2621,36 +2643,22 @@ namespace detail
             if (callRow->answer != OpaqueAnswer::Answered || callRow->outputs.empty())
                 lineText += NotMeasuredText;
             else
-            {
-                std::size_t const outputCount = callRow->outputs.size();
-                std::size_t const listed = budget < outputCount ? budget : outputCount;
-                budget -= listed;
-                for (std::size_t at = 0; at < listed; ++at)
-                    lineText += (at > 0 ? ", " : "") + escaped_author_text(callRow->outputs[at].name);
-                if (listed < outputCount)
-                    lineText +=
-                        std::string { listed > 0 ? ", " : "" } + "... " + std::to_string(outputCount - listed) + " more";
-                lineText += ": rounded where used";
-            }
+                lineText += opaque_outputs_listed(callRow->outputs,
+                                                  budget,
+                                                  ", ",
+                                                  [](OpaqueOutputValue<Rational> const& shownOutput) {
+                                                      return escaped_author_text(shownOutput.name);
+                                                  })
+                            + ": rounded where used";
         }
         else if (callRow == nullptr || callRow->outputs.empty() || !callRow->outputs.front().value.has_value())
             lineText += NotMeasuredText;
         else
-        {
-            std::size_t const outputCount = callRow->outputs.size();
-            std::size_t const listed = budget < outputCount ? budget : outputCount;
-            budget -= listed;
-            for (std::size_t at = 0; at < listed; ++at)
-            {
-                OpaqueOutputValue<Rational> const& shownOutput = callRow->outputs[at];
-                if (at > 0)
-                    lineText += "; ";
-                lineText += escaped_author_text(shownOutput.name) + " = "
-                            + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value, numberStyle);
-            }
-            if (listed < outputCount)
-                lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outputCount - listed) + " more";
-        }
+            lineText += opaque_outputs_listed(
+                callRow->outputs, budget, "; ", [numberStyle](OpaqueOutputValue<Rational> const& shownOutput) {
+                    return escaped_author_text(shownOutput.name) + " = "
+                           + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value, numberStyle);
+                });
         lineText += " [inside not shown]";
         if (callRow != nullptr)
             lineText += opaque_failure_suffix(recorded, callRow->failure, opaqueLine.failedInput);
@@ -2788,6 +2796,18 @@ namespace detail
         return lineText + (cited.empty() ? " " + std::string { noCitationGiven } : " [" + cited + "]");
     }
 
+    /// The output an opaque output's line names: `span of #2`, named from its
+    /// call's row, or `output of #2` -- `an opaque output` with no operand --
+    /// without one.
+    [[nodiscard]] inline std::string opaque_output_label(ShownStep const& recorded, OpaqueLine const& opaqueLine)
+    {
+        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
+            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
+            return escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
+                   + sole_operand(recorded);
+        return recorded.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(recorded);
+    }
+
     /// An opaque output's line, without its number: `span of #2 = 88 g`, the
     /// output named from its call's row; `output of #2` without one.
     ///
@@ -2801,11 +2821,7 @@ namespace detail
                                                         OpaqueLine const& opaqueLine,
                                                         NumberStyle numberStyle)
     {
-        std::string outputText = step_expression(recorded);
-        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
-            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
-            outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
-                         + sole_operand(recorded);
+        std::string const outputText = opaque_output_label(recorded, opaqueLine);
         std::string const valueText =
             recorded.error.has_value() ? std::string { describe(*recorded.error) }
                                        : opaque_value_text(recorded.dimension, recorded.unit, recorded.value, numberStyle);
@@ -2828,14 +2844,10 @@ namespace detail
                                                                 OpaqueLine const& opaqueLine,
                                                                 NumberStyle numberStyle)
     {
-        std::string outputText =
-            recorded.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(recorded);
-        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
-            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
-            outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
-                         + sole_operand(recorded);
-        std::string lineText =
-            rounding_call_text(outputText, recorded.granularity, unit_symbol_text(recorded.unit)) + " = ";
+        std::string lineText = rounding_call_text(opaque_output_label(recorded, opaqueLine),
+                                                  recorded.granularity,
+                                                  unit_symbol_text(recorded.unit))
+                               + " = ";
         bool const callFailed = opaqueLine.call != nullptr && opaqueLine.call->failure != OpaqueFailure::None;
         if (recorded.error.has_value() && callFailed)
             lineText += std::string { describe(*recorded.error) }
