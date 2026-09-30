@@ -73,6 +73,16 @@ TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the sam
     CHECK(agreedCases == checkedCases);
 }
 
+TEST_CASE("wide rounding: a value checked_round refuses is answered when its rounding fits", "[wide-rounding]")
+{
+    // 10/3 at 18 dp: checked_round forms 10 * 10^18, past IntMax, and refuses;
+    // the wide fraction rounds to 3333333333333333333 / 10^18, which fits.
+    STATIC_REQUIRE(formula::checked_round(Rational { 10, 3 }, DecimalPlaces { 18 }, RoundingMode::HalfEven).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 10, 3 }), DecimalPlaces { 18 }, RoundingMode::HalfEven)
+                   == Rational { 3'333'333'333'333'333'333, 1'000'000'000'000'000'000 });
+}
+
 TEST_CASE("wide rounding: ties follow the mode and the sign", "[wide-rounding]")
 {
     // 19/2 = 9.5 and -9.5 at 0 dp: every mode tells a tie apart.
@@ -123,11 +133,16 @@ TEST_CASE("wide rounding: a fraction wider than 64 bits rounds exactly", "[wide-
 TEST_CASE("wide rounding: the kept integer must fit Rational and the places must be in range", "[wide-rounding]")
 {
     constexpr W4 twoToSixtyThree = W4::from_u64(std::uint64_t { 1 } << 63);
-    // -2^63 is IntMin; +2^63 is one past IntMax.
+    // -2^63 is IntMin; +2^63 is one past IntMax, and -2^63 - 1 one past IntMin:
+    // Overflow, never IntMax with the sign lost.
     STATIC_REQUIRE(*round_wide_ratio(R4 { true, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven)
                    == Rational { formula::detail::IntMin });
     STATIC_REQUIRE(round_wide_ratio(R4 { false, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::Overflow);
+    constexpr W4 pastIntMin = W4::from_u64((std::uint64_t { 1 } << 63) + 1U);
+    STATIC_REQUIRE(
+        round_wide_ratio(R4 { true, pastIntMin, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
+        == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(round_wide_ratio(R4 { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 70),
                                          W4::from_u64(1) },
                                     DecimalPlaces { -18 }, RoundingMode::HalfEven)
@@ -149,6 +164,16 @@ TEST_CASE("wide rounding: narrow_wide_ratio is the exact value or Overflow", "[w
     STATIC_REQUIRE(*narrow_wide_ratio(R4 { true, W4::from_u64(std::uint64_t { 1 } << 63), W4::from_u64(1) })
                    == Rational { formula::detail::IntMin });
     STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(std::uint64_t { 1 } << 63), W4::from_u64(1) }).error()
+                   == formula::ArithmeticError::Overflow);
+    // -2^63 - 1 is one past IntMin. A denominator of IntMax fits; of 2^63 it
+    // does not, nor of 2^64 - 1, which a cast to Rational::Int would read as -1.
+    STATIC_REQUIRE(narrow_wide_ratio(R4 { true, W4::from_u64((std::uint64_t { 1 } << 63) + 1U), W4::from_u64(1) }).error()
+                   == formula::ArithmeticError::Overflow);
+    constexpr W4 intMaxWide = W4::from_u64(static_cast<std::uint64_t>(formula::detail::IntMax));
+    STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, W4::from_u64(1), intMaxWide }) == Rational { 1, formula::detail::IntMax });
+    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(1), W4::from_u64(std::uint64_t { 1 } << 63) }).error()
+                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(narrow_wide_ratio(R4 { false, W4::from_u64(1), W4::from_u64(~std::uint64_t { 0 }) }).error()
                    == formula::ArithmeticError::Overflow);
     // 2^64 / (3 * 2^64): reduced first, 1/3.
     constexpr W4 twoToSixtyFour = W4::from_limbs({ 0U, 0U, 1U, 0U });

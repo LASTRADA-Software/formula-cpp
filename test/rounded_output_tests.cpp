@@ -240,7 +240,8 @@ constexpr formula::Citation productClause { .title = "Product of gains", .refere
 constexpr auto spanCall = formula::opaque<ReadingSpan>(spanClause, formula::series<Reading, 4>);
 
 // 127.3, 103.26, 191.07 and 139.4 g: span 87.81 g. With 191.11 g in place of
-// 191.07 g the span is 87.85 g, a tie at 1 dp.
+// 191.07 g the span is 87.85 g, a tie at 1 dp; with 191.01 g it is 87.75 g, a
+// tie whose kept digit is odd.
 constexpr auto readings = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(1273, 10) },
                                                                                  formula::Measured<Reading> { rat(10326, 100) },
                                                                                  formula::Measured<Reading> { rat(19107, 100) },
@@ -249,6 +250,11 @@ constexpr auto tiedReadings = formula::environment(formula::measured_series<Read
                                                                                      formula::Measured<Reading> { rat(10326, 100) },
                                                                                      formula::Measured<Reading> { rat(19111, 100) },
                                                                                      formula::Measured<Reading> { rat(1394, 10) }));
+constexpr auto oddTiedReadings =
+    formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(1273, 10) },
+                                                           formula::Measured<Reading> { rat(10326, 100) },
+                                                           formula::Measured<Reading> { rat(19101, 100) },
+                                                           formula::Measured<Reading> { rat(1394, 10) }));
 
 // Five and ten invented primes. The five's reciprocals sum to
 // 2101205901/58386114749, which Rational holds; the ten's to a fraction over
@@ -399,6 +405,19 @@ TEST_CASE("rounded output: a tie is broken by the mode as checked_round breaks i
     STATIC_REQUIRE(even->measurement().value() == rat(439, 5));
     STATIC_REQUIRE(away->measurement().value() == rat(879, 10));
     STATIC_REQUIRE(toward->measurement().value() == rat(439, 5));
+    // 87.75 g, whose kept digit 7 is odd: 87.8 under HalfEven, 87.7 under
+    // HalfTowardZero -- the tie that tells those two modes apart.
+    constexpr auto evenFromOdd = formula::checked_evaluate<Span>(
+        formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(spanCall),
+        oddTiedReadings);
+    constexpr auto towardFromOdd = formula::checked_evaluate<Span>(
+        formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfTowardZero>(
+            spanCall),
+        oddTiedReadings);
+    STATIC_REQUIRE(evenFromOdd.has_value());
+    STATIC_REQUIRE(towardFromOdd.has_value());
+    STATIC_REQUIRE(evenFromOdd->measurement().value() == rat(439, 5));
+    STATIC_REQUIRE(towardFromOdd->measurement().value() == rat(877, 10));
 }
 
 TEST_CASE("rounded output: the exact hook answers where the exact route overflows", "[rounded-output]")
