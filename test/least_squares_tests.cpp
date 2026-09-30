@@ -646,7 +646,7 @@ TEST_CASE("rounded output: the fit's trace names its outputs without values and 
     formula::OpaqueStepData<> const* const callRow = formula::opaque_data(explained.trace, 3);
     REQUIRE(callRow != nullptr);
     CHECK(callRow->values == formula::OpaqueValues::RoundedWhereUsed);
-    CHECK(callRow->answered);
+    CHECK(callRow->answer == formula::OpaqueAnswer::Answered);
     REQUIRE(callRow->outputs.size() == 2);
     CHECK(callRow->outputs[1].name == "slope");
     CHECK(!callRow->outputs[0].value.has_value());
@@ -663,7 +663,7 @@ TEST_CASE("rounded output: the fit's trace names its outputs without values and 
     // The exact route's row is as it was: every value, Exact, and answered.
     auto const exactRoute = formula::explain<Rate>(formula::opaque_output<"slope">(fit), fitPoints);
     CHECK(formula::opaque_data(exactRoute.trace, 3)->values == formula::OpaqueValues::Exact);
-    CHECK(formula::opaque_data(exactRoute.trace, 3)->answered);
+    CHECK(formula::opaque_data(exactRoute.trace, 3)->answer == formula::OpaqueAnswer::Answered);
     CHECK(formula::opaque_data(exactRoute.trace, 3)->outputs[1].value == rat(19, 28'000));
 }
 
@@ -729,6 +729,9 @@ TEST_CASE("rounded output: a failure reads as the call's own or as carried up fr
                                                               formula::Measured<Length> { rat(143, 10) }));
     auto const absent = formula::explain<Rate>(roundedSlope, gap);
     CHECK(absent.outcome.is_empty());
+    REQUIRE(formula::opaque_data(absent.trace, 3) != nullptr);
+    CHECK(formula::opaque_data(absent.trace, 3)->answer == formula::OpaqueAnswer::Unanswered);
+    CHECK(formula::opaque_data(absent.trace, 3)->failure == formula::OpaqueFailure::None);
     std::string const absentText = formula::render_trace(absent.trace, { .maxSteps = 30 });
     CHECK(absentText.find("4. linear least squares(#3) = (not measured) [inside not shown] [Rate of change, Example Standard 12, 5.1]\n")
           != std::string::npos);

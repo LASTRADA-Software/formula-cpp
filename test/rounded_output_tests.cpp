@@ -622,7 +622,7 @@ TEST_CASE("rounded output: a rounding that fails after the call answered is the 
              "3. wide product(#1, #2) = product: rounded where used [inside not shown] [Product of gains, Example Standard 7, 2.5]\n"
              "4. round(product of #3, to 0 dp) = overflow in exact arithmetic [nearest, ties to even]\n");
     REQUIRE(formula::opaque_data(recorded, 2) != nullptr);
-    CHECK(formula::opaque_data(recorded, 2)->answered);
+    CHECK(formula::opaque_data(recorded, 2)->answer == formula::OpaqueAnswer::Answered);
     CHECK(formula::opaque_data(recorded, 2)->failure == formula::OpaqueFailure::None);
 }
 

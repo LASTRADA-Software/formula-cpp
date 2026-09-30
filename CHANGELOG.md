@@ -196,7 +196,8 @@ may break it, and each such change is recorded here.
   used [inside not shown] [...]` -- and the output's own line states the rounding:
   `round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]`. The rounded
   decimal is the step's exact value, so no number style marks it `≈`. A failure the call carried
-  reads as the call's on the output's line too. `OpaqueStepData` records `values` and `answered`.
+  reads as the call's on the output's line too. `OpaqueStepData` records `values`, and in `answer`, an
+  `OpaqueAnswer`, whether the call answered.
 - `rounded_output<"slope", ...>(linear_least_squares(...))` answers where the exact route overflows:
   the fit is computed in 256-bit integers for it, so that on readings at 3 decimal places of a few
   thousand newtons it answers at every size from 2 to 128 points, where `opaque_output<"slope">`
@@ -294,7 +295,7 @@ may break it, and each such change is recorded here.
 - `OpaqueCallInfo` gains `values` after `dimensions`, defaulted to `OpaqueValues::Exact`: code that
   builds one with designated initialisers is unaffected; a structured binding over one now has five
   members, not four.
-- `OpaqueStepData` gains `values` and `answered`, after `inputsNotEvaluated`: a structured binding
+- `OpaqueStepData` gains `values` and `answer`, after `inputsNotEvaluated`: a structured binding
   over one now has seven members, not five.
 - `StepKind` gains `RoundedOpaqueOutput`, `NaturalLogarithm`, `DecimalLogarithm`, `Exponential`,
   `RoundedNaturalLogarithm`, `RoundedDecimalLogarithm` and `RoundedExponential`, appended after

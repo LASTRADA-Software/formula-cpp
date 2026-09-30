@@ -2612,7 +2612,7 @@ namespace detail
         {
             // No output holds a value: the names, each spending one unit of
             // the budget as a value would, and how they are reported.
-            if (!callRow->answered || callRow->outputs.empty())
+            if (callRow->answer != OpaqueAnswer::Answered || callRow->outputs.empty())
                 lineText += NotMeasuredText;
             else
             {

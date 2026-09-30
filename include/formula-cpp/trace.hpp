@@ -1434,6 +1434,19 @@ struct OpaqueOutputValue
     std::optional<Rep> value {};
 };
 
+/// Whether an opaque call answered, as its step records it
+/// (`OpaqueStepData::answer`). Why one that did not answer gave nothing is
+/// `OpaqueStepData::failure`'s to say: `None` for an input that was absent,
+/// and whose failure it was otherwise.
+enum class OpaqueAnswer : std::uint8_t
+{
+    /// The call gave no outputs: an input was absent, or the call failed. The
+    /// zero value, so a row built by hand reads as a call that did not answer.
+    Unanswered,
+    /// Every input was present and the operation answered.
+    Answered,
+};
+
 /// What an `OpaqueOperation` step carries beyond its `Step`, keyed by its
 /// index in `Trace::steps`. A side table rather than members of `Step`, so
 /// that every other step pays nothing for them (`Trace::conformityLimits` is
@@ -1462,7 +1475,7 @@ struct OpaqueStepData
     /// Whether the call answered -- every input present and the operation
     /// successful. On the rounded route it is the only record that the call
     /// was not absent, since no output holds a value there.
-    bool answered {};
+    OpaqueAnswer answer {};
 };
 
 /// Which output an `OpaqueOutput` or `RoundedOpaqueOutput` step selected,
@@ -4026,7 +4039,7 @@ class RecordingSink
     /// output and whose failure it carries in `Trace::opaqueSteps`. A call
     /// evaluated for a rounded output (`OpaqueValues::RoundedWhereUsed`, `M`
     /// 0) has every output named and none valued; whether it answered is
-    /// `OpaqueStepData::answered`.
+    /// `OpaqueStepData::answer`.
     ///
     /// Whose failure is the evaluation's own answer (`OpaqueCallFailure::origin`),
     /// never re-derived, with one exception: a relayed failure that no claimed
@@ -4059,7 +4072,7 @@ class RecordingSink
         OpaqueStepData<Rep> callRow {};
         callRow.operationName = callInfo.name;
         callRow.values = callInfo.values;
-        callRow.answered = result.has_value() && result->has_value();
+        callRow.answer = result.has_value() && result->has_value() ? OpaqueAnswer::Answered : OpaqueAnswer::Unanswered;
         // On the rounded route the evaluation holds no values (`M` is 0): every
         // output the operation declares is named, and none has a value.
         std::size_t const outputsNamed = callInfo.values == OpaqueValues::RoundedWhereUsed ? callInfo.outputs.size() : M;
@@ -4072,7 +4085,7 @@ class RecordingSink
             recordedOutput.dimension = callInfo.dimensions[outputAt];
             recordedOutput.unit = detail::opaque_output_unit(_trace->steps, callStep.operands, recordedOutput.dimension);
             if constexpr (M > 0)
-                if (outputAt < M && callRow.answered)
+                if (outputAt < M && callRow.answer == OpaqueAnswer::Answered)
                     recordedOutput.value = (**result)[outputAt];
             callRow.outputs.push_back(recordedOutput);
         }
