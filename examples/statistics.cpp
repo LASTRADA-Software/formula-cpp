@@ -203,11 +203,11 @@ int main()
         std::println("the spread of six masses: {}", spreadValue.error().error);
         return 1;
     }
-    std::println("{} = {:/}", formula::render(mean), meanValue->measurement());
-    std::println("{} = {:/}", formula::render(count), countValue->measurement());
-    std::println("{} = {:/}", formula::render(variance), varianceValue->measurement());
-    std::println("{} = {:/}", formula::render(range), rangeValue->measurement());
-    std::println("{} = {:/}", formula::render(spread), spreadValue->outcome.measurement());
+    std::println("{} = {:/}", formula::render(mean), *meanValue);
+    std::println("{} = {:/}", formula::render(count), *countValue);
+    std::println("{} = {:/}", formula::render(variance), *varianceValue);
+    std::println("{} = {:/}", formula::render(range), *rangeValue);
+    std::println("{} = {:/}", formula::render(spread), spreadValue->outcome);
     std::println("LaTeX: {}\n", formula::render<formula::Dialect::LaTeX>(spread));
     check(formula::number_of(meanValue) == 41.3_r, "the mean is 41.3 g");
     check(formula::number_of(varianceValue) == 3.416_r, "the variance divides by n - 1: 427/125 g2");
@@ -227,8 +227,8 @@ int main()
         formula::checked_evaluate<Determinations>(formula::sample_count(formula::observations<Mass, 8>), observed);
     static_assert(observedCount.has_value());
     std::println("observations of 8 at most, 6 made: mean {:/}, count {:/}",
-                 observedMean->measurement(),
-                 observedCount->measurement());
+                 *observedMean,
+                 *observedCount);
     check(formula::number_of(observedCount) == 6_r, "the count is the six made, not the capacity");
 
     // Nine for eight places: refused, never truncated to fit.
@@ -267,7 +267,7 @@ int main()
         return 1;
     }
     std::println("result: {:/}, {} rejected in {} passes\n",
-                 settled->outcome().measurement(),
+                 settled->outcome(),
                  settled->rejected().size(),
                  settled->passes());
     check(formula::number_of(settled) == 40.125_r, "the mean of the four kept, 321/8 g");
@@ -299,7 +299,7 @@ int main()
                  tied->rejected()[0].position + 1,
                  tied->rejected()[1].position + 1,
                  tied->rejected()[0].pass,
-                 tied->outcome().measurement());
+                 tied->outcome());
 
     auto const threeMade = formula::environment(formula::MeasuredObservations<Mass, 8>(40_r, 40_r, 41_r));
     auto const tooFew = formula::explain_rejection<Mass>(observedWithoutOutliers, threeMade);

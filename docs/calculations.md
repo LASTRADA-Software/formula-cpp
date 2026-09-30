@@ -412,8 +412,8 @@ its unit:
 ```cpp
 std::println("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
              step,
-             total.measurement(),
-             netDraw.measurement(),
+             total,
+             netDraw,
              counted.recomputed,
              counted.reused);
 ```

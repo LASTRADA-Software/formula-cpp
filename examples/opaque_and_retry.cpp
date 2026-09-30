@@ -366,7 +366,7 @@ int main()
     check(formula::number_of(roundedWide) == 116.232_r,
           "rounded where used, fifteen distinct denominators answer: 1.9372 mm/s");
     if (roundedWide.has_value())
-        std::println("fifteen distinct denominators, rounded where used: {}\n", roundedWide->measurement());
+        std::println("fifteen distinct denominators, rounded where used: {}\n", *roundedWide);
 
     std::println("== 4. A citation is required ==\n");
 
@@ -489,9 +489,9 @@ int main()
     check(slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value(), "fifty readings, rounded");
     if (slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value())
         std::println("fifty readings at 4 decimals, rounded: slope {}, intercept {}, r squared {}\n",
-                     slopeOfFifty->measurement(),
-                     startOfFifty->measurement(),
-                     qualityOfFifty->measurement());
+                     *slopeOfFifty,
+                     *startOfFifty,
+                     *qualityOfFifty);
     check(formula::number_of(slopeOfFifty) == 3.1707_r, "3.1707 mm/s");
 
     std::println("== 8. Several regressors ==\n");
@@ -513,9 +513,9 @@ int main()
     check(perKelvin.has_value() && perPercent.has_value() && atZero.has_value(), "two regressors, rounded");
     if (perKelvin.has_value() && perPercent.has_value() && atZero.has_value())
         std::println("coefficient 1: {}, coefficient 2: {}, length at 0 degrees Celsius: {}",
-                     perKelvin->measurement(),
-                     perPercent->measurement(),
-                     atZero->measurement());
+                     *perKelvin,
+                     *perPercent,
+                     *atZero);
     check(formula::number_of(perPercent) == 0.5557_r, "0.5557 mm per percent");
 
     constexpr auto collinear = formula::multiple_least_squares(

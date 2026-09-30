@@ -308,8 +308,8 @@ int main()
         // The total is in whole cents already; .2 pads it to them: 98.00 EUR.
         std::println("{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}, reused {}",
                      step,
-                     total.measurement(),
-                     netDraw.measurement(),
+                     total,
+                     netDraw,
                      counted.recomputed,
                      counted.reused);
         return std::pair { formula::number_of(total), counted };
@@ -369,8 +369,8 @@ int main()
     auto const [sunnierTotal, sunnierDraw] = sunnier.calculate(var<Total>, var<NetDraw>);
     std::println("\n{:<26} total {:.2HalfAwayFromZero}, net draw {}, recomputed {}",
                  "with 200 kWh of sun:",
-                 sunnierTotal.measurement(),
-                 sunnierDraw.measurement(),
+                 sunnierTotal,
+                 sunnierDraw,
                  sunnier.recomputed() - copied.recomputed);
     check("85.14 EUR and 239 kWh on the copy, nine recalculated",
           formula::number_of(sunnierTotal) == 85.14_r && formula::number_of(sunnierDraw) == 239_r
@@ -418,7 +418,7 @@ int main()
         return 1;
     }
     auto shares = formula::worksheet(sharing, formula::environment(*sharedCost, formula::Measured<Occupants> { 3 }));
-    auto const eachInCents = shares.calculate<ShareInCents>().measurement();
+    auto const eachInCents = shares.calculate<ShareInCents>();
     std::println("\n{:.2HalfAwayFromZero} shared by 3: {} each", *sharedCost, eachInCents);
     check("32.67 EUR each", formula::number_of(eachInCents) == 32.67_r);
 
@@ -479,7 +479,7 @@ int main()
     // is every share -- not zero, and not a failure.
     shares.set(formula::Measured<Occupants>::absent());
     auto const [uncountedShare, uncountedInCents] = shares.calculate<Share, ShareInCents>();
-    std::println("\noccupants not counted: share {}, in cents {}", uncountedShare.measurement(), uncountedInCents.measurement());
+    std::println("\noccupants not counted: share {}, in cents {}", uncountedShare, uncountedInCents);
     check("an absent input leaves what reads it empty", uncountedShare.is_empty() && uncountedInCents.is_empty());
 
     std::println("\nall checks passed: {}", ok ? "yes" : "no");
