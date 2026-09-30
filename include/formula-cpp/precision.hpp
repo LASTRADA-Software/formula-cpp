@@ -685,8 +685,15 @@ namespace detail
 
     /// A rounded opaque output's children are its call's inputs, as an
     /// unrounded output's are.
-    template <std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode, typename Origin>
-    struct LevelChildren<RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>: LevelParent<Inputs...>
+    template <std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
+              typename Origin>
+    struct LevelChildren<RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>:
+        LevelParent<Inputs...>
     {
     };
 

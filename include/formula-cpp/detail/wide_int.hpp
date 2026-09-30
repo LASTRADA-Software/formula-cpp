@@ -70,7 +70,10 @@ class WideUnsigned
     }
 
     /// Every limb, least significant first.
-    [[nodiscard]] constexpr std::array<std::uint32_t, Limbs> const& limbs() const noexcept { return _limbs; }
+    [[nodiscard]] constexpr std::array<std::uint32_t, Limbs> const& limbs() const noexcept
+    {
+        return _limbs;
+    }
 
     /// This value as a `std::uint64_t`, or nothing when it needs more than 64 bits.
     [[nodiscard]] constexpr std::optional<std::uint64_t> to_u64() const noexcept
@@ -111,7 +114,10 @@ class WideUnsigned
 
     /// Limb @p at, counted from the least significant; zero past the top, so
     /// that a caller reading one limb beyond needs no bounds check of its own.
-    [[nodiscard]] constexpr std::uint32_t limb(std::size_t at) const noexcept { return at < Limbs ? _limbs[at] : 0U; }
+    [[nodiscard]] constexpr std::uint32_t limb(std::size_t at) const noexcept
+    {
+        return at < Limbs ? _limbs[at] : 0U;
+    }
 
     /// Limb-wise equality, which for this representation is value equality.
     friend constexpr bool operator==(WideUnsigned const&, WideUnsigned const&) noexcept = default;

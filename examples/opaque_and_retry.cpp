@@ -127,10 +127,9 @@ constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocit
                                               .magnitudeDenominator = 1000,
                                               .symbolText = formula::symbol("mm/s"),
                                               .decimals = 4 };
-constexpr auto roundedSlope = formula::rounded_output<"slope",
-                                                      millimetrePerSecond,
-                                                      formula::DecimalPlaces { 4 },
-                                                      formula::RoundingMode::HalfEven>(fit);
+constexpr auto roundedSlope =
+    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        fit);
 
 /// Fifteen points, each on a different denominator: point k at
 /// ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) mm).
@@ -249,22 +248,25 @@ using SlopeRate = formula::Quantity<struct SlopeRateTag, "v_s", "an invented slo
 using StartLength = formula::Quantity<struct StartLengthTag, "L_0", "an invented starting length", unit::Millimetre>;
 using FitQuality = formula::Quantity<struct FitQualityTag, "R2", "an invented coefficient of determination", unit::One>;
 
-constexpr auto observedFit = formula::linear_least_squares(
-    formula::observations<Elapsed, 64>,
-    formula::observations<Length, 64>,
-    { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
-constexpr auto observedSlope = formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 },
-                                                       formula::RoundingMode::HalfEven>(observedFit);
+constexpr auto observedFit =
+    formula::linear_least_squares(formula::observations<Elapsed, 64>,
+                                  formula::observations<Length, 64>,
+                                  { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
+constexpr auto observedSlope =
+    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        observedFit);
 constexpr auto closeEnough = formula::constraint(
     formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(observedFit)
         >= formula::constant<unit::One>(formula::Rational { 998, 1000 }),
     formula::Verdict { "repeat the readings" });
 
 constexpr auto observedPoints = formula::environment(
-    formula::MeasuredObservations<Elapsed, 64>(formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 },
-                                               formula::Rational { 7 }),
-    formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 }, formula::Rational { 109, 10 },
-                                              formula::Rational { 121, 10 }, formula::Rational { 143, 10 }));
+    formula::MeasuredObservations<Elapsed, 64>(
+        formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 7 }),
+    formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 },
+                                              formula::Rational { 109, 10 },
+                                              formula::Rational { 121, 10 },
+                                              formula::Rational { 143, 10 }));
 
 /// Fifty readings at four decimals: t = k + 1 + (7919 k mod 997) / 10^4 s and
 /// L = 2410 + 3.17 k + ((3217 k mod 1009) - 504) / 10^4 mm, for k from 0.
@@ -317,23 +319,31 @@ constexpr auto byTemperatureAndContent = formula::multiple_least_squares(
     formula::observations<Length, 64>,
     { .title = "Length by temperature and content", .reference = "Example Standard 12", .section = "5.3" });
 
-constexpr auto sixRows = formula::environment(
-    formula::MeasuredObservations<Temperature, 64>(formula::Rational { 113, 10 }, formula::Rational { 137, 10 },
-                                                   formula::Rational { 179, 10 }, formula::Rational { 191, 10 },
-                                                   formula::Rational { 233, 10 }, formula::Rational { 297, 10 }),
-    formula::MeasuredObservations<Content, 64>(formula::Rational { 23, 10 }, formula::Rational { 31, 10 },
-                                               formula::Rational { 29, 10 }, formula::Rational { 41, 10 },
-                                               formula::Rational { 37, 10 }, formula::Rational { 43, 10 }),
-    formula::MeasuredObservations<Length, 64>(formula::Rational { 2588, 25 }, formula::Rational { 10413, 100 },
-                                              formula::Rational { 10433, 100 }, formula::Rational { 1051, 10 },
-                                              formula::Rational { 10521, 100 }, formula::Rational { 106 }));
+constexpr auto sixRows = formula::environment(formula::MeasuredObservations<Temperature, 64>(formula::Rational { 113, 10 },
+                                                                                             formula::Rational { 137, 10 },
+                                                                                             formula::Rational { 179, 10 },
+                                                                                             formula::Rational { 191, 10 },
+                                                                                             formula::Rational { 233, 10 },
+                                                                                             formula::Rational { 297, 10 }),
+                                              formula::MeasuredObservations<Content, 64>(formula::Rational { 23, 10 },
+                                                                                         formula::Rational { 31, 10 },
+                                                                                         formula::Rational { 29, 10 },
+                                                                                         formula::Rational { 41, 10 },
+                                                                                         formula::Rational { 37, 10 },
+                                                                                         formula::Rational { 43, 10 }),
+                                              formula::MeasuredObservations<Length, 64>(formula::Rational { 2588, 25 },
+                                                                                        formula::Rational { 10413, 100 },
+                                                                                        formula::Rational { 10433, 100 },
+                                                                                        formula::Rational { 1051, 10 },
+                                                                                        formula::Rational { 10521, 100 },
+                                                                                        formula::Rational { 106 }));
 
 // The length at 0 degC: the constant is the length at 0 K.
-constexpr auto lengthAtZeroCelsius = formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 },
-                                                      formula::RoundingMode::HalfEven>(
-    formula::opaque_output<"constant">(byTemperatureAndContent)
-    + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
-          * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
+constexpr auto lengthAtZeroCelsius =
+    formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+        formula::opaque_output<"constant">(byTemperatureAndContent)
+        + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
+              * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
 } // namespace
 
 int main()
@@ -407,10 +417,9 @@ int main()
     std::printf("%s\n", formula::render_trace(roundedRate.trace, { .maxSteps = 20 }).c_str());
     check(roundedRate.outcome.measurement().value() == formula::Rational { 10179, 250 }, "0.6786 mm/s is 40.716 mm/min");
 
-    constexpr auto roundedFifteen = formula::rounded_output<"slope",
-                                                            millimetrePerSecond,
-                                                            formula::DecimalPlaces { 4 },
-                                                            formula::RoundingMode::HalfEven>(fifteen);
+    constexpr auto roundedFifteen =
+        formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fifteen);
     auto const roundedWide = formula::checked_evaluate<Rate>(roundedFifteen, distinctDenominators());
     check(roundedWide.has_value() && roundedWide->measurement().value() == formula::Rational { 14529, 125 },
           "rounded where used, fifteen distinct denominators answer: 1.9372 mm/s");
@@ -418,7 +427,8 @@ int main()
     {
         formula::NumberText const wideSlope =
             formula::number_text(roundedWide->measurement(), formula::NumberStyle::exact_decimal());
-        std::printf("fifteen distinct denominators, rounded where used: %.*s\n\n", static_cast<int>(wideSlope.view().size()),
+        std::printf("fifteen distinct denominators, rounded where used: %.*s\n\n",
+                    static_cast<int>(wideSlope.view().size()),
                     wideSlope.view().data());
     }
 
@@ -513,10 +523,12 @@ int main()
     check(fitAccepted, "0.9981 is at least 0.998");
 
     constexpr auto flatLengths = formula::environment(
-        formula::MeasuredObservations<Elapsed, 64>(formula::Rational { 1 }, formula::Rational { 2 },
-                                                   formula::Rational { 4 }, formula::Rational { 7 }),
-        formula::MeasuredObservations<Length, 64>(formula::Rational { 127, 10 }, formula::Rational { 127, 10 },
-                                                  formula::Rational { 127, 10 }, formula::Rational { 127, 10 }));
+        formula::MeasuredObservations<Elapsed, 64>(
+            formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 7 }),
+        formula::MeasuredObservations<Length, 64>(formula::Rational { 127, 10 },
+                                                  formula::Rational { 127, 10 },
+                                                  formula::Rational { 127, 10 },
+                                                  formula::Rational { 127, 10 }));
     auto const flatLine = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(observedFit), flatLengths);
     std::printf("flat lengths: %s\n",
                 flatLine.has_value() ? "a line" : std::string { formula::describe(flatLine.error()) }.c_str());
@@ -528,8 +540,9 @@ int main()
                 exactFifty.has_value() ? "a line" : std::string { formula::describe(exactFifty.error()) }.c_str());
     auto const slopeOfFifty = formula::checked_evaluate<SlopeRate>(observedSlope, fifty);
     auto const startOfFifty = formula::checked_evaluate<StartLength>(
-        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 },
-                                formula::RoundingMode::HalfEven>(observedFit),
+        formula::
+            rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+                observedFit),
         fifty);
     auto const qualityOfFifty = formula::checked_evaluate<FitQuality>(
         formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
@@ -538,7 +551,8 @@ int main()
     check(slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value(), "fifty readings, rounded");
     if (slopeOfFifty.has_value() && startOfFifty.has_value() && qualityOfFifty.has_value())
         std::printf("fifty readings at 4 decimals, rounded: slope %s, intercept %s, r squared %s\n\n",
-                    decimalText(slopeOfFifty->measurement()).c_str(), decimalText(startOfFifty->measurement()).c_str(),
+                    decimalText(slopeOfFifty->measurement()).c_str(),
+                    decimalText(startOfFifty->measurement()).c_str(),
                     decimalText(qualityOfFifty->measurement()).c_str());
     check(slopeOfFifty.has_value() && slopeOfFifty->measurement().value() == formula::Rational { 31707, 10'000 },
           "3.1707 mm/s");
@@ -549,18 +563,23 @@ int main()
     std::printf("%s\n", formula::render_trace(expansion.trace, { .maxSteps = 40 }).c_str());
 
     auto const perKelvin = formula::checked_evaluate<Expansion>(
-        formula::rounded_output<"coefficient 1", millimetrePerKelvin, formula::DecimalPlaces { 4 },
+        formula::rounded_output<"coefficient 1",
+                                millimetrePerKelvin,
+                                formula::DecimalPlaces { 4 },
                                 formula::RoundingMode::HalfEven>(byTemperatureAndContent),
         sixRows);
     auto const perPercent = formula::checked_evaluate<Swelling>(
-        formula::rounded_output<"coefficient 2", millimetrePerPercent, formula::DecimalPlaces { 4 },
+        formula::rounded_output<"coefficient 2",
+                                millimetrePerPercent,
+                                formula::DecimalPlaces { 4 },
                                 formula::RoundingMode::HalfEven>(byTemperatureAndContent),
         sixRows);
     auto const atZero = formula::checked_evaluate<StartLength>(lengthAtZeroCelsius, sixRows);
     check(perKelvin.has_value() && perPercent.has_value() && atZero.has_value(), "two regressors, rounded");
     if (perKelvin.has_value() && perPercent.has_value() && atZero.has_value())
         std::printf("coefficient 1: %s, coefficient 2: %s, length at 0 degrees Celsius: %s\n",
-                    decimalText(perKelvin->measurement()).c_str(), decimalText(perPercent->measurement()).c_str(),
+                    decimalText(perKelvin->measurement()).c_str(),
+                    decimalText(perPercent->measurement()).c_str(),
                     decimalText(atZero->measurement()).c_str());
     check(perPercent.has_value() && perPercent->measurement().value() == formula::Rational { 5557, 10'000 },
           "0.5557 mm per percent");
@@ -570,14 +589,15 @@ int main()
         formula::observations<Length, 64>,
         { .reference = "Example Standard 12" });
     constexpr auto twiceAsLate = formula::environment(
-        formula::MeasuredObservations<Elapsed, 64>(formula::Rational { 1 }, formula::Rational { 2 },
-                                                   formula::Rational { 4 }, formula::Rational { 7 }),
-        formula::MeasuredObservations<Delay, 64>(formula::Rational { 2 }, formula::Rational { 4 },
-                                                 formula::Rational { 8 }, formula::Rational { 14 }),
-        formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 }, formula::Rational { 109, 10 },
-                                                  formula::Rational { 121, 10 }, formula::Rational { 143, 10 }));
-    auto const unsolvable =
-        formula::checked_evaluate<Length>(formula::opaque_output<"constant">(collinear), twiceAsLate);
+        formula::MeasuredObservations<Elapsed, 64>(
+            formula::Rational { 1 }, formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 7 }),
+        formula::MeasuredObservations<Delay, 64>(
+            formula::Rational { 2 }, formula::Rational { 4 }, formula::Rational { 8 }, formula::Rational { 14 }),
+        formula::MeasuredObservations<Length, 64>(formula::Rational { 102, 10 },
+                                                  formula::Rational { 109, 10 },
+                                                  formula::Rational { 121, 10 },
+                                                  formula::Rational { 143, 10 }));
+    auto const unsolvable = formula::checked_evaluate<Length>(formula::opaque_output<"constant">(collinear), twiceAsLate);
     std::printf("a delay twice the elapsed time on every row: %s\n\n",
                 unsolvable.has_value() ? "a fit" : std::string { formula::describe(unsolvable.error()) }.c_str());
     check(!unsolvable.has_value() && unsolvable.error() == formula::ArithmeticError::DomainError,

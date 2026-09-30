@@ -75,7 +75,8 @@ constexpr auto fit =
     formula::linear_least_squares(formula::curve(formula::series<Elapsed, 4>, formula::series<Length, 4>),
                                   { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
 constexpr auto roundedSlope =
-    formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(fit);
+    formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        fit);
 
 // The same pairs in coherent SI, seconds and metres, in the order written.
 constexpr std::array<formula::Rational, 4> inOrderTimes { rat(1), rat(2), rat(4), rat(7) };
@@ -535,10 +536,13 @@ TEST_CASE("rounded output: a constant read inside a rounded output's call is fix
     // 19/28 * 1.03 = 0.69892857... mm/s, 0.6989 at 4 dp; 41.934 mm/min, 41.9
     // after the method's rule. The environment has no scale: a use left
     // reading it would not compile.
-    constexpr auto fixed = formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex)), roundedInsideMethod);
+    constexpr auto fixed =
+        formula::apply(formula::overlay(formula::with_constant<Scale>(rat(103, 100), annex)), roundedInsideMethod);
     using Rewritten = formula::detail::ConstantRewriteOf<
         formula::ConstantOverride<Scale>,
-        std::remove_cvref_t<decltype(formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
+        std::remove_cvref_t<decltype(formula::rounded_output<"slope",
+                                                             MillimetrePerSecond,
+                                                             formula::DecimalPlaces { 4 },
                                                              formula::RoundingMode::HalfEven>(scaledFit))>>;
     STATIC_REQUIRE(Rewritten::known);
     auto const outcome = formula::evaluate_method<Fitted>(fixed, fitPoints);
@@ -640,7 +644,8 @@ TEST_CASE("rounded output: the fit's trace names its outputs without values and 
              "5. round(slope of #4, to 4 dp of mm/s) = 0.6786 mm/s [nearest, ties to even]\n");
     // The rounded decimal is the step's exact value: no style marks it.
     std::string const approximate = formula::render_trace(
-        explained.trace, { .maxSteps = 30, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) });
+        explained.trace,
+        { .maxSteps = 30, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) });
     CHECK(approximate == decimals);
 
     // What the trace holds: the call's row names both outputs, holds no value,
@@ -672,14 +677,15 @@ TEST_CASE("rounded output: the fit's trace names its outputs without values and 
 TEST_CASE("rounded output: a padded style pads the rounded value to its unit's decimals", "[least-squares][trace]")
 {
     // 19/2 mm at 0 dp is a tie: 10 mm under HalfEven; the millimetre declares one decimal.
-    constexpr auto roundedIntercept =
-        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(fit);
+    constexpr auto roundedIntercept = formula::
+        rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(fit);
     auto const explained = formula::explain<Offset>(roundedIntercept, fitPoints);
     CHECK(explained.outcome.measurement().value() == rat(10));
     std::string const fractions = formula::render_trace(explained.trace, { .maxSteps = 30 });
     CHECK(fractions.find("5. round(intercept of #4, to 0 dp of mm) = 10 mm [nearest, ties to even]\n") != std::string::npos);
     std::string const padded = formula::render_trace(
-        explained.trace, { .maxSteps = 30, .numbers = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded) });
+        explained.trace,
+        { .maxSteps = 30, .numbers = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded) });
     CHECK(padded.find("5. round(intercept of #4, to 0 dp of mm) = 10.0 mm [nearest, ties to even]\n") != std::string::npos);
 }
 
@@ -693,8 +699,10 @@ TEST_CASE("rounded output: a failure reads as the call's own or as carried up fr
         formula::curve(formula::series<Elapsed, 1>, formula::series<Length, 1>), { .reference = "Example Standard 12" });
     formula::Trace<> own {};
     (void) formula::detail::dispatch<formula::Rational>(
-        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(single),
-        onePoint, formula::RecordingSink { own });
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            single),
+        onePoint,
+        formula::RecordingSink { own });
     std::string const ownText = formula::render_trace(own, { .maxSteps = 30 });
     CHECK(ownText.find("4. linear least squares(#3) = argument outside the domain of the operation [inside not shown] "
                        "[the operation itself failed, not any input] [Example Standard 12]\n")
@@ -716,34 +724,40 @@ TEST_CASE("rounded output: a failure reads as the call's own or as carried up fr
     formula::Trace<> relayed {};
     (void) formula::detail::dispatch<formula::Rational>(roundedSlope, repeated, formula::RecordingSink { relayed });
     CHECK(formula::render_trace(relayed, { .maxSteps = 30 })
-              .find("5. round(slope of #4, to 4 dp of mm/s) = argument outside the domain of the operation [carried up from #4]\n")
+              .find("5. round(slope of #4, to 4 dp of mm/s) = argument outside the domain of the operation [carried up from "
+                    "#4]\n")
           != std::string::npos);
 
     // An absent length: the call and the output are absent, and say so.
-    constexpr auto gap =
-        formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { rat(1) },
-                                                               formula::Measured<Elapsed> { rat(2) },
-                                                               formula::Measured<Elapsed> { rat(4) },
-                                                               formula::Measured<Elapsed> { rat(7) }),
-                             formula::measured_series<Length>(formula::Measured<Length> { rat(102, 10) },
-                                                              formula::Measured<Length>::absent(),
-                                                              formula::Measured<Length> { rat(121, 10) },
-                                                              formula::Measured<Length> { rat(143, 10) }));
+    constexpr auto gap = formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { rat(1) },
+                                                                                formula::Measured<Elapsed> { rat(2) },
+                                                                                formula::Measured<Elapsed> { rat(4) },
+                                                                                formula::Measured<Elapsed> { rat(7) }),
+                                              formula::measured_series<Length>(formula::Measured<Length> { rat(102, 10) },
+                                                                               formula::Measured<Length>::absent(),
+                                                                               formula::Measured<Length> { rat(121, 10) },
+                                                                               formula::Measured<Length> { rat(143, 10) }));
     auto const absent = formula::explain<Rate>(roundedSlope, gap);
     CHECK(absent.outcome.is_empty());
     REQUIRE(formula::opaque_data(absent.trace, 3) != nullptr);
     CHECK(formula::opaque_data(absent.trace, 3)->answer == formula::OpaqueAnswer::Unanswered);
     CHECK(formula::opaque_data(absent.trace, 3)->failure == formula::OpaqueFailure::None);
     std::string const absentText = formula::render_trace(absent.trace, { .maxSteps = 30 });
-    CHECK(absentText.find("4. linear least squares(#3) = (not measured) [inside not shown] [Rate of change, Example Standard 12, 5.1]\n")
+    CHECK(absentText.find(
+              "4. linear least squares(#3) = (not measured) [inside not shown] [Rate of change, Example Standard 12, 5.1]\n")
           != std::string::npos);
-    CHECK(absentText.find("5. round(slope of #4, to 4 dp of mm/s) = (not measured) [nearest, ties to even]\n") != std::string::npos);
+    CHECK(absentText.find("5. round(slope of #4, to 4 dp of mm/s) = (not measured) [nearest, ties to even]\n")
+          != std::string::npos);
 }
 
 namespace
 {
-template <formula::detail::FixedString Name, formula::Unit U, formula::DecimalPlaces Places, formula::RoundingMode Mode,
-          typename Call, typename Env>
+template <formula::detail::FixedString Name,
+          formula::Unit U,
+          formula::DecimalPlaces Places,
+          formula::RoundingMode Mode,
+          typename Call,
+          typename Env>
 void check_rounded_route(Call const& call, Env const& inputs)
 {
     auto const fused =
@@ -891,8 +905,8 @@ TEST_CASE("rounded output: a rounded fit that outgrows 256 bits is the operation
             fiftyEight);
     CHECK(formula::checked_evaluate_si<formula::Rational>(slopeOfFiftySeven, distinct_denominators<57>()).has_value());
     formula::Trace<> recorded {};
-    auto const overflowing = formula::detail::dispatch<formula::Rational>(slopeOfFiftyEight, distinct_denominators<58>(),
-                                                                          formula::RecordingSink { recorded });
+    auto const overflowing = formula::detail::dispatch<formula::Rational>(
+        slopeOfFiftyEight, distinct_denominators<58>(), formula::RecordingSink { recorded });
     REQUIRE(!overflowing.has_value());
     CHECK(overflowing.error() == formula::ArithmeticError::Overflow);
     REQUIRE(formula::opaque_data(recorded, 3) != nullptr);
@@ -931,13 +945,14 @@ struct FarLength: formula::Quantity<FarLength, "L_k", "an invented length, in ki
 
 // The fixture as raw observations: t = 1, 2, 4, 7 s and L = 10.2, 10.9, 12.1,
 // 14.3 mm, made in room for eight.
-constexpr auto observedPoints = formula::environment(
-    formula::MeasuredObservations<Elapsed, 8>(rat(1), rat(2), rat(4), rat(7)),
-    formula::MeasuredObservations<Length, 8>(rat(102, 10), rat(109, 10), rat(121, 10), rat(143, 10)));
+constexpr auto observedPoints =
+    formula::environment(formula::MeasuredObservations<Elapsed, 8>(rat(1), rat(2), rat(4), rat(7)),
+                         formula::MeasuredObservations<Length, 8>(rat(102, 10), rat(109, 10), rat(121, 10), rat(143, 10)));
 
-constexpr auto observedFit = formula::linear_least_squares(
-    formula::observations<Elapsed, 8>, formula::observations<Length, 8>,
-    { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
+constexpr auto observedFit =
+    formula::linear_least_squares(formula::observations<Elapsed, 8>,
+                                  formula::observations<Length, 8>,
+                                  { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
 } // namespace
 
 TEST_CASE("a line through observations gives the exact intercept, slope, r squared and points",
@@ -993,11 +1008,10 @@ TEST_CASE("a line through observations is traced as one call over both, rendered
     CHECK(formula::render<formula::Dialect::LaTeX>(formula::opaque_output<"slope">(observedFit))
           == "\\text{linear least squares}({t}_{i}, {L}_{i})_{\\text{slope}}");
     formula::Documentation const page =
-        formula::document(formula::opaque_output<"slope">(observedFit) + formula::opaque_output<"intercept">(observedFit)
-                          / formula::constant<unit::Second>(rat(1)));
+        formula::document(formula::opaque_output<"slope">(observedFit)
+                          + formula::opaque_output<"intercept">(observedFit) / formula::constant<unit::Second>(rat(1)));
     REQUIRE(page.opaqueOperations.size() == 1);
-    CHECK(page.opaqueOperations[0].outputs
-          == std::vector<std::string_view> { "intercept", "slope", "r squared", "points" });
+    CHECK(page.opaqueOperations[0].outputs == std::vector<std::string_view> { "intercept", "slope", "r squared", "points" });
     REQUIRE(page.symbols.size() == 2);
     CHECK(page.symbols[0].shape == formula::ValueShape::Observations);
     CHECK(page.symbols[0].length == 8);
@@ -1008,48 +1022,53 @@ TEST_CASE("each output of a line through observations rounded where used is the 
 {
     // 19/28 mm/s = 0.678571... is 0.6786 at 4 dp; R^2 = 0.998156... is 0.9981
     // floored and 0.9982 to nearest.
-    constexpr auto roundedFitSlope = formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
-                                                          formula::RoundingMode::HalfEven>(observedFit);
+    constexpr auto roundedFitSlope =
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            observedFit);
     // At compile time, as the exact outputs are checked above.
     constexpr auto roundedAtCompileTime = formula::checked_evaluate<Speed>(roundedFitSlope, observedPoints);
     STATIC_REQUIRE(roundedAtCompileTime.has_value());
     STATIC_REQUIRE(roundedAtCompileTime->measurement().value() == rat(3393, 5000));
-    constexpr auto flooredFit = formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 },
-                                                        formula::RoundingMode::Floor>(observedFit);
-    CHECK(formula::checked_evaluate<Determination>(flooredFit, observedPoints)->measurement().value()
-          == rat(9981, 10'000));
+    constexpr auto flooredFit =
+        formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(
+            observedFit);
+    CHECK(formula::checked_evaluate<Determination>(flooredFit, observedPoints)->measurement().value() == rat(9981, 10'000));
     // Agreement with rounding the exact output, in two modes.
-    constexpr auto nearestFit = formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 },
-                                                        formula::RoundingMode::HalfEven>(observedFit);
-    CHECK(formula::checked_evaluate<Determination>(nearestFit, observedPoints)->measurement().value()
-          == rat(4991, 5000));
-    CHECK(formula::checked_evaluate<Offset>(formula::rounded_output<"intercept", unit::Millimetre,
-                                                                    formula::DecimalPlaces { 1 },
-                                                                    formula::RoundingMode::Floor>(observedFit),
-                                            observedPoints)
+    constexpr auto nearestFit =
+        formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            observedFit);
+    CHECK(formula::checked_evaluate<Determination>(nearestFit, observedPoints)->measurement().value() == rat(4991, 5000));
+    CHECK(formula::checked_evaluate<Offset>(
+              formula::
+                  rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::Floor>(
+                      observedFit),
+              observedPoints)
               ->measurement()
               .value()
           == rat(19, 2));
     // The intercept 9.5 mm to whole millimetres, where the mode decides:
     // floored 9 mm, to nearest with ties to even 10 mm.
-    CHECK(formula::checked_evaluate<Offset>(formula::rounded_output<"intercept", unit::Millimetre,
-                                                                    formula::DecimalPlaces { 0 },
-                                                                    formula::RoundingMode::Floor>(observedFit),
-                                            observedPoints)
+    CHECK(formula::checked_evaluate<Offset>(
+              formula::
+                  rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 0 }, formula::RoundingMode::Floor>(
+                      observedFit),
+              observedPoints)
               ->measurement()
               .value()
           == rat(9));
-    CHECK(formula::checked_evaluate<Offset>(formula::rounded_output<"intercept", unit::Millimetre,
-                                                                    formula::DecimalPlaces { 0 },
-                                                                    formula::RoundingMode::HalfEven>(observedFit),
-                                            observedPoints)
-              ->measurement()
-              .value()
-          == rat(10));
+    CHECK(
+        formula::checked_evaluate<Offset>(
+            formula::
+                rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+                    observedFit),
+            observedPoints)
+            ->measurement()
+            .value()
+        == rat(10));
 
     formula::Trace<> recorded {};
-    (void) formula::detail::dispatch<formula::Rational>(roundedFitSlope, observedPoints,
-                                                        formula::RecordingSink { recorded });
+    (void) formula::detail::dispatch<formula::Rational>(
+        roundedFitSlope, observedPoints, formula::RecordingSink { recorded });
     std::string const text = formula::render_trace(recorded, { .maxSteps = 30 });
     CHECK(text.find("3. linear least squares(#1, #2) = intercept, slope, r squared, points: rounded where used "
                     "[inside not shown] [Rate of change, Example Standard 12, 5.1]\n")
@@ -1061,11 +1080,12 @@ TEST_CASE("each output of a line through observations rounded where used is the 
 TEST_CASE("a call rounded where used shares the render budget and says how many names were cut",
           "[least-squares][observations][trace]")
 {
-    constexpr auto slopeRoundedWhereUsed = formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
-                                                                   formula::RoundingMode::HalfEven>(observedFit);
+    constexpr auto slopeRoundedWhereUsed =
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            observedFit);
     formula::Trace<> recorded {};
-    (void) formula::detail::dispatch<formula::Rational>(slopeRoundedWhereUsed, observedPoints,
-                                                        formula::RecordingSink { recorded });
+    (void) formula::detail::dispatch<formula::Rational>(
+        slopeRoundedWhereUsed, observedPoints, formula::RecordingSink { recorded });
     // Eleven units: each input's line and its four observations take ten,
     // the call's line the eleventh, and it has none left for its names.
     CHECK(formula::render_trace(recorded, { .maxSteps = 11 })
@@ -1089,17 +1109,17 @@ TEST_CASE("a logarithm of a fit's exact R^2 is rounded exactly to its declared p
     // ln(1083/1085) = -0.00184501897..., with Python's decimal: -0.001845 at
     // 6 dp to nearest, -0.001846 floored. The fit's output is exact, and the
     // logarithm of it, irrational, is rounded where it is taken.
-    auto const nearest = formula::checked_evaluate_si(
-        formula::rounded_ln<formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(
-            formula::opaque_output<"r squared">(observedFit)),
-        observedPoints);
+    auto const nearest =
+        formula::checked_evaluate_si(formula::rounded_ln<formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(
+                                         formula::opaque_output<"r squared">(observedFit)),
+                                     observedPoints);
     REQUIRE(nearest.has_value());
     REQUIRE(nearest->has_value());
     CHECK(**nearest == rat(-1845, 1'000'000));
-    auto const floored = formula::checked_evaluate_si(
-        formula::rounded_ln<formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
-            formula::opaque_output<"r squared">(observedFit)),
-        observedPoints);
+    auto const floored =
+        formula::checked_evaluate_si(formula::rounded_ln<formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+                                         formula::opaque_output<"r squared">(observedFit)),
+                                     observedPoints);
     REQUIRE(floored.has_value());
     REQUIRE(floored->has_value());
     CHECK(**floored == rat(-1846, 1'000'000));
@@ -1110,8 +1130,8 @@ namespace
 using TenthOfMillimetrePerMinute =
     formula::RoundingRule<unit::MillimetrePerMinute, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>;
 
-constexpr auto rSquaredAtFour = formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 },
-                                                        formula::RoundingMode::Floor>(observedFit);
+constexpr auto rSquaredAtFour =
+    formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(observedFit);
 
 // Two acceptances: R^2 at least 0.9981 holds (0.9981 floored), at least
 // 0.9982 does not -- rounded to nearest, R^2 would be 0.9982 and pass both.
@@ -1164,8 +1184,8 @@ TEST_CASE("a line through observations whose counts differ, or too few, or flat,
         formula::MeasuredObservations<Elapsed, 8>(rat(1), rat(2), rat(4)),
         formula::MeasuredObservations<Length, 8>(rat(102, 10), rat(109, 10), rat(121, 10), rat(143, 10)))));
     // None made, and one made: no line.
-    CHECK(own_failure(formula::environment(formula::MeasuredObservations<Elapsed, 8>(),
-                                           formula::MeasuredObservations<Length, 8>())));
+    CHECK(own_failure(
+        formula::environment(formula::MeasuredObservations<Elapsed, 8>(), formula::MeasuredObservations<Length, 8>())));
     CHECK(own_failure(formula::environment(formula::MeasuredObservations<Elapsed, 8>(rat(3)),
                                            formula::MeasuredObservations<Length, 8>(rat(103, 10)))));
     // Every time the same, and every length the same.
@@ -1184,9 +1204,8 @@ TEST_CASE("observations counted at run time, of different capacities, fit as wri
     std::array<formula::Rational, 4> const lengths { rat(102, 10), rat(109, 10), rat(121, 10), rat(143, 10) };
     auto const inputs = formula::environment(*formula::MeasuredObservations<Elapsed, 8>::from(times),
                                              *formula::MeasuredObservations<Length, 16>::from(lengths));
-    constexpr auto mixed = formula::linear_least_squares(formula::observations<Elapsed, 8>,
-                                                         formula::observations<Length, 16>,
-                                                         { .reference = "Example Standard 12" });
+    constexpr auto mixed = formula::linear_least_squares(
+        formula::observations<Elapsed, 8>, formula::observations<Length, 16>, { .reference = "Example Standard 12" });
     auto const slope = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(mixed), inputs);
     REQUIRE(slope.has_value());
     CHECK(slope->measurement().value() == rat(285, 7));
@@ -1252,9 +1271,8 @@ namespace
                                 *formula::MeasuredObservations<Length, 64>::from(lengths));
 }
 
-constexpr auto fiftyFit = formula::linear_least_squares(formula::observations<Elapsed, 64>,
-                                                        formula::observations<Length, 64>,
-                                                        { .reference = "Example Standard 12" });
+constexpr auto fiftyFit = formula::linear_least_squares(
+    formula::observations<Elapsed, 64>, formula::observations<Length, 64>, { .reference = "Example Standard 12" });
 } // namespace
 
 TEST_CASE("a line through fifty readings at four decimals overflows exactly and answers rounded",
@@ -1268,22 +1286,23 @@ TEST_CASE("a line through fifty readings at four decimals overflows exactly and 
     REQUIRE(!exact.has_value());
     CHECK(exact.error() == formula::ArithmeticError::Overflow);
     formula::Trace<> recorded {};
-    (void) formula::detail::dispatch<formula::Rational>(formula::opaque_output<"slope">(fiftyFit), fifty,
-                                                        formula::RecordingSink { recorded });
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"slope">(fiftyFit), fifty, formula::RecordingSink { recorded });
     REQUIRE(formula::opaque_data(recorded, 2) != nullptr);
     CHECK(formula::opaque_data(recorded, 2)->failure == formula::OpaqueFailure::Own);
     // Rounded where used: 3.170694... mm/s is 3.1707 (floor would give
     // 3.1706), 2406.645493... mm is 2406.6455, and R^2 = 0.999996568...
     // floored at 6 dp is 0.999996 (to nearest, 0.999997).
     auto const slope = formula::checked_evaluate<Speed>(
-        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
-                                formula::RoundingMode::HalfEven>(fiftyFit),
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fiftyFit),
         fifty);
     REQUIRE(slope.has_value());
     CHECK(slope->measurement().value() == rat(31707, 10'000));
     auto const intercept = formula::checked_evaluate<Offset>(
-        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 },
-                                formula::RoundingMode::HalfEven>(fiftyFit),
+        formula::
+            rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+                fiftyFit),
         fifty);
     REQUIRE(intercept.has_value());
     CHECK(intercept->measurement().value() == rat(4813291, 2000));
@@ -1298,18 +1317,17 @@ TEST_CASE("a line through fifty readings at four decimals overflows exactly and 
 TEST_CASE("an observation that fails to convert fails the fit at that observation", "[least-squares][observations][trace]")
 {
     // 1.03 x 10^17 km is 1.03 x 10^20 m: the third length. The fit relays it.
-    constexpr auto farFit = formula::linear_least_squares(formula::observations<Elapsed, 8>,
-                                                          formula::observations<FarLength, 8>,
-                                                          { .reference = "Example Standard 12" });
+    constexpr auto farFit = formula::linear_least_squares(
+        formula::observations<Elapsed, 8>, formula::observations<FarLength, 8>, { .reference = "Example Standard 12" });
     constexpr auto far = formula::environment(
         formula::MeasuredObservations<Elapsed, 8>(rat(1), rat(2), rat(4), rat(7)),
         formula::MeasuredObservations<FarLength, 8>(rat(103), rat(127), rat(103'000'000'000'000'000), rat(163)));
     formula::Trace<> recorded {};
-    (void) formula::detail::dispatch<formula::Rational>(formula::opaque_output<"slope">(farFit), far,
-                                                        formula::RecordingSink { recorded });
-    CHECK(formula::render_trace(recorded, { .maxSteps = 20 }).find(
-              "3. linear least squares(#1, #2) = overflow in exact arithmetic [inside not shown] "
-              "[carried up from #2, at observation 3] [Example Standard 12]\n")
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"slope">(farFit), far, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+              .find("3. linear least squares(#1, #2) = overflow in exact arithmetic [inside not shown] "
+                    "[carried up from #2, at observation 3] [Example Standard 12]\n")
           != std::string::npos);
     // The rounded route relays it too: the call's line names the observation,
     // and the rounded output's own line relays the call without a position.
@@ -1332,9 +1350,8 @@ TEST_CASE("a line through observations against a temperature in degrees Celsius 
     // The fit sees kelvin: the slope is 0.165 mm per kelvin, which is per
     // degree Celsius, but the intercept is the length at 0 K, 56.64275 mm; the
     // length at 0 degC, 101.7125 mm, is the intercept plus 273.15 K of slope.
-    constexpr auto warmFit = formula::linear_least_squares(formula::observations<Warmth, 8>,
-                                                           formula::observations<Length, 8>,
-                                                           { .reference = "Example Standard 12" });
+    constexpr auto warmFit = formula::linear_least_squares(
+        formula::observations<Warmth, 8>, formula::observations<Length, 8>, { .reference = "Example Standard 12" });
     constexpr auto warm = formula::environment(
         formula::MeasuredObservations<Warmth, 8>(rat(113, 10), rat(137, 10), rat(179, 10), rat(191, 10)),
         formula::MeasuredObservations<Length, 8>(rat(2588, 25), rat(10413, 100), rat(10433, 100), rat(1051, 10)));
@@ -1349,7 +1366,7 @@ TEST_CASE("a line through observations against a temperature in degrees Celsius 
     // Per temperature, the trace shows the coherent unit: a degree Celsius
     // has an offset and is never borrowed.
     formula::Trace<> recorded {};
-    (void) formula::detail::dispatch<formula::Rational>(formula::opaque_output<"slope">(warmFit), warm,
-                                                        formula::RecordingSink { recorded });
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"slope">(warmFit), warm, formula::RecordingSink { recorded });
     CHECK(formula::render_trace(recorded, { .maxSteps = 30 }).find("slope = 33/200000 m/K") != std::string::npos);
 }

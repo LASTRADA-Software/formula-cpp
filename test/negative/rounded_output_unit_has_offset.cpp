@@ -39,9 +39,11 @@ struct ReadingSpan
     }
 
     template <typename Rep>
-    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(std::span<Rep const> readings) noexcept
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(
+        std::span<Rep const> readings) noexcept
     {
-        std::expected<Rep, formula::ArithmeticError> const apart = formula::RepTraits<Rep>::subtract(readings[1], readings[0]);
+        std::expected<Rep, formula::ArithmeticError> const apart =
+            formula::RepTraits<Rep>::subtract(readings[1], readings[0]);
         if (!apart.has_value())
             return std::unexpected { apart.error() };
         return std::array { *apart };
@@ -58,14 +60,16 @@ struct Probe: formula::Quantity<Probe, "T_p", "an invented probe temperature", f
 {
 };
 
-inline constexpr auto probeSpan = formula::opaque<ReadingSpan>({ .reference = "Example Standard 7" }, formula::series<Probe, 2>);
+inline constexpr auto probeSpan =
+    formula::opaque<ReadingSpan>({ .reference = "Example Standard 7" }, formula::series<Probe, 2>);
 } // namespace
 
 int main()
 {
-    auto const roundedSpan =
-        formula::rounded_output<"span", formula::unit::Celsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(probeSpan);
-    auto const twoProbes = formula::environment(formula::measured_series<Probe>(formula::Measured<Probe> { formula::Rational { 293 } },
-                                                                             formula::Measured<Probe> { formula::Rational { 297 } }));
+    auto const roundedSpan = formula::
+        rounded_output<"span", formula::unit::Celsius, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+            probeSpan);
+    auto const twoProbes = formula::environment(formula::measured_series<Probe>(
+        formula::Measured<Probe> { formula::Rational { 293 } }, formula::Measured<Probe> { formula::Rational { 297 } }));
     return formula::checked_evaluate_si<formula::Rational>(roundedSpan, twoProbes).has_value() ? 0 : 1;
 }

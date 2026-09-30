@@ -30,10 +30,11 @@ constexpr std::array everyMode { RoundingMode::HalfAwayFromZero, RoundingMode::H
                                  RoundingMode::AwayFromZero };
 // Signs, halves, zero, and denominators with and without factors of 2 and 5,
 // up to 4 * 10^18: the grid the agreement with checked_round is judged on.
-constexpr std::array<std::int64_t, 17> gridNumerators { -2001, -1000, -999, -501, -500, -499, -125, -1, 0,
+constexpr std::array<std::int64_t, 17> gridNumerators { -2001, -1000, -999, -501, -500, -499, -125, -1,  0,
                                                         1,     125,   499,  500,  501,  999,  1000, 2001 };
-constexpr std::array<std::int64_t, 11> gridDenominators { 1,    2,    3,    7,    8, 40, 125, 1000,
-                                                          1024, 999'999'999'989, 4'000'000'000'000'000'000 };
+constexpr std::array<std::int64_t, 11> gridDenominators {
+    1, 2, 3, 7, 8, 40, 125, 1000, 1024, 999'999'999'989, 4'000'000'000'000'000'000
+};
 
 [[nodiscard]] constexpr R4 from(Rational exact) noexcept
 {
@@ -67,8 +68,10 @@ TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the sam
     for (std::int64_t const numeratorValue: gridNumerators)
         for (std::int64_t const denominatorValue: gridDenominators)
             judge(Rational { numeratorValue, denominatorValue });
-    for (Rational const extreme: { Rational { formula::detail::IntMin }, Rational { formula::detail::IntMax },
-                                   Rational { formula::detail::IntMin, 3 }, Rational { formula::detail::IntMax, 2 } })
+    for (Rational const extreme: { Rational { formula::detail::IntMin },
+                                   Rational { formula::detail::IntMax },
+                                   Rational { formula::detail::IntMin, 3 },
+                                   Rational { formula::detail::IntMax, 2 } })
         judge(extreme);
     CHECK(checkedCases == 43729);
     CHECK(agreedCases == checkedCases);
@@ -87,21 +90,34 @@ TEST_CASE("wide rounding: a value checked_round refuses is answered when its rou
 TEST_CASE("wide rounding: ties follow the mode and the sign", "[wide-rounding]")
 {
     // 19/2 = 9.5 and -9.5 at 0 dp: every mode tells a tie apart.
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfEven) == Rational { 10 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero) == Rational { 10 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfTowardZero) == Rational { 9 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfEven) == Rational { -10 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfTowardZero) == Rational { -9 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::Floor) == Rational { -10 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::Ceiling) == Rational { -9 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::TowardZero) == Rational { -9 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::AwayFromZero) == Rational { -10 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfEven)
+                   == Rational { 10 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero)
+                   == Rational { 10 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfTowardZero)
+                   == Rational { 9 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfEven)
+                   == Rational { -10 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::HalfTowardZero)
+                   == Rational { -9 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::Floor)
+                   == Rational { -10 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::Ceiling)
+                   == Rational { -9 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::TowardZero)
+                   == Rational { -9 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { -19, 2 }), DecimalPlaces { 0 }, RoundingMode::AwayFromZero)
+                   == Rational { -10 });
     // 19/28 at 4 dp, the fitted slope: 0.678571...
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 28 }), DecimalPlaces { 4 }, RoundingMode::HalfEven) == Rational { 3393, 5000 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 28 }), DecimalPlaces { 4 }, RoundingMode::Floor) == Rational { 1357, 2000 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 28 }), DecimalPlaces { 4 }, RoundingMode::HalfEven)
+                   == Rational { 3393, 5000 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 19, 28 }), DecimalPlaces { 4 }, RoundingMode::Floor)
+                   == Rational { 1357, 2000 });
     // Negative places: 125 to tens.
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 125 }), DecimalPlaces { -1 }, RoundingMode::HalfEven) == Rational { 120 });
-    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 125 }), DecimalPlaces { -1 }, RoundingMode::HalfAwayFromZero) == Rational { 130 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 125 }), DecimalPlaces { -1 }, RoundingMode::HalfEven)
+                   == Rational { 120 });
+    STATIC_REQUIRE(*round_wide_ratio(from(Rational { 125 }), DecimalPlaces { -1 }, RoundingMode::HalfAwayFromZero)
+                   == Rational { 130 });
 }
 
 TEST_CASE("wide rounding: a fraction wider than 64 bits rounds exactly", "[wide-rounding]")
@@ -111,24 +127,30 @@ TEST_CASE("wide rounding: a fraction wider than 64 bits rounds exactly", "[wide-
     constexpr R4 justAboveOne { false, *formula::detail::add_small_checked_or_none(tenToThirty, 1U), tenToThirty };
     STATIC_REQUIRE(*round_wide_ratio(justAboveOne, DecimalPlaces { 6 }, RoundingMode::HalfEven) == Rational { 1 });
     STATIC_REQUIRE(*round_wide_ratio(justAboveOne, DecimalPlaces { 6 }, RoundingMode::Floor) == Rational { 1 });
-    STATIC_REQUIRE(*round_wide_ratio(justAboveOne, DecimalPlaces { 6 }, RoundingMode::Ceiling) == Rational { 1'000'001, 1'000'000 });
+    STATIC_REQUIRE(*round_wide_ratio(justAboveOne, DecimalPlaces { 6 }, RoundingMode::Ceiling)
+                   == Rational { 1'000'001, 1'000'000 });
     // 2^70 / 2^60, unreduced: 1024.
-    constexpr R4 wideQuotient { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 70),
+    constexpr R4 wideQuotient { false,
+                                *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 70),
                                 *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 60) };
     STATIC_REQUIRE(*round_wide_ratio(wideQuotient, DecimalPlaces { 0 }, RoundingMode::HalfEven) == Rational { 1024 });
     // 6/4, unreduced: 1.5 exactly at 1 dp.
-    STATIC_REQUIRE(*round_wide_ratio(R4 { false, W4::from_u64(6), W4::from_u64(4) }, DecimalPlaces { 1 }, RoundingMode::HalfEven)
-                   == Rational { 3, 2 });
+    STATIC_REQUIRE(
+        *round_wide_ratio(R4 { false, W4::from_u64(6), W4::from_u64(4) }, DecimalPlaces { 1 }, RoundingMode::HalfEven)
+        == Rational { 3, 2 });
     // 3 * 2^100 over 2^102 is 3/4. Scaled by 10^18 unreduced it needs 162
     // bits; reduced first it fits: the case that pins the reduction.
-    constexpr R4 farFromLowest { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(3), 100),
+    constexpr R4 farFromLowest { false,
+                                 *formula::detail::shift_left_checked_or_none(W4::from_u64(3), 100),
                                  *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 102) };
     STATIC_REQUIRE(*round_wide_ratio(farFromLowest, DecimalPlaces { 18 }, RoundingMode::HalfEven) == Rational { 3, 4 });
     // 3 * 2^118 over 2^120, 3/4 m again: times the millimetre's 1000 unreduced
     // it needs 130 bits, so rounded_in_unit must reduce before it converts.
-    constexpr R4 wideInMetres { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(3), 118),
+    constexpr R4 wideInMetres { false,
+                                *formula::detail::shift_left_checked_or_none(W4::from_u64(3), 118),
                                 *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 120) };
-    STATIC_REQUIRE(*rounded_in_unit(wideInMetres, unit::Millimetre, DecimalPlaces { 12 }, RoundingMode::HalfEven) == Rational { 3, 4 });
+    STATIC_REQUIRE(*rounded_in_unit(wideInMetres, unit::Millimetre, DecimalPlaces { 12 }, RoundingMode::HalfEven)
+                   == Rational { 3, 4 });
 }
 
 TEST_CASE("wide rounding: the kept integer must fit Rational and the places must be in range", "[wide-rounding]")
@@ -136,27 +158,32 @@ TEST_CASE("wide rounding: the kept integer must fit Rational and the places must
     constexpr W4 twoToSixtyThree = W4::from_u64(std::uint64_t { 1 } << 63);
     // -2^63 is IntMin; +2^63 is one past IntMax, and -2^63 - 1 one past IntMin:
     // Overflow, never IntMax with the sign lost.
-    STATIC_REQUIRE(*round_wide_ratio(R4 { true, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven)
-                   == Rational { formula::detail::IntMin });
-    STATIC_REQUIRE(round_wide_ratio(R4 { false, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
-                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(
+        *round_wide_ratio(R4 { true, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven)
+        == Rational { formula::detail::IntMin });
+    STATIC_REQUIRE(
+        round_wide_ratio(R4 { false, twoToSixtyThree, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
+        == formula::ArithmeticError::Overflow);
     constexpr W4 pastIntMin = W4::from_u64((std::uint64_t { 1 } << 63) + 1U);
     STATIC_REQUIRE(
         round_wide_ratio(R4 { true, pastIntMin, W4::from_u64(1) }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
         == formula::ArithmeticError::Overflow);
-    STATIC_REQUIRE(round_wide_ratio(R4 { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 70),
-                                         W4::from_u64(1) },
-                                    DecimalPlaces { -18 }, RoundingMode::HalfEven)
-                       .error()
-                   == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(
+        round_wide_ratio(R4 { false, *formula::detail::shift_left_checked_or_none(W4::from_u64(1), 70), W4::from_u64(1) },
+                         DecimalPlaces { -18 },
+                         RoundingMode::HalfEven)
+            .error()
+        == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(round_wide_ratio(from(Rational { 1, 3 }), DecimalPlaces { 19 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::Overflow);
     STATIC_REQUIRE(round_wide_ratio(from(Rational { 1, 3 }), DecimalPlaces { -19 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::Overflow);
-    STATIC_REQUIRE(round_wide_ratio(R4 { false, W4::from_u64(1), W4 {} }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
-                   == formula::ArithmeticError::DivisionByZero);
+    STATIC_REQUIRE(
+        round_wide_ratio(R4 { false, W4::from_u64(1), W4 {} }, DecimalPlaces { 0 }, RoundingMode::HalfEven).error()
+        == formula::ArithmeticError::DivisionByZero);
     // Zero rounds to zero, never to a negative zero.
-    STATIC_REQUIRE(*round_wide_ratio(R4 { true, W4 {}, W4::from_u64(7) }, DecimalPlaces { 2 }, RoundingMode::Floor) == Rational { 0 });
+    STATIC_REQUIRE(*round_wide_ratio(R4 { true, W4 {}, W4::from_u64(7) }, DecimalPlaces { 2 }, RoundingMode::Floor)
+                   == Rational { 0 });
 }
 
 TEST_CASE("wide rounding: narrow_wide_ratio is the exact value or Overflow", "[wide-rounding]")
@@ -178,29 +205,34 @@ TEST_CASE("wide rounding: narrow_wide_ratio is the exact value or Overflow", "[w
                    == formula::ArithmeticError::Overflow);
     // 2^64 / (3 * 2^64): reduced first, 1/3.
     constexpr W4 twoToSixtyFour = W4::from_limbs({ 0U, 0U, 1U, 0U });
-    STATIC_REQUIRE(*narrow_wide_ratio(R4 { false, twoToSixtyFour,
-                                           *formula::detail::mul_small_checked_or_none(twoToSixtyFour, 3U) })
-                   == Rational { 1, 3 });
+    STATIC_REQUIRE(
+        *narrow_wide_ratio(R4 { false, twoToSixtyFour, *formula::detail::mul_small_checked_or_none(twoToSixtyFour, 3U) })
+        == Rational { 1, 3 });
     STATIC_REQUIRE(*narrow_wide_ratio(R4 { true, W4 {}, W4::from_u64(5) }) == Rational { 0 });
 }
 
 TEST_CASE("wide rounding: rounded_in_unit rounds in its unit as a rounding node does", "[wide-rounding]")
 {
     // 19/28000 m/s is 285/7 mm/min: 40.71 at 2 dp, 40.72 under Ceiling, back in m/s.
-    STATIC_REQUIRE(*rounded_in_unit(from(Rational { 19, 28'000 }), unit::MillimetrePerMinute, DecimalPlaces { 2 }, RoundingMode::HalfEven)
+    STATIC_REQUIRE(*rounded_in_unit(
+                       from(Rational { 19, 28'000 }), unit::MillimetrePerMinute, DecimalPlaces { 2 }, RoundingMode::HalfEven)
                    == Rational { 1357, 2'000'000 });
-    STATIC_REQUIRE(*rounded_in_unit(from(Rational { 19, 28'000 }), unit::MillimetrePerMinute, DecimalPlaces { 2 }, RoundingMode::Ceiling)
+    STATIC_REQUIRE(*rounded_in_unit(
+                       from(Rational { 19, 28'000 }), unit::MillimetrePerMinute, DecimalPlaces { 2 }, RoundingMode::Ceiling)
                    == Rational { 509, 750'000 });
     // An offset or a zero magnitude is refused, as checked_convert refuses a zero one.
-    STATIC_REQUIRE(rounded_in_unit(from(Rational { 300 }), unit::Celsius, DecimalPlaces { 1 }, RoundingMode::HalfEven).error()
-                   == formula::ArithmeticError::DomainError);
+    STATIC_REQUIRE(
+        rounded_in_unit(from(Rational { 300 }), unit::Celsius, DecimalPlaces { 1 }, RoundingMode::HalfEven).error()
+        == formula::ArithmeticError::DomainError);
     constexpr formula::Unit noScale { .dimension = formula::dim::Length, .magnitudeNumerator = 0 };
     STATIC_REQUIRE(rounded_in_unit(from(Rational { 3 }), noScale, DecimalPlaces { 1 }, RoundingMode::HalfEven).error()
                    == formula::ArithmeticError::DomainError);
 
     // Wherever RepRounding<Rational>::round_in answers, the same result, over
     // units whose factor is and is not a power of ten. Counted: 64582 cases.
-    std::array<formula::Unit, 5> const units { unit::Gram, unit::Millimetre, unit::MillimetrePerMinute, unit::Minute, unit::Percent };
+    std::array<formula::Unit, 5> const units {
+        unit::Gram, unit::Millimetre, unit::MillimetrePerMinute, unit::Minute, unit::Percent
+    };
     int checkedCases = 0;
     int agreedCases = 0;
     for (formula::Unit const& roundedIn: units)
@@ -211,7 +243,8 @@ TEST_CASE("wide rounding: rounded_in_unit rounds in its unit as a rounding node 
                 for (int places = -3; places <= 6; ++places)
                     for (RoundingMode const each: everyMode)
                     {
-                        auto const expected = formula::RepRounding<Rational>::round_in(coherentValue, roundedIn, DecimalPlaces { places }, each);
+                        auto const expected = formula::RepRounding<Rational>::round_in(
+                            coherentValue, roundedIn, DecimalPlaces { places }, each);
                         if (!expected.has_value())
                             continue;
                         ++checkedCases;
@@ -251,32 +284,45 @@ TEST_CASE("wide rounding: decide_rounding answers only when both bounds round al
             }
         }
     };
-    Rational const low { 7071, 5000 };      // 1.4142
-    Rational const high { 14143, 10000 };   // 1.4143
+    Rational const low { 7071, 5000 };    // 1.4142
+    Rational const high { 14143, 10000 }; // 1.4143
     Rational const minusLow { -7071, 5000 };
     Rational const minusHigh { -14143, 10000 };
     // [1.41421356, 1.41421357]: tight, every mode decides.
     judge(bounds(141421356, 141421357),
-          { Expected { RoundingMode::HalfAwayFromZero, low }, Expected { RoundingMode::HalfTowardZero, low },
-            Expected { RoundingMode::HalfEven, low }, Expected { RoundingMode::Ceiling, high }, Expected { RoundingMode::Floor, low },
-            Expected { RoundingMode::TowardZero, low }, Expected { RoundingMode::AwayFromZero, high } });
+          { Expected { RoundingMode::HalfAwayFromZero, low },
+            Expected { RoundingMode::HalfTowardZero, low },
+            Expected { RoundingMode::HalfEven, low },
+            Expected { RoundingMode::Ceiling, high },
+            Expected { RoundingMode::Floor, low },
+            Expected { RoundingMode::TowardZero, low },
+            Expected { RoundingMode::AwayFromZero, high } });
     // [1.41424999, 1.41425001] straddles the half: the half modes cannot decide.
     judge(bounds(141424999, 141425001),
-          { Expected { RoundingMode::HalfAwayFromZero, std::nullopt }, Expected { RoundingMode::HalfTowardZero, std::nullopt },
-            Expected { RoundingMode::HalfEven, std::nullopt }, Expected { RoundingMode::Ceiling, high },
-            Expected { RoundingMode::Floor, low }, Expected { RoundingMode::TowardZero, low },
+          { Expected { RoundingMode::HalfAwayFromZero, std::nullopt },
+            Expected { RoundingMode::HalfTowardZero, std::nullopt },
+            Expected { RoundingMode::HalfEven, std::nullopt },
+            Expected { RoundingMode::Ceiling, high },
+            Expected { RoundingMode::Floor, low },
+            Expected { RoundingMode::TowardZero, low },
             Expected { RoundingMode::AwayFromZero, high } });
     // [1.41419999, 1.41420001] straddles a grid point: the directed modes cannot.
     judge(bounds(141419999, 141420001),
-          { Expected { RoundingMode::HalfAwayFromZero, low }, Expected { RoundingMode::HalfTowardZero, low },
-            Expected { RoundingMode::HalfEven, low }, Expected { RoundingMode::Ceiling, std::nullopt },
-            Expected { RoundingMode::Floor, std::nullopt }, Expected { RoundingMode::TowardZero, std::nullopt },
+          { Expected { RoundingMode::HalfAwayFromZero, low },
+            Expected { RoundingMode::HalfTowardZero, low },
+            Expected { RoundingMode::HalfEven, low },
+            Expected { RoundingMode::Ceiling, std::nullopt },
+            Expected { RoundingMode::Floor, std::nullopt },
+            Expected { RoundingMode::TowardZero, std::nullopt },
             Expected { RoundingMode::AwayFromZero, std::nullopt } });
     // The negative enclosure of the half: the sign decides the directed modes.
     judge(bounds(-141425001, -141424999),
-          { Expected { RoundingMode::HalfAwayFromZero, std::nullopt }, Expected { RoundingMode::HalfTowardZero, std::nullopt },
-            Expected { RoundingMode::HalfEven, std::nullopt }, Expected { RoundingMode::Ceiling, minusLow },
-            Expected { RoundingMode::Floor, minusHigh }, Expected { RoundingMode::TowardZero, minusLow },
+          { Expected { RoundingMode::HalfAwayFromZero, std::nullopt },
+            Expected { RoundingMode::HalfTowardZero, std::nullopt },
+            Expected { RoundingMode::HalfEven, std::nullopt },
+            Expected { RoundingMode::Ceiling, minusLow },
+            Expected { RoundingMode::Floor, minusHigh },
+            Expected { RoundingMode::TowardZero, minusLow },
             Expected { RoundingMode::AwayFromZero, minusHigh } });
 }
 

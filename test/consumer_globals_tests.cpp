@@ -540,8 +540,8 @@ ConsumerGlobalsProbe probe_consumer_globals()
     // The rounded forms through the kernel: ln 2 to 4 places is 0.6931, log10 2 to 3 is 0.301 and exp 1
     // to 4 is 2.7183, 3.7124 together.
     auto const roundedLogarithms = formula::evaluate<Factor>(
-        formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(
-            var<Factor> * formula::Rational { 2 })
+        formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Factor>
+                                                                                                   * formula::Rational { 2 })
             + formula::rounded_log10<formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(
                 var<Factor> * formula::Rational { 2 })
             + formula::rounded_exp<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Factor>),
@@ -836,7 +836,8 @@ ConsumerGlobalsProbe probe_consumer_globals()
     auto const explainedRoundedSpan = formula::explain<EdgeX>(roundedSpan, spanEdges, north);
     probe.checks.push_back(
         roundedSpanValue.has_value() && roundedSpanValue->measurement().value() == formula::Rational { 36 }
-        && formula::render_trace(explainedRoundedSpan.trace, { .maxSteps = 20 }).find("span: rounded where used") != std::string::npos
+        && formula::render_trace(explainedRoundedSpan.trace, { .maxSteps = 20 }).find("span: rounded where used")
+               != std::string::npos
         && formula::render(roundedSpan, north) == "round(edge span(x_m(i)).span, to 1 dp of mm)"
         && formula::document(roundedSpan, north).opaqueOperations.size() == 1);
     // A straight line fitted through the declared curve points 139 and
@@ -851,18 +852,20 @@ ConsumerGlobalsProbe probe_consumer_globals()
     // The same slope, 73/110, rounded where it is used through the fit's exact
     // hook: 0.664 at 3 dp.
     auto const roundedFitSlope = formula::checked_evaluate<Factor>(
-        formula::rounded_output<"slope", unit::One, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(edgeFit), specimen);
-    probe.checks.push_back(roundedFitSlope.has_value() && roundedFitSlope->measurement().value() == formula::Rational { 83, 125 });
+        formula::rounded_output<"slope", unit::One, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(edgeFit),
+        specimen);
+    probe.checks.push_back(roundedFitSlope.has_value()
+                           && roundedFitSlope->measurement().value() == formula::Rational { 83, 125 });
     // A line through raw observations: edges of 103, 163 and 241 mm against
     // twice each plus 1 mm, 207, 327 and 483 mm -- slope 2, R^2 1, exactly,
     // rounded and in double.
-    std::array<formula::Rational, 3> const agreedReadings { formula::Rational { 207 }, formula::Rational { 327 },
+    std::array<formula::Rational, 3> const agreedReadings { formula::Rational { 207 },
+                                                            formula::Rational { 327 },
                                                             formula::Rational { 483 } };
     auto const lineSample =
         formula::environment(*edgeObserved, *formula::MeasuredObservations<AgreedEdge, 4>::from(agreedReadings));
-    constexpr auto edgeLine = formula::linear_least_squares(formula::observations<EdgeX, 4>,
-                                                            formula::observations<AgreedEdge, 4>,
-                                                            { .reference = "Example Standard 3" });
+    constexpr auto edgeLine = formula::linear_least_squares(
+        formula::observations<EdgeX, 4>, formula::observations<AgreedEdge, 4>, { .reference = "Example Standard 3" });
     auto const lineSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeLine), lineSample);
     auto const lineFit = formula::checked_evaluate<Factor>(
         formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(
@@ -875,9 +878,11 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && **lineInDouble < 2.001);
     // Two regressors over three rows: y = 1 mm + 2 x + 5 mm * k, exactly, so
     // coefficient 1 is 2 and R^2 is 1.
-    std::array<formula::Rational, 3> const factorReadings { formula::Rational { 1 }, formula::Rational { 3 },
+    std::array<formula::Rational, 3> const factorReadings { formula::Rational { 1 },
+                                                            formula::Rational { 3 },
                                                             formula::Rational { 2 } };
-    std::array<formula::Rational, 3> const combined { formula::Rational { 212 }, formula::Rational { 342 },
+    std::array<formula::Rational, 3> const combined { formula::Rational { 212 },
+                                                      formula::Rational { 342 },
                                                       formula::Rational { 493 } };
     auto const regressionSample = formula::environment(*edgeObserved,
                                                        *formula::MeasuredObservations<Factor, 4>::from(factorReadings),
@@ -890,8 +895,7 @@ ConsumerGlobalsProbe probe_consumer_globals()
         formula::checked_evaluate<Factor>(formula::opaque_output<"coefficient 1">(edgeRegression), regressionSample);
     auto const regressionInDouble =
         formula::checked_evaluate_si<double>(formula::opaque_output<"r squared">(edgeRegression), regressionSample);
-    probe.checks.push_back(firstCoefficient.has_value()
-                           && firstCoefficient->measurement().value() == formula::Rational { 2 }
+    probe.checks.push_back(firstCoefficient.has_value() && firstCoefficient->measurement().value() == formula::Rational { 2 }
                            && regressionInDouble.has_value() && regressionInDouble->has_value()
                            && **regressionInDouble > 0.999);
     // A retry over the two recorded edges, evaluated, traced, rendered and

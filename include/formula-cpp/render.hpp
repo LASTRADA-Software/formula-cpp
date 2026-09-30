@@ -1317,8 +1317,8 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Opera
 [[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node, V const& vocabulary)
 {
     constexpr Unit declaredUnit = U;
-    return detail::rounding_call<D>(render<D>(node.operand, vocabulary), Places,
-                                    std::string { view(declaredUnit.symbolText) });
+    return detail::rounding_call<D>(
+        render<D>(node.operand, vocabulary), Places, std::string { view(declaredUnit.symbolText) });
 }
 
 /// A significant-digits rounding node, spelled the same way as `RoundNode`
@@ -1368,8 +1368,7 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radic
 /// places are a comma-separated second argument; the call's own parentheses group it, so the primary
 /// `PrecedenceOf`'s `Atom` is right.
 template <Dialect D, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand, Vocabulary V>
-[[nodiscard]] std::string render_node(RoundedTranscendentalNode<F, Places, Mode, Operand> const& node,
-                                      V const& vocabulary)
+[[nodiscard]] std::string render_node(RoundedTranscendentalNode<F, Places, Mode, Operand> const& node, V const& vocabulary)
 {
     return detail::rounding_call<D>(detail::transcendental_text<D>(F, render<D>(node.operand, vocabulary)), Places, {});
 }
@@ -1928,14 +1927,21 @@ template <Dialect D, std::size_t I, typename Op, typename... Inputs, typename Or
 /// how it is evaluated, not what it states -- `rounded_sqrt`'s reasoning,
 /// above. The mode is left out, for the reason `RoundNode`'s overload gives,
 /// and the trace states it.
-template <Dialect D, std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode,
-          typename Origin, Vocabulary V>
-[[nodiscard]] std::string render_node(RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node,
-                                      V const& vocabulary)
+template <Dialect D,
+          std::size_t I,
+          typename Op,
+          typename... Inputs,
+          Unit U,
+          DecimalPlaces Places,
+          RoundingMode Mode,
+          typename Origin,
+          Vocabulary V>
+[[nodiscard]] std::string render_node(
+    RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node, V const& vocabulary)
 {
     constexpr Unit declaredUnit = U;
-    return detail::rounding_call<D>(render<D>(detail::unrounded(node), vocabulary), Places,
-                                    std::string { view(declaredUnit.symbolText) });
+    return detail::rounding_call<D>(
+        render<D>(detail::unrounded(node), vocabulary), Places, std::string { view(declaredUnit.symbolText) });
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it

@@ -35,16 +35,25 @@ inline constexpr auto fit = formula::multiple_least_squares(
 inline constexpr auto secondCoefficient = formula::opaque_output<"coefficient 2">(fit);
 
 // Six rows, invented: 11.3 ... 29.7 degC, 2.3 ... 4.3 %, 103.52 ... 106 mm.
-inline constexpr auto sixRows = formula::environment(
-    formula::MeasuredObservations<Temperature, 8>(formula::Rational { 113, 10 }, formula::Rational { 137, 10 },
-                                                  formula::Rational { 179, 10 }, formula::Rational { 191, 10 },
-                                                  formula::Rational { 233, 10 }, formula::Rational { 297, 10 }),
-    formula::MeasuredObservations<Content, 8>(formula::Rational { 23, 10 }, formula::Rational { 31, 10 },
-                                              formula::Rational { 29, 10 }, formula::Rational { 41, 10 },
-                                              formula::Rational { 37, 10 }, formula::Rational { 43, 10 }),
-    formula::MeasuredObservations<Length, 8>(formula::Rational { 2588, 25 }, formula::Rational { 10413, 100 },
-                                             formula::Rational { 10433, 100 }, formula::Rational { 1051, 10 },
-                                             formula::Rational { 10521, 100 }, formula::Rational { 106 }));
+inline constexpr auto sixRows =
+    formula::environment(formula::MeasuredObservations<Temperature, 8>(formula::Rational { 113, 10 },
+                                                                       formula::Rational { 137, 10 },
+                                                                       formula::Rational { 179, 10 },
+                                                                       formula::Rational { 191, 10 },
+                                                                       formula::Rational { 233, 10 },
+                                                                       formula::Rational { 297, 10 }),
+                         formula::MeasuredObservations<Content, 8>(formula::Rational { 23, 10 },
+                                                                   formula::Rational { 31, 10 },
+                                                                   formula::Rational { 29, 10 },
+                                                                   formula::Rational { 41, 10 },
+                                                                   formula::Rational { 37, 10 },
+                                                                   formula::Rational { 43, 10 }),
+                         formula::MeasuredObservations<Length, 8>(formula::Rational { 2588, 25 },
+                                                                  formula::Rational { 10413, 100 },
+                                                                  formula::Rational { 10433, 100 },
+                                                                  formula::Rational { 1051, 10 },
+                                                                  formula::Rational { 10521, 100 },
+                                                                  formula::Rational { 106 }));
 } // namespace regression_cross_tu
 
 /// Defined in `regression_cross_tu_b.cpp`: @p output evaluated there, in SI.

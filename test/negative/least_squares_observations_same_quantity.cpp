@@ -30,8 +30,7 @@ inline constexpr auto fit = formula::linear_least_squares(
 
 int main()
 {
-    auto const rSquared =
-        formula::checked_evaluate<Determination>(formula::opaque_output<"r squared">(fit), twoObserved);
+    auto const rSquared = formula::checked_evaluate<Determination>(formula::opaque_output<"r squared">(fit), twoObserved);
     return formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(fit), twoObserved).has_value()
                    && rSquared.has_value()
                ? 0

@@ -16,9 +16,9 @@ struct Opening: formula::Quantity<Opening, "d", "an invented screen opening", fo
 };
 } // namespace
 
-inline constexpr auto misread = formula::interpolate_at(
-    formula::curve(formula::series<Opening, 3>, formula::series<Height, 3>),
-    formula::constant<formula::unit::Percent>(formula::Rational { 50 }));
+inline constexpr auto misread =
+    formula::interpolate_at(formula::curve(formula::series<Opening, 3>, formula::series<Height, 3>),
+                            formula::constant<formula::unit::Percent>(formula::Rational { 50 }));
 inline constexpr auto logarithm = formula::ln(misread);
 
 int main()

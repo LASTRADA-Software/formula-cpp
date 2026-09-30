@@ -209,13 +209,14 @@ TEST_CASE("a logarithm and an exponential read what their argument reads", "[cal
         std::is_same_v<CalculationReadsOf<decltype(formula::ln(var<Factor> / var<Other>))>, QuantityList<Factor, Other>>);
     STATIC_REQUIRE(
         std::is_same_v<CalculationReadsOf<decltype(formula::exp(var<Other> - var<Factor>))>, QuantityList<Other, Factor>>);
-    STATIC_REQUIRE(std::is_same_v<decltype(formula::define<Share>(formula::log10(var<Factor>)))::reads, QuantityList<Factor>>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::define<Share>(formula::log10(var<Factor>)))::reads, QuantityList<Factor>>);
 }
 
 TEST_CASE("a worksheet calculates a rounded logarithm from the values it reads", "[calculation][worksheet]")
 {
-    constexpr auto logShare = formula::calculation(formula::define<Share>(
-        formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(
+    constexpr auto logShare = formula::calculation(
+        formula::define<Share>(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(
             var<Factor> / var<Other>)));
     STATIC_REQUIRE(std::is_same_v<decltype(formula::define<Share>(
                                       formula::rounded_exp<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(

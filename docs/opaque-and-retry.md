@@ -242,10 +242,9 @@ constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocit
                                               .magnitudeDenominator = 1000,
                                               .symbolText = formula::symbol("mm/s"),
                                               .decimals = 4 };
-constexpr auto roundedSlope = formula::rounded_output<"slope",
-                                                      millimetrePerSecond,
-                                                      formula::DecimalPlaces { 4 },
-                                                      formula::RoundingMode::HalfEven>(fit);
+constexpr auto roundedSlope =
+    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        fit);
 ```
 
 ```text
@@ -290,10 +289,10 @@ observations, `observations<Q, Capacity>` ([statistics](statistics.md)
 introduces them), and the fit takes as many as were made:
 
 ```cpp
-constexpr auto observedFit = formula::linear_least_squares(
-    formula::observations<Elapsed, 64>,
-    formula::observations<Length, 64>,
-    { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
+constexpr auto observedFit =
+    formula::linear_least_squares(formula::observations<Elapsed, 64>,
+                                  formula::observations<Length, 64>,
+                                  { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
 ```
 
 **Pairing is by row.** Observation i of each input belongs to row i, so build
@@ -339,8 +338,9 @@ explains values the exact layer cannot hold. The example declares the slope
 this way:
 
 ```cpp
-constexpr auto observedSlope = formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 },
-                                                       formula::RoundingMode::HalfEven>(observedFit);
+constexpr auto observedSlope =
+    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        observedFit);
 ```
 
 ```text
@@ -422,11 +422,11 @@ formula over two outputs. Coefficient 2 is per unit of content, a fraction, so
 a method that reports it per percent declares a unit of mm per %:
 
 ```cpp
-constexpr auto lengthAtZeroCelsius = formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 },
-                                                      formula::RoundingMode::HalfEven>(
-    formula::opaque_output<"constant">(byTemperatureAndContent)
-    + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
-          * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
+constexpr auto lengthAtZeroCelsius =
+    formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+        formula::opaque_output<"constant">(byTemperatureAndContent)
+        + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
+              * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
 ```
 
 ```text

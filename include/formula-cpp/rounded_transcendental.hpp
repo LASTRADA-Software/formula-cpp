@@ -17,6 +17,8 @@
 ///
 /// There is no unit: the argument and the result are pure numbers, rounded as they are.
 
+#include <formula-cpp/detail/transcendental.hpp>
+#include <formula-cpp/detail/wide_rounding.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -27,8 +29,6 @@
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/unit.hpp>
-#include <formula-cpp/detail/transcendental.hpp>
-#include <formula-cpp/detail/wide_rounding.hpp>
 
 #include <expected>
 #include <optional>

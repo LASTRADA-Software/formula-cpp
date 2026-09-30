@@ -21,11 +21,12 @@ struct Length: formula::Quantity<Length, "L", "an invented length", formula::uni
 };
 
 inline constexpr auto sample = formula::environment(formula::MeasuredObservations<Temperature, 8>(),
-                                                     formula::MeasuredObservations<Content, 8>(),
-                                                     formula::MeasuredObservations<Length, 8>());
-inline constexpr auto fit = formula::multiple_least_squares(
-    formula::regressors(formula::series<Length, 6>, formula::observations<Content, 8>),
-    formula::observations<Length, 8>, { .reference = "Example Standard 12" });
+                                                    formula::MeasuredObservations<Content, 8>(),
+                                                    formula::MeasuredObservations<Length, 8>());
+inline constexpr auto fit =
+    formula::multiple_least_squares(formula::regressors(formula::series<Length, 6>, formula::observations<Content, 8>),
+                                    formula::observations<Length, 8>,
+                                    { .reference = "Example Standard 12" });
 
 int main()
 {

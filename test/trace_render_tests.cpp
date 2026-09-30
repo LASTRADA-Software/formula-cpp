@@ -424,25 +424,31 @@ TEST_CASE("a derivation writes a rounded logarithm or exponential as one step in
     };
     auto const fractions = formula::NumberStyle::fraction();
     CHECK(traceOf(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
-                  formula::Rational { 2 }, fractions)
+                  formula::Rational { 2 },
+                  fractions)
           == "1. r = 2\n2. round(ln(#1), to 4 dp) = 6931/10000 [nearest, ties away from zero]\n");
     CHECK(traceOf(formula::rounded_log10<formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(var<Ratio>),
-                  formula::Rational { 2 }, fractions)
+                  formula::Rational { 2 },
+                  fractions)
           == "1. r = 2\n2. round(log10(#1), to 3 dp) = 301/1000 [nearest, ties to even]\n");
     CHECK(traceOf(formula::rounded_exp<formula::DecimalPlaces { 3 }, formula::RoundingMode::Floor>(var<Ratio>),
-                  formula::Rational { -1 }, fractions)
+                  formula::Rational { -1 },
+                  fractions)
           == "1. r = -1\n2. round(exp(#1), to 3 dp) = 367/1000 [toward negative infinity]\n");
     // A failure reads like any step's, and still names the mode.
     CHECK(traceOf(formula::rounded_exp<formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
-                  formula::Rational { 50 }, fractions)
+                  formula::Rational { 50 },
+                  fractions)
           == "1. r = 50\n2. round(exp(#1), to 6 dp) = overflow in exact arithmetic [nearest, ties away from zero]\n");
     // In exact decimals the rounded value is a decimal like any other, with no approximation mark: it is exact.
     CHECK(traceOf(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
-                  formula::Rational { 2 }, formula::NumberStyle::exact_decimal())
+                  formula::Rational { 2 },
+                  formula::NumberStyle::exact_decimal())
           == "1. r = 2\n2. round(ln(#1), to 4 dp) = 0.6931 [nearest, ties away from zero]\n");
     // The display guide quotes this line: ln 0.05 = -2.99573..., negative, so the sign is written.
     CHECK(traceOf(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(var<Ratio>),
-                  formula::Rational { 1, 20 }, formula::NumberStyle::exact_decimal())
+                  formula::Rational { 1, 20 },
+                  formula::NumberStyle::exact_decimal())
           == "1. r = 0.05\n2. round(ln(#1), to 4 dp) = -2.9957 [nearest, ties to even]\n");
 }
 

@@ -73,7 +73,8 @@ struct ReadingSpan
     }
 
     template <typename Rep>
-    static constexpr std::expected<std::array<Rep, 2>, formula::ArithmeticError> compute(std::span<Rep const> readings) noexcept
+    static constexpr std::expected<std::array<Rep, 2>, formula::ArithmeticError> compute(
+        std::span<Rep const> readings) noexcept
     {
         Rep least = readings[0];
         Rep most = readings[0];
@@ -209,9 +210,11 @@ struct WideProduct
     }
 
     template <typename Rep>
-    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(Rep multiplicand, Rep multiplier) noexcept
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(Rep multiplicand,
+                                                                                         Rep multiplier) noexcept
     {
-        std::expected<Rep, formula::ArithmeticError> const product = formula::RepTraits<Rep>::multiply(multiplicand, multiplier);
+        std::expected<Rep, formula::ArithmeticError> const product =
+            formula::RepTraits<Rep>::multiply(multiplicand, multiplier);
         if (!product.has_value())
             return std::unexpected { product.error() };
         return std::array { *product };
@@ -228,28 +231,36 @@ struct WideProduct
         auto const denominatorProduct = formula::detail::mul_checked_or_none(leftWide.denominator, rightWide.denominator);
         if (!numeratorProduct || !denominatorProduct)
             return std::unexpected { formula::ArithmeticError::Overflow };
-        return std::array { formula::detail::WideRatio<exact_limbs> {
-            leftWide.negative != rightWide.negative && !numeratorProduct->is_zero(), *numeratorProduct, *denominatorProduct } };
+        return std::array { formula::detail::WideRatio<exact_limbs> { leftWide.negative != rightWide.negative
+                                                                          && !numeratorProduct->is_zero(),
+                                                                      *numeratorProduct,
+                                                                      *denominatorProduct } };
     }
 };
 
 constexpr formula::Citation spanClause { .title = "Span of readings", .reference = "Example Standard 7", .section = "2.3" };
-constexpr formula::Citation reciprocalClause { .title = "Reciprocal sum", .reference = "Example Standard 7", .section = "2.4" };
-constexpr formula::Citation productClause { .title = "Product of gains", .reference = "Example Standard 7", .section = "2.5" };
+constexpr formula::Citation reciprocalClause { .title = "Reciprocal sum",
+                                               .reference = "Example Standard 7",
+                                               .section = "2.4" };
+constexpr formula::Citation productClause { .title = "Product of gains",
+                                            .reference = "Example Standard 7",
+                                            .section = "2.5" };
 
 constexpr auto spanCall = formula::opaque<ReadingSpan>(spanClause, formula::series<Reading, 4>);
 
 // 127.3, 103.26, 191.07 and 139.4 g: span 87.81 g. With 191.11 g in place of
 // 191.07 g the span is 87.85 g, a tie at 1 dp; with 191.01 g it is 87.75 g, a
 // tie whose kept digit is odd.
-constexpr auto readings = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(1273, 10) },
-                                                                                 formula::Measured<Reading> { rat(10326, 100) },
-                                                                                 formula::Measured<Reading> { rat(19107, 100) },
-                                                                                 formula::Measured<Reading> { rat(1394, 10) }));
-constexpr auto tiedReadings = formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(1273, 10) },
-                                                                                     formula::Measured<Reading> { rat(10326, 100) },
-                                                                                     formula::Measured<Reading> { rat(19111, 100) },
-                                                                                     formula::Measured<Reading> { rat(1394, 10) }));
+constexpr auto readings =
+    formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(1273, 10) },
+                                                           formula::Measured<Reading> { rat(10326, 100) },
+                                                           formula::Measured<Reading> { rat(19107, 100) },
+                                                           formula::Measured<Reading> { rat(1394, 10) }));
+constexpr auto tiedReadings =
+    formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(1273, 10) },
+                                                           formula::Measured<Reading> { rat(10326, 100) },
+                                                           formula::Measured<Reading> { rat(19111, 100) },
+                                                           formula::Measured<Reading> { rat(1394, 10) }));
 constexpr auto oddTiedReadings =
     formula::environment(formula::measured_series<Reading>(formula::Measured<Reading> { rat(1273, 10) },
                                                            formula::Measured<Reading> { rat(10326, 100) },
@@ -264,11 +275,16 @@ constexpr auto fiveDraws = formula::environment(formula::measured_series<Draw>(f
                                                                                formula::Measured<Draw> { rat(139) },
                                                                                formula::Measured<Draw> { rat(163) },
                                                                                formula::Measured<Draw> { rat(197) }));
-constexpr auto tenDraws = formula::environment(formula::measured_series<Draw>(
-    formula::Measured<Draw> { rat(103) }, formula::Measured<Draw> { rat(127) }, formula::Measured<Draw> { rat(139) },
-    formula::Measured<Draw> { rat(163) }, formula::Measured<Draw> { rat(197) }, formula::Measured<Draw> { rat(211) },
-    formula::Measured<Draw> { rat(227) }, formula::Measured<Draw> { rat(229) }, formula::Measured<Draw> { rat(233) },
-    formula::Measured<Draw> { rat(239) }));
+constexpr auto tenDraws = formula::environment(formula::measured_series<Draw>(formula::Measured<Draw> { rat(103) },
+                                                                              formula::Measured<Draw> { rat(127) },
+                                                                              formula::Measured<Draw> { rat(139) },
+                                                                              formula::Measured<Draw> { rat(163) },
+                                                                              formula::Measured<Draw> { rat(197) },
+                                                                              formula::Measured<Draw> { rat(211) },
+                                                                              formula::Measured<Draw> { rat(227) },
+                                                                              formula::Measured<Draw> { rat(229) },
+                                                                              formula::Measured<Draw> { rat(233) },
+                                                                              formula::Measured<Draw> { rat(239) }));
 constexpr auto fiveCall = formula::opaque<ReciprocalSum>(reciprocalClause, formula::series<Draw, 5>);
 constexpr auto tenCall = formula::opaque<ReciprocalSum>(reciprocalClause, formula::series<Draw, 10>);
 
@@ -278,7 +294,8 @@ void check_routes_agree_on_five_draws()
     auto const fused = formula::checked_evaluate_si<formula::Rational>(
         formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, Mode>(fiveCall), fiveDraws);
     auto const afterwards = formula::checked_evaluate_si<formula::Rational>(
-        formula::rounded<unit::One, formula::DecimalPlaces { 6 }, Mode>(formula::opaque_output<"total">(fiveCall)), fiveDraws);
+        formula::rounded<unit::One, formula::DecimalPlaces { 6 }, Mode>(formula::opaque_output<"total">(fiveCall)),
+        fiveDraws);
     REQUIRE(fused.has_value());
     REQUIRE(afterwards.has_value());
     CHECK(**fused == **afterwards);
@@ -310,7 +327,8 @@ struct HearsCalls
     void opaque_entered(formula::OpaqueCallInfo const&) noexcept {}
 
     template <std::size_t M>
-    void opaque_produced(formula::OpaqueCallInfo const& callInfo, formula::OpaqueEvaluated<formula::Rational, M> const& evaluated)
+    void opaque_produced(formula::OpaqueCallInfo const& callInfo,
+                         formula::OpaqueEvaluated<formula::Rational, M> const& evaluated)
     {
         told->push_back(ToldCall { M, callInfo.values, evaluated.has_value() && evaluated->has_value() });
     }
@@ -343,16 +361,20 @@ struct RatioOfTwo
     template <typename Rep>
     static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(Rep dividend, Rep divisor) noexcept
     {
-        std::expected<Rep, formula::ArithmeticError> const quotientValue = formula::RepTraits<Rep>::divide(dividend, divisor);
+        std::expected<Rep, formula::ArithmeticError> const quotientValue =
+            formula::RepTraits<Rep>::divide(dividend, divisor);
         if (!quotientValue.has_value())
             return std::unexpected { quotientValue.error() };
         return std::array { *quotientValue };
     }
 };
 
-constexpr formula::Citation shareClause { .title = "Share of two factors", .reference = "Example Standard 7", .section = "3.2" };
-constexpr auto roundedShare = formula::rounded_output<"ratio", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
-    formula::opaque<RatioOfTwo>(shareClause, formula::var<Factor>, formula::var<Other>));
+constexpr formula::Citation shareClause { .title = "Share of two factors",
+                                          .reference = "Example Standard 7",
+                                          .section = "3.2" };
+constexpr auto roundedShare =
+    formula::rounded_output<"ratio", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        formula::opaque<RatioOfTwo>(shareClause, formula::var<Factor>, formula::var<Other>));
 constexpr auto shareCalculation = formula::calculation(formula::define<Share>(roundedShare));
 } // namespace
 
@@ -380,7 +402,8 @@ TEST_CASE("rounded output: rounds in its own unit and not in the coherent one", 
         readings);
     STATIC_REQUIRE(inGrams->measurement().value() == rat(439, 5));
     constexpr auto inKilograms = formula::checked_evaluate_si<formula::Rational>(
-        formula::rounded_output<"span", unit::Kilogram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(spanCall),
+        formula::rounded_output<"span", unit::Kilogram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+            spanCall),
         readings);
     STATIC_REQUIRE(**inKilograms == rat(1, 10));
     // Ceiling moves off 87.81 where HalfEven does not.
@@ -397,10 +420,12 @@ TEST_CASE("rounded output: a tie is broken by the mode as checked_round breaks i
         formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(spanCall),
         tiedReadings);
     constexpr auto away = formula::checked_evaluate<Span>(
-        formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(spanCall),
+        formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
+            spanCall),
         tiedReadings);
     constexpr auto toward = formula::checked_evaluate<Span>(
-        formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfTowardZero>(spanCall),
+        formula::rounded_output<"span", unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfTowardZero>(
+            spanCall),
         tiedReadings);
     STATIC_REQUIRE(even->measurement().value() == rat(439, 5));
     STATIC_REQUIRE(away->measurement().value() == rat(879, 10));
@@ -431,13 +456,15 @@ TEST_CASE("rounded output: the exact hook answers where the exact route overflow
     ReciprocalSum::computeCalls = 0;
     ReciprocalSum::exactCalls = 0;
     auto const rounded = formula::checked_evaluate<Reciprocals>(
-        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(tenCall), tenDraws);
+        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(tenCall),
+        tenDraws);
     REQUIRE(rounded.has_value());
     CHECK(rounded->measurement().value() == rat(2319, 40000)); // 0.057975
     CHECK(ReciprocalSum::exactCalls == 1);
     CHECK(ReciprocalSum::computeCalls == 0);
     auto const upwards = formula::checked_evaluate<Reciprocals>(
-        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Ceiling>(tenCall), tenDraws);
+        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Ceiling>(tenCall),
+        tenDraws);
     CHECK(upwards->measurement().value() == rat(7247, 125000)); // 0.057976
 }
 
@@ -445,7 +472,8 @@ TEST_CASE("rounded output: where both routes answer it is the exact output round
 {
     // 2101205901/58386114749 = 0.0359881...: 0.035988, 0.035989 upwards.
     constexpr auto fused = formula::checked_evaluate<Reciprocals>(
-        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall), fiveDraws);
+        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall),
+        fiveDraws);
     STATIC_REQUIRE(fused->measurement().value() == rat(8997, 250000));
     check_routes_agree_on_five_draws<formula::RoundingMode::HalfAwayFromZero>();
     check_routes_agree_on_five_draws<formula::RoundingMode::HalfTowardZero>();
@@ -465,7 +493,8 @@ TEST_CASE("rounded output: absent when an input is and the hook is never called"
                                                                          formula::Measured<Draw> { rat(197) }));
     ReciprocalSum::exactCalls = 0;
     auto const outcome = formula::checked_evaluate<Reciprocals>(
-        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall), gap);
+        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall),
+        gap);
     REQUIRE(outcome.has_value());
     CHECK(outcome->is_empty());
     CHECK(ReciprocalSum::exactCalls == 0);
@@ -474,7 +503,8 @@ TEST_CASE("rounded output: absent when an input is and the hook is never called"
 TEST_CASE("rounded output: an input's failure is relayed with its site and the hook is never called", "[rounded-output]")
 {
     // The draws divided by a zero divisor: the division fails at element 0.
-    constexpr auto divided = formula::opaque<ReciprocalSum>(reciprocalClause, formula::series<Draw, 5> / formula::var<Divisor>);
+    constexpr auto divided =
+        formula::opaque<ReciprocalSum>(reciprocalClause, formula::series<Draw, 5> / formula::var<Divisor>);
     auto const byZero = formula::environment(formula::measured_series<Draw>(formula::Measured<Draw> { rat(103) },
                                                                             formula::Measured<Draw> { rat(127) },
                                                                             formula::Measured<Draw> { rat(139) },
@@ -489,7 +519,8 @@ TEST_CASE("rounded output: an input's failure is relayed with its site and the h
     CHECK(called.error().element == std::optional<std::size_t> { 0 });
     CHECK(ReciprocalSum::exactCalls == 0);
     auto const outcome = formula::checked_evaluate<Reciprocals>(
-        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(divided), byZero);
+        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(divided),
+        byZero);
     REQUIRE(!outcome.has_value());
     CHECK(outcome.error() == formula::ArithmeticError::DivisionByZero);
 }
@@ -511,7 +542,8 @@ TEST_CASE("rounded output: a rounding that fails after the call answered is the 
 {
     constexpr auto productCall = formula::opaque<WideProduct>(productClause, formula::var<Gain>, formula::var<Boost>);
     constexpr std::int64_t twoToForty = std::int64_t { 1 } << 40;
-    auto const huge = formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
+    auto const huge =
+        formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
     // The exact route cannot hold 2^80 at all.
     auto const plain = formula::checked_evaluate<Amplified>(formula::opaque_output<"product">(productCall), huge);
     REQUIRE(!plain.has_value());
@@ -521,14 +553,18 @@ TEST_CASE("rounded output: a rounding that fails after the call answered is the 
     auto const called = formula::detail::evaluate_rounded_call<0>(productCall, huge, formula::NullSink {});
     CHECK(called.has_value());
     auto const rounded = formula::checked_evaluate<Amplified>(
-        formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(productCall), huge);
+        formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+            productCall),
+        huge);
     REQUIRE(!rounded.has_value());
     CHECK(rounded.error() == formula::ArithmeticError::Overflow);
     // The control: 2^40 times 1/2^30 is 1024.
     auto const modest = formula::environment(formula::Measured<Gain> { rat(twoToForty) },
                                              formula::Measured<Boost> { rat(1, std::int64_t { 1 } << 30) });
     auto const answered = formula::checked_evaluate<Amplified>(
-        formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(productCall), modest);
+        formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+            productCall),
+        modest);
     REQUIRE(answered.has_value());
     CHECK(answered->measurement().value() == rat(1024));
 }
@@ -537,9 +573,11 @@ TEST_CASE("rounded output: a sink hearing the call is told it holds no values", 
 {
     std::vector<ToldCall> told;
     (void) formula::detail::dispatch<formula::Rational>(
-        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall), fiveDraws,
+        formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall),
+        fiveDraws,
         HearsCalls { &told });
-    (void) formula::detail::dispatch<formula::Rational>(formula::opaque_output<"total">(fiveCall), fiveDraws, HearsCalls { &told });
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"total">(fiveCall), fiveDraws, HearsCalls { &told });
     REQUIRE(told.size() == 2);
     CHECK(told[0].valuesHeld == 0);
     CHECK(told[0].values == formula::OpaqueValues::RoundedWhereUsed);
@@ -581,8 +619,10 @@ TEST_CASE("rounded output: the walks see the call's inputs", "[rounded-output][p
 
 TEST_CASE("rounded output: a page lists a call once whether its output is rounded or not", "[rounded-output][document]")
 {
-    constexpr auto both = formula::opaque_output<"total">(fiveCall)
-                          - formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall);
+    constexpr auto both =
+        formula::opaque_output<"total">(fiveCall)
+        - formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(
+            fiveCall);
     formula::Documentation const page = formula::document(both);
     REQUIRE(page.opaqueOperations.size() == 1);
     CHECK(page.opaqueOperations[0].name == "reciprocal sum");
@@ -592,34 +632,43 @@ TEST_CASE("rounded output: a page lists a call once whether its output is rounde
 
 TEST_CASE("rounded output: one call used rounded and plain runs twice and says which is which", "[rounded-output][trace]")
 {
-    constexpr auto both = formula::opaque_output<"total">(fiveCall)
-                          - formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall);
+    constexpr auto both =
+        formula::opaque_output<"total">(fiveCall)
+        - formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(
+            fiveCall);
     auto const explained = formula::explain<Reciprocals>(both, fiveDraws);
     // 2101205901/58386114749 - 8997/250000.
     CHECK(explained.outcome.measurement().value() == rat(1600853247, 14596528687250000));
-    CHECK(formula::render_trace(explained.trace, { .maxSteps = 40 })
-          == "1. z = 103; 127; 139; 163; 197\n"
-             "2. reciprocal sum(#1) = total = 2101205901/58386114749 [inside not shown] [Reciprocal sum, Example Standard 7, 2.4]\n"
-             "3. total of #2 = 2101205901/58386114749\n"
-             "4. z = 103; 127; 139; 163; 197\n"
-             "5. reciprocal sum(#4) = total: rounded where used [inside not shown] [Reciprocal sum, Example Standard 7, 2.4]\n"
-             "6. round(total of #5, to 6 dp) = 8997/250000 [nearest, ties to even]\n"
-             "7. #3 - #6 = 1600853247/14596528687250000\n");
+    CHECK(
+        formula::render_trace(explained.trace, { .maxSteps = 40 })
+        == "1. z = 103; 127; 139; 163; 197\n"
+           "2. reciprocal sum(#1) = total = 2101205901/58386114749 [inside not shown] [Reciprocal sum, Example Standard 7, "
+           "2.4]\n"
+           "3. total of #2 = 2101205901/58386114749\n"
+           "4. z = 103; 127; 139; 163; 197\n"
+           "5. reciprocal sum(#4) = total: rounded where used [inside not shown] [Reciprocal sum, Example Standard 7, 2.4]\n"
+           "6. round(total of #5, to 6 dp) = 8997/250000 [nearest, ties to even]\n"
+           "7. #3 - #6 = 1600853247/14596528687250000\n");
 }
 
-TEST_CASE("rounded output: a rounding that fails after the call answered is the output's line alone", "[rounded-output][trace]")
+TEST_CASE("rounded output: a rounding that fails after the call answered is the output's line alone",
+          "[rounded-output][trace]")
 {
     constexpr auto productCall = formula::opaque<WideProduct>(productClause, formula::var<Gain>, formula::var<Boost>);
     constexpr std::int64_t twoToForty = std::int64_t { 1 } << 40;
-    auto const huge = formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
+    auto const huge =
+        formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
     formula::Trace<> recorded {};
     (void) formula::detail::dispatch<formula::Rational>(
-        formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(productCall), huge,
+        formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(
+            productCall),
+        huge,
         formula::RecordingSink { recorded });
     CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
           == "1. g_1 = 1099511627776\n"
              "2. g_2 = 1099511627776\n"
-             "3. wide product(#1, #2) = product: rounded where used [inside not shown] [Product of gains, Example Standard 7, 2.5]\n"
+             "3. wide product(#1, #2) = product: rounded where used [inside not shown] [Product of gains, Example Standard "
+             "7, 2.5]\n"
              "4. round(product of #3, to 0 dp) = overflow in exact arithmetic [nearest, ties to even]\n");
     REQUIRE(formula::opaque_data(recorded, 2) != nullptr);
     CHECK(formula::opaque_data(recorded, 2)->answer == formula::OpaqueAnswer::Answered);
@@ -628,8 +677,8 @@ TEST_CASE("rounded output: a rounding that fails after the call answered is the 
 
 TEST_CASE("rounded output: a worksheet's derivation shows the rounding", "[rounded-output][calculation][trace]")
 {
-    auto sheet = formula::worksheet(shareCalculation, formula::environment(formula::Measured<Factor> { rat(2) },
-                                                                           formula::Measured<Other> { rat(3) }));
+    auto sheet = formula::worksheet(
+        shareCalculation, formula::environment(formula::Measured<Factor> { rat(2) }, formula::Measured<Other> { rat(3) }));
     auto const explained = formula::explain_worksheet<Share>(sheet);
     REQUIRE(explained.outcome.has_value());
     CHECK(explained.outcome->measurement().value() == rat(6667, 10000));
@@ -637,7 +686,8 @@ TEST_CASE("rounded output: a worksheet's derivation shows the rounding", "[round
           == "s = round(ratio of two(k, k_o).ratio, to 4 dp) = 6667/10000\n"
              "  1. k = 2\n"
              "  2. k_o = 3\n"
-             "  3. ratio of two(#1, #2) = ratio: rounded where used [inside not shown] [Share of two factors, Example Standard 7, 3.2]\n"
+             "  3. ratio of two(#1, #2) = ratio: rounded where used [inside not shown] [Share of two factors, Example "
+             "Standard 7, 3.2]\n"
              "  4. round(ratio of #3, to 4 dp) = 6667/10000 [nearest, ties to even]\n"
              "inputs\n"
              "  k = 2\n"
@@ -647,7 +697,8 @@ TEST_CASE("rounded output: a worksheet's derivation shows the rounding", "[round
           != std::string::npos);
 }
 
-TEST_CASE("rounded output: a step built by hand without its row still says the inside is not shown", "[rounded-output][trace]")
+TEST_CASE("rounded output: a step built by hand without its row still says the inside is not shown",
+          "[rounded-output][trace]")
 {
     formula::Step<> bare {};
     bare.kind = formula::StepKind::RoundedOpaqueOutput;

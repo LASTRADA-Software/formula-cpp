@@ -39,9 +39,11 @@ struct ReadingSpan
     }
 
     template <typename Rep>
-    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(std::span<Rep const> readings) noexcept
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(
+        std::span<Rep const> readings) noexcept
     {
-        std::expected<Rep, formula::ArithmeticError> const apart = formula::RepTraits<Rep>::subtract(readings[1], readings[0]);
+        std::expected<Rep, formula::ArithmeticError> const apart =
+            formula::RepTraits<Rep>::subtract(readings[1], readings[0]);
         if (!apart.has_value())
             return std::unexpected { apart.error() };
         return std::array { *apart };
@@ -58,6 +60,7 @@ inline constexpr auto twoReadings =
 int main()
 {
     auto const roundedSpan =
-        formula::rounded_output<"span", formula::unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(spanCall);
+        formula::rounded_output<"span", formula::unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+            spanCall);
     return formula::checked_evaluate_si<double>(roundedSpan, twoReadings).has_value() ? 0 : 1;
 }

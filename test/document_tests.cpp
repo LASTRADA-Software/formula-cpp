@@ -302,8 +302,8 @@ TEST_CASE("document: a logarithm lists what its argument reads and states itself
 
 TEST_CASE("document: a rounded logarithm lists what its argument reads", "[document]")
 {
-    formula::Documentation const documentation = formula::document(
-        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+    formula::Documentation const documentation =
+        formula::document(formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
             var<WaterVolume> / var<CementVolume>));
     CHECK(documentation.formula == "round(log10(V_w / V_c), to 2 dp)");
     REQUIRE(documentation.symbols.size() == 2);

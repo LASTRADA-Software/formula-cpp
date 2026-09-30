@@ -48,15 +48,19 @@ struct Factor9: formula::Quantity<Factor9, "f_9", "an invented factor", formula:
 };
 
 inline constexpr auto sample = formula::environment(formula::MeasuredObservations<Temperature, 8>(),
-                                                     formula::MeasuredObservations<Content, 8>(),
-                                                     formula::MeasuredObservations<Length, 8>());
-inline constexpr auto fit = formula::multiple_least_squares(
-    formula::regressors(formula::observations<Factor1, 8>, formula::observations<Factor2, 8>,
-                        formula::observations<Factor3, 8>, formula::observations<Factor4, 8>,
-                        formula::observations<Factor5, 8>, formula::observations<Factor6, 8>,
-                        formula::observations<Factor7, 8>, formula::observations<Factor8, 8>,
-                        formula::observations<Factor9, 8>),
-    formula::observations<Length, 8>, { .reference = "Example Standard 12" });
+                                                    formula::MeasuredObservations<Content, 8>(),
+                                                    formula::MeasuredObservations<Length, 8>());
+inline constexpr auto fit = formula::multiple_least_squares(formula::regressors(formula::observations<Factor1, 8>,
+                                                                                formula::observations<Factor2, 8>,
+                                                                                formula::observations<Factor3, 8>,
+                                                                                formula::observations<Factor4, 8>,
+                                                                                formula::observations<Factor5, 8>,
+                                                                                formula::observations<Factor6, 8>,
+                                                                                formula::observations<Factor7, 8>,
+                                                                                formula::observations<Factor8, 8>,
+                                                                                formula::observations<Factor9, 8>),
+                                                            formula::observations<Length, 8>,
+                                                            { .reference = "Example Standard 12" });
 
 int main()
 {

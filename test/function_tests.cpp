@@ -37,8 +37,8 @@ struct Share: formula::Quantity<Share, "p", "an invented share", formula::unit::
 template <typename N>
 [[nodiscard]] constexpr formula::Evaluated<formula::Rational> exactlyAt(N const& node, formula::Rational ratioValue)
 {
-    return formula::checked_evaluate_si<formula::Rational>(
-        node, formula::environment(formula::Measured<Ratio> { ratioValue }));
+    return formula::checked_evaluate_si<formula::Rational>(node,
+                                                           formula::environment(formula::Measured<Ratio> { ratioValue }));
 }
 
 /// @p node evaluated in double, with the ratio at @p ratioValue.
@@ -273,8 +273,7 @@ TEST_CASE("function: an absent input still propagates through a power", "[functi
     STATIC_REQUIRE(computed->is_empty());
 }
 
-TEST_CASE("function: a logarithm or an exponential is a dimensionless node over a dimensionless argument",
-          "[function]")
+TEST_CASE("function: a logarithm or an exponential is a dimensionless node over a dimensionless argument", "[function]")
 {
     constexpr auto logarithm = formula::ln(var<Ratio>);
     STATIC_REQUIRE(formula::Node<decltype(logarithm)>);
@@ -319,8 +318,7 @@ TEST_CASE("function: a logarithm or an exponential of any other value is Inexact
     STATIC_REQUIRE(failureOf(exactlyAt(formula::exp(var<Ratio>), rat(1000))) == Inexact);
 }
 
-TEST_CASE("function: the logarithm of zero or a negative value is a domain error in both representations",
-          "[function]")
+TEST_CASE("function: the logarithm of zero or a negative value is a domain error in both representations", "[function]")
 {
     constexpr auto DomainError = formula::ArithmeticError::DomainError;
     STATIC_REQUIRE(failureOf(exactlyAt(formula::ln(var<Ratio>), rat(0))) == DomainError);
@@ -374,7 +372,8 @@ TEST_CASE("function: an absent argument leaves a logarithm or an exponential abs
     // Absent, never a domain error: an argument nobody measured is not zero.
     constexpr auto nothingMeasured = formula::environment(formula::Measured<Ratio>::absent());
     STATIC_REQUIRE(!formula::checked_evaluate_si<formula::Rational>(formula::ln(var<Ratio>), nothingMeasured)->has_value());
-    STATIC_REQUIRE(!formula::checked_evaluate_si<formula::Rational>(formula::log10(var<Ratio>), nothingMeasured)->has_value());
+    STATIC_REQUIRE(
+        !formula::checked_evaluate_si<formula::Rational>(formula::log10(var<Ratio>), nothingMeasured)->has_value());
     STATIC_REQUIRE(!formula::checked_evaluate_si<formula::Rational>(formula::exp(var<Ratio>), nothingMeasured)->has_value());
     auto const approximate = formula::checked_evaluate_si<double>(formula::ln(var<Ratio>), nothingMeasured);
     REQUIRE(approximate.has_value());
@@ -385,13 +384,13 @@ TEST_CASE("function: the argument's own failure reaches a logarithm unchanged", 
 {
     // r / q with q = 0 fails with DivisionByZero. The logarithm reports that, not DomainError, which a
     // node that looked at a default value in place of the failure would report.
-    constexpr auto inputs =
-        formula::environment(formula::Measured<Ratio> { rat(1) }, formula::Measured<Divisor> { rat(0) });
+    constexpr auto inputs = formula::environment(formula::Measured<Ratio> { rat(1) }, formula::Measured<Divisor> { rat(0) });
     constexpr auto DivisionByZero = formula::ArithmeticError::DivisionByZero;
     STATIC_REQUIRE(failureOf(formula::checked_evaluate_si<formula::Rational>(formula::ln(var<Ratio> / var<Divisor>), inputs))
                    == DivisionByZero);
-    STATIC_REQUIRE(failureOf(formula::checked_evaluate_si<formula::Rational>(formula::exp(var<Ratio> / var<Divisor>), inputs))
-                   == DivisionByZero);
+    STATIC_REQUIRE(
+        failureOf(formula::checked_evaluate_si<formula::Rational>(formula::exp(var<Ratio> / var<Divisor>), inputs))
+        == DivisionByZero);
     CHECK(failureOf(formula::checked_evaluate_si<double>(formula::log10(var<Ratio> / var<Divisor>), inputs))
           == DivisionByZero);
 }

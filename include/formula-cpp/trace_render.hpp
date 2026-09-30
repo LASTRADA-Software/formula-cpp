@@ -913,12 +913,10 @@ namespace detail
     /// unrounded value was never a value. The function is named in `render()`'s words
     /// (`transcendental_text`), so that a derivation names the function its formula names. No unit
     /// clause: the node rounds a pure number.
-    [[nodiscard]] inline std::string rounded_transcendental_expression(
-        Transcendental function, ShownStep const& shownStep)
+    [[nodiscard]] inline std::string rounded_transcendental_expression(Transcendental function, ShownStep const& shownStep)
     {
-        return rounding_call_text(transcendental_text<Dialect::Plain>(function, sole_operand(shownStep)),
-                                  shownStep.granularity,
-                                  {});
+        return rounding_call_text(
+            transcendental_text<Dialect::Plain>(function, sole_operand(shownStep)), shownStep.granularity, {});
     }
 
     /// What a step computed, written in terms of the steps it consumed.
@@ -2562,9 +2560,9 @@ namespace detail
                 std::string relayed = " [carried up from ";
                 relayed += failedInput.has_value() ? operand_reference(*failedInput) : std::string { "an input" };
                 if (recorded.failedElement.has_value())
-                    relayed += (recorded.failureSite == FailureSite::InputObservation ? ", at observation "
-                                                                                      : ", at element ")
-                               + std::to_string(*recorded.failedElement + 1);
+                    relayed +=
+                        (recorded.failureSite == FailureSite::InputObservation ? ", at observation " : ", at element ")
+                        + std::to_string(*recorded.failedElement + 1);
                 return relayed + "]";
             }
             case OpaqueFailure::Undetermined:

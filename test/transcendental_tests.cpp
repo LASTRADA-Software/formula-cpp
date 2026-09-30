@@ -44,10 +44,11 @@ using formula::Transcendental;
 using Word = detail::KernelWord;
 using Ratio = detail::WideRatio<detail::KernelLimbs>;
 
-constexpr std::array<RoundingMode, 7> everyMode { RoundingMode::HalfAwayFromZero, RoundingMode::HalfTowardZero,
-                                                  RoundingMode::HalfEven,         RoundingMode::Ceiling,
-                                                  RoundingMode::Floor,            RoundingMode::TowardZero,
-                                                  RoundingMode::AwayFromZero };
+constexpr std::array<RoundingMode, 7> everyMode {
+    RoundingMode::HalfAwayFromZero, RoundingMode::HalfTowardZero, RoundingMode::HalfEven,
+    RoundingMode::Ceiling,          RoundingMode::Floor,          RoundingMode::TowardZero,
+    RoundingMode::AwayFromZero
+};
 
 /// The kernel's enclosure of @p function at @p argument.
 [[nodiscard]] constexpr std::optional<detail::Enclosure> enclosure_of(Transcendental function, Rational argument)
@@ -65,8 +66,10 @@ constexpr std::array<RoundingMode, 7> everyMode { RoundingMode::HalfAwayFromZero
 }
 
 /// @p function at @p argument rounded to @p places under @p roundingMode by the kernel's enclosure.
-[[nodiscard]] constexpr std::expected<Rational, formula::ArithmeticError>
-    kernel_rounding(Transcendental function, Rational argument, int places, RoundingMode roundingMode)
+[[nodiscard]] constexpr std::expected<Rational, formula::ArithmeticError> kernel_rounding(Transcendental function,
+                                                                                          Rational argument,
+                                                                                          int places,
+                                                                                          RoundingMode roundingMode)
 {
     std::optional<detail::Enclosure> const enclosure = enclosure_of(function, argument);
     if (!enclosure.has_value())
@@ -79,7 +82,8 @@ constexpr std::array<RoundingMode, 7> everyMode { RoundingMode::HalfAwayFromZero
 {
     Word parsed {};
     for (char const each: decimalDigits)
-        parsed = *detail::add_small_checked_or_none(*detail::mul_small_checked_or_none(parsed, 10U), static_cast<std::uint32_t>(each - '0'));
+        parsed = *detail::add_small_checked_or_none(*detail::mul_small_checked_or_none(parsed, 10U),
+                                                    static_cast<std::uint32_t>(each - '0'));
     return parsed;
 }
 
@@ -103,7 +107,8 @@ constexpr std::array<RoundingMode, 7> everyMode { RoundingMode::HalfAwayFromZero
     Word const digitsValue = word_of(published);
     Word const unit = *detail::shift_left_checked_or_none(Word::from_u64(1), 128);
     Word const tenTo40 = *detail::pow10<detail::KernelLimbs>(40);
-    return *detail::mul_checked_or_none(stored, tenTo40) <= *detail::mul_checked_or_none(*detail::sub_checked_or_none(digitsValue, Word::from_u64(1)), unit)
+    return *detail::mul_checked_or_none(stored, tenTo40)
+               <= *detail::mul_checked_or_none(*detail::sub_checked_or_none(digitsValue, Word::from_u64(1)), unit)
            && *detail::mul_checked_or_none(*detail::add_small_checked_or_none(digitsValue, 1U), unit)
                   <= *detail::mul_checked_or_none(*detail::add_small_checked_or_none(stored, 1U), tenTo40);
 }
@@ -127,8 +132,10 @@ constexpr std::array<Reference, 39> references { {
     { Transcendental::NaturalLogarithm, 10, 1, false, "2302585092994045684017991454684364207601", 39 },
     { Transcendental::NaturalLogarithm, 7, 5, false, "3364722366212129305045934102169920901114", 40 },
     { Transcendental::NaturalLogarithm, 4611686018427387904, 1, false, "4297512519471660918386839153040694722068", 38 },
-    { Transcendental::NaturalLogarithm, 4611686018427387903, 2305843009213693952, false, "6931471805599453092003916869610756812504", 40 },
-    { Transcendental::NaturalLogarithm, 9223372036854775807, 9223372036854775806, false, "1084202172485504434183776953493284837650", 58 },
+    { Transcendental::NaturalLogarithm, 4611686018427387903, 2305843009213693952, false,
+      "6931471805599453092003916869610756812504", 40 },
+    { Transcendental::NaturalLogarithm, 9223372036854775807, 9223372036854775806, false,
+      "1084202172485504434183776953493284837650", 58 },
     { Transcendental::NaturalLogarithm, 9223372036854775807, 1, false, "4366827237527655449317720343461657334534", 38 },
     { Transcendental::NaturalLogarithm, 1, 9223372036854775807, true, "4366827237527655449317720343461657334534", 38 },
     { Transcendental::NaturalLogarithm, 1000001, 1000000, false, "9999995000003333330833335333331666668095", 46 },
@@ -215,7 +222,8 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
     for (Reference const& row: references)
     {
         INFO("row " << row.numerator << "/" << row.denominator);
-        std::optional<detail::Enclosure> const enclosure = enclosure_of(row.function, Rational { row.numerator, row.denominator });
+        std::optional<detail::Enclosure> const enclosure =
+            enclosure_of(row.function, Rational { row.numerator, row.denominator });
         REQUIRE(enclosure.has_value());
         std::array<Ratio, 2> const referenceEnds = reference_bounds(row);
         // The value lies in both intervals, so they meet.
@@ -225,8 +233,9 @@ TEST_CASE("transcendental kernel: every reference value is enclosed and rounds a
             for (RoundingMode const roundingMode: everyMode)
             {
                 INFO("places " << places << ", mode " << formula::describe(roundingMode));
-                CHECK(detail::decide_rounding(enclosure->lower, enclosure->upper, DecimalPlaces { places }, roundingMode)
-                      == detail::decide_rounding(referenceEnds[0], referenceEnds[1], DecimalPlaces { places }, roundingMode));
+                CHECK(
+                    detail::decide_rounding(enclosure->lower, enclosure->upper, DecimalPlaces { places }, roundingMode)
+                    == detail::decide_rounding(referenceEnds[0], referenceEnds[1], DecimalPlaces { places }, roundingMode));
                 ++compared;
             }
     }
@@ -248,7 +257,8 @@ TEST_CASE("transcendental kernel: an enclosure is at most 2^-118 wide", "[transc
     Word const unit = *detail::shift_left_checked_or_none(Word::from_u64(1), 128);
     for (Reference const& row: references)
     {
-        std::optional<detail::Enclosure> const enclosure = enclosure_of(row.function, Rational { row.numerator, row.denominator });
+        std::optional<detail::Enclosure> const enclosure =
+            enclosure_of(row.function, Rational { row.numerator, row.denominator });
         REQUIRE(enclosure.has_value());
         Ratio const& nearer = enclosure->lower.negative ? enclosure->upper : enclosure->lower;
         Ratio const& farther = enclosure->lower.negative ? enclosure->lower : enclosure->upper;
@@ -271,20 +281,25 @@ TEST_CASE("transcendental kernel: an enclosure that straddles a tie is Overflow 
     // The half modes cannot be decided and say Overflow; the directed modes can, and answer. The true
     // rounding in the half modes is 0: Overflow here means more bits were needed, never a wrong number.
     constexpr Rational nearTie { 2'000'000'000'000'000'001, 2'000'000'000'000'000'000 };
-    for (RoundingMode const roundingMode: { RoundingMode::HalfAwayFromZero, RoundingMode::HalfTowardZero, RoundingMode::HalfEven })
-        CHECK(kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, roundingMode)
-              == std::expected<Rational, formula::ArithmeticError> { std::unexpected { formula::ArithmeticError::Overflow } });
+    for (RoundingMode const roundingMode:
+         { RoundingMode::HalfAwayFromZero, RoundingMode::HalfTowardZero, RoundingMode::HalfEven })
+        CHECK(
+            kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, roundingMode)
+            == std::expected<Rational, formula::ArithmeticError> { std::unexpected { formula::ArithmeticError::Overflow } });
     CHECK(kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, RoundingMode::Floor) == Rational {});
     CHECK(kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, RoundingMode::TowardZero) == Rational {});
-    CHECK(kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, RoundingMode::Ceiling) == Rational::from_decimal(1, -18));
-    CHECK(kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, RoundingMode::AwayFromZero) == Rational::from_decimal(1, -18));
+    CHECK(kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, RoundingMode::Ceiling)
+          == Rational::from_decimal(1, -18));
+    CHECK(kernel_rounding(Transcendental::NaturalLogarithm, nearTie, 18, RoundingMode::AwayFromZero)
+          == Rational::from_decimal(1, -18));
 }
 
 TEST_CASE("transcendental kernel: the kernel answers at compile time", "[transcendental]")
 {
     // The one deliberate compile-time check of the kernel. A whole rounding -- the enclosure and
     // decide_rounding -- in one constant evaluation, measured at about
-    // 239 000 steps on cl 19.51.36257, against a default budget of about 1 049 000. Every other check that runs the kernel runs at run time.
+    // 239 000 steps on cl 19.51.36257, against a default budget of about 1 049 000. Every other check that runs the kernel
+    // runs at run time.
     STATIC_REQUIRE(kernel_rounding(Transcendental::DecimalLogarithm, Rational { 2 }, 3, RoundingMode::HalfEven)
                    == Rational { 301, 1000 });
 }

@@ -40,9 +40,11 @@ struct ReadingSpan
     }
 
     template <typename Rep>
-    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(std::span<Rep const> readings) noexcept
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(
+        std::span<Rep const> readings) noexcept
     {
-        std::expected<Rep, formula::ArithmeticError> const apart = formula::RepTraits<Rep>::subtract(readings[1], readings[0]);
+        std::expected<Rep, formula::ArithmeticError> const apart =
+            formula::RepTraits<Rep>::subtract(readings[1], readings[0]);
         if (!apart.has_value())
             return std::unexpected { apart.error() };
         return std::array { *apart };
@@ -60,7 +62,8 @@ int main()
 {
     auto const refusedCall = formula::opaque<ReadingSpan>({ .reference = "Example Standard 7" }, formula::var<Reading>);
     auto const roundedSpan =
-        formula::rounded_output<"span", formula::unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(refusedCall);
+        formula::rounded_output<"span", formula::unit::Gram, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+            refusedCall);
     auto const oneReading = formula::environment(formula::Measured<Reading> { formula::Rational { 1273, 10 } });
     return formula::checked_evaluate<Span>(roundedSpan, oneReading).has_value() ? 0 : 1;
 }

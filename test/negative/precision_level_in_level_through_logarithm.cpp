@@ -18,7 +18,7 @@ int main()
     constexpr auto broken = formula::precision_limit<formula::PrecisionKind::Repeatability>(
         formula::var<Ratio> * formula::exp(formula::precision_level<Ratio> - formula::precision_level<Ratio>),
         formula::Rational { 1, 50 } * formula::precision_level<Ratio>);
-    auto const outcome = formula::checked_evaluate<Ratio>(
-        broken, formula::environment(formula::Measured<Ratio> { formula::Rational { 2 } }));
+    auto const outcome =
+        formula::checked_evaluate<Ratio>(broken, formula::environment(formula::Measured<Ratio> { formula::Rational { 2 } }));
     return outcome.has_value() ? 0 : 1;
 }

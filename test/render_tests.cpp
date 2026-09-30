@@ -307,9 +307,8 @@ TEST_CASE("render: a rounded logarithm or exponential reads as a rounding of the
     CHECK(formula::render(logged) == "round(ln(n_d), to 4 dp)");
     CHECK(formula::render<Dialect::Markdown>(logged) == "round(ln(`n_d`), to 4 dp)");
     CHECK(formula::render<Dialect::LaTeX>(logged) == "\\operatorname{round}_{4}(\\ln\\left(n_d\\right))");
-    constexpr auto decimal =
-        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
-            var<WaterVolume> / var<CementVolume>);
+    constexpr auto decimal = formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
+        var<WaterVolume> / var<CementVolume>);
     CHECK(formula::render(decimal) == "round(log10(V_w / V_c), to 2 dp)");
     CHECK(formula::render<Dialect::LaTeX>(decimal)
           == "\\operatorname{round}_{2}(\\log_{10}\\left(\\frac{V_w}{V_c}\\right))");
@@ -317,9 +316,9 @@ TEST_CASE("render: a rounded logarithm or exponential reads as a rounding of the
         formula::rounded_exp<formula::DecimalPlaces { -1 }, formula::RoundingMode::Ceiling>(var<Determinations>);
     CHECK(formula::render(grown) == "round(exp(n_d), to -1 dp)");
     // The mode is the trace's, as for every rounding: two nodes differing only in it render alike.
-    CHECK(formula::render(
-              formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(var<Determinations>))
-          == formula::render(logged));
+    CHECK(
+        formula::render(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(var<Determinations>))
+        == formula::render(logged));
     // A call: an atom to what holds it.
     CHECK(formula::render(logged * rat(2)) == "round(ln(n_d), to 4 dp) * 2");
 }

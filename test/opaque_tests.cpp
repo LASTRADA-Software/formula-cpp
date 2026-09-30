@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include "opaque_cross_tu.hpp"
+
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/opaque.hpp>
@@ -7,8 +9,6 @@
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
-
-#include "opaque_cross_tu.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -1366,8 +1366,9 @@ struct TwoSampleLowest
     static inline int calls = 0;
 
     template <typename Rep>
-    static constexpr std::expected<std::array<Rep, 3>, formula::ArithmeticError> compute(
-        std::span<Rep const> firstSample, std::span<Rep const> secondSample, Rep raisedBy) noexcept
+    static constexpr std::expected<std::array<Rep, 3>, formula::ArithmeticError> compute(std::span<Rep const> firstSample,
+                                                                                         std::span<Rep const> secondSample,
+                                                                                         Rep raisedBy) noexcept
     {
         if !consteval
         {
@@ -1431,11 +1432,11 @@ struct FarReading: formula::Quantity<FarReading, "x_k", "an invented distance, i
 {
 };
 
-constexpr auto twoSamples = formula::opaque<TwoSampleLowest>(
-    { .title = "Two samples", .reference = "Example Standard 12", .section = "4.4" },
-    formula::observations<Reading, 8>,
-    formula::observations<Tare, 4>,
-    formula::var<Shift>);
+constexpr auto twoSamples =
+    formula::opaque<TwoSampleLowest>({ .title = "Two samples", .reference = "Example Standard 12", .section = "4.4" },
+                                     formula::observations<Reading, 8>,
+                                     formula::observations<Tare, 4>,
+                                     formula::var<Shift>);
 
 // Three readings made in room for eight, no tare made in room for four, a
 // shift of 13 g: the lowest reading, 103 g, raised to 116 g.
@@ -1448,15 +1449,13 @@ TEST_CASE("an opaque operation over observations sees how many were made, none i
 {
     // compute sees 3 and 0, never the capacities 8 and 4: a span over the
     // observations made. Capacities that differ are no framework error.
-    constexpr auto firstMade =
-        formula::checked_evaluate_si(formula::opaque_output<"first made">(twoSamples), threeAndNone);
+    constexpr auto firstMade = formula::checked_evaluate_si(formula::opaque_output<"first made">(twoSamples), threeAndNone);
     STATIC_REQUIRE(**firstMade == rat(3));
     constexpr auto secondMade =
         formula::checked_evaluate_si(formula::opaque_output<"second made">(twoSamples), threeAndNone);
     STATIC_REQUIRE(**secondMade == rat(0));
     // 116 g is 29/250 kg in the coherent unit.
-    constexpr auto raised =
-        formula::checked_evaluate_si(formula::opaque_output<"raised lowest">(twoSamples), threeAndNone);
+    constexpr auto raised = formula::checked_evaluate_si(formula::opaque_output<"raised lowest">(twoSamples), threeAndNone);
     STATIC_REQUIRE(**raised == rat(29, 250));
     STATIC_REQUIRE(decltype(formula::opaque_output<"raised lowest">(twoSamples))::dimension == formula::dim::Mass);
     STATIC_REQUIRE(decltype(formula::opaque_output<"first made">(twoSamples))::dimension == formula::dim::Scalar);
@@ -1468,9 +1467,8 @@ TEST_CASE("observations read at run time, and in double, reach an opaque operati
     std::array<formula::Rational, 5> const fiveReadings { rat(139), rat(113), rat(197), rat(163), rat(127) };
     auto const fromRunTime = formula::MeasuredObservations<Reading, 8>::from(fiveReadings);
     REQUIRE(fromRunTime.has_value());
-    auto const fiveAndNone = formula::environment(*fromRunTime,
-                                                  formula::MeasuredObservations<Tare, 4>(),
-                                                  formula::Measured<Shift> { rat(13) });
+    auto const fiveAndNone =
+        formula::environment(*fromRunTime, formula::MeasuredObservations<Tare, 4>(), formula::Measured<Shift> { rat(13) });
     TwoSampleLowest::calls = 0;
     auto const firstMade = formula::checked_evaluate_si(formula::opaque_output<"first made">(twoSamples), fiveAndNone);
     REQUIRE(firstMade.has_value());
@@ -1546,10 +1544,10 @@ TEST_CASE("an observation that fails to convert fails the call at that observati
     // 1.03 x 10^17 km is 1.03 x 10^20 m, past Rational's range: the third
     // observation. Relayed, not the operation's own, and counted as an
     // observation -- never "at element 3".
-    constexpr auto lowestFar = formula::opaque<LowestObserved>({ .reference = "Example Standard 12" },
-                                                               formula::observations<FarReading, 4>);
-    constexpr auto overflowing = formula::environment(
-        formula::MeasuredObservations<FarReading, 4>(rat(103), rat(127), rat(103'000'000'000'000'000)));
+    constexpr auto lowestFar =
+        formula::opaque<LowestObserved>({ .reference = "Example Standard 12" }, formula::observations<FarReading, 4>);
+    constexpr auto overflowing =
+        formula::environment(formula::MeasuredObservations<FarReading, 4>(rat(103), rat(127), rat(103'000'000'000'000'000)));
     constexpr auto called = formula::detail::evaluate_call<formula::Rational>(lowestFar, overflowing, formula::NullSink {});
     STATIC_REQUIRE(!called.has_value());
     STATIC_REQUIRE(called.error().error == formula::ArithmeticError::Overflow);

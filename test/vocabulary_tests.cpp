@@ -695,27 +695,28 @@ inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(
                        d, { rat(1127, 1000), rat(1973, 1000) })
                    * formula::interpolating_lookup<unit::Millimetre, VocabularyDiameterPoints, unit::One>(
                        d, { rat(1043, 1000), rat(2917, 1000) }))
-           * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
-           * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) })
-           * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>)
+               * var<EveryDerived> * var<EveryFixed> * formula::pi * formula::constant<unit::One>(rat(2))
+               * formula::exact_lookup<EveryFinishKeys, unit::One>(EveryFinish::Rough, { rat(1087, 1000), rat(1249, 1000) })
+               * formula::snapped<unit::One, everySnapSet, formula::SnapTie::TowardHigher>(var<EveryFixed>)
            // Phase 13's kinds, added rather than multiplied in: the product
            // above leaves too few bits for another factor.
            + formula::rounded_sqrt<unit::Percent, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
-               r * var<EveryFixed>)
-               * formula::critical_value<formula::SampleSizeTable<2> { 2, 3 }, unit::One>(
-                   formula::constant<unit::One>(rat(2)), { rat(60), rat(80) })
-               * formula::abs(r)
-               * formula::precision_limit<formula::PrecisionKind::Repeatability>(r, formula::precision_level<EveryDerived>)
-               // A logarithm and an exponential, each at a point where it is exact, so the product keeps
-               // its value: ln(r / r) = ln 1 = 0, exp 0 = 1 and log10 10 = 1.
-               * formula::exp(formula::ln(r / r)) * formula::log10(formula::constant<unit::One>(rat(10)))
-               // The rounded forms, each over the overlay's fixed factor, so the rewrite must reach inside:
-               // round(ln(x_n / x_n)) = 0, whose exponential is 1, and round(log10(x_n / x_n * 10)) = 1.
-               * formula::rounded_exp<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
-                   formula::rounded_ln<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
-                       var<EveryFixed> / var<EveryFixed>))
-               * formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
-                   var<EveryFixed> / var<EveryFixed> * formula::constant<unit::One>(rat(10)));
+                 r * var<EveryFixed>)
+                 * formula::critical_value<formula::SampleSizeTable<2> { 2, 3 }, unit::One>(
+                     formula::constant<unit::One>(rat(2)), { rat(60), rat(80) })
+                 * formula::abs(r)
+                 * formula::precision_limit<formula::PrecisionKind::Repeatability>(r, formula::precision_level<EveryDerived>)
+                 // A logarithm and an exponential, each at a point where it is exact, so the product keeps
+                 // its value: ln(r / r) = ln 1 = 0, exp 0 = 1 and log10 10 = 1.
+                 * formula::exp(formula::ln(r / r))
+                 * formula::log10(formula::constant<unit::One>(rat(10)))
+                 // The rounded forms, each over the overlay's fixed factor, so the rewrite must reach inside:
+                 // round(ln(x_n / x_n)) = 0, whose exponential is 1, and round(log10(x_n / x_n * 10)) = 1.
+                 * formula::rounded_exp<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                     formula::rounded_ln<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                         var<EveryFixed> / var<EveryFixed>))
+                 * formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                     var<EveryFixed> / var<EveryFixed> * formula::constant<unit::One>(rat(10)));
 }
 
 inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },

@@ -447,8 +447,8 @@ template <typename Shape>
                                                                    std::span<Rational const> { forces });
     if (!fitted.has_value())
         return fitted.error() == formula::ArithmeticError::Overflow;
-    auto const slope = formula::detail::rounded_in_unit((*fitted)[1], newtonPerSecond, formula::DecimalPlaces { 4 },
-                                                        formula::RoundingMode::HalfEven);
+    auto const slope = formula::detail::rounded_in_unit(
+        (*fitted)[1], newtonPerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven);
     return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
 }
 
@@ -543,9 +543,8 @@ template <typename Y, formula::Unit SlopeUnit, typename Shape>
     }
     auto const inputs = formula::environment(*formula::MeasuredObservations<FitTime, 128>::from(times),
                                              *formula::MeasuredObservations<Y, 128>::from(readings));
-    constexpr auto fit = formula::linear_least_squares(formula::observations<FitTime, 128>,
-                                                       formula::observations<Y, 128>,
-                                                       { .reference = "Example Standard 12" });
+    constexpr auto fit = formula::linear_least_squares(
+        formula::observations<FitTime, 128>, formula::observations<Y, 128>, { .reference = "Example Standard 12" });
     // A size answers or is Overflow: any other error would read as a size that
     // did not overflow.
     auto const overflowed = [count](auto const& evaluated) {
@@ -559,8 +558,9 @@ template <typename Y, formula::Unit SlopeUnit, typename Shape>
             formula::rounded_output<"slope", SlopeUnit, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(fit),
             inputs))
         || overflowed(formula::checked_evaluate_si<Rational>(
-            formula::rounded_output<"r squared", formula::unit::One, formula::DecimalPlaces { 6 },
-                                    formula::RoundingMode::Floor>(fit),
+            formula::
+                rounded_output<"r squared", formula::unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+                    fit),
             inputs));
     return { exact, rounded };
 }
@@ -578,9 +578,8 @@ struct RouteScan
             return overflowing.empty() ? std::string { "none" } : std::to_string(overflowing.front()) + " points";
         };
         return "| " + std::string { label } + " | " + std::to_string(exactOverflowing.size()) + " of "
-               + std::to_string(sizes) + " | " + first(exactOverflowing) + " | "
-               + std::to_string(roundedOverflowing.size()) + " of " + std::to_string(sizes) + " | "
-               + first(roundedOverflowing) + " |";
+               + std::to_string(sizes) + " | " + first(exactOverflowing) + " | " + std::to_string(roundedOverflowing.size())
+               + " of " + std::to_string(sizes) + " | " + first(roundedOverflowing) + " |";
     }
 };
 
@@ -649,13 +648,15 @@ struct TwoRegressorRoutes
     routes.exactError =
         failure(formula::checked_evaluate_si<Rational>(formula::opaque_output<"coefficient 1">(fit), inputs));
     routes.roundedError = failure(formula::checked_evaluate_si<Rational>(
-        formula::rounded_output<"coefficient 1", newtonPerSecond, formula::DecimalPlaces { 4 },
-                                formula::RoundingMode::HalfEven>(fit),
+        formula::
+            rounded_output<"coefficient 1", newtonPerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+                fit),
         inputs));
     if (!routes.roundedError.has_value())
         routes.roundedError = failure(formula::checked_evaluate_si<Rational>(
-            formula::rounded_output<"r squared", formula::unit::One, formula::DecimalPlaces { 6 },
-                                    formula::RoundingMode::Floor>(fit),
+            formula::
+                rounded_output<"r squared", formula::unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+                    fit),
             inputs));
     return routes;
 }

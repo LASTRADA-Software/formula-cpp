@@ -63,7 +63,6 @@ int main()
 {
     constexpr auto first =
         formula::apply(formula::overlay(formula::with_constant<Scale>(formula::Rational { 103, 100 }, annex)), m);
-    constexpr auto second =
-        formula::apply(formula::overlay(formula::replace_variant<Nominal>(roundedSlope, annex)), first);
+    constexpr auto second = formula::apply(formula::overlay(formula::replace_variant<Nominal>(roundedSlope, annex)), first);
     return std::tuple_size_v<decltype(second.variantSet.cases)> == 0 ? 1 : 0;
 }

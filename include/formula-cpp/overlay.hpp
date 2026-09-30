@@ -2012,7 +2012,13 @@ namespace detail
     /// A rounded opaque output, rewritten as the output it rounds is -- through
     /// its call's inputs, with the call's citation, and never when the call
     /// was refused -- and rounded as before.
-    template <typename Sub, std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode,
+    template <typename Sub,
+              std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
               typename Origin>
     struct ConstantRewrite<Sub, RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>
     {
@@ -2559,7 +2565,13 @@ namespace detail
         using type = SubstitutedInAll<Inputs...>;
     };
 
-    template <std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode, typename Origin>
+    template <std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
+              typename Origin>
     struct SubstitutedIn<RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>
     {
         /// Whatever any of the call's inputs substitutes.

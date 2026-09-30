@@ -42,11 +42,12 @@ template <std::size_t L>
 [[nodiscard]] constexpr WideRatio<L> reduced(WideRatio<L> const& unreduced) noexcept
 {
     if (unreduced.numerator.is_zero())
-        return WideRatio<L> {
-            .negative = false, .numerator = WideUnsigned<L> {}, .denominator = WideUnsigned<L>::from_u64(1)
-        };
+        return WideRatio<L> { .negative = false,
+                              .numerator = WideUnsigned<L> {},
+                              .denominator = WideUnsigned<L>::from_u64(1) };
     WideUnsigned<L> const common = gcd(unreduced.numerator, unreduced.denominator);
-    return WideRatio<L> { unreduced.negative, divmod(unreduced.numerator, common).quotient,
+    return WideRatio<L> { unreduced.negative,
+                          divmod(unreduced.numerator, common).quotient,
                           divmod(unreduced.denominator, common).quotient };
 }
 
@@ -56,15 +57,16 @@ template <std::size_t L>
     requires(L >= 4)
 [[nodiscard]] constexpr WideRatio<L> wide_from_rational(Rational exact) noexcept
 {
-    return WideRatio<L> { exact.numerator() < 0, WideUnsigned<L>::from_u64(magnitude(exact.numerator())),
+    return WideRatio<L> { exact.numerator() < 0,
+                          WideUnsigned<L>::from_u64(magnitude(exact.numerator())),
                           WideUnsigned<L>::from_u64(static_cast<std::uint64_t>(exact.denominator())) };
 }
 
 /// @p exact times @p commonDenominator, an integer; nothing when it does not
 /// fit. @pre `exact.denominator()` divides @p commonDenominator.
 template <std::size_t L>
-[[nodiscard]] constexpr std::optional<WideSigned<L>> scaled_to_denominator(
-    Rational exact, WideUnsigned<L> const& commonDenominator) noexcept
+[[nodiscard]] constexpr std::optional<WideSigned<L>> scaled_to_denominator(Rational exact,
+                                                                           WideUnsigned<L> const& commonDenominator) noexcept
 {
     WideUnsigned<L> const cofactor =
         divmod(commonDenominator, WideUnsigned<L>::from_u64(static_cast<std::uint64_t>(exact.denominator()))).quotient;
@@ -101,11 +103,11 @@ template <std::size_t L>
     // v * 10^places, as a numerator over a denominator: a positive places
     // scales the numerator, a negative one the denominator.
     std::optional<WideUnsigned<L>> const scaledNumerator = places.value >= 0
-        ? mul_checked_or_none(inLowestTerms.numerator, *powerOfTen)
-        : std::optional<WideUnsigned<L>> { inLowestTerms.numerator };
-    std::optional<WideUnsigned<L>> const scaledDenominator = places.value < 0
-        ? mul_checked_or_none(inLowestTerms.denominator, *powerOfTen)
-        : std::optional<WideUnsigned<L>> { inLowestTerms.denominator };
+                                                               ? mul_checked_or_none(inLowestTerms.numerator, *powerOfTen)
+                                                               : std::optional<WideUnsigned<L>> { inLowestTerms.numerator };
+    std::optional<WideUnsigned<L>> const scaledDenominator =
+        places.value < 0 ? mul_checked_or_none(inLowestTerms.denominator, *powerOfTen)
+                         : std::optional<WideUnsigned<L>> { inLowestTerms.denominator };
     if (!scaledNumerator || !scaledDenominator)
         return std::unexpected { ArithmeticError::Overflow };
 
@@ -117,19 +119,32 @@ template <std::size_t L>
         std::strong_ordering const side = split.remainder <=> *sub_checked_or_none(*scaledDenominator, split.remainder);
         switch (roundingMode)
         {
-            case RoundingMode::TowardZero: awayFromZero = false; break;
-            case RoundingMode::AwayFromZero: awayFromZero = true; break;
-            case RoundingMode::Floor: awayFromZero = inLowestTerms.negative; break;
-            case RoundingMode::Ceiling: awayFromZero = !inLowestTerms.negative; break;
-            case RoundingMode::HalfAwayFromZero: awayFromZero = side != std::strong_ordering::less; break;
-            case RoundingMode::HalfTowardZero: awayFromZero = side == std::strong_ordering::greater; break;
+            case RoundingMode::TowardZero:
+                awayFromZero = false;
+                break;
+            case RoundingMode::AwayFromZero:
+                awayFromZero = true;
+                break;
+            case RoundingMode::Floor:
+                awayFromZero = inLowestTerms.negative;
+                break;
+            case RoundingMode::Ceiling:
+                awayFromZero = !inLowestTerms.negative;
+                break;
+            case RoundingMode::HalfAwayFromZero:
+                awayFromZero = side != std::strong_ordering::less;
+                break;
+            case RoundingMode::HalfTowardZero:
+                awayFromZero = side == std::strong_ordering::greater;
+                break;
             case RoundingMode::HalfEven:
                 awayFromZero = side == std::strong_ordering::greater
                                || (side == std::strong_ordering::equal && (split.quotient.limb(0) & 1U) != 0);
                 break;
         }
     }
-    std::optional<WideUnsigned<L>> const kept = awayFromZero ? add_small_checked_or_none(split.quotient, 1U) : split.quotient;
+    std::optional<WideUnsigned<L>> const kept =
+        awayFromZero ? add_small_checked_or_none(split.quotient, 1U) : split.quotient;
     std::optional<std::uint64_t> const keptMagnitude = kept ? kept->to_u64() : std::nullopt;
     constexpr std::uint64_t positiveLimit = static_cast<std::uint64_t>(IntMax);
     if (!keptMagnitude || *keptMagnitude > (inLowestTerms.negative ? positiveLimit + 1U : positiveLimit))
@@ -190,7 +205,8 @@ template <std::size_t L>
     if (!inUnitNumerator || !inUnitDenominator)
         return std::unexpected { ArithmeticError::Overflow };
     std::expected<Rational, ArithmeticError> const roundedThere = round_wide_ratio(
-        WideRatio<L> { inLowestTerms.negative != flipped && !inUnitNumerator->is_zero(), *inUnitNumerator, *inUnitDenominator },
+        WideRatio<L> {
+            inLowestTerms.negative != flipped && !inUnitNumerator->is_zero(), *inUnitNumerator, *inUnitDenominator },
         places,
         roundingMode);
     if (!roundedThere)

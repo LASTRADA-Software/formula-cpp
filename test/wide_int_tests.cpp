@@ -190,8 +190,9 @@ TEST_CASE("wide unsigned: division leaves a remainder below the divisor", "[wide
         auto const split = divmod(W4::from_u64(dividendValue), W4::from_u64(divisorValue));
         auto const product = mul_checked_or_none(W4::from_u64(dividendValue), W4::from_u64(divisorValue));
         auto const back = divmod(*product, W4::from_u64(divisorValue));
-        if (split.quotient.to_u64() == dividendValue / divisorValue && split.remainder.to_u64() == dividendValue % divisorValue
-            && back.quotient == W4::from_u64(dividendValue) && back.remainder.is_zero())
+        if (split.quotient.to_u64() == dividendValue / divisorValue
+            && split.remainder.to_u64() == dividendValue % divisorValue && back.quotient == W4::from_u64(dividendValue)
+            && back.remainder.is_zero())
             ++agreed;
     }
     CHECK(agreed == 20000);
@@ -223,7 +224,8 @@ TEST_CASE("wide unsigned: division leaves a remainder below the divisor", "[wide
 TEST_CASE("wide unsigned: gcd and lcm agree with 64-bit arithmetic", "[wide-int]")
 {
     // 3 * 2^64 and 9 * 2^32: 3 * 2^32.
-    STATIC_REQUIRE(gcd(W4::from_limbs({ 0U, 0U, 3U, 0U }), W4::from_limbs({ 0U, 9U, 0U, 0U })) == W4::from_limbs({ 0U, 3U, 0U, 0U }));
+    STATIC_REQUIRE(gcd(W4::from_limbs({ 0U, 0U, 3U, 0U }), W4::from_limbs({ 0U, 9U, 0U, 0U }))
+                   == W4::from_limbs({ 0U, 3U, 0U, 0U }));
     STATIC_REQUIRE(gcd(W4 {}, W4::from_u64(12)) == W4::from_u64(12));
     STATIC_REQUIRE(gcd(W4::from_u64(12), W4 {}) == W4::from_u64(12));
     STATIC_REQUIRE(*lcm_checked_or_none(W4::from_u64(6), W4::from_u64(10)) == W4::from_u64(30));

@@ -128,8 +128,7 @@ template <std::size_t Wide, std::size_t Narrow>
 /// `divmod_small`, one step per limb, rather than by the lcm's gcd and long
 /// division.
 template <std::size_t L>
-[[nodiscard]] constexpr std::optional<WideUnsigned<L>> common_denominator(
-    std::span<Rational const> observedColumn) noexcept
+[[nodiscard]] constexpr std::optional<WideUnsigned<L>> common_denominator(std::span<Rational const> observedColumn) noexcept
 {
     WideUnsigned<L> common = WideUnsigned<L>::from_u64(1);
     for (Rational const& observed: observedColumn)
@@ -265,9 +264,9 @@ template <std::size_t K>
             sums.responseCrossTotals[regressorAt] = *responseCrossTotal;
             for (std::size_t otherAt = regressorAt; otherAt < K; ++otherAt)
             {
-                std::optional<Sum> const crossTotal = accumulate(
-                    sums.crossTotals[regressorAt][otherAt],
-                    mul_checked_or_none(scaledRegressors[regressorAt], scaledRegressors[otherAt]));
+                std::optional<Sum> const crossTotal =
+                    accumulate(sums.crossTotals[regressorAt][otherAt],
+                               mul_checked_or_none(scaledRegressors[regressorAt], scaledRegressors[otherAt]));
                 if (!crossTotal.has_value())
                     return std::unexpected { ArithmeticError::Overflow };
                 sums.crossTotals[regressorAt][otherAt] = *crossTotal;
@@ -317,8 +316,11 @@ template <std::size_t K>
     {
         for (std::size_t otherAt = regressorAt; otherAt < K; ++otherAt)
         {
-            std::optional<WideSigned<regressionSumLimbs>> const centredValue = centred_sum(
-                rowCount, sums.crossTotals[regressorAt][otherAt], sums.regressorTotals[regressorAt], sums.regressorTotals[otherAt]);
+            std::optional<WideSigned<regressionSumLimbs>> const centredValue =
+                centred_sum(rowCount,
+                            sums.crossTotals[regressorAt][otherAt],
+                            sums.regressorTotals[regressorAt],
+                            sums.regressorTotals[otherAt]);
             if (!centredValue.has_value())
                 return std::unexpected { ArithmeticError::Overflow };
             made.regressorSpread[regressorAt][otherAt] = *centredValue;
@@ -429,8 +431,10 @@ template <std::size_t K, std::size_t L>
         {
             for (std::size_t across = stage + 1; across <= K; ++across)
             {
-                std::optional<WideSigned<L>> const kept = mul_checked_or_none(augmented[stage][stage], augmented[below][across]);
-                std::optional<WideSigned<L>> const removed = mul_checked_or_none(augmented[below][stage], augmented[stage][across]);
+                std::optional<WideSigned<L>> const kept =
+                    mul_checked_or_none(augmented[stage][stage], augmented[below][across]);
+                std::optional<WideSigned<L>> const removed =
+                    mul_checked_or_none(augmented[below][stage], augmented[stage][across]);
                 if (!kept.has_value() || !removed.has_value())
                     return std::unexpected { ArithmeticError::Overflow };
                 std::optional<WideSigned<L>> const difference = sub_checked_or_none(*kept, *removed);
@@ -551,9 +555,9 @@ template <std::size_t K>
     std::expected<RegressionSums<K>, ArithmeticError> const sums = regression_sums<K>(regressorColumns, responses);
     if (!sums.has_value())
         return std::unexpected { sums.error() };
-    WideSigned<regressionSumLimbs> const rowCount {
-        .negative = false, .magnitude = WideUnsigned<regressionSumLimbs>::from_u64(responses.size())
-    };
+    WideSigned<regressionSumLimbs> const rowCount { .negative = false,
+                                                    .magnitude =
+                                                        WideUnsigned<regressionSumLimbs>::from_u64(responses.size()) };
     std::expected<CentredSums<K>, ArithmeticError> const centred = centred_sums<K>(*sums, rowCount);
     if (!centred.has_value())
         return std::unexpected { centred.error() };

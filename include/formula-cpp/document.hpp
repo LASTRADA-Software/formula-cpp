@@ -548,7 +548,13 @@ namespace detail
     template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
     void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node);
 
-    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode,
+    template <Vocabulary V,
+              std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
               typename Origin>
     void collect(Walk<V>& walk, RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node);
 
@@ -1241,7 +1247,13 @@ namespace detail
     /// -- once per call, whichever outputs are used and whether they are
     /// rounded -- and reads what the call's inputs read. The precision is in
     /// the formula's text already.
-    template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode,
+    template <Vocabulary V,
+              std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
               typename Origin>
     void collect(Walk<V>& walk, RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node)
     {

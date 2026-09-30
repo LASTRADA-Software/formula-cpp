@@ -39,7 +39,7 @@ template <typename N>
     if (!evaluated.has_value())
         return std::unexpected { evaluated.error() };
     if (!evaluated->has_value())
-        return std::unexpected { formula::ArithmeticError::NotFinite };   // absent: no fixture expects it
+        return std::unexpected { formula::ArithmeticError::NotFinite }; // absent: no fixture expects it
     return **evaluated;
 }
 
@@ -164,13 +164,13 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
                         formula::rounded_exp<DecimalPlaces { 4 }, RoundingMode::HalfEven>(var<Ratio>), nothingMeasured)
                         ->has_value());
     // The argument's own failure, unchanged.
-    constexpr auto dividedByZero = formula::environment(formula::Measured<Ratio> { Rational { 1 } },
-                                                        formula::Measured<Divisor> { Rational {} });
-    STATIC_REQUIRE(formula::checked_evaluate_si<Rational>(
-                       formula::rounded_log10<DecimalPlaces { 2 }, RoundingMode::HalfEven>(var<Ratio> / var<Divisor>),
-                       dividedByZero)
-                       .error()
-                   == formula::ArithmeticError::DivisionByZero);
+    constexpr auto dividedByZero =
+        formula::environment(formula::Measured<Ratio> { Rational { 1 } }, formula::Measured<Divisor> { Rational {} });
+    STATIC_REQUIRE(
+        formula::checked_evaluate_si<Rational>(
+            formula::rounded_log10<DecimalPlaces { 2 }, RoundingMode::HalfEven>(var<Ratio> / var<Divisor>), dividedByZero)
+            .error()
+        == formula::ArithmeticError::DivisionByZero);
     // A logarithm of zero or below; before places out of range.
     STATIC_REQUIRE(lnAt<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational {}) == domainError);
     STATIC_REQUIRE(log10At<DecimalPlaces { 4 }, RoundingMode::HalfEven>(Rational { -1 }) == domainError);

@@ -303,10 +303,9 @@ struct LinearLeastSquares
         std::optional<Wide> const sharedDenominator = detail::mul_checked_or_none(pointSpread->magnitude, *valueScale);
         if (!slopeNumerator || !sharedDenominator)
             return std::unexpected { ArithmeticError::Overflow };
-        return std::array {
-            detail::WideRatio<exact_limbs> { interceptTerm->negative, interceptTerm->magnitude, *sharedDenominator },
-            detail::WideRatio<exact_limbs> { riseTerm->negative, *slopeNumerator, *sharedDenominator }
-        };
+        return std::array { detail::WideRatio<exact_limbs> {
+                                interceptTerm->negative, interceptTerm->magnitude, *sharedDenominator },
+                            detail::WideRatio<exact_limbs> { riseTerm->negative, *slopeNumerator, *sharedDenominator } };
     }
 };
 
@@ -515,7 +514,7 @@ template <typename NotCurve>
 /// library's words. A curve pairs the domain with its values, which two
 /// series would have to re-derive.
 template <typename Domain, typename Values>
-    requires(!(ObservationsNode<Domain> && ObservationsNode<Values>))
+    requires(!(ObservationsNode<Domain> && ObservationsNode<Values>) )
 [[nodiscard]] constexpr auto linear_least_squares(Domain, Values, Citation citation) noexcept
 {
     static_assert(detail::RequireFitOfCurve<Domain, Values>::value);
@@ -555,10 +554,10 @@ namespace detail
 {
     /// The names of a regression's coefficients, one-based: written out, not
     /// generated, so that every regression's outputs view string literals.
-    inline constexpr std::array<std::string_view, maxRegressors> coefficientNames {
-        "coefficient 1", "coefficient 2", "coefficient 3", "coefficient 4",
-        "coefficient 5", "coefficient 6", "coefficient 7", "coefficient 8"
-    };
+    inline constexpr std::array<std::string_view, maxRegressors> coefficientNames { "coefficient 1", "coefficient 2",
+                                                                                    "coefficient 3", "coefficient 4",
+                                                                                    "coefficient 5", "coefficient 6",
+                                                                                    "coefficient 7", "coefficient 8" };
 
     /// `constant`, `coefficient 1` to `coefficient K`, `r squared`, `points`.
     template <std::size_t K>
@@ -813,8 +812,8 @@ namespace detail
     {
         static constexpr std::size_t regressorCount = sizeof...(Xs);
         static_assert(RequireSomeRegressor<regressorCount>::value);
-        static_assert(std::conditional_t<(regressorCount > 0), RequireAtMostEightRegressors<regressorCount>,
-                                         std::true_type>::value);
+        static_assert(
+            std::conditional_t<(regressorCount > 0), RequireAtMostEightRegressors<regressorCount>, std::true_type>::value);
         static constexpr bool countOk = regressorCount > 0 && regressorCount <= maxRegressors;
 
         static_assert((std::conditional_t<countOk, RequireRegressionObservations<Xs>, std::true_type>::value && ...));
@@ -833,7 +832,8 @@ namespace detail
         /// The quantity read twice, or the first operand's when none is (then unused).
         using Repeated = typename ObservedQuantity<
             std::tuple_element_t<(repeatedAt < regressorCount + 1 ? repeatedAt : 0), std::tuple<Xs..., Y>>>::type;
-        static_assert(std::conditional_t<(repeatedAt < regressorCount + 1), RequireRegressionQuantitiesDistinct<Repeated>,
+        static_assert(std::conditional_t<(repeatedAt < regressorCount + 1),
+                                         RequireRegressionQuantitiesDistinct<Repeated>,
                                          std::true_type>::value);
 
         /// Whether the call is sound: every check above passed.

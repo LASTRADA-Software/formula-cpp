@@ -21,8 +21,7 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
 }
 
 // Three made in room for eight: 103, 127 and 163 mm.
-constexpr auto threeMade =
-    formula::environment(formula::MeasuredObservations<Size, 8>(rat(103), rat(127), rat(163)));
+constexpr auto threeMade = formula::environment(formula::MeasuredObservations<Size, 8>(rat(103), rat(127), rat(163)));
 
 constexpr auto read_three()
 {

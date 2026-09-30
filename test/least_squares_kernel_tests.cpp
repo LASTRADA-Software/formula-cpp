@@ -51,8 +51,7 @@ std::expected<std::array<double, K + 3>, formula::ArithmeticError> approximate_f
     std::array<std::span<double const>, K> regressorColumns;
     for (std::size_t at = 0; at < K; ++at)
         regressorColumns[at] = std::span<double const> { regressorDoubles[at] };
-    return formula::detail::approximate_regression<double, K>(regressorColumns,
-                                                              std::span<double const> { responseDoubles });
+    return formula::detail::approximate_regression<double, K>(regressorColumns, std::span<double const> { responseDoubles });
 }
 
 [[nodiscard]] bool close(double approximate, Rational exact, double relative)
@@ -62,8 +61,7 @@ std::expected<std::array<double, K + 3>, formula::ArithmeticError> approximate_f
 
 // The line: t = 1, 2, 4, 7 s against L = 10.2, 10.9, 12.1, 14.3 mm, in metres.
 constexpr std::array<std::array<Rational, 4>, 1> lineTimes { { { rat(1), rat(2), rat(4), rat(7) } } };
-constexpr std::array<Rational, 4> lineLengths { rat(102, 10'000), rat(109, 10'000), rat(121, 10'000),
-                                                rat(143, 10'000) };
+constexpr std::array<Rational, 4> lineLengths { rat(102, 10'000), rat(109, 10'000), rat(121, 10'000), rat(143, 10'000) };
 
 // Two regressors: 11.3 ... 29.7 degC in kelvin, 2.3 ... 4.3 % as fractions,
 // against 103.52 ... 106 mm in metres.
@@ -72,7 +70,7 @@ constexpr std::array<std::array<Rational, 6>, 2> twoRegressors { {
     { rat(23, 1000), rat(31, 1000), rat(29, 1000), rat(41, 1000), rat(37, 1000), rat(43, 1000) },
 } };
 constexpr std::array<Rational, 6> twoRegressorLengths { rat(2588, 25'000), rat(10413, 100'000), rat(10433, 100'000),
-                                                        rat(1051, 10'000),  rat(10521, 100'000), rat(106, 1000) };
+                                                        rat(1051, 10'000), rat(10521, 100'000), rat(106, 1000) };
 } // namespace
 
 TEST_CASE("the kernel's widths are the estimate's", "[least-squares][kernel]")
@@ -98,14 +96,23 @@ TEST_CASE("the exact kernel's line is the closed form", "[least-squares][kernel]
 TEST_CASE("the order of the rows does not change the kernel's exact fit", "[least-squares][kernel]")
 {
     constexpr std::array<std::array<Rational, 4>, 1> shuffledTimes { { { rat(4), rat(1), rat(7), rat(2) } } };
-    constexpr std::array<Rational, 4> shuffledLengths { rat(121, 10'000), rat(102, 10'000), rat(143, 10'000),
-                                                        rat(109, 10'000) };
+    constexpr std::array<Rational, 4> shuffledLengths {
+        rat(121, 10'000), rat(102, 10'000), rat(143, 10'000), rat(109, 10'000)
+    };
     CHECK(exact_fit(shuffledTimes, shuffledLengths) == exact_fit(lineTimes, lineLengths));
     // Rows 6, 3, 1, 5, 2, 4 of the two-regressor fixture.
     constexpr std::array<std::array<Rational, 6>, 2> shuffledRegressors { {
-        { twoRegressors[0][5], twoRegressors[0][2], twoRegressors[0][0], twoRegressors[0][4], twoRegressors[0][1],
+        { twoRegressors[0][5],
+          twoRegressors[0][2],
+          twoRegressors[0][0],
+          twoRegressors[0][4],
+          twoRegressors[0][1],
           twoRegressors[0][3] },
-        { twoRegressors[1][5], twoRegressors[1][2], twoRegressors[1][0], twoRegressors[1][4], twoRegressors[1][1],
+        { twoRegressors[1][5],
+          twoRegressors[1][2],
+          twoRegressors[1][0],
+          twoRegressors[1][4],
+          twoRegressors[1][1],
           twoRegressors[1][3] },
     } };
     constexpr std::array<Rational, 6> shuffledResponses { twoRegressorLengths[5], twoRegressorLengths[2],
@@ -125,8 +132,7 @@ TEST_CASE("each kernel pre-check is the fit's own domain error, in both represen
     std::array<double, 3> const threeDoubles { 1.0, 2.0, 4.0 };
     std::array<double, 4> const fourDoubles { 0.0102, 0.0109, 0.0121, 0.0143 };
     std::array<std::span<double const>, 1> const shortDoubles { std::span<double const> { threeDoubles } };
-    CHECK(formula::detail::approximate_regression<double, 1>(shortDoubles, std::span<double const> { fourDoubles })
-              .error()
+    CHECK(formula::detail::approximate_regression<double, 1>(shortDoubles, std::span<double const> { fourDoubles }).error()
           == ArithmeticError::DomainError);
     // None made, and as many rows as regressors: no fit.
     std::array<std::span<Rational const>, 1> const none { std::span<Rational const> {} };
@@ -151,8 +157,11 @@ TEST_CASE("the kernel solves two and three regressors exactly", "[least-squares]
     auto const two = exact_fit(twoRegressors, twoRegressorLengths);
     REQUIRE(two.has_value());
     CHECK(*two
-          == std::array { rat(22365154943, 276592800000), rat(346407, 4609880000), rat(3842851, 69148200),
-                          rat(27398849648, 27403085919), rat(6) });
+          == std::array { rat(22365154943, 276592800000),
+                          rat(346407, 4609880000),
+                          rat(3842851, 69148200),
+                          rat(27398849648, 27403085919),
+                          rat(6) });
     // Three, in integers.
     constexpr std::array<std::array<Rational, 7>, 3> threeRegressors { {
         { rat(3), rat(7), rat(2), rat(9), rat(4), rat(8), rat(5) },
@@ -163,8 +172,12 @@ TEST_CASE("the kernel solves two and three regressors exactly", "[least-squares]
     auto const three = exact_fit(threeRegressors, threeResponses);
     REQUIRE(three.has_value());
     CHECK(*three
-          == std::array { rat(1222381, 72160), rat(14161, 4510), rat(84499, 72160), rat(52383, 36080),
-                          rat(362845727, 364047200), rat(7) });
+          == std::array { rat(1222381, 72160),
+                          rat(14161, 4510),
+                          rat(84499, 72160),
+                          rat(52383, 36080),
+                          rat(362845727, 364047200),
+                          rat(7) });
 }
 
 TEST_CASE("the kernel fits as many rows as regressors plus one exactly, with R^2 of 1", "[least-squares][kernel]")
@@ -184,7 +197,9 @@ TEST_CASE("the kernel's fraction-free solve exchanges rows at a zero pivot", "[l
     // column zero below it, so a fit never needs the exchange; the solve is
     // still correct for any matrix it is given, and this proves it.
     using Wide = formula::detail::WideSigned<4>;
-    auto const whole = [](std::uint64_t held) { return Wide { false, formula::detail::WideUnsigned<4>::from_u64(held) }; };
+    auto const whole = [](std::uint64_t held) {
+        return Wide { false, formula::detail::WideUnsigned<4>::from_u64(held) };
+    };
     std::array<std::array<Wide, 3>, 2> const augmented { { { whole(0), whole(2), whole(4) },
                                                            { whole(3), whole(1), whole(5) } } };
     auto const solved = formula::detail::fraction_free_solve<2, 4>(augmented);
@@ -300,7 +315,8 @@ TEST_CASE("an exact fit that outgrows the kernel's width is Overflow, never a li
             xs[at] = rat(position + 1, position + 2);
             ys[at] = rat(2 * position + 3, position + 3);
         }
-        std::array<std::span<Rational const>, 1> const regressorColumns { std::span<Rational const> { xs }.first(pointCount) };
+        std::array<std::span<Rational const>, 1> const regressorColumns { std::span<Rational const> { xs }.first(
+            pointCount) };
         return formula::detail::exact_regression<1>(regressorColumns, std::span<Rational const> { ys }.first(pointCount));
     };
     CHECK(distinct(15).has_value());

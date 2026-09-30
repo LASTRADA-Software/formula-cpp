@@ -2,13 +2,13 @@
 //
 // Multiple regression over raw observations. Every expected value was
 // computed with Python's fractions from the data beside it.
+#include "regression_cross_tu.hpp"
+
 #include <formula-cpp/document.hpp>
 #include <formula-cpp/least_squares.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
-
-#include "regression_cross_tu.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -97,10 +97,18 @@ TEST_CASE("each output of a multiple regression has its own dimension", "[least-
     STATIC_REQUIRE(formula::detail::declares_compute_exact<formula::MultipleLeastSquares<1>, TimeRead, LengthRead>);
     STATIC_REQUIRE(formula::detail::declares_compute_exact<formula::MultipleLeastSquares<2>,
                                                            formula::ObservationsVarNode<Temperature, 8>,
-                                                           formula::ObservationsVarNode<Content, 8>, LengthRead>);
-    STATIC_REQUIRE(formula::detail::declares_compute_exact<formula::MultipleLeastSquares<8>, TimeRead, TimeRead,
-                                                           TimeRead, TimeRead, TimeRead, TimeRead, TimeRead,
-                                                           TimeRead, LengthRead>);
+                                                           formula::ObservationsVarNode<Content, 8>,
+                                                           LengthRead>);
+    STATIC_REQUIRE(formula::detail::declares_compute_exact<formula::MultipleLeastSquares<8>,
+                                                           TimeRead,
+                                                           TimeRead,
+                                                           TimeRead,
+                                                           TimeRead,
+                                                           TimeRead,
+                                                           TimeRead,
+                                                           TimeRead,
+                                                           TimeRead,
+                                                           LengthRead>);
     STATIC_REQUIRE(formula::MultipleLeastSquares<8>::outputs.size() == 11);
     STATIC_REQUIRE(formula::MultipleLeastSquares<8>::outputs[8] == "coefficient 8");
     STATIC_REQUIRE(formula::MultipleLeastSquares<8>::outputs[10] == "points");
@@ -111,8 +119,8 @@ TEST_CASE("one regressor is the line", "[least-squares][multiple]")
     constexpr auto fourRows = formula::environment(
         formula::MeasuredObservations<Elapsed, 8>(rat(1), rat(2), rat(4), rat(7)),
         formula::MeasuredObservations<Length, 8>(rat(102, 10), rat(109, 10), rat(121, 10), rat(143, 10)));
-    constexpr auto line = formula::linear_least_squares(formula::observations<Elapsed, 8>, formula::observations<Length, 8>,
-                                                        { .reference = "Example Standard 12" });
+    constexpr auto line = formula::linear_least_squares(
+        formula::observations<Elapsed, 8>, formula::observations<Length, 8>, { .reference = "Example Standard 12" });
     constexpr auto single = formula::multiple_least_squares(formula::regressors(formula::observations<Elapsed, 8>),
                                                             formula::observations<Length, 8>,
                                                             { .reference = "Example Standard 12" });
@@ -126,13 +134,13 @@ TEST_CASE("one regressor is the line", "[least-squares][multiple]")
 TEST_CASE("the order of the rows does not change a multiple regression", "[least-squares][multiple]")
 {
     // Rows 6, 3, 1, 5, 2, 4.
-    constexpr auto shuffled = formula::environment(
-        formula::MeasuredObservations<Temperature, 8>(rat(297, 10), rat(179, 10), rat(113, 10), rat(233, 10), rat(137, 10),
-                                                      rat(191, 10)),
-        formula::MeasuredObservations<Content, 8>(rat(43, 10), rat(29, 10), rat(23, 10), rat(37, 10), rat(31, 10),
-                                                  rat(41, 10)),
-        formula::MeasuredObservations<Length, 8>(rat(106), rat(10433, 100), rat(2588, 25), rat(10521, 100),
-                                                 rat(10413, 100), rat(1051, 10)));
+    constexpr auto shuffled =
+        formula::environment(formula::MeasuredObservations<Temperature, 8>(
+                                 rat(297, 10), rat(179, 10), rat(113, 10), rat(233, 10), rat(137, 10), rat(191, 10)),
+                             formula::MeasuredObservations<Content, 8>(
+                                 rat(43, 10), rat(29, 10), rat(23, 10), rat(37, 10), rat(31, 10), rat(41, 10)),
+                             formula::MeasuredObservations<Length, 8>(
+                                 rat(106), rat(10433, 100), rat(2588, 25), rat(10521, 100), rat(10413, 100), rat(1051, 10)));
     CHECK(exact_output(formula::opaque_output<"coefficient 2">(fit), shuffled)
           == exact_output(formula::opaque_output<"coefficient 2">(fit), sixRows));
     CHECK(exact_output(formula::opaque_output<"r squared">(fit), shuffled)
@@ -160,25 +168,24 @@ TEST_CASE("a singular design is a multiple regression's own domain error, exactl
     REQUIRE(!approximate.has_value());
     CHECK(approximate.error() == formula::ArithmeticError::DomainError);
     formula::Trace<> recorded {};
-    (void) formula::detail::dispatch<formula::Rational>(formula::opaque_output<"coefficient 1">(collinear), doubledDelay,
-                                                        formula::RecordingSink { recorded });
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"coefficient 1">(collinear), doubledDelay, formula::RecordingSink { recorded });
     REQUIRE(formula::opaque_data(recorded, 3) != nullptr);
     CHECK(formula::opaque_data(recorded, 3)->failure == formula::OpaqueFailure::Own);
 }
 
 TEST_CASE("fewer rows than regressors plus one are refused, and one more fits exactly", "[least-squares][multiple]")
 {
-    constexpr auto twoRows = formula::environment(
-        formula::MeasuredObservations<Temperature, 8>(rat(113, 10), rat(137, 10)),
-        formula::MeasuredObservations<Content, 8>(rat(23, 10), rat(31, 10)),
-        formula::MeasuredObservations<Length, 8>(rat(2588, 25), rat(10413, 100)));
+    constexpr auto twoRows = formula::environment(formula::MeasuredObservations<Temperature, 8>(rat(113, 10), rat(137, 10)),
+                                                  formula::MeasuredObservations<Content, 8>(rat(23, 10), rat(31, 10)),
+                                                  formula::MeasuredObservations<Length, 8>(rat(2588, 25), rat(10413, 100)));
     auto const tooFew = formula::checked_evaluate_si(formula::opaque_output<"constant">(fit), twoRows);
     REQUIRE(!tooFew.has_value());
     CHECK(tooFew.error() == formula::ArithmeticError::DomainError);
-    constexpr auto threeRows = formula::environment(
-        formula::MeasuredObservations<Temperature, 8>(rat(113, 10), rat(137, 10), rat(179, 10)),
-        formula::MeasuredObservations<Content, 8>(rat(23, 10), rat(31, 10), rat(29, 10)),
-        formula::MeasuredObservations<Length, 8>(rat(2588, 25), rat(10413, 100), rat(10433, 100)));
+    constexpr auto threeRows =
+        formula::environment(formula::MeasuredObservations<Temperature, 8>(rat(113, 10), rat(137, 10), rat(179, 10)),
+                             formula::MeasuredObservations<Content, 8>(rat(23, 10), rat(31, 10), rat(29, 10)),
+                             formula::MeasuredObservations<Length, 8>(rat(2588, 25), rat(10413, 100), rat(10433, 100)));
     CHECK(exact_output(formula::opaque_output<"r squared">(fit), threeRows) == rat(1));
 }
 
@@ -204,10 +211,12 @@ TEST_CASE("a regressor in percent: its coefficient is per unit, and a unit per p
 {
     // 55.574... mm per unit of content is 0.5557 mm per percent at 4 dp. At
     // compile time, as the exact coefficient is checked above.
-    constexpr auto perPercent = formula::checked_evaluate<PerContent>(
-        formula::rounded_output<"coefficient 2", MillimetrePerPercent, formula::DecimalPlaces { 4 },
-                                formula::RoundingMode::HalfEven>(fit),
-        sixRows);
+    constexpr auto perPercent =
+        formula::checked_evaluate<PerContent>(formula::rounded_output<"coefficient 2",
+                                                                      MillimetrePerPercent,
+                                                                      formula::DecimalPlaces { 4 },
+                                                                      formula::RoundingMode::HalfEven>(fit),
+                                              sixRows);
     STATIC_REQUIRE(perPercent.has_value());
     STATIC_REQUIRE(perPercent->measurement().value() == rat(5557, 10'000));
 }
@@ -215,8 +224,8 @@ TEST_CASE("a regressor in percent: its coefficient is per unit, and a unit per p
 TEST_CASE("a multiple regression is traced as one call, rendered and documented", "[least-squares][multiple][trace]")
 {
     formula::Trace<> recorded {};
-    (void) formula::detail::dispatch<formula::Rational>(formula::opaque_output<"coefficient 2">(fit), sixRows,
-                                                        formula::RecordingSink { recorded });
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"coefficient 2">(fit), sixRows, formula::RecordingSink { recorded });
     std::string const text = formula::render_trace(recorded, { .maxSteps = 40 });
     INFO(text);
     CHECK(text.find("4. multiple least squares(#1, #2, #3) = constant = 22365154943/276592800 mm; "
@@ -282,11 +291,11 @@ struct Response: formula::Quantity<Response, "y_r", "an invented response", unit
 
 // x1 = 3, 7, 2, 9, 4, 8, 5; x2 = 11, 13, 17, 19, 23, 29, 31; x3 = 2, 1, 4, 3, 6, 5, 7;
 // y = 41, 57, 49, 71, 66, 83, 79.
-constexpr auto threeFactors = formula::multiple_least_squares(
-    formula::regressors(formula::observations<FirstFactor, 8>, formula::observations<SecondFactor, 8>,
-                        formula::observations<ThirdFactor, 8>),
-    formula::observations<Response, 8>,
-    { .reference = "Example Standard 12" });
+constexpr auto threeFactors = formula::multiple_least_squares(formula::regressors(formula::observations<FirstFactor, 8>,
+                                                                                  formula::observations<SecondFactor, 8>,
+                                                                                  formula::observations<ThirdFactor, 8>),
+                                                              formula::observations<Response, 8>,
+                                                              { .reference = "Example Standard 12" });
 constexpr auto sevenRows = formula::environment(
     formula::MeasuredObservations<FirstFactor, 8>(rat(3), rat(7), rat(2), rat(9), rat(4), rat(8), rat(5)),
     formula::MeasuredObservations<SecondFactor, 8>(rat(11), rat(13), rat(17), rat(19), rat(23), rat(29), rat(31)),
@@ -329,39 +338,43 @@ struct EighthFactor: formula::Quantity<EighthFactor, "f_8", "an invented factor"
 // x8 are orderings of 1 to 10: x4 = 5, 3, 8, 1, 9, 2, 7, 4, 6, 10;
 // x5 = 4, 9, 1, 7, 3, 10, 6, 2, 8, 5; x6 = 8, 6, 10, 2, 1, 7, 3, 9, 5, 4;
 // x7 = 1, 4, 9, 6, 8, 3, 10, 5, 2, 7; x8 = 6, 2, 5, 10, 7, 1, 4, 8, 3, 9.
-constexpr auto tenRows = formula::environment(
-    formula::MeasuredObservations<FirstFactor, 16>(rat(3), rat(7), rat(2), rat(9), rat(4), rat(8), rat(5), rat(1), rat(6),
-                                                   rat(10)),
-    formula::MeasuredObservations<SecondFactor, 16>(rat(11), rat(13), rat(17), rat(19), rat(23), rat(29), rat(31),
-                                                    rat(37), rat(41), rat(43)),
-    formula::MeasuredObservations<ThirdFactor, 16>(rat(2), rat(1), rat(4), rat(3), rat(6), rat(5), rat(7), rat(9), rat(8),
-                                                   rat(10)),
-    formula::MeasuredObservations<FourthFactor, 16>(rat(5), rat(3), rat(8), rat(1), rat(9), rat(2), rat(7), rat(4),
-                                                    rat(6), rat(10)),
-    formula::MeasuredObservations<FifthFactor, 16>(rat(4), rat(9), rat(1), rat(7), rat(3), rat(10), rat(6), rat(2), rat(8),
-                                                   rat(5)),
-    formula::MeasuredObservations<SixthFactor, 16>(rat(8), rat(6), rat(10), rat(2), rat(1), rat(7), rat(3), rat(9), rat(5),
-                                                   rat(4)),
-    formula::MeasuredObservations<SeventhFactor, 16>(rat(1), rat(4), rat(9), rat(6), rat(8), rat(3), rat(10), rat(5),
-                                                     rat(2), rat(7)),
-    formula::MeasuredObservations<EighthFactor, 16>(rat(6), rat(2), rat(5), rat(10), rat(7), rat(1), rat(4), rat(8),
-                                                    rat(3), rat(9)),
-    formula::MeasuredObservations<Response, 16>(rat(41), rat(57), rat(49), rat(71), rat(66), rat(83), rat(79), rat(62),
-                                                rat(75), rat(90)));
+constexpr auto tenRows =
+    formula::environment(formula::MeasuredObservations<FirstFactor, 16>(
+                             rat(3), rat(7), rat(2), rat(9), rat(4), rat(8), rat(5), rat(1), rat(6), rat(10)),
+                         formula::MeasuredObservations<SecondFactor, 16>(
+                             rat(11), rat(13), rat(17), rat(19), rat(23), rat(29), rat(31), rat(37), rat(41), rat(43)),
+                         formula::MeasuredObservations<ThirdFactor, 16>(
+                             rat(2), rat(1), rat(4), rat(3), rat(6), rat(5), rat(7), rat(9), rat(8), rat(10)),
+                         formula::MeasuredObservations<FourthFactor, 16>(
+                             rat(5), rat(3), rat(8), rat(1), rat(9), rat(2), rat(7), rat(4), rat(6), rat(10)),
+                         formula::MeasuredObservations<FifthFactor, 16>(
+                             rat(4), rat(9), rat(1), rat(7), rat(3), rat(10), rat(6), rat(2), rat(8), rat(5)),
+                         formula::MeasuredObservations<SixthFactor, 16>(
+                             rat(8), rat(6), rat(10), rat(2), rat(1), rat(7), rat(3), rat(9), rat(5), rat(4)),
+                         formula::MeasuredObservations<SeventhFactor, 16>(
+                             rat(1), rat(4), rat(9), rat(6), rat(8), rat(3), rat(10), rat(5), rat(2), rat(7)),
+                         formula::MeasuredObservations<EighthFactor, 16>(
+                             rat(6), rat(2), rat(5), rat(10), rat(7), rat(1), rat(4), rat(8), rat(3), rat(9)),
+                         formula::MeasuredObservations<Response, 16>(
+                             rat(41), rat(57), rat(49), rat(71), rat(66), rat(83), rat(79), rat(62), rat(75), rat(90)));
 
-constexpr auto eightFactors = formula::multiple_least_squares(
-    formula::regressors(formula::observations<FirstFactor, 16>, formula::observations<SecondFactor, 16>,
-                        formula::observations<ThirdFactor, 16>, formula::observations<FourthFactor, 16>,
-                        formula::observations<FifthFactor, 16>, formula::observations<SixthFactor, 16>,
-                        formula::observations<SeventhFactor, 16>, formula::observations<EighthFactor, 16>),
-    formula::observations<Response, 16>,
-    { .reference = "Example Standard 12" });
+constexpr auto eightFactors = formula::multiple_least_squares(formula::regressors(formula::observations<FirstFactor, 16>,
+                                                                                  formula::observations<SecondFactor, 16>,
+                                                                                  formula::observations<ThirdFactor, 16>,
+                                                                                  formula::observations<FourthFactor, 16>,
+                                                                                  formula::observations<FifthFactor, 16>,
+                                                                                  formula::observations<SixthFactor, 16>,
+                                                                                  formula::observations<SeventhFactor, 16>,
+                                                                                  formula::observations<EighthFactor, 16>),
+                                                              formula::observations<Response, 16>,
+                                                              { .reference = "Example Standard 12" });
 
-constexpr auto fourFactors = formula::multiple_least_squares(
-    formula::regressors(formula::observations<FirstFactor, 16>, formula::observations<SecondFactor, 16>,
-                        formula::observations<ThirdFactor, 16>, formula::observations<FourthFactor, 16>),
-    formula::observations<Response, 16>,
-    { .reference = "Example Standard 12" });
+constexpr auto fourFactors = formula::multiple_least_squares(formula::regressors(formula::observations<FirstFactor, 16>,
+                                                                                 formula::observations<SecondFactor, 16>,
+                                                                                 formula::observations<ThirdFactor, 16>,
+                                                                                 formula::observations<FourthFactor, 16>),
+                                                             formula::observations<Response, 16>,
+                                                             { .reference = "Example Standard 12" });
 } // namespace
 
 TEST_CASE("eight regressors, the most a fit takes, are fitted exactly, rounded where used and in double",
@@ -395,8 +408,8 @@ TEST_CASE("eight regressors, the most a fit takes, are fitted exactly, rounded w
     CHECK(**rounded == rat(-30'852, 10'000));
 
     // In double, the untraced route agrees.
-    auto const approximate = formula::checked_evaluate_si<double>(formula::opaque_output<"coefficient 8">(eightFactors),
-                                                                  tenRows);
+    auto const approximate =
+        formula::checked_evaluate_si<double>(formula::opaque_output<"coefficient 8">(eightFactors), tenRows);
     REQUIRE(approximate.has_value());
     REQUIRE(approximate->has_value());
     constexpr double exactEighth = -69'144'339'324.0 / 22'411'358'423.0;
@@ -414,8 +427,7 @@ TEST_CASE("four regressors are fitted exactly", "[least-squares][multiple]")
     CHECK(exact_output(formula::opaque_output<"r squared">(fourFactors), tenRows) == rat(19'180'134'579, 21'543'056'588));
 }
 
-TEST_CASE("an affinely dependent design is refused: one regressor is twice another plus three",
-          "[least-squares][multiple]")
+TEST_CASE("an affinely dependent design is refused: one regressor is twice another plus three", "[least-squares][multiple]")
 {
     // Delay = 2 t + 3 s on every row, a design no scale alone would show:
     // singular exactly, whatever the lengths. Refused exactly, and in double
@@ -492,14 +504,13 @@ TEST_CASE("in double a nearly singular design is answered above the tolerance an
     // Delta 500 leaves 1 - R^2 of the columns at 1/1312501 (7.6e-7): answered.
     // Delta 20000 leaves 1/2100000001 (4.8e-10), below the tolerance: refused,
     // though the exact route answers.
-    auto const answered = formula::checked_evaluate_si<double>(
-        formula::opaque_output<"coefficient 1">(nearlyCollinearFit), nearly_collinear(500));
+    auto const answered = formula::checked_evaluate_si<double>(formula::opaque_output<"coefficient 1">(nearlyCollinearFit),
+                                                               nearly_collinear(500));
     REQUIRE(answered.has_value());
     REQUIRE(answered->has_value());
     CHECK(std::abs(**answered - 1.0 / 500.0) <= 1e-8 * (1.0 / 500.0));
-    auto const refused = formula::checked_evaluate_si<double>(
-        formula::opaque_output<"coefficient 1">(nearlyCollinearFit), nearly_collinear(20'000));
+    auto const refused = formula::checked_evaluate_si<double>(formula::opaque_output<"coefficient 1">(nearlyCollinearFit),
+                                                              nearly_collinear(20'000));
     REQUIRE(!refused.has_value());
     CHECK(refused.error() == formula::ArithmeticError::DomainError);
 }
-

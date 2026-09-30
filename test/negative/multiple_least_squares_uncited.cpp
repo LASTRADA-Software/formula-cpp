@@ -19,8 +19,8 @@ struct Length: formula::Quantity<Length, "L", "an invented length", formula::uni
 };
 
 inline constexpr auto sample = formula::environment(formula::MeasuredObservations<Temperature, 8>(),
-                                                     formula::MeasuredObservations<Content, 8>(),
-                                                     formula::MeasuredObservations<Length, 8>());
+                                                    formula::MeasuredObservations<Content, 8>(),
+                                                    formula::MeasuredObservations<Length, 8>());
 inline constexpr auto fit = formula::multiple_least_squares(
     formula::regressors(formula::observations<Temperature, 8>, formula::observations<Content, 8>),
     formula::observations<Length, 8>);
