@@ -117,8 +117,7 @@ int main()
 
     // The trace names which branch a when() took -- here, the "then" branch,
     // because 25.40 mm is above the 17.3 mm threshold.
-    auto const explainedLarge = formula::explain(sizeAdjustedDiameter, diameter25_40);
-    std::print("{}", formula::render_trace(explainedLarge.trace, { .maxSteps = 10 }));
+    std::print("{}", formula::render_trace(formula::trace_of(sizeAdjustedDiameter, diameter25_40), { .maxSteps = 10 }));
 
     // ---- 4. The traced escape hatch ----------------------------------------
     std::println("rendered: {}", formula::render(empiricalCorrection));
@@ -127,8 +126,7 @@ int main()
     static_assert(correction.has_value());
     std::println("empirical correction factor at 70 MPa = {}", *correction);
 
-    auto const explainedCorrection = formula::explain(empiricalCorrection, strength70);
-    std::print("{}", formula::render_trace(explainedCorrection.trace, { .maxSteps = 10 }));
+    std::print("{}", formula::render_trace(formula::trace_of(empiricalCorrection, strength70), { .maxSteps = 10 }));
 
     // Every number printed above is checked here; nothing is printed that
     // this bool does not also cover.

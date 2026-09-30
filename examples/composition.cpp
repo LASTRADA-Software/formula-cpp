@@ -158,8 +158,7 @@ int main()
     // water/cement ratio, carrying its own citation, and step 6 consumes it.
     // An auditor reading the trace sees the sub-result the outer formula was
     // built on, not just the final number.
-    auto const explained = formula::explain(mixCost, inputs);
-    std::print("trace:\n{}", formula::render_trace(explained.trace, { .maxSteps = 20 }));
+    std::print("trace:\n{}", formula::render_trace(formula::trace_of(mixCost, inputs), { .maxSteps = 20 }));
 
     // ---- 5. The asymmetry, stated because it is easy to be surprised by ----
     //

@@ -198,14 +198,9 @@ int main()
     check(dishPage.rejections.front().limit.contains("1/30"), "nor in a documentation page's limit");
 
     auto const paddedDecimals = NumberStyle::exact_decimal(DecimalPadding::Padded);
-    auto const tare = formula::checked_explain<DryMass>(wholeTare, specimen);
-    if (!tare)
-    {
-        std::println("the dry mass less the tare: {}", tare.error().error);
-        return 1;
-    }
     std::string const tareFormula = formula::render(wholeTare, { .numbers = paddedDecimals });
-    std::string const tareTraceText = formula::render_trace(tare->trace, { .maxSteps = 20, .numbers = paddedDecimals });
+    std::string const tareTraceText = formula::render_trace(formula::trace_of<DryMass>(wholeTare, specimen),
+                                                            { .maxSteps = 20, .numbers = paddedDecimals });
     std::println("formula, padded style: {}", tareFormula);
     std::println("trace, padded style:\n{}", tareTraceText);
     check(tareFormula == "m_d - 24 g" && tareTraceText.contains("2. 24.0 g\n"),
