@@ -23,12 +23,13 @@
 // repository; nothing here cites a standard.
 
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
-#include <cstdio>
+#include <print>
 #include <string>
 #include <string_view>
 
@@ -36,6 +37,7 @@ namespace
 {
 namespace unit = formula::unit;
 using formula::var;
+using namespace formula::literals;
 
 // ---- Roles: which record a formula reads from --------------------------------
 //
@@ -79,14 +81,14 @@ namespace
 // ---- 1. The records, and the context that holds them -------------------------
 
 // This specimen, and the reference specimen, whose strength was typed in.
-constexpr auto here = formula::environment(formula::Measured<Strength> { formula::Rational { 30 } },
-                                           formula::Measured<Force> { formula::Rational { 579'630 } },
-                                           formula::Measured<EdgeX> { formula::Rational { 139 } },
-                                           formula::Measured<EdgeY> { formula::Rational { 139 } });
-constexpr auto there = formula::environment(formula::entered(formula::Measured<Strength> { formula::Rational { 20 } }),
-                                            formula::Measured<Force> { formula::Rational { 386'420 } },
-                                            formula::Measured<EdgeX> { formula::Rational { 139 } },
-                                            formula::Measured<EdgeY> { formula::Rational { 139 } });
+constexpr auto here = formula::environment(formula::Measured<Strength> { 30 },
+                                           formula::Measured<Force> { 579'630 },
+                                           formula::Measured<EdgeX> { 139 },
+                                           formula::Measured<EdgeY> { 139 });
+constexpr auto there = formula::environment(formula::entered(formula::Measured<Strength> { 20 }),
+                                            formula::Measured<Force> { 386'420 },
+                                            formula::Measured<EdgeX> { 139 },
+                                            formula::Measured<EdgeY> { 139 });
 
 constexpr auto records = formula::record_context(
     formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
@@ -103,12 +105,8 @@ constexpr auto referenceStrength = formula::from_record<Reference>(var<Force> / 
 // The masses retained on three screens, here and on the reference, whose
 // masses were typed in. A series is reduced inside the read: the read holds
 // one value.
-constexpr auto screensHere = formula::environment(formula::measured_series<Retained>(
-    formula::Measured<Retained> { formula::Rational { 163 } }, formula::Measured<Retained> { formula::Rational { 241 } },
-    formula::Measured<Retained> { formula::Rational { 127 } }));
-constexpr auto screensThere = formula::environment(formula::entered(formula::measured_series<Retained>(
-    formula::Measured<Retained> { formula::Rational { 139 } }, formula::Measured<Retained> { formula::Rational { 197 } },
-    formula::Measured<Retained> { formula::Rational { 103 } })));
+constexpr auto screensHere = formula::environment(formula::measured_series<Retained>(163, 241, 127));
+constexpr auto screensThere = formula::environment(formula::entered(formula::measured_series<Retained>(139, 197, 103)));
 constexpr auto screenRecords = formula::record_context(
     formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), screensHere),
     formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), screensThere));
@@ -130,32 +128,6 @@ constexpr auto recordsWith(Batch batch, Method method)
         formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)), there, batch,
                                    method));
 }
-
-/// A value in the coherent unit, exactly, with its unit: `30000000 Pa` or `3/2`;
-/// `no answer` when it is absent, and `refused` when it is an error.
-std::string exact(formula::Evaluated<formula::Rational> const& evaluated, std::string_view unitText)
-{
-    if (!evaluated.has_value())
-        return "refused";
-    if (!evaluated->has_value())
-        return "no answer";
-    formula::Rational const value = **evaluated;
-    std::string text = std::to_string(value.numerator());
-    if (value.denominator() != 1)
-        text += "/" + std::to_string(value.denominator());
-    if (!unitText.empty())
-        text += " " + std::string { unitText };
-    return text;
-}
-
-/// The trace of @p expression over @p context.
-template <typename Expression, typename Context>
-std::string traceOf(Expression const& expression, Context const& context)
-{
-    formula::Trace<> recorded {};
-    (void) formula::checked_evaluate_si<formula::Rational>(expression, context, formula::RecordingSink { recorded });
-    return formula::render_trace(recorded, { .maxSteps = 20 });
-}
 } // namespace
 
 int main()
@@ -164,74 +136,124 @@ int main()
     auto const check = [&allPassed](bool condition, char const* what) {
         if (!condition)
         {
-            std::printf("CHECK FAILED: %s\n", what);
+            std::println("CHECK FAILED: {}", what);
             allPassed = false;
         }
     };
 
-    std::printf("== 1. A role is code, a record is data ==\n\n");
+    std::println("== 1. A role is code, a record is data ==\n");
 
-    std::string const ratioText = formula::render(ratio);
-    std::string const ratioValue = exact(formula::checked_evaluate_si<formula::Rational>(ratio, records), "");
-    std::printf("%s = %s\n", ratioText.c_str(), ratioValue.c_str());
-    check(ratioValue == "3/2", "30 MPa here over the reference's 20 MPa");
+    // Evaluated once, with the trace of how: the value is printed here, the
+    // trace in the next part.
+    auto const ratioRun = formula::traced(
+        [](auto recordingSink) { return formula::checked_evaluate_si<formula::Rational>(ratio, records, recordingSink); });
+    if (!ratioRun.outcome)
+    {
+        std::println("the ratio of the strengths: {}", ratioRun.outcome.error());
+        return 1;
+    }
+    auto const ratioValue = formula::number_of(ratioRun.outcome);
+    if (!ratioValue)
+    {
+        std::println("the ratio of the strengths: no answer");
+        return 1;
+    }
+    std::println("{} = {:/}", formula::render(ratio), *ratioValue);
+    check(ratioValue == 3_r / 2, "30 MPa here over the reference's 20 MPa");
 
     // The context is this record's environment: anything that takes one takes
     // the context, and reads this record's values from it.
-    std::string const viaContext = exact(formula::checked_evaluate_si<formula::Rational>(var<Strength>, records), "Pa");
-    std::string const viaEnvironment = exact(formula::checked_evaluate_si<formula::Rational>(var<Strength>, here), "Pa");
-    std::printf("f_c through the context: %s\n", viaContext.c_str());
-    std::printf("f_c through this record's environment: %s\n\n", viaEnvironment.c_str());
-    check(viaContext == viaEnvironment, "the context reads this record's own values");
+    auto const viaContext = formula::checked_evaluate_si<formula::Rational>(var<Strength>, records);
+    if (!viaContext)
+    {
+        std::println("f_c through the context: {}", viaContext.error());
+        return 1;
+    }
+    auto const viaEnvironment = formula::checked_evaluate_si<formula::Rational>(var<Strength>, here);
+    if (!viaEnvironment)
+    {
+        std::println("f_c through this record's environment: {}", viaEnvironment.error());
+        return 1;
+    }
+    auto const strengthViaContext = formula::number_of(viaContext);
+    auto const strengthViaEnvironment = formula::number_of(viaEnvironment);
+    if (!strengthViaContext || !strengthViaEnvironment)
+    {
+        std::println("f_c: no answer");
+        return 1;
+    }
+    std::println("f_c through the context: {} Pa", *strengthViaContext);
+    std::println("f_c through this record's environment: {} Pa\n", *strengthViaEnvironment);
+    check(strengthViaContext == strengthViaEnvironment, "the context reads this record's own values");
 
-    std::printf("== 2. Reading a value, or computing over another specimen ==\n\n");
+    std::println("== 2. Reading a value, or computing over another specimen ==\n");
 
-    std::printf("%s = %s\n", formula::render(referenceStrength).c_str(),
-                exact(formula::checked_evaluate_si<formula::Rational>(referenceStrength, records), "Pa").c_str());
-    std::printf("%s\n\n", formula::render<formula::Dialect::LaTeX>(referenceStrength).c_str());
+    auto const referenceRead = formula::checked_evaluate_si<formula::Rational>(referenceStrength, records);
+    if (!referenceRead)
+    {
+        std::println("the reference's strength from its load and edges: {}", referenceRead.error());
+        return 1;
+    }
+    auto const referenceValue = formula::number_of(referenceRead);
+    if (!referenceValue)
+    {
+        std::println("the reference's strength from its load and edges: no answer");
+        return 1;
+    }
+    std::println("{} = {} Pa", formula::render(referenceStrength), *referenceValue);
+    std::println("{}\n", formula::render<formula::Dialect::LaTeX>(referenceStrength));
     check(formula::render(referenceStrength) == "(F / (x_m * y_m)) of Reference",
           "a compound read is bracketed, so the role qualifies the whole computation");
 
-    std::string const ratioTrace = traceOf(ratio, records);
-    std::printf("%s\n", ratioTrace.c_str());
-    check(ratioTrace.find("f_c = 20 MPa, from record Reference (sample 23, test 3), entered by hand")
-              != std::string::npos,
+    std::string const ratioTrace = formula::render_trace(ratioRun.trace, { .maxSteps = 20 });
+    std::println("{}", ratioTrace);
+    check(ratioTrace.contains("f_c = 20 MPa, from record Reference (sample 23, test 3), entered by hand"),
           "the reference's typed-in strength, and whose it is");
 
     formula::Documentation const page = formula::document(ratio);
     for (formula::SymbolEntry const& row: page.symbols)
-        std::printf("  %.*s: %.*s, %s\n", static_cast<int>(row.symbol.size()), row.symbol.data(),
-                    static_cast<int>(row.description.size()), row.description.data(),
-                    row.record.empty() ? "this record" : ("record " + std::string { row.record }).c_str());
-    std::printf("\n");
+    {
+        if (row.record.empty())
+            std::println("  {}: {}, this record", row.symbol, row.description);
+        else
+            std::println("  {}: {}, record {}", row.symbol, row.description, row.record);
+    }
+    std::println("");
     check(page.symbols.size() == 2, "one row per record a quantity is read from");
 
-    std::string const seriesTrace = traceOf(retainedRatio, screenRecords);
-    std::printf("%s\n", seriesTrace.c_str());
-    check(seriesTrace.find("m_r = 139 g; 197 g; 103 g, from record Reference (sample 23, test 3), entered by hand\n")
-              != std::string::npos,
+    std::string const seriesTrace = formula::render_trace(
+        formula::traced([](auto recordingSink)
+                        { return formula::checked_evaluate_si<formula::Rational>(retainedRatio, screenRecords, recordingSink); })
+            .trace,
+        { .maxSteps = 20 });
+    std::println("{}", seriesTrace);
+    check(seriesTrace.contains("m_r = 139 g; 197 g; 103 g, from record Reference (sample 23, test 3), entered by hand\n"),
           "a series read from the reference names the record after its elements, and was typed in");
 
-    std::printf("== 3. Lineage is a gate ==\n\n");
+    std::println("== 3. Lineage is a gate ==\n");
 
-    std::string const agreed = traceOf(gated, records);
-    std::printf("%s\n", agreed.c_str());
-    check(agreed.find("same TestMethod as this record: 12 for this record, 12 for Reference, satisfied") != std::string::npos,
+    std::string const agreed = formula::render_trace(
+        formula::traced([](auto recordingSink)
+                        { return formula::checked_evaluate_si<formula::Rational>(gated, records, recordingSink); })
+            .trace,
+        { .maxSteps = 20 });
+    std::println("{}", agreed);
+    check(agreed.contains("same TestMethod as this record: 12 for this record, 12 for Reference, satisfied"),
           "both attributes agree, and the value is read");
 
     auto const otherMethod = recordsWith(formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(13));
     auto const refused = formula::checked_explain<Strength>(gated, otherMethod);
     if (!refused.has_value())
-        std::printf("%s\n", formula::render_trace(refused.error().trace, { .maxSteps = 20 }).c_str());
+        std::println("{}", formula::render_trace(refused.error().trace, { .maxSteps = 20 }));
     check(!refused.has_value() && refused.error().error == formula::ArithmeticError::DomainError,
           "a different method refuses the read");
 
-    auto const batchUnknown =
-        recordsWith(formula::unknown_lineage<MaterialBatch>(), formula::lineage<TestMethod>(12));
-    std::string const notChecked = traceOf(gated, batchUnknown);
-    std::printf("%s\n", notChecked.c_str());
-    check(!formula::checked_evaluate_si<formula::Rational>(gated, batchUnknown)->has_value(),
-          "an unknown batch gives no answer");
+    auto const batchUnknown = recordsWith(formula::unknown_lineage<MaterialBatch>(), formula::lineage<TestMethod>(12));
+    auto const notChecked = formula::traced(
+        [&](auto recordingSink)
+        { return formula::checked_evaluate_si<formula::Rational>(gated, batchUnknown, recordingSink); });
+    std::println("{}", formula::render_trace(notChecked.trace, { .maxSteps = 20 }));
+    check(notChecked.outcome.has_value() && !notChecked.outcome->has_value(), "an unknown batch gives no answer");
 
     // A disagreement refuses the read even when another key is unknown: an
     // unknown key gives no answer only when nothing disagrees.
@@ -239,47 +261,52 @@ int main()
         recordsWith(formula::unknown_lineage<MaterialBatch>(), formula::lineage<TestMethod>(13));
     auto const refusedDespiteUnknown = formula::checked_explain<Strength>(gated, unknownAndOtherMethod);
     if (!refusedDespiteUnknown.has_value())
-        std::printf("%s\n", formula::render_trace(refusedDespiteUnknown.error().trace, { .maxSteps = 20 }).c_str());
+        std::println("{}", formula::render_trace(refusedDespiteUnknown.error().trace, { .maxSteps = 20 }));
     check(!refusedDespiteUnknown.has_value()
               && refusedDespiteUnknown.error().error == formula::ArithmeticError::DomainError,
           "a different method refuses the read, though the batch is unknown");
 
-    std::printf("== 4. A record not yet made ==\n\n");
+    std::println("== 4. A record not yet made ==\n");
 
     auto const notYetTested = formula::record_context(
         formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here,
                                              formula::lineage<MaterialBatch>(4411), formula::lineage<TestMethod>(12)),
         formula::Record<Reference, decltype(there), formula::LineageEntry<MaterialBatch>,
                         formula::LineageEntry<TestMethod>>::unbound());
-    std::string const unbound = traceOf(ratio, notYetTested);
-    std::printf("%s\n", unbound.c_str());
-    check(!formula::checked_evaluate_si<formula::Rational>(ratio, notYetTested)->has_value(),
-          "no answer, never zero");
+    auto const unbound = formula::traced(
+        [&](auto recordingSink)
+        { return formula::checked_evaluate_si<formula::Rational>(ratio, notYetTested, recordingSink); });
+    std::println("{}", formula::render_trace(unbound.trace, { .maxSteps = 20 }));
+    check(unbound.outcome.has_value() && !unbound.outcome->has_value(), "no answer, never zero");
 
     // The same record behind the gated read: every attribute it declares is
     // unknown, so no lineage is compared, and there is no answer.
-    std::string const unboundGated = traceOf(gated, notYetTested);
-    std::printf("%s\n", unboundGated.c_str());
-    check(!formula::checked_evaluate_si<formula::Rational>(gated, notYetTested)->has_value()
-              && unboundGated.find("same ") == std::string::npos,
+    auto const unboundGated = formula::traced(
+        [&](auto recordingSink)
+        { return formula::checked_evaluate_si<formula::Rational>(gated, notYetTested, recordingSink); });
+    std::string const unboundGatedTrace = formula::render_trace(unboundGated.trace, { .maxSteps = 20 });
+    std::println("{}", unboundGatedTrace);
+    check(unboundGated.outcome.has_value() && !unboundGated.outcome->has_value() && !unboundGatedTrace.contains("same "),
           "a gated read over a record not yet made checks no lineage, and gives no answer");
 
     auto const typedInEmpty = formula::record_context(
         formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
         formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
                                    formula::environment(formula::entered(formula::Measured<Strength>::absent()))));
-    std::string const leftEmpty = traceOf(ratio, typedInEmpty);
-    std::printf("%s\n", leftEmpty.c_str());
-    check(leftEmpty.find("f_c = (entered by hand as empty), from record Reference") != std::string::npos,
-          "an entry left empty by hand says so");
+    std::string const leftEmpty = formula::render_trace(
+        formula::traced([&](auto recordingSink)
+                        { return formula::checked_evaluate_si<formula::Rational>(ratio, typedInEmpty, recordingSink); })
+            .trace,
+        { .maxSteps = 20 });
+    std::println("{}", leftEmpty);
+    check(leftEmpty.contains("f_c = (entered by hand as empty), from record Reference"), "an entry left empty by hand says so");
 
-    std::printf("== 5. A role's name reads as a name ==\n\n");
+    std::println("== 5. A role's name reads as a name ==\n");
 
     constexpr auto secondRead = formula::from_record<SecondReference>(var<Strength>);
-    std::printf("%s\n%s\n\n", formula::render(secondRead).c_str(),
-                formula::render<formula::Dialect::LaTeX>(secondRead).c_str());
+    std::println("{}\n{}\n", formula::render(secondRead), formula::render<formula::Dialect::LaTeX>(secondRead));
     check(formula::render(secondRead) == "f_c of second reference", "a role spelt through TagName");
 
-    std::printf("all checks passed: %s\n", allPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allPassed ? "yes" : "no");
     return allPassed ? 0 : 1;
 }

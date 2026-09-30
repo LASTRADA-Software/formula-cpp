@@ -29,10 +29,15 @@ The percentage passing each screen is everything not retained on that screen
 or on a coarser one:
 
 ```cpp
-inline constexpr auto passing =
-    formula::constant<unit::Percent>(rat(100))
-    - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>) / var<TotalMass>;
+inline constexpr auto passing = formula::yields<Passing>(
+    formula::constant<unit::Percent>(100_r)
+    - formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>) / var<TotalMass>);
 ```
+
+`yields<Passing>` names the quantity the formula computes, once, where it is
+written. Everything that evaluates or traces the formula then takes it as it
+is, with no result to repeat, and a formula built on it reuses it through
+`.expression`.
 
 A series is its own family of expressions. It is deliberately **not** a
 `Node`, the library's name for an expression that yields one value
@@ -241,11 +246,11 @@ a `Node`: it produces verdicts, not a quantity.
 
 ```cpp
 inline constexpr formula::Envelope<5> gradingEnvelope {
-    formula::LimitRow { formula::limit(rat(31)), formula::limit(rat(43)) },
-    formula::LimitRow { formula::limit(rat(47)), formula::limit(rat(59)) },
-    formula::LimitRow { formula::limit(rat(1574, 25)), formula::unbounded },
-    formula::LimitRow { formula::limit(rat(61)), formula::limit(rat(79)) },
-    formula::LimitRow { formula::limit(rat(83)), formula::limit(rat(99)) }
+    formula::LimitRow { formula::limit(31_r), formula::limit(43_r) },
+    formula::LimitRow { formula::limit(47_r), formula::limit(59_r) },
+    formula::LimitRow { formula::limit(62.96_r), formula::unbounded },
+    formula::LimitRow { formula::limit(61_r), formula::limit(79_r) },
+    formula::LimitRow { formula::limit(83_r), formula::limit(99_r) }
 };
 ```
 
