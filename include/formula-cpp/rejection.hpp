@@ -611,6 +611,32 @@ namespace detail
     template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
     inline constexpr bool is_rejection_node<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>> = true;
 
+    /// Fails to compile when a rejection is handed, bound to its result
+    /// quantity (`yields.hpp`), to a verb that answers with one value. Its
+    /// result is more than a value -- the survivors' mean, or the author's
+    /// verdict, with what was rejected and the passes that ran -- and has
+    /// verbs of its own. Named so the rejection prints.
+    template <typename Rejection>
+    struct RequireRejectionAsSuch
+    {
+        static_assert(!std::is_same_v<Rejection, Rejection>,
+                      "formula: this is a rejection of outliers, not a single value; evaluate it with "
+                      "checked_evaluate_rejection, trace it with explain_rejection, or reduce it to one value first "
+                      "(sample_mean) -- the rejection appears in this diagnostic as the template argument of "
+                      "RequireRejectionAsSuch");
+
+        /// Always true: the refusal is the `static_assert` above.
+        static constexpr bool value = true;
+    };
+
+    /// A bound rejection handed to a verb that answers with one value: see
+    /// `RequireRejectionAsSuch`.
+    template <PerPass P, OnLimit L, typename AtMostT, typename KeepAtLeastT, typename S, typename Criterion>
+    struct RequireSingleValueBound<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>:
+        RequireRejectionAsSuch<RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>
+    {
+    };
+
     /// Fails to compile when `without_outliers` is given a single value.
     template <typename Operand>
     struct RequireRejectionOfSample

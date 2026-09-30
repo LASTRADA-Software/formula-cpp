@@ -460,15 +460,18 @@ template <Described Q, SeriesNode S>
 
 /// `define<Q>(boundFormula.expression)`, `Q` taken from the `Yields`
 /// (`yields.hpp`): a `Definition<Q, E>`, and a series refused as `define<Q>`
-/// refuses one. `Result` is `Q`'s place for a caller who names it anyway;
-/// any other quantity is refused. A refused call defines `Q` as a constant
-/// of its dimension, as the series overload above does, so that nothing
-/// built on it adds a second message.
+/// refuses one. Anything else that is not an expression of one value -- a
+/// rejection of outliers, a retry, a whole opaque call -- is refused in the
+/// words `detail::RequireSingleValueBound` gives it. `Result` is `Q`'s place
+/// for a caller who names it anyway; any other quantity is refused. A
+/// refused call defines `Q` as a constant of its dimension, as the series
+/// overload above does, so that nothing built on it adds a second message.
 template <typename Result = detail::ResultOfYields, Described Q, typename E>
 [[nodiscard]] constexpr auto define(Yields<Q, E> const& boundFormula) noexcept
 {
     static_assert(detail::RequireYieldsResult<Result, Q>::value);
-    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
+    static_assert(std::conditional_t<SeriesNode<E>, std::true_type, detail::SingleValueBoundCheck<Result, Q, E>>::value);
+    if constexpr (!(Node<E> || SeriesNode<E>) || !detail::names_valid_bound<Result, Q, E>)
     {
         using Placeholder = ConstantNode<coherent(Describe<Q>::dimension)>;
         return Definition<Q, Placeholder> { Placeholder {} };

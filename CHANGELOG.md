@@ -67,7 +67,9 @@ change is recorded here.
   checked against the dimension the expression computes where it is written, with
   `checked_evaluate`'s message, and a result named at the call as well is accepted only when it is
   `Q`. Nest `documented()` inside it, and reuse the formula in another through `.expression`; a
-  `yields` around a bound formula is refused where it is written. Every earlier spelling stays.
+  `yields` around a bound formula is refused where it is written. A bound series, rejection of
+  outliers, retry or whole opaque call handed to a verb that answers with one value is refused in
+  words that name the verbs that take it. Every earlier spelling stays.
 
 ### Changed
 

@@ -908,6 +908,13 @@ namespace detail
         static constexpr bool value = true;
     };
 
+    /// A bound whole opaque call handed to a verb that answers with one value
+    /// (`yields.hpp`): refused as `checked_evaluate` refuses the call itself.
+    template <OpaqueOperation Op, typename... Inputs>
+    struct RequireSingleValueBound<OpaqueCall<Op, Inputs...>>: RequireOpaqueOutputChosen<OpaqueCall<Op, Inputs...>>
+    {
+    };
+
     /// Fails to compile when the unit a `rounded_output` is stated in does not
     /// measure the dimension of the output it rounds. Silent over a refused
     /// call or an output of no declared name: @p Output is refused already.

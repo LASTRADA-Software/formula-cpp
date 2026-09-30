@@ -4444,7 +4444,8 @@ template <typename Result = detail::ResultOfYields,
                                         V const& vocabulary = V {})
 {
     static_assert(detail::RequireYieldsResult<Result, Q>::value);
-    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
+    static_assert(detail::SingleValueBoundCheck<Result, Q, E>::value);
+    if constexpr (!detail::evaluates_bound_value<Result, Q, E>)
         return Explained<Q, Rep> {}; // refused already, where the mistake is
     else
         return explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary);
@@ -4583,7 +4584,8 @@ template <typename Result = detail::ResultOfYields,
                                                                                            V const& vocabulary = V {})
 {
     static_assert(detail::RequireYieldsResult<Result, Q>::value);
-    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
+    static_assert(detail::SingleValueBoundCheck<Result, Q, E>::value);
+    if constexpr (!detail::evaluates_bound_value<Result, Q, E>)
         return Explained<Q, Rep> {}; // refused already, where the mistake is
     else
         return checked_explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary);
@@ -4626,7 +4628,8 @@ template <typename Result = detail::ResultOfYields,
 [[nodiscard]] Trace<Rational> trace_of(Yields<Q, E> const& boundFormula, Env const& environmentGiven, V const& vocabulary = V {})
 {
     static_assert(detail::RequireYieldsResult<Result, Q>::value);
-    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
+    static_assert(detail::SingleValueBoundCheck<Result, Q, E>::value);
+    if constexpr (!detail::evaluates_bound_value<Result, Q, E>)
         return Trace<Rational> {}; // refused already, where the mistake is
     else
         return trace_of<Q>(boundFormula.expression, environmentGiven, vocabulary);
@@ -4652,6 +4655,17 @@ template <Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
                   { return detail::dispatch<Rational>(expression, environmentGiven, recordingSink); },
                   vocabulary)
         .trace;
+}
+
+/// A series handed to `trace_of_si`: refused as `checked_evaluate` refuses
+/// one, pointing at `checked_evaluate_series` -- `explain_series` gives its
+/// trace. The body is the refusal and nothing else; what it returns is never
+/// seen.
+template <SeriesNode S, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Trace<Rational> trace_of_si(S const&, Env const&, V const& = V {})
+{
+    static_assert(detail::RequireSingleValueExpression<S>::value);
+    return Trace<Rational> {};
 }
 
 /// A retry's result together with every attempt that produced it.

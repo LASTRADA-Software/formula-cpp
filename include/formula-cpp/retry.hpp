@@ -54,6 +54,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/record.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -1675,6 +1676,13 @@ namespace detail
                       "value can carry");
 
         static constexpr bool value = true;
+    };
+
+    /// A bound retry handed to a verb that answers with one value
+    /// (`yields.hpp`): refused as `checked_evaluate` refuses a retry.
+    template <Described R, std::size_t Max, FirstJudged J, typename Start, typename A, typename P>
+    struct RequireSingleValueBound<Retry<R, Max, J, Start, A, P>>: RequireRetryAtTop<Retry<R, Max, J, Start, A, P>>
+    {
     };
 
     /// What arithmetic over a retry gives, once refused: a node of the

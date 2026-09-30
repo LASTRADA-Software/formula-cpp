@@ -532,6 +532,24 @@ formula_add_negative_test(yields_series_as_single
 formula_add_negative_test(trace_of_series_as_single
     "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
     REJECT "no matching")
+formula_add_negative_test(trace_of_si_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(yields_series_explain
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 3
+    REJECT "no matching")
+formula_add_negative_test(yields_rejection_evaluate
+    "formula: this is a rejection of outliers, not a single value; evaluate it with checked_evaluate_rejection" EXPECT_COUNT 6
+    REJECT "no matching")
+formula_add_negative_test(yields_retry_evaluate
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry" EXPECT_COUNT 6
+    REJECT "no matching")
+formula_add_negative_test(yields_opaque_call_evaluate
+    "formula: an opaque call is not a value, since an operation may have several outputs" EXPECT_COUNT 6
+    REJECT "no matching")
+formula_add_negative_test(yields_not_a_value
+    "formula: this bound formula is not an expression of one value" EXPECT_COUNT 1
+    REJECT "no matching")
 formula_add_negative_test(yields_around_yields
     "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
     REJECT "no viable conversion" "no matching" "formula: this formula names its result quantity with yields")

@@ -31,6 +31,13 @@
 ///    (`detail::RequireResultDimension`).
 ///
 /// A verb given a refused `Yields` adds no second message (`Yields::valid`).
+///
+/// **Refused where it is evaluated:** a bound series, rejection of outliers,
+/// retry or whole opaque call handed to a verb that answers with one value --
+/// `evaluate`, `checked_evaluate`, `explain`, `checked_explain`, `trace_of` or
+/// `define` -- in words naming the verbs that take it
+/// (`detail::RequireSingleValueBound`), once. `define` refuses a series in
+/// its own words, as `define<Q>` does.
 
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
@@ -117,6 +124,49 @@ namespace detail
         /// Always true: the refusal is the `static_assert` above.
         static constexpr bool value = true;
     };
+
+    /// Fails to compile when a bound formula that is not an expression of one
+    /// value is handed to a verb that answers with one: `evaluate`,
+    /// `checked_evaluate`, `explain`, `checked_explain`, `trace_of` or
+    /// `define`. A series is refused below; a rejection of outliers, a retry
+    /// and a whole opaque call where each is declared (`rejection.hpp`,
+    /// `retry.hpp`, `opaque.hpp`), each naming the verbs that take it.
+    template <typename E>
+    struct RequireSingleValueBound
+    {
+        static_assert(Node<E>,
+                      "formula: this bound formula is not an expression of one value, which is what this verb "
+                      "evaluates -- the formula appears in this diagnostic as the template argument of "
+                      "RequireSingleValueBound");
+
+        /// Always true: the refusal is the `static_assert` above.
+        static constexpr bool value = true;
+    };
+
+    /// A bound series: refused as `checked_evaluate` refuses a series
+    /// (`RequireSingleValueExpression`, `evaluate.hpp`).
+    template <SeriesNode S>
+    struct RequireSingleValueBound<S>: RequireSingleValueExpression<S>
+    {
+    };
+
+    /// Whether a `Yields<Q, E>` is asked for its own quantity (@p Result) and
+    /// passes its checks: one that is not has had its one message.
+    template <typename Result, typename Q, typename E>
+    inline constexpr bool names_valid_bound = names_yields_result<Result, Q> && Yields<Q, E>::valid;
+
+    /// `RequireSingleValueBound<E>`, asked only of a `Yields<Q, E>` for which
+    /// `names_valid_bound` holds.
+    template <typename Result, typename Q, typename E>
+    using SingleValueBoundCheck =
+        std::conditional_t<names_valid_bound<Result, Q, E>, RequireSingleValueBound<E>, std::true_type>;
+
+    /// Whether a verb that answers with one value evaluates a `Yields<Q, E>`
+    /// asked for @p Result: `names_valid_bound`, and it holds an expression of
+    /// one value. What those verbs gate on, so that a refused call adds no
+    /// second message.
+    template <typename Result, typename Q, typename E>
+    inline constexpr bool evaluates_bound_value = names_valid_bound<Result, Q, E> && Node<E>;
 } // namespace detail
 
 /// A formula and the quantity it computes -- built by `yields<Q>(expression)`.
@@ -170,7 +220,8 @@ template <typename Result = detail::ResultOfYields, Described Q, typename E, typ
                                                                                     Sink recordingSink = {}) noexcept
 {
     static_assert(detail::RequireYieldsResult<Result, Q>::value);
-    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
+    static_assert(detail::SingleValueBoundCheck<Result, Q, E>::value);
+    if constexpr (!detail::evaluates_bound_value<Result, Q, E>)
         return Outcome<Q>::empty(); // refused already, where the mistake is
     else
         return checked_evaluate<Q>(boundFormula.expression, environmentGiven, recordingSink);
