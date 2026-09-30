@@ -34,7 +34,8 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
     return formula::Rational { numerator, denominator };
 }
 
-// The shared fixture's quantities (see the plan): invented readings in grams.
+// The fixture's quantities: invented readings in grams, and what the tests'
+// operations make of them.
 struct Reading: formula::Quantity<Reading, "r", "an invented reading", unit::Gram>
 {
 };

@@ -32,7 +32,8 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
     return formula::Rational { numerator, denominator };
 }
 
-// The shared fixture's quantities (see the plan): invented times and lengths.
+// The fixture's quantities: invented times and lengths, and the rate and the
+// starting length a fit's outputs are read as.
 struct Elapsed: formula::Quantity<Elapsed, "t", "an invented elapsed time", unit::Second>
 {
 };
@@ -56,9 +57,10 @@ constexpr formula::Unit MillimetrePerSecond { .dimension = formula::dim::Velocit
                                               .decimals = 4 };
 
 // t = 1, 2, 4, 7 s and L = 10.2, 10.9, 12.1, 14.3 mm: slope 19/28 mm/s and
-// intercept 9.5 mm, computed by hand in the plan. The secant from first to
-// last is 41/60 mm/s, x-on-y about 0.6798, through the origin about 2.5786,
-// and inputs swapped about 1.4710 -- all different.
+// intercept 9.5 mm, computed by hand -- S_xy / S_xx = 14.25 / 21 about the
+// means 3.5 s and 11.875 mm, and 11.875 - 3.5 * 19/28. The secant from
+// first to last is 41/60 mm/s, x-on-y about 0.6798, through the origin
+// about 2.5786, and inputs swapped about 1.4710 -- all different.
 constexpr auto fitPoints =
     formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { rat(1) },
                                                            formula::Measured<Elapsed> { rat(2) },
