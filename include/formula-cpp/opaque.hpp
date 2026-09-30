@@ -1237,16 +1237,26 @@ namespace detail
         return std::tuple<std::span<Rep const>> { held.made };
     }
 
+    /// Calls @p onArguments with what every input, each wholly present,
+    /// passes to `compute` in @p Rep: the values held for it, and the spans
+    /// into them, which live until the call returns.
+    template <typename Rep, typename OnArguments, typename... Evaluated>
+    [[nodiscard]] constexpr auto opaque_apply(OnArguments const& onArguments, Evaluated const&... evaluatedInputs) noexcept
+    {
+        auto const held = std::tuple { opaque_held(evaluatedInputs)... };
+        auto const arguments =
+            std::apply([](auto const&... each) noexcept { return std::tuple_cat(opaque_arguments<Rep>(each)...); }, held);
+        return std::apply(onArguments, arguments);
+    }
+
     /// Calls `compute` on every input, each wholly present: the outputs, or
     /// the operation's own error.
     template <typename Rep, typename Op, typename... Evaluated>
     [[nodiscard]] constexpr std::expected<std::array<Rep, Op::outputs.size()>, ArithmeticError> opaque_compute(
         Evaluated const&... evaluatedInputs) noexcept
     {
-        auto const held = std::tuple { opaque_held(evaluatedInputs)... };
-        auto const arguments =
-            std::apply([](auto const&... each) noexcept { return std::tuple_cat(opaque_arguments<Rep>(each)...); }, held);
-        return std::apply([](auto const&... each) noexcept { return Op::template compute<Rep>(each...); }, arguments);
+        return opaque_apply<Rep>([](auto const&... each) noexcept { return Op::template compute<Rep>(each...); },
+                                 evaluatedInputs...);
     }
 
     /// Evaluates the call's inputs from position @p At on, each once and in
@@ -1355,17 +1365,14 @@ namespace detail
     [[nodiscard]] constexpr std::expected<typename RoundedOpaqueAnswerOf<Op, Exact>::type, ArithmeticError>
     opaque_rounding_answer(Evaluated const&... evaluatedInputs) noexcept
     {
-        auto const held = std::tuple { opaque_held(evaluatedInputs)... };
-        auto const arguments =
-            std::apply([](auto const&... each) noexcept { return std::tuple_cat(opaque_arguments<Rational>(each)...); }, held);
-        auto const computed = std::apply(
+        auto const computed = opaque_apply<Rational>(
             [](auto const&... each) noexcept {
                 if constexpr (Exact)
                     return Op::compute_exact(each...);
                 else
                     return Op::template compute<Rational>(each...);
             },
-            arguments);
+            evaluatedInputs...);
         if (!computed.has_value())
             return std::unexpected { computed.error() };
         return (*computed)[I];
