@@ -78,6 +78,9 @@
 // `std::format`, aligned and rounded, and an `Outcome`, a `Unit`, a
 // `Dimension` and an enumeration written the same way; `symbol_of` with no
 // vocabulary, and `render` and `document` given `RenderOptions` and none;
+// `yields` of the formula touching every node kind, and `evaluate`,
+// `checked_evaluate`, `explain`, `render`, `document` and `define` of what
+// it binds;
 // and a quantity declared by alias at
 // global scope, so that its tag is one more global. A template it does
 // not reach is not guarded by it.
@@ -210,6 +213,7 @@ int index;
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/version.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>
 
 // A quantity declared by alias at global scope, as a consumer would: the
 // elaborated type specifier declares its tag, `AliasEdgeTag`, as one more
@@ -1359,6 +1363,20 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                                                                     formula::DecimalPlaces { 1 } },
                                                           formula::RoundingMode::HalfAwayFromZero>(
                                                      formula::series<EdgeX, 2>))>);
+    }
+    // The formula touching every node kind, bound to its result quantity
+    // once, then evaluated, checked, traced, rendered, documented and defined
+    // without naming the quantity again.
+    {
+        constexpr auto boundStrength = formula::yields<Strength>(everything);
+        probe.checks.push_back(formula::evaluate(boundStrength, specimen) == plain
+                               && formula::checked_evaluate(boundStrength, specimen) == checked);
+        probe.checks.push_back(formula::explain(boundStrength, specimen, north).outcome == explained.outcome
+                               && formula::render(boundStrength, north) == formula::render(everything, north)
+                               && formula::document(boundStrength).formula == formula::document(everything).formula);
+        constexpr auto boundDefinition = formula::define(boundStrength);
+        probe.checks.push_back(
+            std::is_same_v<std::remove_const_t<decltype(boundDefinition)>, decltype(formula::define<Strength>(everything))>);
     }
     return probe;
 }

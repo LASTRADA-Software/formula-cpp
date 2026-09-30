@@ -44,6 +44,7 @@
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <concepts>
@@ -1390,6 +1391,20 @@ template <Described Result, SeriesNode S, typename Env, typename Sink = NullSink
         }
         return SeriesOutcome<Result, seriesLength>::value(inDeclaredUnit, ValueSource::Derived);
     }
+}
+
+/// `checked_evaluate_series<Q>(boundFormula.expression, environmentGiven,
+/// recordingSink)`, `Q` taken from the `Yields` (`yields.hpp`). `Result` is
+/// `Q`'s place for a caller who names it anyway; any other quantity is
+/// refused.
+template <typename Result = detail::ResultOfYields, Described Q, SeriesNode S, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<SeriesOutcome<Q, S::length>, SeriesFailure> checked_evaluate_series(
+    Yields<Q, S> const& boundFormula, Env const& environmentGiven, Sink recordingSink = {}) noexcept
+{
+    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, S>::valid)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }; // refused already
+    else
+        return checked_evaluate_series<Q>(boundFormula.expression, environmentGiven, recordingSink);
 }
 
 } // namespace formula

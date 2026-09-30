@@ -39,6 +39,7 @@
 #include <formula-cpp/snap.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -4427,6 +4428,25 @@ template <Described Result, typename Rep = Rational, Node Expression, typename E
     return explained;
 }
 
+/// `explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary)`,
+/// `Q` taken from the `Yields` (`yields.hpp`). `Result` is `Q`'s place for a
+/// caller who names it anyway; any other quantity is refused.
+template <typename Result = detail::ResultOfYields,
+          typename Rep = Rational,
+          Described Q,
+          typename E,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Explained<Q, Rep> explain(Yields<Q, E> const& boundFormula,
+                                        Env const& environmentGiven,
+                                        V const& vocabulary = V {})
+{
+    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, E>::valid)
+        return Explained<Q, Rep> {}; // refused already, where the mistake is
+    else
+        return explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary);
+}
+
 /// A series outcome together with the derivation that produced it -- the
 /// series counterpart of `Explained`.
 ///
@@ -4457,6 +4477,26 @@ template <Described Result, SeriesNode S, typename Env, Vocabulary V = DefaultVo
     auto run = traced([&](auto recordingSink) { return checked_evaluate_series<Result>(expression, environment, recordingSink); },
                       vocabulary);
     return ExplainedSeries<Result, S::length> { std::move(run.outcome), std::move(run.trace) };
+}
+
+/// `explain_series<Q>(boundFormula.expression, environmentGiven, vocabulary)`,
+/// `Q` taken from the `Yields` (`yields.hpp`). `Result` is `Q`'s place for a
+/// caller who names it anyway; any other quantity is refused.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          SeriesNode S,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedSeries<Q, S::length> explain_series(Yields<Q, S> const& boundFormula,
+                                                           Env const& environmentGiven,
+                                                           V const& vocabulary = V {})
+{
+    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, S>::valid)
+        return ExplainedSeries<Q, S::length> {
+            std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }, Trace<Rational> {}
+        }; // refused already
+    else
+        return explain_series<Q>(boundFormula.expression, environmentGiven, vocabulary);
 }
 
 /// Why `checked_explain` has no outcome: the arithmetic error, and the
@@ -4508,6 +4548,25 @@ checked_explain(Expression const& expression, Env const& environment, V const& v
     if (!checked.has_value())
         return std::unexpected { CheckedExplainFailure<Rep> { checked.error(), std::move(recorded) } };
     return Explained<Result, Rep> { *checked, std::move(recorded) };
+}
+
+/// `checked_explain<Q, Rep>(boundFormula.expression, environmentGiven,
+/// vocabulary)`, `Q` taken from the `Yields` (`yields.hpp`). `Result` is `Q`'s
+/// place for a caller who names it anyway; any other quantity is refused.
+template <typename Result = detail::ResultOfYields,
+          typename Rep = Rational,
+          Described Q,
+          typename E,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::expected<Explained<Q, Rep>, CheckedExplainFailure<Rep>> checked_explain(Yields<Q, E> const& boundFormula,
+                                                                                           Env const& environmentGiven,
+                                                                                           V const& vocabulary = V {})
+{
+    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, E>::valid)
+        return Explained<Q, Rep> {}; // refused already, where the mistake is
+    else
+        return checked_explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary);
 }
 
 /// A retry's result together with every attempt that produced it.
@@ -4594,6 +4653,31 @@ template <Described Result,
     return traced([&](auto recordingSink)
                   { return checked_evaluate_rejection<Result>(rejectionGiven, environmentGiven, recordingSink); },
                   vocabulary);
+}
+
+/// `explain_rejection<Q>(boundFormula.expression, environmentGiven,
+/// vocabulary)`, `Q` taken from the `Yields` (`yields.hpp`). `Result` is `Q`'s
+/// place for a caller who names it anyway; any other quantity is refused.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          PerPass P,
+          OnLimit L,
+          typename AtMostT,
+          typename KeepAtLeastT,
+          typename S,
+          typename Criterion,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Traced<std::expected<RejectionOutcome<Q, detail::sample_capacity<S>>, SeriesFailure>> explain_rejection(
+    Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>> const& boundFormula,
+    Env const& environmentGiven,
+    V const& vocabulary = V {})
+{
+    if constexpr (!detail::RequireYieldsResult<Result, Q>::value
+                  || !Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>::valid)
+        return { std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }, Trace<Rational> {} };
+    else
+        return explain_rejection<Q>(boundFormula.expression, environmentGiven, vocabulary);
 }
 
 /// Checks @p constraintGiven and records how -- `check`'s traced twin: the

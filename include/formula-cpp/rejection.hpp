@@ -84,6 +84,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
 #include <formula-cpp/statistics.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -1466,6 +1467,32 @@ checked_evaluate_rejection(RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criteri
         return std::unexpected { SeriesFailure { inDeclaredUnit.error(), std::nullopt } };
     return detail::RejectionOutcomeAccess::build(
         Outcome<Result>::value(Measured<Result> { *inDeclaredUnit }, ValueSource::Derived), run);
+}
+
+/// `checked_evaluate_rejection<Q>(boundFormula.expression, environmentGiven,
+/// recordingSink)`, `Q` taken from the `Yields` (`yields.hpp`). `Result` is
+/// `Q`'s place for a caller who names it anyway; any other quantity is
+/// refused.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          PerPass P,
+          OnLimit L,
+          typename AtMostT,
+          typename KeepAtLeastT,
+          typename S,
+          typename Criterion,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<RejectionOutcome<Q, detail::sample_capacity<S>>, SeriesFailure>
+checked_evaluate_rejection(Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>> const& boundFormula,
+                           Env const& environmentGiven,
+                           Sink recordingSink = {}) noexcept
+{
+    if constexpr (!detail::RequireYieldsResult<Result, Q>::value
+                  || !Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>::valid)
+        return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }; // refused already
+    else
+        return checked_evaluate_rejection<Q>(boundFormula.expression, environmentGiven, recordingSink);
 }
 
 } // namespace formula

@@ -29,6 +29,7 @@
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -1575,6 +1576,16 @@ template <Dialect D = Dialect::Plain, typename... Ds>
 [[nodiscard]] Documentation document(Calculation<Ds...> const& node)
 {
     return document<D>(node, DefaultVocabulary {});
+}
+
+/// Documents the formula @p boundFormula holds (`yields.hpp`) as
+/// `document<D>(boundFormula.expression, vocabulary)` does: the same page,
+/// every symbol as @p vocabulary says. The result quantity is not added to
+/// it -- rendering names no result.
+template <Dialect D = Dialect::Plain, Described Q, typename E, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Documentation document(Yields<Q, E> const& boundFormula, V const& vocabulary = V {})
+{
+    return document<D>(boundFormula.expression, vocabulary);
 }
 /// Documents @p node as `document<D>(node, vocabulary)` does, with every
 /// number the page writes -- in the formula's text, a derived quantity's

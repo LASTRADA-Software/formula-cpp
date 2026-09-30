@@ -61,6 +61,7 @@
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/unit.hpp>
 #include <formula-cpp/vocabulary.hpp>
+#include <formula-cpp/yields.hpp>
 
 #include <array>
 #include <cstddef>
@@ -2379,6 +2380,16 @@ template <Predicate P>
 [[nodiscard]] std::string render(Constraint<P> const& node)
 {
     return render<Dialect::Plain>(node);
+}
+
+/// Renders the formula @p boundFormula holds (`yields.hpp`) as
+/// `render<D>(boundFormula.expression, vocabulary)` does: plain text unless a
+/// dialect is named, every symbol as @p vocabulary says. The result quantity
+/// is not written -- rendering names no result.
+template <Dialect D = Dialect::Plain, Described Q, typename E, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] std::string render(Yields<Q, E> const& boundFormula, V const& vocabulary = V {})
+{
+    return render<D>(boundFormula.expression, vocabulary);
 }
 
 namespace detail

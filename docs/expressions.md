@@ -596,3 +596,66 @@ remembers it. When the named parts are values in their own right -- a bill or
 a report of many values, each built on the ones before -- define each once
 instead, and let a worksheet calculate each once and recalculate only what a
 change reaches: [Calculations and worksheets](calculations.md).
+
+## Naming the result once
+
+`checked_evaluate<Q>` is told its result quantity at every call, and never
+works it out, because an expression's dimension does not name a quantity. A
+volume over a volume is *a* ratio; whether it is the water/cement ratio or an
+air content is the author's decision, and a library that picked one would
+sooner or later label a number with another quantity's symbol and
+description. `formula::yields<Q>` keeps that rule. Nothing is deduced: the
+author still names the quantity, but once, where the formula is written,
+instead of at every call:
+
+```cpp
+constexpr auto boundRatio = formula::yields<Ratio>(var<WaterVolume> / var<CementVolume>);
+
+auto const evaluated = formula::evaluate(boundRatio, batch);    // an Outcome<Ratio>
+auto const explained = formula::explain(boundRatio, batch);     // its outcome and its trace
+std::string const written = formula::render(boundRatio);        // "V_w / V_c"
+constexpr auto definition = formula::define(boundRatio);        // Ratio, defined by the formula
+```
+
+The name is checked where it is written. `yields<Q>` holds `Q` to the
+dimension the expression computes, as `checked_evaluate<Q>` does, and refuses
+a quantity of another dimension with the same message: *this result quantity
+does not measure the dimension this expression computes*. A verb handed the
+refused formula adds nothing to it.
+
+`evaluate`, `checked_evaluate`, `checked_evaluate_series`,
+`checked_evaluate_rejection`, `explain`, `checked_explain`, `explain_series`,
+`explain_rejection` and `define` each take a bound formula, and return what
+they return for the formula it holds and the quantity it names. `render` and
+`document` take one too, and write the formula it holds: they name no result.
+Naming the quantity again at a call is allowed when it is the same one --
+
+```cpp
+auto const again = formula::checked_evaluate<Ratio>(boundRatio, batch);
+```
+
+-- and refused when it is another, even one of the same dimension: *this
+formula names its result quantity with yields; evaluate it for that
+quantity, or name none*. Two dimensionless quantities are exactly the case
+this is for, since their dimensions agree and nothing else would notice.
+
+**`documented()` goes inside.** A bound formula is not a node: it is the top
+of a formula, not a part of one. So it wraps a documented formula, whose
+citation stays with the formula, and not the other way round:
+
+```cpp
+constexpr auto citedRatio = formula::yields<Ratio>(formula::documented(
+    var<WaterVolume> / var<CementVolume>, { .title = "Water/cement ratio", .reference = "Example Standard 1:2020" }));
+```
+
+`documented(yields<Ratio>(...), ...)` does not compile, because `documented`
+takes a node.
+
+**Reuse goes through `.expression`.** For the same reason, a bound formula is
+not an operand of another formula. The formula it holds is, as any formula is
+([Composing a formula from other formulas](#composing-a-formula-from-other-formulas)):
+
+```cpp
+// The water a mix of another cement content needs at the same ratio.
+constexpr auto mixWater = formula::yields<MixWater>(var<MixCement> * boundRatio.expression);
+```

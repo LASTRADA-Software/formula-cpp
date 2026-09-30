@@ -842,7 +842,7 @@ static assertion failed: formula: these definitions read one another in a cycle,
 cl 19.51 says the same, at the check's own line:
 
 ```
-include\formula-cpp/calculation.hpp(550): error C2338: static assertion failed: 'formula: these definitions read one another in a cycle, so none of them can be calculated first -- the quantities on the cycle appear in this diagnostic as the template arguments of RequireAcyclicDefinitions'
+include\formula-cpp/calculation.hpp(569): error C2338: static assertion failed: 'formula: these definitions read one another in a cycle, so none of them can be calculated first -- the quantities on the cycle appear in this diagnostic as the template arguments of RequireAcyclicDefinitions'
 ```
 
 **A worksheet missing an input.** Here the environment has no price:

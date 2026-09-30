@@ -54,6 +54,16 @@ change is recorded here.
   type as the three arguments do. `rounded_elementwise<R>(series)` rounds every element to the same
   places. Every earlier spelling stays.
 - `declared_rounding(unit, mode)`, a `DecimalRounding` in the places `unit` declares.
+- `yields<Q>(expression)` names a formula's result quantity once, where the formula is written:
+  `constexpr auto ratio = yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);` then
+  `evaluate(ratio, environment)`. `evaluate`, `checked_evaluate`, `checked_evaluate_series`,
+  `checked_evaluate_rejection`, `explain`, `checked_explain`, `explain_series`, `explain_rejection`
+  and `define` take it, and return what they return for the formula it holds and `Q`; `render` and
+  `document` write the formula. The result is still never deduced from the expression: `Q` is
+  checked against the dimension the expression computes where it is written, with
+  `checked_evaluate`'s message, and a result named at the call as well is accepted only when it is
+  `Q`. Nest `documented()` inside it, and reuse the formula in another through `.expression`.
+  Every earlier spelling stays.
 
 ### Changed
 

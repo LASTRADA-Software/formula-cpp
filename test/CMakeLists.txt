@@ -104,6 +104,7 @@ add_executable(formula-cpp-tests
     wide_int_tests.cpp
     wide_rounding_tests.cpp
     rounded_output_tests.cpp
+    yields_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -487,6 +488,29 @@ formula_add_negative_test(evaluate_series_result_dimension_mismatch
 # ...~expected()" (3 more errors at 793dda5, 6 more once the series hooks
 # arrived). cl, clang-cl and clang++ give one message either way, so only
 # the gcc legs can see this REJECT fire.
+
+# A formula bound to its result quantity (`yields.hpp`). Each REJECT on the
+# first two pins a verb's gate on Yields::valid: without it, define,
+# checked_evaluate_rejection and explain_rejection each add their own
+# message for the same mistake (measured on clang-cl 22.1.8, 2 errors with
+# any one gate deleted). The gates of checked_evaluate (which evaluate goes
+# through), checked_evaluate_series, explain, checked_explain and
+# explain_series cannot be seen this way -- each forwards to a verb that
+# asks the same RequireResultDimension specialisation, instantiated once, so
+# deleting any one of them left clang-cl 22.1.8's count unchanged -- and no
+# count pins them.
+formula_add_negative_test(yields_result_dimension_mismatch
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1
+    REJECT "formula: this definition's expression measures a different dimension")
+formula_add_negative_test(yields_rejection_result_dimension_mismatch
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1
+    REJECT "formula: this result quantity does not measure what the rejection's determinations measure")
+formula_add_negative_test(yields_relabelled
+    "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
+    REJECT "no matching")
+formula_add_negative_test(yields_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
+    REJECT "formula: this formula names its result quantity with yields")
 
 # A braced list std::array would pad with absent elements: every spelling
 # that could reach a std::array parameter, refused because the constructor
