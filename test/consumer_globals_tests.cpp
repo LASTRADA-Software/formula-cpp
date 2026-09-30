@@ -43,8 +43,8 @@
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
-// opaque operation's output, evaluated exactly and in double, traced,
-// rendered and documented; a least-squares fit; a retry over recorded
+// opaque operation's output, evaluated exactly and in double, and rounded
+// where it is used, traced, rendered and documented; a least-squares fit; a retry over recorded
 // determinations, evaluated, traced, rendered and documented; and the four
 // table validators; and `record_key`, `sample_id`, `test_id`,
 // `record`, `Record::unbound`, `record_context`, its `this_record`,
@@ -792,6 +792,18 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::render<formula::Dialect::Markdown>(edgeSpan).find("edge span") != std::string::npos
         && formula::render<formula::Dialect::LaTeX>(edgeSpan).find("\\text{edge span}") != std::string::npos
         && formula::document(edgeSpan, north).opaqueOperations.size() == 1);
+    // The span rounded where it is used, 36 mm to 1 dp of mm: evaluated,
+    // traced, rendered and documented.
+    auto const roundedSpan =
+        formula::rounded_output<"span", unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+            formula::opaque<EdgeSpan>({ .reference = "Example Standard 3" }, formula::series<EdgeX, 2>));
+    auto const roundedSpanValue = formula::checked_evaluate<EdgeX>(roundedSpan, spanEdges);
+    auto const explainedRoundedSpan = formula::explain<EdgeX>(roundedSpan, spanEdges, north);
+    probe.checks.push_back(
+        roundedSpanValue.has_value() && roundedSpanValue->measurement().value() == formula::Rational { 36 }
+        && formula::render_trace(explainedRoundedSpan.trace, { .maxSteps = 20 }).find("span: rounded where used") != std::string::npos
+        && formula::render(roundedSpan, north) == "round(edge span(x_m(i)).span, to 1 dp of mm)"
+        && formula::document(roundedSpan, north).opaqueOperations.size() == 1);
     // A straight line fitted through the declared curve points 139 and
     // 161 mm, at 13.7 and 28.3 mm: a slope of 14.6/22 = 73/110.
     auto const edgeFit =

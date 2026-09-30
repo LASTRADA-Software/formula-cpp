@@ -191,6 +191,12 @@ may break it, and each such change is recorded here.
   before, or `RoundedWhereUsed` for a call evaluated for a `rounded_output`, whose `opaque_produced`
   is then handed an `OpaqueEvaluated<Rational, 0>` -- whether the call answered, was absent or
   failed, and no value.
+- A trace of a `rounded_output`: its call's line names the outputs without values, since none
+  exists until an output is rounded -- `linear least squares(#3) = intercept, slope: rounded where
+  used [inside not shown] [...]` -- and the output's own line states the rounding:
+  `round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]`. The rounded
+  decimal is the step's exact value, so no number style marks it `≈`. A failure the call carried
+  reads as the call's on the output's line too. `OpaqueStepData` records `values` and `answered`.
 
 ### Changed
 
@@ -219,6 +225,11 @@ may break it, and each such change is recorded here.
 - `OpaqueCallInfo` gains `values` after `dimensions`, defaulted to `OpaqueValues::Exact`: code that
   builds one with designated initialisers is unaffected; a structured binding over one now has five
   members, not four.
+- `StepKind` gains `RoundedOpaqueOutput`, after `AttemptInput`: a `switch` over `StepKind` that
+  names every enumerator and has no `default` now misses one, which g++ 14 reports under
+  `-Wswitch` (part of `-Wall`).
+- `OpaqueStepData` gains `values` and `answered`, after `inputsNotEvaluated`: a structured binding
+  over one now has seven members, not five.
 
 ## [0.1.0] - 2026-09-28
 

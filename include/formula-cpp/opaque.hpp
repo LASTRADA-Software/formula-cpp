@@ -1289,6 +1289,14 @@ namespace detail
         return (*computed)[I];
     }
 
+    /// The values a call evaluated for a rounded output holds: none. A
+    /// constant at namespace scope, copied, rather than `{}` written inside a
+    /// function, for `noSymbols`'s reason (`calculation.hpp`): cl 19.51
+    /// value-initialises an array of `Rational` through a helper of its own
+    /// that declares a local named `i`, which hides a consumer's global of that
+    /// name (C4459, found by `consumer_globals_tests.cpp`).
+    inline constexpr std::array<Rational, 0> noOpaqueValues {};
+
     /// What a sink is told of a call evaluated for a rounded output: whether it
     /// answered, was absent or failed -- and no value, since none exists yet.
     template <typename Answer>
@@ -1299,7 +1307,7 @@ namespace detail
             return std::unexpected { answered.error() };
         if (!answered->has_value())
             return std::optional<std::array<Rational, 0>> {};
-        return std::optional<std::array<Rational, 0>> { std::array<Rational, 0> {} };
+        return std::optional<std::array<Rational, 0>> { noOpaqueValues };
     }
 
     /// Evaluates the call @p call for its output @p I, rounded where it is

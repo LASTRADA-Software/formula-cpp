@@ -1119,6 +1119,13 @@ namespace detail
                 return "opaque(" + operands_text(shownStep) + ")";
             case StepKind::OpaqueOutput:
                 return shownStep.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(shownStep);
+            // `render()`'s spelling, as for a rounded root; the output's name is
+            // in the call's row, which `rounded_opaque_output_line` reads.
+            case StepKind::RoundedOpaqueOutput:
+                return "round("
+                       + (shownStep.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(shownStep))
+                       + ", to " + std::to_string(shownStep.granularity) + " dp"
+                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
             // A retry's steps name its result as `render()` does, `w(k)` for
             // an attempt's value and `w(k-1)` for the one before; the
             // attempt's and the retry's own lines are `retry_attempt_line` and
@@ -2401,19 +2408,21 @@ namespace detail
 
     /// What `render_trace` found in a trace for an opaque step: the call's
     /// row -- the step's own for an `OpaqueOperation` step, and the row of the
-    /// call it claimed for an `OpaqueOutput` step -- and, for the latter,
-    /// which output it selected and whether its operand **is** a call's step.
-    /// For a failed call, which input's step carries the error. Null and
-    /// empty for every other step, and for a step built by hand.
+    /// call it claimed for an `OpaqueOutput` or `RoundedOpaqueOutput` step --
+    /// and, for the latter, which output it selected and whether its operand
+    /// **is** a call's step. For a failed call, which input's step carries the
+    /// error. Null and empty for every other step, and for a step built by
+    /// hand.
     struct OpaqueLine
     {
         OpaqueStepData<Rational> const* call = nullptr;
         std::optional<std::size_t> outputIndex {};
-        /// For an `OpaqueOutput` step: whether its sole operand is an
-        /// `OpaqueOperation` step, judged by that step's kind -- the step that
-        /// says the operation's inside is not shown. False when a sink that
-        /// does not hear the opaque hooks recorded the output over the call's
-        /// inputs directly, and for a step built by hand.
+        /// For an `OpaqueOutput` or `RoundedOpaqueOutput` step: whether its
+        /// sole operand is an `OpaqueOperation` step, judged by that step's
+        /// kind -- the step that says the operation's inside is not shown.
+        /// False when a sink that does not hear the opaque hooks recorded the
+        /// output over the call's inputs directly, and for a step built by
+        /// hand.
         bool overCall = false;
         /// For an `OpaqueOperation` step that relayed a failure: the index of
         /// the input step that carries it -- the last operand, since the call
@@ -2530,7 +2539,11 @@ namespace detail
     /// do, and a list cut short ends `... k more`. A failed call shows its
     /// error and whose it is (`opaque_failure_suffix`); an absent one,
     /// `(not measured)`. A call stopped at a failing input writes each
-    /// input after it, never evaluated, as `(not evaluated)`.
+    /// input after it, never evaluated, as `(not evaluated)`. A call evaluated
+    /// for a rounded output names its outputs without values --
+    /// `linear least squares(#3) = intercept, slope: rounded where used` --
+    /// since none exists until an output is rounded; an absent one,
+    /// `(not measured)`.
     ///
     /// **`[inside not shown]` depends on the step's kind alone**: it is
     /// written for every `OpaqueOperation` step, with or without its row, and
@@ -2559,6 +2572,24 @@ namespace detail
         lineText += " = ";
         if (recorded.error.has_value())
             lineText += describe(*recorded.error);
+        else if (callRow != nullptr && callRow->values == OpaqueValues::RoundedWhereUsed)
+        {
+            // No output holds a value: the names, each spending one unit of
+            // the budget as a value would, and how they are reported.
+            if (!callRow->answered || callRow->outputs.empty())
+                lineText += NotMeasuredText;
+            else
+            {
+                std::size_t const outputCount = callRow->outputs.size();
+                std::size_t const listed = budget < outputCount ? budget : outputCount;
+                budget -= listed;
+                for (std::size_t at = 0; at < listed; ++at)
+                    lineText += (at > 0 ? ", " : "") + escaped_author_text(callRow->outputs[at].name);
+                if (listed < outputCount)
+                    lineText += std::string { listed > 0 ? ", " : "" } + "... " + std::to_string(outputCount - listed) + " more";
+                lineText += ": rounded where used";
+            }
+        }
         else if (callRow == nullptr || callRow->outputs.empty() || !callRow->outputs.front().value.has_value())
             lineText += NotMeasuredText;
         else
@@ -2738,6 +2769,45 @@ namespace detail
         return outputText + " = " + valueText + (opaqueLine.overCall ? "" : " [inside not shown]");
     }
 
+    /// A rounded opaque output's line, without its number: `round(slope of #4,
+    /// to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]`, the output
+    /// named from its call's row, as `opaque_output_line` names one.
+    ///
+    /// The value is the rounded decimal the step holds, exact, so no style
+    /// writes `≈` before it; the mode follows in brackets, as a rounding's
+    /// does. A failure the call carried reads as the call's: `[the operation
+    /// itself failed, not any input]`, or `[carried up from #k]` naming the
+    /// call's step, in place of the mode. A failure of the rounding itself,
+    /// after the call answered, keeps the mode, as a failed rounding's line
+    /// does. Ends `[inside not shown]` unless its operand is the call's own
+    /// step (`OpaqueLine::overCall`), as an output's line does.
+    [[nodiscard]] inline std::string rounded_opaque_output_line(ShownStep const& recorded,
+                                                                OpaqueLine const& opaqueLine,
+                                                                NumberStyle numberStyle)
+    {
+        std::string outputText =
+            recorded.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(recorded);
+        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
+            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
+            outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
+                         + sole_operand(recorded);
+        std::string lineText = "round(" + outputText + ", to " + std::to_string(recorded.granularity) + " dp"
+                               + unit_clause(" of ", unit_symbol_text(recorded.unit)) + ") = ";
+        bool const callFailed = opaqueLine.call != nullptr && opaqueLine.call->failure != OpaqueFailure::None;
+        if (recorded.error.has_value() && callFailed)
+            lineText += std::string { describe(*recorded.error) }
+                        + opaque_failure_suffix(recorded,
+                                                opaqueLine.call->failure,
+                                                recorded.operands.empty() ? std::nullopt
+                                                                          : std::optional<std::size_t> { recorded.operands.front() });
+        else if (recorded.error.has_value())
+            lineText += std::string { describe(*recorded.error) } + rounding_mode_suffix(recorded.mode);
+        else
+            lineText += opaque_value_text(recorded.dimension, recorded.unit, recorded.value, numberStyle)
+                        + rounding_mode_suffix(recorded.mode);
+        return lineText + (opaqueLine.overCall ? "" : " [inside not shown]");
+    }
+
     /// What @p trace's side tables hold for the retry step at @p stepIndex
     /// (`RetryLine`).
     [[nodiscard]] inline RetryLine retry_line_of(Trace<Rational> const& trace, std::size_t stepIndex)
@@ -2774,7 +2844,7 @@ namespace detail
                     callLine.failedInput = operandIndex;
             return callLine;
         }
-        if (recorded.kind != StepKind::OpaqueOutput)
+        if (recorded.kind != StepKind::OpaqueOutput && recorded.kind != StepKind::RoundedOpaqueOutput)
             return {};
         OpaqueLine outputLine {};
         if (OpaqueOutputStepData const* const chosenOutput = opaque_output_data(trace, stepIndex); chosenOutput != nullptr)
@@ -2862,6 +2932,8 @@ namespace detail
             return opaque_call_line(recorded, opaqueLine, budget, numberStyle);
         if (recorded.kind == StepKind::OpaqueOutput)
             return opaque_output_line(recorded, opaqueLine, numberStyle);
+        if (recorded.kind == StepKind::RoundedOpaqueOutput)
+            return rounded_opaque_output_line(recorded, opaqueLine, valueStyle);
         // A series first, before anything reads `value`: its values are its
         // elements.
         // A per-element rounding ends with its mode, as a scalar rounding

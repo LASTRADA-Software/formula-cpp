@@ -432,8 +432,10 @@ enum class StepKind : std::uint8_t
     /// An opaque operation's call (`OpaqueCall`, `opaque.hpp`): its inputs'
     /// steps as its operands, the call's citation in `Step::citation`, and on
     /// a relayed failure the input's element in `Step::failedElement`. The
-    /// operation's name, each output's name, dimension and value, and whose
-    /// failure it carries are in `Trace::opaqueSteps`, not on the `Step`.
+    /// operation's name, each output's name, dimension and value -- no value
+    /// when the call was evaluated for a rounded output,
+    /// `OpaqueStepData::values` -- and whose failure it carries are in
+    /// `Trace::opaqueSteps`, not on the `Step`.
     /// Its line always ends by saying that the operation's inside is not
     /// shown -- on this kind alone, which no field can switch off.
     ///
@@ -484,6 +486,18 @@ enum class StepKind : std::uint8_t
     /// (`attempt_input<Q>`), in `Q`'s declared unit; absent when nobody
     /// recorded it, which ends the retry `NotRecorded`.
     AttemptInput,
+    /// One output of an opaque call, rounded where it is used
+    /// (`RoundedOpaqueOutputNode`): a single-value step whose operand is the
+    /// call's step and whose value is the rounded decimal, exact -- the
+    /// unrounded output is never a value. The unit rounded in is `Step::unit`,
+    /// the places `Step::granularity` and the mode `Step::mode`, as for
+    /// `Round`; which output, in `Trace::opaqueOutputSteps`. The call's row
+    /// says `OpaqueValues::RoundedWhereUsed` and holds no values.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `RoundedOpaqueOutputNode`
+    /// and its factory `rounded_output`, so nothing in namespace `formula` is
+    /// spelt `RoundedOpaqueOutput`.
+    RoundedOpaqueOutput,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -825,9 +839,9 @@ struct Step
     /// For `Power`: the exponent. For `Root`: the degree. Zero otherwise.
     int exponent {};
 
-    /// For `Round`, `RoundedRoot` and `RoundingRuleApplied`: the decimal
-    /// places kept. For `RoundSignificant`: the significant digits kept. Zero
-    /// otherwise.
+    /// For `Round`, `RoundedRoot`, `RoundedOpaqueOutput` and
+    /// `RoundingRuleApplied`: the decimal places kept. For
+    /// `RoundSignificant`: the significant digits kept. Zero otherwise.
     ///
     /// A field of its own rather than a third and fourth meaning piled onto
     /// `exponent` above, which already carries two (`Power`'s exponent,
@@ -870,8 +884,8 @@ struct Step
     /// exact same exception for the same reason.
     Comparison comparison {};
 
-    /// For `Round`, `RoundSignificant`, `RoundedRoot` and
-    /// `RoundingRuleApplied`: the tie-breaking rule the node rounded under.
+    /// For `Round`, `RoundSignificant`, `RoundedRoot`, `RoundedOpaqueOutput`
+    /// and `RoundingRuleApplied`: the tie-breaking rule the node rounded under.
     ///
     /// Two rounding nodes differing only in their mode produce different
     /// numbers -- 13 mm and 12 mm from the same 12.5 mm -- so a derivation
@@ -883,7 +897,7 @@ struct Step
     ///
     /// As with `comparison` above, the zero value is a real mode
     /// (`RoundingMode::HalfAwayFromZero`) and not a "not applicable"
-    /// sentinel: meaningful only for the four rounding kinds.
+    /// sentinel: meaningful only for the five rounding kinds.
     RoundingMode mode {};
 
     /// For `RoundingRuleApplied`: where the rule came from -- the method's
@@ -915,8 +929,9 @@ struct Step
     /// The unit this step's value was **declared** in -- `Describe<Q>::unit`
     /// for a variable or an overridden constant, the constant's own unit for
     /// a constant, the node's own unit for a `Round`, `RoundSignificant`,
-    /// `RoundedRoot` or `RoundingRuleApplied` step, the unit of the step it
-    /// wraps for a `Documented`, `ReplacedVariant` or `VariantSelected` step --
+    /// `RoundedRoot`, `RoundedOpaqueOutput` or `RoundingRuleApplied` step, the
+    /// unit of the step it wraps for a `Documented`, `ReplacedVariant` or
+    /// `VariantSelected` step --
     /// each passes its operand's value through unchanged, so it states it as
     /// that operand's line does, whenever that line is the wrapped node's own
     /// and not the operands of a consumer's node -- and the coherent unit of
@@ -1409,13 +1424,21 @@ struct OpaqueStepData
     /// that failed were never evaluated (`OpaqueCallFailure::notEvaluated`),
     /// so that its line lists every input the call declares.
     std::size_t inputsNotEvaluated {};
+    /// Whether the call held its outputs' values: `RoundedWhereUsed` when it
+    /// was evaluated for a `rounded_output`, and then no output has a value.
+    OpaqueValues values {};
+    /// Whether the call answered -- every input present and the operation
+    /// successful. On the rounded route it is the only record that the call
+    /// was not absent, since no output holds a value there.
+    bool answered {};
 };
 
-/// Which output an `OpaqueOutput` step selected, keyed by its index in
-/// `Trace::steps`.
+/// Which output an `OpaqueOutput` or `RoundedOpaqueOutput` step selected,
+/// keyed by its index in `Trace::steps`.
 struct OpaqueOutputStepData
 {
-    /// The index, in `Trace::steps`, of the `OpaqueOutput` step.
+    /// The index, in `Trace::steps`, of the `OpaqueOutput` or
+    /// `RoundedOpaqueOutput` step.
     std::size_t step {};
     /// The output's ZERO-BASED position among the operation's outputs.
     std::size_t outputIndex {};
@@ -1914,6 +1937,12 @@ namespace detail
     struct StepKindOf<OpaqueOutputNode<I, Call, Origin>>
     {
         static constexpr StepKind value = StepKind::OpaqueOutput;
+    };
+
+    template <std::size_t I, typename Call, Unit U, DecimalPlaces Places, RoundingMode Mode, typename Origin>
+    struct StepKindOf<RoundedOpaqueOutputNode<I, Call, U, Places, Mode, Origin>>
+    {
+        static constexpr StepKind value = StepKind::RoundedOpaqueOutput;
     };
 
     template <>
@@ -2993,9 +3022,10 @@ class RecordingSink
         // Anything computed has no declared unit, so the coherent one is
         // the truthful answer; a variable overrides it with the unit its
         // quantity is declared in. `requires { N::unit; }` now also selects
-        // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode` and
-        // `RoundedRootNode` -- every one of them declares a unit that is the
-        // single most load-bearing fact about the step:
+        // `ConstantNode<U>`, `RoundNode`, `RoundSignificantNode`,
+        // `RoundedRootNode` and `RoundedOpaqueOutputNode` -- every one of them
+        // declares a unit that is the single most load-bearing fact about the
+        // step:
         // `rounded<Megapascal, 1>(...)` rounds *in megapascals*, and a step
         // recording "rounded to 1 dp" without saying 1 dp of what is not a
         // record of anything. `VarNode` still carries
@@ -3003,7 +3033,7 @@ class RecordingSink
         // which is why it needs the branch above rather than this one.
         //
         // `NumericValueNode` is excluded even though it also declares
-        // `unit`: unlike the four kinds above, its declared unit measures
+        // `unit`: unlike the five kinds above, its declared unit measures
         // its *operand's* dimension, not its own -- a `NumericValueNode` is
         // always `Scalar` -- so assigning it here would make this step's
         // `unit` disagree with its `dimension`, and the renderer's
@@ -3093,9 +3123,10 @@ class RecordingSink
         else if constexpr (requires { N::digits; })
             nodeStep.granularity = N::digits.value;
 
-        // `RoundNode`, `RoundSignificantNode` and `RoundedRootNode` are the
-        // only kinds that declare one, so the `requires` alone selects them --
-        // the same shape `exponent` and `granularity` above use.
+        // `RoundNode`, `RoundSignificantNode`, `RoundedRootNode` and
+        // `RoundedOpaqueOutputNode` are the only kinds that declare one, so the
+        // `requires` alone selects them -- the same shape `exponent` and
+        // `granularity` above use.
         if constexpr (requires { N::mode; })
             nodeStep.mode = N::mode;
 
@@ -3246,7 +3277,8 @@ class RecordingSink
 
         _trace->steps.push_back(std::move(nodeStep));
         _trace->unclaimed.push_back(_trace->steps.size() - 1);
-        if constexpr (detail::StepKindOf<N>::value == StepKind::OpaqueOutput)
+        if constexpr (detail::StepKindOf<N>::value == StepKind::OpaqueOutput
+                      || detail::StepKindOf<N>::value == StepKind::RoundedOpaqueOutput)
             _trace->opaqueOutputSteps.push_back(
                 OpaqueOutputStepData { .step = _trace->steps.size() - 1, .outputIndex = N::index });
     }
@@ -3943,7 +3975,10 @@ class RecordingSink
     /// Records one `OpaqueOperation` step for the call @p callInfo describes,
     /// claiming as its operands every step recorded since the matching
     /// `opaque_entered` -- its inputs' -- and its operation's name, every
-    /// output and whose failure it carries in `Trace::opaqueSteps`.
+    /// output and whose failure it carries in `Trace::opaqueSteps`. A call
+    /// evaluated for a rounded output (`OpaqueValues::RoundedWhereUsed`, `M`
+    /// 0) has every output named and none valued; whether it answered is
+    /// `OpaqueStepData::answered`.
     ///
     /// Whose failure is the evaluation's own answer (`OpaqueCallFailure::origin`),
     /// never re-derived, with one exception: a relayed failure that no claimed
@@ -3975,16 +4010,22 @@ class RecordingSink
 
         OpaqueStepData<Rep> callRow {};
         callRow.operationName = callInfo.name;
+        callRow.values = callInfo.values;
+        callRow.answered = result.has_value() && result->has_value();
+        // On the rounded route the evaluation holds no values (`M` is 0): every
+        // output the operation declares is named, and none has a value.
+        std::size_t const outputsNamed = callInfo.values == OpaqueValues::RoundedWhereUsed ? callInfo.outputs.size() : M;
         for (std::size_t outputAt = 0;
-             outputAt < M && outputAt < callInfo.outputs.size() && outputAt < callInfo.dimensions.size();
+             outputAt < outputsNamed && outputAt < callInfo.outputs.size() && outputAt < callInfo.dimensions.size();
              ++outputAt)
         {
             OpaqueOutputValue<Rep> recordedOutput {};
             recordedOutput.name = callInfo.outputs[outputAt];
             recordedOutput.dimension = callInfo.dimensions[outputAt];
             recordedOutput.unit = detail::opaque_output_unit(_trace->steps, callStep.operands, recordedOutput.dimension);
-            if (result.has_value() && result->has_value())
-                recordedOutput.value = (**result)[outputAt];
+            if constexpr (M > 0)
+                if (outputAt < M && callRow.answered)
+                    recordedOutput.value = (**result)[outputAt];
             callRow.outputs.push_back(recordedOutput);
         }
 

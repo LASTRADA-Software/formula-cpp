@@ -4,6 +4,8 @@
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/rounding_node.hpp>
+#include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -567,4 +569,72 @@ TEST_CASE("rounded output: a page lists a call once whether its output is rounde
     CHECK(page.opaqueOperations[0].name == "reciprocal sum");
     REQUIRE(page.citations.size() == 1);
     CHECK(page.formula == "reciprocal sum(z(i)).total - round(reciprocal sum(z(i)).total, to 6 dp)");
+}
+
+TEST_CASE("rounded output: one call used rounded and plain runs twice and says which is which", "[rounded-output][trace]")
+{
+    constexpr auto both = formula::opaque_output<"total">(fiveCall)
+                          - formula::rounded_output<"total", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(fiveCall);
+    auto const explained = formula::explain<Reciprocals>(both, fiveDraws);
+    // 2101205901/58386114749 - 8997/250000.
+    CHECK(explained.outcome.measurement().value() == rat(1600853247, 14596528687250000));
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 40 })
+          == "1. z = 103; 127; 139; 163; 197\n"
+             "2. reciprocal sum(#1) = total = 2101205901/58386114749 [inside not shown] [Reciprocal sum, Example Standard 7, 2.4]\n"
+             "3. total of #2 = 2101205901/58386114749\n"
+             "4. z = 103; 127; 139; 163; 197\n"
+             "5. reciprocal sum(#4) = total: rounded where used [inside not shown] [Reciprocal sum, Example Standard 7, 2.4]\n"
+             "6. round(total of #5, to 6 dp) = 8997/250000 [nearest, ties to even]\n"
+             "7. #3 - #6 = 1600853247/14596528687250000\n");
+}
+
+TEST_CASE("rounded output: a rounding that fails after the call answered is the output's line alone", "[rounded-output][trace]")
+{
+    constexpr auto productCall = formula::opaque<WideProduct>(productClause, formula::var<Gain>, formula::var<Boost>);
+    constexpr std::int64_t twoToForty = std::int64_t { 1 } << 40;
+    auto const huge = formula::environment(formula::Measured<Gain> { rat(twoToForty) }, formula::Measured<Boost> { rat(twoToForty) });
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::rounded_output<"product", unit::One, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(productCall), huge,
+        formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. g_1 = 1099511627776\n"
+             "2. g_2 = 1099511627776\n"
+             "3. wide product(#1, #2) = product: rounded where used [inside not shown] [Product of gains, Example Standard 7, 2.5]\n"
+             "4. round(product of #3, to 0 dp) = overflow in exact arithmetic [nearest, ties to even]\n");
+    REQUIRE(formula::opaque_data(recorded, 2) != nullptr);
+    CHECK(formula::opaque_data(recorded, 2)->answered);
+    CHECK(formula::opaque_data(recorded, 2)->failure == formula::OpaqueFailure::None);
+}
+
+TEST_CASE("rounded output: a worksheet's derivation shows the rounding", "[rounded-output][calculation][trace]")
+{
+    auto sheet = formula::worksheet(shareCalculation, formula::environment(formula::Measured<Factor> { rat(2) },
+                                                                           formula::Measured<Other> { rat(3) }));
+    auto const explained = formula::explain_worksheet<Share>(sheet);
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->measurement().value() == rat(6667, 10000));
+    CHECK(formula::render_derivation(explained, { .maxSteps = 20 })
+          == "s = round(ratio of two(k, k_o).ratio, to 4 dp) = 6667/10000\n"
+             "  1. k = 2\n"
+             "  2. k_o = 3\n"
+             "  3. ratio of two(#1, #2) = ratio: rounded where used [inside not shown] [Share of two factors, Example Standard 7, 3.2]\n"
+             "  4. round(ratio of #3, to 4 dp) = 6667/10000 [nearest, ties to even]\n"
+             "inputs\n"
+             "  k = 2\n"
+             "  k_o = 3\n");
+    CHECK(formula::render_derivation(explained, { .maxSteps = 20, .numbers = formula::NumberStyle::exact_decimal() })
+              .find("  4. round(ratio of #3, to 4 dp) = 0.6667 [nearest, ties to even]\n")
+          != std::string::npos);
+}
+
+TEST_CASE("rounded output: a step built by hand without its row still says the inside is not shown", "[rounded-output][trace]")
+{
+    formula::Step<> bare {};
+    bare.kind = formula::StepKind::RoundedOpaqueOutput;
+    bare.granularity = 4;
+    formula::Trace<> recorded {};
+    recorded.steps.push_back(bare);
+    CHECK(formula::render_trace(recorded, { .maxSteps = 5 })
+          == "1. round(an opaque output, to 4 dp) = (not measured) [nearest, ties away from zero] [inside not shown]\n");
 }

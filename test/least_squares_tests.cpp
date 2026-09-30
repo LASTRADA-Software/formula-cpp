@@ -603,3 +603,123 @@ TEST_CASE("rounded output: a page lists the fit once however its outputs are use
     CHECK(alone.opaqueOperations[0].name == "linear least squares");
     CHECK(alone.citations.size() == 1);
 }
+
+TEST_CASE("rounded output: the fit's trace names its outputs without values and states the rounding",
+          "[least-squares][trace]")
+{
+    auto const explained = formula::explain<Rate>(roundedSlope, fitPoints);
+    CHECK(explained.outcome.measurement().value() == rat(10179, 250)); // 0.6786 mm/s is 40.716 mm/min
+    std::string const fractions = formula::render_trace(explained.trace, { .maxSteps = 30 });
+    CHECK(fractions
+          == "1. t = 1 s; 2 s; 4 s; 7 s\n"
+             "2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm\n"
+             "3. curve(#1, #2) = 1 s: 51/5 mm; 2 s: 109/10 mm; 4 s: 121/10 mm; 7 s: 143/10 mm\n"
+             "4. linear least squares(#3) = intercept, slope: rounded where used [inside not shown] "
+             "[Rate of change, Example Standard 12, 5.1]\n"
+             "5. round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]\n");
+    std::string const decimals =
+        formula::render_trace(explained.trace, { .maxSteps = 30, .numbers = formula::NumberStyle::exact_decimal() });
+    CHECK(decimals
+          == "1. t = 1 s; 2 s; 4 s; 7 s\n"
+             "2. L = 10.2 mm; 10.9 mm; 12.1 mm; 14.3 mm\n"
+             "3. curve(#1, #2) = 1 s: 10.2 mm; 2 s: 10.9 mm; 4 s: 12.1 mm; 7 s: 14.3 mm\n"
+             "4. linear least squares(#3) = intercept, slope: rounded where used [inside not shown] "
+             "[Rate of change, Example Standard 12, 5.1]\n"
+             "5. round(slope of #4, to 4 dp of mm/s) = 0.6786 mm/s [nearest, ties to even]\n");
+    // The rounded decimal is the step's exact value: no style marks it.
+    std::string const approximate = formula::render_trace(
+        explained.trace, { .maxSteps = 30, .numbers = formula::NumberStyle::approximate_decimal(formula::RoundingMode::HalfEven) });
+    CHECK(approximate == decimals);
+
+    // What the trace holds: the call's row names both outputs, holds no value,
+    // and says the call answered; the output's step holds the rounding.
+    formula::OpaqueStepData<> const* const callRow = formula::opaque_data(explained.trace, 3);
+    REQUIRE(callRow != nullptr);
+    CHECK(callRow->values == formula::OpaqueValues::RoundedWhereUsed);
+    CHECK(callRow->answered);
+    REQUIRE(callRow->outputs.size() == 2);
+    CHECK(callRow->outputs[1].name == "slope");
+    CHECK(!callRow->outputs[0].value.has_value());
+    CHECK(!callRow->outputs[1].value.has_value());
+    formula::Step<> const& rounding = explained.trace.steps[4];
+    CHECK(rounding.kind == formula::StepKind::RoundedOpaqueOutput);
+    CHECK(rounding.granularity == 4);
+    CHECK(rounding.mode == formula::RoundingMode::HalfEven);
+    CHECK(rounding.unit == MillimetrePerSecond);
+    CHECK(rounding.value == rat(3393, 5'000'000));
+    REQUIRE(formula::opaque_output_data(explained.trace, 4) != nullptr);
+    CHECK(formula::opaque_output_data(explained.trace, 4)->outputIndex == 1);
+
+    // The exact route's row is as it was: every value, Exact.
+    auto const exactRoute = formula::explain<Rate>(formula::opaque_output<"slope">(fit), fitPoints);
+    CHECK(formula::opaque_data(exactRoute.trace, 3)->values == formula::OpaqueValues::Exact);
+    CHECK(formula::opaque_data(exactRoute.trace, 3)->outputs[1].value == rat(19, 28'000));
+}
+
+TEST_CASE("rounded output: a padded style pads the rounded value to its unit's decimals", "[least-squares][trace]")
+{
+    // 19/2 mm at 0 dp is a tie: 10 mm under HalfEven; the millimetre declares one decimal.
+    constexpr auto roundedIntercept =
+        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(fit);
+    auto const explained = formula::explain<Offset>(roundedIntercept, fitPoints);
+    CHECK(explained.outcome.measurement().value() == rat(10));
+    std::string const fractions = formula::render_trace(explained.trace, { .maxSteps = 30 });
+    CHECK(fractions.find("5. round(intercept of #4, to 0 dp of mm) = 10 mm [nearest, ties to even]\n") != std::string::npos);
+    std::string const padded = formula::render_trace(
+        explained.trace, { .maxSteps = 30, .numbers = formula::NumberStyle::exact_decimal(formula::DecimalPadding::Padded) });
+    CHECK(padded.find("5. round(intercept of #4, to 0 dp of mm) = 10.0 mm [nearest, ties to even]\n") != std::string::npos);
+}
+
+TEST_CASE("rounded output: a failure reads as the call's own or as carried up from it", "[least-squares][trace]")
+{
+    // One point: the fit's own DomainError.
+    constexpr auto onePoint =
+        formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { rat(3) }),
+                             formula::measured_series<Length>(formula::Measured<Length> { rat(103, 10) }));
+    constexpr auto single = formula::linear_least_squares(
+        formula::curve(formula::series<Elapsed, 1>, formula::series<Length, 1>), { .reference = "Example Standard 12" });
+    formula::Trace<> own {};
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(single),
+        onePoint, formula::RecordingSink { own });
+    std::string const ownText = formula::render_trace(own, { .maxSteps = 30 });
+    CHECK(ownText.find("4. linear least squares(#3) = argument outside the domain of the operation [inside not shown] "
+                       "[the operation itself failed, not any input] [Example Standard 12]\n")
+          != std::string::npos);
+    CHECK(ownText.find("5. round(slope of #4, to 4 dp of mm/s) = argument outside the domain of the operation "
+                       "[the operation itself failed, not any input]\n")
+          != std::string::npos);
+
+    // Repeated points: the curve's failure, relayed by the call.
+    constexpr auto repeated =
+        formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { rat(3) },
+                                                               formula::Measured<Elapsed> { rat(3) },
+                                                               formula::Measured<Elapsed> { rat(3) },
+                                                               formula::Measured<Elapsed> { rat(3) }),
+                             formula::measured_series<Length>(formula::Measured<Length> { rat(102, 10) },
+                                                              formula::Measured<Length> { rat(109, 10) },
+                                                              formula::Measured<Length> { rat(121, 10) },
+                                                              formula::Measured<Length> { rat(143, 10) }));
+    formula::Trace<> relayed {};
+    (void) formula::detail::dispatch<formula::Rational>(roundedSlope, repeated, formula::RecordingSink { relayed });
+    CHECK(formula::render_trace(relayed, { .maxSteps = 30 })
+              .find("5. round(slope of #4, to 4 dp of mm/s) = argument outside the domain of the operation [carried up from #4]\n")
+          != std::string::npos);
+
+    // An absent length: the call and the output are absent, and say so.
+    constexpr auto gap =
+        formula::environment(formula::measured_series<Elapsed>(formula::Measured<Elapsed> { rat(1) },
+                                                               formula::Measured<Elapsed> { rat(2) },
+                                                               formula::Measured<Elapsed> { rat(4) },
+                                                               formula::Measured<Elapsed> { rat(7) }),
+                             formula::measured_series<Length>(formula::Measured<Length> { rat(102, 10) },
+                                                              formula::Measured<Length>::absent(),
+                                                              formula::Measured<Length> { rat(121, 10) },
+                                                              formula::Measured<Length> { rat(143, 10) }));
+    auto const absent = formula::explain<Rate>(roundedSlope, gap);
+    CHECK(absent.outcome.is_empty());
+    std::string const absentText = formula::render_trace(absent.trace, { .maxSteps = 30 });
+    CHECK(absentText.find("4. linear least squares(#3) = (not measured) [inside not shown] [Rate of change, Example Standard 12, 5.1]\n")
+          != std::string::npos);
+    CHECK(absentText.find("5. round(slope of #4, to 4 dp of mm/s) = (not measured) [nearest, ties to even]\n") != std::string::npos);
+}
