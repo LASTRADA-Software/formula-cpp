@@ -110,6 +110,9 @@ change is recorded here.
   `describe` was removed), or call it by a qualified name such as `::convert_to`. And since `_r` is
   declared in an inline namespace of `formula`, `using namespace formula;` now brings it into scope,
   where a consumer's own `_r` is ambiguous with it.
+- The refusal of `with_rounding` with no citation now opens
+  `formula: with_rounding<...>() was given no citation`, for either spelling, the three arguments or
+  a `DecimalRounding`; it opened `formula: with_rounding<U, Places, Mode>() was given no citation`.
 
 ## [0.2.0] - 2026-09-30
 
