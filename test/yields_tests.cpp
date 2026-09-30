@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -263,4 +264,26 @@ TEST_CASE("yields: a bound formula is not an operand, and arithmetic over formul
                        formula::BinaryNode<formula::BinaryOperator::Add, Held, formula::ConstantNode<unit::One>>>);
     STATIC_REQUIRE(formula::number_of(formula::checked_evaluate<WaterVolume>(var<CementVolume> * ratio.expression, batch))
                    == formula::Rational { 163 });
+}
+
+TEST_CASE("yields: a bound formula is not a comparand, and comparisons of formulas are untouched", "[yields]")
+{
+    // Asked of a type, a comparison over a bound formula is answered without
+    // the refusal firing, and it is no equality a concept can use.
+    using Bound = std::remove_const_t<decltype(ratio)>;
+    using Refused = formula::detail::RefusedBoundValue<formula::Describe<WaterCementRatio>::dimension>;
+    constexpr auto limit = formula::constant<unit::One>(formula::Rational { 9, 20 });
+    using Limit = std::remove_const_t<decltype(limit)>;
+    STATIC_REQUIRE(std::is_same_v<decltype(std::declval<Bound>() >= limit),
+                                  formula::PredicateNode<formula::Comparison::GreaterOrEqual, Refused, Refused>>);
+    STATIC_REQUIRE(!std::equality_comparable<Bound>);
+    STATIC_REQUIRE(!std::equality_comparable_with<Bound, Limit>);
+
+    // The formula it holds is compared as any formula is: 163/307 is above
+    // 9/20.
+    using Held = std::remove_const_t<decltype(ratio.expression)>;
+    STATIC_REQUIRE(std::is_same_v<decltype(ratio.expression >= limit),
+                                  formula::PredicateNode<formula::Comparison::GreaterOrEqual, Held, Limit>>);
+    constexpr auto tooWet = formula::constraint(ratio.expression >= limit, formula::Verdict { "too much water" });
+    STATIC_REQUIRE(formula::check(tooWet, batch).is_satisfied());
 }

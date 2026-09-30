@@ -69,8 +69,8 @@ change is recorded here.
   `Q`. Nest `documented()` inside it, and reuse the formula in another through `.expression`; a
   `yields` around a bound formula is refused where it is written. A bound series, rejection of
   outliers, retry or whole opaque call handed to a verb that answers with one value is refused in
-  words that name the verbs that take it, and a bound formula used as an operand is refused in
-  favour of its `.expression`. Every earlier spelling stays.
+  words that name the verbs that take it, and a bound formula used as an operand or compared is
+  refused in favour of its `.expression`. Every earlier spelling stays.
 
 ### Changed
 
