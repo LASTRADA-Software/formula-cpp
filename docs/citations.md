@@ -121,7 +121,7 @@ than a boolean -- the wrapped formula evaluates to exactly the ratio the bare
 division would have produced:
 
 ```
-w/c = 0.600000 (computed)
+w/c = 0.6 (derived)
 ```
 
 This is not merely an absence of a check; there is a check, and it still

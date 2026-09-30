@@ -2,6 +2,7 @@
 /// The shortest complete formula this library can express: two measured inputs,
 /// one formula, one traceable result.
 
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 
 #include <print>
@@ -20,14 +21,12 @@ inline constexpr auto waterCementRatio = formula::var<WaterVolume> / formula::va
 
 int main()
 {
-    auto const batch = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                            formula::Measured<CementVolume> { formula::Rational { 300 } });
+    auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 }, formula::Measured<CementVolume> { 300 });
 
-    formula::Outcome<WaterCementRatio> const result = formula::evaluate<WaterCementRatio>(waterCementRatio, batch);
+    auto const result = formula::evaluate<WaterCementRatio>(waterCementRatio, batch);
 
-    std::println("{} = {:f} ({})",
-                 formula::Describe<WaterCementRatio>::symbol,
-                 result.measurement().value().to_double(),
-                 result.is_value() ? "computed" : "no value");
+    // The result prints as its number, in its quantity's unit, and says where
+    // that number came from.
+    std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), result, result.source());
     return 0;
 }

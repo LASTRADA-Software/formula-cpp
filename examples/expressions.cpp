@@ -9,14 +9,16 @@
 // not compiled, below), and a manually entered result that replaces what the
 // formula would have computed while saying so honestly.
 
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 
-#include <cstdio>
+#include <print>
 
 namespace
 {
 namespace unit = formula::unit;
 using formula::var;
+using namespace formula::literals;
 
 // ---- 1 & 3: a circular area -- a constant, a power, and later an absence ----
 
@@ -27,7 +29,8 @@ using Area = formula::Quantity<struct AreaTag, "A", "cross-sectional area", unit
 // `pow<2>` a power node -- the result, Area, is declared in square metres
 // while Diameter is declared in millimetres, so this one formula also
 // demonstrates a result reported in a different unit from its input.
-constexpr auto circularArea = formula::pi * formula::pow<2>(var<Diameter>) / formula::Rational { 4 };
+// `yields<Area>` names that result once, here, for both evaluations below.
+constexpr auto circularArea = formula::yields<Area>(formula::pi * formula::pow<2>(var<Diameter>) / 4);
 
 // ---- 2: the same point made without a power in the way, for its own line ----
 
@@ -51,58 +54,52 @@ using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective w
 using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
 using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
 
-constexpr auto waterCementRatio = var<WaterVolume> / var<CementVolume>;
+constexpr auto waterCementRatio = formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>);
 
 } // namespace
 
 int main()
 {
     // ---- 1. A formula with a constant and a power ----
-    constexpr auto diameterKnown = formula::environment(formula::Measured<Diameter> { formula::Rational { 103 } });
-    constexpr auto area = formula::checked_evaluate<Area>(circularArea, diameterKnown);
-    std::printf("circular area of a 103 mm diameter = %f m2 (%s)\n",
-                area->measurement().value().to_double(),
-                area->is_value() ? "computed" : "no value");
+    //
+    // The exact area has no short decimal -- pi is a rational convergent -- so
+    // it is printed rounded to six places, and marked as rounded.
+    constexpr auto diameterKnown = formula::environment(formula::Measured<Diameter> { 103 });
+    constexpr auto area = formula::checked_evaluate(circularArea, diameterKnown);
+    std::println("circular area of a 103 mm diameter = {:~.6HalfAwayFromZero} ({})", *area, area->source());
 
     // ---- 2. A result quantity in a different unit from its input ----
-    constexpr auto massInGrams = formula::environment(formula::Measured<SpecimenMass> { formula::Rational { 2500 } });
+    constexpr auto massInGrams = formula::environment(formula::Measured<SpecimenMass> { 2500 });
     constexpr auto massConverted = formula::checked_evaluate<MassInKilogram>(var<SpecimenMass>, massInGrams);
-    std::printf("2500 g reported as %s = %f kg\n",
-                formula::Describe<MassInKilogram>::symbol.data(),
-                massConverted->measurement().value().to_double());
+    std::println("2500 g reported as {} = {}", formula::symbol_of<MassInKilogram>(), *massConverted);
 
     // ---- 3. An absent input propagates to an empty result, not a zero ----
     constexpr auto diameterUnknown = formula::environment(formula::Measured<Diameter>::absent());
-    constexpr auto emptyArea = formula::checked_evaluate<Area>(circularArea, diameterUnknown);
-    std::printf("area with no diameter measured: %s\n", emptyArea->is_empty() ? "empty" : "a number");
+    constexpr auto emptyArea = formula::checked_evaluate(circularArea, diameterUnknown);
+    std::println("area with no diameter measured: {}", emptyArea->kind());
 
     // ---- 4. A dimensional error is a compile error, not a runtime one ----
-    std::printf("a diameter plus an area does not compile: see the comment above main() and docs/expressions.md\n");
+    std::println("a diameter plus an area does not compile: see the comment above main() and docs/expressions.md");
 
     // ---- 5. A manually entered result replaces the computed one ----
-    auto const batch =
-        formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                             formula::Measured<CementVolume> { formula::Rational { 300 } },
-                             formula::entered(formula::Measured<WaterCementRatio> { formula::Rational { 1, 2 } }));
-    auto const ratio = formula::checked_evaluate<WaterCementRatio>(waterCementRatio, batch);
-    std::printf("%s = %f (%s)\n",
-                formula::Describe<WaterCementRatio>::symbol.data(),
-                ratio->measurement().value().to_double(),
-                ratio->is_overridden() ? "entered" : "computed");
+    auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                            formula::Measured<CementVolume> { 300 },
+                                            formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
+    auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
+    std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
 
     // Every number printed above is checked here; nothing is printed that this
-    // bool does not also cover.
-    bool const circularAreaIsCorrect = area.has_value() && area->is_value()
-                                       && area->measurement().value().to_double() > 0.00833228
-                                       && area->measurement().value().to_double() < 0.00833229;
-    bool const massConvertsExactly = massConverted.has_value() && massConverted->is_value()
-                                     && massConverted->measurement().value() == formula::Rational { 5, 2 };
-    bool const absenceStaysEmpty = emptyArea.has_value() && emptyArea->is_empty();
-    bool const overrideWinsOutright = ratio.has_value() && ratio->is_overridden()
-                                      && ratio->source() == formula::ValueSource::ManuallyEntered
-                                      && ratio->measurement().value() == formula::Rational { 1, 2 };
+    // bool does not also cover. number_of is empty for an error and for a
+    // result that is not a number, so comparing it is a complete check.
+    auto const areaInSquareMetres = formula::number_of(area);
+    bool const circularAreaIsCorrect = areaInSquareMetres && *areaInSquareMetres > 0.00833228_r
+                                       && *areaInSquareMetres < 0.00833229_r
+                                       && area->source() == formula::ValueSource::Derived;
+    bool const massConvertsExactly = formula::number_of(massConverted) == 2.5_r;
+    bool const absenceStaysEmpty = emptyArea && emptyArea->is_empty();
+    bool const overrideWinsOutright = ratio && ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
 
     bool const allChecksPassed = circularAreaIsCorrect && massConvertsExactly && absenceStaysEmpty && overrideWinsOutright;
-    std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

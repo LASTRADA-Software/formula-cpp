@@ -119,13 +119,16 @@ The census does not see evaluations that happen at compile time
 an overflow there is still a refused result -- but their headroom is not
 measured. Three examples evaluate some of their formulas that way:
 `expressions` three, `rounding_and_conditionals` six and `constraints` five.
+`expressions` evaluates one formula at run time, and that evaluation returns
+a value a person entered without computing it, so its row reports no integer
+and the full 63 bits.
 
 The figures are deterministic: the census program prints the same on cl
 19.51 and gcc 13.3, and the clang and gcc presets hold it to the same pins.
 The examples table below is cl's. clang and gcc evaluate a `const` local's
 constant initialiser at compile time, where cl runs it, so under them a
-program can report fewer integers -- today `expressions` leaves one bit more
-headroom. The test holds every compiler to at least this table's headroom.
+program can report fewer integers and leave more headroom. The test holds
+every compiler to at least this table's headroom.
 
 ## The census
 
@@ -144,8 +147,8 @@ Each program's largest integers over everything it evaluates at run time.
 | example `simple` | 4 | 10 | 6 | 53 |
 | example `exact_numbers` | 9 | 10 | 9 | 53 |
 | example `dimensions_and_units` | 22 | 10 | 22 | 41 |
-| example `quantities` | 4 | 10 | 9 | 53 |
-| example `expressions` | 3 | 2 | 0 | 60 |
+| example `quantities` | 4 | 10 | 5 | 53 |
+| example `expressions` | 0 | 0 | 0 | 63 |
 | example `citations` | 4 | 10 | 6 | 53 |
 | example `composition` | 10 | 10 | 9 | 53 |
 | example `electricity_bill` | 31 | 26 | 31 | 32 |

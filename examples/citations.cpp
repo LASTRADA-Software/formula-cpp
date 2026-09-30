@@ -12,10 +12,11 @@
 // copyrighted material in a public repository. See docs/citations.md.
 
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 
-#include <cstdio>
+#include <print>
 #include <string>
 
 namespace
@@ -23,6 +24,7 @@ namespace
 namespace unit = formula::unit;
 using formula::var;
 
+// A quantity carries its own symbol, description and unit, and its tag makes it a type of its own.
 using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
 using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
 using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
@@ -40,70 +42,44 @@ constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
 
 int main()
 {
-    // Plain and LaTeX renderings of the same wrapped formula. The citation
-    // does not appear in either: render() answers only what the formula is,
-    // not where it comes from.
+    using namespace formula::literals;
+
+    // One declaration, four questions. render() answers what the formula is,
+    // as plain text or LaTeX, and the citation appears in neither; document()
+    // walks the same tree for what render() leaves out, the symbol table and
+    // the citation; and checked_evaluate() gives the number, exactly what the
+    // bare division would have produced, because wrapping is invisible to
+    // arithmetic.
     std::string const plain = formula::render(ratio);
     std::string const latex = formula::render<formula::Dialect::LaTeX>(ratio);
-    std::printf("plain: %s\n", plain.c_str());
-    std::printf("latex: %s\n", latex.c_str());
-
-    // document() walks the same tree for what render() leaves out: the
-    // symbol table and the citation.
     formula::Documentation const documentation = formula::document(ratio);
-
-    // entry.symbol and entry.description are std::string_view, not owning,
-    // null-terminated strings -- citation.hpp permits a Citation (and, the
-    // same way, a SymbolEntry) built from a runtime std::string, for which
-    // .data() handed to printf's "%s" would read past the view looking for a
-    // terminator that need not be there. "%.*s" with the view's own length
-    // is correct regardless of what the view was built from.
-    for (formula::SymbolEntry const& entry: documentation.symbols)
-        std::printf("symbol: %.*s = %.*s [%s]\n",
-                    static_cast<int>(entry.symbol.size()),
-                    entry.symbol.data(),
-                    static_cast<int>(entry.description.size()),
-                    entry.description.data(),
-                    std::string { formula::view(entry.unit.symbolText) }.c_str());
-
-    formula::Citation const& citation = documentation.citations.at(0);
-    std::printf("citation: %.*s, %.*s, %.*s, %.*s\n",
-                static_cast<int>(citation.title.size()),
-                citation.title.data(),
-                static_cast<int>(citation.reference.size()),
-                citation.reference.data(),
-                static_cast<int>(citation.section.size()),
-                citation.section.data(),
-                static_cast<int>(citation.equation.size()),
-                citation.equation.data());
-
-    // Evaluating the wrapped formula: the number is exactly what the bare
-    // formula would have produced, because wrapping is invisible to
-    // arithmetic.
-    auto const inputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                             formula::Measured<CementVolume> { formula::Rational { 300 } });
+    auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                             formula::Measured<CementVolume> { 300 });
     auto const result = formula::checked_evaluate<WaterCementRatio>(ratio, inputs);
+
+    std::println("plain: {}", plain);
+    std::println("latex: {}", latex);
+    for (formula::SymbolEntry const& entry: documentation.symbols)
+        std::println("symbol: {} = {} [{}]", entry.symbol, entry.description, entry.unit);
+    formula::Citation const& citation = documentation.citations.at(0);
+    std::println("citation: {}, {}, {}, {}", citation.title, citation.reference, citation.section, citation.equation);
+
     // Checked before dereferencing: result is a std::expected, and calling
     // operator-> on one that holds an error is undefined behaviour. Nothing
     // in this program can make checked_evaluate fail here, but an example is
     // teaching material, and the check costs nothing to show.
     if (!result.has_value())
     {
-        std::printf("evaluation failed\n");
+        std::println("evaluation failed");
         return 1;
     }
-    std::printf("%.*s = %f (%s)\n",
-                static_cast<int>(formula::Describe<WaterCementRatio>::symbol.size()),
-                formula::Describe<WaterCementRatio>::symbol.data(),
-                result->measurement().value().to_double(),
-                result->is_value() ? "computed" : "no value");
+    std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *result, result->source());
 
     bool const renderedCorrectly = plain == "V_w / V_c" && latex == "\\frac{V_w}{V_c}";
     bool const documentedCorrectly = documentation.symbols.size() == 2 && documentation.citations.size() == 1;
-    bool const evaluatedCorrectly =
-        result.has_value() && result->is_value() && result->measurement().value() == formula::Rational { 3, 5 };
+    bool const evaluatedCorrectly = formula::number_of(result) == 0.6_r;
 
     bool const allChecksPassed = renderedCorrectly && documentedCorrectly && evaluatedCorrectly;
-    std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

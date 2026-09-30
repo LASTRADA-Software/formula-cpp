@@ -116,7 +116,8 @@ comment rather than as compiled code, since it must not fail the build:
 //
 //     constexpr auto broken = formula::var<Diameter> + formula::var<Area>;
 //
-// Uncommenting the line above does not compile.
+// Uncommenting the line above does not compile. See docs/expressions.md for
+// the exact diagnostic text a real build prints for this mistake.
 ```
 
 Multiplication and division impose nothing on the operands' dimensions -- a
@@ -243,12 +244,27 @@ quantity being evaluated, `checked_evaluate` returns that value with
 `ValueSource::ManuallyEntered` **without evaluating the formula at all** --
 proven in `test/evaluate_tests.cpp` by an override whose formula would
 divide by zero: the override still wins, because the formula is never
-reached. `examples/expressions.cpp` overrides a computed ratio and prints
-both the value and the fact that it was entered:
+reached. `examples/expressions.cpp` overrides a computed ratio -- the
+environment `batch` holds the two volumes and a ratio a person entered, 0.5
+(`0.5_r`, an exact decimal, from `using namespace formula::literals;`) -- and
+prints both the value and where it came from:
+
+```cpp
+auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                        formula::Measured<CementVolume> { 300 },
+                                        formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
+auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
+std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
+```
 
 ```
-w/c = 0.500000 (entered)
+w/c = 0.5 (manually entered)
 ```
+
+`waterCementRatio` names its result quantity where it is declared, so the call
+names none ([Naming the result once](#naming-the-result-once)). `{}` of an
+`Outcome` writes its number in its quantity's unit (a ratio has no symbol),
+and `{}` of a `ValueSource` its words; see [Displaying numbers](display.md).
 
 ## Reading a result
 
@@ -256,22 +272,21 @@ Most of the time a caller wants only the number, and needs to know that there
 may be none. `formula::number_of(x)` returns a `std::optional<Rational>`: the
 number `x` holds, or nothing. It reads a `Measured<Q>`, an `Outcome<Q>`, the
 `std::expected` that `checked_evaluate` returns, an `Evaluated<Rational>`, a
-`RetryOutcome` and a `RejectionOutcome`:
+`RetryOutcome` and a `RejectionOutcome`. `examples/expressions.cpp` checks the
+`ratio` above with it:
 
 ```cpp
-using namespace formula::literals;
-
-// 0.5 when the formula evaluates to a number; nothing when an input was never
-// measured, when the arithmetic failed, and for a verdict or an invalid result.
-bool const isHalf = formula::number_of(formula::checked_evaluate<Ratio>(ratio, batch)) == 0.5_r;
+bool const overrideWinsOutright = ratio && ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
 ```
 
 It is an `optional` and not a zero because zero is a measurement: a specimen
 that weighed nothing and a specimen never weighed are different results.
-`optional == Rational` is false when the optional is empty, so the comparison
-above is a complete check -- an absent number, an error and a verdict all
-compare unequal to every number. `number_of` says nothing about *why* there is
-no number; ask `Outcome::kind()` or the error for that.
+`optional == Rational` is false when the optional is empty, so
+`number_of(ratio) == 0.5_r` is a complete check on its own -- an absent
+number, an error and a verdict all compare unequal to every number. The
+`ratio &&` in front guards only the `->` that follows it. `number_of` says
+nothing about *why* there is no number; ask `Outcome::kind()` or the error
+for that.
 
 ## Choosing a representation
 
@@ -333,21 +348,24 @@ produce a fractional exponent -- exactly why `Dimension`'s exponents are
 rational rather than integer (see [`docs/dimensions.md`](dimensions.md)).
 `examples/expressions.cpp` computes a circular area from a constant (`pi`)
 and a power (`d^2`), with the result declared in a different unit
-(`SquareMetre`) from the input (`Millimetre`):
+(`SquareMetre`) from the input (`Millimetre`). A bare number in a formula,
+the `4` here, is a dimensionless coefficient:
 
 ```cpp
-constexpr auto circularArea = formula::pi * formula::pow<2>(var<Diameter>) / formula::Rational { 4 };
+constexpr auto circularArea = formula::yields<Area>(formula::pi * formula::pow<2>(var<Diameter>) / 4);
 ```
 
 ```
-circular area of a 103 mm diameter = 0.008332 m2 (computed)
+circular area of a 103 mm diameter = ≈0.008332 m2 (derived)
 ```
 
 `formula::Pi` is a documented rational convergent -- `245850922/78256779`,
 which differs from pi by less than 8e-17 -- and is deliberately **not** pi
 itself: it is the one approximation the exact layer makes on purpose, written
 once so every caller gets the same number and the trace states which number
-it was.
+it was. The area is exact over that fraction, and has no short decimal, so
+the example prints it rounded to six places, which `≈` marks:
+`{:~.6HalfAwayFromZero}` ([Displaying numbers](display.md)).
 
 `checked_exact_nth_root` answers only when the root **is** a rational number.
 The root of 4 is 2 and the root of 9/4 is 3/2, but the root of 2 is
@@ -540,14 +558,17 @@ constexpr auto waterCementRatio =
 // The second formula uses the first by name. Nothing about the first
 // declaration anticipated being reused.
 constexpr auto mixCost =
-    formula::documented(var<UnitPrice> * waterCementRatio,
-                        { .title = "Cost of a mix at a given water/cement ratio", ... });
+    formula::yields<MixCost>(formula::documented(var<UnitPrice> * waterCementRatio,
+                                                 { .title = "Cost of a mix at a given water/cement ratio", ... }));
 ```
 
 There is no separate composition step and no wrapper type. The outer formula
 is simply a larger expression tree, so the dimension check, evaluation,
 rendering, tracing and `document()` all treat the reused sub-tree the way
-they treat any other node.
+they treat any other node. Only the outer formula names its result with
+`yields`, because only it is evaluated: a formula bound to its result is the
+top of a formula, not an operand of one
+([Naming the result once](#naming-the-result-once)).
 
 **Provenance travels upward through the seam.** The outer formula was never
 told about the inner one's citation, but `document()` walks the whole tree
@@ -616,6 +637,9 @@ auto const explained = formula::explain(boundRatio, batch);     // its outcome a
 std::string const written = formula::render(boundRatio);        // "V_w / V_c"
 constexpr auto definition = formula::define(boundRatio);        // Ratio, defined by the formula
 ```
+
+`examples/expressions.cpp` binds its circular area and its water/cement ratio
+this way, and `examples/composition.cpp` its mix cost.
 
 The name is checked where it is written. `yields<Q>` holds `Q` to the
 dimension the expression computes, as `checked_evaluate<Q>` does, and refuses

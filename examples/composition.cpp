@@ -24,12 +24,13 @@
 //     appear once.
 
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
-#include <cstdio>
+#include <print>
 #include <string>
 
 namespace
@@ -47,9 +48,8 @@ inline constexpr formula::Unit Euro { .dimension = formula::base_dimension("EUR"
                                       .symbolText = formula::symbol("EUR"),
                                       .decimals = 2 };
 
-// Money is not a bare number. `var<UnitPrice> + formula::Rational { 1, 2 }`
-// does not compile -- test/negative/money_plus_number.cpp pins the library's
-// message for it.
+// Money is not a bare number. `var<UnitPrice> + 0.5_r` does not compile --
+// test/negative/money_plus_number.cpp pins the library's message for it.
 static_assert(!formula::SameDimension<Euro.dimension, formula::dim::Scalar>);
 
 using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
@@ -74,11 +74,15 @@ constexpr auto waterCementRatio = formula::documented(var<WaterVolume> / var<Cem
 // is an ordinary value of an ordinary node type, so an operator accepts it,
 // its dimension takes part in the dimension check, and its citation stays
 // attached to the sub-tree it describes.
-constexpr auto mixCost = formula::documented(var<UnitPrice> * waterCementRatio,
-                                             { .title = "Cost of a mix at a given water/cement ratio",
-                                               .reference = "Example Standard 9:2021",
-                                               .section = "2.1",
-                                               .text = "Cost scales linearly with the water/cement ratio." });
+//
+// This one is evaluated and explained below, so `yields<MixCost>` names what
+// it computes once, here. The citation goes inside, on the formula it cites.
+constexpr auto mixCost =
+    formula::yields<MixCost>(formula::documented(var<UnitPrice> * waterCementRatio,
+                                                 { .title = "Cost of a mix at a given water/cement ratio",
+                                                   .reference = "Example Standard 9:2021",
+                                                   .section = "2.1",
+                                                   .text = "Cost scales linearly with the water/cement ratio." }));
 
 // The same sub-formula used twice in one tree, for the asymmetry noted at the
 // top of this file.
@@ -90,16 +94,16 @@ int main()
 {
     bool ok = true;
     auto check = [&ok](char const* what, bool condition) {
-        std::printf("%-46s %s\n", what, condition ? "yes" : "NO");
+        std::println("{:<46} {}", what, condition ? "yes" : "NO");
         ok = ok && condition;
     };
 
     // ---- 1. The composed formula renders as one expression ----
     std::string const inner = formula::render(waterCementRatio);
     std::string const outer = formula::render(mixCost);
-    std::printf("inner formula : %s\n", inner.c_str());
-    std::printf("outer formula : %s\n", outer.c_str());
-    std::printf("outer in LaTeX: %s\n", formula::render<formula::Dialect::LaTeX>(mixCost).c_str());
+    std::println("inner formula : {}", inner);
+    std::println("outer formula : {}", outer);
+    std::println("outer in LaTeX: {}", formula::render<formula::Dialect::LaTeX>(mixCost));
 
     check("inner renders as its own expression", inner == "V_w / V_c");
 
@@ -111,26 +115,23 @@ int main()
     check("outer renders the whole composed tree", outer == "c_u * V_w / V_c");
 
     // ---- 2. It evaluates, exactly ----
-    auto const inputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                             formula::Measured<CementVolume> { formula::Rational { 300 } },
-                                             formula::Measured<UnitPrice> { formula::Rational { 250 } });
+    auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                             formula::Measured<CementVolume> { 300 },
+                                             formula::Measured<UnitPrice> { 250 });
 
-    auto const outcome = formula::checked_evaluate<MixCost>(mixCost, inputs);
-    check("the composed formula evaluates", outcome.has_value() && outcome->is_value());
-    if (!outcome.has_value() || !outcome->is_value())
+    auto const outcome = formula::checked_evaluate(mixCost, inputs);
+    auto const cost = formula::number_of(outcome);
+    check("the composed formula evaluates", cost.has_value());
+    if (!cost)
     {
-        std::printf("all checks passed: no\n");
+        std::println("all checks passed: no");
         return 1;
     }
 
     // 250 EUR * (180 l / 300 l) = 250 * 3/5 = 150, with no rounding anywhere:
     // 3/5 is held as 3/5, not as 0.59999999999999998.
-    formula::Rational const cost = outcome->measurement().value();
-    std::printf("cost          : %lld/%lld = %.2f EUR\n",
-                static_cast<long long>(cost.numerator()),
-                static_cast<long long>(cost.denominator()),
-                cost.to_double());
-    check("the result is exactly 150", cost == formula::Rational { 150 });
+    std::println("cost          : {}", *outcome);
+    check("the result is exactly 150", cost == 150);
 
     // ---- 3. Provenance travels upward through the seam ----
     //
@@ -138,25 +139,17 @@ int main()
     // comes back because document() walks the whole tree, and the wrapped
     // sub-tree is part of that tree.
     formula::Documentation const documentation = formula::document(mixCost);
-    std::printf("citations on the outer formula: %zu\n", documentation.citations.size());
+    std::println("citations on the outer formula: {}", documentation.citations.size());
     for (formula::Citation const& citation: documentation.citations)
-        std::printf("  - %.*s [%.*s]\n",
-                    static_cast<int>(citation.title.size()),
-                    citation.title.data(),
-                    static_cast<int>(citation.reference.size()),
-                    citation.reference.data());
+        std::println("  - {} [{}]", citation.title, citation.reference);
 
     check("both citations reach the outer formula", documentation.citations.size() == 2);
 
     // Three symbols, each once, although V_w and V_c are reached through the
     // inner formula rather than written in the outer one.
-    std::printf("symbols on the outer formula  : %zu\n", documentation.symbols.size());
+    std::println("symbols on the outer formula  : {}", documentation.symbols.size());
     for (formula::SymbolEntry const& entry: documentation.symbols)
-        std::printf("  - %.*s (%.*s)\n",
-                    static_cast<int>(entry.symbol.size()),
-                    entry.symbol.data(),
-                    static_cast<int>(entry.description.size()),
-                    entry.description.data());
+        std::println("  - {} ({})", entry.symbol, entry.description);
     check("the symbol table merges both formulas", documentation.symbols.size() == 3);
 
     // ---- 4. The trace shows the inner formula as its own step ----
@@ -165,8 +158,8 @@ int main()
     // water/cement ratio, carrying its own citation, and step 6 consumes it.
     // An auditor reading the trace sees the sub-result the outer formula was
     // built on, not just the final number.
-    formula::Explained<MixCost> const explained = formula::explain<MixCost>(mixCost, inputs);
-    std::printf("trace:\n%s", formula::render_trace(explained.trace, { .maxSteps = 20 }).c_str());
+    auto const explained = formula::explain(mixCost, inputs);
+    std::print("trace:\n{}", formula::render_trace(explained.trace, { .maxSteps = 20 }));
 
     // ---- 5. The asymmetry, stated because it is easy to be surprised by ----
     //
@@ -175,11 +168,11 @@ int main()
     // symbol once. If you are building a reference list from .citations,
     // collapse duplicates yourself.
     formula::Documentation const twice = formula::document(quadraticSurcharge);
-    std::printf("citations when the same formula is used twice: %zu\n", twice.citations.size());
-    std::printf("symbols   when the same formula is used twice: %zu\n", twice.symbols.size());
+    std::println("citations when the same formula is used twice: {}", twice.citations.size());
+    std::println("symbols   when the same formula is used twice: {}", twice.symbols.size());
     check("a doubly used citation is listed twice", twice.citations.size() == 2);
     check("a doubly used symbol is still listed once", twice.symbols.size() == 3);
 
-    std::printf("all checks passed: %s\n", ok ? "yes" : "no");
+    std::println("all checks passed: {}", ok ? "yes" : "no");
     return ok ? 0 : 1;
 }

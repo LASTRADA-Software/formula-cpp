@@ -20,13 +20,17 @@ That is not a rare edge case; it is what binary floating point does with
 decimal input in general. A quantity such as 450 millilitres, stored as
 0,45 litres in a `double` and converted back, is not reliably 450 again --
 the round trip is lossy because 0,45 is not exactly representable in base 2.
-`Rational` makes that round trip exact:
+`Rational` makes that round trip exact. From `examples/exact_numbers.cpp`,
+where `450_r` is the exact number 450 ([Writing an exact
+decimal](#writing-an-exact-decimal)):
 
 ```cpp
-Rational const volumeInMillilitres = *Rational::from_decimal(45, 1);       // 450/1
-Rational const volumeInLitres = volumeInMillilitres / Rational { 1000 };   // 9/20
-Rational const roundTripped = volumeInLitres * Rational { 1000 };
-// roundTripped == volumeInMillilitres, exactly
+Rational const volumeInMillilitres = 450_r;
+
+// Convert to litres by an exact integer factor: multiply, then divide.
+// 450 ml -> 9/20 l, and back to 450 ml with nothing lost.
+Rational const volumeInLitres = volumeInMillilitres / 1000;
+Rational const roundTripped = volumeInLitres * 1000;
 ```
 
 The second reason is more fundamental than accumulated error: rounding rules
@@ -44,8 +48,9 @@ is the only place precision is deliberately given up.
 |---|---|---|
 | an integer | `Rational { 7 }` | 7/1 |
 | a fraction | `Rational { 3, 4 }` | 3/4 |
-| an exact decimal | `Rational::from_decimal(45, -2)` | 9/20 |
-| a whole number of tens | `Rational::from_decimal(45, 1)` | 450/1 |
+| an exact decimal | `0.45_r` | 9/20 |
+| an exact decimal from digits known only at run time | `Rational::from_decimal(45, -2)` | 9/20 |
+| a whole number of tens, the same way | `Rational::from_decimal(45, 1)` | 450/1 |
 | the exact value of a `double` | `Rational::from_double_exact(0.45)` | a power-of-two denominator |
 | a measured `double` on a known scale | `rational_from_double(0.45, DecimalPlaces { 2 }, mode)` | 9/20 |
 
@@ -54,12 +59,18 @@ Spelled out, as runnable code:
 ```cpp
 Rational const a { 7 };                                              // 7/1
 Rational const b { 3, 4 };                                           // 3/4
-Rational const c = *Rational::from_decimal(45, -2);                  // 9/20
-Rational const d = *Rational::from_decimal(45, 1);                   // 450/1
-Rational const e = *Rational::from_double_exact(0.45);               // a power-of-two denominator
-Rational const f =
+Rational const c = 0.45_r;                                           // 9/20
+Rational const d = *Rational::from_decimal(45, -2);                  // 9/20
+Rational const e = *Rational::from_decimal(45, 1);                   // 450/1
+Rational const f = *Rational::from_double_exact(0.45);               // a power-of-two denominator
+Rational const g =
     *formula::rational_from_double(0.45, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero); // 9/20
 ```
+
+`0.45_r` is read from its spelling at compile time
+([Writing an exact decimal](#writing-an-exact-decimal)). `from_decimal`
+writes the same number from a mantissa and a power of ten that may be known
+only at run time.
 
 `from_decimal`, `from_double_exact` and `rational_from_double` all return
 `std::expected<Rational, ArithmeticError>` because the conversion can fail --
@@ -187,7 +198,7 @@ Beyond rounding to a whole number, three forms round to a place:
 
 ```cpp
 // Decimal places: 45,67 rounded to one decimal place is 45,7, i.e. 457/10.
-Rational const value = *Rational::from_decimal(4567, -2);
+Rational const value = 45.67_r;
 Rational const toOneDecimal = formula::round(value, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero);
 
 // Significant digits: the same 45,67 rounded to two significant digits is 46 -- a
@@ -195,7 +206,7 @@ Rational const toOneDecimal = formula::round(value, DecimalPlaces { 1 }, Roundin
 Rational const toTwoSignificant = formula::round(value, SignificantDigits { 2 }, RoundingMode::HalfAwayFromZero);
 
 // Rounding to an arbitrary step, the primitive the two forms above are built on.
-Rational const snapped = formula::round_to_multiple(Rational { 7 }, Rational { 5 }, RoundingMode::HalfAwayFromZero); // 5
+Rational const snapped = formula::round_to_multiple(7, 5, RoundingMode::HalfAwayFromZero); // 5
 ```
 
 A `Rational` is written as text as a fraction by default. To write it as a
@@ -213,13 +224,11 @@ methods, and a library that rounds only on output cannot express the
 difference:
 
 ```cpp
-Rational const mean = Rational { 302, 3 }; // 100,666...
+Rational const mean { 302, 3 }; // 100,666...
 
-Rational const roundedFirst =
-    formula::round(mean, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero) * Rational { 2 }; // 202
+Rational const roundedFirst = formula::round(mean, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero) * 2; // 202
 
-Rational const roundedLast =
-    formula::round(mean * Rational { 2 }, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero); // 201
+Rational const roundedLast = formula::round(mean * 2, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero); // 201
 
 // roundedFirst != roundedLast
 ```

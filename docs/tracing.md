@@ -180,10 +180,11 @@ cannot survive past that evaluation into a runtime object: the standard
 requires every allocation a constant expression makes to be released again
 before the expression finishes. `explain`'s whole purpose is to hand back a
 `Trace` that keeps its steps, which is exactly the kind of surviving
-allocation a constant expression is not allowed to produce. Writing
+allocation a constant expression is not allowed to produce. Writing the
+test's call above as a constant,
 
 ```cpp
-constexpr auto explained = formula::explain<Density>(densityFormula, env);
+constexpr auto explained = formula::explain<Density>(density, environment);
 ```
 
 fails to compile, verified with cl 19.51:
@@ -201,11 +202,13 @@ the working.
 
 `explain` traces a formula. The other verbs that take a sink -- a method, a
 curve, a rejection, a constraint, a conformity check -- have a twin of their
-own that returns the verb's result together with the trace it recorded:
+own that returns the verb's result together with the trace it recorded. Over
+`compressiveStrength`, the method of three variants that
+`examples/methods_and_overlays.cpp` declares, and that example's `specimen`:
 
 ```cpp
-auto const derived = formula::explain_method<Cube>(strengthMethod, specimen);
-auto const verdicts = formula::explain_check_all(constraintSet, specimen);
+auto const derived = formula::explain_method<Cube>(compressiveStrength, specimen);
+auto const verdicts = formula::explain_check_all(compressiveStrength.constraintSet, specimen);
 ```
 
 `derived.outcome` is exactly what `evaluate_method<Cube>` returns, and
@@ -219,12 +222,16 @@ argument, as `explain` does.
 
 A verb without a twin -- or one of your own that takes a sink -- goes through
 `traced`, which gives the evaluation a `RecordingSink` and returns what the
-evaluation returned beside what the sink recorded:
+evaluation returned beside what the sink recorded. Over the `ratio` and the
+`inputs` of `examples/tracing.cpp` ([Reading a derivation](#reading-a-derivation)):
 
 ```cpp
 auto const run = formula::traced([&](auto recordingSink)
-                                 { return formula::checked_evaluate<Density>(densityFormula, env, recordingSink); });
+                                 { return formula::checked_evaluate<WaterCementRatio>(ratio, inputs, recordingSink); });
 ```
+
+`run.outcome` is the `std::expected` that `checked_evaluate` returned, and
+`run.trace` the four steps below.
 
 `explain_series` and `explain_retry` share the shape: `outcome`, then `trace`.
 A failure is in `outcome`, and `trace` holds the steps up to it; a value that
@@ -240,9 +247,13 @@ was typed in rather than derived leaves `trace` empty, as it does for
 same invented citation attached by `documented()` -- and prints its trace:
 
 ```cpp
-formula::Explained<WaterCementRatio> const explained = formula::explain<WaterCementRatio>(ratio, inputs);
-std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 10 });
-std::printf("%s", trace.c_str());
+auto const explained = formula::explain<WaterCementRatio>(ratio, inputs);
+
+// render_trace has no default for maxSteps: TraceRenderOptions::maxSteps
+// is a StepLimit, which has no default constructor, so a caller who
+// writes render_trace(explained.trace, {}) does not compile, rather than
+// risking an unbounded dump of a derivation many times this size.
+std::print("{}", formula::render_trace(explained.trace, { .maxSteps = 10 }));
 ```
 
 which prints, verbatim:
@@ -396,10 +407,8 @@ of its own, `StepKind::VariantSelected`, and a derivation says which variant
 fired and on what:
 
 ```cpp
-formula::Trace<> trace {};
-formula::RecordingSink<> sink { trace };
-(void) formula::evaluate_method<specimen::Cube>(compressiveStrength, inputs, sink);
-std::printf("%s", formula::render_trace(trace, { .maxSteps = 20 }).c_str());
+auto const derived = formula::explain_method<specimen::Cube>(compressiveStrength, inputs);
+std::print("{}", formula::render_trace(derived.trace, { .maxSteps = 20 }));
 ```
 
 ```
@@ -681,11 +690,11 @@ quantity's symbol **when the formula is evaluated**, and `render_trace` only
 reads it back. So a jurisdiction's vocabulary (see [Citations and rendering](citations.md)) has to
 be given to the sink, not only to `render()` -- a page rendered in one
 vocabulary and a trace recorded in another would name one quantity with two
-different letters:
+different letters. An `explain_*` twin hands the vocabulary it is given to
+the sink it builds:
 
 ```cpp
-formula::Trace<> southern {};
-(void) formula::check(limit, crossedInputs, formula::RecordingSink { southern, south });
+auto const southern = formula::explain_check(limit, crossedInputs, south);
 ```
 
 ```
@@ -695,8 +704,9 @@ formula::Trace<> southern {};
 ```
 
 (`test/vocabulary_tests.cpp`, `"a constraint's trace names quantities in the
-sink's vocabulary"`.) `explain` takes the vocabulary as an optional third
-argument. Those three step kinds are the only ones that name a quantity.
+sink's vocabulary"`, which gives `south` to a `RecordingSink` of its own.)
+`explain` takes the vocabulary as an optional third argument, and every
+`explain_*` twin and `traced` as an optional last one. Those three step kinds are the only ones that name a quantity.
 Every other step names none -- arithmetic, a lookup, a rounding rule, a
 constraint, a method's constraints, a variant selection and a replaced
 variant refer to their operands by number -- and so reaches the vocabulary through the steps beneath

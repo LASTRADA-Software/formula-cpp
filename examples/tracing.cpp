@@ -19,13 +19,13 @@
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
-#include <cstdio>
-#include <string>
+#include <print>
 
 namespace
 {
 namespace unit = formula::unit;
 using formula::var;
+using namespace formula::literals;
 
 using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", unit::Litre>;
 using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
@@ -45,34 +45,31 @@ constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
 
 int main()
 {
-    auto const inputs = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                             formula::Measured<CementVolume> { formula::Rational { 300 } });
+    auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                             formula::Measured<CementVolume> { 300 });
 
     // explain<Result>(expression, environment) returns exactly what
     // evaluate<Result>(expression, environment) would have -- an
     // Outcome<Result> -- plus a Trace of every step the evaluator took to
     // reach it. Tracing observes; it does not change the answer.
-    formula::Explained<WaterCementRatio> const explained = formula::explain<WaterCementRatio>(ratio, inputs);
+    auto const explained = formula::explain<WaterCementRatio>(ratio, inputs);
 
     // render_trace has no default for maxSteps: TraceRenderOptions::maxSteps
     // is a StepLimit, which has no default constructor, so a caller who
     // writes render_trace(explained.trace, {}) does not compile, rather than
     // risking an unbounded dump of a derivation many times this size.
-    std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 10 });
-    std::printf("%s", trace.c_str());
+    std::print("{}", formula::render_trace(explained.trace, { .maxSteps = 10 }));
 
-    // Checked before use: is_value() and measurement() cover Value, but an
-    // Outcome may also be Empty, Verdict or Invalid, and reading measurement()
-    // on one of those would read a default-constructed Measured<Q> rather than
-    // fail loudly. Nothing in this program can make it anything but Value;
-    // an example is teaching material, and the check costs nothing to show.
-    bool const evaluatedCorrectly =
-        explained.outcome.is_value() && explained.outcome.measurement().value() == formula::Rational { 3, 5 };
+    // An Outcome may also be Empty, Verdict or Invalid, and number_of is
+    // empty for each of those, so comparing it is a complete check. Nothing in
+    // this program can make it anything but a value; an example is teaching
+    // material, and the check costs nothing to show.
+    bool const evaluatedCorrectly = formula::number_of(explained.outcome) == 0.6_r;
     // One step per node: the two variables, the division, and the documented
     // wrapper around it.
     bool const tracedCorrectly = explained.trace.steps.size() == 4;
 
     bool const allChecksPassed = evaluatedCorrectly && tracedCorrectly;
-    std::printf("all checks passed: %s\n", allChecksPassed ? "yes" : "no");
+    std::println("all checks passed: {}", allChecksPassed ? "yes" : "no");
     return allChecksPassed ? 0 : 1;
 }

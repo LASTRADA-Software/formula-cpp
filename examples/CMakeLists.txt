@@ -40,8 +40,8 @@ function(formula_add_example name source expectedOutput)
         PASS_REGULAR_EXPRESSION "${expectedOutput}.*overflow census: ")
 endfunction()
 
-formula_add_example(simple simple.cpp "w/c = 0.600000 \\(computed\\)")
-formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes")
+formula_add_example(simple simple.cpp "w/c = 0.6 \\(derived\\)")
+formula_add_example(exact_numbers exact_numbers.cpp "ten tenths == one: yes.*all checks passed: yes")
 formula_add_example(dimensions_and_units dimensions_and_units.cpp "all checks passed: yes")
 
 # Every ```text block of docs/dimensions.md must be a run of lines the example

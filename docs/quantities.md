@@ -266,10 +266,11 @@ density: a wrong label on a right number, worse than a wrong number because
 it looks authoritative. Write `formula::combine<Density>(mass, volume,
 [](Rational m, Rational v) { return m / v; })` instead. From the worked
 example, a present volume combined with an absent mass, into a `Density`
-that shares neither operand's tag, symbol or unit:
+that shares neither operand's tag, symbol or unit, printed as `std::format`
+writes an absent `Measured`:
 
 ```
-a present volume combined with an absent mass: absent
+a present volume combined with an absent mass: (not measured)
 ```
 
 `formula::checked_convert_to<R>` converts a `Measured<Q>` into a
@@ -280,10 +281,12 @@ does not compile, and it draws one message, so a conversion nobody could
 perform cannot look like it succeeded merely because there was no value to
 get wrong. (Before this check moved to compile time, such a call compiled
 and returned `ArithmeticError::DomainError`.) With no value present the
-result is absent:
+result is absent. The worked example converts one with `convert_to`, the
+throwing twin described [below](#bounds-precision-and-conversion), since
+nothing in it can fail:
 
 ```
-an absent measurement, converted: still absent
+an absent measurement, converted: (not measured)
 ```
 
 ## Supplying values
@@ -328,7 +331,7 @@ are overloaded for `Measured<Q>` alongside the `Rational`-and-`Unit` forms of
 rounding an absent measurement leaves it absent,
 
 ```
-an absent measurement, rounded: still absent
+an absent measurement, rounded: (not measured)
 ```
 
 and checking an absent measurement against its unit's declared bounds
@@ -355,16 +358,26 @@ unit rather than needing one passed alongside it. From the worked example,
 450 l converted to m³:
 
 ```
-450 l converted to m3 = 9/20
+450 l converted to m3 = 0.45 m3
 ```
 
 The conversion, the rounding and the bounds check each have a throwing twin,
-for callers who would only rethrow the error: `formula::convert_to<R>`, `formula::round_to_declared` and
-`formula::within_bounds`, which take the same arguments and return the value
-itself, and throw `ArithmeticException` where the `checked_` form returns an
-error. Absence behaves as above -- an absent measurement converts and rounds to
-an absent one and is `NotMeasured` for its bounds -- and a conversion across
-dimensions does not compile in either spelling.
+for callers who would only rethrow the error: `formula::convert_to<R>`,
+`formula::round_to_declared` and `formula::within_bounds`, which take the
+same arguments and return the value itself, and throw `ArithmeticException`
+where the `checked_` form returns an error. Absence behaves as above -- an
+absent measurement converts and rounds to an absent one and is `NotMeasured`
+for its bounds -- and a conversion across dimensions does not compile in
+either spelling. The worked example uses the twins, since nothing in it can
+fail. Its absent measurement is converted, rounded and checked by these
+lines:
+
+```cpp
+Measured<WaterVolume> const absentVolume {};
+auto const convertedAbsent = formula::convert_to<VolumeInCubicMetres>(absentVolume);
+auto const roundedAbsent = formula::round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
+auto const boundsOfAbsent = formula::within_bounds(absentVolume);
+```
 
 ## Limits
 

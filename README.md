@@ -6,10 +6,6 @@ Write a formula once, with ordinary operators. Get back a number, a rendering, a
 documentation page — from the same declaration.
 
 ```cpp
-#include <formula-cpp/formula.hpp>
-#include <formula-cpp/document.hpp>
-#include <formula-cpp/render.hpp>
-
 namespace unit = formula::unit;
 using formula::var;
 
@@ -18,30 +14,44 @@ using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective w
 using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", unit::Litre>;
 using WaterCementRatio = formula::Quantity<struct WaterCementRatioTag, "w/c", "ratio of water to cement", unit::One>;
 
-// The formula, and where it comes from, declared together.
+// The formula and its citation, declared together: documented() attaches the
+// citation to the division, and forwards that division's dimension unchanged.
 constexpr auto ratio = formula::documented(var<WaterVolume> / var<CementVolume>,
                                            { .title = "Water/cement ratio",
                                              .reference = "Example Standard 1:2020",
                                              .section = "5.4.2",
-                                             .equation = "(3)" });
+                                             .equation = "(3)",
+                                             .text = "Ratio of water content to cement content." });
 ```
 
-That single declaration answers four different questions:
+That single declaration answers four different questions: what the formula
+is, as plain text and as LaTeX; what its symbols mean and where it comes from;
+and what it computes.
 
 ```cpp
-formula::render(ratio);                          // "V_w / V_c"
-formula::render<formula::Dialect::LaTeX>(ratio); // "\frac{V_w}{V_c}"
-
-formula::document(ratio);   // the rendered formula, its citation, and a symbol table:
-                            //   V_w = effective water content [l]
-                            //   V_c = cement content [l]
-
-auto const environment = formula::environment(formula::Measured<WaterVolume> { formula::Rational { 180 } },
-                                              formula::Measured<CementVolume> { formula::Rational { 300 } });
-formula::evaluate<WaterCementRatio>(ratio, environment);   // 0.6, and it knows it computed it
+std::string const plain = formula::render(ratio);
+std::string const latex = formula::render<formula::Dialect::LaTeX>(ratio);
+formula::Documentation const documentation = formula::document(ratio);
+auto const inputs = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                         formula::Measured<CementVolume> { 300 });
+auto const result = formula::checked_evaluate<WaterCementRatio>(ratio, inputs);
 ```
 
-The output above is what `examples/citations.cpp` actually prints.
+`examples/citations.cpp` prints the four answers:
+
+```
+plain: V_w / V_c
+latex: \frac{V_w}{V_c}
+symbol: V_w = effective water content [l]
+symbol: V_c = cement content [l]
+citation: Water/cement ratio, Example Standard 1:2020, 5.4.2, (3)
+w/c = 0.6 (derived)
+```
+
+`0.6` is exact, and `derived` says the library computed it rather than a
+person typing it in. The text comes from `render.hpp` and `document.hpp`, and
+the printing from `format.hpp`; the umbrella header `formula.hpp` holds the
+rest (see [Copy the headers](#copy-the-headers)).
 
 A quantity can also be declared as a struct deriving from `formula::Quantity`,
 `struct WaterVolume: formula::Quantity<WaterVolume, ...> {};`. Both spellings
@@ -51,12 +61,13 @@ guide](docs/quantities.md#declaring-a-quantity) says what each costs.
 ## See it work
 
 Every block below is real code from `examples/`, with the output those programs
-actually print.
+actually print. The one mistake that must not compile is shown from
+`test/negative/`, which pins it.
 
 ### A dimensional mistake is a compile error, not a wrong number
 
 ```cpp
-constexpr auto broken = formula::var<Volume> + formula::var<Length>;
+inline constexpr auto broken = formula::var<Volume> + formula::var<Length>;
 ```
 
 ```
@@ -83,24 +94,31 @@ diagnostic as the template arguments of RequireProvided'
 formula mentions either — the conversion is part of what the declaration means.
 
 ```cpp
-constexpr auto circularArea = formula::pi * formula::pow<2>(var<Diameter>) / formula::Rational { 4 };
+constexpr auto circularArea = formula::yields<Area>(formula::pi * formula::pow<2>(var<Diameter>) / 4);
+```
 
-constexpr auto known = formula::environment(formula::Measured<Diameter> { formula::Rational { 103 } });
-constexpr auto area  = formula::checked_evaluate<Area>(circularArea, known);
+`yields<Area>` names the result where the formula is written, so the call that
+evaluates it names none:
+
+```cpp
+constexpr auto diameterKnown = formula::environment(formula::Measured<Diameter> { 103 });
+constexpr auto area = formula::checked_evaluate(circularArea, diameterKnown);
 ```
 
 ```
-circular area of a 103 mm diameter = 0.008332 m2 (computed)
-2500 g reported as m = 2.500000 kg
+circular area of a 103 mm diameter = ≈0.008332 m2 (derived)
+2500 g reported as m = 2.5 kg
 ```
 
-Note `constexpr`: that area was computed at compile time.
+Note `constexpr`: that area was computed at compile time. The area is held
+exactly, with `formula::pi` an exact fraction close to pi, and has no short
+decimal, so it is printed rounded to six places and marked `≈`.
 
 ### A measurement nobody took stays missing
 
 ```cpp
-constexpr auto unknown = formula::environment(formula::Measured<Diameter>::absent());
-constexpr auto empty   = formula::checked_evaluate<Area>(circularArea, unknown);
+constexpr auto diameterUnknown = formula::environment(formula::Measured<Diameter>::absent());
+constexpr auto emptyArea = formula::checked_evaluate(circularArea, diameterUnknown);
 ```
 
 ```
@@ -114,21 +132,22 @@ from "this is zero", and the difference matters when someone signs off on it.
 ### A number a person typed in never masquerades as a computed one
 
 ```cpp
-auto const batch = formula::environment(
-    formula::Measured<WaterVolume> { formula::Rational { 180 } },
-    formula::Measured<CementVolume> { formula::Rational { 300 } },
-    formula::entered(formula::Measured<WaterCementRatio> { formula::Rational { 1, 2 } }));
-
-auto const ratio = formula::checked_evaluate<WaterCementRatio>(waterCementRatio, batch);
+auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
+                                        formula::Measured<CementVolume> { 300 },
+                                        formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
+auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
 ```
 
 ```
-w/c = 0.500000 (entered)
+w/c = 0.5 (manually entered)
 ```
 
-The formula would have computed 0.6. A person entered 0.5, so that is the
-answer — and `ratio->source()` says `ManuallyEntered`, so a report can show
-which numbers were derived and which were asserted.
+Here `waterCementRatio` is
+`formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>)`, and
+`0.5_r` is the exact decimal one half, never a `double`. The formula would
+have computed 0.6. A person entered 0.5, so that is the answer — and
+`ratio->source()` is `ValueSource::ManuallyEntered`, printed above, so a report
+can show which numbers were derived and which were asserted.
 
 ### Arithmetic that does not drift
 
@@ -185,8 +204,13 @@ a `Trace` — one step per node, each naming the earlier steps it consumed.
 `render_trace()` turns that into text, bounded by a limit you choose:
 
 ```cpp
-formula::Explained<WaterCementRatio> const explained = formula::explain<WaterCementRatio>(ratio, inputs);
-std::string const trace = formula::render_trace(explained.trace, { .maxSteps = 10 });
+auto const explained = formula::explain<WaterCementRatio>(ratio, inputs);
+
+// render_trace has no default for maxSteps: TraceRenderOptions::maxSteps
+// is a StepLimit, which has no default constructor, so a caller who
+// writes render_trace(explained.trace, {}) does not compile, rather than
+// risking an unbounded dump of a derivation many times this size.
+std::print("{}", formula::render_trace(explained.trace, { .maxSteps = 10 }));
 ```
 
 ```
