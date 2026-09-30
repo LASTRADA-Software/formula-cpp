@@ -113,12 +113,12 @@ Usable for what is listed as shipped, and still growing. The public API may chan
 | Statistics, precision limits, outlier rejection | shipped |
 | Other samples and other tests: records, context, lineage | shipped |
 | Opaque operations (least squares), bounded retry | shipped |
-| Values the exact layer cannot hold, reported at a declared precision (`rounded_output`) | next release |
-| Logarithms and exponentials, rounded exactly to declared places | next release |
-| Least squares over observations, with R², and several regressors | next release |
-| Power, energy and Fahrenheit units | next release |
-| Named base dimensions such as money | next release |
-| Decimals in traces, rendered formulas and `std::format` | next release |
-| Calculations: definitions, dependency graph, incremental worksheets | next release |
+| Values the exact layer cannot hold, reported at a declared precision (`rounded_output`) | shipped |
+| Logarithms and exponentials, rounded exactly to declared places | shipped |
+| Least squares over observations, with R², and several regressors | shipped |
+| Power, energy and Fahrenheit units | shipped |
+| Named base dimensions such as money | shipped |
+| Decimals in traces, rendered formulas and `std::format` | shipped |
+| Calculations: definitions, dependency graph, incremental worksheets | shipped |
 
 Apache-2.0. Source at [github.com/LASTRADA-Software/formula-cpp](https://github.com/LASTRADA-Software/formula-cpp).

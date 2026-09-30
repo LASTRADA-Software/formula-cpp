@@ -10,8 +10,8 @@
 /// The major version -- bumped for a breaking change.
 #define FORMULA_VERSION_MAJOR 0
 /// The minor version -- bumped for a compatible feature addition.
-#define FORMULA_VERSION_MINOR 1
+#define FORMULA_VERSION_MINOR 2
 /// The patch version -- bumped for a compatible fix.
 #define FORMULA_VERSION_PATCH 0
 /// The full version, as a string literal.
-#define FORMULA_VERSION_STRING "0.1.0"
+#define FORMULA_VERSION_STRING "0.2.0"
