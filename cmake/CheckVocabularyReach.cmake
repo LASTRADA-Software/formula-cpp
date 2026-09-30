@@ -27,7 +27,10 @@
 #    overloads that forward to their dialect counterparts -- a
 #    sub-expression rendered that way is in the declared symbols;
 #  - `symbol_of<...>()` with no argument, which reads `Describe<Q>::symbol`
-#    through the default vocabulary and ignores the one the surface was given;
+#    through the default vocabulary and ignores the one the surface was given
+#    (angle brackets and one level of parentheses inside the template argument
+#    are matched, as in `Wrapper<Q>` and `decltype(x)`; deeper parentheses, as
+#    in `decltype(f(x))`, are not caught);
 #  - a two-argument `render<...>(x, renderOptions)` or
 #    `document<...>(x, renderOptions)` call, outside the public overloads that
 #    forward `RenderOptions` -- it names no vocabulary, so it resolves the
@@ -74,7 +77,7 @@ foreach(file IN LISTS surfaces)
     if(code MATCHES "[^_A-Za-z0-9]render<[^<>()]*>[(][^,()]*[)]")
         string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- rendered without the vocabulary")
     endif()
-    if(code MATCHES "symbol_of<([^<>()]|[(][^()]*[)])*>[(][ \t]*[)]")
+    if(code MATCHES "symbol_of<([^();{}\n]|[(][^();{}\n]*[)])*>[(][ \t]*[)]")
         string(APPEND offenders "\n  ${rel}: ${CMAKE_MATCH_0} -- a symbol read through the default vocabulary")
     endif()
     if(code MATCHES "[^_A-Za-z0-9](render|document)(<[^<>()]*>)?[(][^,()]*, renderOptions[)]")

@@ -609,10 +609,11 @@ namespace detail
 ///     inline constexpr ExactLookupNode<ThreeKeys, unit::One> node {
 ///         {}, { 0.781_r }, Shape::Prism };
 ///
-/// compiled, linked, and evaluated the two rows nobody typed as `0` -- checked
-/// against the installed package on all three node kinds, all three of which
-/// did it. The factory's parameter type cannot see that call, because there is
-/// no call. Making the member itself a `Corrections<N>` is what closes it: the
+/// compiled (it is now refused), linked, and evaluated the two rows nobody
+/// typed as `0` -- checked against the installed package on all three node
+/// kinds, all three of which did it. The factory's parameter type cannot see
+/// that call, because there is no call. Making the member itself a
+/// `Corrections<N>` is what closes it: the
 /// braced list now initialises this type, a short one selects the
 /// arity-mismatch constructor below, and its `static_assert` names both counts
 /// at the offending line. `lookup_short_corrections_no_factory.cpp` and its
