@@ -47,7 +47,8 @@
 // and a rejection of raw observations, on the same surfaces; a consumer's
 // opaque operation's output, evaluated exactly and in double, and rounded
 // where it is used, traced, rendered and documented; a least-squares fit,
-// exact and rounded where it is used; a retry over recorded determinations,
+// exact and rounded where it is used, and a line through raw observations,
+// exactly, rounded and in double; a retry over recorded determinations,
 // evaluated, traced, rendered and documented; and the four table validators;
 // and `record_key`, `sample_id`, `test_id`, `record`, `Record::unbound`,
 // `record_context`, its `this_record`,
@@ -144,7 +145,8 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     why, word, words, x, y, z, variance, spread, deviation, deviations, gap, statistic, survivors, rejected, sampled,
     counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
     statistics, batch, lineage, role, gated, there, reference, scope, attribute, comparand, subject, points, slope,
-    intercept, fit, attempt, attempts, verdict, previous, judgement, accepted, exhausted;
+    intercept, fit, attempt, attempts, verdict, previous, judgement, accepted, exhausted, observation, observations,
+    pivot, design, coefficient, coefficients;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -850,6 +852,26 @@ ConsumerGlobalsProbe probe_consumer_globals()
     auto const roundedFitSlope = formula::checked_evaluate<Factor>(
         formula::rounded_output<"slope", unit::One, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(edgeFit), specimen);
     probe.checks.push_back(roundedFitSlope.has_value() && roundedFitSlope->measurement().value() == formula::Rational { 83, 125 });
+    // A line through raw observations: edges of 103, 163 and 241 mm against
+    // twice each plus 1 mm, 207, 327 and 483 mm -- slope 2, R^2 1, exactly,
+    // rounded and in double.
+    std::array<formula::Rational, 3> const agreedReadings { formula::Rational { 207 }, formula::Rational { 327 },
+                                                            formula::Rational { 483 } };
+    auto const lineSample =
+        formula::environment(*edgeObserved, *formula::MeasuredObservations<AgreedEdge, 4>::from(agreedReadings));
+    constexpr auto edgeLine = formula::linear_least_squares(formula::observations<EdgeX, 4>,
+                                                            formula::observations<AgreedEdge, 4>,
+                                                            { .reference = "Example Standard 3" });
+    auto const lineSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeLine), lineSample);
+    auto const lineFit = formula::checked_evaluate<Factor>(
+        formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(
+            edgeLine),
+        lineSample);
+    auto const lineInDouble = formula::checked_evaluate_si<double>(formula::opaque_output<"slope">(edgeLine), lineSample);
+    probe.checks.push_back(lineSlope.has_value() && lineSlope->measurement().value() == formula::Rational { 2 }
+                           && lineFit.has_value() && lineFit->measurement().value() == formula::Rational { 1 }
+                           && lineInDouble.has_value() && lineInDouble->has_value() && **lineInDouble > 1.999
+                           && **lineInDouble < 2.001);
     // A retry over the two recorded edges, evaluated, traced, rendered and
     // documented in all three dialects.
     constexpr auto edgesAgree = formula::when(formula::this_attempt<AgreedEdge> >= formula::previous_attempt<AgreedEdge>,

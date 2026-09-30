@@ -16,6 +16,16 @@ may break it, and each such change is recorded here.
   the capacity, and empty when none were -- in any `Rep`, `double` included. The library compares no counts: an
   operation over two independent samples takes two counts, and one that pairs its inputs row by row checks its
   counts itself.
+- `linear_least_squares(observations<X, C>, observations<Y, C2>, citation)` fits a straight line through raw
+  observations, paired row by row, whose number is data. Its outputs are `intercept`, `slope`, `r squared` -- the
+  coefficient of determination, dimensionless -- and `points`, the number of observations fitted. Decided before
+  any sum, in every representation, and each the fit's own `DomainError`: both inputs hold as many observations, at
+  least two, the points are not all equal, and the values are not all equal, so a flat response never passes an R²
+  acceptance. Exact through `opaque_output`, where the four outputs answer or all fail with `Overflow` when one
+  does not fit a `Rational`; correctly rounded through `rounded_output`, which rounds the kernel's wide result and so
+  answers where the exact route overflows -- within the kernel's width, and beyond it `Overflow`; approximately, and
+  untraced, through `checked_evaluate_si<double>`. One quantity read as both points and values, or observations without a
+  citation, is refused where it is written.
 - `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
   `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
   into kilowatt-hours without a rounded factor.
@@ -249,6 +259,9 @@ may break it, and each such change is recorded here.
   finds the library's function by argument-dependent lookup; one whose argument is a number still finds
   only the standard library's, which the library's refuses. A consumer's own function of one of these
   names that accepts a formula node now makes such a call ambiguous.
+- `linear_least_squares` given anything but a curve or two sets of observations says "formula:
+  linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value
+  series with curve(domain, values), or read both with observations<Q, Capacity>", which names both ways to call it.
 - `OpaqueCallFailure` has a last member, `site` (`FailureSite`, default `FailureSite::ResultElement`), so an
   aggregate initialisation naming the members before it is unchanged. Raw observations that fail to convert at
   observation k relay `site == FailureSite::InputObservation`, and the call's trace line says

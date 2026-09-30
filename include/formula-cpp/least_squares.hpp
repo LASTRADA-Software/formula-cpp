@@ -4,7 +4,10 @@
 /// @file
 /// Ordinary least squares: the straight line `y = a + b x` fitted to a curve's
 /// points and values, as a named opaque operation (`opaque.hpp`) whose two
-/// outputs, `intercept` and `slope`, are ordinary nodes.
+/// outputs, `intercept` and `slope`, are ordinary nodes; or fitted through raw
+/// observations (`observations.hpp`), paired row by row and as many as were
+/// made, by a second operation that also reports `r squared`, the coefficient
+/// of determination, and `points`, the number of observations it fitted.
 ///
 /// A fit is not an expression tree: its coefficients come from sums, over the
 /// points, of squares and products of each point's coordinates about their
@@ -54,16 +57,29 @@
 /// itself (`curve.hpp`), so through a curve that case is the curve's failure;
 /// one point is the fit's.
 ///
+/// **A line through raw observations** is decided by the curve fit's
+/// pre-checks, and one more: the values are not all equal. It answers three
+/// ways. Exactly through `opaque_output`, in the wide integers of
+/// `detail/least_squares_kernel.hpp`, every output a `Rational` or all of them
+/// `Overflow`. Correctly rounded through `rounded_output`, which rounds the
+/// kernel's wide result and so answers where the exact route overflows --
+/// within the kernel's width, and beyond it `Overflow`. Approximately in
+/// `double` through `checked_evaluate_si<double>`, untraced. A flat response is its own `DomainError`, so an R² acceptance is
+/// never passed by one.
+///
 /// Nothing else is offered: no line through the origin, no weights, no
-/// residuals or coefficient of determination.
+/// residuals; R² only through raw observations, whose fit is a separate
+/// operation with its own pinned lines.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/detail/least_squares_kernel.hpp>
 #include <formula-cpp/detail/wide_int.hpp>
 #include <formula-cpp/detail/wide_rounding.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
+#include <formula-cpp/observations.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/rational.hpp>
 
@@ -75,6 +91,7 @@
 #include <span>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 
 namespace formula
 {
@@ -292,6 +309,72 @@ struct LinearLeastSquares
     }
 };
 
+/// Ordinary least squares over raw observations: `y = intercept + slope x`,
+/// with `x` the first input's observations and `y` the second's, paired row
+/// by row -- observation i of each belongs to row i, so both are built from
+/// the same rows. How many there are is data. Besides the coefficients it
+/// reports `r squared`, the coefficient of determination, S_xy^2 / (S_xx
+/// S_yy), and `points`, the number of observations it fitted, exact in
+/// every representation -- for degrees of freedom `n - 2`, say.
+///
+/// Decided exactly, on the observations themselves and before any sum, in
+/// every `Rep`, each the fit's own `DomainError`: both inputs hold as many
+/// observations, at least two, the points are not all equal, and the values
+/// are not all equal -- R^2 would be 0/0, so a flat response never passes an
+/// R^2 acceptance.
+///
+/// Three routes. `compute_exact`, which `rounded_output` rounds, is the exact
+/// kernel (`detail/least_squares_kernel.hpp`) in wide integers.
+/// `compute<Rational>`, behind `opaque_output`, is the same kernel with every
+/// output narrowed to a `Rational`: all four answer, or all fail with
+/// `Overflow` when one does not fit. `compute<double>`, behind
+/// `checked_evaluate_si<double>`, is the kernel's approximate route, untraced.
+struct LinearLeastSquaresOfObservations
+{
+    /// What the trace calls it: the curve fit's name, since it fits the same line.
+    static constexpr std::string_view name = "linear least squares";
+    /// Two sets of raw observations: the points, then the values.
+    static constexpr std::array shapes { InputShape::Observations, InputShape::Observations };
+    /// The outputs, in this order.
+    static constexpr std::array<std::string_view, 4> outputs { "intercept", "slope", "r squared", "points" };
+    /// The exact kernel's width for one regressor.
+    static constexpr std::size_t exact_limbs = detail::regression_limbs(1);
+
+    /// `intercept` in the values' dimension, `slope` in the values' over the
+    /// points', `r squared` and `points` bare numbers. Any two dimensions are
+    /// accepted.
+    static consteval std::optional<std::array<Dimension, 4>> output_dimensions(
+        std::array<Dimension, 2> pointsAndValues) noexcept
+    {
+        return std::array { pointsAndValues[1], pointsAndValues[1] / pointsAndValues[0], dim::Scalar, dim::Scalar };
+    }
+
+    /// The fit, exactly, as wide fractions in coherent units.
+    static constexpr std::expected<std::array<detail::WideRatio<exact_limbs>, 4>, ArithmeticError> compute_exact(
+        std::span<Rational const> pointObservations, std::span<Rational const> valueObservations) noexcept
+    {
+        return detail::exact_regression<1>(std::array { pointObservations }, valueObservations);
+    }
+
+    /// The fit in coherent units: exactly, every output a `Rational` or all
+    /// `Overflow`, for `Rep = Rational`; approximately otherwise.
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 4>, ArithmeticError> compute(
+        std::span<Rep const> pointObservations, std::span<Rep const> valueObservations) noexcept
+    {
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            std::expected<std::array<detail::WideRatio<exact_limbs>, 4>, ArithmeticError> const exact =
+                compute_exact(pointObservations, valueObservations);
+            if (!exact.has_value())
+                return std::unexpected { exact.error() };
+            return detail::narrowed_all(*exact);
+        }
+        else
+            return detail::approximate_regression<Rep, 1>(std::array { pointObservations }, valueObservations);
+    }
+};
+
 /// A straight line fitted to @p fitted, for the reason @p citation gives:
 /// `linear_least_squares(curve(series<Elapsed, 4>, series<Length, 4>), { ...
 /// })`. Its outputs are `opaque_output<"intercept">` and
@@ -314,8 +397,9 @@ namespace detail
     struct RequireFitOfCurve
     {
         static_assert(sizeof...(Given) == 0,
-                      "formula: linear_least_squares fits a curve; pair the domain and the values with "
-                      "curve(domain, values)");
+                      "formula: linear_least_squares fits a curve, or points and values read as observations; pair a "
+                      "domain series and a value series with curve(domain, values), or read both with "
+                      "observations<Q, Capacity>");
 
         static constexpr bool value = true;
     };
@@ -330,6 +414,45 @@ namespace detail
 
         static constexpr bool value = true;
     };
+
+    /// The quantity @p T observes, or @p T itself for observations refused
+    /// already, which observe none.
+    template <typename T>
+    struct ObservedQuantity
+    {
+        using type = T;
+    };
+
+    template <typename T>
+        requires requires { typename T::quantity; }
+    struct ObservedQuantity<T>
+    {
+        using type = typename T::quantity;
+    };
+
+    /// Fails to compile when a line through observations reads one quantity
+    /// as its points and its values. Named so the quantity prints.
+    template <typename Q>
+    struct RequireFitOfTwoQuantities
+    {
+        static_assert(!std::is_same_v<Q, Q>,
+                      "formula: linear_least_squares reads one quantity as both its points and its values, and a "
+                      "line through every observation against itself says nothing; read the points and the values "
+                      "as two quantities -- the quantity appears in this diagnostic as the template argument Q of "
+                      "RequireFitOfTwoQuantities");
+
+        static constexpr bool value = true;
+    };
+
+    /// What a refused line through observations returns: the operation over
+    /// refused observations, so that each of its four outputs can be taken and
+    /// evaluated and asks nothing again.
+    using RefusedObservationFit = OpaqueCall<LinearLeastSquaresOfObservations, RefusedObservations, RefusedObservations>;
+
+    [[nodiscard]] constexpr RefusedObservationFit refused_observation_fit(Citation citation) noexcept
+    {
+        return RefusedObservationFit { std::tuple<RefusedObservations, RefusedObservations> {}, citation };
+    }
 
     /// @p T's dimension, or `dim::Scalar` for something that has none.
     template <typename T>
@@ -381,16 +504,49 @@ template <typename NotCurve>
 [[nodiscard]] constexpr auto linear_least_squares(NotCurve, Citation citation) noexcept
 {
     static_assert(detail::RequireFitOfCurve<NotCurve>::value);
-    return detail::refused_fit<void, NotCurve>(citation);
+    if constexpr (ObservationsNode<NotCurve>)
+        return detail::refused_observation_fit(citation);
+    else
+        return detail::refused_fit<void, NotCurve>(citation);
 }
 
 /// Two loose series handed to `linear_least_squares`: refused in this
 /// library's words. A curve pairs the domain with its values, which two
 /// series would have to re-derive.
 template <typename Domain, typename Values>
+    requires(!(ObservationsNode<Domain> && ObservationsNode<Values>))
 [[nodiscard]] constexpr auto linear_least_squares(Domain, Values, Citation citation) noexcept
 {
     static_assert(detail::RequireFitOfCurve<Domain, Values>::value);
-    return detail::refused_fit<Domain, Values>(citation);
+    if constexpr (ObservationsNode<Domain> || ObservationsNode<Values>)
+        return detail::refused_observation_fit(citation);
+    else
+        return detail::refused_fit<Domain, Values>(citation);
+}
+
+/// A straight line through raw observations, paired row by row, for the
+/// reason @p citation gives: `linear_least_squares(observations<Elapsed, 64>,
+/// observations<Length, 64>, { ... })`. Its outputs are `intercept`, `slope`,
+/// `r squared` and `points`. One quantity read as both is refused in this
+/// library's words.
+template <ObservationsNode X, ObservationsNode Y>
+[[nodiscard]] constexpr auto linear_least_squares(X pointObservations, Y valueObservations, Citation citation) noexcept
+{
+    using PointsQuantity = typename detail::ObservedQuantity<X>::type;
+    constexpr bool oneQuantity = std::is_same_v<PointsQuantity, typename detail::ObservedQuantity<Y>::type>;
+    static_assert(std::conditional_t<oneQuantity, detail::RequireFitOfTwoQuantities<PointsQuantity>, std::true_type>::value);
+    if constexpr (oneQuantity)
+        return detail::refused_observation_fit(citation);
+    else
+        return opaque<LinearLeastSquaresOfObservations>(citation, pointObservations, valueObservations);
+}
+
+/// Raw observations handed to `linear_least_squares` without a citation:
+/// refused in this library's words, as a curve without one is.
+template <ObservationsNode X, ObservationsNode Y>
+[[nodiscard]] constexpr auto linear_least_squares(X, Y) noexcept
+{
+    static_assert(detail::RequireFitCitation<X>::value);
+    return detail::refused_observation_fit(Citation {});
 }
 } // namespace formula

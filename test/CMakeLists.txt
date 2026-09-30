@@ -2234,7 +2234,7 @@ formula_add_negative_test(opaque_observations_where_series_declared
 # library's words, not the compiler's; a fit in double is refused once, in the
 # curve's words.
 formula_add_negative_test(least_squares_not_a_curve
-    "formula: linear_least_squares fits a curve; pair the domain and the values with curve(domain, values)"
+    "formula: linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value series with curve(domain, values), or read both with observations<Q, Capacity>"
     REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
 # A fit with no citation is refused in the library's words; a fit over a
 # refused curve says only the curve's.
@@ -2247,6 +2247,16 @@ formula_add_negative_test(least_squares_refused_curve
 formula_add_negative_test(least_squares_in_double
     "formula: a curve can only be evaluated with Rep = Rational"
     REJECT "must be noexcept" "compute cannot be called")
+# A line through raw observations: each refusal once, in this library's words.
+formula_add_negative_test(least_squares_observations_uncited
+    "formula: linear_least_squares needs a citation, the reason the method fits a line here; pass {} when it gives none"
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension" "has no output of that name")
+formula_add_negative_test(least_squares_observations_and_series
+    "formula: linear_least_squares fits a curve, or points and values read as observations"
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension" "has no output of that name")
+formula_add_negative_test(least_squares_observations_same_quantity
+    "formula: linear_least_squares reads one quantity as both its points and its values"
+    REJECT "RequireResultDimension" "has no output of that name" "passes an input of another shape")
 # rounded_output (`opaque.hpp`): each refusal once, gated on the ones before
 # it; every REJECT names what the next check down, or the result's, would add.
 formula_add_negative_test(rounded_output_unit_dimension_mismatch
@@ -2280,6 +2290,9 @@ formula_add_negative_test(rounded_output_rep_double
 # rewrite sees through the call to its inputs, so the series refusal is the
 # one message -- not "cannot see inside", and not "nobody reads it".
 formula_add_negative_test(overlay_constant_inside_opaque_series
+    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
+formula_add_negative_test(overlay_constant_inside_observation_fit
     "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
     REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
 # A refused opaque call's output stands in with a dimensionless dimension;
@@ -2499,6 +2512,12 @@ formula_add_negative_test(calculation_definition_reads_observations
     EXPECT_COUNT 1
     REJECT "formula: this definition holds a node kind the calculation cannot see inside"
            "has no detail::LevelChildren specialisation" "no matching")
+formula_add_negative_test(calculation_definition_reads_fit_observations
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 2
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation"
+           "no matching")
 formula_add_negative_test(calculation_definition_reads_record
     "formula: a calculation's definitions read the worksheet's own values, and this one reads from another record with from_record"
     EXPECT_COUNT 1

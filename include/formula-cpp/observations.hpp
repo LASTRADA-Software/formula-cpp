@@ -101,15 +101,18 @@ using EvaluatedObservations = std::expected<ObservationsValue<Rep, Capacity>, Se
 
 namespace detail
 {
-    /// Raw observations that were refused already: what `binned` bins in
-    /// place of an operand that is not observations, so that nothing
-    /// downstream adds a message to the refusal.
+    /// Raw observations that were refused already: what `binned` bins, and a
+    /// fit reads, in place of an operand that is not observations, so that
+    /// nothing downstream adds a message to the refusal.
     struct RefusedObservations: ObservationsNodeBase
     {
         /// No dimension to check against: the key check is off for it.
         static constexpr Dimension dimension {};
         /// None.
         static constexpr std::size_t capacity = 0;
+        /// Refused already (`detail::refused_already`): a call that reads
+        /// these in place of observations it refused asks nothing more.
+        static constexpr RefusedFlag refused = true;
     };
 
     /// Whether @p Sink wants to hear about raw observations: true when it

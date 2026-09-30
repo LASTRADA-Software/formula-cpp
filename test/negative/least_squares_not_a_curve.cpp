@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: linear_least_squares fits a curve; pair the domain and the values with curve(domain, values)
+// EXPECT: formula: linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value series with curve(domain, values), or read both with observations<Q, Capacity>
 // REJECT: no matching overloaded function
 // REJECT: no matching function
 // REJECT: RequireResultDimension

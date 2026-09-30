@@ -95,9 +95,9 @@ template <Unit U>
 ///
 /// There is deliberately no overload that guesses a unit for a bare number.
 /// Guessing wrong is exactly the failure the dimension layer exists to prevent.
-[[nodiscard]] constexpr ConstantNode<unit::One> number(Rational coefficient) noexcept
+[[nodiscard]] constexpr ConstantNode<unit::One> number(Rational bareNumber) noexcept
 {
-    return constant<unit::One>(coefficient);
+    return constant<unit::One>(bareNumber);
 }
 
 /// Which unary operation a `UnaryNode` performs.
