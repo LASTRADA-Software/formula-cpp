@@ -8,33 +8,6 @@ may break it, and each such change is recorded here.
 
 ### Added
 
-- `observations.hpp`, holding raw observations -- `observations<Q, Capacity>`, `ObservationsVarNode`,
-  `ObservationsNode`, `ObservationsValue` and `EvaluatedObservations` -- which `binning.hpp` declared before and
-  still includes. Code that reads observations no longer needs a binning's classes, lookups and bands.
-- `InputShape::Observations`: an opaque operation may take raw observations, `observations<Q, Capacity>`, as an
-  input. `compute` receives one `std::span<Rep const>` over the observations made -- as many as were made, not
-  the capacity, and empty when none were -- in any `Rep`, `double` included. The library compares no counts: an
-  operation over two independent samples takes two counts, and one that pairs its inputs row by row checks its
-  counts itself.
-- `linear_least_squares(observations<X, C>, observations<Y, C2>, citation)` fits a straight line through raw
-  observations, paired row by row, whose number is data. Its outputs are `intercept`, `slope`, `r squared` -- the
-  coefficient of determination, dimensionless -- and `points`, the number of observations fitted. Decided before
-  any sum, in every representation, and each the fit's own `DomainError`: both inputs hold as many observations, at
-  least two, the points are not all equal, and the values are not all equal, so a flat response never passes an R²
-  acceptance. Exact through `opaque_output`, where the four outputs answer or all fail with `Overflow` when one
-  does not fit a `Rational`; correctly rounded through `rounded_output`, which rounds the kernel's wide result and so
-  answers where the exact route overflows -- within the kernel's width, and beyond it `Overflow`; approximately, and
-  untraced, through `checked_evaluate_si<double>`. One quantity read as both points and values, or observations without a
-  citation, is refused where it is written.
-- `multiple_least_squares(regressors(x1, ..., xK), y, citation)` fits y = constant + coefficient 1 x1 + ... +
-  coefficient K xK through raw observations paired by row, for K from 1 to 8; K = 1 is the line. Its outputs are
-  `constant`, `coefficient 1` to `coefficient K`, `r squared` and `points`, each coefficient in the values'
-  dimension over its regressor's. A singular design is the fit's own `DomainError`, never a number: decided exactly
-  in `Rational` and by `rounded_output`, and in `double` when a pivot of the centred normal equations is at or below
-  10⁻⁹ of its diagonal, so a design within 10⁻⁹ of singular, but not exactly singular, is answered exactly and refused
-  in `double`.
-  Refused where written: no citation, no regressor, more than eight, anything but raw observations, and one quantity
-  read twice. `MultipleLeastSquares<K>`, `Regressors` and `regressors` are the operation and its holder.
 - `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
   `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
   into kilowatt-hours without a rounded factor.
@@ -261,21 +234,41 @@ may break it, and each such change is recorded here.
   `round(ln(#1), to 4 dp) = 6931/10000 [nearest, ties away from zero]`.
 - A section, *Logarithms and exponentials*, in *Expressions and evaluation* (`docs/expressions.md`), and a
   gallery entry, a logarithmic reduction rounded exactly to 0.01.
+- `observations.hpp`, holding raw observations -- `observations<Q, Capacity>`, `ObservationsVarNode`,
+  `ObservationsNode`, `ObservationsValue` and `EvaluatedObservations` -- which `binning.hpp` declared before and
+  still includes. Code that reads observations no longer needs a binning's classes, lookups and bands.
+- `InputShape::Observations`: an opaque operation may take raw observations, `observations<Q, Capacity>`, as an
+  input. `compute` receives one `std::span<Rep const>` over the observations made -- as many as were made, not
+  the capacity, and empty when none were -- in any `Rep`, `double` included. The library compares no counts: an
+  operation over two independent samples takes two counts, and one that pairs its inputs row by row checks its
+  counts itself.
+- `linear_least_squares(observations<X, C>, observations<Y, C2>, citation)` fits a straight line through raw
+  observations, paired row by row, whose number is data. Its outputs are `intercept`, `slope`, `r squared` -- the
+  coefficient of determination, dimensionless -- and `points`, the number of observations fitted. Decided before
+  any sum, in every representation, and each the fit's own `DomainError`: both inputs hold as many observations, at
+  least two, the points are not all equal, and the values are not all equal, so a flat response never passes an R²
+  acceptance. Exact through `opaque_output`, where the four outputs answer or all fail with `Overflow` when one
+  does not fit a `Rational`; correctly rounded through `rounded_output`, which rounds the kernel's wide result and so
+  answers where the exact route overflows -- within the kernel's width, and beyond it `Overflow`; approximately, and
+  untraced, through `checked_evaluate_si<double>`. One quantity read as both points and values, or observations without a
+  citation, is refused where it is written.
+- `multiple_least_squares(regressors(x1, ..., xK), y, citation)` fits y = constant + coefficient 1 x1 + ... +
+  coefficient K xK through raw observations paired by row, for K from 1 to 8; K = 1 is the line. Its outputs are
+  `constant`, `coefficient 1` to `coefficient K`, `r squared` and `points`, each coefficient in the values'
+  dimension over its regressor's. A singular design is the fit's own `DomainError`, never a number: decided exactly
+  in `Rational` and by `rounded_output`, and in `double` when a pivot of the centred normal equations is at or below
+  10⁻⁹ of its diagonal, so a design within 10⁻⁹ of singular, but not exactly singular, is answered exactly and refused
+  in `double`.
+  Refused where written: no citation, no regressor, more than eight, anything but raw observations, and one quantity
+  read twice. `MultipleLeastSquares<K>`, `Regressors` and `regressors` are the operation and its holder.
+- Two sections of *Opaque operations and bounded retry* (`docs/opaque-and-retry.md`): *A line through
+  observations* -- the fit rounded where its exact fractions do not fit, R² as an acceptance, and the line in
+  `double` and against a temperature in degrees Celsius -- and *Several regressors*, with the designs refused as
+  singular. `examples/opaque_and_retry.cpp` fits both, and the census (`docs/numeric-headroom.md`, *Regression
+  over observations*) counts the sizes, up to 128 points, at which each route overflows.
 
 ### Changed
 
-- An unqualified call of `ln`, `log10` or `exp` whose argument is a formula node now
-  finds the library's function by argument-dependent lookup; one whose argument is a number still finds
-  only the standard library's, which the library's refuses. A consumer's own function of one of these
-  names that accepts a formula node now makes such a call ambiguous.
-- `linear_least_squares` given anything but a curve or two sets of observations says "formula:
-  linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value
-  series with curve(domain, values), or read both with observations<Q, Capacity>", which names both ways to call it.
-- `OpaqueCallFailure` has a last member, `site` (`FailureSite`, default `FailureSite::ResultElement`), so an
-  aggregate initialisation naming the members before it is unchanged. Raw observations that fail to convert at
-  observation k relay `site == FailureSite::InputObservation`, and the call's trace line says
-  `[carried up from #n, at observation k]`. `InputShape` has a fourth enumerator, so a consumer's exhaustive
-  `switch` over it warns under `-Wswitch`.
 - An unqualified call of `fraction_text`, `number_text`, `decimal_text`, `exact_decimal_text`,
   `define`, `calculation` or `worksheet` now also finds the library's function by argument-dependent
   lookup, since each takes an argument of a type in namespace `formula`. A consumer's own function
@@ -301,12 +294,27 @@ may break it, and each such change is recorded here.
 - `OpaqueCallInfo` gains `values` after `dimensions`, defaulted to `OpaqueValues::Exact`: code that
   builds one with designated initialisers is unaffected; a structured binding over one now has five
   members, not four.
+- `OpaqueStepData` gains `values` and `answered`, after `inputsNotEvaluated`: a structured binding
+  over one now has seven members, not five.
 - `StepKind` gains `RoundedOpaqueOutput`, `NaturalLogarithm`, `DecimalLogarithm`, `Exponential`,
   `RoundedNaturalLogarithm`, `RoundedDecimalLogarithm` and `RoundedExponential`, appended after
   `AttemptInput` in that order: a `switch` over `StepKind` that names every enumerator and has no
   `default` now misses seven, which g++ 14 reports under `-Wswitch` (part of `-Wall`).
-- `OpaqueStepData` gains `values` and `answered`, after `inputsNotEvaluated`: a structured binding
-  over one now has seven members, not five.
+- An unqualified call of `ln`, `log10` or `exp` whose argument is a formula node now finds the library's function
+  by argument-dependent lookup; one whose argument is a number still finds only the standard library's function;
+  the library's own takes a formula node only. A consumer's own function of one of these names that accepts a
+  formula node now makes such a call ambiguous.
+- `linear_least_squares` given anything but a curve or two sets of observations says "formula:
+  linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value
+  series with curve(domain, values), or read both with observations<Q, Capacity>", which names both ways to call it.
+- `OpaqueCallFailure` has a last member, `site` (`FailureSite`, default `FailureSite::ResultElement`), so an
+  aggregate initialisation naming the members before it is unchanged; a structured binding over one now has five
+  members, not four. Raw observations that fail to convert at observation k relay
+  `site == FailureSite::InputObservation`, and the call's trace line says `[carried up from #n, at observation k]`.
+  `InputShape` has a fourth enumerator, so a consumer's exhaustive `switch` over it warns under `-Wswitch`.
+- `statistics.hpp` includes `observations.hpp` instead of `binning.hpp`, and so no longer brings in
+  `binning.hpp`, `band.hpp` or `lookup.hpp`: code that used a binning, a band table or a lookup through
+  `statistics.hpp` alone includes `binning.hpp` or `lookup.hpp`.
 
 ## [0.1.0] - 2026-09-28
 
