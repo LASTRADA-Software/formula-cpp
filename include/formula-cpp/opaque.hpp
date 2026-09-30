@@ -44,13 +44,13 @@
 ///
 /// **An output the exact layer cannot hold is reported at a declared
 /// precision.** `rounded_output<"slope", U, Places, Mode>(call)` is the
-/// decimal the operation's true output rounds to in `U` -- exact, even where
-/// the output itself is a fraction too wide for `Rational`, as a fit through
-/// many readings is. An operation may state its outputs exactly in wider
-/// integers for this (`compute_exact`, detected by
-/// `detail::declares_compute_exact`; internal, not a customisation point
-/// yet); one that does not is evaluated through `compute<Rational>` and
-/// rounded exactly. The call is then told to a sink with
+/// decimal the operation's true output rounds to in `U`, exact. An operation
+/// may state its outputs exactly in wider integers (`compute_exact`, detected
+/// by `detail::declares_compute_exact`; internal, not a customisation point
+/// yet), and then it answers even where computing the output exactly leaves
+/// `Rational`'s range, as a fit through many readings can. One that does not
+/// is evaluated through `compute<Rational>`, rounded exactly, and fails with
+/// `Overflow` where `opaque_output` would. The call is then told to a sink with
 /// `OpaqueValues::RoundedWhereUsed`, and its trace names its outputs without
 /// values. `opaque_output` is unchanged: the exact output, or `Overflow`.
 

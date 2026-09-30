@@ -11,7 +11,8 @@
 //   2. Using two outputs of one call runs the operation twice.
 //   3. A least-squares line is such an operation: exact in Rational, refused
 //      for a degenerate set of points, and Overflow -- never a wrong line --
-//      when its exact sums leave Rational's range.
+//      when its exact sums leave Rational's range. Rounded where it is used,
+//      to the precision the method reports it at, it answers there too.
 //   4. A citation is required, and an empty one says so on the page.
 //   5. A retry ends in exactly one of six ways, each run below. Running out
 //      of attempts is the method's verdict, not a missing value.
@@ -116,6 +117,15 @@ constexpr auto fit =
     formula::linear_least_squares(formula::curve(formula::series<Elapsed, 4>, formula::series<Length, 4>),
                                   { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
 constexpr auto slope = formula::opaque_output<"slope">(fit);
+constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocity,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 1000,
+                                              .symbolText = formula::symbol("mm/s"),
+                                              .decimals = 4 };
+constexpr auto roundedSlope = formula::rounded_output<"slope",
+                                                      millimetrePerSecond,
+                                                      formula::DecimalPlaces { 4 },
+                                                      formula::RoundingMode::HalfEven>(fit);
 
 /// Fifteen points, each on a different denominator: point k at
 /// ((k + 1)/(k + 2) s, (2k + 3)/(k + 3) mm).
@@ -292,9 +302,28 @@ int main()
     constexpr auto fifteen = formula::linear_least_squares(
         formula::curve(formula::series<Elapsed, 15>, formula::series<Length, 15>), { .reference = "Example Standard 12" });
     auto const tooWide = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(fifteen), distinctDenominators());
-    std::printf("fifteen distinct denominators: %s\n\n",
+    std::printf("fifteen distinct denominators: %s\n",
                 tooWide.has_value() ? "a line" : std::string { formula::describe(tooWide.error()) }.c_str());
     check(!tooWide.has_value() && tooWide.error() == formula::ArithmeticError::Overflow, "Overflow, never a wrong line");
+    std::printf("%s\n", formula::render(roundedSlope).c_str());
+    auto const roundedRate = formula::explain<Rate>(roundedSlope, points);
+    std::printf("%s\n", formula::render_trace(roundedRate.trace, { .maxSteps = 20 }).c_str());
+    check(roundedRate.outcome.measurement().value() == formula::Rational { 10179, 250 }, "0.6786 mm/s is 40.716 mm/min");
+
+    constexpr auto roundedFifteen = formula::rounded_output<"slope",
+                                                            millimetrePerSecond,
+                                                            formula::DecimalPlaces { 4 },
+                                                            formula::RoundingMode::HalfEven>(fifteen);
+    auto const roundedWide = formula::checked_evaluate<Rate>(roundedFifteen, distinctDenominators());
+    check(roundedWide.has_value() && roundedWide->measurement().value() == formula::Rational { 14529, 125 },
+          "rounded where used, fifteen distinct denominators answer: 1.9372 mm/s");
+    if (roundedWide.has_value())
+    {
+        formula::NumberText const wideSlope =
+            formula::number_text(roundedWide->measurement(), formula::NumberStyle::exact_decimal());
+        std::printf("fifteen distinct denominators, rounded where used: %.*s\n\n", static_cast<int>(wideSlope.view().size()),
+                    wideSlope.view().data());
+    }
 
     std::printf("== 4. A citation is required ==\n\n");
 

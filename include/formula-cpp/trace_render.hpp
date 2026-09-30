@@ -111,11 +111,14 @@ struct TraceRenderOptions
     /// are shown exact (`NumberStyle::exact_only`), and a value in a unit
     /// nobody declared is never padded; where its default 3 places would
     /// round a value other than zero to `≈0`, they are extended to its first
-    /// significant digit, up to 18 (`checked_shown_text`). A value the style
-    /// cannot spell in its unit -- one padded or rounded in a unit whose
-    /// declared decimals lie outside -18 to 18, say -- reads `(not shown:
-    /// ...)`, as a value its unit cannot show does; a bound or a limit the
-    /// author typed falls back to its exact fraction instead.
+    /// significant digit, up to 18 (`checked_shown_text`). A value a formula
+    /// rounded itself -- `rounded`, `rounded_sqrt`, `rounded_output` -- is the
+    /// step's exact value, a decimal, so it reads without `≈` in every style,
+    /// its mode in brackets after it. A value the style cannot spell in its
+    /// unit -- one padded or rounded in a unit whose declared decimals lie
+    /// outside -18 to 18, say -- reads `(not shown: ...)`, as a value its unit
+    /// cannot show does; a bound or a limit the author typed falls back to its
+    /// exact fraction instead.
     ///
     /// `render_derivation` spells a worksheet's derivation in it too: its
     /// headers, its steps and its inputs.
@@ -1118,12 +1121,14 @@ namespace detail
             case StepKind::OpaqueOperation:
                 return "opaque(" + operands_text(shownStep) + ")";
             case StepKind::OpaqueOutput:
-                return shownStep.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(shownStep);
+                return shownStep.operands.empty() ? std::string { "an opaque output" }
+                                                  : "output of " + sole_operand(shownStep);
             // `render()`'s spelling, as for a rounded root; the output's name is
             // in the call's row, which `rounded_opaque_output_line` reads.
             case StepKind::RoundedOpaqueOutput:
                 return "round("
-                       + (shownStep.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(shownStep))
+                       + (shownStep.operands.empty() ? std::string { "an opaque output" }
+                                                     : "output of " + sole_operand(shownStep))
                        + ", to " + std::to_string(shownStep.granularity) + " dp"
                        + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
             // A retry's steps name its result as `render()` does, `w(k)` for
@@ -2586,7 +2591,8 @@ namespace detail
                 for (std::size_t at = 0; at < listed; ++at)
                     lineText += (at > 0 ? ", " : "") + escaped_author_text(callRow->outputs[at].name);
                 if (listed < outputCount)
-                    lineText += std::string { listed > 0 ? ", " : "" } + "... " + std::to_string(outputCount - listed) + " more";
+                    lineText +=
+                        std::string { listed > 0 ? ", " : "" } + "... " + std::to_string(outputCount - listed) + " more";
                 lineText += ": rounded where used";
             }
         }
@@ -2798,8 +2804,9 @@ namespace detail
             lineText += std::string { describe(*recorded.error) }
                         + opaque_failure_suffix(recorded,
                                                 opaqueLine.call->failure,
-                                                recorded.operands.empty() ? std::nullopt
-                                                                          : std::optional<std::size_t> { recorded.operands.front() });
+                                                recorded.operands.empty()
+                                                    ? std::nullopt
+                                                    : std::optional<std::size_t> { recorded.operands.front() });
         else if (recorded.error.has_value())
             lineText += std::string { describe(*recorded.error) } + rounding_mode_suffix(recorded.mode);
         else
@@ -3149,7 +3156,14 @@ namespace detail
 /// multiply-then-divide, and there is no such operation for binary floating
 /// point: a `double` trace would need a rounding policy, and choosing one on a
 /// caller's behalf is how an audit trail acquires a number nobody can
-/// reproduce. Evaluate in `double` by all means; print the exact trace.
+/// reproduce. Evaluate in `double` by all means; print the exact trace. A
+/// value the exact layer cannot hold is no reason to trace in `double`
+/// either: a formula declares the precision it is reported at, and the trace
+/// shows that exact decimal -- `rounded_sqrt` for a root, and `rounded_output`
+/// for an output of an opaque operation that computes in wider integers, as
+/// `linear_least_squares` does. Any other operation's rounded output is
+/// computed in `Rational`, and fails with `Overflow` where the exact output
+/// would.
 template <typename Rep = Rational>
 [[nodiscard]] std::string render_trace(Trace<Rep> const& trace, TraceRenderOptions options)
 {

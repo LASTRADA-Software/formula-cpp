@@ -351,6 +351,15 @@ output -- pinned in the companion test
 `checked_evaluate_si<double>` of that same `sqrt(Area)` formula lands
 strictly between 1.41421356 and 1.41421357.
 
+Where the method states the precision the root is reported at, the exact
+layer gives that instead: `rounded_sqrt<unit, places, mode>(x)` is the decimal
+the true root rounds to, exact, and its trace line carries no `≈`. An output
+of an opaque operation whose exact computation leaves `Rational`'s range has
+the same form, `rounded_output`, where the operation computes in wider
+integers, as `linear_least_squares` does
+([Displaying numbers](display.md#values-the-exact-layer-cannot-hold)). The
+`double` route stays what it is: approximate, untraced, and for exploring.
+
 There is one further refusal in the same function, for a different reason.
 `checked_exact_nth_root` rejects the most negative representable numerator
 (`IntMin`) with `ArithmeticError::Overflow` rather than `Inexact`: `IntMin`'s

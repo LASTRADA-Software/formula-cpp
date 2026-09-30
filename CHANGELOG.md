@@ -202,6 +202,10 @@ may break it, and each such change is recorded here.
   thousand newtons it answers at every size from 2 to 128 points, where `opaque_output<"slope">`
   overflows at 57 of those sizes, the first at 34. A different denominator on every point outgrows
   the 256 bits from 58 points, and the answer is `Overflow` (`docs/numeric-headroom.md`).
+- The guides explain values the exact layer cannot hold: `docs/display.md` gains *Values the exact
+  layer cannot hold* -- such a value is written only as the rounding its formula declares, exact and
+  without `≈`, and refused without one -- and `docs/opaque-and-retry.md` a section on
+  `rounded_output`, with the fit's trace and the fifteen-point fit it answers.
 
 ### Changed
 

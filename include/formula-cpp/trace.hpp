@@ -4292,7 +4292,13 @@ struct Explained
 /// cannot receive what the evaluator actually passes it -- the `static_assert`
 /// below turns that mismatch into one sentence instead of a template-frame
 /// dump. Call `checked_evaluate_si<Rep>` directly with your own
-/// `RecordingSink<Rep>` to trace a `double` computation.
+/// `RecordingSink<Rep>` to trace a `double` computation. For a value
+/// `Rational` cannot hold, declare the precision it is reported at instead:
+/// `rounded_sqrt` for a root, or `rounded_output` for an output of an opaque
+/// operation that computes in wider integers, as `linear_least_squares` does.
+/// That trace is exact and renders. Any other operation's rounded output is
+/// computed in `Rational`, and fails with `Overflow` where the exact output
+/// would.
 ///
 /// Every step naming a quantity writes its symbol as @p vocabulary says
 /// (`vocabulary.hpp`) -- pass the one the page is rendered in, so that the

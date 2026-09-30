@@ -16,7 +16,12 @@
 ///  - `checked_evaluate_si<Rep>` is the representation-agnostic core. It answers
 ///    in the coherent unit and in whatever `Rep` the caller asked for --
 ///    exact `Rational` by default, `double` when a formula needs values exact
-///    rationals cannot hold.
+///    rationals cannot hold and no audit trail is wanted. A formula that states
+///    the precision such a value is reported at -- `rounded_sqrt`, or
+///    `rounded_output` of an opaque operation that computes in wider integers,
+///    as `linear_least_squares` does -- is evaluated exactly instead, by
+///    `checked_evaluate` and by `checked_evaluate_si` in `Rational`; in
+///    `double` it does not compile, as no rounding node does.
 ///  - `checked_evaluate<Result>` is the auditable one. It is always exact,
 ///    because a result that goes into an audit trail as binary floating point
 ///    would have to explain itself, and it returns an `Outcome<Result>` in

@@ -215,12 +215,68 @@ points; readings at three decimal places of a few thousand first overflow at
 34 points, and not at every larger size; a different denominator on every
 point overflows from 15. So there is no safe number of points to state. The
 [numeric headroom](numeric-headroom.md) page carries the fit's census over
-every size, regenerated with every build. **A fit that overflows has no
-traced fallback in `double`.** A curve evaluates only in `Rational`, so
+every size, regenerated with every build. **A fit that overflows has a
+traced answer only at a declared precision** (`rounded_output`, below), **and
+none in `double`.** A curve evaluates only in `Rational`, so
 `checked_evaluate_si<double>` over a fit is refused where it is written.
 `LinearLeastSquares::compute<double>` can be called directly, on numbers the
 caller has put in coherent units, but it returns bare numbers: nothing checks
 their dimensions, and nothing reaches the trace or the page.
+
+### Rounded where it is used
+
+A method that reports the slope at a stated precision -- "to 0.0001 mm/s" --
+does not need the exact fraction: it needs the decimal that fraction rounds
+to. `rounded_output` states that precision, as `rounded<>` does. For
+`linear_least_squares`, which computes in wider integers, the library
+computes that decimal exactly, even where the exact fit leaves `Rational`'s
+range:
+
+```cpp
+constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocity,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 1000,
+                                              .symbolText = formula::symbol("mm/s"),
+                                              .decimals = 4 };
+constexpr auto roundedSlope = formula::rounded_output<"slope",
+                                                      millimetrePerSecond,
+                                                      formula::DecimalPlaces { 4 },
+                                                      formula::RoundingMode::HalfEven>(fit);
+```
+
+```text
+round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)
+1. t = 1 s; 2 s; 4 s; 7 s
+2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm
+3. curve(#1, #2) = 1 s: 51/5 mm; 2 s: 109/10 mm; 4 s: 121/10 mm; 7 s: 143/10 mm
+4. linear least squares(#3) = intercept, slope: rounded where used [inside not shown] [Rate of change, Example Standard 12, 5.1]
+5. round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]
+```
+
+- **The true slope is written nowhere.** The call's line names its outputs
+  without values -- none exists until one is rounded -- and the output's own
+  line states its rounding. 3393/5000 mm/s is 0.6786 mm/s exactly, the
+  correct rounding of 19/28 mm/s, and the step's value; no number style marks
+  it approximate.
+- **It answers where the exact fit overflows.** `linear_least_squares`
+  computes the fit for it in 256-bit integers, and the fifteen distinct
+  denominators that overflow above give a slope:
+
+```text
+fifteen distinct denominators, rounded where used: 116.232 mm/min
+```
+
+- **It still refuses rather than guess.** A different denominator on every
+  point outgrows 256 bits from 58 points, and the answer is `Overflow`
+  ([numeric headroom](numeric-headroom.md#least-squares-realistic-and-one-stress-control)).
+  A unit that does not measure the output, or one with an offset, is refused
+  at compile time, and so is `Rep = double`.
+- **Only an operation that computes in wider integers answers further.** Any
+  other operation's rounded output is computed in `Rational`, rounded
+  exactly, and fails with `Overflow` where `opaque_output` would.
+- `rounded<...>(opaque_output<"slope">(fit))` keeps its meaning: the exact
+  slope, rounded afterwards, which overflows where the exact slope does. Each
+  output used runs the whole call, rounded or not.
 
 ## A citation is required
 
