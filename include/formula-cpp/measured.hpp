@@ -170,16 +170,41 @@ template <Described Result, Described Q, Described R, typename F>
     return Measured<Result> { function(lhs.value(), rhs.value()) };
 }
 
+namespace detail
+{
+
+    /// Fails to compile when a measurement is converted into a quantity of
+    /// another dimension: no such conversion exists, and both dimensions are
+    /// known where the call is written.
+    ///
+    /// Only `::value`, `sizeof(...)` or a variable of this type runs the
+    /// `static_assert`; see `RequireSameUnitDimension`.
+    template <Described From, Described To>
+    struct RequireConvertibleQuantities
+    {
+        static_assert(Describe<From>::dimension == Describe<To>::dimension,
+                      "formula: these two quantities measure different dimensions, so no conversion "
+                      "between them exists; the two quantities appear in this diagnostic as the "
+                      "template arguments of RequireConvertibleQuantities");
+
+        /// Always `true` once reached -- the `static_assert` above already failed
+        /// compilation otherwise.
+        static constexpr bool value = true;
+    };
+
+} // namespace detail
+
 /// Converts a measurement of `Q` into one of `R`, exactly.
 ///
-/// The dimensions are checked even when the value is absent: a conversion nobody
-/// could perform must not look like it succeeded merely because there was no
-/// number to get wrong.
+/// The dimensions are checked where the call is written, whether or not a value
+/// is present: a conversion nobody could perform does not compile, and so cannot
+/// look like it succeeded merely because there was no number to get wrong. A
+/// refused conversion draws that one message: the unit conversion in the body is
+/// an ordinary run-time call and adds none (measured with cl and clang-cl).
 template <Described R, Described Q>
 [[nodiscard]] constexpr std::expected<Measured<R>, ArithmeticError> checked_convert_to(Measured<Q> value) noexcept
 {
-    if (!(Describe<Q>::dimension == Describe<R>::dimension))
-        return std::unexpected { ArithmeticError::DomainError };
+    static_assert(detail::RequireConvertibleQuantities<Q, R>::value);
     if (value.is_absent())
         return Measured<R> {};
 
@@ -188,6 +213,16 @@ template <Described R, Described Q>
     if (!inTargetUnit)
         return std::unexpected { inTargetUnit.error() };
     return Measured<R> { *inTargetUnit };
+}
+
+/// Throwing spelling of `checked_convert_to`, for callers who would only rethrow.
+///
+/// Throws `ArithmeticException` where `checked_convert_to` returns an error; a
+/// conversion across dimensions does not compile, as there.
+template <Described R, Described Q>
+[[nodiscard]] constexpr Measured<R> convert_to(Measured<Q> measured)
+{
+    return detail::or_throw(checked_convert_to<R>(measured));
 }
 
 /// Checks a measurement against its quantity's unit's declared bounds.
@@ -213,6 +248,26 @@ template <Described Q>
     if (!rounded)
         return std::unexpected { rounded.error() };
     return Measured<Q> { *rounded };
+}
+
+/// Throwing spelling of `checked_within_bounds`, for callers who would only rethrow.
+///
+/// An absent measurement is `BoundsCheck::NotMeasured`, as there. Throws
+/// `ArithmeticException` where `checked_within_bounds` returns an error.
+template <Described Q>
+[[nodiscard]] constexpr BoundsCheck within_bounds(Measured<Q> measured)
+{
+    return detail::or_throw(checked_within_bounds(measured));
+}
+
+/// Throwing spelling of `checked_round_to_declared`, for callers who would only rethrow.
+///
+/// An absent measurement stays absent, as there. Throws `ArithmeticException`
+/// where `checked_round_to_declared` returns an error.
+template <Described Q>
+[[nodiscard]] constexpr Measured<Q> round_to_declared(Measured<Q> measured, RoundingMode roundingMode)
+{
+    return detail::or_throw(checked_round_to_declared(measured, roundingMode));
 }
 
 } // namespace formula

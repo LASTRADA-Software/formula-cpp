@@ -8,6 +8,10 @@ change is recorded here.
 
 ### Added
 
+- `convert_to<R>`, `round_to_declared` and `within_bounds` for a `Measured<Q>`: the throwing twins
+  of `checked_convert_to`, `checked_round_to_declared` and `checked_within_bounds`, for callers who
+  would only rethrow. They throw `ArithmeticException` where the `checked_` form returns an error.
+  Every earlier spelling stays.
 - `_r`, an exact decimal literal: `27.3_r` is the `Rational` 273/10, where `27.3` is the double
   nearest it. It reads integers, fractions, a leading or trailing point (`.5_r`, `5._r`), an
   exponent (`1.5e-3_r` is 3/2000) and digit separators, and a minus sign is `Rational`'s own
@@ -37,6 +41,11 @@ change is recorded here.
 
 ### Changed
 
+- `checked_convert_to` refuses a conversion between measured quantities of different dimensions
+  where the call is written, with or without a value present. Code that converted, say, a volume
+  into a mass, or euros into yen, used to compile and get `ArithmeticError::DomainError` at run
+  time; it no longer compiles, and the message names the two quantities. A conversion between
+  quantities of one dimension is unchanged.
 - An unqualified call of `describe` with a `ConstraintOutcomeKind`, a `RetryEnd`, a `ValueSource`,
   an `OutcomeKind` or a `FailureSite` now finds the library's function by argument-dependent
   lookup. A consumer's own `describe` for one of these enums -- a `describe(ConstraintOutcomeKind)`

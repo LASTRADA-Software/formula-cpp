@@ -274,8 +274,13 @@ a present volume combined with an absent mass: absent
 
 `formula::checked_convert_to<R>` converts a `Measured<Q>` into a
 `Measured<R>` and keeps this rule too -- an absent input converts to an
-absent output, and the dimension check runs regardless, so a conversion
-nobody could perform is refused even when there was no value to get wrong:
+absent output. The two dimensions are checked where the call is written,
+with or without a value: converting a volume into a mass, or euros into yen,
+does not compile, and it draws one message, so a conversion nobody could
+perform cannot look like it succeeded merely because there was no value to
+get wrong. (Before this check moved to compile time, such a call compiled
+and returned `ArithmeticError::DomainError`.) With no value present the
+result is absent:
 
 ```
 an absent measurement, converted: still absent
@@ -338,7 +343,7 @@ substitutes for the other.** `NotChecked` means the unit declares no bounds
 at all -- there is a value, but nothing to check it against. `NotMeasured`
 means there is no value in the first place, regardless of whether the unit
 declares bounds. A reading nobody took and a range nobody declared are
-different facts. `test/measured_tests.cpp:198-227` pins all five
+different facts. `test/measured_tests.cpp:206-268` pins all five
 `BoundsCheck` outcomes side by side -- `WithinBounds`, `BelowMinimum` and
 `AboveMaximum` for present values against a bounded unit, `NotMeasured` for
 an absent value regardless of whether its unit declares bounds, and
@@ -352,6 +357,14 @@ unit rather than needing one passed alongside it. From the worked example,
 ```
 450 l converted to m3 = 9/20
 ```
+
+The conversion, the rounding and the bounds check each have a throwing twin,
+for callers who would only rethrow the error: `formula::convert_to<R>`, `formula::round_to_declared` and
+`formula::within_bounds`, which take the same arguments and return the value
+itself, and throw `ArithmeticException` where the `checked_` form returns an
+error. Absence behaves as above -- an absent measurement converts and rounds to
+an absent one and is `NotMeasured` for its bounds -- and a conversion across
+dimensions does not compile in either spelling.
 
 ## Limits
 

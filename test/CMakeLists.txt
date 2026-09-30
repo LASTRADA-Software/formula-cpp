@@ -334,6 +334,15 @@ formula_add_negative_test(unit_dimension_mismatch
 formula_add_negative_test(unit_currency_mismatch
     "formula: these two units measure different dimensions" EXPECT_COUNT 1)
 
+# A conversion between measured quantities of different dimensions is refused where
+# it is written, with or without a value, and once.
+formula_add_negative_test(measured_convert_dimension_mismatch
+    "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
+formula_add_negative_test(measured_convert_dimension_mismatch_absent
+    "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
+formula_add_negative_test(measured_convert_currency_mismatch
+    "formula: these two quantities measure different dimensions, so no conversion between them exists" EXPECT_COUNT 1)
+
 # Same NAME-not-message case as the exponent sentinels above, for the same
 # reason: symbol() rejects an over-long symbol by calling a deliberately
 # non-`constexpr` sentinel rather than truncating it.

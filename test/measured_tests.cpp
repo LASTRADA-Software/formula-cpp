@@ -200,19 +200,9 @@ TEST_CASE("absence survives a conversion instead of becoming a number", "[measur
     CHECK(absent->is_absent());
 }
 
-TEST_CASE("converting to a quantity of another dimension is refused", "[measured]")
-{
-    auto const wrong = formula::checked_convert_to<SpecimenMass>(measured(450, 1));
-    REQUIRE_FALSE(wrong.has_value());
-    CHECK(wrong.error() == ArithmeticError::DomainError);
-
-    // And it is refused for an ABSENT value too. A conversion nobody could
-    // perform must not look like it succeeded merely because there was no number
-    // to get wrong.
-    auto const wrongAndAbsent = formula::checked_convert_to<SpecimenMass>(Measured<WaterVolume> {});
-    REQUIRE_FALSE(wrongAndAbsent.has_value());
-    CHECK(wrongAndAbsent.error() == ArithmeticError::DomainError);
-}
+// Converting to a quantity of another dimension does not compile, present value or
+// not; test/negative/measured_convert_dimension_mismatch.cpp and
+// measured_convert_dimension_mismatch_absent.cpp pin the refusal.
 
 namespace
 {
@@ -462,9 +452,6 @@ inline constexpr formula::Unit EuroCent { .dimension = formula::base_dimension("
                                           .magnitudeDenominator = 100,
                                           .symbolText = formula::symbol("ct"),
                                           .decimals = 0 };
-inline constexpr formula::Unit Yen { .dimension = formula::base_dimension("JPY"),
-                                     .symbolText = formula::symbol("JPY"),
-                                     .decimals = 0 };
 
 struct PriceInEuros: formula::Quantity<PriceInEuros, "p", "a price in euros", Euro>
 {
@@ -472,29 +459,54 @@ struct PriceInEuros: formula::Quantity<PriceInEuros, "p", "a price in euros", Eu
 struct PriceInCents: formula::Quantity<PriceInCents, "p", "a price in cents", EuroCent>
 {
 };
-struct PriceInYen: formula::Quantity<PriceInYen, "p", "a price in yen", Yen>
-{
-};
 } // namespace
 
-TEST_CASE("a price converts from cents to euros exactly and never from euros to yen", "[measured][money]")
+TEST_CASE("a price converts from cents to euros exactly", "[measured][money]")
 {
     auto const inEuros = formula::checked_convert_to<PriceInEuros>(Measured<PriceInCents> { Rational { 250 } });
     REQUIRE(inEuros.has_value());
     REQUIRE(inEuros->has_value());
     CHECK(inEuros->value() == *Rational::make(5, 2));
 
-    auto const inYen = formula::checked_convert_to<PriceInYen>(Measured<PriceInEuros> { Rational { 10 } });
-    REQUIRE_FALSE(inYen.has_value());
-    CHECK(inYen.error() == ArithmeticError::DomainError);
-
-    // Refused even with no number, like any conversion between dimensions.
-    auto const absentInYen = formula::checked_convert_to<PriceInYen>(Measured<PriceInEuros> {});
-    REQUIRE_FALSE(absentInYen.has_value());
-    CHECK(absentInYen.error() == ArithmeticError::DomainError);
+    // Euros into yen does not compile: test/negative/measured_convert_currency_mismatch.cpp.
 }
 
 TEST_CASE("Measured: an integer is a present value without spelling Rational", "[measured]")
 {
     STATIC_REQUIRE(formula::Measured<SpecimenMass> { 139 }.value() == formula::Rational { 139 });
+}
+
+TEST_CASE("convert_to: the throwing twin of checked_convert_to", "[measured]")
+{
+    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(measured(450, 1))
+                   == *formula::checked_convert_to<VolumeInCubicMetres>(measured(450, 1)));
+    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(measured(450, 1)).value() == *Rational::make(9, 20));
+    STATIC_REQUIRE(formula::convert_to<VolumeInCubicMetres>(Measured<WaterVolume>::absent()).is_absent());
+}
+
+TEST_CASE("round_to_declared and within_bounds: throwing twins", "[measured]")
+{
+    // Litre declares one decimal place, and 2.25 is a tie: HalfEven gives 2.2,
+    // HalfAwayFromZero 2.3, so a twin that ignored its mode would be caught.
+    CHECK(formula::round_to_declared(measured(225, 100), formula::RoundingMode::HalfEven).value()
+          == *Rational::make(22, 10));
+    CHECK(formula::round_to_declared(measured(225, 100), formula::RoundingMode::HalfAwayFromZero).value()
+          == *Rational::make(23, 10));
+    CHECK(formula::round_to_declared(measured(225, 100), formula::RoundingMode::HalfEven)
+          == *formula::checked_round_to_declared(measured(225, 100), formula::RoundingMode::HalfEven));
+    CHECK(formula::round_to_declared(Measured<WaterVolume>::absent(), formula::RoundingMode::HalfEven).is_absent());
+
+    CHECK(formula::within_bounds(Measured<GaugeReading>::absent()) == formula::BoundsCheck::NotMeasured);
+    CHECK(formula::within_bounds(Measured<GaugeReading> { *Rational::make(42, 1) }) == formula::BoundsCheck::WithinBounds);
+    CHECK(formula::within_bounds(Measured<GaugeReading> { *Rational::make(101, 1) })
+          == formula::BoundsCheck::AboveMaximum);
+}
+
+TEST_CASE("the throwing twins throw the error their checked form returns", "[measured]")
+{
+    Measured<LengthInMetres> const huge { *Rational::make(4611686018427387903LL, 1) };
+    CHECK_THROWS_AS(formula::convert_to<LengthInMillimetres>(huge), formula::ArithmeticException);
+    Measured<UnroundableReading> const unroundable { *Rational::make(1, 3) };
+    CHECK_THROWS_AS(formula::round_to_declared(unroundable, formula::RoundingMode::HalfEven),
+                    formula::ArithmeticException);
 }
