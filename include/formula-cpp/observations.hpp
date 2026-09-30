@@ -41,7 +41,8 @@ struct ObservationsNodeBase
 {
 };
 
-/// Anything that can be binned as raw observations.
+/// Anything that holds raw observations: what a binning, a sample statistic and
+/// an opaque operation's `InputShape::Observations` input read.
 template <typename T>
 concept ObservationsNode = std::derived_from<std::remove_cvref_t<T>, ObservationsNodeBase>;
 

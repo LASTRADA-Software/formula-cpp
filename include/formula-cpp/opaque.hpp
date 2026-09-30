@@ -995,8 +995,9 @@ template <detail::FixedString Name, OpaqueOperation Op, typename... Inputs>
 /// where the exact output does.
 ///
 /// Its dimension is the output's, and it rounds in `U`, never in the coherent
-/// unit. @p Origin is `opaque_output`'s (`detail::UnnamedOpaqueOutput`); leave
-/// it to its default.
+/// unit. @p Origin says whether `rounded_output` found the name, as
+/// `OpaqueOutputNode`'s does (see `detail::UnnamedOpaqueOutput`); leave it to
+/// its default.
 ///
 /// No `{}` initialiser on `call`, deliberately, as on every member that holds
 /// an expression or a call: a `{}` default member initialiser is instantiated
@@ -1021,8 +1022,8 @@ struct RoundedOpaqueOutputNode: NodeBase
     static constexpr Unit unit = U;
     /// How many decimal places of `unit` to keep.
     static constexpr DecimalPlaces places = Places;
-    /// Which way to go; the three half modes differ only on a tie, which only
-    /// an output that is exactly rational can reach.
+    /// Which way to go; the three half modes differ only on a tie: an output
+    /// exactly half a unit past the kept places.
     static constexpr RoundingMode mode = Mode;
     /// The dimension the operation declares for this output.
     static constexpr Dimension dimension = OpaqueOutputNode<I, Call, Origin>::dimension;

@@ -5,9 +5,9 @@
 /// An integer kernel that encloses the natural logarithm, the decimal logarithm and the exponential of a
 /// rational: two ends between which the value certainly lies, computed in 384-bit fixed point with only
 /// integer operations the language defines exactly, so that no floating-point mode enters and the same
-/// inputs are meant to give the same bits, at compile time and at run time. The test suite has passed on
-/// MSVC (cl 19.51.36257) and g++ 14 only. It is what the rounded forms (`rounded_transcendental.hpp`) round: when both ends round to the
-/// same decimal, that is the rounding of the value.
+/// inputs are meant to give the same bits, at compile time and at run time. It is what the rounded forms
+/// (`rounded_transcendental.hpp`) round: when both ends round to the same decimal, that is the rounding of
+/// the value.
 ///
 /// ## The algorithm and its error bound
 ///

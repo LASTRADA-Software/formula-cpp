@@ -44,8 +44,9 @@ constexpr std::array<std::int64_t, 11> gridDenominators { 1,    2,    3,    7,  
 TEST_CASE("wide rounding: a wide fraction rounds as checked_round rounds the same Rational", "[wide-rounding]")
 {
     // Wherever checked_round answers, round_wide_ratio gives the same, in
-    // every mode and at every place it accepts. Counted: 43729 cases, the
-    // number a probe of this algorithm measured on cl 19.51.
+    // every mode and at every place it accepts. Counted: 43729 cases, those
+    // of the grid and the four extremes, at every place from -18 to 18 and in
+    // every mode, where checked_round answers.
     int checkedCases = 0;
     int agreedCases = 0;
     auto const judge = [&](Rational exact) {

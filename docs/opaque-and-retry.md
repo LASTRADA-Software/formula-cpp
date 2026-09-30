@@ -457,14 +457,13 @@ The first three rows and the two nearly collinear ones are pinned by
 `test/negative/`.
 
 **The tolerance, stated.** In `double` a design of several regressors is taken
-for singular when a
-pivot of the centred normal equations is at or below 10⁻⁹ of its diagonal --
-when 1 - R² of a regressor on the ones before it is at or below 10⁻⁹. Rounded
-data cannot decide exact singularity, and this route promises no digits.
-The exact routes decide it exactly. Fewer than
-K + 1 rows, a flat regressor and flat values are the fit's own `DomainError`;
-no regressor, more than eight, anything but raw observations, and a call
-without a citation are refused where they are written.
+for singular when a pivot of the centred normal equations is at or below 10⁻⁹
+of its diagonal -- when 1 - R² of a regressor on the ones before it is at or
+below 10⁻⁹. Rounded data cannot decide exact singularity, and this route
+promises no digits. The exact routes decide it exactly. Fewer than K + 1 rows,
+a flat regressor and flat values are the fit's own `DomainError`; no
+regressor, more than eight, anything but raw observations, and a call without
+a citation are refused where they are written.
 
 ## A citation is required
 

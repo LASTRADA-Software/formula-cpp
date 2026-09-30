@@ -299,7 +299,9 @@ struct WideDivision
 /// far, so shifting it left never loses a set bit -- a divisor with its top
 /// bit set needs no special case.
 ///
-/// @pre @p divisor is not zero; every caller establishes it.
+/// @pre @p divisor is not zero; every caller establishes it. A zero divisor is
+/// not detected: the answer is then a quotient with every bit set up to the
+/// dividend's leading bit, and the dividend as the remainder.
 template <std::size_t L>
 [[nodiscard]] constexpr WideDivision<L> divmod(WideUnsigned<L> const& dividend, WideUnsigned<L> const& divisor) noexcept
 {
@@ -342,7 +344,9 @@ struct WideSmallDivision
 /// `divisor * 2^32` and so fits `std::uint64_t`. Far cheaper than `divmod`
 /// in a constant evaluation -- one step per limb, not per bit.
 ///
-/// @pre @p divisor is not zero; every caller establishes it.
+/// @pre @p divisor is not zero; every caller establishes it. A zero divisor
+/// divides by zero: undefined behaviour at run time, and not a constant
+/// expression at compile time.
 template <std::size_t L>
 [[nodiscard]] constexpr WideSmallDivision<L> divmod_small(WideUnsigned<L> const& dividend, std::uint32_t divisor) noexcept
 {

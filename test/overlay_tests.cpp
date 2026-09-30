@@ -412,12 +412,6 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
                        r, { Rational { 137, 100 }, Rational { 839, 10 } }))
                    == Rational { 41'096, 1'000 });
 
-    // An absolute value's operand, and both passes of a precision limit: the
-    // level expression reads the fixed 4, and the limit, twice the level,
-    // reads it through the placeholder -- which is itself no input and is
-    // left alone.
-    STATIC_REQUIRE(withRatioFixedAtFour(f::abs(r - f::number(Rational { 6 }))) == Rational { 2 });
-
     // A logarithm and an exponential, at the fixed 4 where each is exact: ln(4/4) is 0, log10(4 * 25)
     // is 2 and exp(4 - 4) is 1. A rewrite that stopped at the function would leave r unread, and the
     // environment holds nothing.
@@ -434,6 +428,12 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
     STATIC_REQUIRE(withRatioFixedAtFour(f::rounded_exp<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(
                        r - f::number(Rational { 4 })))
                    == Rational { 1 });
+
+    // An absolute value's operand, and both passes of a precision limit: the
+    // level expression reads the fixed 4, and the limit, twice the level,
+    // reads it through the placeholder -- which is itself no input and is
+    // left alone.
+    STATIC_REQUIRE(withRatioFixedAtFour(f::abs(r - f::number(Rational { 6 }))) == Rational { 2 });
     STATIC_REQUIRE(withRatioFixedAtFour(f::precision_limit<f::PrecisionKind::Repeatability>(
                        r, f::precision_level<Ratio> * f::number(Rational { 2 })))
                    == Rational { 8 });

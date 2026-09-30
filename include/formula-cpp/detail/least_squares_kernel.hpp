@@ -24,21 +24,25 @@
 /// rule, each numerator over the determinant, and the constant and R² follow
 /// from them. Everything stays in integers until the fractions are handed out.
 ///
-/// **The width is an estimate, checked.** For realistic data -- at most 1024
-/// observations, each at most 6 decimals and 10^6 in its declared unit, with a
-/// coherent factor of numerator and denominator at most 2^22 -- a column's
-/// common denominator is at most 2^42, a scaled element at most 2^62, a total at
-/// most 2^72, a cross total at most 2^134 and a centred sum at most 2^145. One
-/// regressor then needs 288 bits, R² being the widest, and 12 limbs of 32 bits
-/// hold it with room for a rounding. With K regressors a K x K minor of the
-/// centred sums is at most 144 K + ceil(K / 2 log2 K) bits (Hadamard's bound), the
-/// elimination and back-substitution form products of two minors and a sum of K
-/// of them, so 2 d(K) + 4 bits: 582 bits for two regressors (19 limbs), 874 for
-/// three (28), 1164, 1456, 1748, 2040 and 2332 for four to eight (37, 46, 55,
-/// 64 and 73). The sums, the centred sums and the totals are formed in 12 limbs
+/// **The width is an estimate; every wide operation checks it and answers
+/// `Overflow` beyond it.** For realistic data -- at most 1024 observations,
+/// each at most 6 decimals and 10^6 in its declared unit, with a coherent
+/// factor of numerator and denominator at most 2^22 -- a column's common
+/// denominator is at most 2^42, a scaled element at most 2^62, a total at most
+/// 2^72 and a cross total at most 2^134. A centred sum is `n` times a centred
+/// cross sum, so by Cauchy–Schwarz at most `n` times the square root of the
+/// product of two cross totals: 2^10 2^134 = 2^144. One regressor then needs
+/// 288 = 2 * 144 bits, R² -- a centred sum squared over the product of two --
+/// being the widest, and 12 limbs of 32 bits hold it with room for a rounding.
+/// With K regressors, a K x K minor of the centred sums is at most d(K) =
+/// 144 K + ceil((K / 2) log2 K) bits (Hadamard's bound); the elimination and
+/// the back-substitution form products of two minors and a sum of K of them,
+/// so 2 d(K) + 4 bits: 582 bits for two regressors (19 limbs), 874 for three
+/// (28), 1164, 1456, 1748, 2040 and 2332 for four to eight (37, 46, 55, 64
+/// and 73). The sums, the centred sums and the totals are formed in 12 limbs
 /// whatever K is, and widened for the solve. Data outside that envelope, with
 /// many distinct denominators, can outgrow it, and the answer is then
-/// `Overflow`, never a wrapped number: every wide operation reports it.
+/// `Overflow`, never a wrapped number.
 ///
 /// **The approximate route** (`approximate_regression`) is the same fit in any
 /// representation, for `double`. It centres on the means in a first pass, forms
@@ -152,8 +156,8 @@ template <std::size_t L>
 }
 
 /// Whether every value of @p observed equals the first: compared with `==`
-/// only, on the values as given. Nothing is not "all equal": the caller has
-/// counted them first.
+/// only, on the values as given. An empty span counts as all equal: the
+/// caller counts first.
 template <typename Rep>
 [[nodiscard]] constexpr bool all_equal_to_first(std::span<Rep const> observed) noexcept
 {

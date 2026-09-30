@@ -27,6 +27,7 @@
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/unit.hpp>
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
