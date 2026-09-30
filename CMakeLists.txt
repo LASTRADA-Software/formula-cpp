@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.23)
 # silently becomes 0.0.0 and every find_package(formula-cpp 0.1.0) then fails
 # with an error the git tag does not explain.
 project(formula-cpp
-    VERSION 0.2.0
+    VERSION 0.3.0
     DESCRIPTION "Declarative, traceable, self-documenting formulas for C++23"
     HOMEPAGE_URL "https://github.com/LASTRADA-Software/formula-cpp"
     LANGUAGES CXX)

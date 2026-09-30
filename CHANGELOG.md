@@ -6,6 +6,18 @@ change is recorded here.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
+The third release. It gives a shorter spelling to everything the examples repeated, and takes no
+spelling away. `_r` writes an exact decimal, `27.3_r` being the `Rational` 273/10; a series takes
+plain numbers and `not_measured`; `number_of` reads the number a result holds; `describe` and
+`std::format` write results, units, dimensions and enumerations; `traced`, the `explain_*` twins and
+`trace_of` return a trace in one call; `DecimalRounding` names a rounding once; a `Measured` has
+throwing twins for its checked conversion, rounding and bounds check; and `yields<Q>` binds a
+formula to its result quantity. Every example is rewritten with these spellings and prints with
+`std::println`. GCC 14 is now the oldest supported GCC. Some changes break code written for 0.2.0;
+each is listed under Changed.
+
 ### Added
 
 - `convert_to<R>`, `round_to_declared` and `within_bounds` for a `Measured<Q>`: the throwing twins
@@ -664,6 +676,7 @@ are one type; `docs/quantities.md` sets out what each spelling costs.
   for 205.5 g, and so were a curve over it and a value read off that curve. Each now reads in the
   series' unit, `411/2 g`, when that unit has a symbol and no offset.
 
-[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/LASTRADA-Software/formula-cpp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.3.0
 [0.2.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.2.0
 [0.1.0]: https://github.com/LASTRADA-Software/formula-cpp/releases/tag/v0.1.0
