@@ -59,7 +59,7 @@ using MassVariance = formula::Quantity<struct MassVarianceTag, "s2", "variance o
 // Six determinations of one mass: 40.2, 39.8, 40.5, 44.0, 40.0 and 43.3 g. A
 // method that fixes how many determinations it takes reads them as a series.
 inline constexpr auto sixMasses =
-    formula::environment(formula::measured_series<Mass>(40.2_r, 39.8_r, 40.5_r, 44, 40, 43.3_r));
+    formula::environment(formula::measured_series<Mass>(40.2_r, 39.8_r, 40.5_r, 44_r, 40_r, 43.3_r));
 
 inline constexpr auto determinations = formula::series<Mass, 6>;
 inline constexpr auto mean = formula::yields<Mass>(formula::sample_mean(determinations));
@@ -189,30 +189,14 @@ int main()
     // ---- 1. A sample --------------------------------------------------------------------
     std::println("== 1. A sample and its statistics ==\n");
 
-    auto const meanValue = formula::checked_evaluate(mean, sixMasses);
-    if (!meanValue)
-    {
-        std::println("the mean of six masses: {}", meanValue.error());
-        return 1;
-    }
-    auto const countValue = formula::checked_evaluate<Determinations>(count, sixMasses);
-    if (!countValue)
-    {
-        std::println("the count of six masses: {}", countValue.error());
-        return 1;
-    }
-    auto const varianceValue = formula::checked_evaluate<MassVariance>(variance, sixMasses);
-    if (!varianceValue)
-    {
-        std::println("the variance of six masses: {}", varianceValue.error());
-        return 1;
-    }
-    auto const rangeValue = formula::checked_evaluate<Spread>(range, sixMasses);
-    if (!rangeValue)
-    {
-        std::println("the range of six masses: {}", rangeValue.error());
-        return 1;
-    }
+    constexpr auto meanValue = formula::checked_evaluate(mean, sixMasses);
+    static_assert(meanValue.has_value());
+    constexpr auto countValue = formula::checked_evaluate<Determinations>(count, sixMasses);
+    static_assert(countValue.has_value());
+    constexpr auto varianceValue = formula::checked_evaluate<MassVariance>(variance, sixMasses);
+    static_assert(varianceValue.has_value());
+    constexpr auto rangeValue = formula::checked_evaluate<Spread>(range, sixMasses);
+    static_assert(rangeValue.has_value());
     auto const spreadValue = formula::checked_explain<Spread>(spread, sixMasses);
     if (!spreadValue)
     {
@@ -234,22 +218,14 @@ int main()
 
     // The same six masses as observations, in room for eight: the capacity is
     // a bound, and every statistic reads the six made.
-    auto const observed =
+    constexpr auto observed =
         formula::environment(formula::MeasuredObservations<Mass, 8>(40.2_r, 39.8_r, 40.5_r, 44_r, 40_r, 43.3_r));
-    auto const observedMean =
+    constexpr auto observedMean =
         formula::checked_evaluate<Mass>(formula::sample_mean(formula::observations<Mass, 8>), observed);
-    if (!observedMean)
-    {
-        std::println("the mean of the observations: {}", observedMean.error());
-        return 1;
-    }
-    auto const observedCount =
+    static_assert(observedMean.has_value());
+    constexpr auto observedCount =
         formula::checked_evaluate<Determinations>(formula::sample_count(formula::observations<Mass, 8>), observed);
-    if (!observedCount)
-    {
-        std::println("the count of the observations: {}", observedCount.error());
-        return 1;
-    }
+    static_assert(observedCount.has_value());
     std::println("observations of 8 at most, 6 made: mean {:/}, count {:/}",
                  observedMean->measurement(),
                  observedCount->measurement());
@@ -297,21 +273,12 @@ int main()
     check(formula::number_of(settled) == 40.125_r, "the mean of the four kept, 321/8 g");
     check(settled->rejected().size() == 2 && settled->passes() == 3, "44.0 g in pass 1, then 43.3 g in pass 2");
 
-    auto const settledMean = formula::checked_explain<Mass>(formula::sample_mean(withoutOutliers), sixMasses);
-    if (!settledMean)
-    {
-        std::println("the mean of the four kept: {}", settledMean.error().error);
-        return 1;
-    }
-    std::println("{}", formula::render_trace(settledMean->trace, { .maxSteps = 40 }));
-
-    auto const abortedMean = formula::checked_explain<Mass>(formula::sample_mean(atMostOne), sixMasses);
-    if (abortedMean)
-    {
-        std::println("one rejection too many still reduced to a mean");
-        return 1;
-    }
-    std::println("{}", formula::render_trace(abortedMean.error().trace, { .maxSteps = 40 }));
+    std::println("{}",
+                 formula::render_trace(formula::trace_of<Mass>(formula::sample_mean(withoutOutliers), sixMasses),
+                                       { .maxSteps = 40 }));
+    std::println("{}",
+                 formula::render_trace(formula::trace_of<Mass>(formula::sample_mean(atMostOne), sixMasses),
+                                       { .maxSteps = 40 }));
     auto const aborted = formula::checked_evaluate_rejection<Mass>(atMostOne, sixMasses);
     if (!aborted)
     {

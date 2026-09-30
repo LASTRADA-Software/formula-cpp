@@ -307,9 +307,10 @@ int main()
 
     std::println("{}\n{}", formula::render(span), formula::render<formula::Dialect::LaTeX>(span));
     auto const spread = formula::explain<Spread>(span, readings);
-    std::println("{}", formula::render_trace(spread.trace, { .maxSteps = 20 }));
+    std::string const spreadTrace = formula::render_trace(spread.trace, { .maxSteps = 20 });
+    std::println("{}", spreadTrace);
     check(formula::number_of(spread.outcome) == 88_r, "191 g less 103 g");
-    check(formula::render_trace(spread.trace, { .maxSteps = 20 }).contains("[inside not shown]"),
+    check(spreadTrace.contains("[inside not shown]"),
           "the trace says the operation's inside is not shown");
 
     formula::Documentation const page = formula::document(span);
@@ -370,8 +371,8 @@ int main()
     std::println("== 4. A citation is required ==\n");
 
     constexpr auto uncited = formula::opaque_output<"span">(formula::opaque<SeriesSpan>({}, formula::series<Reading, 4>));
-    auto const uncitedSpread = formula::explain<Spread>(uncited, readings);
-    std::string const uncitedTrace = formula::render_trace(uncitedSpread.trace, { .maxSteps = 20 });
+    std::string const uncitedTrace =
+        formula::render_trace(formula::trace_of<Spread>(uncited, readings), { .maxSteps = 20 });
     std::println("{}", uncitedTrace);
     check(uncitedTrace.contains("(no citation given)"), "an empty citation says so");
 
@@ -492,11 +493,13 @@ int main()
                      startOfFifty->measurement(),
                      qualityOfFifty->measurement());
     check(formula::number_of(slopeOfFifty) == 3.1707_r, "3.1707 mm/s");
+
     std::println("== 8. Several regressors ==\n");
 
-    auto const expansion =
-        formula::explain<Expansion>(formula::opaque_output<"coefficient 1">(byTemperatureAndContent), sixRows);
-    std::println("{}", formula::render_trace(expansion.trace, { .maxSteps = 40 }));
+    std::println("{}",
+                 formula::render_trace(
+                     formula::trace_of<Expansion>(formula::opaque_output<"coefficient 1">(byTemperatureAndContent), sixRows),
+                     { .maxSteps = 40 }));
 
     auto const perKelvin = formula::checked_evaluate<Expansion>(
         formula::rounded_output<"coefficient 1", formula::declared_rounding(millimetrePerKelvin, formula::RoundingMode::HalfEven)>(
