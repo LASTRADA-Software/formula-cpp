@@ -112,9 +112,10 @@ struct TraceRenderOptions
     /// nobody declared is never padded; where its default 3 places would
     /// round a value other than zero to `≈0`, they are extended to its first
     /// significant digit, up to 18 (`checked_shown_text`). A value a formula
-    /// rounded itself -- `rounded`, `rounded_sqrt`, `rounded_output` -- is the
-    /// step's exact value, a decimal, so it reads without `≈` in every style,
-    /// its mode in brackets after it. A value the style cannot spell in its
+    /// rounded itself -- `rounded`, `rounded_sqrt`, `rounded_ln`,
+    /// `rounded_log10`, `rounded_exp`, `rounded_output` -- is the step's exact
+    /// value, a decimal, so it reads without `≈` in every style, its mode in
+    /// brackets after it. A value the style cannot spell in its
     /// unit -- one padded or rounded in a unit whose declared decimals lie
     /// outside -18 to 18, say -- reads `(not shown: ...)`, as a value its unit
     /// cannot show does; a bound or a limit the author typed falls back to its
@@ -3190,11 +3191,12 @@ namespace detail
 /// reproduce. Evaluate in `double` by all means; print the exact trace. A
 /// value the exact layer cannot hold is no reason to trace in `double`
 /// either: a formula declares the precision it is reported at, and the trace
-/// shows that exact decimal -- `rounded_sqrt` for a root, and `rounded_output`
-/// for an output of an opaque operation that computes in wider integers, as
-/// `linear_least_squares` does. Any other operation's rounded output is
-/// computed in `Rational`, and fails with `Overflow` where the exact output
-/// would.
+/// shows that exact decimal -- `rounded_sqrt` for a root, `rounded_ln`,
+/// `rounded_log10` and `rounded_exp` for a logarithm or an exponential, and
+/// `rounded_output` for an output of an opaque operation that computes in
+/// wider integers, as `linear_least_squares` does. Any other operation's
+/// rounded output is computed in `Rational`, and fails with `Overflow` where
+/// the exact output would.
 template <typename Rep = Rational>
 [[nodiscard]] std::string render_trace(Trace<Rep> const& trace, TraceRenderOptions options)
 {
