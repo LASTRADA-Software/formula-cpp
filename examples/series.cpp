@@ -184,7 +184,7 @@ int main()
         std::println("the curve read at 173 m: {}", at173.error().error);
         return 1;
     }
-    check(formula::number_of(at173->outcome) == formula::Rational { 27708, 425 }, "173 m reads 27708/425 %");
+    check(formula::number_of(at173->outcome) == 27708_r / 425, "173 m reads 27708/425 %");
     std::println("{}", formula::render_trace(at173->trace, { .maxSteps = 80 }));
 
     formula::Documentation const page = formula::document(passing);
@@ -200,40 +200,29 @@ int main()
     auto const readings = formula::environment(formula::measured_series<Reading>(23.7_r, 41.3_r, 37.9_r));
     constexpr auto threeReadings = formula::series<Reading, 3>;
     std::string const sumTrace = formula::render_trace(
-        formula::traced([&](auto recordingSink)
-                        { return formula::checked_evaluate<Kelvins>(formula::sum(threeReadings), readings, recordingSink); })
-            .trace,
-        { .maxSteps = 80 });
+        formula::trace_of<Kelvins>(formula::sum(threeReadings), readings), { .maxSteps = 80 });
     std::string const readingsLine = sumTrace.substr(0, sumTrace.find('\n'));
     std::string const sumLine = last_line(sumTrace);
-    std::string const rangeLine = last_line(formula::render_trace(
-        formula::traced(
-            [&](auto recordingSink)
-            { return formula::checked_evaluate<Kelvins>(formula::sample_range(threeReadings), readings, recordingSink); })
-            .trace,
-        { .maxSteps = 80 }));
-    std::string const meanLine = last_line(formula::render_trace(
-        formula::traced(
-            [&](auto recordingSink)
-            { return formula::checked_evaluate<Reading>(formula::sample_mean(threeReadings), readings, recordingSink); })
-            .trace,
-        { .maxSteps = 80 }));
+    std::string const rangeLine = last_line(
+        formula::render_trace(formula::trace_of<Kelvins>(formula::sample_range(threeReadings), readings), { .maxSteps = 80 }));
+    std::string const meanLine = last_line(
+        formula::render_trace(formula::trace_of<Reading>(formula::sample_mean(threeReadings), readings), { .maxSteps = 80 }));
     std::println("the readings: {}\ntheir sum: {}\ntheir range: {}\ntheir mean: {}\n", readingsLine, sumLine, rangeLine, meanLine);
     check(sumLine == "2. sum(#1) = 18447/20", "922.35 K, no reading");
     check(rangeLine == "2. sample_range(#1) = 88/5", "17.6 K, no reading");
     check(meanLine == "2. sample_mean(#1) = 343/10 \xc2\xb0" "C", "a mean of readings is a reading, 34.3 degC");
 
     std::println("== 2. Elementwise arithmetic: one step per operation ==\n");
-    std::string const passingTrace = formula::render_trace(formula::explain_series(passing, analysis).trace, { .maxSteps = 40 });
+    auto const passingRun = formula::explain_series(passing, analysis);
+    std::string const passingTrace = formula::render_trace(passingRun.trace, { .maxSteps = 40 });
     std::println("{}", passingTrace);
-    check(passingTrace.find("3. cumulative(#2, from last) = 803 g; 673 g; 463 g; 368 g; 28 g\n") != std::string::npos,
+    check(passingTrace.contains("3. cumulative(#2, from last) = 803 g; 673 g; 463 g; 368 g; 28 g\n"),
           "the running total from the coarsest screen");
     // A computed step has no declared unit, so it reads in the coherent one:
     // 447/1250 is 35.76 %.
     check(passingTrace.ends_with("6. #1 - #5 = 447/1250; 577/1250; 787/1250; 441/625; 611/625\n"),
           "35.76, 46.16, 62.96, 70.56 and 97.76 % passing");
-    std::println("the same, within a budget of 8:\n{}",
-                 formula::render_trace(formula::explain_series(passing, analysis).trace, { .maxSteps = 8 }));
+    std::println("the same, within a budget of 8:\n{}", formula::render_trace(passingRun.trace, { .maxSteps = 8 }));
 
     // A series scaled by a pure number is still in its series' unit.
     auto const threeScreens = formula::environment(formula::measured_series<Retained>(137, 213, 293));
@@ -261,14 +250,10 @@ int main()
             formula::cumulative<formula::CumulativeDirection::FromLast>(formula::series<Retained, 5>), oneUnrecorded)
             .trace,
         { .maxSteps = 40 }));
-    std::string const reduced = last_line(formula::render_trace(
-        formula::traced([&](auto recordingSink) { return formula::checked_evaluate(retainedInAll, oneUnrecorded, recordingSink); })
-            .trace,
-        { .maxSteps = 80 }));
-    std::string const readOff = last_line(formula::render_trace(
-        formula::traced([&](auto recordingSink) { return formula::checked_evaluate(passingAt173, oneUnrecorded, recordingSink); })
-            .trace,
-        { .maxSteps = 80 }));
+    std::string const reduced =
+        last_line(formula::render_trace(formula::trace_of(retainedInAll, oneUnrecorded), { .maxSteps = 80 }));
+    std::string const readOff =
+        last_line(formula::render_trace(formula::trace_of(passingAt173, oneUnrecorded), { .maxSteps = 80 }));
     std::string const spliced = last_line(formula::render_trace(
         formula::explain_curve<Opening, Passing>(formula::splice<formula::Monotone::NonDecreasing>(coarse, fineMeasured),
                                                  fineGap)
@@ -295,7 +280,7 @@ int main()
           "that total and every later one absent");
     check(reduced.ends_with("sum(#1) = (not measured)"), "the whole sum absent");
     check(readOff.ends_with("interpolate(#8, at #9) = (not measured)"), "the curve absent, and no range stated");
-    check(spliced.find("= (not measured): (not measured);") != std::string::npos, "the whole splice absent");
+    check(spliced.contains("= (not measured): (not measured);"), "the whole splice absent");
     check(judgedWithGap[0].is_not_checked() && judgedWithGap[2].is_not_checked() && judgedWithGap[3].is_satisfied(),
           "the passing at the three finest screens not checked, the rest judged");
     check(broadcast.ends_with("(not measured); (not measured); (not measured); (not measured); (not measured)"),
@@ -328,42 +313,21 @@ int main()
 
     std::println("== 6. Snapping, and splicing two curves ==\n");
     std::println("{}", formula::render(halfPassing));
-    std::string const snapTrace = formula::render_trace(
-        formula::traced([&](auto recordingSink) { return formula::checked_evaluate<Opening>(halfPassing, analysis, recordingSink); })
-            .trace,
-        { .maxSteps = 80 });
+    std::string const snapTrace = formula::render_trace(formula::trace_of<Opening>(halfPassing, analysis), { .maxSteps = 80 });
     std::println("{}", snapTrace);
-    check(snapTrace.find("[127 m to 163 m; nearer 127 m]") != std::string::npos, "4733/35 m snaps to 127 m, the nearer");
+    check(snapTrace.contains("[127 m to 163 m; nearer 127 m]"), "4733/35 m snaps to 127 m, the nearer");
 
     auto const midway = formula::constant<unit::Metre>(145_r);
     std::string const towardLower = last_line(formula::render_trace(
-        formula::traced(
-            [&](auto recordingSink)
-            {
-                return formula::checked_evaluate<Opening>(
-                    formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(midway), analysis, recordingSink);
-            })
-            .trace,
+        formula::trace_of<Opening>(formula::snapped<unit::Metre, screens, formula::SnapTie::TowardLower>(midway), analysis),
         { .maxSteps = 80 }));
     std::string const towardHigher = last_line(formula::render_trace(
-        formula::traced(
-            [&](auto recordingSink)
-            {
-                return formula::checked_evaluate<Opening>(
-                    formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(midway), analysis, recordingSink);
-            })
-            .trace,
+        formula::trace_of<Opening>(formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(midway), analysis),
         { .maxSteps = 80 }));
     std::string const beyond = last_line(formula::render_trace(
-        formula::traced(
-            [&](auto recordingSink)
-            {
-                return formula::checked_evaluate<Opening>(
-                    formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(formula::constant<unit::Metre>(251_r)),
-                    analysis,
-                    recordingSink);
-            })
-            .trace,
+        formula::trace_of<Opening>(
+            formula::snapped<unit::Metre, screens, formula::SnapTie::TowardHigher>(formula::constant<unit::Metre>(251_r)),
+            analysis),
         { .maxSteps = 80 }));
     std::println("{}\n{}\n{}\n", towardLower, towardHigher, beyond);
     check(towardLower.ends_with("= 127 m [127 m to 163 m; tie, toward lower]"), "a tie, decided lower");

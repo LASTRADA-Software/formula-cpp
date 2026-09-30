@@ -375,6 +375,7 @@ int main()
         std::println("jurisdiction {}: {} Pa", std::to_underlying(jurisdiction), *chosenStrength);
     }
     std::println("");
+    // The one deliberate second run of the north: the runtime choice must reach the same method.
     check(formula::number_of(cubeStrengthIn(Jurisdiction::North)) == northStrength, "the runtime choice reaches the north");
 
     // ---- 4. A vocabulary --------------------------------------------------------------

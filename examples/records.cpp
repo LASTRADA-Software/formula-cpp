@@ -221,22 +221,15 @@ int main()
     std::println("");
     check(page.symbols.size() == 2, "one row per record a quantity is read from");
 
-    std::string const seriesTrace = formula::render_trace(
-        formula::traced([](auto recordingSink)
-                        { return formula::checked_evaluate_si<formula::Rational>(retainedRatio, screenRecords, recordingSink); })
-            .trace,
-        { .maxSteps = 20 });
+    std::string const seriesTrace =
+        formula::render_trace(formula::trace_of_si(retainedRatio, screenRecords), { .maxSteps = 20 });
     std::println("{}", seriesTrace);
     check(seriesTrace.contains("m_r = 139 g; 197 g; 103 g, from record Reference (sample 23, test 3), entered by hand\n"),
           "a series read from the reference names the record after its elements, and was typed in");
 
     std::println("== 3. Lineage is a gate ==\n");
 
-    std::string const agreed = formula::render_trace(
-        formula::traced([](auto recordingSink)
-                        { return formula::checked_evaluate_si<formula::Rational>(gated, records, recordingSink); })
-            .trace,
-        { .maxSteps = 20 });
+    std::string const agreed = formula::render_trace(formula::trace_of_si(gated, records), { .maxSteps = 20 });
     std::println("{}", agreed);
     check(agreed.contains("same TestMethod as this record: 12 for this record, 12 for Reference, satisfied"),
           "both attributes agree, and the value is read");
@@ -249,11 +242,14 @@ int main()
           "a different method refuses the read");
 
     auto const batchUnknown = recordsWith(formula::unknown_lineage<MaterialBatch>(), formula::lineage<TestMethod>(12));
-    auto const notChecked = formula::traced(
-        [&](auto recordingSink)
-        { return formula::checked_evaluate_si<formula::Rational>(gated, batchUnknown, recordingSink); });
-    std::println("{}", formula::render_trace(notChecked.trace, { .maxSteps = 20 }));
-    check(notChecked.outcome.has_value() && !notChecked.outcome->has_value(), "an unknown batch gives no answer");
+    auto const notChecked = formula::checked_explain<Strength>(gated, batchUnknown);
+    if (!notChecked)
+    {
+        std::println("the gated read, batch unknown: {}", notChecked.error().error);
+        return 1;
+    }
+    std::println("{}", formula::render_trace(notChecked->trace, { .maxSteps = 20 }));
+    check(notChecked->outcome.is_empty(), "an unknown batch gives no answer");
 
     // A disagreement refuses the read even when another key is unknown: an
     // unknown key gives no answer only when nothing disagrees.
@@ -281,23 +277,22 @@ int main()
 
     // The same record behind the gated read: every attribute it declares is
     // unknown, so no lineage is compared, and there is no answer.
-    auto const unboundGated = formula::traced(
-        [&](auto recordingSink)
-        { return formula::checked_evaluate_si<formula::Rational>(gated, notYetTested, recordingSink); });
-    std::string const unboundGatedTrace = formula::render_trace(unboundGated.trace, { .maxSteps = 20 });
+    auto const unboundGated = formula::checked_explain<Strength>(gated, notYetTested);
+    if (!unboundGated)
+    {
+        std::println("the gated read, record not yet made: {}", unboundGated.error().error);
+        return 1;
+    }
+    std::string const unboundGatedTrace = formula::render_trace(unboundGated->trace, { .maxSteps = 20 });
     std::println("{}", unboundGatedTrace);
-    check(unboundGated.outcome.has_value() && !unboundGated.outcome->has_value() && !unboundGatedTrace.contains("same "),
+    check(unboundGated->outcome.is_empty() && !unboundGatedTrace.contains("same "),
           "a gated read over a record not yet made checks no lineage, and gives no answer");
 
     auto const typedInEmpty = formula::record_context(
         formula::record<formula::ThisRecord>(formula::record_key(formula::sample_id(17), formula::test_id(5)), here),
         formula::record<Reference>(formula::record_key(formula::sample_id(23), formula::test_id(3)),
                                    formula::environment(formula::entered(formula::Measured<Strength>::absent()))));
-    std::string const leftEmpty = formula::render_trace(
-        formula::traced([&](auto recordingSink)
-                        { return formula::checked_evaluate_si<formula::Rational>(ratio, typedInEmpty, recordingSink); })
-            .trace,
-        { .maxSteps = 20 });
+    std::string const leftEmpty = formula::render_trace(formula::trace_of_si(ratio, typedInEmpty), { .maxSteps = 20 });
     std::println("{}", leftEmpty);
     check(leftEmpty.contains("f_c = (entered by hand as empty), from record Reference"), "an entry left empty by hand says so");
 
