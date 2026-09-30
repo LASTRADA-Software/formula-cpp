@@ -4,7 +4,7 @@
 
 #include <formula-cpp/formula.hpp>
 
-#include <cstdio>
+#include <print>
 
 /// A quantity is a type. It carries its own symbol, its own description and the
 /// unit its values are stated in, and it is distinct from every other quantity
@@ -25,9 +25,9 @@ int main()
 
     formula::Outcome<WaterCementRatio> const result = formula::evaluate<WaterCementRatio>(waterCementRatio, batch);
 
-    std::printf("%s = %f (%s)\n",
-                formula::Describe<WaterCementRatio>::symbol.data(),
-                result.measurement().value().to_double(),
-                result.is_value() ? "computed" : "no value");
+    std::println("{} = {:f} ({})",
+                 formula::Describe<WaterCementRatio>::symbol,
+                 result.measurement().value().to_double(),
+                 result.is_value() ? "computed" : "no value");
     return 0;
 }
