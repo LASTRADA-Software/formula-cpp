@@ -215,12 +215,255 @@ points; readings at three decimal places of a few thousand first overflow at
 34 points, and not at every larger size; a different denominator on every
 point overflows from 15. So there is no safe number of points to state. The
 [numeric headroom](numeric-headroom.md) page carries the fit's census over
-every size, regenerated with every build. **A fit that overflows has no
-traced fallback in `double`.** A curve evaluates only in `Rational`, so
-`checked_evaluate_si<double>` over a fit is refused where it is written.
-`LinearLeastSquares::compute<double>` can be called directly, on numbers the
-caller has put in coherent units, but it returns bare numbers: nothing checks
-their dimensions, and nothing reaches the trace or the page.
+every size, regenerated with every build. **A fit that overflows has a
+traced answer only at a declared precision** (`rounded_output`, below), **and
+none in `double`.** A curve evaluates only in `Rational`, so
+`checked_evaluate_si<double>` over a curve fit is refused where it is
+written. `LinearLeastSquares::compute<double>` can be called directly, on
+numbers the caller has put in coherent units, but it returns bare numbers:
+nothing checks their dimensions, and nothing reaches the trace or the page.
+A fit over raw observations, [below](#a-line-through-observations), is
+evaluated in `double` too, untraced, and at a declared precision it answers
+where its exact route overflows, within the kernel's width and beyond it
+`Overflow`.
+
+### Rounded where it is used
+
+A method that reports the slope at a stated precision -- "to 0.0001 mm/s" --
+does not need the exact fraction: it needs the decimal that fraction rounds
+to. `rounded_output` states that precision, as `rounded<>` does. For
+`linear_least_squares`, which computes in wider integers, the library
+computes that decimal exactly, even where the exact fit leaves `Rational`'s
+range:
+
+```cpp
+constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocity,
+                                              .magnitudeNumerator = 1,
+                                              .magnitudeDenominator = 1000,
+                                              .symbolText = formula::symbol("mm/s"),
+                                              .decimals = 4 };
+constexpr auto roundedSlope =
+    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        fit);
+```
+
+```text
+round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)
+1. t = 1 s; 2 s; 4 s; 7 s
+2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm
+3. curve(#1, #2) = 1 s: 51/5 mm; 2 s: 109/10 mm; 4 s: 121/10 mm; 7 s: 143/10 mm
+4. linear least squares(#3) = intercept, slope: rounded where used [inside not shown] [Rate of change, Example Standard 12, 5.1]
+5. round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]
+```
+
+- **The true slope is written nowhere.** The call's line names its outputs
+  without values -- none exists until one is rounded -- and the output's own
+  line states its rounding. 3393/5000 mm/s is 0.6786 mm/s exactly, the
+  correct rounding of 19/28 mm/s, and the step's value; no number style marks
+  it approximate.
+- **It answers where the exact fit overflows.** `linear_least_squares`
+  computes the fit for it in 256-bit integers, and the fifteen distinct
+  denominators that overflow above give a slope:
+
+```text
+fifteen distinct denominators, rounded where used: 116.232 mm/min
+```
+
+- **It still refuses rather than guess.** A different denominator on every
+  point outgrows 256 bits from 58 points, and the answer is `Overflow`
+  ([numeric headroom](numeric-headroom.md#least-squares-realistic-and-one-stress-control)).
+  A unit that does not measure the output, or one with an offset, is refused
+  at compile time, and so is `Rep = double`.
+- **Only an operation that computes in wider integers answers further.** Any
+  other operation's rounded output is computed in `Rational`, rounded
+  exactly, and fails with `Overflow` where `opaque_output` would.
+- `rounded<...>(opaque_output<"slope">(fit))` keeps its meaning: the exact
+  slope, rounded afterwards, which overflows where the exact slope does. Each
+  output used runs the whole call, rounded or not.
+
+## A line through observations
+
+A method often fits every determination that meets a condition, so how many
+points there are is data, not part of the formula. Read them as raw
+observations, `observations<Q, Capacity>` ([statistics](statistics.md)
+introduces them), and the fit takes as many as were made:
+
+```cpp
+constexpr auto observedFit =
+    formula::linear_least_squares(formula::observations<Elapsed, 64>,
+                                  formula::observations<Length, 64>,
+                                  { .title = "Rate of change", .reference = "Example Standard 12", .section = "5.1" });
+```
+
+**Pairing is by row.** Observation i of each input belongs to row i, so build
+every column from the same rows. Inputs whose counts differ make the fit fail
+with its own `DomainError`; so do fewer than two observations, points that
+are all equal, and values that are all equal. Flat values are refused
+because R² would be 0/0, so a flat response never passes an R² acceptance:
+
+```text
+flat lengths: argument outside the domain of the operation
+```
+
+**Four outputs.** `intercept` and `slope` as before, `r squared` -- the
+coefficient of determination, S_xy² / (S_xx S_yy), a bare number -- and
+`points`, the number of observations fitted, exact in every representation.
+The degrees of freedom are `points` minus two.
+
+```text
+1. t = 1 s; 2 s; 4 s; 7 s
+2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm
+3. linear least squares(#1, #2) = intercept = 19/2 mm; slope = 19/28 mm/s; r squared = 1083/1085; points = 4 [inside not shown] [Rate of change, Example Standard 12, 5.1]
+4. slope of #3 = 19/28 mm/s
+```
+
+The four observations were made in room for 64, and the call's line shows
+the four.
+
+### When the exact fractions do not fit
+
+An exact fit through fifty readings at four decimals does not fit
+`Rational`. Computed with Python's fractions, the slope is a fraction of 46
+and 54 bits, which fits, but the intercept's numerator needs 64 bits and R²
+92 bits over 92. `opaque_output` then answers `Overflow` -- for every
+output of the call, since its outputs answer or fail together. A formula
+that declares the precision it reports a coefficient at -- a unit, decimal
+places and a rounding mode, as `rounded<>` does -- gets the correctly
+rounded decimal instead, as long as the fit stays within the wide integers
+the kernel computes in (`detail/least_squares_kernel.hpp`; beyond them the
+answer is `Overflow` again, and the
+[numeric headroom](numeric-headroom.md#regression-over-observations-realistic-and-one-stress-control)
+page measures where). [Displaying numbers](display.md#values-the-exact-layer-cannot-hold)
+explains values the exact layer cannot hold. The example declares the slope
+this way:
+
+```cpp
+constexpr auto observedSlope =
+    formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+        observedFit);
+```
+
+```text
+round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)
+1. t = 1 s; 2 s; 4 s; 7 s
+2. L = 51/5 mm; 109/10 mm; 121/10 mm; 143/10 mm
+3. linear least squares(#1, #2) = intercept, slope, r squared, points: rounded where used [inside not shown] [Rate of change, Example Standard 12, 5.1]
+4. round(slope of #3, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]
+```
+
+```text
+fifty readings at 4 decimals, exact: overflow in exact arithmetic
+fifty readings at 4 decimals, rounded: slope 3.1707 mm/s, intercept 2406.6455 mm, r squared 0.999996
+```
+
+The slope is 3.1707 mm/s at four decimals (a floor would give 3.1706), the
+intercept 2406.6455 mm, and R² 0.999996 floored at six decimals (to nearest
+it would be 0.999997).
+
+### R² as an acceptance
+
+A constraint can accept a fit by its R². `RoundingMode::Floor` makes the
+rounding never lift a fit over the line:
+
+```cpp
+constexpr auto closeEnough = formula::constraint(
+    formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(observedFit)
+        >= formula::constant<unit::One>(formula::Rational { 998, 1000 }),
+    formula::Verdict { "repeat the readings" });
+```
+
+```text
+r squared at 4 dp, floored, at least 0.998: satisfied
+```
+
+### In `double`, and against a temperature in degrees Celsius
+
+`checked_evaluate_si<double>` fits observations approximately, in coherent
+units, with nothing traced: it is the exploratory route, and a design the
+exact route answers may be refused there (the section on several regressors
+states the tolerance).
+
+The fit sees coherent units, so a regressor in degrees Celsius is fitted in
+kelvin: the slope per kelvin is the slope per degree Celsius, but the
+intercept is the value at 0 K. The value at 0 °C is the intercept plus the
+slope times 273.15 K, written as a formula over the two outputs.
+
+## Several regressors
+
+`multiple_least_squares` fits a constant and one coefficient per regressor.
+The regressors are held by `regressors(...)`, because a parameter pack
+cannot stand before the values and the citation; they come first and the
+values last, as a curve has points then values:
+
+```cpp
+constexpr auto byTemperatureAndContent = formula::multiple_least_squares(
+    formula::regressors(formula::observations<Temperature, 64>, formula::observations<Content, 64>),
+    formula::observations<Length, 64>,
+    { .title = "Length by temperature and content", .reference = "Example Standard 12", .section = "5.3" });
+```
+
+Its outputs are `constant`, `coefficient 1` to `coefficient K` (one-based,
+K from 1 to 8), `r squared` and `points`. Each coefficient is in the
+values' dimension over its regressor's. Six rows -- a temperature in degrees
+Celsius, a content in percent, and a length -- give:
+
+```text
+1. T = 113/10 °C; 137/10 °C; 179/10 °C; 191/10 °C; 233/10 °C; 297/10 °C
+2. w_c = 23/10 %; 31/10 %; 29/10 %; 41/10 %; 37/10 %; 43/10 %
+3. L = 2588/25 mm; 10413/100 mm; 10433/100 mm; 1051/10 mm; 10521/100 mm; 106 mm
+4. multiple least squares(#1, #2, #3) = constant = 22365154943/276592800 mm; coefficient 1 = 346407/4609880000 m/K; coefficient 2 = 19214255/345741 mm; r squared = 27398849648/27403085919; points = 6 [inside not shown] [Length by temperature and content, Example Standard 12, 5.3]
+5. coefficient 1 of #4 = 346407/4609880000 m/K
+```
+
+Coefficient 1 is shown in the coherent `m/K`, because degrees Celsius have an
+offset and are never borrowed as a unit. The fit sees kelvin, so the
+constant is the length at 0 K and 0 % content: the length at 0 °C is a
+formula over two outputs. Coefficient 2 is per unit of content, a fraction, so
+a method that reports it per percent declares a unit of mm per %:
+
+```cpp
+constexpr auto lengthAtZeroCelsius =
+    formula::rounded<unit::Millimetre, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(
+        formula::opaque_output<"constant">(byTemperatureAndContent)
+        + formula::opaque_output<"coefficient 1">(byTemperatureAndContent)
+              * formula::constant<unit::Kelvin>(formula::Rational { 27315, 100 }));
+```
+
+```text
+coefficient 1: 0.0751 mm/K, coefficient 2: 0.5557 mm/%, length at 0 degrees Celsius: 101.39 mm
+```
+
+### A singular design is an error, not a number
+
+Two regressors that measure the same thing, twice over, have no unique fit
+whatever was observed. The fit refuses them:
+
+```text
+a delay twice the elapsed time on every row: argument outside the domain of the operation
+```
+
+| design | exact (`opaque_output`, `rounded_output`) | `double` (`checked_evaluate_si<double>`) |
+|---|---|---|
+| one regressor a multiple of another (`x2 = 2 x1`) | `DomainError` | `DomainError` |
+| one regressor offset from another (`x2 = x1 + 273.15`, the same temperature in kelvin) | `DomainError` | `DomainError` |
+| an affine combination (`x2 = 3 x1 - 7`) | `DomainError` | `DomainError` |
+| nearly collinear: 1 - R² of x2 on x1 about 2 * 10⁻⁹ | answered, exactly | answered |
+| nearly collinear: about 5 * 10⁻¹⁰ | answered, exactly | `DomainError`, by the tolerance |
+| the same quantity read twice | refused where it is written | refused where it is written |
+
+The first three rows and the two nearly collinear ones are pinned by
+`test/least_squares_kernel_tests.cpp` and
+`test/multiple_least_squares_tests.cpp`; the last row by the refusals in
+`test/negative/`.
+
+**The tolerance, stated.** In `double` a design of several regressors is taken
+for singular when a pivot of the centred normal equations is at or below 10⁻⁹
+of its diagonal -- when 1 - R² of a regressor on the ones before it is at or
+below 10⁻⁹. Rounded data cannot decide exact singularity, and this route
+promises no digits. The exact routes decide it exactly. Fewer than K + 1 rows,
+a flat regressor and flat values are the fit's own `DomainError`; no
+regressor, more than eight, anything but raw observations, and a call without
+a citation are refused where they are written.
 
 ## A citation is required
 

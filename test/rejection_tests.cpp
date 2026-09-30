@@ -81,9 +81,8 @@ template <typename... Values>
     return formula::environment(formula::measured_series<Mass>(grams(values)...));
 }
 
-// The shared fixtures (the plan's "The shared fixtures"), invented; every
-// number below was checked with Python's fractions against a mirror of the
-// loop.
+// Two invented samples, A and B; every number below was checked with
+// Python's fractions against a mirror of the loop.
 // A, "re-running matters": 40.2, 39.8, 40.5, 44.0, 40.0, 43.3 g.
 inline constexpr auto fixtureA = sampleOf(rat(402, 10), rat(398, 10), rat(405, 10), rat(44), rat(40), rat(433, 10));
 // B, "policy matters": 40.2, 39.8, 40.5, 45.2, 40.0, 37.2 g.
@@ -120,8 +119,9 @@ constexpr auto Reject = formula::OnLimit::Reject;
 
 inline constexpr auto rejectionA = rejectionOf<MostExtreme, Keep, 2, 4, 6>(sixPercent);
 
-// The plan's invented critical-value tables (its "do not adjust" list):
-// sizes 3, 4, 5, 6 and 8 -- no 7, so a seven-element pass misses.
+// Invented critical-value tables; the expected values below were computed
+// with them as they stand. Sizes 3, 4, 5, 6 and 8 -- no 7, so a
+// seven-element pass misses.
 inline constexpr formula::SampleSizeTable<5> Sizes { 3, 4, 5, 6, 8 };
 /// The deviation table, read at each pass's n and scaled by 1/10: limits 9,
 /// 1, 2, 3/2 and 6 standard deviations.

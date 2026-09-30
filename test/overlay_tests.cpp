@@ -412,6 +412,23 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
                        r, { Rational { 137, 100 }, Rational { 839, 10 } }))
                    == Rational { 41'096, 1'000 });
 
+    // A logarithm and an exponential, at the fixed 4 where each is exact: ln(4/4) is 0, log10(4 * 25)
+    // is 2 and exp(4 - 4) is 1. A rewrite that stopped at the function would leave r unread, and the
+    // environment holds nothing.
+    STATIC_REQUIRE(withRatioFixedAtFour(f::ln(r / f::number(Rational { 4 }))) == Rational { 0 });
+    STATIC_REQUIRE(withRatioFixedAtFour(f::log10(r * f::number(Rational { 25 }))) == Rational { 2 });
+    STATIC_REQUIRE(withRatioFixedAtFour(f::exp(r - f::number(Rational { 4 }))) == Rational { 1 });
+
+    // The rounded forms: ln 4 = 1.386294... is 1.386 at 3 dp, log10 4 = 0.60205... is 0.602 -- both
+    // through the logarithm kernel, so checked at run time -- and exp(4 - 4) is exactly 1.
+    CHECK(withRatioFixedAtFour(f::rounded_ln<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(r))
+          == Rational { 693, 500 });
+    CHECK(withRatioFixedAtFour(f::rounded_log10<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(r))
+          == Rational { 301, 500 });
+    STATIC_REQUIRE(withRatioFixedAtFour(f::rounded_exp<f::DecimalPlaces { 3 }, f::RoundingMode::HalfAwayFromZero>(
+                       r - f::number(Rational { 4 })))
+                   == Rational { 1 });
+
     // An absolute value's operand, and both passes of a precision limit: the
     // level expression reads the fixed 4, and the limit, twice the level,
     // reads it through the placeholder -- which is itself no input and is

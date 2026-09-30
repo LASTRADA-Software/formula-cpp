@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series
+// EXPECT: formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values
 // REJECT: overrides a quantity that no variant or constraint of the method uses
 //
 // `with_constant<Retained>` on a method whose only use of the retained mass

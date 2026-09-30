@@ -54,6 +54,7 @@
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/snap.hpp>
@@ -874,7 +875,7 @@ template <Dialect D, typename R, Vocabulary V>
     requires detail::is_sample_transformer<R>
 [[nodiscard]] std::string render(R const& node, V const& vocabulary);
 
-/// The counterpart for raw observations (`binning.hpp`), neither a `Node` nor
+/// The counterpart for raw observations (`observations.hpp`), neither a `Node` nor
 /// a series, when a statistic renders its sample.
 template <Dialect D, ObservationsNode O, Vocabulary V>
 [[nodiscard]] std::string render(O const& node, V const& vocabulary);
@@ -1209,6 +1210,64 @@ template <Dialect D, int Degree, Node Operand, Vocabulary V>
     }
 }
 
+namespace detail
+{
+    /// How LaTeX writes @p function: `\ln`, `\log_{10}`, `\exp`. `\exp` and not `e^{...}`: a power
+    /// renders its base as an atom, so `pow<2>(exp(x))` would read `e^{x}^{2}`, which LaTeX refuses; and
+    /// `e` is a quantity's symbol in many methods.
+    [[nodiscard]] constexpr std::string_view transcendental_latex_name(Transcendental function) noexcept
+    {
+        switch (function)
+        {
+            case Transcendental::NaturalLogarithm:
+                return "\\ln";
+            case Transcendental::DecimalLogarithm:
+                return "\\log_{10}";
+            case Transcendental::Exponential:
+                return "\\exp";
+        }
+        return "\\operatorname{unknown}";
+    }
+
+    /// @p function called on @p argumentText, in dialect @p D: `ln(x)`, and in LaTeX `\ln\left(x\right)`.
+    /// Shared by the plain node and the rounded one (`rounded_transcendental.hpp`).
+    template <Dialect D>
+    [[nodiscard]] std::string transcendental_text(Transcendental function, std::string const& argumentText)
+    {
+        if constexpr (D == Dialect::LaTeX)
+            return std::string { transcendental_latex_name(function) } + "\\left(" + argumentText + "\\right)";
+        else
+            return std::string { transcendental_name(function) } + "(" + argumentText + ")";
+    }
+
+    /// @p inner rounded to @p places decimal places of the unit whose symbol is @p unitSymbol, in dialect
+    /// @p D: `round(<inner>, to <places> dp of <unit>)`, and in LaTeX
+    /// `\operatorname{round}_{<places>\,<unit>}(<inner>)`, the unit set upright and escaped (`latex_unit`).
+    /// No unit clause for a unit with no symbol. The one spelling of every node that rounds to one
+    /// number of decimal places -- `RoundNode`, `RoundedRootNode`, `RoundedTranscendentalNode`,
+    /// `RoundedOpaqueOutputNode` -- and of a trace's line for one (`trace_render.hpp`). A rounding of
+    /// each element to its own places (`ElementwiseRoundNode`) has its own spelling.
+    template <Dialect D>
+    [[nodiscard]] std::string rounding_call(std::string const& inner, DecimalPlaces places, std::string const& unitSymbol)
+    {
+        std::string const placesText = std::to_string(places.value);
+        if constexpr (D == Dialect::LaTeX)
+            return "\\operatorname{round}_{" + placesText + unit_clause("\\,", latex_unit(unitSymbol)) + "}(" + inner + ")";
+        else
+            return "round(" + inner + ", to " + placesText + " dp" + unit_clause(" of ", unitSymbol) + ")";
+    }
+} // namespace detail
+
+/// A logarithm or an exponential renders as a call on its argument -- `ln(x)`, `log10(x)`, `exp(x)`, and in
+/// LaTeX `\ln\left(x\right)`, `\log_{10}\left(x\right)`, `\exp\left(x\right)` -- in the vocabulary's
+/// symbols. Like `sqrt(...)`, the parentheses it always produces group its own argument, so it needs no
+/// `PrecedenceOf` entry: the primary's `Atom` is right, and `pow<2>(ln(x))` reads `ln(x)^2`.
+template <Dialect D, Transcendental F, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(TranscendentalNode<F, Operand> const& node, V const& vocabulary)
+{
+    return detail::transcendental_text<D>(F, render<D>(node.operand, vocabulary));
+}
+
 /// A rounding node renders as a function call, `round(<operand>, to <places>
 /// dp of <unit>)` -- braced onto a subscript in LaTeX, the same way a root's
 /// degree is. Like `sqrt` and `root` above, the parentheses it always
@@ -1258,16 +1317,9 @@ template <Dialect D, int Degree, Node Operand, Vocabulary V>
 template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand, Vocabulary V>
 [[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node, V const& vocabulary)
 {
-    std::string const inner = render<D>(node.operand, vocabulary);
     constexpr Unit declaredUnit = U;
-    std::string const unitSymbol { view(declaredUnit.symbolText) };
-    std::string const placesText = std::to_string(Places.value);
-
-    if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}("
-               + inner + ")";
-    else
-        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+    return detail::rounding_call<D>(
+        render<D>(node.operand, vocabulary), Places, std::string { view(declaredUnit.symbolText) });
 }
 
 /// A significant-digits rounding node, spelled the same way as `RoundNode`
@@ -1305,13 +1357,21 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radic
     std::string const inner = render<D>(node.radicand, vocabulary);
     constexpr Unit declaredUnit = U;
     std::string const unitSymbol { view(declaredUnit.symbolText) };
-    std::string const placesText = std::to_string(Places.value);
-
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol))
-               + "}(\\sqrt{" + inner + "})";
+        return detail::rounding_call<D>("\\sqrt{" + inner + "}", Places, unitSymbol);
     else
-        return "round(sqrt(" + inner + "), to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+        return detail::rounding_call<D>("sqrt(" + inner + ")", Places, unitSymbol);
+}
+
+/// A rounded logarithm or exponential renders as what it computes, a rounding of the call:
+/// `round(ln(x), to 4 dp)`, and in LaTeX `\operatorname{round}_{4}(\ln\left(x\right))`. No unit clause:
+/// the node rounds a pure number. See `RoundNode`'s overload for why the mode is left out and why the
+/// places are a comma-separated second argument; the call's own parentheses group it, so the primary
+/// `PrecedenceOf`'s `Atom` is right.
+template <Dialect D, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(RoundedTranscendentalNode<F, Places, Mode, Operand> const& node, V const& vocabulary)
+{
+    return detail::rounding_call<D>(detail::transcendental_text<D>(F, render<D>(node.operand, vocabulary)), Places, {});
 }
 
 /// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,
@@ -1859,6 +1919,30 @@ template <Dialect D, std::size_t I, typename Op, typename... Inputs, typename Or
         return "\\text{" + operationName + "}(" + arguments + ")_{\\text{" + outputName + "}}";
     else
         return operationName + "(" + arguments + ")." + outputName;
+}
+
+/// A rounded opaque output renders as what it states, the output rounded:
+/// `round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)`, and in
+/// LaTeX `RoundNode`'s subscripted `\operatorname{round}` around the output.
+/// That it is one exact operation rather than a rounding of an exact output is
+/// how it is evaluated, not what it states -- `rounded_sqrt`'s reasoning,
+/// above. The mode is left out, for the reason `RoundNode`'s overload gives,
+/// and the trace states it.
+template <Dialect D,
+          std::size_t I,
+          typename Op,
+          typename... Inputs,
+          Unit U,
+          DecimalPlaces Places,
+          RoundingMode Mode,
+          typename Origin,
+          Vocabulary V>
+[[nodiscard]] std::string render_node(
+    RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node, V const& vocabulary)
+{
+    constexpr Unit declaredUnit = U;
+    return detail::rounding_call<D>(
+        render<D>(detail::unrounded(node), vocabulary), Places, std::string { view(declaredUnit.symbolText) });
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it

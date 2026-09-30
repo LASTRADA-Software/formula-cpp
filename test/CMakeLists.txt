@@ -51,6 +51,8 @@ add_executable(formula-cpp-tests
     trace_render_tests.cpp
     rounding_node_tests.cpp
     rounded_root_tests.cpp
+    transcendental_tests.cpp
+    rounded_transcendental_tests.cpp
     critical_value_tests.cpp
     precision_tests.cpp
     predicate_tests.cpp
@@ -74,6 +76,7 @@ add_executable(formula-cpp-tests
     conformity_tests.cpp
     snap_tests.cpp
     binning_tests.cpp
+    observations_tests.cpp
     curve_tests.cpp
     statistics_tests.cpp
     statistics_cross_tu_b.cpp
@@ -89,11 +92,17 @@ add_executable(formula-cpp-tests
     opaque_tests.cpp
     opaque_cross_tu_b.cpp
     least_squares_tests.cpp
+    least_squares_kernel_tests.cpp
+    multiple_least_squares_tests.cpp
+    regression_cross_tu_b.cpp
     retry_tests.cpp
     calculation_tests.cpp
     calculation_trace_tests.cpp
     number_text_tests.cpp
     format_tests.cpp
+    wide_int_tests.cpp
+    wide_rounding_tests.cpp
+    rounded_output_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -701,14 +710,32 @@ formula_add_negative_test(series_round_places_int_array
 # such, and the "nobody reads it" refusal gated off, since a variant does
 # read it.
 formula_add_negative_test(overlay_constant_on_series_quantity
-    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "overrides a quantity that no variant or constraint of the method uses")
 formula_add_negative_test(overlay_derived_on_series_quantity
-    "formula: this overlay derives a quantity the method reads as a series; one definition cannot stand for a series"
+    "formula: this overlay derives a quantity the method reads as a series or as raw observations; one definition cannot stand for many values"
     REJECT "derives a quantity that no variant or constraint of the method uses")
 
 formula_add_negative_test(function_zero_root_degree
     "a root of degree zero describes no operation")
+
+# A logarithm or an exponential of a quantity: refused once, through each
+# factory and around them, and silent over an operand refused already.
+formula_add_negative_test(transcendental_ln_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_log10_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_exp_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_no_factory_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(transcendental_refused_operand
+    "formula: this curve is read at a point that does not measure the dimension of its domain" EXPECT_COUNT 1
+    REJECT "formula: the argument of this logarithm or exponential is not dimensionless")
+# Two mistakes, two messages: the logarithm's own refusal does not hide the
+# sum's, since fixing either leaves the other.
+formula_add_negative_test(transcendental_then_addition
+    "formula: the two sides of this addition or subtraction measure different dimensions" EXPECT_COUNT 1)
 
 formula_add_negative_test(documented_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
@@ -799,6 +826,10 @@ formula_add_negative_test(precision_level_outside_limit
 formula_add_negative_test(precision_level_in_own_level
     "formula: this precision_limit's level expression reads precision_level"
     REJECT "precision_level is meaningful only inside" "provides no value for this quantity")
+formula_add_negative_test(precision_level_in_level_through_logarithm
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "provides no value for this quantity"
+           "has no detail::LevelChildren specialisation")
 
 formula_add_negative_test(precision_level_dimension_mismatch
     "formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression"
@@ -918,9 +949,10 @@ formula_add_negative_test(rejection_of_single_value
     "formula: without_outliers rejects determinations from a sample"
     REJECT "no matching" "a sample statistic needs a sample")
 
-# Phase 12's series-quantity refusal, reused unchanged for a statistic.
+# A statistic reads its quantity as a series, so an overlay that fixes it with
+# one constant is refused, as for any quantity read as a series.
 formula_add_negative_test(sample_mean_overlay_constant_on_sample
-    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "overrides a quantity that no variant or constraint of the method uses" "cannot see inside")
 
 # The same check sees through phase 12's series kinds: a placeholder added to
@@ -938,6 +970,18 @@ formula_add_negative_test(precision_level_offset_unit
 formula_add_negative_test(rounded_sqrt_rep_double
     "formula: a rounding node cannot be evaluated with Rep = double"
     REJECT "formula: this rounded_sqrt names a unit")
+
+# A rounded logarithm or exponential: the plain node's dimension check, once,
+# through the factory and around it; and RepRounding<double>'s own refusal
+# under double, as for every rounding node.
+formula_add_negative_test(rounded_transcendental_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1
+    REJECT "formula: this rounding node names a unit")
+formula_add_negative_test(rounded_transcendental_no_factory_dimensioned
+    "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
+formula_add_negative_test(rounded_transcendental_rep_double
+    "formula: a rounding node cannot be evaluated with Rep = double"
+    REJECT "formula: the argument of this logarithm or exponential is not dimensionless")
 
 # Same NAME-not-message shape as the exponent and symbol-length sentinels
 # above: there is no static_assert to quote here, only a deleted default
@@ -2186,11 +2230,16 @@ formula_add_negative_test(opaque_compute_signature
 formula_add_negative_test(opaque_output_as_series
     "formula: an opaque call is not a value, since an operation may have several outputs; choose one with opaque_output<\"name\">(call)"
     REJECT "this expression is a series, not a single value")
+# The operation accepts no dimension, so the dimension check's message is what
+# the shape's refusal keeps away.
+formula_add_negative_test(opaque_observations_where_series_declared
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "does not accept inputs of these dimensions")
 # Least squares (`least_squares.hpp`): two loose series are refused in this
 # library's words, not the compiler's; a fit in double is refused once, in the
 # curve's words.
 formula_add_negative_test(least_squares_not_a_curve
-    "formula: linear_least_squares fits a curve; pair the domain and the values with curve(domain, values)"
+    "formula: linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value series with curve(domain, values), or read both with observations<Q, Capacity>"
     REJECT "no matching overloaded function" "no matching function" "RequireResultDimension")
 # A fit with no citation is refused in the library's words; a fit over a
 # refused curve says only the curve's.
@@ -2203,11 +2252,93 @@ formula_add_negative_test(least_squares_refused_curve
 formula_add_negative_test(least_squares_in_double
     "formula: a curve can only be evaluated with Rep = Rational"
     REJECT "must be noexcept" "compute cannot be called")
+# A line through raw observations: each refusal once, in this library's words.
+formula_add_negative_test(least_squares_observations_uncited
+    "formula: linear_least_squares needs a citation, the reason the method fits a line here; pass {} when it gives none"
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension" "has no output of that name")
+formula_add_negative_test(least_squares_observations_and_series
+    "formula: linear_least_squares fits a curve, or points and values read as observations"
+    REJECT "no matching overloaded function" "no matching function" "RequireResultDimension" "has no output of that name")
+formula_add_negative_test(least_squares_observations_same_quantity
+    "formula: linear_least_squares reads one quantity as both its points and its values"
+    REJECT "RequireResultDimension" "has no output of that name" "passes an input of another shape")
+# A multiple regression: each refusal once, in this library's words.
+formula_add_negative_test(multiple_least_squares_uncited
+    "formula: multiple_least_squares needs a citation"
+    REJECT "no matching" "has no output of that name")
+formula_add_negative_test(multiple_least_squares_series_regressor
+    "formula: multiple_least_squares reads each regressor and the values as raw observations"
+    EXPECT_COUNT 1
+    REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
+formula_add_negative_test(multiple_least_squares_series_of_values_quantity
+    "formula: multiple_least_squares reads each regressor and the values as raw observations"
+    REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
+formula_add_negative_test(multiple_least_squares_series_values
+    "formula: multiple_least_squares reads each regressor and the values as raw observations"
+    REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
+# "constraints not satisfied" and "MultipleLeastSquares<0>" are how g++ 14 and
+# clang++ 22 word the operation's constraint on K; cl words it differently, so
+# on cl those two REJECTs cannot fire.
+formula_add_negative_test(multiple_least_squares_no_regressor
+    "formula: multiple_least_squares needs at least one regressor"
+    REJECT "fits at most 8" "reads each regressor" "has no output of that name" "constraints not satisfied"
+           "MultipleLeastSquares<0>")
+formula_add_negative_test(multiple_least_squares_nine_regressors
+    "formula: multiple_least_squares fits at most 8 regressors"
+    REJECT "reads each regressor" "has no output of that name" "constraints not satisfied" "MultipleLeastSquares<9>")
+formula_add_negative_test(multiple_least_squares_repeated_regressor
+    "formula: multiple_least_squares reads one quantity twice"
+    REJECT "has no output of that name" "RequireResultDimension")
+formula_add_negative_test(multiple_least_squares_regressor_as_values
+    "formula: multiple_least_squares reads one quantity twice"
+    REJECT "has no output of that name" "RequireResultDimension")
+formula_add_negative_test(multiple_least_squares_unwrapped
+    "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
+    REJECT "no matching" "has no output of that name")
+formula_add_negative_test(multiple_least_squares_one_unwrapped_with_citation
+    "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
+    EXPECT_COUNT 1
+    REJECT "ambiguous" "no matching" "has no output of that name")
+formula_add_negative_test(multiple_least_squares_two_unwrapped
+    "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
+    REJECT "no matching" "has no output of that name")
+# rounded_output (`opaque.hpp`): each refusal once, gated on the ones before
+# it; every REJECT names what the next check down, or the result's, would add.
+formula_add_negative_test(rounded_output_unit_dimension_mismatch
+    "formula: this rounded_output names a unit that does not measure the dimension of the output it rounds; the output and the unit appear in this diagnostic as the template arguments of RequireRoundedOutputUnitMatches"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit with an offset" "this result quantity does not measure the dimension")
+formula_add_negative_test(rounded_output_offset_unit_dimension_mismatch
+    "formula: this rounded_output names a unit that does not measure the dimension of the output it rounds"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit with an offset")
+formula_add_negative_test(rounded_output_unit_has_offset
+    "formula: this rounded_output names a unit with an offset, such as degrees Celsius; a fitted coefficient is a difference or a ratio, which an offset unit would misstate; name the unit without its offset"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit that does not measure")
+formula_add_negative_test(rounded_output_unknown_output
+    "formula: this opaque operation has no output of that name; the operation and the name asked for appear in this diagnostic as the template arguments of RequireOpaqueOutputNamed"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit" "this result quantity does not measure the dimension")
+formula_add_negative_test(rounded_output_refused_call
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "formula: this rounded_output names a unit" "this result quantity does not measure the dimension")
+formula_add_negative_test(rounded_output_forged_position
+    "formula: this opaque output's position names no output of its operation"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit")
+# `RepRounding<double>`'s own refusal, as for every rounding node.
+formula_add_negative_test(rounded_output_rep_double
+    "formula: a rounding node cannot be evaluated with Rep = double"
+    REJECT "formula: this rounded_output names a unit")
 # A constant for a quantity read as a series inside an opaque call: the
 # rewrite sees through the call to its inputs, so the series refusal is the
 # one message -- not "cannot see inside", and not "nobody reads it".
 formula_add_negative_test(overlay_constant_inside_opaque_series
-    "formula: this overlay fixes a quantity the method reads as a series; one constant cannot stand for a series"
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
+    REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
+formula_add_negative_test(overlay_constant_inside_observation_fit
+    "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "cannot see inside" "overrides a quantity that no variant or constraint of the method uses")
 # A refused opaque call's output stands in with a dimensionless dimension;
 # every check over it is silent (`detail::refused_already`), so the one
@@ -2275,6 +2406,15 @@ formula_add_negative_test(overlay_derivation_of_refused_opaque
     "formula: this opaque operation does not accept inputs of these dimensions"
     REJECT "no matching overloaded function" "no matching function" "cannot see inside")
 formula_add_negative_test(overlay_substitution_inside_opaque_across_overlays
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
+    REJECT "cannot see inside")
+# The same through a rounded output, whose call's inputs the whole-method rule
+# sees as it sees an opaque output's.
+formula_add_negative_test(overlay_substitution_inside_rounded_output_across_overlays
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
+    EXPECT_COUNT 1
+    REJECT "cannot see inside")
+formula_add_negative_test(overlay_substitution_inside_logarithm_across_overlays
     "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "cannot see inside")
 formula_add_negative_test(overlay_constant_bypassed_inside_opaque
@@ -2417,6 +2557,12 @@ formula_add_negative_test(calculation_definition_reads_observations
     EXPECT_COUNT 1
     REJECT "formula: this definition holds a node kind the calculation cannot see inside"
            "has no detail::LevelChildren specialisation" "no matching")
+formula_add_negative_test(calculation_definition_reads_fit_observations
+    "formula: a calculation holds single values, and this definition reads a quantity as a series or as raw observations"
+    EXPECT_COUNT 2
+    REJECT "formula: this definition holds a node kind the calculation cannot see inside"
+           "has no detail::LevelChildren specialisation"
+           "no matching")
 formula_add_negative_test(calculation_definition_reads_record
     "formula: a calculation's definitions read the worksheet's own values, and this one reads from another record with from_record"
     EXPECT_COUNT 1

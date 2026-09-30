@@ -17,8 +17,10 @@
 // including the header is enough for those. The probe below instantiates:
 // evaluation of every node kind -- arithmetic with a bare number on either
 // side, negation, powers and every root, pi, rounding both ways, a rounded
-// square root, a conditional, the escape hatch, the three lookups, a
-// critical value, an absolute value and a two-pass precision limit --
+// square root, a logarithm, a decimal logarithm and an exponential, exactly
+// and in double, each rounded exactly to declared places, a conditional,
+// the escape hatch, the three lookups, a critical value, an absolute value
+// and a two-pass precision limit --
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
 // and its predicate, and of formulas an overlay fixed, derived and replaced;
@@ -43,11 +45,14 @@
 // variance, on the same surfaces; a rejection of outliers, evaluated alone
 // and under a mean, on the same surfaces, and one by gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
-// opaque operation's output, evaluated exactly and in double, traced,
-// rendered and documented; a least-squares fit; a retry over recorded
-// determinations, evaluated, traced, rendered and documented; and the four
-// table validators; and `record_key`, `sample_id`, `test_id`,
-// `record`, `Record::unbound`, `record_context`, its `this_record`,
+// opaque operation's output, evaluated exactly and in double, and rounded
+// where it is used, traced, rendered and documented; a least-squares fit,
+// exact and rounded where it is used, and a line through raw observations,
+// exactly, rounded and in double, and `multiple_least_squares` of
+// `regressors(...)` of two through them; a retry over recorded determinations,
+// evaluated, traced, rendered and documented; and the four table validators;
+// and `record_key`, `sample_id`, `test_id`, `record`, `Record::unbound`,
+// `record_context`, its `this_record`,
 // `record<Role>()` and `binds`, with `checked_evaluate`, `evaluate_method`
 // and `explain` through a context, and `from_record`, over a bound and an
 // unbound record, untraced and traced into `render_trace`, gated on
@@ -141,7 +146,8 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     why, word, words, x, y, z, variance, spread, deviation, deviations, gap, statistic, survivors, rejected, sampled,
     counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
     statistics, batch, lineage, role, gated, there, reference, scope, attribute, comparand, subject, points, slope,
-    intercept, fit, attempt, attempts, verdict, previous, judgement, accepted, exhausted;
+    intercept, fit, attempt, attempts, verdict, previous, judgement, accepted, exhausted, observation, observations,
+    pivot, design, coefficient, coefficients, regressor, regressors;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -173,6 +179,7 @@ int index;
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/number_text.hpp>
+#include <formula-cpp/observations.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
@@ -185,6 +192,7 @@ int index;
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
@@ -269,7 +277,9 @@ inline constexpr formula::SampleSizeTable<2> Sizes { 1, 2 };
 /// A formula touching every node kind the evaluator, renderer and trace know:
 /// arithmetic, a power and a root, a documented citation, rounding both
 /// ways, a rounded square root, a conditional, the escape hatch, all three
-/// lookups, a critical value, an absolute value and a precision limit.
+/// lookups, a critical value, an absolute value, a precision limit, a
+/// logarithm, a decimal logarithm and an exponential, each also rounded to
+/// declared places.
 inline constexpr auto everything = formula::documented(
     formula::rounded<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
         var<Force> / formula::pow<2>(var<EdgeX>)
@@ -288,7 +298,12 @@ inline constexpr auto everything = formula::documented(
         * formula::interpolating_lookup<unit::One, Points, unit::One>(
             var<Factor>, { formula::Rational { 1'043, 1'000 }, formula::Rational { 2'917, 1'000 } })
         * formula::rounded_to_digits<unit::One, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfAwayFromZero>(
-            formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))),
+            formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))
+        * formula::exp(formula::ln(var<Factor>)) * formula::log10(var<Factor> * formula::Rational { 10 })
+        * formula::rounded_exp<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            formula::rounded_ln<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(var<Factor>))
+        * formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Factor> * formula::Rational { 10 })),
     formula::Citation { .title = "Everything", .reference = "Example Standard 1:2020", .section = "1" });
 
 /// A consumer's opaque operation: the span of a series, its highest element
@@ -513,6 +528,26 @@ ConsumerGlobalsProbe probe_consumer_globals()
             var<Factor> * formula::Rational { 2 }),
         specimen);
     probe.checks.push_back(spreadNode.is_value() && spreadNode.measurement().value() == formula::Rational { 141, 100 });
+    // Logarithms and exponentials where each is exact -- exp(ln 1) is 1 and log10 1000 is 3 -- and the
+    // double route where none is: ln 2.
+    auto const logarithmic = formula::evaluate<Factor>(
+        formula::exp(formula::ln(var<Factor>)) * formula::log10(var<Factor> * formula::Rational { 1000 }), specimen);
+    auto const approximateLogarithm =
+        formula::checked_evaluate_si<double>(formula::ln(var<Factor> * formula::Rational { 2 }), specimen);
+    probe.checks.push_back(logarithmic.is_value() && logarithmic.measurement().value() == formula::Rational { 3 });
+    probe.checks.push_back(approximateLogarithm.has_value() && approximateLogarithm->has_value()
+                           && **approximateLogarithm > 0.69 && **approximateLogarithm < 0.70);
+    // The rounded forms through the kernel: ln 2 to 4 places is 0.6931, log10 2 to 3 is 0.301 and exp 1
+    // to 4 is 2.7183, 3.7124 together.
+    auto const roundedLogarithms = formula::evaluate<Factor>(
+        formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Factor>
+                                                                                                   * formula::Rational { 2 })
+            + formula::rounded_log10<formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfAwayFromZero>(
+                var<Factor> * formula::Rational { 2 })
+            + formula::rounded_exp<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Factor>),
+        specimen);
+    probe.checks.push_back(roundedLogarithms.is_value()
+                           && roundedLogarithms.measurement().value() == formula::Rational { 37124, 10000 });
     pages += formula::render(-var<Force>) + formula::render(formula::pi * var<Force>)
              + formula::render<formula::Dialect::LaTeX>(formula::cbrt(var<Force>));
 
@@ -792,6 +827,19 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::render<formula::Dialect::Markdown>(edgeSpan).find("edge span") != std::string::npos
         && formula::render<formula::Dialect::LaTeX>(edgeSpan).find("\\text{edge span}") != std::string::npos
         && formula::document(edgeSpan, north).opaqueOperations.size() == 1);
+    // The span rounded where it is used, 36 mm to 1 dp of mm: evaluated,
+    // traced, rendered and documented.
+    auto const roundedSpan =
+        formula::rounded_output<"span", unit::Millimetre, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfEven>(
+            formula::opaque<EdgeSpan>({ .reference = "Example Standard 3" }, formula::series<EdgeX, 2>));
+    auto const roundedSpanValue = formula::checked_evaluate<EdgeX>(roundedSpan, spanEdges);
+    auto const explainedRoundedSpan = formula::explain<EdgeX>(roundedSpan, spanEdges, north);
+    probe.checks.push_back(
+        roundedSpanValue.has_value() && roundedSpanValue->measurement().value() == formula::Rational { 36 }
+        && formula::render_trace(explainedRoundedSpan.trace, { .maxSteps = 20 }).find("span: rounded where used")
+               != std::string::npos
+        && formula::render(roundedSpan, north) == "round(edge span(x_m(i)).span, to 1 dp of mm)"
+        && formula::document(roundedSpan, north).opaqueOperations.size() == 1);
     // A straight line fitted through the declared curve points 139 and
     // 161 mm, at 13.7 and 28.3 mm: a slope of 14.6/22 = 73/110.
     auto const edgeFit =
@@ -801,6 +849,55 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                       { .reference = "Example Standard 3" });
     auto const fitSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeFit), specimen);
     probe.checks.push_back(fitSlope.has_value() && fitSlope->measurement().value() == formula::Rational { 73, 110 });
+    // The same slope, 73/110, rounded where it is used through the fit's exact
+    // hook: 0.664 at 3 dp.
+    auto const roundedFitSlope = formula::checked_evaluate<Factor>(
+        formula::rounded_output<"slope", unit::One, formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(edgeFit),
+        specimen);
+    probe.checks.push_back(roundedFitSlope.has_value()
+                           && roundedFitSlope->measurement().value() == formula::Rational { 83, 125 });
+    // A line through raw observations: edges of 103, 163 and 241 mm against
+    // twice each plus 1 mm, 207, 327 and 483 mm -- slope 2, R^2 1, exactly,
+    // rounded and in double.
+    std::array<formula::Rational, 3> const agreedReadings { formula::Rational { 207 },
+                                                            formula::Rational { 327 },
+                                                            formula::Rational { 483 } };
+    auto const lineSample =
+        formula::environment(*edgeObserved, *formula::MeasuredObservations<AgreedEdge, 4>::from(agreedReadings));
+    constexpr auto edgeLine = formula::linear_least_squares(
+        formula::observations<EdgeX, 4>, formula::observations<AgreedEdge, 4>, { .reference = "Example Standard 3" });
+    auto const lineSlope = formula::checked_evaluate<Factor>(formula::opaque_output<"slope">(edgeLine), lineSample);
+    auto const lineFit = formula::checked_evaluate<Factor>(
+        formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(
+            edgeLine),
+        lineSample);
+    auto const lineInDouble = formula::checked_evaluate_si<double>(formula::opaque_output<"slope">(edgeLine), lineSample);
+    probe.checks.push_back(lineSlope.has_value() && lineSlope->measurement().value() == formula::Rational { 2 }
+                           && lineFit.has_value() && lineFit->measurement().value() == formula::Rational { 1 }
+                           && lineInDouble.has_value() && lineInDouble->has_value() && **lineInDouble > 1.999
+                           && **lineInDouble < 2.001);
+    // Two regressors over three rows: y = 1 mm + 2 x + 5 mm * k, exactly, so
+    // coefficient 1 is 2 and R^2 is 1.
+    std::array<formula::Rational, 3> const factorReadings { formula::Rational { 1 },
+                                                            formula::Rational { 3 },
+                                                            formula::Rational { 2 } };
+    std::array<formula::Rational, 3> const combined { formula::Rational { 212 },
+                                                      formula::Rational { 342 },
+                                                      formula::Rational { 493 } };
+    auto const regressionSample = formula::environment(*edgeObserved,
+                                                       *formula::MeasuredObservations<Factor, 4>::from(factorReadings),
+                                                       *formula::MeasuredObservations<AgreedEdge, 4>::from(combined));
+    constexpr auto edgeRegression = formula::multiple_least_squares(
+        formula::regressors(formula::observations<EdgeX, 4>, formula::observations<Factor, 4>),
+        formula::observations<AgreedEdge, 4>,
+        { .reference = "Example Standard 3" });
+    auto const firstCoefficient =
+        formula::checked_evaluate<Factor>(formula::opaque_output<"coefficient 1">(edgeRegression), regressionSample);
+    auto const regressionInDouble =
+        formula::checked_evaluate_si<double>(formula::opaque_output<"r squared">(edgeRegression), regressionSample);
+    probe.checks.push_back(firstCoefficient.has_value() && firstCoefficient->measurement().value() == formula::Rational { 2 }
+                           && regressionInDouble.has_value() && regressionInDouble->has_value()
+                           && **regressionInDouble > 0.999);
     // A retry over the two recorded edges, evaluated, traced, rendered and
     // documented in all three dialects.
     constexpr auto edgesAgree = formula::when(formula::this_attempt<AgreedEdge> >= formula::previous_attempt<AgreedEdge>,

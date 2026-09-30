@@ -35,6 +35,7 @@
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/number_text.hpp>
+#include <formula-cpp/observations.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>
@@ -46,6 +47,7 @@
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>

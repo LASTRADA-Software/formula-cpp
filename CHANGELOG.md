@@ -174,6 +174,99 @@ may break it, and each such change is recorded here.
   documentation page, a first run, changes and what each recalculates, the derivation of a value
   that was reused, a what-if copy, a value typed in by hand, a failure reaching what reads it, an
   input nobody measured, and what is refused.
+- `rounded_output<"name", U, Places, Mode>(call)`: one output of an opaque call, rounded to `Places`
+  decimal places of the unit `U` under `Mode`, exactly -- the decimal the operation's true output
+  rounds to, even where that output is a fraction too wide for `Rational`, for an operation that
+  states its outputs in wider integers; any other operation's output is computed in `Rational`,
+  rounded exactly, and fails with `Overflow` where `opaque_output` would. It rounds in `U`, never in
+  the coherent unit, and its dimension is the output's. It is refused, in the library's words, for an
+  output the operation does not declare, for a unit that does not measure the output's dimension and
+  for a unit with an offset, and it does not compile under `Rep = double`, as no rounding node does.
+  `rounded<>(opaque_output<>(...))` is unchanged: the exact output rounded afterwards, or `Overflow`
+  where the exact output overflows. It renders as the rounding it states,
+  `round(linear least squares(t(i), L(i)).slope, to 4 dp of mm/s)`, a page lists its call once
+  however the call's outputs are used, an overlay's constant reaches inside its call as it does inside
+  `opaque_output`'s, and a calculation may define a quantity by one.
+- `OpaqueValues`, and `OpaqueCallInfo::values`: a sink hearing an opaque call is told `Exact`, as
+  before, or `RoundedWhereUsed` for a call evaluated for a `rounded_output`, whose `opaque_produced`
+  is then handed an `OpaqueEvaluated<Rational, 0>` -- whether the call answered, was absent or
+  failed, and no value.
+- A trace of a `rounded_output`: its call's line names the outputs without values, since none
+  exists until an output is rounded -- `linear least squares(#3) = intercept, slope: rounded where
+  used [inside not shown] [...]` -- and the output's own line states the rounding:
+  `round(slope of #4, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]`. The rounded
+  decimal is the step's exact value, so no number style marks it `≈`. A failure the call carried
+  reads as the call's on the output's line too. `OpaqueStepData` records `values`, and in `answer`, an
+  `OpaqueAnswer`, whether the call answered.
+- `rounded_output<"slope", ...>(linear_least_squares(...))` answers where the exact route overflows:
+  the fit is computed in 256-bit integers for it, so that on readings at 3 decimal places of a few
+  thousand newtons it answers at every size from 2 to 128 points, where `opaque_output<"slope">`
+  overflows at 57 of those sizes, the first at 34. A different denominator on every point outgrows
+  the 256 bits from 58 points, and the answer is `Overflow` (`docs/numeric-headroom.md`).
+- The guides explain values the exact layer cannot hold: `docs/display.md` gains *Values the exact
+  layer cannot hold* -- such a value, a root, a logarithm, an exponential or the output of a fit
+  computed in wider integers, is written only as the rounding its formula declares, exact and
+  without `≈`, and refused without one -- and `docs/opaque-and-retry.md` a section on
+  `rounded_output`, with the fit's trace and the fifteen-point fit it answers.
+- `ln(x)`, `log10(x)` and `exp(x)` (`function.hpp`) take the natural logarithm, the
+  decimal logarithm and the exponential of a formula. The argument must be dimensionless -- a quantity
+  divided by a reference value of its own dimension, or a number read with `numeric_value_of` -- and a
+  dimensioned one does not compile. A percentage is dimensionless and read as a fraction, so `log10` of
+  1000 % is 1. Evaluated exactly, each answers where its value is rational -- ln 1 = 0, exp 0 = 1,
+  log10 10^k = k for k from -18 to 18 -- and is `ArithmeticError::Inexact` elsewhere; the logarithm of
+  zero or of a negative value is `DomainError`. `checked_evaluate_si<double>` answers with `std::log`,
+  `std::log10` and `std::exp`. `RepFunctions` gains `natural_log`, `decimal_log` and `exponential`,
+  which a representation of a consumer's own needs only to evaluate these.
+  They render as `ln(x)`, `log10(x)` and `exp(x)`, in LaTeX as `\ln\left(x\right)`,
+  `\log_{10}\left(x\right)` and `\exp\left(x\right)`, and a trace writes each as a step of its own,
+  `ln(#1) = ...`.
+- `rounded_ln<Places, Mode>(x)`, `rounded_log10<Places, Mode>(x)` and `rounded_exp<Places, Mode>(x)`, in the
+  new header `rounded_transcendental.hpp` (included by `formula.hpp`), answer the logarithm or exponential of a
+  dimensionless expression rounded to `Places` decimal places under `Mode`: the decimal the true value rounds
+  to, computed with integer arithmetic, so no floating-point mode enters and the same inputs give the same
+  digits at compile time and at run time. Only ln 1, log10 10^k and exp 0 can tie, and the mode breaks the tie
+  as `checked_round` does. `Overflow` answers a result too large for a `Rational` at the declared places,
+  places outside -18 to 18, and the rare rounding the computation cannot decide: one whose value lies within
+  the computation's width -- under 2^-118, relative for the exponential -- of a rounding boundary.
+  Evaluated with `Rep = double`, each is refused at compile time, as `rounded_sqrt` is.
+  `rounded<...>(ln(x))` still means an exact logarithm, which fails where there is none.
+  They render as `round(ln(x), to 4 dp)`, in LaTeX `\operatorname{round}_{4}(\ln\left(x\right))`, and a trace
+  writes each as one step whose value is the rounded decimal and whose bracket names the mode:
+  `round(ln(#1), to 4 dp) = 6931/10000 [nearest, ties away from zero]`.
+- A section, *Logarithms and exponentials*, in *Expressions and evaluation* (`docs/expressions.md`), and a
+  gallery entry, a logarithmic reduction rounded exactly to 0.01.
+- `observations.hpp`, holding raw observations -- `observations<Q, Capacity>`, `ObservationsVarNode`,
+  `ObservationsNode`, `ObservationsValue` and `EvaluatedObservations` -- which `binning.hpp` declared before and
+  still includes. Code that reads observations no longer needs a binning's classes, lookups and bands.
+- `InputShape::Observations`: an opaque operation may take raw observations, `observations<Q, Capacity>`, as an
+  input. `compute` receives one `std::span<Rep const>` over the observations made -- as many as were made, not
+  the capacity, and empty when none were -- in any `Rep`, `double` included. The library compares no counts: an
+  operation over two independent samples takes two counts, and one that pairs its inputs row by row checks its
+  counts itself.
+- `linear_least_squares(observations<X, C>, observations<Y, C2>, citation)` fits a straight line through raw
+  observations, paired row by row, whose number is data. Its outputs are `intercept`, `slope`, `r squared` -- the
+  coefficient of determination, dimensionless -- and `points`, the number of observations fitted. Decided before
+  any sum, in every representation, and each the fit's own `DomainError`: both inputs hold as many observations, at
+  least two, the points are not all equal, and the values are not all equal, so a flat response never passes an R²
+  acceptance. Exact through `opaque_output`, where the four outputs answer or all fail with `Overflow` when one
+  does not fit a `Rational`; correctly rounded through `rounded_output`, which rounds the kernel's wide result and so
+  answers where the exact route overflows -- within the kernel's width, and beyond it `Overflow`; approximately, and
+  untraced, through `checked_evaluate_si<double>`. One quantity read as both points and values, or observations without a
+  citation, is refused where it is written.
+- `multiple_least_squares(regressors(x1, ..., xK), y, citation)` fits y = constant + coefficient 1 x1 + ... +
+  coefficient K xK through raw observations paired by row, for K from 1 to 8; K = 1 is the line. Its outputs are
+  `constant`, `coefficient 1` to `coefficient K`, `r squared` and `points`, each coefficient in the values'
+  dimension over its regressor's. A singular design is the fit's own `DomainError`, never a number: decided exactly
+  in `Rational` and by `rounded_output`, and in `double` when a pivot of the centred normal equations is at or below
+  10⁻⁹ of its diagonal, so a design within 10⁻⁹ of singular, but not exactly singular, is answered exactly and refused
+  in `double`.
+  Refused where written: no citation, no regressor, more than eight, anything but raw observations, and one quantity
+  read twice. `MultipleLeastSquares<K>`, `Regressors` and `regressors` are the operation and its holder.
+- Two sections of *Opaque operations and bounded retry* (`docs/opaque-and-retry.md`): *A line through
+  observations* -- the fit rounded where its exact fractions do not fit, R² as an acceptance, and the line in
+  `double` and against a temperature in degrees Celsius -- and *Several regressors*, with the designs refused as
+  singular. `examples/opaque_and_retry.cpp` fits both, and the census (`docs/numeric-headroom.md`, *Regression
+  over observations*) counts the sizes, up to 128 points, at which each route overflows.
 
 ### Changed
 
@@ -199,6 +292,36 @@ may break it, and each such change is recorded here.
   `Environment` the two always agree, so its traces read as before. A variable's step can now
   record `ValueSource::Derived`, a value its environment calculated: its line ends `, calculated`,
   and one with no value reads `(no value), calculated` rather than `(not measured)`.
+- `OpaqueCallInfo` gains `values` after `dimensions`, defaulted to `OpaqueValues::Exact`: code that
+  builds one with designated initialisers is unaffected; a structured binding over one now has five
+  members, not four.
+- `OpaqueStepData` gains `values` and `answer`, after `inputsNotEvaluated`: a structured binding
+  over one now has seven members, not five.
+- `StepKind` gains `RoundedOpaqueOutput`, `NaturalLogarithm`, `DecimalLogarithm`, `Exponential`,
+  `RoundedNaturalLogarithm`, `RoundedDecimalLogarithm` and `RoundedExponential`, appended after
+  `AttemptInput` in that order: a `switch` over `StepKind` that names every enumerator and has no
+  `default` now misses seven, which g++ 14 reports under `-Wswitch` (part of `-Wall`).
+- An unqualified call of `ln`, `log10` or `exp` whose argument is a formula node now finds the library's function
+  by argument-dependent lookup; one whose argument is a number still finds only the standard library's function;
+  the library's own takes a formula node only. A consumer's own function of one of these names that accepts a
+  formula node now makes such a call ambiguous.
+- `linear_least_squares` given anything but a curve or two sets of observations says "formula:
+  linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value
+  series with curve(domain, values), or read both with observations<Q, Capacity>", which names both ways to call it.
+- `LinearLeastSquares::compute<double>`, the curve fit in `double`, refuses one point that is NaN with the fit's own
+  `DomainError`, as it refuses any single point; it answered NaN for the intercept and the slope before.
+- `OpaqueCallFailure` has a last member, `site` (`FailureSite`, default `FailureSite::ResultElement`), so an
+  aggregate initialisation naming the members before it is unchanged; a structured binding over one now has five
+  members, not four. Raw observations that fail to convert at observation k relay
+  `site == FailureSite::InputObservation`, and the call's trace line says `[carried up from #n, at observation k]`.
+  `InputShape` has a fourth enumerator, so a consumer's exhaustive `switch` over it warns under `-Wswitch`.
+- `statistics.hpp` includes `observations.hpp` instead of `binning.hpp`, and so no longer brings in
+  `binning.hpp`, `band.hpp` or `lookup.hpp`: code that used a binning, a band table or a lookup through
+  `statistics.hpp` alone includes `binning.hpp` or `lookup.hpp`.
+- An overlay's refusal of a constant or a derivation for a quantity the method reads as a series or as raw
+  observations names both: "formula: this overlay fixes a quantity the method reads as a series or as raw
+  observations; one constant cannot stand for many values", with "derives" and "one definition" for a
+  derivation. It said "reads as a series" and "cannot stand for a series", of raw observations too.
 
 ## [0.1.0] - 2026-09-28
 

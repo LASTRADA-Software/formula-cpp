@@ -256,10 +256,10 @@ because all of it came from the same line of code.
 | [Exact numbers](docs/numbers.md) | `Rational`, the rounding modes, why exactness is the default |
 | [Dimensions and units](docs/dimensions.md) | Compile-time dimensional analysis, exact unit conversion, and base dimensions the SI does not have, such as money |
 | [Quantities](docs/quantities.md) | Declaring a quantity, `Describe`, measurements that may be absent |
-| [Writing formulas](docs/expressions.md) | Operators, evaluation, environments, overrides |
+| [Writing formulas](docs/expressions.md) | Operators, evaluation, environments, overrides, and logarithms and exponentials, exact or rounded to declared places |
 | [Citations and rendering](docs/citations.md) | `documented()`, the three dialects, generated documentation |
 | [Tracing and audit trails](docs/tracing.md) | `explain()`, `render_trace()`, sinks, and the zero-cost untraced path |
-| [Displaying numbers](docs/display.md) | Decimals in traces and rendered formulas, exact unless an approximation is asked for, and std::format for Rational and Measured |
+| [Displaying numbers](docs/display.md) | Decimals in traces and rendered formulas, exact unless an approximation is asked for, std::format for Rational and Measured, and values the exact layer cannot hold, written as the rounding their formula declares |
 | [Calculations and worksheets](docs/calculations.md) | Named values defined by expressions, a dependency graph checked at compile time, a worksheet that recalculates only what a change reaches, what-if copies, overrides, and a derivation per named value |
 | [Rounding and conditionals](docs/rounding-and-conditionals.md) | Rounding as a node, `when()`, and the traced `numeric_value_of` escape hatch |
 | [Constraints and verdicts](docs/constraints.md) | Validating a result with `constraint()` and `check()`, the four-state outcome, and checking a set without short-circuit |
@@ -268,7 +268,7 @@ because all of it came from the same line of code.
 | [Series and grading curves](docs/series.md) | One quantity at each point of a method's domain, the index marker, elementwise arithmetic, absence and failure per element, conformity against a limit envelope, snapping, grading curves and splicing, and binning raw observations |
 | [Statistics, outliers and precision](docs/statistics.md) | Counts, means, variances and ranges of a sample -- a series or raw observations -- the spread rounded exactly, outliers rejected pass by pass with the author's verdict on an abort, critical values from the author's table, and precision limits at the level they check |
 | [Other samples and other tests](docs/records.md) | Reading from a reference sample or a prior test by role, computing over another specimen, the record each value came from in the trace, lineage as a gate, and a record not yet made |
-| [Opaque operations and bounded retry](docs/opaque-and-retry.md) | A named operation such as a least-squares line, traced by its inputs and outputs with its inside marked as not shown, and a step repeated until it is accepted, at most a fixed number of times, ending in exactly one of six ways -- the method's verdict when it runs out |
+| [Opaque operations and bounded retry](docs/opaque-and-retry.md) | A named operation such as a least-squares line through a curve, or through raw observations with R², and a regression on several regressors, traced by its inputs and outputs with its inside marked as not shown, and a step repeated until it is accepted, at most a fixed number of times, ending in exactly one of six ways -- the method's verdict when it runs out |
 | [Gallery](docs/gallery.md) | A documentation page the library generated about itself |
 
 Every example in the documentation uses generic physics with invented `Example Standard`
@@ -297,6 +297,9 @@ and still growing. The public API may change until 1.0.
 | Statistics, precision limits, outlier rejection | shipped |
 | Other samples and other tests: records, context, lineage | shipped |
 | Opaque operations (least squares), bounded retry | shipped |
+| Values the exact layer cannot hold, reported at a declared precision (`rounded_output`) | next release |
+| Logarithms and exponentials, rounded exactly to declared places | next release |
+| Least squares over observations, with R², and several regressors | next release |
 | Power, energy and Fahrenheit units | next release |
 | Named base dimensions such as money | next release |
 | Decimals in traces, rendered formulas and `std::format` | next release |

@@ -3,6 +3,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
+#include <limits>
+#include <optional>
+
 namespace
 {
 
@@ -18,6 +22,42 @@ struct Volume: formula::Quantity<Volume, "V", "volume", formula::unit::CubicMetr
 struct Edge: formula::Quantity<Edge, "a", "cube edge", formula::unit::Metre>
 {
 };
+
+struct Ratio: formula::Quantity<Ratio, "r", "an invented ratio", formula::unit::One>
+{
+};
+struct Divisor: formula::Quantity<Divisor, "q", "an invented divisor", formula::unit::One>
+{
+};
+struct Share: formula::Quantity<Share, "p", "an invented share", formula::unit::Percent>
+{
+};
+
+/// @p node evaluated exactly, with the ratio at @p ratioValue.
+template <typename N>
+[[nodiscard]] constexpr formula::Evaluated<formula::Rational> exactlyAt(N const& node, formula::Rational ratioValue)
+{
+    return formula::checked_evaluate_si<formula::Rational>(node,
+                                                           formula::environment(formula::Measured<Ratio> { ratioValue }));
+}
+
+/// @p node evaluated in double, with the ratio at @p ratioValue.
+template <typename N>
+[[nodiscard]] formula::Evaluated<double> approximatelyAt(N const& node, formula::Rational ratioValue)
+{
+    return formula::checked_evaluate_si<double>(node, formula::environment(formula::Measured<Ratio> { ratioValue }));
+}
+
+/// The error @p evaluated failed with, or nothing when it did not fail.
+template <typename Rep>
+[[nodiscard]] constexpr std::optional<formula::ArithmeticError> failureOf(formula::Evaluated<Rep> const& evaluated)
+{
+    return evaluated.has_value() ? std::nullopt : std::optional<formula::ArithmeticError> { evaluated.error() };
+}
+
+/// Whether `formula::ln` accepts an argument of type @p T.
+template <typename T>
+concept LogarithmAccepts = requires(T argument) { formula::ln(argument); };
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -231,4 +271,143 @@ TEST_CASE("function: an absent input still propagates through a power", "[functi
 
     STATIC_REQUIRE(computed.has_value());
     STATIC_REQUIRE(computed->is_empty());
+}
+
+TEST_CASE("function: a logarithm or an exponential is a dimensionless node over a dimensionless argument", "[function]")
+{
+    constexpr auto logarithm = formula::ln(var<Ratio>);
+    STATIC_REQUIRE(formula::Node<decltype(logarithm)>);
+    STATIC_REQUIRE(decltype(logarithm)::dimension == formula::dim::Scalar);
+    STATIC_REQUIRE(decltype(logarithm)::function == formula::Transcendental::NaturalLogarithm);
+    STATIC_REQUIRE(decltype(formula::log10(var<Ratio>))::function == formula::Transcendental::DecimalLogarithm);
+    STATIC_REQUIRE(decltype(formula::exp(var<Ratio>))::function == formula::Transcendental::Exponential);
+    // A ratio of two areas is a bare number, and so is a percentage.
+    STATIC_REQUIRE(decltype(formula::ln(var<Area> / var<Area>))::dimension == formula::dim::Scalar);
+    STATIC_REQUIRE(decltype(formula::exp(var<Share>))::dimension == formula::dim::Scalar);
+    // A formula node only: a bare number is not one, so ln(2) never means a number function.
+    STATIC_REQUIRE(LogarithmAccepts<decltype(var<Ratio>)>);
+    STATIC_REQUIRE_FALSE(LogarithmAccepts<formula::Rational>);
+    STATIC_REQUIRE_FALSE(LogarithmAccepts<double>);
+}
+
+TEST_CASE("function: ln log10 and exp are exact where their value is rational", "[function]")
+{
+    STATIC_REQUIRE(**exactlyAt(formula::ln(var<Ratio>), rat(1)) == rat(0));
+    STATIC_REQUIRE(**exactlyAt(formula::exp(var<Ratio>), rat(0)) == rat(1));
+    STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1)) == rat(0));
+    STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1000)) == rat(3));
+    // A power of ten written as one over a power of ten.
+    STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1, 100)) == rat(-2));
+    // The largest powers of ten a Rational holds, either way up.
+    STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1'000'000'000'000'000'000)) == rat(18));
+    STATIC_REQUIRE(**exactlyAt(formula::log10(var<Ratio>), rat(1, 1'000'000'000'000'000'000)) == rat(-18));
+}
+
+TEST_CASE("function: a logarithm or an exponential of any other value is Inexact in Rational", "[function]")
+{
+    constexpr auto Inexact = formula::ArithmeticError::Inexact;
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::ln(var<Ratio>), rat(2))) == Inexact);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::log10(var<Ratio>), rat(2))) == Inexact);
+    // Not powers of ten: 20 ends in a zero, 1001/1000 has a power of ten below the line, 1000/3 above it.
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::log10(var<Ratio>), rat(20))) == Inexact);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::log10(var<Ratio>), rat(1001, 1000))) == Inexact);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::log10(var<Ratio>), rat(1000, 3))) == Inexact);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::exp(var<Ratio>), rat(1))) == Inexact);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::exp(var<Ratio>), rat(-1))) == Inexact);
+    // However large: exp 1000 is irrational before it is too large, and says so.
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::exp(var<Ratio>), rat(1000))) == Inexact);
+}
+
+TEST_CASE("function: the logarithm of zero or a negative value is a domain error in both representations", "[function]")
+{
+    constexpr auto DomainError = formula::ArithmeticError::DomainError;
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::ln(var<Ratio>), rat(0))) == DomainError);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::ln(var<Ratio>), rat(-1))) == DomainError);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::log10(var<Ratio>), rat(0))) == DomainError);
+    STATIC_REQUIRE(failureOf(exactlyAt(formula::log10(var<Ratio>), rat(-1))) == DomainError);
+    CHECK(failureOf(approximatelyAt(formula::ln(var<Ratio>), rat(0))) == DomainError);
+    CHECK(failureOf(approximatelyAt(formula::ln(var<Ratio>), rat(-1))) == DomainError);
+    CHECK(failureOf(approximatelyAt(formula::log10(var<Ratio>), rat(0))) == DomainError);
+    CHECK(failureOf(approximatelyAt(formula::log10(var<Ratio>), rat(-1))) == DomainError);
+    // The double guard is !(v > 0.0), so NaN -- which no Rational converts to -- is refused as well.
+    auto const ofNaN = formula::RepFunctions<double>::natural_log(std::numeric_limits<double>::quiet_NaN());
+    REQUIRE_FALSE(ofNaN.has_value());
+    CHECK(ofNaN.error() == DomainError);
+    auto const decimalOfNaN = formula::RepFunctions<double>::decimal_log(std::numeric_limits<double>::quiet_NaN());
+    REQUIRE_FALSE(decimalOfNaN.has_value());
+    CHECK(decimalOfNaN.error() == DomainError);
+}
+
+TEST_CASE("function: the double representation answers where the exact one refuses", "[function]")
+{
+    auto const naturalOfTwo = approximatelyAt(formula::ln(var<Ratio>), rat(2));
+    REQUIRE(naturalOfTwo.has_value());
+    REQUIRE(naturalOfTwo->has_value());
+    CHECK(**naturalOfTwo > 0.69314718);
+    CHECK(**naturalOfTwo < 0.69314719);
+    auto const decimalOfTwo = approximatelyAt(formula::log10(var<Ratio>), rat(2));
+    REQUIRE(decimalOfTwo.has_value());
+    REQUIRE(decimalOfTwo->has_value());
+    CHECK(**decimalOfTwo > 0.30102999);
+    CHECK(**decimalOfTwo < 0.30103000);
+    auto const exponentialOfOne = approximatelyAt(formula::exp(var<Ratio>), rat(1));
+    REQUIRE(exponentialOfOne.has_value());
+    REQUIRE(exponentialOfOne->has_value());
+    CHECK(**exponentialOfOne > 2.71828182);
+    CHECK(**exponentialOfOne < 2.71828183);
+}
+
+TEST_CASE("function: exp too large for double is +inf and passes as a power's does", "[function]")
+{
+    // RepFunctions<double>::raise lets inf through, and RepTraits<double> says why: the caller asked
+    // for double. exp does the same.
+    auto const huge = approximatelyAt(formula::exp(var<Ratio>), rat(1000));
+    REQUIRE(huge.has_value());
+    REQUIRE(huge->has_value());
+    CHECK(**huge == std::numeric_limits<double>::infinity());
+}
+
+TEST_CASE("function: an absent argument leaves a logarithm or an exponential absent", "[function]")
+{
+    // Absent, never a domain error: an argument nobody measured is not zero.
+    constexpr auto nothingMeasured = formula::environment(formula::Measured<Ratio>::absent());
+    STATIC_REQUIRE(!formula::checked_evaluate_si<formula::Rational>(formula::ln(var<Ratio>), nothingMeasured)->has_value());
+    STATIC_REQUIRE(
+        !formula::checked_evaluate_si<formula::Rational>(formula::log10(var<Ratio>), nothingMeasured)->has_value());
+    STATIC_REQUIRE(!formula::checked_evaluate_si<formula::Rational>(formula::exp(var<Ratio>), nothingMeasured)->has_value());
+    auto const approximate = formula::checked_evaluate_si<double>(formula::ln(var<Ratio>), nothingMeasured);
+    REQUIRE(approximate.has_value());
+    CHECK_FALSE(approximate->has_value());
+}
+
+TEST_CASE("function: the argument's own failure reaches a logarithm unchanged", "[function]")
+{
+    // r / q with q = 0 fails with DivisionByZero. The logarithm reports that, not DomainError, which a
+    // node that looked at a default value in place of the failure would report.
+    constexpr auto inputs = formula::environment(formula::Measured<Ratio> { rat(1) }, formula::Measured<Divisor> { rat(0) });
+    constexpr auto DivisionByZero = formula::ArithmeticError::DivisionByZero;
+    STATIC_REQUIRE(failureOf(formula::checked_evaluate_si<formula::Rational>(formula::ln(var<Ratio> / var<Divisor>), inputs))
+                   == DivisionByZero);
+    STATIC_REQUIRE(
+        failureOf(formula::checked_evaluate_si<formula::Rational>(formula::exp(var<Ratio> / var<Divisor>), inputs))
+        == DivisionByZero);
+    CHECK(failureOf(formula::checked_evaluate_si<double>(formula::log10(var<Ratio> / var<Divisor>), inputs))
+          == DivisionByZero);
+}
+
+TEST_CASE("function: a percentage is read in the coherent unit under a logarithm", "[function]")
+{
+    // 1000 % is the number 10, so its decimal logarithm is 1 -- not 3, which reading it in percent gives.
+    constexpr auto tenfold = formula::environment(formula::Measured<Share> { rat(1000) });
+    STATIC_REQUIRE(**formula::checked_evaluate_si<formula::Rational>(formula::log10(var<Share>), tenfold) == rat(1));
+    // 5 % is 0.05: ln 0.05 = -2.9957..., where ln 5 would be 1.6094....
+    constexpr auto fivePercent = formula::environment(formula::Measured<Share> { rat(5) });
+    auto const approximate = formula::checked_evaluate_si<double>(formula::ln(var<Share>), fivePercent);
+    REQUIRE(approximate.has_value());
+    REQUIRE(approximate->has_value());
+    CHECK(**approximate > -2.9957323);
+    CHECK(**approximate < -2.9957322);
+    // Exactly, ln 0.05 is irrational.
+    STATIC_REQUIRE(failureOf(formula::checked_evaluate_si<formula::Rational>(formula::ln(var<Share>), fivePercent))
+                   == formula::ArithmeticError::Inexact);
 }

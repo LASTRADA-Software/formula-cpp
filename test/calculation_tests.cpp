@@ -203,6 +203,30 @@ TEST_CASE("documented() reads what it documents", "[calculation]")
     STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<decltype(documentedShare)>, QuantityList<Factor, Other>>);
 }
 
+TEST_CASE("a logarithm and an exponential read what their argument reads", "[calculation]")
+{
+    STATIC_REQUIRE(
+        std::is_same_v<CalculationReadsOf<decltype(formula::ln(var<Factor> / var<Other>))>, QuantityList<Factor, Other>>);
+    STATIC_REQUIRE(
+        std::is_same_v<CalculationReadsOf<decltype(formula::exp(var<Other> - var<Factor>))>, QuantityList<Other, Factor>>);
+    STATIC_REQUIRE(
+        std::is_same_v<decltype(formula::define<Share>(formula::log10(var<Factor>)))::reads, QuantityList<Factor>>);
+}
+
+TEST_CASE("a worksheet calculates a rounded logarithm from the values it reads", "[calculation][worksheet]")
+{
+    constexpr auto logShare = formula::calculation(
+        formula::define<Share>(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<Factor> / var<Other>)));
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::define<Share>(
+                                      formula::rounded_exp<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
+                                          var<Other>)))::reads,
+                                  QuantityList<Other>>);
+    auto sheet = formula::worksheet(
+        logShare, formula::environment(formula::Measured<Factor> { rat(2) }, formula::Measured<Other> { rat(1) }));
+    CHECK(sheet.calculate<Share>().measurement() == formula::Measured<Share> { rat(6931, 10000) });
+}
+
 TEST_CASE("an overlay's derived quantity reads its definition, and its fixed constant reads nothing",
           "[calculation][overlay]")
 {

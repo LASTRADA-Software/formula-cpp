@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <tuple>
@@ -423,6 +424,76 @@ template <std::size_t N>
     return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
 }
 
+/// The coherent unit of a force over a time, N/s: the rounded fit's unit here.
+inline constexpr formula::Unit newtonPerSecond { .dimension = formula::dim::Force / formula::dim::Time,
+                                                 .symbolText = formula::symbol("N/s"),
+                                                 .decimals = 4 };
+
+/// The slope over the first @p count points of @p shape, rounded to 4 dp of
+/// N/s the way `rounded_output` rounds it -- `LinearLeastSquares::compute_exact`,
+/// then `detail::rounded_in_unit` -- and whether it overflowed.
+template <typename Shape>
+[[nodiscard]] bool rounded_fit_overflows(Shape shape, std::size_t count)
+{
+    std::vector<Rational> times;
+    std::vector<Rational> forces;
+    for (std::size_t at = 0; at < count; ++at)
+    {
+        FitPoint const point = shape(static_cast<std::int64_t>(at));
+        times.push_back(point.x);
+        forces.push_back(point.y);
+    }
+    auto const fitted = formula::LinearLeastSquares::compute_exact(std::span<Rational const> { times },
+                                                                   std::span<Rational const> { forces });
+    if (!fitted.has_value())
+        return fitted.error() == formula::ArithmeticError::Overflow;
+    auto const slope = formula::detail::rounded_in_unit(
+        (*fitted)[1], newtonPerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven);
+    return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
+}
+
+/// `scan_fit` for the rounded route.
+template <typename Shape>
+[[nodiscard]] FitScan scan_rounded_fit(Shape shape)
+{
+    FitScan found;
+    for (std::size_t count = 2; count <= 128; ++count)
+    {
+        bool overflowed = false;
+        Used const used = census_of([&] { overflowed = rounded_fit_overflows(shape, count); });
+        if (overflowed)
+            found.overflowing.push_back(count);
+        else
+            found.leastHeadroom = std::min(found.leastHeadroom, used.headroom());
+    }
+    return found;
+}
+
+/// The first @p N points of @p shape through the node --
+/// `rounded_output<"slope", N/s, 4 dp>` of `linear_least_squares` over a curve
+/// -- and whether it overflowed.
+template <std::size_t N, typename Shape>
+[[nodiscard]] bool rounded_fit_node_overflows(Shape shape)
+{
+    std::array<formula::Measured<FitTime>, N> times;
+    std::array<formula::Measured<FitForce>, N> forces;
+    for (std::size_t at = 0; at < N; ++at)
+    {
+        FitPoint const point = shape(static_cast<std::int64_t>(at));
+        times[at] = formula::Measured<FitTime> { point.x };
+        forces[at] = formula::Measured<FitForce> { point.y };
+    }
+    auto const inputs =
+        formula::environment(formula::MeasuredSeries<FitTime, N> { times }, formula::MeasuredSeries<FitForce, N> { forces });
+    constexpr auto fit = formula::linear_least_squares(
+        formula::curve(formula::series<FitTime, N>, formula::series<FitForce, N>), { .reference = "Example Standard 12" });
+    constexpr auto roundedSlope =
+        formula::rounded_output<"slope", newtonPerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            fit);
+    auto const slope = formula::checked_evaluate_si<Rational>(roundedSlope, inputs);
+    return !slope.has_value() && slope.error() == formula::ArithmeticError::Overflow;
+}
+
 /// The variance of a six-element sample, and whether it is a value.
 [[nodiscard]] bool variance_is_value(auto const& inputs)
 {
@@ -436,6 +507,158 @@ template <typename Criterion>
 {
     auto const outcome = formula::checked_evaluate_rejection<Mass>(rejection_of<6>(criterion), inputs);
     return outcome.has_value() || outcome.error().error != formula::ArithmeticError::Overflow;
+}
+
+// ---- Regression over observations: where each route stops -------------------------
+
+// Declared here: the library states no unit of millimetres per second.
+inline constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::Velocity,
+                                                     .magnitudeNumerator = 1,
+                                                     .magnitudeDenominator = 1000,
+                                                     .symbolText = formula::symbol("mm/s"),
+                                                     .decimals = 4 };
+
+/// Four decimal places, the guide's fifty readings extended: x = k + 1 + (7919k
+/// mod 997) / 10^4 s, y = 2410 + 3.17 k + ((3217 k mod 1009) - 504) / 10^4 mm.
+[[nodiscard]] FitPoint four_decimals_point(std::int64_t k)
+{
+    return { rat(10'000 * (k + 1) + (7919 * k) % 997, 10'000),
+             rat(24'100'000 + 31'700 * k + (3217 * k) % 1009 - 504, 10'000) };
+}
+
+/// Whether the line through the first @p count points of @p shape overflows
+/// through `opaque_output` (the slope, exactly) and through `rounded_output`
+/// (the slope at 4 dp of @p SlopeUnit, R^2 floored at 6 dp), with the values
+/// read as observations of @p Y.
+template <typename Y, formula::Unit SlopeUnit, typename Shape>
+[[nodiscard]] std::pair<bool, bool> observed_line_overflows(Shape shape, std::size_t count)
+{
+    std::vector<Rational> times;
+    std::vector<Rational> readings;
+    for (std::size_t at = 0; at < count; ++at)
+    {
+        FitPoint const point = shape(static_cast<std::int64_t>(at));
+        times.push_back(point.x);
+        readings.push_back(point.y);
+    }
+    auto const inputs = formula::environment(*formula::MeasuredObservations<FitTime, 128>::from(times),
+                                             *formula::MeasuredObservations<Y, 128>::from(readings));
+    constexpr auto fit = formula::linear_least_squares(
+        formula::observations<FitTime, 128>, formula::observations<Y, 128>, { .reference = "Example Standard 12" });
+    // A size answers or is Overflow: any other error would read as a size that
+    // did not overflow.
+    auto const overflowed = [count](auto const& evaluated) {
+        INFO("points " << count);
+        CHECK((evaluated.has_value() || evaluated.error() == formula::ArithmeticError::Overflow));
+        return !evaluated.has_value() && evaluated.error() == formula::ArithmeticError::Overflow;
+    };
+    bool const exact = overflowed(formula::checked_evaluate_si<Rational>(formula::opaque_output<"slope">(fit), inputs));
+    bool const rounded =
+        overflowed(formula::checked_evaluate_si<Rational>(
+            formula::rounded_output<"slope", SlopeUnit, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(fit),
+            inputs))
+        || overflowed(formula::checked_evaluate_si<Rational>(
+            formula::
+                rounded_output<"r squared", formula::unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+                    fit),
+            inputs));
+    return { exact, rounded };
+}
+
+/// Over every size from @p from to 128: which overflowed on each route.
+struct RouteScan
+{
+    std::size_t sizes = 0;
+    std::vector<std::size_t> exactOverflowing;
+    std::vector<std::size_t> roundedOverflowing;
+
+    [[nodiscard]] std::string row(char const* label) const
+    {
+        auto const first = [](std::vector<std::size_t> const& overflowing) {
+            return overflowing.empty() ? std::string { "none" } : std::to_string(overflowing.front()) + " points";
+        };
+        return "| " + std::string { label } + " | " + std::to_string(exactOverflowing.size()) + " of "
+               + std::to_string(sizes) + " | " + first(exactOverflowing) + " | " + std::to_string(roundedOverflowing.size())
+               + " of " + std::to_string(sizes) + " | " + first(roundedOverflowing) + " |";
+    }
+};
+
+template <typename Overflows>
+[[nodiscard]] RouteScan scan_routes(std::size_t from, Overflows overflows)
+{
+    RouteScan found;
+    for (std::size_t count = from; count <= 128; ++count)
+    {
+        ++found.sizes;
+        auto const [exact, rounded] = overflows(count);
+        if (exact)
+            found.exactOverflowing.push_back(count);
+        if (rounded)
+            found.roundedOverflowing.push_back(count);
+    }
+    return found;
+}
+
+struct FitWarmth: formula::Quantity<FitWarmth, "T_r", "temperature of a reading", unit::Celsius>
+{
+};
+
+/// A temperature at 1 dp in degrees Celsius: 20.0 + (7k mod 13) / 10.
+[[nodiscard]] Rational warmth_at(std::int64_t k)
+{
+    return rat(200 + (7 * k) % 13, 10);
+}
+
+/// How the regression of the first @p count three-decimal loads on their times
+/// and a temperature came out through `opaque_output` and through
+/// `rounded_output` (coefficient 1 at 4 dp of N/s, R^2 floored at 6 dp).
+struct TwoRegressorRoutes
+{
+    /// The exact route's answer: coefficient 1's, or the error.
+    std::optional<formula::ArithmeticError> exactError;
+    /// The rounded route's: coefficient 1's, then R^2's.
+    std::optional<formula::ArithmeticError> roundedError;
+};
+
+[[nodiscard]] TwoRegressorRoutes two_regressors_routes(std::size_t count)
+{
+    std::vector<Rational> times;
+    std::vector<Rational> warmths;
+    std::vector<Rational> forces;
+    for (std::size_t at = 0; at < count; ++at)
+    {
+        FitPoint const point = three_decimals_point(static_cast<std::int64_t>(at));
+        times.push_back(point.x);
+        warmths.push_back(warmth_at(static_cast<std::int64_t>(at)));
+        forces.push_back(point.y);
+    }
+    auto const inputs = formula::environment(*formula::MeasuredObservations<FitTime, 128>::from(times),
+                                             *formula::MeasuredObservations<FitWarmth, 128>::from(warmths),
+                                             *formula::MeasuredObservations<FitForce, 128>::from(forces));
+    constexpr auto fit = formula::multiple_least_squares(
+        formula::regressors(formula::observations<FitTime, 128>, formula::observations<FitWarmth, 128>),
+        formula::observations<FitForce, 128>,
+        { .reference = "Example Standard 12" });
+    auto const failure = [](auto const& evaluated) -> std::optional<formula::ArithmeticError> {
+        if (evaluated.has_value())
+            return std::nullopt;
+        return evaluated.error();
+    };
+    TwoRegressorRoutes routes;
+    routes.exactError =
+        failure(formula::checked_evaluate_si<Rational>(formula::opaque_output<"coefficient 1">(fit), inputs));
+    routes.roundedError = failure(formula::checked_evaluate_si<Rational>(
+        formula::
+            rounded_output<"coefficient 1", newtonPerSecond, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+                fit),
+        inputs));
+    if (!routes.roundedError.has_value())
+        routes.roundedError = failure(formula::checked_evaluate_si<Rational>(
+            formula::
+                rounded_output<"r squared", formula::unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+                    fit),
+            inputs));
+    return routes;
 }
 } // namespace
 
@@ -743,11 +966,18 @@ TEST_CASE("census: least squares over 2 to 128 points", "[census]")
     FitScan const oneDecimal = scan_fit(one_decimal_point);
     FitScan const threeDecimals = scan_fit(three_decimals_point);
     FitScan const distinct = scan_fit(distinct_denominators_point);
+    FitScan const roundedThree = scan_rounded_fit(three_decimals_point);
+    FitScan const roundedDistinct = scan_rounded_fit(distinct_denominators_point);
     emit("least-squares", "| data (invented) | sizes that overflow | first to overflow | least headroom otherwise |");
     emit("least-squares", "|---|---|---|---|");
     emit("least-squares", oneDecimal.row("readings at 1 dp (realistic)"));
     emit("least-squares", threeDecimals.row("readings at 3 dp near 2410 N, a load cell's (realistic)"));
     emit("least-squares", distinct.row("a different denominator on every point (stress control)"));
+    emit("least-squares",
+         roundedThree.row("the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic)"));
+    emit("least-squares",
+         roundedDistinct.row("the slope rounded to 4 dp by rounded_output: "
+                             "a different denominator on every point (stress control)"));
 
     // What the page says, pinned: the spike's first failing sizes, 34 and 15
     // points, hold through the library's fit, and one decimal place never
@@ -761,6 +991,69 @@ TEST_CASE("census: least squares over 2 to 128 points", "[census]")
     CHECK(distinct.overflowing.size() == 114);
     CHECK(!fit_node_overflows<33>());
     CHECK(fit_node_overflows<34>());
+
+    // The rounded route, measured with this algorithm: the realistic readings
+    // never outgrow 256 bits; a different denominator on every point does,
+    // in compute_exact, from 58 points. The node agrees on both sides of 58.
+    CHECK(roundedThree.overflowing.empty());
+    REQUIRE(!roundedDistinct.overflowing.empty());
+    CHECK(roundedDistinct.overflowing.front() == 58);
+    CHECK(roundedDistinct.overflowing.size() == 71);
+    CHECK(!rounded_fit_node_overflows<128>(three_decimals_point));
+    CHECK(!rounded_fit_node_overflows<57>(distinct_denominators_point));
+    CHECK(rounded_fit_node_overflows<58>(distinct_denominators_point));
+}
+
+TEST_CASE("census: a line through observations, exact and rounded, over 2 to 128 points", "[census]")
+{
+    RouteScan const threeDecimals = scan_routes(2, [](std::size_t count) {
+        return observed_line_overflows<FitForce, newtonPerSecond>(three_decimals_point, count);
+    });
+    RouteScan const fourDecimals = scan_routes(2, [](std::size_t count) {
+        return observed_line_overflows<FitLength, millimetrePerSecond>(four_decimals_point, count);
+    });
+    RouteScan const distinct = scan_routes(2, [](std::size_t count) {
+        return observed_line_overflows<FitForce, newtonPerSecond>(distinct_denominators_point, count);
+    });
+    emit("regression",
+         "| data (invented) | exact route: sizes that overflow | first | rounded route: sizes that overflow | first |");
+    emit("regression", "|---|---|---|---|---|");
+    emit("regression", threeDecimals.row("a line through readings at 3 dp near 2410 N (realistic)"));
+    emit("regression", fourDecimals.row("a line through readings at 4 dp near 2410 mm (realistic)"));
+    emit("regression", distinct.row("a line through a different denominator on every point (stress control)"));
+
+    // Two regressors, 3 to 128 rows. Every size must answer or be Overflow:
+    // a design that were singular would be a DomainError, not an overflow, and
+    // would read as a size that did not overflow.
+    RouteScan twoRegressors;
+    for (std::size_t count = 3; count <= 128; ++count)
+    {
+        TwoRegressorRoutes const routes = two_regressors_routes(count);
+        INFO("rows " << count);
+        CHECK((!routes.exactError.has_value() || *routes.exactError == formula::ArithmeticError::Overflow));
+        CHECK((!routes.roundedError.has_value() || *routes.roundedError == formula::ArithmeticError::Overflow));
+        ++twoRegressors.sizes;
+        if (routes.exactError.has_value())
+            twoRegressors.exactOverflowing.push_back(count);
+        if (routes.roundedError.has_value())
+            twoRegressors.roundedOverflowing.push_back(count);
+    }
+    emit("regression",
+         twoRegressors.row("two regressors: readings at 3 dp and a temperature at 1 dp in degrees Celsius (realistic)"));
+
+    // What the page says, pinned: the realistic rows never stop on the
+    // rounded route; the exact route stops early.
+    CHECK(threeDecimals.roundedOverflowing.empty());
+    CHECK(fourDecimals.roundedOverflowing.empty());
+    REQUIRE(!threeDecimals.exactOverflowing.empty());
+    CHECK(threeDecimals.exactOverflowing.front() == 29);
+    REQUIRE(!fourDecimals.exactOverflowing.empty());
+    CHECK(fourDecimals.exactOverflowing.front() == 7);
+    REQUIRE(!distinct.roundedOverflowing.empty());
+    CHECK(distinct.roundedOverflowing.front() == 62);
+    CHECK(twoRegressors.roundedOverflowing.empty());
+    REQUIRE(!twoRegressors.exactOverflowing.empty());
+    CHECK(twoRegressors.exactOverflowing.front() == 29);
 }
 
 TEST_CASE("the census draws the samples tools/census/exact_sizes.py draws", "[census]")

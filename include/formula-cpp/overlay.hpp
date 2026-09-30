@@ -152,6 +152,7 @@
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
@@ -1619,6 +1620,12 @@ namespace detail
     {
     };
 
+    template <typename Sub, Transcendental F, Node Operand>
+    struct ConstantRewrite<Sub, TranscendentalNode<F, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, TranscendentalNode<F, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
     template <typename Sub, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
     struct ConstantRewrite<Sub, RoundNode<U, Places, Mode, Operand>>:
         ConstantRewriteOperand<Sub, Operand, RoundNode<U, Places, Mode, typename ConstantRewriteOf<Sub, Operand>::type>>
@@ -1663,6 +1670,14 @@ namespace detail
         {
             return type { {}, Inner::apply(node.radicand, overriding) };
         }
+    };
+
+    template <typename Sub, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct ConstantRewrite<Sub, RoundedTranscendentalNode<F, Places, Mode, Operand>>:
+        ConstantRewriteOperand<Sub,
+                               Operand,
+                               RoundedTranscendentalNode<F, Places, Mode, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
     };
 
     template <typename Sub, Node Operand>
@@ -1991,6 +2006,37 @@ namespace detail
                                         };
                                     }(std::index_sequence_for<Inputs...> {}),
                                      original.call.citation } };
+        }
+    };
+
+    /// A rounded opaque output, rewritten as the output it rounds is -- through
+    /// its call's inputs, with the call's citation, and never when the call
+    /// was refused -- and rounded as before.
+    template <typename Sub,
+              std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
+              typename Origin>
+    struct ConstantRewrite<Sub, RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>
+    {
+        /// How the output it rounds is rewritten.
+        using Output = ConstantRewrite<Sub, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>;
+        /// Whether every input is a kind this header knows, and the call was not refused.
+        static constexpr bool known = Output::known;
+        /// Whether any input uses `Q`.
+        static constexpr bool mentions = Output::mentions;
+        /// The same rounding, of the output of the rewritten call.
+        using type = RoundedOpaqueOutputNode<I, decltype(Output::type::call), U, Places, Mode, Origin>;
+
+        /// The node, over the rewritten call.
+        [[nodiscard]] static constexpr type apply(
+            RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& original,
+            Sub const& overriding) noexcept
+        {
+            return type { {}, Output::apply(unrounded(original), overriding).call };
         }
     };
 
@@ -2347,6 +2393,13 @@ namespace detail
     {
     };
 
+    /// Needed for correctness, not only for completeness: the primary answers "none", so without it a
+    /// substitution inside a logarithm or an exponential would be invisible to the whole-method rule.
+    template <Transcendental F, Node Operand>
+    struct SubstitutedIn<TranscendentalNode<F, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
     struct SubstitutedIn<RoundNode<U, Places, Mode, Operand>>: SubstitutedInOperand<Operand>
     {
@@ -2359,6 +2412,11 @@ namespace detail
 
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
     struct SubstitutedIn<RoundedRootNode<U, Places, Mode, Radicand>>: SubstitutedInOperand<Radicand>
+    {
+    };
+
+    template <Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct SubstitutedIn<RoundedTranscendentalNode<F, Places, Mode, Operand>>: SubstitutedInOperand<Operand>
     {
     };
 
@@ -2507,6 +2565,19 @@ namespace detail
         using type = SubstitutedInAll<Inputs...>;
     };
 
+    template <std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
+              typename Origin>
+    struct SubstitutedIn<RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>
+    {
+        /// Whatever any of the call's inputs substitutes.
+        using type = SubstitutedInAll<Inputs...>;
+    };
+
     /// Fails to compile when `with_constant<Q>` is applied to a method that
     /// never uses `Q`. Such an override changes nothing, and the likeliest
     /// reason is that it names the wrong quantity.
@@ -2523,9 +2594,12 @@ namespace detail
     };
 
     /// Fails to compile when `with_constant<Q>` is applied to a method that
-    /// reads `Q` as a series (`series<Q, N>`). A series is a value at every
-    /// point of the method's domain; one constant cannot stand for it, and
-    /// the substitution would leave the series reading the environment.
+    /// reads `Q` as a series (`series<Q, N>`) or as raw observations
+    /// (`observations<Q, Capacity>`). A series is a value at every point of
+    /// the method's domain, and observations as many values as were made; one
+    /// constant cannot stand for them, and the substitution would leave them
+    /// reading the environment. The words are the calculation's for the same
+    /// reads (`RequireSingleValueReadsInCalculation`).
     ///
     /// Not `RequireConstantUsed`'s message: a variant or constraint does use
     /// `Q`, and a message saying none does would be false.
@@ -2533,9 +2607,9 @@ namespace detail
     struct RequireConstantNotSeries
     {
         static_assert(NotASeries,
-                      "formula: this overlay fixes a quantity the method reads as a series; one constant cannot "
-                      "stand for a series -- the quantity appears in this diagnostic as the template argument Q "
-                      "of RequireConstantNotSeries");
+                      "formula: this overlay fixes a quantity the method reads as a series or as raw observations; "
+                      "one constant cannot stand for many values -- the quantity appears in this diagnostic as the "
+                      "template argument Q of RequireConstantNotSeries");
 
         static constexpr bool value = true;
     };
@@ -2546,9 +2620,9 @@ namespace detail
     struct RequireDerivationNotSeries
     {
         static_assert(NotASeries,
-                      "formula: this overlay derives a quantity the method reads as a series; one definition "
-                      "cannot stand for a series -- the quantity appears in this diagnostic as the template "
-                      "argument Q of RequireDerivationNotSeries");
+                      "formula: this overlay derives a quantity the method reads as a series or as raw observations; "
+                      "one definition cannot stand for many values -- the quantity appears in this diagnostic as the "
+                      "template argument Q of RequireDerivationNotSeries");
 
         static constexpr bool value = true;
     };

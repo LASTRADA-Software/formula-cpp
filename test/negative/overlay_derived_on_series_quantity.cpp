@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// EXPECT: formula: this overlay derives a quantity the method reads as a series; one definition cannot stand for a series
+// EXPECT: formula: this overlay derives a quantity the method reads as a series or as raw observations; one definition cannot stand for many values
 // REJECT: derives a quantity that no variant or constraint of the method uses
 //
 // `add_derived<Retained>` on a method whose only use of the retained mass

@@ -30,6 +30,9 @@
 /// the failure without it (`detail::relayed_failure`), since it would name a
 /// count that is not at fault.
 ///
+/// The observations themselves are declared in `observations.hpp`, which this
+/// header includes.
+///
 /// Everything here compares, so binning is evaluated with `Rep = Rational`
 /// only, refused otherwise in this library's words, as a curve is
 /// (`curve.hpp`).
@@ -42,6 +45,7 @@
 #include <formula-cpp/expression.hpp>
 #include <formula-cpp/lookup.hpp>
 #include <formula-cpp/measured.hpp>
+#include <formula-cpp/observations.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/series.hpp>
@@ -58,72 +62,6 @@
 
 namespace formula
 {
-
-/// The base every observations node derives from: an expression whose value
-/// is as many values of one quantity as were observed. Neither a `Node`,
-/// which promises one value, nor a `SeriesNode`, which promises one at each
-/// point of a domain; the only thing that reads it is `binned`.
-struct ObservationsNodeBase
-{
-};
-
-/// Anything that can be binned as raw observations.
-template <typename T>
-concept ObservationsNode = std::derived_from<std::remove_cvref_t<T>, ObservationsNodeBase>;
-
-/// A named set of raw observations: the quantity is the key the environment
-/// is asked with, and `Capacity` the capacity they must have been supplied
-/// with.
-///
-/// Empty, like `SeriesVarNode`: its whole shape is in the type.
-template <Described Q, std::size_t Capacity>
-struct ObservationsVarNode: ObservationsNodeBase
-{
-    static_assert(DescribesConsistentDimension<Q>,
-                  "formula: this quantity describes a dimension its own unit does not measure, so "
-                  "no formula containing it can be trusted; the quantity appears in this "
-                  "diagnostic as the template argument of ObservationsVarNode");
-
-    /// The quantity this node names -- the key an `Environment` is asked with.
-    using quantity = Q;
-
-    /// The dimension of each observation: the one `Q` describes.
-    static constexpr Dimension dimension = Describe<Q>::dimension;
-
-    /// The most observations there can be.
-    static constexpr std::size_t capacity = Capacity;
-};
-
-/// The spelling of raw observations in a formula: `observations<Size, 50>`.
-///
-/// `inline` for `var`'s reason: it guarantees the whole program one object
-/// per specialisation.
-template <Described Q, std::size_t Capacity>
-inline constexpr ObservationsVarNode<Q, Capacity> observations {};
-
-/// Raw observations read and converted: the first `count` of `elements`, each
-/// in the coherent unit of its dimension. Default-initialised: no
-/// observations.
-template <typename Rep, std::size_t Capacity>
-struct ObservationsValue
-{
-    /// The observations, in the order made; past `count` unused. No `{}`
-    /// initialiser, for `SeriesValue::elements`'s reason: value-initialising
-    /// an array of class type makes cl declare an `i` that hides a
-    /// consumer's global.
-    std::array<Rep, Capacity> elements;
-
-    /// How many observations were made.
-    std::size_t count = 0;
-
-    /// Memberwise equality.
-    [[nodiscard]] constexpr bool operator==(ObservationsValue const&) const noexcept = default;
-};
-
-/// The result of reading raw observations: every one, or the failure that
-/// stopped it, at that observation's position.
-template <typename Rep, std::size_t Capacity>
-using EvaluatedObservations = std::expected<ObservationsValue<Rep, Capacity>, SeriesFailure>;
 
 namespace detail
 {
@@ -166,17 +104,6 @@ namespace detail
                       "of RequireBinnedKeyMatches");
 
         static constexpr bool value = true;
-    };
-
-    /// Raw observations that were refused already: what `binned` bins in
-    /// place of an operand that is not observations, so that nothing
-    /// downstream adds a message to the refusal.
-    struct RefusedObservations: ObservationsNodeBase
-    {
-        /// No dimension to check against: the key check is off for it.
-        static constexpr Dimension dimension {};
-        /// None.
-        static constexpr std::size_t capacity = 0;
     };
 
     /// Refuses, in this library's words, every representation but
@@ -248,48 +175,6 @@ template <Unit KeyUnit, BandTable Classes, typename Obs>
     else
         return BinnedNode<KeyUnit, Classes, detail::RefusedObservations> { {}, detail::RefusedObservations {} };
 }
-
-namespace detail
-{
-    /// Whether @p Sink wants to hear about raw observations: true when it
-    /// defines `observations_produced(node, result)`.
-    template <typename Sink, typename O, typename Rep>
-    concept HearsObservations =
-        requires(Sink sink, O const& node, EvaluatedObservations<Rep, O::capacity> const& evaluated) {
-            sink.observations_produced(node, evaluated);
-        };
-
-    /// Reads @p node's observations from @p environment into the coherent
-    /// unit, and tells @p sink what was read, if it asks. A conversion that
-    /// overflows fails at that observation.
-    template <typename Rep, Described Q, std::size_t Capacity, typename Env, typename Sink>
-    [[nodiscard]] constexpr EvaluatedObservations<Rep, Capacity> evaluate_observations(
-        ObservationsVarNode<Q, Capacity> const& node, Env const& environment, Sink& sink) noexcept
-    {
-        EvaluatedObservations<Rep, Capacity> const evaluated = [&]() -> EvaluatedObservations<Rep, Capacity> {
-            MeasuredObservations<Q, Capacity> const observed = environment.template get_observations<Q, Capacity>();
-            ObservationsValue<Rep, Capacity> inCoherentUnit;
-            for (std::size_t at = 0; at < observed.size(); ++at)
-            {
-                Measured<Q> const made = observed.observation(at);
-                Evaluated<Rep> const observationInSi = in_si<Rep>(*made.stored(), Describe<Q>::unit);
-                if (!observationInSi.has_value())
-                    return std::unexpected { SeriesFailure { observationInSi.error(), at, FailureSite::InputObservation } };
-                inCoherentUnit.elements[at] = **observationInSi;
-            }
-            // Every place past the count is written too, with zero: copying
-            // an unwritten `double` would read an indeterminate value, which
-            // no constant evaluation accepts.
-            for (std::size_t at = observed.size(); at < Capacity; ++at)
-                inCoherentUnit.elements[at] = Rep {};
-            inCoherentUnit.count = observed.size();
-            return inCoherentUnit;
-        }();
-        if constexpr (HearsObservations<Sink, ObservationsVarNode<Q, Capacity>, Rep>)
-            sink.observations_produced(node, evaluated);
-        return evaluated;
-    }
-} // namespace detail
 
 /// Counts the observations into the classes: the observations first, once;
 /// a failure reading them is relayed at its observation. Then each

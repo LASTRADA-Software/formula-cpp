@@ -24,7 +24,7 @@
 /// A third shape is **raw observations**, `MeasuredObservations<Q, Capacity>`:
 /// as many values of one quantity as were observed, up to a stated capacity,
 /// each at no point of any domain -- the particles measured one by one that a
-/// method bins into classes (`binning.hpp`). Read with
+/// method bins into classes (`binning.hpp`, `observations.hpp`). Read with
 /// `get_observations<Q, Capacity>()`, and refused, in this library's words,
 /// wherever a single value or a series is read.
 

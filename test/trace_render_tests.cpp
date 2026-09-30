@@ -28,6 +28,12 @@ using formula::var;
 struct Mass: formula::Quantity<Mass, "m", "specimen mass", unit::Kilogram>
 {
 };
+struct Ratio: formula::Quantity<Ratio, "r", "an invented ratio", unit::One>
+{
+};
+struct Share: formula::Quantity<Share, "p", "an invented share", unit::Percent>
+{
+};
 struct Volume: formula::Quantity<Volume, "V", "specimen volume", unit::CubicMetre>
 {
 };
@@ -380,6 +386,70 @@ TEST_CASE("a derivation renders a RoundedRoot step as one rounding of a root, in
               var<MassVariance>))
           == "1. s2 = 427/125 g2\n"
              "2. round(sqrt(#1), to 2 dp of g) = 46/25 g [toward negative infinity]\n");
+}
+
+TEST_CASE("a derivation writes a logarithm or an exponential as a call on its argument's step", "[trace-render]")
+{
+    auto const traceOf = [](auto const& node, auto const& inputs) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(node, inputs, sink);
+        return formula::render_trace(trace, { .maxSteps = 10 });
+    };
+    auto const ratioAt = [](formula::Rational ratioValue) {
+        return formula::environment(formula::Measured<Ratio> { ratioValue });
+    };
+    CHECK(traceOf(formula::log10(var<Ratio>), ratioAt(formula::Rational { 1000 })) == "1. r = 1000\n2. log10(#1) = 3\n");
+    CHECK(traceOf(formula::exp(formula::ln(var<Ratio> / var<Ratio>)), ratioAt(formula::Rational { 7 }))
+          == "1. r = 7\n2. r = 7\n3. #1 / #2 = 1\n4. ln(#3) = 0\n5. exp(#4) = 1\n");
+    // No exact value: the step says so, and so does every step it reaches. The irrational number
+    // appears nowhere.
+    CHECK(traceOf(formula::exp(formula::ln(var<Ratio>)), ratioAt(formula::Rational { 2 }))
+          == "1. r = 2\n2. ln(#1) = no exact rational result exists\n3. exp(#2) = no exact rational result exists\n");
+    CHECK(traceOf(formula::ln(var<Ratio>), ratioAt(formula::Rational { 0 }))
+          == "1. r = 0\n2. ln(#1) = argument outside the domain of the operation\n");
+    // A percentage is read as the number it is: 1000 % is 10.
+    CHECK(traceOf(formula::log10(var<Share>), formula::environment(formula::Measured<Share> { formula::Rational { 1000 } }))
+          == "1. p = 1000 %\n2. log10(#1) = 1\n");
+}
+
+TEST_CASE("a derivation writes a rounded logarithm or exponential as one step in its places and mode", "[trace-render]")
+{
+    auto const traceOf = [](auto const& node, formula::Rational ratioValue, formula::NumberStyle numberStyle) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(
+            node, formula::environment(formula::Measured<Ratio> { ratioValue }), sink);
+        return formula::render_trace(trace, { .maxSteps = 10, .numbers = numberStyle });
+    };
+    auto const fractions = formula::NumberStyle::fraction();
+    CHECK(traceOf(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
+                  formula::Rational { 2 },
+                  fractions)
+          == "1. r = 2\n2. round(ln(#1), to 4 dp) = 6931/10000 [nearest, ties away from zero]\n");
+    CHECK(traceOf(formula::rounded_log10<formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(var<Ratio>),
+                  formula::Rational { 2 },
+                  fractions)
+          == "1. r = 2\n2. round(log10(#1), to 3 dp) = 301/1000 [nearest, ties to even]\n");
+    CHECK(traceOf(formula::rounded_exp<formula::DecimalPlaces { 3 }, formula::RoundingMode::Floor>(var<Ratio>),
+                  formula::Rational { -1 },
+                  fractions)
+          == "1. r = -1\n2. round(exp(#1), to 3 dp) = 367/1000 [toward negative infinity]\n");
+    // A failure reads like any step's, and still names the mode.
+    CHECK(traceOf(formula::rounded_exp<formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
+                  formula::Rational { 50 },
+                  fractions)
+          == "1. r = 50\n2. round(exp(#1), to 6 dp) = overflow in exact arithmetic [nearest, ties away from zero]\n");
+    // In exact decimals the rounded value is a decimal like any other, with no approximation mark: it is exact.
+    CHECK(traceOf(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>),
+                  formula::Rational { 2 },
+                  formula::NumberStyle::exact_decimal())
+          == "1. r = 2\n2. round(ln(#1), to 4 dp) = 0.6931 [nearest, ties away from zero]\n");
+    // The display guide quotes this line: ln 0.05 = -2.99573..., negative, so the sign is written.
+    CHECK(traceOf(formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(var<Ratio>),
+                  formula::Rational { 1, 20 },
+                  formula::NumberStyle::exact_decimal())
+          == "1. r = 0.05\n2. round(ln(#1), to 4 dp) = -2.9957 [nearest, ties to even]\n");
 }
 
 TEST_CASE("a derivation names the rounding mode, which is the whole reason two runs differ",

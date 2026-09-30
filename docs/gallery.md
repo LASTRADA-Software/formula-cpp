@@ -217,6 +217,26 @@ $$
 
 The square root of the sample variance, rounded exactly to 0.01 g: never a rounded floating-point root.
 
+## Logarithmic reduction
+
+```
+round(log10(N_0 / N), to 2 dp)
+```
+
+$$
+\operatorname{round}_{2}(\log_{10}\left(\frac{N_0}{N}\right))
+$$
+
+| Symbol | Description | Unit |
+| --- | --- | --- |
+| N_0 | count before treatment | dimensionless |
+| N | count after treatment | dimensionless |
+
+- Reference: Example Standard 8:2023
+- Section: 6.1
+
+The decimal logarithm of the count before over the count after, rounded exactly to 0.01: the decimal the true logarithm rounds to, never a rounded floating-point one.
+
 ## Mean after rejecting outliers
 
 ```

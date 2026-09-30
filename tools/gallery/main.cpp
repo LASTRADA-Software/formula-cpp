@@ -374,6 +374,18 @@ constexpr auto massSpread = formula::documented(
       .text = "The square root of the sample variance, rounded exactly to 0.01 g: never a rounded "
               "floating-point root." });
 
+using InitialCount = formula::Quantity<struct InitialCountTag, "N_0", "count before treatment", unit::One>;
+using SurvivingCount = formula::Quantity<struct SurvivingCountTag, "N", "count after treatment", unit::One>;
+
+constexpr auto logReduction =
+    formula::documented(formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                            var<InitialCount> / var<SurvivingCount>),
+                        { .title = "Logarithmic reduction",
+                          .reference = "Example Standard 8:2023",
+                          .section = "6.1",
+                          .text = "The decimal logarithm of the count before over the count after, rounded exactly to 0.01: "
+                                  "the decimal the true logarithm rounds to, never a rounded floating-point one." });
+
 constexpr formula::Verdict repeatTheTest { "discard the determinations and repeat the test" };
 constexpr formula::Citation outlierRule { .title = "Outliers", .reference = "Example Standard 5:2022", .section = "7.4" };
 
@@ -667,6 +679,7 @@ int main(int argc, char** argv)
     write_formula(out, maturityFactor);
     write_formula(out, correctedStrength);
     write_formula(out, massSpread);
+    write_formula(out, logReduction);
     write_formula(out, meanWithoutOutliers);
     if (!write_constraint(out, repeatabilityCheck))
         return 1;

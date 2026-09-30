@@ -28,11 +28,11 @@
 /// Each statistic is one trace step over the whole sample, whose operand is
 /// the sample's own step with every element.
 
-#include <formula-cpp/binning.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/observations.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
@@ -59,7 +59,7 @@ namespace detail
     inline constexpr bool is_sample_transformer = false;
 
     /// Whether @p T is raw observations of one quantity
-    /// (`ObservationsVarNode`, `binning.hpp`), a sample whose count is known
+    /// (`ObservationsVarNode`, `observations.hpp`), a sample whose count is known
     /// only at run time.
     template <typename T>
     inline constexpr bool is_observations_sample = false;

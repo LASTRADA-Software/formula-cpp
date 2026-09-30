@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
+#include "opaque_cross_tu.hpp"
+
 #include <formula-cpp/document.hpp>
+#include <formula-cpp/method.hpp>
 #include <formula-cpp/opaque.hpp>
+#include <formula-cpp/overlay.hpp>
 #include <formula-cpp/precision.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
-
-#include "opaque_cross_tu.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -32,7 +34,8 @@ constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator
     return formula::Rational { numerator, denominator };
 }
 
-// The shared fixture's quantities (see the plan): invented readings in grams.
+// The fixture's quantities: invented readings in grams, and what the tests'
+// operations make of them.
 struct Reading: formula::Quantity<Reading, "r", "an invented reading", unit::Gram>
 {
 };
@@ -1337,4 +1340,228 @@ TEST_CASE("a precision limit can take its level from an opaque output", "[opaque
                                                                formula::Measured<Reading> { rat(427, 10) }));
     STATIC_REQUIRE(formula::check(withinLimit, three).is_satisfied());
     STATIC_REQUIRE(formula::detail::LevelChildren<std::remove_cv_t<decltype(formula::opaque_output<"span">(spanOf))>>::seen);
+}
+
+namespace
+{
+// A consumer's operation over two samples of raw observations and one value:
+// how many observations each held, and the lowest of the first raised by the
+// value. Two samples need not be the same size; the library compares no counts.
+struct TwoSampleLowest
+{
+    static constexpr std::string_view name = "two sample lowest";
+    static constexpr std::array shapes { formula::InputShape::Observations,
+                                         formula::InputShape::Observations,
+                                         formula::InputShape::Single };
+    static constexpr std::array<std::string_view, 3> outputs { "first made", "second made", "raised lowest" };
+
+    static consteval std::optional<std::array<formula::Dimension, 3>> output_dimensions(
+        std::array<formula::Dimension, 3> declared) noexcept
+    {
+        if (!(declared[0] == declared[2]))
+            return std::nullopt;
+        return std::array { formula::dim::Scalar, formula::dim::Scalar, declared[0] };
+    }
+
+    static inline int calls = 0;
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 3>, formula::ArithmeticError> compute(std::span<Rep const> firstSample,
+                                                                                         std::span<Rep const> secondSample,
+                                                                                         Rep raisedBy) noexcept
+    {
+        if !consteval
+        {
+            ++calls;
+        }
+        if (firstSample.empty())
+            return std::unexpected { formula::ArithmeticError::DomainError };
+        std::expected<Rep, formula::ArithmeticError> const firstMade =
+            formula::RepTraits<Rep>::from(formula::Rational { static_cast<std::int64_t>(firstSample.size()) });
+        std::expected<Rep, formula::ArithmeticError> const secondMade =
+            formula::RepTraits<Rep>::from(formula::Rational { static_cast<std::int64_t>(secondSample.size()) });
+        if (!firstMade.has_value() || !secondMade.has_value())
+            return std::unexpected { formula::ArithmeticError::Overflow };
+        Rep least = firstSample[0];
+        for (Rep const& each: firstSample)
+            if (each < least)
+                least = each;
+        std::expected<Rep, formula::ArithmeticError> const raised = formula::RepTraits<Rep>::add(least, raisedBy);
+        if (!raised.has_value())
+            return std::unexpected { raised.error() };
+        return std::array { *firstMade, *secondMade, *raised };
+    }
+};
+
+// One sample: its lowest observation.
+struct LowestObserved
+{
+    static constexpr std::string_view name = "lowest observed";
+    static constexpr std::array shapes { formula::InputShape::Observations };
+    static constexpr std::array<std::string_view, 1> outputs { "lowest" };
+
+    static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
+        std::array<formula::Dimension, 1> declared) noexcept
+    {
+        return std::array { declared[0] };
+    }
+
+    template <typename Rep>
+    static constexpr std::expected<std::array<Rep, 1>, formula::ArithmeticError> compute(
+        std::span<Rep const> sample) noexcept
+    {
+        if (sample.empty())
+            return std::unexpected { formula::ArithmeticError::DomainError };
+        Rep least = sample[0];
+        for (Rep const& each: sample)
+            if (each < least)
+                least = each;
+        return std::array { least };
+    }
+};
+
+struct ShiftedVariant
+{
+};
+
+struct Tare: formula::Quantity<Tare, "r_t", "an invented tare reading", unit::Gram>
+{
+};
+// Distances in kilometres, so that reading one into metres can overflow.
+struct FarReading: formula::Quantity<FarReading, "x_k", "an invented distance, in kilometres", unit::Kilometre>
+{
+};
+
+constexpr auto twoSamples =
+    formula::opaque<TwoSampleLowest>({ .title = "Two samples", .reference = "Example Standard 12", .section = "4.4" },
+                                     formula::observations<Reading, 8>,
+                                     formula::observations<Tare, 4>,
+                                     formula::var<Shift>);
+
+// Three readings made in room for eight, no tare made in room for four, a
+// shift of 13 g: the lowest reading, 103 g, raised to 116 g.
+constexpr auto threeAndNone = formula::environment(formula::MeasuredObservations<Reading, 8>(rat(127), rat(103), rat(191)),
+                                                   formula::MeasuredObservations<Tare, 4>(),
+                                                   formula::Measured<Shift> { rat(13) });
+} // namespace
+
+TEST_CASE("an opaque operation over observations sees how many were made, none included", "[opaque][observations]")
+{
+    // compute sees 3 and 0, never the capacities 8 and 4: a span over the
+    // observations made. Capacities that differ are no framework error.
+    constexpr auto firstMade = formula::checked_evaluate_si(formula::opaque_output<"first made">(twoSamples), threeAndNone);
+    STATIC_REQUIRE(**firstMade == rat(3));
+    constexpr auto secondMade =
+        formula::checked_evaluate_si(formula::opaque_output<"second made">(twoSamples), threeAndNone);
+    STATIC_REQUIRE(**secondMade == rat(0));
+    // 116 g is 29/250 kg in the coherent unit.
+    constexpr auto raised = formula::checked_evaluate_si(formula::opaque_output<"raised lowest">(twoSamples), threeAndNone);
+    STATIC_REQUIRE(**raised == rat(29, 250));
+    STATIC_REQUIRE(decltype(formula::opaque_output<"raised lowest">(twoSamples))::dimension == formula::dim::Mass);
+    STATIC_REQUIRE(decltype(formula::opaque_output<"first made">(twoSamples))::dimension == formula::dim::Scalar);
+}
+
+TEST_CASE("observations read at run time, and in double, reach an opaque operation", "[opaque][observations]")
+{
+    // Five readings known only at run time, through MeasuredObservations::from.
+    std::array<formula::Rational, 5> const fiveReadings { rat(139), rat(113), rat(197), rat(163), rat(127) };
+    auto const fromRunTime = formula::MeasuredObservations<Reading, 8>::from(fiveReadings);
+    REQUIRE(fromRunTime.has_value());
+    auto const fiveAndNone =
+        formula::environment(*fromRunTime, formula::MeasuredObservations<Tare, 4>(), formula::Measured<Shift> { rat(13) });
+    TwoSampleLowest::calls = 0;
+    auto const firstMade = formula::checked_evaluate_si(formula::opaque_output<"first made">(twoSamples), fiveAndNone);
+    REQUIRE(firstMade.has_value());
+    CHECK(**firstMade == rat(5));
+    CHECK(TwoSampleLowest::calls == 1);
+    // In double: 113 g + 13 g = 0.126 kg.
+    auto const inDouble =
+        formula::checked_evaluate_si<double>(formula::opaque_output<"raised lowest">(twoSamples), fiveAndNone);
+    REQUIRE(inDouble.has_value());
+    REQUIRE(inDouble->has_value());
+    CHECK(std::abs(**inDouble - 0.126) < 1e-12);
+}
+
+TEST_CASE("an opaque call over observations is traced, rendered and documented with them", "[opaque][observations][trace]")
+{
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"raised lowest">(twoSamples), threeAndNone, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. r = 127 g; 103 g; 191 g\n"
+             "2. r_t = (no elements)\n"
+             "3. r_0 = 13 g\n"
+             "4. two sample lowest(#1, #2, #3) = first made = 3; second made = 0; raised lowest = 116 g "
+             "[inside not shown] [Two samples, Example Standard 12, 4.4]\n"
+             "5. raised lowest of #4 = 116 g\n");
+
+    constexpr auto raisedLowest = formula::opaque_output<"raised lowest">(twoSamples);
+    CHECK(formula::render(raisedLowest) == "two sample lowest(r(i), r_t(i), r_0).raised lowest");
+    // Markdown and LaTeX: the observations carry the series marker, as in the
+    // plain text; how a symbol with an underscore is set is the vocabulary's
+    // business, pinned elsewhere, so only the call's frame is pinned here.
+    std::string const markdown = formula::render<formula::Dialect::Markdown>(raisedLowest);
+    CHECK(markdown.starts_with("two sample lowest(`r(i)`, "));
+    CHECK(markdown.ends_with(").raised lowest"));
+    std::string const latex = formula::render<formula::Dialect::LaTeX>(raisedLowest);
+    CHECK(latex.starts_with("\\text{two sample lowest}({r}_{i}, "));
+    CHECK(latex.ends_with(")_{\\text{raised lowest}}"));
+
+    formula::Documentation const page = formula::document(raisedLowest);
+    REQUIRE(page.opaqueOperations.size() == 1);
+    CHECK(page.opaqueOperations[0].name == "two sample lowest");
+    REQUIRE(page.symbols.size() == 3);
+    CHECK(page.symbols[0].shape == formula::ValueShape::Observations);
+    CHECK(page.symbols[0].length == 8);
+    CHECK(page.symbols[1].shape == formula::ValueShape::Observations);
+    CHECK(page.symbols[1].length == 4);
+    CHECK(page.symbols[2].shape == formula::ValueShape::Single);
+}
+
+TEST_CASE("an overlay and a level walk reach inside a call over observations", "[opaque][observations][overlay]")
+{
+    // The shift, read inside the call beside two samples, fixed at 29 g:
+    // 103 g + 29 g = 132 g = 33/250 kg. The observations are left as they are.
+    constexpr auto raisedMethod = formula::method(
+        formula::variants(formula::variant<ShiftedVariant>(formula::opaque_output<"raised lowest">(twoSamples))),
+        formula::rounding_rule<unit::Gram, formula::DecimalPlaces { 0 }, formula::RoundingMode::HalfEven>(),
+        formula::constraints());
+    constexpr auto fixed = formula::apply(
+        formula::overlay(formula::with_constant<Shift>(rat(29), { .reference = "Example Standard 12:2021 NA" })),
+        raisedMethod);
+    constexpr auto noShift = formula::environment(formula::MeasuredObservations<Reading, 8>(rat(127), rat(103), rat(191)),
+                                                  formula::MeasuredObservations<Tare, 4>());
+    STATIC_REQUIRE(formula::evaluate_method<ShiftedVariant>(fixed, noShift)->value() == rat(33, 250));
+    STATIC_REQUIRE(formula::detail::ConstantRewriteOf<
+                   formula::ConstantOverride<Shift>,
+                   std::remove_cvref_t<decltype(formula::opaque_output<"raised lowest">(twoSamples))>>::known);
+    STATIC_REQUIRE(formula::detail::LevelChildren<
+                   std::remove_cvref_t<decltype(formula::opaque_output<"raised lowest">(twoSamples))>>::seen);
+}
+
+TEST_CASE("an observation that fails to convert fails the call at that observation", "[opaque][observations][trace]")
+{
+    // 1.03 x 10^17 km is 1.03 x 10^20 m, past Rational's range: the third
+    // observation. Relayed, not the operation's own, and counted as an
+    // observation -- never "at element 3".
+    constexpr auto lowestFar =
+        formula::opaque<LowestObserved>({ .reference = "Example Standard 12" }, formula::observations<FarReading, 4>);
+    constexpr auto overflowing =
+        formula::environment(formula::MeasuredObservations<FarReading, 4>(rat(103), rat(127), rat(103'000'000'000'000'000)));
+    constexpr auto called = formula::detail::evaluate_call<formula::Rational>(lowestFar, overflowing, formula::NullSink {});
+    STATIC_REQUIRE(!called.has_value());
+    STATIC_REQUIRE(called.error().error == formula::ArithmeticError::Overflow);
+    STATIC_REQUIRE(called.error().origin == formula::OpaqueFailure::Propagated);
+    STATIC_REQUIRE(called.error().element == std::optional<std::size_t> { 2 });
+    STATIC_REQUIRE(called.error().site == formula::FailureSite::InputObservation);
+
+    formula::Trace<> recorded {};
+    (void) formula::detail::dispatch<formula::Rational>(
+        formula::opaque_output<"lowest">(lowestFar), overflowing, formula::RecordingSink { recorded });
+    CHECK(formula::render_trace(recorded, { .maxSteps = 20 })
+          == "1. x_k = overflow in exact arithmetic at observation 3\n"
+             "2. lowest observed(#1) = overflow in exact arithmetic [inside not shown] "
+             "[carried up from #1, at observation 3] [Example Standard 12]\n"
+             "3. lowest of #2 = overflow in exact arithmetic\n");
+    // A series input's failure still reads "at element" (the relayed test above).
 }

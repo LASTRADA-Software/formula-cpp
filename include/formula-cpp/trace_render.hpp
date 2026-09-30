@@ -111,11 +111,15 @@ struct TraceRenderOptions
     /// are shown exact (`NumberStyle::exact_only`), and a value in a unit
     /// nobody declared is never padded; where its default 3 places would
     /// round a value other than zero to `≈0`, they are extended to its first
-    /// significant digit, up to 18 (`checked_shown_text`). A value the style
-    /// cannot spell in its unit -- one padded or rounded in a unit whose
-    /// declared decimals lie outside -18 to 18, say -- reads `(not shown:
-    /// ...)`, as a value its unit cannot show does; a bound or a limit the
-    /// author typed falls back to its exact fraction instead.
+    /// significant digit, up to 18 (`checked_shown_text`). A value a formula
+    /// rounded itself -- `rounded`, `rounded_sqrt`, `rounded_ln`,
+    /// `rounded_log10`, `rounded_exp`, `rounded_output` -- is the step's exact
+    /// value, a decimal, so it reads without `≈` in every style, its mode in
+    /// brackets after it. A value the style cannot spell in its
+    /// unit -- one padded or rounded in a unit whose declared decimals lie
+    /// outside -18 to 18, say -- reads `(not shown: ...)`, as a value its unit
+    /// cannot show does; a bound or a limit the author typed falls back to its
+    /// exact fraction instead.
     ///
     /// `render_derivation` spells a worksheet's derivation in it too: its
     /// headers, its steps and its inputs.
@@ -895,6 +899,27 @@ namespace detail
                + " for " + tag_words(compared.subject());
     }
 
+    /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit whose
+    /// symbol is @p unitSymbolText, in `render()`'s words (`rounding_call`), for every step that rounds to
+    /// one number of decimal places; an element-wise rounding has its own spelling. No unit clause for a
+    /// unit with no symbol.
+    [[nodiscard]] inline std::string rounding_call_text(std::string const& inner,
+                                                        int granularity,
+                                                        std::string const& unitSymbolText)
+    {
+        return rounding_call<Dialect::Plain>(inner, DecimalPlaces { granularity }, unitSymbolText);
+    }
+
+    /// `round(ln(#1), to 4 dp)`: `render()`'s spelling, one step with the function inside it, because the
+    /// unrounded value was never a value. The function is named in `render()`'s words
+    /// (`transcendental_text`), so that a derivation names the function its formula names. No unit
+    /// clause: the node rounds a pure number.
+    [[nodiscard]] inline std::string rounded_transcendental_expression(Transcendental function, ShownStep const& shownStep)
+    {
+        return rounding_call_text(
+            transcendental_text<Dialect::Plain>(function, sole_operand(shownStep)), shownStep.granularity, {});
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -942,6 +967,14 @@ namespace detail
                 return shownStep.exponent == 2
                            ? "sqrt(" + sole_operand(shownStep) + ")"
                            : "root" + std::to_string(shownStep.exponent) + "(" + sole_operand(shownStep) + ")";
+            // `render()`'s words, so that a derivation names the function its
+            // formula names.
+            case StepKind::NaturalLogarithm:
+                return transcendental_text<Dialect::Plain>(Transcendental::NaturalLogarithm, sole_operand(shownStep));
+            case StepKind::DecimalLogarithm:
+                return transcendental_text<Dialect::Plain>(Transcendental::DecimalLogarithm, sole_operand(shownStep));
+            case StepKind::Exponential:
+                return transcendental_text<Dialect::Plain>(Transcendental::Exponential, sole_operand(shownStep));
             case StepKind::Documented:
                 return sole_operand(shownStep);
             // Its operand, exactly as `Documented`'s is: the selection chose
@@ -950,8 +983,7 @@ namespace detail
             case StepKind::VariantSelected:
                 return sole_operand(shownStep);
             case StepKind::Round:
-                return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                return rounding_call_text(sole_operand(shownStep), shownStep.granularity, unit_symbol_text(shownStep.unit));
             case StepKind::RoundSignificant:
                 return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " sf"
                        + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
@@ -1063,8 +1095,14 @@ namespace detail
             // `render()`'s spelling, `round(sqrt(...), to ...)`: one shownStep, and
             // the root inside it, because the root itself was never a value.
             case StepKind::RoundedRoot:
-                return "round(sqrt(" + sole_operand(shownStep) + "), to " + std::to_string(shownStep.granularity) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                return rounding_call_text(
+                    "sqrt(" + sole_operand(shownStep) + ")", shownStep.granularity, unit_symbol_text(shownStep.unit));
+            case StepKind::RoundedNaturalLogarithm:
+                return rounded_transcendental_expression(Transcendental::NaturalLogarithm, shownStep);
+            case StepKind::RoundedDecimalLogarithm:
+                return rounded_transcendental_expression(Transcendental::DecimalLogarithm, shownStep);
+            case StepKind::RoundedExponential:
+                return rounded_transcendental_expression(Transcendental::Exponential, shownStep);
             // `render()`'s head name. The count is the subject, as a banded
             // lookup's operand is; which row it selected goes in the suffix.
             case StepKind::SampleSizeLookup:
@@ -1118,7 +1156,15 @@ namespace detail
             case StepKind::OpaqueOperation:
                 return "opaque(" + operands_text(shownStep) + ")";
             case StepKind::OpaqueOutput:
-                return shownStep.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(shownStep);
+                return shownStep.operands.empty() ? std::string { "an opaque output" }
+                                                  : "output of " + sole_operand(shownStep);
+            // `render()`'s spelling, as for a rounded root; the output's name is
+            // in the call's row, which `rounded_opaque_output_line` reads.
+            case StepKind::RoundedOpaqueOutput:
+                return rounding_call_text(shownStep.operands.empty() ? std::string { "an opaque output" }
+                                                                     : "output of " + sole_operand(shownStep),
+                                          shownStep.granularity,
+                                          unit_symbol_text(shownStep.unit));
             // A retry's steps name its result as `render()` does, `w(k)` for
             // an attempt's value and `w(k-1)` for the one before; the
             // attempt's and the retry's own lines are `retry_attempt_line` and
@@ -2401,19 +2447,21 @@ namespace detail
 
     /// What `render_trace` found in a trace for an opaque step: the call's
     /// row -- the step's own for an `OpaqueOperation` step, and the row of the
-    /// call it claimed for an `OpaqueOutput` step -- and, for the latter,
-    /// which output it selected and whether its operand **is** a call's step.
-    /// For a failed call, which input's step carries the error. Null and
-    /// empty for every other step, and for a step built by hand.
+    /// call it claimed for an `OpaqueOutput` or `RoundedOpaqueOutput` step --
+    /// and, for the latter, which output it selected and whether its operand
+    /// **is** a call's step. For a failed call, which input's step carries the
+    /// error. Null and empty for every other step, and for a step built by
+    /// hand.
     struct OpaqueLine
     {
         OpaqueStepData<Rational> const* call = nullptr;
         std::optional<std::size_t> outputIndex {};
-        /// For an `OpaqueOutput` step: whether its sole operand is an
-        /// `OpaqueOperation` step, judged by that step's kind -- the step that
-        /// says the operation's inside is not shown. False when a sink that
-        /// does not hear the opaque hooks recorded the output over the call's
-        /// inputs directly, and for a step built by hand.
+        /// For an `OpaqueOutput` or `RoundedOpaqueOutput` step: whether its
+        /// sole operand is an `OpaqueOperation` step, judged by that step's
+        /// kind -- the step that says the operation's inside is not shown.
+        /// False when a sink that does not hear the opaque hooks recorded the
+        /// output over the call's inputs directly, and for a step built by
+        /// hand.
         bool overCall = false;
         /// For an `OpaqueOperation` step that relayed a failure: the index of
         /// the input step that carries it -- the last operand, since the call
@@ -2496,8 +2544,8 @@ namespace detail
 
     /// What an opaque call's line says of whose failure it carries, bracketed:
     /// the operation's own, relayed from the one input that failed -- named,
-    /// with its element counted from one when the failure had one -- or
-    /// undetermined.
+    /// with its element -- or its observation, for raw observations -- counted
+    /// from one when the failure had one -- or undetermined.
     [[nodiscard]] inline std::string opaque_failure_suffix(Step<Rational> const& recorded,
                                                            OpaqueFailure carried,
                                                            std::optional<std::size_t> failedInput)
@@ -2513,13 +2561,37 @@ namespace detail
                 std::string relayed = " [carried up from ";
                 relayed += failedInput.has_value() ? operand_reference(*failedInput) : std::string { "an input" };
                 if (recorded.failedElement.has_value())
-                    relayed += ", at element " + std::to_string(*recorded.failedElement + 1);
+                    relayed +=
+                        (recorded.failureSite == FailureSite::InputObservation ? ", at observation " : ", at element ")
+                        + std::to_string(*recorded.failedElement + 1);
                 return relayed + "]";
             }
             case OpaqueFailure::Undetermined:
                 return " [this operation or an input: an input recorded no step]";
         }
         return " [unknown failure]";
+    }
+
+    /// @p calledOutputs, each spelled by @p spelled and spending one unit of
+    /// @p budget, as a series' elements do, joined by @p joiner; a list cut
+    /// short ends `... k more`. For an opaque call's line, which lists its
+    /// outputs with their values, or by name alone on the rounded route.
+    template <typename Spell>
+    [[nodiscard]] std::string opaque_outputs_listed(std::vector<OpaqueOutputValue<Rational>> const& calledOutputs,
+                                                    std::size_t& budget,
+                                                    std::string_view joiner,
+                                                    Spell const& spelled)
+    {
+        std::size_t const outputCount = calledOutputs.size();
+        std::size_t const listed = budget < outputCount ? budget : outputCount;
+        budget -= listed;
+        std::string listText;
+        for (std::size_t at = 0; at < listed; ++at)
+            listText += (at > 0 ? std::string { joiner } : std::string {}) + spelled(calledOutputs[at]);
+        if (listed < outputCount)
+            listText += (listed > 0 ? std::string { joiner } : std::string {}) + "... "
+                        + std::to_string(outputCount - listed) + " more";
+        return listText;
     }
 
     /// An opaque call's line, without its number: `series span(#1) = lowest
@@ -2530,7 +2602,11 @@ namespace detail
     /// do, and a list cut short ends `... k more`. A failed call shows its
     /// error and whose it is (`opaque_failure_suffix`); an absent one,
     /// `(not measured)`. A call stopped at a failing input writes each
-    /// input after it, never evaluated, as `(not evaluated)`.
+    /// input after it, never evaluated, as `(not evaluated)`. A call evaluated
+    /// for a rounded output names its outputs without values --
+    /// `linear least squares(#3) = intercept, slope: rounded where used` --
+    /// since none exists until an output is rounded; an absent one,
+    /// `(not measured)`.
     ///
     /// **`[inside not shown]` depends on the step's kind alone**: it is
     /// written for every `OpaqueOperation` step, with or without its row, and
@@ -2559,24 +2635,29 @@ namespace detail
         lineText += " = ";
         if (recorded.error.has_value())
             lineText += describe(*recorded.error);
+        else if (callRow != nullptr && callRow->values == OpaqueValues::RoundedWhereUsed)
+        {
+            // No output holds a value: the names, each spending one unit of
+            // the budget as a value would, and how they are reported.
+            if (callRow->answer != OpaqueAnswer::Answered || callRow->outputs.empty())
+                lineText += NotMeasuredText;
+            else
+                lineText += opaque_outputs_listed(callRow->outputs,
+                                                  budget,
+                                                  ", ",
+                                                  [](OpaqueOutputValue<Rational> const& shownOutput) {
+                                                      return escaped_author_text(shownOutput.name);
+                                                  })
+                            + ": rounded where used";
+        }
         else if (callRow == nullptr || callRow->outputs.empty() || !callRow->outputs.front().value.has_value())
             lineText += NotMeasuredText;
         else
-        {
-            std::size_t const outputCount = callRow->outputs.size();
-            std::size_t const listed = budget < outputCount ? budget : outputCount;
-            budget -= listed;
-            for (std::size_t at = 0; at < listed; ++at)
-            {
-                OpaqueOutputValue<Rational> const& shownOutput = callRow->outputs[at];
-                if (at > 0)
-                    lineText += "; ";
-                lineText += escaped_author_text(shownOutput.name) + " = "
-                            + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value, numberStyle);
-            }
-            if (listed < outputCount)
-                lineText += std::string { listed > 0 ? "; " : "" } + "... " + std::to_string(outputCount - listed) + " more";
-        }
+            lineText += opaque_outputs_listed(
+                callRow->outputs, budget, "; ", [numberStyle](OpaqueOutputValue<Rational> const& shownOutput) {
+                    return escaped_author_text(shownOutput.name) + " = "
+                           + opaque_value_text(shownOutput.dimension, shownOutput.unit, shownOutput.value, numberStyle);
+                });
         lineText += " [inside not shown]";
         if (callRow != nullptr)
             lineText += opaque_failure_suffix(recorded, callRow->failure, opaqueLine.failedInput);
@@ -2714,6 +2795,18 @@ namespace detail
         return lineText + (cited.empty() ? " " + std::string { noCitationGiven } : " [" + cited + "]");
     }
 
+    /// The output an opaque output's line names: `span of #2`, named from its
+    /// call's row, or `output of #2` -- `an opaque output` with no operand --
+    /// without one.
+    [[nodiscard]] inline std::string opaque_output_label(ShownStep const& recorded, OpaqueLine const& opaqueLine)
+    {
+        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
+            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
+            return escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
+                   + sole_operand(recorded);
+        return recorded.operands.empty() ? std::string { "an opaque output" } : "output of " + sole_operand(recorded);
+    }
+
     /// An opaque output's line, without its number: `span of #2 = 88 g`, the
     /// output named from its call's row; `output of #2` without one.
     ///
@@ -2727,15 +2820,47 @@ namespace detail
                                                         OpaqueLine const& opaqueLine,
                                                         NumberStyle numberStyle)
     {
-        std::string outputText = step_expression(recorded);
-        if (opaqueLine.call != nullptr && opaqueLine.outputIndex.has_value()
-            && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
-            outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
-                         + sole_operand(recorded);
+        std::string const outputText = opaque_output_label(recorded, opaqueLine);
         std::string const valueText =
             recorded.error.has_value() ? std::string { describe(*recorded.error) }
                                        : opaque_value_text(recorded.dimension, recorded.unit, recorded.value, numberStyle);
         return outputText + " = " + valueText + (opaqueLine.overCall ? "" : " [inside not shown]");
+    }
+
+    /// A rounded opaque output's line, without its number: `round(slope of #4,
+    /// to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]`, the output
+    /// named from its call's row, as `opaque_output_line` names one.
+    ///
+    /// The value is the rounded decimal the step holds, exact, so no style
+    /// writes `≈` before it; the mode follows in brackets, as a rounding's
+    /// does. A failure the call carried reads as the call's: `[the operation
+    /// itself failed, not any input]`, or `[carried up from #k]` naming the
+    /// call's step, in place of the mode. A failure of the rounding itself,
+    /// after the call answered, keeps the mode, as a failed rounding's line
+    /// does. Ends `[inside not shown]` unless its operand is the call's own
+    /// step (`OpaqueLine::overCall`), as an output's line does.
+    [[nodiscard]] inline std::string rounded_opaque_output_line(ShownStep const& recorded,
+                                                                OpaqueLine const& opaqueLine,
+                                                                NumberStyle numberStyle)
+    {
+        std::string lineText = rounding_call_text(opaque_output_label(recorded, opaqueLine),
+                                                  recorded.granularity,
+                                                  unit_symbol_text(recorded.unit))
+                               + " = ";
+        bool const callFailed = opaqueLine.call != nullptr && opaqueLine.call->failure != OpaqueFailure::None;
+        if (recorded.error.has_value() && callFailed)
+            lineText += std::string { describe(*recorded.error) }
+                        + opaque_failure_suffix(recorded,
+                                                opaqueLine.call->failure,
+                                                recorded.operands.empty()
+                                                    ? std::nullopt
+                                                    : std::optional<std::size_t> { recorded.operands.front() });
+        else if (recorded.error.has_value())
+            lineText += std::string { describe(*recorded.error) } + rounding_mode_suffix(recorded.mode);
+        else
+            lineText += opaque_value_text(recorded.dimension, recorded.unit, recorded.value, numberStyle)
+                        + rounding_mode_suffix(recorded.mode);
+        return lineText + (opaqueLine.overCall ? "" : " [inside not shown]");
     }
 
     /// What @p trace's side tables hold for the retry step at @p stepIndex
@@ -2774,7 +2899,7 @@ namespace detail
                     callLine.failedInput = operandIndex;
             return callLine;
         }
-        if (recorded.kind != StepKind::OpaqueOutput)
+        if (recorded.kind != StepKind::OpaqueOutput && recorded.kind != StepKind::RoundedOpaqueOutput)
             return {};
         OpaqueLine outputLine {};
         if (OpaqueOutputStepData const* const chosenOutput = opaque_output_data(trace, stepIndex); chosenOutput != nullptr)
@@ -2862,6 +2987,8 @@ namespace detail
             return opaque_call_line(recorded, opaqueLine, budget, numberStyle);
         if (recorded.kind == StepKind::OpaqueOutput)
             return opaque_output_line(recorded, opaqueLine, numberStyle);
+        if (recorded.kind == StepKind::RoundedOpaqueOutput)
+            return rounded_opaque_output_line(recorded, opaqueLine, valueStyle);
         // A series first, before anything reads `value`: its values are its
         // elements.
         // A per-element rounding ends with its mode, as a scalar rounding
@@ -2933,7 +3060,8 @@ namespace detail
         else if (recorded.kind == StepKind::Conditional && recorded.branch == Branch::Neither)
             annotation = " [" + std::string { describe(recorded.branch) } + "]";
         else if (recorded.kind == StepKind::Round || recorded.kind == StepKind::RoundSignificant
-                 || recorded.kind == StepKind::RoundedRoot)
+                 || recorded.kind == StepKind::RoundedRoot || recorded.kind == StepKind::RoundedNaturalLogarithm
+                 || recorded.kind == StepKind::RoundedDecimalLogarithm || recorded.kind == StepKind::RoundedExponential)
             annotation = rounding_mode_suffix(recorded.mode);
         else if (recorded.kind == StepKind::RoundingRuleApplied)
             annotation = rounding_rule_suffix(recorded);
@@ -3077,7 +3205,15 @@ namespace detail
 /// multiply-then-divide, and there is no such operation for binary floating
 /// point: a `double` trace would need a rounding policy, and choosing one on a
 /// caller's behalf is how an audit trail acquires a number nobody can
-/// reproduce. Evaluate in `double` by all means; print the exact trace.
+/// reproduce. Evaluate in `double` by all means; print the exact trace. A
+/// value the exact layer cannot hold is no reason to trace in `double`
+/// either: a formula declares the precision it is reported at, and the trace
+/// shows that exact decimal -- `rounded_sqrt` for a root, `rounded_ln`,
+/// `rounded_log10` and `rounded_exp` for a logarithm or an exponential, and
+/// `rounded_output` for an output of an opaque operation that computes in
+/// wider integers, as `linear_least_squares` does. Any other operation's
+/// rounded output is computed in `Rational`, and fails with `Overflow` where
+/// the exact output would.
 template <typename Rep = Rational>
 [[nodiscard]] std::string render_trace(Trace<Rep> const& trace, TraceRenderOptions options)
 {

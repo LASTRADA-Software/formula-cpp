@@ -25,6 +25,7 @@
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
@@ -415,6 +416,9 @@ namespace detail
     template <Vocabulary V, int Degree, Node Operand>
     void collect(Walk<V>& walk, RootNode<Degree, Operand> const& node);
 
+    template <Vocabulary V, Transcendental F, Node Operand>
+    void collect(Walk<V>& walk, TranscendentalNode<F, Operand> const& node);
+
     template <Vocabulary V, BinaryOperator Op, Node Left, Node Right>
     void collect(Walk<V>& walk, BinaryNode<Op, Left, Right> const& node);
 
@@ -429,6 +433,9 @@ namespace detail
 
     template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
     void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node);
+
+    template <Vocabulary V, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundedTranscendentalNode<F, Places, Mode, Operand> const& node);
 
     template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
     void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node);
@@ -540,6 +547,16 @@ namespace detail
 
     template <Vocabulary V, std::size_t I, typename Op, typename... Inputs, typename Origin>
     void collect(Walk<V>& walk, OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin> const& node);
+
+    template <Vocabulary V,
+              std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
+              typename Origin>
+    void collect(Walk<V>& walk, RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node);
 
     /// A distinct address per opaque call type, for `quantityIdentity`'s
     /// reason and in its writable form.
@@ -770,6 +787,13 @@ namespace detail
         collect(walk, node.operand);
     }
 
+    /// A logarithm or an exponential reads what its argument reads.
+    template <Vocabulary V, Transcendental F, Node Operand>
+    void collect(Walk<V>& walk, TranscendentalNode<F, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
     /// Left before right -- what makes first-appearance order match reading
     /// order, rather than some incidental order of construction.
     template <Vocabulary V, BinaryOperator Op, Node Left, Node Right>
@@ -844,6 +868,14 @@ namespace detail
     void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node)
     {
         collect(walk, node.radicand);
+    }
+
+    /// A rounded logarithm or exponential reads what its argument reads, as a rounding node reads what
+    /// its operand does.
+    template <Vocabulary V, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundedTranscendentalNode<F, Places, Mode, Operand> const& node)
+    {
+        collect(walk, node.operand);
     }
 
     /// The escape hatch still reads a variable, even though what it produces
@@ -1209,6 +1241,23 @@ namespace detail
                 walk.documentation.citations.push_back(node.call.citation);
         }
         std::apply([&](auto const&... inputs) { (collect(walk, inputs), ...); }, node.call.inputs);
+    }
+
+    /// A rounded opaque output lists its call as an output of that call does
+    /// -- once per call, whichever outputs are used and whether they are
+    /// rounded -- and reads what the call's inputs read. The precision is in
+    /// the formula's text already.
+    template <Vocabulary V,
+              std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
+              typename Origin>
+    void collect(Walk<V>& walk, RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node)
+    {
+        collect(walk, unrounded(node));
     }
 
     /// Asks `RequireAttemptInputOnlyInRetry` of each of the definitions

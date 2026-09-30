@@ -29,6 +29,11 @@ their figures:
 - a **least-squares line** through readings at 3 decimal places, which
   overflows from 34 points, though not at every size above.
 
+A line through realistic observations reported at declared decimals answers
+at every size measured below; its exact route stops sooner, at 29 points on
+readings at 3 decimal places, where the curve fit's stops at 34. A different
+denominator on every point outgrows the rounded route too, from 62 points.
+
 The project's decision rule is: **any realistic case under 8 bits of headroom
 recommends wider intermediates**: 128-bit intermediate arithmetic, computing
 each product and sum in 128 bits before reducing. These cases are under it,
@@ -103,6 +108,11 @@ every hook expands to nothing, its arguments unevaluated: a release object
 built with it off disassembles identically to one built before the hooks
 existed, and gains one linker directive, the mismatch check (cl 19.51,
 `/O2`).
+
+The logarithm and exponential kernel (`detail/transcendental.hpp`) carries
+no hooks: it computes in the wide words of `detail/wide_int.hpp`, outside the
+census, and only the rounded decimal it answers is counted, made by
+`Rational::from_decimal` as `rounded_sqrt`'s and `rounded_output`'s are.
 
 The census does not see evaluations that happen at compile time
 (`constexpr`): a constant evaluation cannot report to a tally. They fit --
@@ -302,7 +312,16 @@ unconverted: readings at 1 decimal place; readings at 3 decimal places of a
 few thousand newtons, a load cell's; and a different denominator on every
 point, the stress control. Every size from 2 to 128 points is fitted through
 `LinearLeastSquares::compute`, the fit the node calls, and the node itself
-is checked against it at 33 and 34 points.
+is checked against it at 33 and 34 points. The last two rows fit the same
+shapes the way `rounded_output` does: the slope reported to 4 decimal places
+of N/s, computed by `LinearLeastSquares::compute_exact` in 256-bit integers
+and rounded exactly; the node is checked against that at 57, 58 and 128
+points. For those two rows the last column counts the 64-bit integers only,
+the rounded result and its conversion among them, and not the fit's 256-bit
+intermediates, which the census does not see: they reach 68 bits on the
+readings at 3 decimal places, and up to 249 of the 256 on a different
+denominator for every point, at the sizes that still answer. So a large
+figure there says nothing of how close the fit came to its 256 bits.
 
 <!-- census:least-squares -->
 
@@ -311,17 +330,56 @@ is checked against it at 33 and 34 points.
 | readings at 1 dp (realistic) | 0 of 127 | none | 29 |
 | readings at 3 dp near 2410 N, a load cell's (realistic) | 57 of 127 | 34 points | 0 |
 | a different denominator on every point (stress control) | 114 of 127 | 15 points | 2 |
+| the slope rounded to 4 dp by rounded_output: readings at 3 dp near 2410 N (realistic) | 0 of 127 | none | 41 |
+| the slope rounded to 4 dp by rounded_output: a different denominator on every point (stress control) | 71 of 127 | 58 points | 48 |
 
 <!-- /census:least-squares -->
 
 **Overflow depends on the data far more than on the number of points.** At
 3 decimal places the first size to overflow is 34 points, but not every
 larger size does. So no number of points is safe to state; an overflowing
-fit is `Overflow`, never a line. It has no traced fallback in `double`: a
-curve evaluates only in `Rational`, so `checked_evaluate_si<double>` over a
-fit is refused. `LinearLeastSquares::compute<double>` can be called
-directly, on numbers already in coherent units, but nothing it returns is
-checked, traced, rendered or documented.
+fit is `Overflow`, never a line. Where it overflows, a method that states the
+precision it reports the slope at gets that instead, from `rounded_output`:
+exact, traced and documented, at every size here for readings at 3 decimal
+places, and `Overflow` from 58 points on a different denominator for every
+point, where even 256 bits are outgrown. There is no traced fallback in
+`double`: a curve evaluates only in `Rational`, so
+`checked_evaluate_si<double>` over a fit is refused.
+`LinearLeastSquares::compute<double>` can be called directly, on numbers
+already in coherent units, but nothing it returns is checked, traced,
+rendered or documented.
+
+### Regression over observations (realistic, and one stress control)
+
+`linear_least_squares` over raw observations, up to 128 of them, is fitted on
+the census's own shapes, read as observations: readings at 3 decimal places
+near 2410 N, readings at 4 decimal places near 2410 mm, and a different
+denominator on every point. Each size from 2 to 128 points is fitted twice:
+through `opaque_output`, exactly, in the wide integers of the regression
+kernel, and through `rounded_output`, the slope to 4 decimal places and R²
+floored at 6. The last row regresses the load on the time and a temperature at
+1 decimal place in degrees Celsius (`multiple_least_squares`, coefficient 1
+to 4 decimal places of N/s, R² floored at 6), from 3 to 128 rows, so 126
+sizes; every size answers or is `Overflow`. The columns count sizes, not bits:
+the kernel's wide integers do not report to the census, so there is no
+headroom figure to print, and none is implied.
+
+<!-- census:regression -->
+
+| data (invented) | exact route: sizes that overflow | first | rounded route: sizes that overflow | first |
+|---|---|---|---|---|
+| a line through readings at 3 dp near 2410 N (realistic) | 99 of 127 | 29 points | 0 of 127 | none |
+| a line through readings at 4 dp near 2410 mm (realistic) | 122 of 127 | 7 points | 0 of 127 | none |
+| a line through a different denominator on every point (stress control) | 118 of 127 | 11 points | 66 of 127 | 62 points |
+| two regressors: readings at 3 dp and a temperature at 1 dp in degrees Celsius (realistic) | 100 of 126 | 29 points | 0 of 126 | none |
+
+<!-- /census:regression -->
+
+**The exact route stops early; the rounded route does not stop on realistic
+data.** A call's outputs answer or fail together, and R²'s exact fraction is
+about twice as wide as the slope's. Reported at declared decimals, the same
+fits answer at every size measured. A different denominator on every point
+outgrows even the wide kernel, and is `Overflow`.
 
 ## Which cases decide
 
@@ -341,9 +399,13 @@ The census builds neither remedy. 128-bit intermediate arithmetic would
 compute each product and sum in 128 bits before reducing; a wider stored
 representation would offer a fixed-width wide-integer `Rational` as a `Rep`.
 [Issue #1](https://github.com/LASTRADA-Software/formula-cpp/issues/1) tracks
-the choice between them. An arbitrary-precision integer is out of scope: it
-allocates, which in `noexcept` code turns running out of memory into
-`std::terminate`, and it cannot run at compile time.
+the choice between them. Beside them, a formula can declare the precision a
+value is reported at, and `rounded_output` computes that decimal in wider
+integers ([Displaying numbers](display.md#values-the-exact-layer-cannot-hold));
+that answers for the one output reported, not for `Rational` itself. An
+arbitrary-precision integer is out of scope: it allocates, which in
+`noexcept` code turns running out of memory into `std::terminate`, and it
+cannot run at compile time.
 
 ## Regression pins
 

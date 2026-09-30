@@ -76,6 +76,7 @@
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
@@ -488,6 +489,11 @@ namespace detail
     {
     };
 
+    template <Transcendental F, Node Operand>
+    struct LevelChildren<TranscendentalNode<F, Operand>>: LevelParent<Operand>
+    {
+    };
+
     template <Node Inner>
     struct LevelChildren<DocumentedNode<Inner>>: LevelParent<Inner>
     {
@@ -505,6 +511,11 @@ namespace detail
 
     template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
     struct LevelChildren<RoundedRootNode<U, Places, Mode, Radicand>>: LevelParent<Radicand>
+    {
+    };
+
+    template <Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct LevelChildren<RoundedTranscendentalNode<F, Places, Mode, Operand>>: LevelParent<Operand>
     {
     };
 
@@ -669,6 +680,20 @@ namespace detail
     /// inside one is seen, although the operation's inside is not shown.
     template <std::size_t I, typename Op, typename... Inputs, typename Origin>
     struct LevelChildren<OpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, Origin>>: LevelParent<Inputs...>
+    {
+    };
+
+    /// A rounded opaque output's children are its call's inputs, as an
+    /// unrounded output's are.
+    template <std::size_t I,
+              typename Op,
+              typename... Inputs,
+              Unit U,
+              DecimalPlaces Places,
+              RoundingMode Mode,
+              typename Origin>
+    struct LevelChildren<RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>>:
+        LevelParent<Inputs...>
     {
     };
 
