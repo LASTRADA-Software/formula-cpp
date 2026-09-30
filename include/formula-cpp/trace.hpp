@@ -270,7 +270,7 @@ enum class StepKind : std::uint8_t
     /// `Step::curveBreak`. Checked on GCC under
     /// `-Wshadow`: the node is `SpliceNode` and its factory `splice`.
     CurveSplice,
-    /// Raw observations (`ObservationsVarNode`, `binning.hpp`): the
+    /// Raw observations (`ObservationsVarNode`, `observations.hpp`): the
     /// quantity's symbol and declared unit, and every observation made, in
     /// `Step::elements`, as many as were made. A failure records the
     /// observation it arose at in `Step::failedElement`. Recorded by

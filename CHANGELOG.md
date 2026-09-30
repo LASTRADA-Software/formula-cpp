@@ -8,6 +8,9 @@ may break it, and each such change is recorded here.
 
 ### Added
 
+- `observations.hpp`, holding raw observations -- `observations<Q, Capacity>`, `ObservationsVarNode`,
+  `ObservationsNode`, `ObservationsValue` and `EvaluatedObservations` -- which `binning.hpp` declared before and
+  still includes. Code that reads observations no longer needs a binning's classes, lookups and bands.
 - `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
   `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
   into kilowatt-hours without a rounded factor.

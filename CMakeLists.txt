@@ -77,6 +77,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/measured.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/method.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/number_text.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/observations.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/opaque.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/outcome.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/overlay.hpp"

@@ -875,7 +875,7 @@ template <Dialect D, typename R, Vocabulary V>
     requires detail::is_sample_transformer<R>
 [[nodiscard]] std::string render(R const& node, V const& vocabulary);
 
-/// The counterpart for raw observations (`binning.hpp`), neither a `Node` nor
+/// The counterpart for raw observations (`observations.hpp`), neither a `Node` nor
 /// a series, when a statistic renders its sample.
 template <Dialect D, ObservationsNode O, Vocabulary V>
 [[nodiscard]] std::string render(O const& node, V const& vocabulary);

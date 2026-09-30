@@ -35,6 +35,7 @@
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/number_text.hpp>
+#include <formula-cpp/observations.hpp>
 #include <formula-cpp/opaque.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/overlay.hpp>

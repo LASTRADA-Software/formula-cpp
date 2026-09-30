@@ -76,6 +76,7 @@ add_executable(formula-cpp-tests
     conformity_tests.cpp
     snap_tests.cpp
     binning_tests.cpp
+    observations_tests.cpp
     curve_tests.cpp
     statistics_tests.cpp
     statistics_cross_tu_b.cpp
