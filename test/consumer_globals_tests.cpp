@@ -1224,5 +1224,11 @@ ConsumerGlobalsProbe probe_consumer_globals()
     probe.checks.push_back(std::format("{}", formula::Rational { 3, 5 }) == "0.6"
                            && std::format("{:>10~HalfEven}", thirdEdge) == " \xe2\x89\x88" "150.7 mm"
                            && std::format("{:/}", thirdEdge) == "452/3 mm");
+
+    // The exact decimal literal: 27.3 is 273/10, not the double nearest it.
+    {
+        using namespace formula::literals;
+        probe.checks.push_back(27.3_r == formula::Rational { 273, 10 });
+    }
     return probe;
 }

@@ -75,6 +75,42 @@ so silently converting one to a `Rational` would make `0.45` mean
 8106479329266893 / 2^54, not 9/20 -- exactly the confusion this type exists to
 prevent.
 
+## Writing an exact decimal
+
+`Rational::from_decimal(273, -1)` is exact but hard to read. The literal `_r`
+writes the same value the way it is written on paper:
+
+```cpp
+using namespace formula::literals;
+
+Rational const a = 27.3_r;   // 273/10, not the double nearest 27.3
+Rational const b = 0.47_r;   // 47/100
+Rational const c = 1.5e-3_r; // 3/2000
+Rational const d = -27.3_r;  // -273/10
+```
+
+A literal has to be a `_r` literal rather than a `double` for the reason given
+under *Why not `double`*: `0.47` as a `double` is not 47/100, and a `Rational`
+made from it would carry that error. `0.47_r` is read from its spelling, so
+nothing is rounded on the way in. An exponent scales exactly, digit separators
+(`1'000.5_r`) are ignored, and a minus sign is `Rational`'s own negation.
+
+The literal is evaluated at compile time, so a spelling it cannot honour does not
+compile. The diagnostic names the function that was reached:
+
+| Spelling | Why it is refused | Named in the diagnostic |
+|---|---|---|
+| `9'223'372'036'854'775'808_r` | more significant digits than `Rational`'s 64-bit numerator holds | `formula_rational_literal_out_of_range` |
+| `0.0000000000000000001_r` | a denominator of 10^19 does not fit either | `formula_rational_literal_out_of_range` |
+| `0x1F_r`, `0b101_r` | not a decimal | `formula_rational_literal_not_a_decimal` |
+| `017_r` | C++ reads a leading zero as octal, so it is not the decimal 17 | `formula_rational_literal_not_a_decimal` |
+
+Trailing zeros after the point cost nothing: `4.210_r` is 421/100, and a
+literal with two dozen places still works when most of them are zeros.
+
+The literal is for decimals. A fraction such as one third is still
+`Rational { 1, 3 }`, or `1_r / 3`.
+
 ## Exact or nothing
 
 `checked_` means exactly one thing in this library: the function returns

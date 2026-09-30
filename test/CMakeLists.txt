@@ -30,6 +30,7 @@ add_executable(formula-cpp-tests
     error_tests.cpp
     expression_tests.cpp
     rational_tests.cpp
+    rational_literal_tests.cpp
     render_tests.cpp
     rounding_tests.cpp
     dimension_tests.cpp
@@ -287,6 +288,15 @@ formula_add_negative_test(rational_from_wide_unsigned
 formula_add_negative_test(exponent_zero_denominator
     "formula_exponent_denominator_must_not_be_zero")
 formula_add_negative_test(exponent_out_of_range "formula_exponent_out_of_range")
+
+# The `_r` literal is `consteval`, so a spelling it refuses is caught the same
+# way as the exponent sentinels above: by the NAME of the deliberately
+# non-`constexpr` guard, which every compiler quotes, and with no EXPECT_COUNT,
+# because clang and clang-cl report a failed consteval call twice.
+formula_add_negative_test(rational_literal_out_of_range "formula_rational_literal_out_of_range")
+formula_add_negative_test(rational_literal_too_many_places "formula_rational_literal_out_of_range")
+formula_add_negative_test(rational_literal_not_a_decimal "formula_rational_literal_not_a_decimal")
+formula_add_negative_test(rational_literal_octal "formula_rational_literal_not_a_decimal")
 
 formula_add_negative_test(dimension_mismatch
     "formula: these two dimensions are not the same")
