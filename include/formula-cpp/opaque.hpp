@@ -1063,6 +1063,14 @@ template <detail::FixedString Name, Unit U, DecimalPlaces Places, RoundingMode M
                                                                                                                     call };
 }
 
+/// The output named @p Name of @p call, rounded as @p R names:
+/// `rounded_output<"slope", fourPlaces>(fit)`.
+template <detail::FixedString Name, DecimalRounding R, OpaqueOperation Op, typename... Inputs>
+[[nodiscard]] constexpr auto rounded_output(OpaqueCall<Op, Inputs...> call) noexcept
+{
+    return rounded_output<Name, R.unit, R.places, R.mode>(call);
+}
+
 namespace detail
 {
     /// The output @p node rounds, as `opaque_output` builds it: for the walks

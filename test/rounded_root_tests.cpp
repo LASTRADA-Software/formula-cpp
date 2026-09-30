@@ -266,3 +266,12 @@ TEST_CASE("the exact algorithm scales only the remainder, so a large denominator
             .value()
         == Rational { 22'252'283, 200'000 });
 }
+
+TEST_CASE("DecimalRounding: the same rounded root as the three arguments it names", "[rounded-root]")
+{
+    constexpr formula::DecimalRounding hundredthGram { unit::Gram, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero };
+    using ByValue = decltype(formula::rounded_sqrt<hundredthGram>(var<MassSquared>));
+    using ByTriple =
+        decltype(formula::rounded_sqrt<unit::Gram, DecimalPlaces { 2 }, RoundingMode::HalfAwayFromZero>(var<MassSquared>));
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+}

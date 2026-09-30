@@ -48,6 +48,45 @@ library is one.
 (see [Numbers](numbers.md)), and a rounding node is simply that mode exposed as
 a position in the tree rather than a call you make on a number you already hold.
 
+## Naming a rounding once
+
+A method that rounds the same way in several places repeats the same three
+arguments each time. `DecimalRounding` (`unit.hpp`) names them once: which unit
+the places are counted in, how many, and which way to go.
+
+```cpp
+constexpr formula::DecimalRounding tenthMillimetre { unit::Millimetre,
+                                                     DecimalPlaces { 1 },
+                                                     RoundingMode::HalfAwayFromZero };
+constexpr auto edge = formula::rounded<tenthMillimetre>(var<Diameter>);
+```
+
+`edge` is the very node `rounded<unit::Millimetre, DecimalPlaces { 1 },
+RoundingMode::HalfAwayFromZero>(var<Diameter>)` builds -- the same type, not an
+equivalent one. Every factory that takes the three arguments separately also
+takes the named value: `rounded_to_digits` takes a `SignificantRounding`, and
+`rounding_rule`, `with_rounding`, `rounded_output`, `rounded_sqrt` and
+`rounded_elementwise` take a `DecimalRounding`.
+
+```cpp
+constexpr auto rule = formula::rounding_rule<tenthMillimetre>();
+constexpr auto rootedEdge = formula::rounded_sqrt<tenthMillimetre>(var<Diameter> * var<Diameter>);
+```
+
+`declared_rounding(unit, mode)` builds a `DecimalRounding` from the places a
+unit itself declares, so a rounding "to what a millimetre is shown to" does not
+restate the number:
+
+```cpp
+constexpr auto asDeclared = formula::declared_rounding(unit::Millimetre, RoundingMode::HalfAwayFromZero);
+```
+
+A unit that does not measure the operand's dimension is refused as it is when
+the arguments are written out: `rounded<wholeGrams>(var<Diameter>)`, with
+`wholeGrams` in `unit::Gram`, draws the rounding node's one message.
+`rounded_elementwise<tenthMillimetre>(...)` rounds every element of a series to
+the same places; a `PlacesTable` still gives each element its own.
+
 ## The reason this is a node at all
 
 A method may specify "round the diameter to the nearest millimetre before

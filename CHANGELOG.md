@@ -46,6 +46,14 @@ change is recorded here.
   `checked_evaluate_rejection`, `check`, `check_all` and `check_conformity`, each with the
   vocabulary as an optional last argument. `explain_series` and `explain_retry` return the same
   shape as before.
+- `DecimalRounding` and `SignificantRounding` name a rounding once -- a unit, how many places or
+  digits, and a `RoundingMode` -- where the three arguments were repeated at every use:
+  `constexpr DecimalRounding tenthMpa { unit::Megapascal, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };`
+  then `rounded<tenthMpa>(x)`. `rounded`, `rounded_to_digits`, `rounding_rule`, `with_rounding`,
+  `rounded_output`, `rounded_sqrt` and `rounded_elementwise` each take one, and build the same
+  type as the three arguments do. `rounded_elementwise<R>(series)` rounds every element to the same
+  places. Every earlier spelling stays.
+- `declared_rounding(unit, mode)`, a `DecimalRounding` in the places `unit` declares.
 
 ### Changed
 

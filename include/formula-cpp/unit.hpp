@@ -87,6 +87,39 @@ struct Unit
     [[nodiscard]] constexpr bool operator==(Unit const&) const noexcept = default;
 };
 
+/// A rounding to decimal places, named once and used wherever a method rounds
+/// the same way: which unit the places are of, how many, and which way to go.
+/// `constexpr DecimalRounding tenthMpa { unit::Megapascal, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero };`
+/// then `rounded<tenthMpa>(x)`, `rounding_rule<tenthMpa>()`. Every factory
+/// that takes the three arguments separately also takes this.
+struct DecimalRounding
+{
+    /// The unit the places are counted in.
+    Unit unit;
+    /// How many decimal places of `unit` to keep.
+    DecimalPlaces places;
+    /// Which way to break ties, and which way to go.
+    RoundingMode mode;
+};
+
+/// A rounding to significant digits, named once -- `DecimalRounding`'s
+/// counterpart for `rounded_to_digits`.
+struct SignificantRounding
+{
+    /// The unit the digits are counted in.
+    Unit unit;
+    /// How many significant digits to keep.
+    SignificantDigits digits;
+    /// Which way to break ties, and which way to go.
+    RoundingMode mode;
+};
+
+/// A rounding to the decimal places @p roundedIn declares, under @p roundingMode.
+[[nodiscard]] constexpr DecimalRounding declared_rounding(Unit roundedIn, RoundingMode roundingMode) noexcept
+{
+    return DecimalRounding { roundedIn, DecimalPlaces { roundedIn.decimals }, roundingMode };
+}
+
 /// Named units. The `decimals` values are ordinary engineering defaults, not
 /// requirements from any standard; a caller that needs a different precision
 /// states it at the point of use.

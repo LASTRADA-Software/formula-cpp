@@ -523,6 +523,27 @@ template <Unit U, auto Places, RoundingMode Mode, SeriesNode S>
     return ElementwiseRoundNode<U, Places, Mode, S> { {}, seriesOperand };
 }
 
+namespace detail
+{
+    /// A `PlacesTable` of @p N entries, every one @p everyElement.
+    template <std::size_t N>
+    [[nodiscard]] constexpr PlacesTable<N> uniform_places(DecimalPlaces everyElement) noexcept
+    {
+        PlacesTable<N> tabulated {};
+        tabulated.fill(everyElement);
+        return tabulated;
+    }
+} // namespace detail
+
+/// @p seriesOperand rounded as @p R names, every element to `R.places`
+/// decimal places of `R.unit`: the per-element form with one table entry
+/// repeated, `rounded_elementwise<hundredthPercent>(series<Passing, 5>)`.
+template <DecimalRounding R, SeriesNode S>
+[[nodiscard]] constexpr auto rounded_elementwise(S seriesOperand) noexcept
+{
+    return rounded_elementwise<R.unit, detail::uniform_places<S::length>(R.places), R.mode>(seriesOperand);
+}
+
 /// Which end of a series a running total starts from.
 ///
 /// An `enum class` rather than a `bool`, and never defaulted: "a total running
@@ -671,6 +692,15 @@ namespace detail
 /// A single value handed to `rounded_elementwise`: refused in this library's
 /// words, returning a refused series for `cumulative`'s reasons above.
 template <Unit U, auto Places, RoundingMode Mode, Node N>
+[[nodiscard]] constexpr auto rounded_elementwise(N) noexcept
+{
+    static_assert(detail::RequireRoundElementwiseOfSeries<N>::value);
+    return detail::RefusedSeries<N::dimension> {};
+}
+
+/// A single value handed to `rounded_elementwise<R>`: refused as the
+/// three-argument form's is.
+template <DecimalRounding R, Node N>
 [[nodiscard]] constexpr auto rounded_elementwise(N) noexcept
 {
     static_assert(detail::RequireRoundElementwiseOfSeries<N>::value);

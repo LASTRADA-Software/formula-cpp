@@ -727,6 +727,10 @@ formula_add_negative_test(series_round_places_count_mismatch
 formula_add_negative_test(series_round_unit_dimension_mismatch
     "this rounding node names a unit that does not measure the dimension of the expression it rounds"
     REJECT "are not a PlacesTable<N> of one DecimalPlaces per element of its series")
+# A rounding named once as a DecimalRounding, in a unit of another dimension:
+# the rounding node's own refusal, once.
+formula_add_negative_test(decimal_rounding_unit_dimension_mismatch
+    "this rounding node names a unit that does not measure the dimension of the expression it rounds" EXPECT_COUNT 1)
 # Past a refused table nothing indexes or loops over it: evaluated in a
 # constant expression, rendered, documented and traced, a table of the wrong
 # count, and a lone DecimalPlaces, each draw the one message; a table of the
@@ -1532,6 +1536,8 @@ formula_add_negative_test(overlay_derived_without_citation
 formula_add_negative_test(overlay_replacement_without_citation
     "formula: replace_variant<Tag>(expression) was given no citation")
 formula_add_negative_test(overlay_rounding_without_citation
+    "formula: with_rounding<U, Places, Mode>() was given no citation")
+formula_add_negative_test(overlay_named_rounding_without_citation
     "formula: with_rounding<U, Places, Mode>() was given no citation")
 formula_add_negative_test(overlay_constraints_without_citation
     "formula: with_constraints(constraints(...)) was given no citation")

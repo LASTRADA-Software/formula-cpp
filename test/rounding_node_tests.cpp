@@ -162,3 +162,45 @@ TEST_CASE("every rounding mode reaches the node, at a value that lands exactly o
     STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::TowardZero>(belowZero) == -twoTwo);
     STATIC_REQUIRE(toOneDecimalPlace<RoundingMode::AwayFromZero>(belowZero) == -twoThree);
 }
+
+TEST_CASE("DecimalRounding: the same node as the three arguments it names", "[rounding-node]")
+{
+    constexpr formula::DecimalRounding tenthMillimetre { unit::Millimetre,
+                                                         DecimalPlaces { 1 },
+                                                         RoundingMode::HalfAwayFromZero };
+    using ByValue = decltype(formula::rounded<tenthMillimetre>(var<Diameter>));
+    using ByTriple =
+        decltype(formula::rounded<unit::Millimetre, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero>(var<Diameter>));
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+
+    // Each of the three members is read: another mode or another places is another node.
+    constexpr formula::DecimalRounding floored { unit::Millimetre, DecimalPlaces { 1 }, RoundingMode::Floor };
+    constexpr formula::DecimalRounding wholeMillimetre { unit::Millimetre, DecimalPlaces { 0 }, RoundingMode::HalfAwayFromZero };
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::rounded<floored>(var<Diameter>)), ByValue>);
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::rounded<wholeMillimetre>(var<Diameter>)), ByValue>);
+}
+
+TEST_CASE("SignificantRounding: the same node as the three arguments it names", "[rounding-node]")
+{
+    constexpr formula::SignificantRounding twoFigures { unit::Millimetre,
+                                                        formula::SignificantDigits { 2 },
+                                                        RoundingMode::HalfAwayFromZero };
+    using ByValue = decltype(formula::rounded_to_digits<twoFigures>(var<Diameter>));
+    using ByTriple = decltype(formula::rounded_to_digits<unit::Millimetre,
+                                                         formula::SignificantDigits { 2 },
+                                                         RoundingMode::HalfAwayFromZero>(var<Diameter>));
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+}
+
+TEST_CASE("declared_rounding: the places a unit declares", "[rounding-node]")
+{
+    constexpr formula::DecimalRounding declared = formula::declared_rounding(unit::Kilogram, RoundingMode::HalfEven);
+    STATIC_REQUIRE(declared.places == DecimalPlaces { unit::Kilogram.decimals });
+    STATIC_REQUIRE(declared.unit == unit::Kilogram);
+    STATIC_REQUIRE(declared.mode == RoundingMode::HalfEven);
+    // A unit declaring another number of places gives another rounding.
+    STATIC_REQUIRE(unit::Kilogram.decimals != unit::Millimetre.decimals);
+    STATIC_REQUIRE(formula::declared_rounding(unit::Millimetre, RoundingMode::HalfEven).places
+                   == DecimalPlaces { unit::Millimetre.decimals });
+    STATIC_REQUIRE_FALSE(formula::declared_rounding(unit::Millimetre, RoundingMode::HalfEven).places == declared.places);
+}

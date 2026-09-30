@@ -958,3 +958,20 @@ TEST_CASE("failure sites describe themselves in lowercase words", "[series]")
     STATIC_REQUIRE(formula::describe(formula::FailureSite::ResultElement) == "result element");
     STATIC_REQUIRE(formula::describe(formula::FailureSite::InputObservation) == "input observation");
 }
+
+TEST_CASE("DecimalRounding: a per-element rounding with the same places for every element", "[series]")
+{
+    constexpr formula::DecimalRounding tenthPercent { formula::unit::Percent,
+                                                      formula::DecimalPlaces { 1 },
+                                                      formula::RoundingMode::Floor };
+    constexpr formula::PlacesTable<5> everyElementOne { formula::DecimalPlaces { 1 },
+                                                        formula::DecimalPlaces { 1 },
+                                                        formula::DecimalPlaces { 1 },
+                                                        formula::DecimalPlaces { 1 },
+                                                        formula::DecimalPlaces { 1 } };
+    using ByValue = decltype(formula::rounded_elementwise<tenthPercent>(formula::series<perElement::Deviation, 5>));
+    using ByTable = decltype(formula::rounded_elementwise<formula::unit::Percent, everyElementOne, formula::RoundingMode::Floor>(
+        formula::series<perElement::Deviation, 5>));
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTable>);
+    STATIC_REQUIRE(ByValue::length == 5);
+}

@@ -1303,5 +1303,16 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && !formula::number_of(std::expected<formula::Outcome<Strength>, formula::ArithmeticError> {
                                    std::unexpected { formula::ArithmeticError::Overflow } })
                                    .has_value());
+    // A rounding named once, and one that takes the places a unit declares:
+    // 12.36 mm is 12.4 to the tenth of a millimetre a millimetre declares.
+    {
+        constexpr formula::DecimalRounding declaredMillimetre =
+            formula::declared_rounding(unit::Millimetre, formula::RoundingMode::HalfAwayFromZero);
+        auto const declaredEdge = formula::evaluate<EdgeX>(
+            formula::rounded<declaredMillimetre>(var<EdgeX>),
+            formula::environment(formula::Measured<EdgeX> { formula::Rational { 1'236, 100 } }));
+        probe.checks.push_back(declaredEdge.is_value() && declaredEdge.measurement().value() == formula::Rational { 62, 5 }
+                               && declaredMillimetre.places == formula::DecimalPlaces { 1 });
+    }
     return probe;
 }

@@ -507,3 +507,15 @@ TEST_CASE("a vocabulary renames the results in a precision check on every surfac
     CHECK(text.find("level = 16181/400 g [bound by #") != std::string::npos);
     CHECK(text.find("x_A") == std::string::npos);
 }
+
+TEST_CASE("DecimalRounding: the same rounding rule as the three arguments it names", "[method]")
+{
+    constexpr formula::DecimalRounding tenthMpa { unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero };
+    using ByValue = decltype(formula::rounding_rule<tenthMpa>());
+    using ByTriple = decltype(formula::rounding_rule<unit::Megapascal,
+                                                     formula::DecimalPlaces { 1 },
+                                                     formula::RoundingMode::HalfAwayFromZero>());
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+    constexpr formula::DecimalRounding hundredthMpa { unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero };
+    STATIC_REQUIRE_FALSE(std::is_same_v<decltype(formula::rounding_rule<hundredthMpa>()), ByValue>);
+}

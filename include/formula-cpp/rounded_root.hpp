@@ -327,6 +327,14 @@ template <Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
     return RoundedRootNode<U, Places, Mode, Radicand> { {}, radicand };
 }
 
+/// The square root of `radicand`, rounded as @p R names:
+/// `rounded_sqrt<hundredthGram>(var<Variance>)`.
+template <DecimalRounding R, Node Radicand>
+[[nodiscard]] constexpr auto rounded_sqrt(Radicand radicand) noexcept
+{
+    return rounded_sqrt<R.unit, R.places, R.mode>(radicand);
+}
+
 /// Evaluates the radicand, then rounds its square root in `U`.
 ///
 /// Under `Rational` this is `detail::rounded_square_root`, exact. Under any

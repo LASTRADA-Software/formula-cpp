@@ -1445,3 +1445,17 @@ TEST_CASE("an operation given an empty citation says so in every clause", "[over
           != std::string::npos);
     CHECK(acceptance.ends_with(" [jurisdiction overlay (no citation given)]\n"));
 }
+
+TEST_CASE("DecimalRounding: the same overlay operation as the three arguments it names", "[overlay]")
+{
+    constexpr formula::DecimalRounding hundredthMpa { unit::Megapascal, formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero };
+    using ByValue = decltype(formula::with_rounding<hundredthMpa>(formula::Citation {}));
+    using ByTriple = decltype(formula::with_rounding<unit::Megapascal,
+                                                     formula::DecimalPlaces { 2 },
+                                                     formula::RoundingMode::HalfAwayFromZero>(formula::Citation {}));
+    STATIC_REQUIRE(std::is_same_v<ByValue, ByTriple>);
+
+    // The citation is carried through, not dropped on the way.
+    constexpr auto cited = formula::with_rounding<hundredthMpa>(roundingAnnex);
+    STATIC_REQUIRE(cited.source.section == roundingAnnex.section);
+}
