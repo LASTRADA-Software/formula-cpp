@@ -1619,6 +1619,12 @@ namespace detail
     {
     };
 
+    template <typename Sub, Transcendental F, Node Operand>
+    struct ConstantRewrite<Sub, TranscendentalNode<F, Operand>>:
+        ConstantRewriteOperand<Sub, Operand, TranscendentalNode<F, typename ConstantRewriteOf<Sub, Operand>::type>>
+    {
+    };
+
     template <typename Sub, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand>
     struct ConstantRewrite<Sub, RoundNode<U, Places, Mode, Operand>>:
         ConstantRewriteOperand<Sub, Operand, RoundNode<U, Places, Mode, typename ConstantRewriteOf<Sub, Operand>::type>>
@@ -2369,6 +2375,13 @@ namespace detail
 
     template <int Degree, Node Operand>
     struct SubstitutedIn<RootNode<Degree, Operand>>: SubstitutedInOperand<Operand>
+    {
+    };
+
+    /// Needed for correctness, not only for completeness: the primary answers "none", so without it a
+    /// substitution inside a logarithm or an exponential would be invisible to the whole-method rule.
+    template <Transcendental F, Node Operand>
+    struct SubstitutedIn<TranscendentalNode<F, Operand>>: SubstitutedInOperand<Operand>
     {
     };
 

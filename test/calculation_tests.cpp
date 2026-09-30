@@ -203,6 +203,15 @@ TEST_CASE("documented() reads what it documents", "[calculation]")
     STATIC_REQUIRE(std::is_same_v<CalculationReadsOf<decltype(documentedShare)>, QuantityList<Factor, Other>>);
 }
 
+TEST_CASE("a logarithm and an exponential read what their argument reads", "[calculation]")
+{
+    STATIC_REQUIRE(
+        std::is_same_v<CalculationReadsOf<decltype(formula::ln(var<Factor> / var<Other>))>, QuantityList<Factor, Other>>);
+    STATIC_REQUIRE(
+        std::is_same_v<CalculationReadsOf<decltype(formula::exp(var<Other> - var<Factor>))>, QuantityList<Other, Factor>>);
+    STATIC_REQUIRE(std::is_same_v<decltype(formula::define<Share>(formula::log10(var<Factor>)))::reads, QuantityList<Factor>>);
+}
+
 TEST_CASE("an overlay's derived quantity reads its definition, and its fixed constant reads nothing",
           "[calculation][overlay]")
 {

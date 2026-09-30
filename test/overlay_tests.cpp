@@ -417,6 +417,13 @@ TEST_CASE("an overlay fixes a constant inside every node kind", "[overlay]")
     // reads it through the placeholder -- which is itself no input and is
     // left alone.
     STATIC_REQUIRE(withRatioFixedAtFour(f::abs(r - f::number(Rational { 6 }))) == Rational { 2 });
+
+    // A logarithm and an exponential, at the fixed 4 where each is exact: ln(4/4) is 0, log10(4 * 25)
+    // is 2 and exp(4 - 4) is 1. A rewrite that stopped at the function would leave r unread, and the
+    // environment holds nothing.
+    STATIC_REQUIRE(withRatioFixedAtFour(f::ln(r / f::number(Rational { 4 }))) == Rational { 0 });
+    STATIC_REQUIRE(withRatioFixedAtFour(f::log10(r * f::number(Rational { 25 }))) == Rational { 2 });
+    STATIC_REQUIRE(withRatioFixedAtFour(f::exp(r - f::number(Rational { 4 }))) == Rational { 1 });
     STATIC_REQUIRE(withRatioFixedAtFour(f::precision_limit<f::PrecisionKind::Repeatability>(
                        r, f::precision_level<Ratio> * f::number(Rational { 2 })))
                    == Rational { 8 });

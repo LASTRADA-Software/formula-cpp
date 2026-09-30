@@ -820,6 +820,10 @@ formula_add_negative_test(precision_level_outside_limit
 formula_add_negative_test(precision_level_in_own_level
     "formula: this precision_limit's level expression reads precision_level"
     REJECT "precision_level is meaningful only inside" "provides no value for this quantity")
+formula_add_negative_test(precision_level_in_level_through_logarithm
+    "formula: this precision_limit's level expression reads precision_level"
+    REJECT "precision_level is meaningful only inside" "provides no value for this quantity"
+           "has no detail::LevelChildren specialisation")
 
 formula_add_negative_test(precision_level_dimension_mismatch
     "formula: this precision_limit's limit expression reads a precision_level whose quantity does not measure the dimension of the level expression"
@@ -2332,6 +2336,9 @@ formula_add_negative_test(overlay_substitution_inside_opaque_across_overlays
 formula_add_negative_test(overlay_substitution_inside_rounded_output_across_overlays
     "formula: this method reads a quantity both where an overlay fixed or derived it"
     EXPECT_COUNT 1
+    REJECT "cannot see inside")
+formula_add_negative_test(overlay_substitution_inside_logarithm_across_overlays
+    "formula: this method reads a quantity both where an overlay fixed or derived it"
     REJECT "cannot see inside")
 formula_add_negative_test(overlay_constant_bypassed_inside_opaque
     "formula: this method reads a quantity both where an overlay fixed or derived it"

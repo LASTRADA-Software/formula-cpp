@@ -488,6 +488,11 @@ namespace detail
     {
     };
 
+    template <Transcendental F, Node Operand>
+    struct LevelChildren<TranscendentalNode<F, Operand>>: LevelParent<Operand>
+    {
+    };
+
     template <Node Inner>
     struct LevelChildren<DocumentedNode<Inner>>: LevelParent<Inner>
     {
