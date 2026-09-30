@@ -67,6 +67,8 @@ change is recorded here.
 
 ### Changed
 
+- GCC 14 is the oldest supported GCC; older GCC is not supported. The install-and-consume check
+  now builds with it on Linux.
 - `<formula-cpp/format.hpp>` now specialises `std::formatter` for `formula::Outcome<Q>`,
   `formula::Unit`, `formula::Dimension` and every enumeration that has a `describe()`, as it
   already did for `Rational` and `Measured<Q>`. A program that defines its own `std::formatter`

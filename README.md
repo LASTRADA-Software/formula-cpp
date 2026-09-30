@@ -309,10 +309,11 @@ and still growing. The public API may change until 1.0.
 
 - C++23
 - CMake 3.23 or newer
+- GCC 14 or newer, if you build with GCC; older GCC is not supported
 
 CI builds and tests every push on MSVC `cl`, `clang-cl`, Clang and GCC 14 on Linux, and
-AppleClang on macOS. Minimum compiler versions are not settled yet; earlier ones may work but
-are untested.
+AppleClang on macOS. The other compilers' minimum versions are not settled yet; earlier ones may
+work but are untested.
 
 ## Installation
 
