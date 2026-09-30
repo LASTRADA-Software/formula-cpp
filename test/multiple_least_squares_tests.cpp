@@ -66,8 +66,14 @@ TEST_CASE("two regressors are fitted exactly: constant, coefficients, r squared 
 {
     // In coherent SI: the constant in metres, at 0 K; coefficient 1 in m/K;
     // coefficient 2 in metres per unit of content (a fraction, not a percent).
-    // At run time, as every exact fit is: the kernel's wide arithmetic is too
-    // long for a constant evaluation.
+    // Coefficient 2 is checked at compile time too: six rows of two
+    // regressors are small enough for a constant evaluation. The larger
+    // fixtures below, of three and eight regressors, run at run time.
+    constexpr auto compileTimeCoefficient =
+        formula::checked_evaluate_si(formula::opaque_output<"coefficient 2">(fit), sixRows);
+    STATIC_REQUIRE(compileTimeCoefficient.has_value());
+    STATIC_REQUIRE(compileTimeCoefficient->has_value());
+    STATIC_REQUIRE(**compileTimeCoefficient == rat(3'842'851, 69'148'200));
     CHECK(exact_output(formula::opaque_output<"coefficient 1">(fit), sixRows) == rat(346407, 4'609'880'000));
     CHECK(exact_output(formula::opaque_output<"constant">(fit), sixRows) == rat(22'365'154'943, 276'592'800'000));
     CHECK(exact_output(formula::opaque_output<"coefficient 2">(fit), sixRows) == rat(3'842'851, 69'148'200));
@@ -196,13 +202,14 @@ TEST_CASE("a regressor in degrees Celsius: the constant is at 0 K, and the value
 TEST_CASE("a regressor in percent: its coefficient is per unit, and a unit per percent reports it per percent",
           "[least-squares][multiple]")
 {
-    // 55.574... mm per unit of content is 0.5557 mm per percent at 4 dp.
-    auto const perPercent = formula::checked_evaluate<PerContent>(
+    // 55.574... mm per unit of content is 0.5557 mm per percent at 4 dp. At
+    // compile time, as the exact coefficient is checked above.
+    constexpr auto perPercent = formula::checked_evaluate<PerContent>(
         formula::rounded_output<"coefficient 2", MillimetrePerPercent, formula::DecimalPlaces { 4 },
                                 formula::RoundingMode::HalfEven>(fit),
         sixRows);
-    REQUIRE(perPercent.has_value());
-    CHECK(perPercent->measurement().value() == rat(5557, 10'000));
+    STATIC_REQUIRE(perPercent.has_value());
+    STATIC_REQUIRE(perPercent->measurement().value() == rat(5557, 10'000));
 }
 
 TEST_CASE("a multiple regression is traced as one call, rendered and documented", "[least-squares][multiple][trace]")
@@ -297,6 +304,114 @@ TEST_CASE("three regressors are fitted exactly, each coefficient in its own plac
     CHECK(exact_output(formula::opaque_output<"coefficient 3">(threeFactors), sevenRows) == rat(52'383, 36'080));
     CHECK(exact_output(formula::opaque_output<"r squared">(threeFactors), sevenRows) == rat(362'845'727, 364'047'200));
     CHECK(exact_output(formula::opaque_output<"points">(threeFactors), sevenRows) == rat(7));
+}
+
+namespace
+{
+struct FourthFactor: formula::Quantity<FourthFactor, "f_4", "an invented factor", unit::One>
+{
+};
+struct FifthFactor: formula::Quantity<FifthFactor, "f_5", "an invented factor", unit::One>
+{
+};
+struct SixthFactor: formula::Quantity<SixthFactor, "f_6", "an invented factor", unit::One>
+{
+};
+struct SeventhFactor: formula::Quantity<SeventhFactor, "f_7", "an invented factor", unit::One>
+{
+};
+struct EighthFactor: formula::Quantity<EighthFactor, "f_8", "an invented factor", unit::One>
+{
+};
+
+// Ten rows: x1, x2, x3 and y are the seven rows above and three more
+// (x1 = 1, 6, 10; x2 = 37, 41, 43; x3 = 9, 8, 10; y = 62, 75, 90), and x4 to
+// x8 are orderings of 1 to 10: x4 = 5, 3, 8, 1, 9, 2, 7, 4, 6, 10;
+// x5 = 4, 9, 1, 7, 3, 10, 6, 2, 8, 5; x6 = 8, 6, 10, 2, 1, 7, 3, 9, 5, 4;
+// x7 = 1, 4, 9, 6, 8, 3, 10, 5, 2, 7; x8 = 6, 2, 5, 10, 7, 1, 4, 8, 3, 9.
+constexpr auto tenRows = formula::environment(
+    formula::MeasuredObservations<FirstFactor, 16>(rat(3), rat(7), rat(2), rat(9), rat(4), rat(8), rat(5), rat(1), rat(6),
+                                                   rat(10)),
+    formula::MeasuredObservations<SecondFactor, 16>(rat(11), rat(13), rat(17), rat(19), rat(23), rat(29), rat(31),
+                                                    rat(37), rat(41), rat(43)),
+    formula::MeasuredObservations<ThirdFactor, 16>(rat(2), rat(1), rat(4), rat(3), rat(6), rat(5), rat(7), rat(9), rat(8),
+                                                   rat(10)),
+    formula::MeasuredObservations<FourthFactor, 16>(rat(5), rat(3), rat(8), rat(1), rat(9), rat(2), rat(7), rat(4),
+                                                    rat(6), rat(10)),
+    formula::MeasuredObservations<FifthFactor, 16>(rat(4), rat(9), rat(1), rat(7), rat(3), rat(10), rat(6), rat(2), rat(8),
+                                                   rat(5)),
+    formula::MeasuredObservations<SixthFactor, 16>(rat(8), rat(6), rat(10), rat(2), rat(1), rat(7), rat(3), rat(9), rat(5),
+                                                   rat(4)),
+    formula::MeasuredObservations<SeventhFactor, 16>(rat(1), rat(4), rat(9), rat(6), rat(8), rat(3), rat(10), rat(5),
+                                                     rat(2), rat(7)),
+    formula::MeasuredObservations<EighthFactor, 16>(rat(6), rat(2), rat(5), rat(10), rat(7), rat(1), rat(4), rat(8),
+                                                    rat(3), rat(9)),
+    formula::MeasuredObservations<Response, 16>(rat(41), rat(57), rat(49), rat(71), rat(66), rat(83), rat(79), rat(62),
+                                                rat(75), rat(90)));
+
+constexpr auto eightFactors = formula::multiple_least_squares(
+    formula::regressors(formula::observations<FirstFactor, 16>, formula::observations<SecondFactor, 16>,
+                        formula::observations<ThirdFactor, 16>, formula::observations<FourthFactor, 16>,
+                        formula::observations<FifthFactor, 16>, formula::observations<SixthFactor, 16>,
+                        formula::observations<SeventhFactor, 16>, formula::observations<EighthFactor, 16>),
+    formula::observations<Response, 16>,
+    { .reference = "Example Standard 12" });
+
+constexpr auto fourFactors = formula::multiple_least_squares(
+    formula::regressors(formula::observations<FirstFactor, 16>, formula::observations<SecondFactor, 16>,
+                        formula::observations<ThirdFactor, 16>, formula::observations<FourthFactor, 16>),
+    formula::observations<Response, 16>,
+    { .reference = "Example Standard 12" });
+} // namespace
+
+TEST_CASE("eight regressors, the most a fit takes, are fitted exactly, rounded where used and in double",
+          "[least-squares][multiple]")
+{
+    // Computed with Python's fractions from the columns above. At run time:
+    // ten rows of eight regressors exceed the constant-evaluation limit of
+    // cl 19.51 (1048576 steps) and of g++ 14 (33554432 operations), measured.
+    constexpr formula::Rational::Int shared = 156'879'508'961;
+    CHECK(exact_output(formula::opaque_output<"constant">(eightFactors), tenRows) == rat(11'058'652'968'024, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 1">(eightFactors), tenRows) == rat(758'096'997'271, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 2">(eightFactors), tenRows) == rat(-183'676'518'433, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 3">(eightFactors), tenRows) == rat(1'386'201'954'356, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 4">(eightFactors), tenRows) == rat(-417'311'735'278, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 5">(eightFactors), tenRows) == rat(-332'278'407'103, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 6">(eightFactors), tenRows) == rat(-200'096'516'911, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 7">(eightFactors), tenRows) == rat(80'015'914'148, shared));
+    CHECK(exact_output(formula::opaque_output<"coefficient 8">(eightFactors), tenRows)
+          == rat(-69'144'339'324, 22'411'358'423));
+    CHECK(exact_output(formula::opaque_output<"r squared">(eightFactors), tenRows)
+          == rat(3'332'062'487'912'201, 3'347'965'600'736'701));
+    CHECK(exact_output(formula::opaque_output<"points">(eightFactors), tenRows) == rat(10));
+
+    // Rounded where used: coefficient 8, -3.08523..., is -3.0852 at 4 dp.
+    auto const rounded = formula::checked_evaluate_si(
+        formula::rounded_output<"coefficient 8", unit::One, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
+            eightFactors),
+        tenRows);
+    REQUIRE(rounded.has_value());
+    REQUIRE(rounded->has_value());
+    CHECK(**rounded == rat(-30'852, 10'000));
+
+    // In double, the untraced route agrees.
+    auto const approximate = formula::checked_evaluate_si<double>(formula::opaque_output<"coefficient 8">(eightFactors),
+                                                                  tenRows);
+    REQUIRE(approximate.has_value());
+    REQUIRE(approximate->has_value());
+    constexpr double exactEighth = -69'144'339'324.0 / 22'411'358'423.0;
+    CHECK(std::abs(**approximate - exactEighth) <= 1e-12 * std::abs(exactEighth));
+}
+
+TEST_CASE("four regressors are fitted exactly", "[least-squares][multiple]")
+{
+    // The first four columns and the values above, with Python's fractions.
+    CHECK(exact_output(formula::opaque_output<"constant">(fourFactors), tenRows) == rat(331'781'457, 10'094'680));
+    CHECK(exact_output(formula::opaque_output<"coefficient 1">(fourFactors), tenRows) == rat(6'798'719, 2'018'936));
+    CHECK(exact_output(formula::opaque_output<"coefficient 2">(fourFactors), tenRows) == rat(4371, 1'009'468));
+    CHECK(exact_output(formula::opaque_output<"coefficient 3">(fourFactors), tenRows) == rat(35'351'997, 10'094'680));
+    CHECK(exact_output(formula::opaque_output<"coefficient 4">(fourFactors), tenRows) == rat(-3'178'563, 5'047'340));
+    CHECK(exact_output(formula::opaque_output<"r squared">(fourFactors), tenRows) == rat(19'180'134'579, 21'543'056'588));
 }
 
 TEST_CASE("an affinely dependent design is refused: one regressor is twice another plus three",

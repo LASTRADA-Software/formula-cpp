@@ -4,6 +4,7 @@
 #include <formula-cpp/method.hpp>
 #include <formula-cpp/overlay.hpp>
 #include <formula-cpp/render.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/trace.hpp>
 #include <formula-cpp/trace_render.hpp>
 
@@ -937,25 +938,26 @@ constexpr auto observedFit = formula::linear_least_squares(
 TEST_CASE("a line through observations gives the exact intercept, slope, r squared and points",
           "[least-squares][observations]")
 {
-    // At run time, as every assertion that runs the kernel's wide arithmetic
-    // (the exact kernel's wide arithmetic is too long for a constant
-    // evaluation); the dimensions below are static.
+    // At compile time: four observations are few enough for a constant
+    // evaluation. The fits of more points in this file, from fifteen to
+    // fifty-eight, run at run time.
     // The curve fit's numbers, and two more: R^2 = 14.25^2 / (21 * 9.6875) =
     // 1083/1085, and the four observations made, not the capacity of eight.
-    auto const slope = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(observedFit), observedPoints);
-    REQUIRE(slope.has_value());
-    CHECK(slope->measurement().value() == rat(285, 7));
-    auto const intercept =
+    constexpr auto slope = formula::checked_evaluate<Rate>(formula::opaque_output<"slope">(observedFit), observedPoints);
+    STATIC_REQUIRE(slope.has_value());
+    STATIC_REQUIRE(slope->measurement().value() == rat(285, 7));
+    constexpr auto intercept =
         formula::checked_evaluate<Offset>(formula::opaque_output<"intercept">(observedFit), observedPoints);
-    REQUIRE(intercept.has_value());
-    CHECK(intercept->measurement().value() == rat(19, 2));
-    auto const fitQuality =
+    STATIC_REQUIRE(intercept.has_value());
+    STATIC_REQUIRE(intercept->measurement().value() == rat(19, 2));
+    constexpr auto fitQuality =
         formula::checked_evaluate<Determination>(formula::opaque_output<"r squared">(observedFit), observedPoints);
-    REQUIRE(fitQuality.has_value());
-    CHECK(fitQuality->measurement().value() == rat(1083, 1085));
-    auto const made = formula::checked_evaluate<PointCount>(formula::opaque_output<"points">(observedFit), observedPoints);
-    REQUIRE(made.has_value());
-    CHECK(made->measurement().value() == rat(4));
+    STATIC_REQUIRE(fitQuality.has_value());
+    STATIC_REQUIRE(fitQuality->measurement().value() == rat(1083, 1085));
+    constexpr auto made =
+        formula::checked_evaluate<PointCount>(formula::opaque_output<"points">(observedFit), observedPoints);
+    STATIC_REQUIRE(made.has_value());
+    STATIC_REQUIRE(made->measurement().value() == rat(4));
     STATIC_REQUIRE(decltype(formula::opaque_output<"intercept">(observedFit))::dimension == formula::dim::Length);
     STATIC_REQUIRE(decltype(formula::opaque_output<"slope">(observedFit))::dimension == formula::dim::Velocity);
     STATIC_REQUIRE(decltype(formula::opaque_output<"r squared">(observedFit))::dimension == formula::dim::Scalar);
@@ -1003,8 +1005,10 @@ TEST_CASE("each output of a line through observations rounded where used is the 
     // floored and 0.9982 to nearest.
     constexpr auto roundedFitSlope = formula::rounded_output<"slope", MillimetrePerSecond, formula::DecimalPlaces { 4 },
                                                           formula::RoundingMode::HalfEven>(observedFit);
-    CHECK(formula::checked_evaluate<Speed>(roundedFitSlope, observedPoints)->measurement().value()
-          == rat(3393, 5000));
+    // At compile time, as the exact outputs are checked above.
+    constexpr auto roundedAtCompileTime = formula::checked_evaluate<Speed>(roundedFitSlope, observedPoints);
+    STATIC_REQUIRE(roundedAtCompileTime.has_value());
+    STATIC_REQUIRE(roundedAtCompileTime->measurement().value() == rat(3393, 5000));
     constexpr auto flooredFit = formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 4 },
                                                         formula::RoundingMode::Floor>(observedFit);
     CHECK(formula::checked_evaluate<Determination>(flooredFit, observedPoints)->measurement().value()
@@ -1047,6 +1051,28 @@ TEST_CASE("each output of a line through observations rounded where used is the 
           != std::string::npos);
     CHECK(text.find("4. round(slope of #3, to 4 dp of mm/s) = 3393/5000 mm/s [nearest, ties to even]\n")
           != std::string::npos);
+}
+
+TEST_CASE("a logarithm of a fit's exact R^2 is rounded exactly to its declared places",
+          "[least-squares][observations][transcendental]")
+{
+    // ln(1083/1085) = -0.00184501897..., with Python's decimal: -0.001845 at
+    // 6 dp to nearest, -0.001846 floored. The fit's output is exact, and the
+    // logarithm of it, irrational, is rounded where it is taken.
+    auto const nearest = formula::checked_evaluate_si(
+        formula::rounded_ln<formula::DecimalPlaces { 6 }, formula::RoundingMode::HalfEven>(
+            formula::opaque_output<"r squared">(observedFit)),
+        observedPoints);
+    REQUIRE(nearest.has_value());
+    REQUIRE(nearest->has_value());
+    CHECK(**nearest == rat(-1845, 1'000'000));
+    auto const floored = formula::checked_evaluate_si(
+        formula::rounded_ln<formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(
+            formula::opaque_output<"r squared">(observedFit)),
+        observedPoints);
+    REQUIRE(floored.has_value());
+    REQUIRE(floored->has_value());
+    CHECK(**floored == rat(-1846, 1'000'000));
 }
 
 namespace

@@ -88,11 +88,11 @@ TEST_CASE("the exact kernel's line is the closed form", "[least-squares][kernel]
 {
     // Intercept 19/2 mm, slope 19/28 mm/s, R^2 1083/1085, four points -- not
     // the secant 41/60 mm/s, not x-on-y.
-    // At run time: one exact fit makes dozens of wide divisions (a constant
-    // evaluation of it would exceed the compiler's step limit).
-    auto const line = exact_fit(lineTimes, lineLengths);
-    REQUIRE(line.has_value());
-    CHECK(*line == std::array { rat(19, 2000), rat(19, 28'000), rat(1083, 1085), rat(4) });
+    // At compile time: four points are few enough for a constant evaluation.
+    // The fixtures below, of more rows or more regressors, run at run time.
+    constexpr auto line = exact_fit(lineTimes, lineLengths);
+    STATIC_REQUIRE(line.has_value());
+    STATIC_REQUIRE(*line == std::array { rat(19, 2000), rat(19, 28'000), rat(1083, 1085), rat(4) });
 }
 
 TEST_CASE("the order of the rows does not change the kernel's exact fit", "[least-squares][kernel]")
