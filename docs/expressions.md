@@ -649,11 +649,16 @@ constexpr auto citedRatio = formula::yields<Ratio>(formula::documented(
 ```
 
 `documented(yields<Ratio>(...), ...)` does not compile, because `documented`
-takes a node.
+takes a node. Nor does a bound formula go inside another bound formula:
+`yields<Ratio>(boundRatio)` is refused where it is written, even for the same
+quantity -- *this formula is bound to its result quantity already; bind the
+formula it holds (.expression), or use it as it is*.
 
 **Reuse goes through `.expression`.** For the same reason, a bound formula is
 not an operand of another formula. The formula it holds is, as any formula is
-([Composing a formula from other formulas](#composing-a-formula-from-other-formulas)):
+([Composing a formula from other formulas](#composing-a-formula-from-other-formulas)).
+Here `MixWater` and `MixCement` are volumes in litres, as `WaterVolume` and
+`CementVolume` are:
 
 ```cpp
 // The water a mix of another cement content needs at the same ratio.

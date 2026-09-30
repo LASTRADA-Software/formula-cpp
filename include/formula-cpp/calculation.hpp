@@ -467,7 +467,8 @@ template <Described Q, SeriesNode S>
 template <typename Result = detail::ResultOfYields, Described Q, typename E>
 [[nodiscard]] constexpr auto define(Yields<Q, E> const& boundFormula) noexcept
 {
-    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, E>::valid)
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
     {
         using Placeholder = ConstantNode<coherent(Describe<Q>::dimension)>;
         return Definition<Q, Placeholder> { Placeholder {} };

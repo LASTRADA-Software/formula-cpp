@@ -3,6 +3,7 @@
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -177,4 +178,64 @@ TEST_CASE("yields: a rejection of outliers is evaluated for the quantity it is b
     CHECK(explained.outcome->outcome() == unbound->outcome());
     CHECK(explained.trace.steps.size() == formula::explain_rejection<Mass>(rejectionA, fixtureA).trace.steps.size());
     CHECK(formula::explain_rejection<Mass>(settledMass, fixtureA).outcome->outcome() == unbound->outcome());
+}
+
+TEST_CASE("yields: every verb hands on the sink and the vocabulary it is given", "[yields][trace]")
+{
+    auto const written = [](formula::Trace<> const& recorded) {
+        return formula::render_trace(recorded, { .maxSteps = 100 });
+    };
+
+    // A sink handed to a bound formula's verb hears what the unbound verb
+    // tells it: the same steps, written the same way.
+    auto const unbound = formula::traced([&](auto recordingSink) {
+        return formula::checked_evaluate<WaterCementRatio>(ratio.expression, batch, recordingSink);
+    });
+    REQUIRE(!unbound.trace.steps.empty());
+    auto const checked =
+        formula::traced([&](auto recordingSink) { return formula::checked_evaluate(ratio, batch, recordingSink); });
+    CHECK(checked.outcome == unbound.outcome);
+    CHECK(written(checked.trace) == written(unbound.trace));
+    auto const thrown = formula::traced([&](auto recordingSink) { return formula::evaluate(ratio, batch, recordingSink); });
+    CHECK(thrown.outcome == *unbound.outcome);
+    CHECK(written(thrown.trace) == written(unbound.trace));
+
+    constexpr auto retainedInKilograms = formula::yields<RetainedKilograms>(formula::series<Retained, 5>);
+    auto const seriesUnbound = formula::traced([&](auto recordingSink) {
+        return formula::checked_evaluate_series<RetainedKilograms>(formula::series<Retained, 5>, inputs, recordingSink);
+    });
+    REQUIRE(!seriesUnbound.trace.steps.empty());
+    auto const seriesBound = formula::traced(
+        [&](auto recordingSink) { return formula::checked_evaluate_series(retainedInKilograms, inputs, recordingSink); });
+    CHECK(seriesBound.outcome == seriesUnbound.outcome);
+    CHECK(written(seriesBound.trace) == written(seriesUnbound.trace));
+
+    constexpr auto settledMass = formula::yields<Mass>(rejectionA);
+    auto const rejectionUnbound = formula::traced(
+        [&](auto recordingSink) { return formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA, recordingSink); });
+    REQUIRE(!rejectionUnbound.trace.steps.empty());
+    auto const rejectionBound = formula::traced(
+        [&](auto recordingSink) { return formula::checked_evaluate_rejection(settledMass, fixtureA, recordingSink); });
+    CHECK(written(rejectionBound.trace) == written(rejectionUnbound.trace));
+
+    // A vocabulary handed to an explain twin writes the trace as it does for
+    // the unbound formula -- and each renaming shows in the trace, so a
+    // vocabulary left behind would too.
+    constexpr auto renamedWater = formula::vocabulary(formula::renames<WaterVolume>("W"));
+    auto const renamed = written(formula::explain<WaterCementRatio>(ratio.expression, batch, renamedWater).trace);
+    REQUIRE(renamed != written(formula::explain<WaterCementRatio>(ratio.expression, batch).trace));
+    CHECK(written(formula::explain(ratio, batch, renamedWater).trace) == renamed);
+    CHECK(written(formula::checked_explain(ratio, batch, renamedWater)->trace) == renamed);
+
+    constexpr auto renamedRetained = formula::vocabulary(formula::renames<Retained>("R"));
+    auto const renamedSeries =
+        written(formula::explain_series<RetainedKilograms>(formula::series<Retained, 5>, inputs, renamedRetained).trace);
+    REQUIRE(renamedSeries
+            != written(formula::explain_series<RetainedKilograms>(formula::series<Retained, 5>, inputs).trace));
+    CHECK(written(formula::explain_series(retainedInKilograms, inputs, renamedRetained).trace) == renamedSeries);
+
+    constexpr auto renamedMass = formula::vocabulary(formula::renames<Mass>("m_s"));
+    auto const renamedRejection = written(formula::explain_rejection<Mass>(rejectionA, fixtureA, renamedMass).trace);
+    REQUIRE(renamedRejection != written(formula::explain_rejection<Mass>(rejectionA, fixtureA).trace));
+    CHECK(written(formula::explain_rejection(settledMass, fixtureA, renamedMass).trace) == renamedRejection);
 }

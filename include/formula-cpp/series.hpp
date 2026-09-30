@@ -1401,7 +1401,8 @@ template <typename Result = detail::ResultOfYields, Described Q, SeriesNode S, t
 [[nodiscard]] constexpr std::expected<SeriesOutcome<Q, S::length>, SeriesFailure> checked_evaluate_series(
     Yields<Q, S> const& boundFormula, Env const& environmentGiven, Sink recordingSink = {}) noexcept
 {
-    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, S>::valid)
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, S>::valid)
         return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }; // refused already
     else
         return checked_evaluate_series<Q>(boundFormula.expression, environmentGiven, recordingSink);

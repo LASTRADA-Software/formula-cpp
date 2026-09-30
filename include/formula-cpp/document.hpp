@@ -1587,6 +1587,7 @@ template <Dialect D = Dialect::Plain, Described Q, typename E, Vocabulary V = De
 {
     return document<D>(boundFormula.expression, vocabulary);
 }
+
 /// Documents @p node as `document<D>(node, vocabulary)` does, with every
 /// number the page writes -- in the formula's text, a derived quantity's
 /// derivation and a criterion's limit -- written as @p renderOptions says

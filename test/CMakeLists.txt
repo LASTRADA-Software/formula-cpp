@@ -508,9 +508,24 @@ formula_add_negative_test(yields_rejection_result_dimension_mismatch
 formula_add_negative_test(yields_relabelled
     "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
     REJECT "no matching")
+# Nine verbs, each asked for its own wrong quantity: one refusal each. Each
+# verb gates on names_yields_result, never on RequireYieldsResult's value:
+# with the gate reading that value, clang-cl 22.1.8 compiled both branches
+# of define's gate once the check had failed, and its two returns deduce
+# different types. The last two REJECTs name that error: clang's words, as
+# clang-cl 22.1.8 printed them, and g++'s, not yet measured.
+formula_add_negative_test(yields_relabelled_every_verb
+    "formula: this formula names its result quantity with yields" EXPECT_COUNT 9
+    REJECT "no matching" "in return type deduced as" "inconsistent deduction for auto return type")
 formula_add_negative_test(yields_series_as_single
     "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
     REJECT "formula: this formula names its result quantity with yields")
+formula_add_negative_test(yields_around_yields
+    "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
+    REJECT "no viable conversion" "no matching")
+formula_add_negative_test(yields_define_series
+    "formula: define<Q> takes an expression of one value, and this is a series" EXPECT_COUNT 1
+    REJECT "no matching")
 
 # A braced list std::array would pad with absent elements: every spelling
 # that could reach a std::array parameter, refused because the constructor

@@ -4443,7 +4443,8 @@ template <typename Result = detail::ResultOfYields,
                                         Env const& environmentGiven,
                                         V const& vocabulary = V {})
 {
-    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, E>::valid)
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
         return Explained<Q, Rep> {}; // refused already, where the mistake is
     else
         return explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary);
@@ -4493,7 +4494,8 @@ template <typename Result = detail::ResultOfYields,
                                                            Env const& environmentGiven,
                                                            V const& vocabulary = V {})
 {
-    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, S>::valid)
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, S>::valid)
         return ExplainedSeries<Q, S::length> {
             std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }, Trace<Rational> {}
         }; // refused already
@@ -4565,7 +4567,8 @@ template <typename Result = detail::ResultOfYields,
                                                                                            Env const& environmentGiven,
                                                                                            V const& vocabulary = V {})
 {
-    if constexpr (!detail::RequireYieldsResult<Result, Q>::value || !Yields<Q, E>::valid)
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q> || !Yields<Q, E>::valid)
         return Explained<Q, Rep> {}; // refused already, where the mistake is
     else
         return checked_explain<Q, Rep>(boundFormula.expression, environmentGiven, vocabulary);
@@ -4675,7 +4678,8 @@ template <typename Result = detail::ResultOfYields,
     Env const& environmentGiven,
     V const& vocabulary = V {})
 {
-    if constexpr (!detail::RequireYieldsResult<Result, Q>::value
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q>
                   || !Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>::valid)
         return { std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }, Trace<Rational> {} };
     else

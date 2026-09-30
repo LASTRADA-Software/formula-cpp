@@ -62,8 +62,8 @@ change is recorded here.
   `document` write the formula. The result is still never deduced from the expression: `Q` is
   checked against the dimension the expression computes where it is written, with
   `checked_evaluate`'s message, and a result named at the call as well is accepted only when it is
-  `Q`. Nest `documented()` inside it, and reuse the formula in another through `.expression`.
-  Every earlier spelling stays.
+  `Q`. Nest `documented()` inside it, and reuse the formula in another through `.expression`; a
+  `yields` around a bound formula is refused where it is written. Every earlier spelling stays.
 
 ### Changed
 

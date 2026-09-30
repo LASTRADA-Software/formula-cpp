@@ -1488,7 +1488,8 @@ checked_evaluate_rejection(Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, 
                            Env const& environmentGiven,
                            Sink recordingSink = {}) noexcept
 {
-    if constexpr (!detail::RequireYieldsResult<Result, Q>::value
+    static_assert(detail::RequireYieldsResult<Result, Q>::value);
+    if constexpr (!detail::names_yields_result<Result, Q>
                   || !Yields<Q, RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion>>::valid)
         return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }; // refused already
     else

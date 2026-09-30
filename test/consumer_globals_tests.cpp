@@ -79,8 +79,10 @@
 // `Dimension` and an enumeration written the same way; `symbol_of` with no
 // vocabulary, and `render` and `document` given `RenderOptions` and none;
 // `yields` of the formula touching every node kind, and `evaluate`,
-// `checked_evaluate`, `explain`, `render`, `document` and `define` of what
-// it binds;
+// `checked_evaluate`, `explain`, `checked_explain`, `render`, `document` and
+// `define` of what it binds, and `checked_evaluate_series`,
+// `explain_series`, `checked_evaluate_rejection` and `explain_rejection` of
+// a series and a rejection bound the same way;
 // and a quantity declared by alias at
 // global scope, so that its tag is one more global. A template it does
 // not reach is not guarded by it.
@@ -1377,6 +1379,20 @@ ConsumerGlobalsProbe probe_consumer_globals()
         constexpr auto boundDefinition = formula::define(boundStrength);
         probe.checks.push_back(
             std::is_same_v<std::remove_const_t<decltype(boundDefinition)>, decltype(formula::define<Strength>(everything))>);
+        // The other verbs that name a result: the checked trace, and the
+        // series and the rejection above, each evaluated and traced.
+        auto const checkedBound = formula::checked_explain(boundStrength, specimen, north);
+        probe.checks.push_back(checkedBound.has_value() && checkedBound->outcome == explained.outcome);
+        constexpr auto boundScreens = formula::yields<EdgeX>(formula::series<EdgeX, 2>);
+        probe.checks.push_back(formula::checked_evaluate_series(boundScreens, seriesInputs) == readSeries
+                               && formula::explain_series(boundScreens, seriesInputs, north).outcome
+                                      == explainedSeries.outcome);
+        auto const boundTrimmed = formula::yields<EdgeX>(trimmed);
+        auto const trimmedAgain = formula::checked_evaluate_rejection(boundTrimmed, bothScreens);
+        auto const trimmedExplained = formula::explain_rejection(boundTrimmed, bothScreens, north);
+        probe.checks.push_back(trimmedAgain.has_value() && trimmedAgain->outcome() == trimmedOutcome->outcome()
+                               && trimmedExplained.outcome.has_value()
+                               && trimmedExplained.outcome->outcome() == trimmedOutcome->outcome());
     }
     return probe;
 }
