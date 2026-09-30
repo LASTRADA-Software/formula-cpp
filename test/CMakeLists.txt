@@ -523,6 +523,12 @@ formula_add_negative_test(yields_series_as_single
 formula_add_negative_test(yields_around_yields
     "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
     REJECT "no viable conversion" "no matching")
+formula_add_negative_test(yields_around_yields_series
+    "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
+    REJECT "no viable conversion" "no matching")
+formula_add_negative_test(yields_around_yields_rejection
+    "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
+    REJECT "no viable conversion" "no matching")
 formula_add_negative_test(yields_define_series
     "formula: define<Q> takes an expression of one value, and this is a series" EXPECT_COUNT 1
     REJECT "no matching")

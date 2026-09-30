@@ -1408,4 +1408,19 @@ template <typename Result = detail::ResultOfYields, Described Q, SeriesNode S, t
         return checked_evaluate_series<Q>(boundFormula.expression, environmentGiven, recordingSink);
 }
 
+/// A bound formula around a bound formula, refused where it is written
+/// (`detail::RequireFormulaNotBound`, `yields.hpp`). Taken here only so that
+/// the refusal is the one message; what it returns is never seen.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          Described Inner,
+          typename E,
+          typename Env,
+          typename Sink = NullSink>
+[[nodiscard]] constexpr std::expected<SeriesOutcome<Q, 1>, SeriesFailure> checked_evaluate_series(
+    Yields<Q, Yields<Inner, E>> const&, Env const&, Sink = {}) noexcept
+{
+    return std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } };
+}
+
 } // namespace formula

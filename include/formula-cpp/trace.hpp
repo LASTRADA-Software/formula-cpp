@@ -4503,6 +4503,21 @@ template <typename Result = detail::ResultOfYields,
         return explain_series<Q>(boundFormula.expression, environmentGiven, vocabulary);
 }
 
+/// A bound formula around a bound formula, refused where it is written
+/// (`detail::RequireFormulaNotBound`, `yields.hpp`). Taken here only so that
+/// the refusal is the one message; what it returns is never seen.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          Described Inner,
+          typename E,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] ExplainedSeries<Q, 1> explain_series(Yields<Q, Yields<Inner, E>> const&, Env const&, V const& = V {})
+{
+    return ExplainedSeries<Q, 1> { std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } },
+                                   Trace<Rational> {} };
+}
+
 /// Why `checked_explain` has no outcome: the arithmetic error, and the
 /// derivation recorded up to it. A refusal without the steps that led to it
 /// -- which attribute of a lineage requirement disagreed, say -- would say
@@ -4684,6 +4699,21 @@ template <typename Result = detail::ResultOfYields,
         return { std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }, Trace<Rational> {} };
     else
         return explain_rejection<Q>(boundFormula.expression, environmentGiven, vocabulary);
+}
+
+/// A bound formula around a bound formula, refused where it is written
+/// (`detail::RequireFormulaNotBound`, `yields.hpp`). Taken here only so that
+/// the refusal is the one message; what it returns is never seen.
+template <typename Result = detail::ResultOfYields,
+          Described Q,
+          Described Inner,
+          typename E,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] Traced<std::expected<RejectionOutcome<Q, 1>, SeriesFailure>> explain_rejection(
+    Yields<Q, Yields<Inner, E>> const&, Env const&, V const& = V {})
+{
+    return { std::unexpected { SeriesFailure { ArithmeticError::DomainError, std::nullopt } }, Trace<Rational> {} };
 }
 
 /// Checks @p constraintGiven and records how -- `check`'s traced twin: the
