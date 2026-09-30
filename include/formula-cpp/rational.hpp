@@ -564,7 +564,7 @@ namespace detail
                 inFraction = true;
                 continue;
             }
-            if (symbolAt < '0' || symbolAt > '9')
+            if (symbolAt < '0' || symbolAt > '9') // the only refusal of a hexadecimal spelling holding e or E, such as 0x1E
                 formula_rational_literal_not_a_decimal();
             int const digitValue = symbolAt - '0';
             if (inFraction && digitValue == 0)

@@ -297,6 +297,8 @@ formula_add_negative_test(rational_literal_out_of_range "formula_rational_litera
 formula_add_negative_test(rational_literal_too_many_places "formula_rational_literal_out_of_range")
 formula_add_negative_test(rational_literal_not_a_decimal "formula_rational_literal_not_a_decimal")
 formula_add_negative_test(rational_literal_octal "formula_rational_literal_not_a_decimal")
+formula_add_negative_test(rational_literal_hex_with_exponent_letter "formula_rational_literal_not_a_decimal")
+formula_add_negative_test(rational_literal_exponent_out_of_range "formula_rational_literal_out_of_range")
 
 formula_add_negative_test(dimension_mismatch
     "formula: these two dimensions are not the same")

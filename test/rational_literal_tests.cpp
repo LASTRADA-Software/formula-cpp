@@ -43,3 +43,10 @@ TEST_CASE("_r: a minus sign is Rational's own negation", "[rational][literal]")
 {
     STATIC_REQUIRE(-27.3_r == Rational { -273, 10 });
 }
+
+TEST_CASE("_r: the edges of what is exact", "[rational][literal]")
+{
+    STATIC_REQUIRE(00.5_r == Rational { 1, 2 });     // a leading zero is fine once there is a point
+    STATIC_REQUIRE(0e3_r == Rational {});
+    STATIC_REQUIRE(1e-18_r == Rational { 1, 1'000'000'000'000'000'000 }); // the largest exact denominator
+}
