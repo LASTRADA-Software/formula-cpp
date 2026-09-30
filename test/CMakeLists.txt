@@ -93,6 +93,8 @@ add_executable(formula-cpp-tests
     opaque_cross_tu_b.cpp
     least_squares_tests.cpp
     least_squares_kernel_tests.cpp
+    multiple_least_squares_tests.cpp
+    regression_cross_tu_b.cpp
     retry_tests.cpp
     calculation_tests.cpp
     calculation_trace_tests.cpp
@@ -2257,6 +2259,39 @@ formula_add_negative_test(least_squares_observations_and_series
 formula_add_negative_test(least_squares_observations_same_quantity
     "formula: linear_least_squares reads one quantity as both its points and its values"
     REJECT "RequireResultDimension" "has no output of that name" "passes an input of another shape")
+# A multiple regression: each refusal once, in this library's words.
+formula_add_negative_test(multiple_least_squares_uncited
+    "formula: multiple_least_squares needs a citation"
+    REJECT "no matching" "has no output of that name")
+formula_add_negative_test(multiple_least_squares_series_regressor
+    "formula: multiple_least_squares reads each regressor and the values as raw observations"
+    EXPECT_COUNT 1
+    REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
+formula_add_negative_test(multiple_least_squares_series_of_values_quantity
+    "formula: multiple_least_squares reads each regressor and the values as raw observations"
+    REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
+formula_add_negative_test(multiple_least_squares_series_values
+    "formula: multiple_least_squares reads each regressor and the values as raw observations"
+    REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
+formula_add_negative_test(multiple_least_squares_no_regressor
+    "formula: multiple_least_squares needs at least one regressor"
+    REJECT "fits at most 8" "reads each regressor" "has no output of that name" "constraints not satisfied"
+           "MultipleLeastSquares<0>")
+formula_add_negative_test(multiple_least_squares_nine_regressors
+    "formula: multiple_least_squares fits at most 8 regressors"
+    REJECT "reads each regressor" "has no output of that name" "constraints not satisfied" "MultipleLeastSquares<9>")
+formula_add_negative_test(multiple_least_squares_repeated_regressor
+    "formula: multiple_least_squares reads one quantity twice"
+    REJECT "has no output of that name" "RequireResultDimension")
+formula_add_negative_test(multiple_least_squares_regressor_as_values
+    "formula: multiple_least_squares reads one quantity twice"
+    REJECT "has no output of that name" "RequireResultDimension")
+formula_add_negative_test(multiple_least_squares_unwrapped
+    "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
+    REJECT "no matching" "has no output of that name")
+formula_add_negative_test(multiple_least_squares_two_unwrapped
+    "formula: multiple_least_squares takes its regressors wrapped in regressors(...)"
+    REJECT "no matching" "has no output of that name")
 # rounded_output (`opaque.hpp`): each refusal once, gated on the ones before
 # it; every REJECT names what the next check down, or the result's, would add.
 formula_add_negative_test(rounded_output_unit_dimension_mismatch

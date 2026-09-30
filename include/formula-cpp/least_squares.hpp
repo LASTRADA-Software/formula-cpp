@@ -67,9 +67,23 @@
 /// `double` through `checked_evaluate_si<double>`, untraced. A flat response is its own `DomainError`, so an R² acceptance is
 /// never passed by one.
 ///
+/// **A regression of several regressors** through raw observations,
+/// `multiple_least_squares(regressors(x1, ..., xK), y, citation)` for K from 1
+/// to 8, fits a constant and one coefficient per regressor, and reports `r
+/// squared` and `points` as the line does. **A singular design is an error,
+/// not a number**: exactly, a zero pivot of the fraction-free elimination is
+/// its own `DomainError`, and so is a regressor that is a constant, or a
+/// design with fewer than K + 1 rows; in `double`, a pivot at or below 1e-9 of
+/// its diagonal is refused, so a design within 1e-9 of singular, but not exactly
+/// singular, is answered exactly and refused in `double`. Each regressor is a
+/// quantity of its own: one read twice, or a regressor read as the values, is
+/// refused where it is written. A regressor in degrees Celsius is fitted in
+/// kelvin, so its coefficient is per kelvin and the constant is the response
+/// at 0 K.
+///
 /// Nothing else is offered: no line through the origin, no weights, no
-/// residuals; R² only through raw observations, whose fit is a separate
-/// operation with its own pinned lines.
+/// residuals; R² only through raw observations, whose fits are separate
+/// operations with their own pinned lines.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/curve.hpp>
@@ -84,6 +98,7 @@
 #include <formula-cpp/rational.hpp>
 
 #include <array>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -92,6 +107,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace formula
 {
@@ -548,5 +564,346 @@ template <ObservationsNode X, ObservationsNode Y>
 {
     static_assert(detail::RequireFitCitation<X>::value);
     return detail::refused_observation_fit(Citation {});
+}
+
+namespace detail
+{
+    /// The names of a regression's coefficients, one-based: written out, not
+    /// generated, so that every regression's outputs view string literals.
+    inline constexpr std::array<std::string_view, maxRegressors> coefficientNames {
+        "coefficient 1", "coefficient 2", "coefficient 3", "coefficient 4",
+        "coefficient 5", "coefficient 6", "coefficient 7", "coefficient 8"
+    };
+
+    /// `constant`, `coefficient 1` to `coefficient K`, `r squared`, `points`.
+    template <std::size_t K>
+    [[nodiscard]] consteval std::array<std::string_view, K + 3> regression_output_names() noexcept
+    {
+        std::array<std::string_view, K + 3> named {};
+        named[0] = "constant";
+        for (std::size_t at = 0; at < K; ++at)
+            named[at + 1] = coefficientNames[at];
+        named[K + 1] = "r squared";
+        named[K + 2] = "points";
+        return named;
+    }
+
+    /// K + 1 inputs, every one raw observations.
+    template <std::size_t K>
+    [[nodiscard]] consteval std::array<InputShape, K + 1> all_observations() noexcept
+    {
+        std::array<InputShape, K + 1> shaped {};
+        for (InputShape& each: shaped)
+            each = InputShape::Observations;
+        return shaped;
+    }
+} // namespace detail
+
+/// Ordinary least squares with K regressors over raw observations: `y =
+/// constant + coefficient 1 x1 + ... + coefficient K xK`, the regressors
+/// first and the values last, each a set of observations paired row by row.
+/// Built by `multiple_least_squares`; K is 1 to 8, and K = 1 is the line.
+///
+/// Decided exactly, before any sum, in every `Rep`, each the fit's own
+/// `DomainError`: every input holds as many observations, at least K + 1, no
+/// regressor is flat and the values are not flat. **A singular design is an
+/// error, not a number**: exactly, a zero pivot of the fraction-free
+/// elimination (`detail/least_squares_kernel.hpp`); in `double`, a pivot of
+/// the centred normal equations at or below 1e-9 of its diagonal, since
+/// rounded data cannot decide singularity. A design within 1e-9 of singular,
+/// but not exactly singular, is answered exactly and refused in `double`. The
+/// constant has the values' dimension; each coefficient the values' over its
+/// regressor's; `r squared` and `points` are bare numbers.
+///
+/// K outside 1 to 8 is refused by the constraint alone, in the compiler's
+/// words. `multiple_least_squares` refuses any other number in this library's
+/// words before it names this type.
+template <std::size_t K>
+    requires(K >= 1 && K <= detail::maxRegressors)
+struct MultipleLeastSquares
+{
+    /// What the trace calls it.
+    static constexpr std::string_view name = "multiple least squares";
+    /// The K regressors, then the values: all raw observations.
+    static constexpr std::array<InputShape, K + 1> shapes = detail::all_observations<K>();
+    /// The outputs, in this order.
+    static constexpr std::array<std::string_view, K + 3> outputs = detail::regression_output_names<K>();
+    /// The exact kernel's width for K regressors.
+    static constexpr std::size_t exact_limbs = detail::regression_limbs(K);
+
+    /// The constant in the values' dimension, each coefficient in the values'
+    /// over its regressor's, R^2 and the count bare. Any dimensions are
+    /// accepted.
+    static consteval std::optional<std::array<Dimension, K + 3>> output_dimensions(
+        std::array<Dimension, K + 1> regressorsThenValues) noexcept
+    {
+        std::array<Dimension, K + 3> measured {};
+        measured[0] = regressorsThenValues[K];
+        for (std::size_t at = 0; at < K; ++at)
+            measured[at + 1] = regressorsThenValues[K] / regressorsThenValues[at];
+        measured[K + 1] = dim::Scalar;
+        measured[K + 2] = dim::Scalar;
+        return measured;
+    }
+
+    /// The fit, exactly, as wide fractions in coherent units.
+    template <typename... Columns>
+        requires(sizeof...(Columns) == K + 1 && (std::same_as<Columns, std::span<Rational const>> && ...))
+    static constexpr std::expected<std::array<detail::WideRatio<exact_limbs>, K + 3>, ArithmeticError> compute_exact(
+        Columns... observedColumns) noexcept
+    {
+        std::array<std::span<Rational const>, K + 1> const given { observedColumns... };
+        std::array<std::span<Rational const>, K> regressorColumns;
+        for (std::size_t at = 0; at < K; ++at)
+            regressorColumns[at] = given[at];
+        return detail::exact_regression<K>(regressorColumns, given[K]);
+    }
+
+    /// The fit in coherent units: exactly for `Rep = Rational`, every output a
+    /// `Rational` or all `Overflow`; approximately otherwise.
+    template <typename Rep, typename... Columns>
+        requires(sizeof...(Columns) == K + 1 && (std::same_as<Columns, std::span<Rep const>> && ...))
+    static constexpr std::expected<std::array<Rep, K + 3>, ArithmeticError> compute(Columns... observedColumns) noexcept
+    {
+        if constexpr (std::is_same_v<Rep, Rational>)
+        {
+            std::expected<std::array<detail::WideRatio<exact_limbs>, K + 3>, ArithmeticError> const exact =
+                compute_exact(observedColumns...);
+            if (!exact.has_value())
+                return std::unexpected { exact.error() };
+            return detail::narrowed_all(*exact);
+        }
+        else
+        {
+            std::array<std::span<Rep const>, K + 1> const given { observedColumns... };
+            std::array<std::span<Rep const>, K> regressorColumns;
+            for (std::size_t at = 0; at < K; ++at)
+                regressorColumns[at] = given[at];
+            return detail::approximate_regression<Rep, K>(regressorColumns, given[K]);
+        }
+    }
+};
+
+/// The regressors of a multiple regression, in order: what `regressors(...)`
+/// builds, since a parameter pack before the values and the citation could
+/// not be deduced.
+template <typename... Xs>
+struct Regressors
+{
+    /// The regressors, first to last. No `{}` initialiser, deliberately: it
+    /// would turn a default-constructibility probe into a hard error, as for
+    /// `Corrections` (`lookup.hpp`).
+    std::tuple<Xs...> inputs;
+};
+
+/// The regressors @p regressorInputs of a multiple regression, in order:
+/// `regressors(observations<Temperature, 64>, observations<Content, 64>)`.
+template <typename... Xs>
+[[nodiscard]] constexpr Regressors<Xs...> regressors(Xs... regressorInputs) noexcept
+{
+    return Regressors<Xs...> { std::tuple<Xs...> { regressorInputs... } };
+}
+
+namespace detail
+{
+    /// Fails to compile when `multiple_least_squares` is given no citation.
+    template <typename Y>
+    struct RequireRegressionCitation
+    {
+        static_assert(sizeof(Y) == 0,
+                      "formula: multiple_least_squares needs a citation, the reason the method fits a regression here; "
+                      "pass {} when it gives none");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when the regressors are not wrapped in `regressors(...)`.
+    template <typename X>
+    struct RequireRegressorsWrapped
+    {
+        static_assert(sizeof(X) == 0,
+                      "formula: multiple_least_squares takes its regressors wrapped in regressors(...), then the "
+                      "values, then the citation: multiple_least_squares(regressors(x1, x2), y, citation)");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a regression names no regressor.
+    template <std::size_t Count>
+    struct RequireSomeRegressor
+    {
+        static_assert(Count > 0,
+                      "formula: multiple_least_squares needs at least one regressor, and regressors() names none; "
+                      "values with no regressor have a mean, sample_mean(observations<Q, Capacity>), not a fit");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a regression names more than `maxRegressors` regressors.
+    template <std::size_t Count>
+    struct RequireAtMostEightRegressors
+    {
+        static_assert(Count <= maxRegressors,
+                      "formula: multiple_least_squares fits at most 8 regressors, the most its exact solve is sized "
+                      "for; the number given appears in this diagnostic as the template argument Count of "
+                      "RequireAtMostEightRegressors");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when a regressor or the values are not raw observations.
+    template <typename Operand>
+    struct RequireRegressionObservations
+    {
+        static_assert(ObservationsNode<Operand>,
+                      "formula: multiple_least_squares reads each regressor and the values as raw observations, paired "
+                      "by the order they were made, and this is not a set of observations; read it with observations<Q, "
+                      "Capacity> -- the operand appears in this diagnostic as the template argument of "
+                      "RequireRegressionObservations");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when one quantity is read as two operands of a regression.
+    template <typename Q>
+    struct RequireRegressionQuantitiesDistinct
+    {
+        static_assert(!std::is_same_v<Q, Q>,
+                      "formula: multiple_least_squares reads one quantity twice, as two regressors or as a regressor "
+                      "and the values; that design is singular whatever was observed -- the quantity appears in this "
+                      "diagnostic as the template argument Q of RequireRegressionQuantitiesDistinct");
+
+        static constexpr bool value = true;
+    };
+
+    /// Whether @p T is a `Regressors`.
+    template <typename T>
+    inline constexpr bool isRegressors = false;
+
+    template <typename... Xs>
+    inline constexpr bool isRegressors<Regressors<Xs...>> = true;
+
+    /// How many of @p Inputs observe the quantity @p Q.
+    template <typename Q, typename... Inputs>
+    inline constexpr std::size_t observersOf =
+        (std::size_t { 0 } + ... + std::size_t { std::is_same_v<Q, typename ObservedQuantity<Inputs>::type> });
+
+    /// The position of the first of @p Inputs whose quantity another one
+    /// reads too, or `sizeof...(Inputs)` when none is.
+    template <typename... Inputs>
+    [[nodiscard]] consteval std::size_t first_repeated_quantity() noexcept
+    {
+        constexpr std::array<std::size_t, sizeof...(Inputs)> observedBy {
+            observersOf<typename ObservedQuantity<Inputs>::type, Inputs...>...
+        };
+        for (std::size_t at = 0; at < observedBy.size(); ++at)
+            if (observedBy[at] > 1)
+                return at;
+        return observedBy.size();
+    }
+
+    /// Checks a multiple regression's operands, each check gated on the ones
+    /// before it and asked in an `if constexpr` of its own (g++ evaluates a
+    /// `consteval` call behind a false `&&`: `RequireOpaqueCallValid`).
+    template <typename Y, typename... Xs>
+    struct RequireRegressionValid
+    {
+        static constexpr std::size_t regressorCount = sizeof...(Xs);
+        static_assert(RequireSomeRegressor<regressorCount>::value);
+        static_assert(std::conditional_t<(regressorCount > 0), RequireAtMostEightRegressors<regressorCount>,
+                                         std::true_type>::value);
+        static constexpr bool countOk = regressorCount > 0 && regressorCount <= maxRegressors;
+
+        static_assert((std::conditional_t<countOk, RequireRegressionObservations<Xs>, std::true_type>::value && ...));
+        static_assert(std::conditional_t<countOk, RequireRegressionObservations<Y>, std::true_type>::value);
+        static constexpr bool observationsOk = countOk && (ObservationsNode<Xs> && ...) && ObservationsNode<Y>;
+
+        [[nodiscard]] static consteval std::size_t repeated_at() noexcept
+        {
+            if constexpr (observationsOk)
+                return first_repeated_quantity<Xs..., Y>();
+            else
+                return regressorCount + 1;
+        }
+
+        static constexpr std::size_t repeatedAt = repeated_at();
+        /// The quantity read twice, or the first operand's when none is (then unused).
+        using Repeated = typename ObservedQuantity<
+            std::tuple_element_t<(repeatedAt < regressorCount + 1 ? repeatedAt : 0), std::tuple<Xs..., Y>>>::type;
+        static_assert(std::conditional_t<(repeatedAt < regressorCount + 1), RequireRegressionQuantitiesDistinct<Repeated>,
+                                         std::true_type>::value);
+
+        /// Whether the call is sound: every check above passed.
+        static constexpr bool value = observationsOk && repeatedAt == regressorCount + 1;
+    };
+
+    template <std::size_t>
+    using RefusedObservationsAt = RefusedObservations;
+
+    template <std::size_t... At>
+    [[nodiscard]] constexpr auto refused_regression_of(Citation citation, std::index_sequence<At...>) noexcept
+    {
+        return OpaqueCall<MultipleLeastSquares<sizeof...(At) - 1>, RefusedObservationsAt<At>...> {
+            std::tuple<RefusedObservationsAt<At>...> {}, citation
+        };
+    }
+
+    /// What every refused multiple regression returns: eight regressors of
+    /// refused observations, so that any output up to `coefficient 8` can be
+    /// taken and evaluated and asks nothing again.
+    [[nodiscard]] constexpr auto refused_regression(Citation citation) noexcept
+    {
+        return refused_regression_of(citation, std::make_index_sequence<maxRegressors + 1> {});
+    }
+} // namespace detail
+
+/// A multiple regression of @p valueInput on @p regressorSet, for the reason
+/// @p citation gives: `multiple_least_squares(regressors(observations<T, 64>,
+/// observations<W, 64>), observations<L, 64>, { ... })`. Its outputs are
+/// `constant`, `coefficient 1` to `coefficient K`, `r squared` and `points`.
+/// Refused in this library's words: no regressor, more than 8, anything but
+/// raw observations, and one quantity read twice.
+template <typename... Xs, typename Y>
+[[nodiscard]] constexpr auto multiple_least_squares(Regressors<Xs...> regressorSet, Y valueInput, Citation citation) noexcept
+{
+    if constexpr (detail::RequireRegressionValid<Y, Xs...>::value)
+        return std::apply(
+            [&](auto const&... regressorInputs) {
+                return opaque<MultipleLeastSquares<sizeof...(Xs)>>(citation, regressorInputs..., valueInput);
+            },
+            regressorSet.inputs);
+    else
+        return detail::refused_regression(citation);
+}
+
+/// Without a citation: refused, as a fit without one is.
+template <typename... Xs, typename Y>
+[[nodiscard]] constexpr auto multiple_least_squares(Regressors<Xs...>, Y) noexcept
+{
+    static_assert(detail::RequireRegressionCitation<Y>::value);
+    return detail::refused_regression(Citation {});
+}
+
+/// One regressor not wrapped in `regressors(...)`: refused, naming the
+/// spelling. The citation may be braced, as in a call that is written right.
+template <typename X, typename Y>
+    requires(!detail::isRegressors<X>)
+[[nodiscard]] constexpr auto multiple_least_squares(X, Y, Citation citation) noexcept
+{
+    static_assert(detail::RequireRegressorsWrapped<X>::value);
+    return detail::refused_regression(citation);
+}
+
+/// Several regressors not wrapped in `regressors(...)`, as `multiple_least_squares(x1,
+/// x2, y, citation)`: refused the same way. The operands and the citation are
+/// deduced together, so a citation must be passed as a `Citation` here; a braced
+/// `{ ... }` cannot be deduced, and that call draws the compiler's own "no
+/// matching function".
+template <typename First, typename Second, typename Third, typename... Rest>
+    requires(!detail::isRegressors<First>)
+[[nodiscard]] constexpr auto multiple_least_squares(First, Second, Third, Rest...) noexcept
+{
+    static_assert(detail::RequireRegressorsWrapped<First>::value);
+    return detail::refused_regression(Citation {});
 }
 } // namespace formula

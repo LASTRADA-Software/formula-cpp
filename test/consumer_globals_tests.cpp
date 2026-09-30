@@ -48,7 +48,8 @@
 // opaque operation's output, evaluated exactly and in double, and rounded
 // where it is used, traced, rendered and documented; a least-squares fit,
 // exact and rounded where it is used, and a line through raw observations,
-// exactly, rounded and in double; a retry over recorded determinations,
+// exactly, rounded and in double, and `multiple_least_squares` of
+// `regressors(...)` of two through them; a retry over recorded determinations,
 // evaluated, traced, rendered and documented; and the four table validators;
 // and `record_key`, `sample_id`, `test_id`, `record`, `Record::unbound`,
 // `record_context`, its `this_record`,
@@ -146,7 +147,7 @@ int result, value, text, step, mark, first, last, count, size, name, key, left, 
     counted, squares, dispersion, extreme, lowest, highest, determinations, determination, smallest, largest, degrees,
     statistics, batch, lineage, role, gated, there, reference, scope, attribute, comparand, subject, points, slope,
     intercept, fit, attempt, attempts, verdict, previous, judgement, accepted, exhausted, observation, observations,
-    pivot, design, coefficient, coefficients;
+    pivot, design, coefficient, coefficients, regressor, regressors;
 #if defined(_MSC_VER)
 int index;
 #endif
@@ -872,6 +873,27 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && lineFit.has_value() && lineFit->measurement().value() == formula::Rational { 1 }
                            && lineInDouble.has_value() && lineInDouble->has_value() && **lineInDouble > 1.999
                            && **lineInDouble < 2.001);
+    // Two regressors over three rows: y = 1 mm + 2 x + 5 mm * k, exactly, so
+    // coefficient 1 is 2 and R^2 is 1.
+    std::array<formula::Rational, 3> const factorReadings { formula::Rational { 1 }, formula::Rational { 3 },
+                                                            formula::Rational { 2 } };
+    std::array<formula::Rational, 3> const combined { formula::Rational { 212 }, formula::Rational { 342 },
+                                                      formula::Rational { 493 } };
+    auto const regressionSample = formula::environment(*edgeObserved,
+                                                       *formula::MeasuredObservations<Factor, 4>::from(factorReadings),
+                                                       *formula::MeasuredObservations<AgreedEdge, 4>::from(combined));
+    constexpr auto edgeRegression = formula::multiple_least_squares(
+        formula::regressors(formula::observations<EdgeX, 4>, formula::observations<Factor, 4>),
+        formula::observations<AgreedEdge, 4>,
+        { .reference = "Example Standard 3" });
+    auto const firstCoefficient =
+        formula::checked_evaluate<Factor>(formula::opaque_output<"coefficient 1">(edgeRegression), regressionSample);
+    auto const regressionInDouble =
+        formula::checked_evaluate_si<double>(formula::opaque_output<"r squared">(edgeRegression), regressionSample);
+    probe.checks.push_back(firstCoefficient.has_value()
+                           && firstCoefficient->measurement().value() == formula::Rational { 2 }
+                           && regressionInDouble.has_value() && regressionInDouble->has_value()
+                           && **regressionInDouble > 0.999);
     // A retry over the two recorded edges, evaluated, traced, rendered and
     // documented in all three dialects.
     constexpr auto edgesAgree = formula::when(formula::this_attempt<AgreedEdge> >= formula::previous_attempt<AgreedEdge>,

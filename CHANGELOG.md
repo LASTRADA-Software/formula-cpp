@@ -26,6 +26,15 @@ may break it, and each such change is recorded here.
   answers where the exact route overflows -- within the kernel's width, and beyond it `Overflow`; approximately, and
   untraced, through `checked_evaluate_si<double>`. One quantity read as both points and values, or observations without a
   citation, is refused where it is written.
+- `multiple_least_squares(regressors(x1, ..., xK), y, citation)` fits y = constant + coefficient 1 x1 + ... +
+  coefficient K xK through raw observations paired by row, for K from 1 to 8; K = 1 is the line. Its outputs are
+  `constant`, `coefficient 1` to `coefficient K`, `r squared` and `points`, each coefficient in the values'
+  dimension over its regressor's. A singular design is the fit's own `DomainError`, never a number: decided exactly
+  in `Rational` and by `rounded_output`, and in `double` when a pivot of the centred normal equations is at or below
+  10⁻⁹ of its diagonal, so a design within 10⁻⁹ of singular, but not exactly singular, is answered exactly and refused
+  in `double`.
+  Refused where written: no citation, no regressor, more than eight, anything but raw observations, and one quantity
+  read twice. `MultipleLeastSquares<K>`, `Regressors` and `regressors` are the operation and its holder.
 - `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
   `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
   into kilowatt-hours without a rounded factor.
