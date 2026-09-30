@@ -582,6 +582,30 @@ namespace detail
             each = InputShape::Observations;
         return shaped;
     }
+
+    /// A regression's columns: the K regressors, then the values.
+    template <typename Column, std::size_t K>
+    struct SplitColumns
+    {
+        /// The regressors, first to last.
+        std::array<Column, K> regressorColumns;
+        /// The values.
+        Column valueColumn;
+    };
+
+    /// @p given, K regressors and then the values, as `SplitColumns`. Default-
+    /// initialised, not `{}`: cl 19.51 value-initialises an array through a
+    /// helper that declares a local `i`, which hides a consumer's global of
+    /// that name (C4459, found by `consumer_globals_tests.cpp`).
+    template <std::size_t K, typename Column>
+    [[nodiscard]] constexpr SplitColumns<Column, K> split_columns(std::array<Column, K + 1> const& given) noexcept
+    {
+        SplitColumns<Column, K> split;
+        for (std::size_t at = 0; at < K; ++at)
+            split.regressorColumns[at] = given[at];
+        split.valueColumn = given[K];
+        return split;
+    }
 } // namespace detail
 
 /// Ordinary least squares with K regressors over raw observations: `y =
@@ -637,11 +661,8 @@ struct MultipleLeastSquares
     static constexpr std::expected<std::array<detail::WideRatio<exact_limbs>, K + 3>, ArithmeticError> compute_exact(
         Columns... observedColumns) noexcept
     {
-        std::array<std::span<Rational const>, K + 1> const given { observedColumns... };
-        std::array<std::span<Rational const>, K> regressorColumns;
-        for (std::size_t at = 0; at < K; ++at)
-            regressorColumns[at] = given[at];
-        return detail::exact_regression<K>(regressorColumns, given[K]);
+        auto const split = detail::split_columns<K>(std::array<std::span<Rational const>, K + 1> { observedColumns... });
+        return detail::exact_regression<K>(split.regressorColumns, split.valueColumn);
     }
 
     /// The fit in coherent units: exactly for `Rep = Rational`, every output a
@@ -660,11 +681,8 @@ struct MultipleLeastSquares
         }
         else
         {
-            std::array<std::span<Rep const>, K + 1> const given { observedColumns... };
-            std::array<std::span<Rep const>, K> regressorColumns;
-            for (std::size_t at = 0; at < K; ++at)
-                regressorColumns[at] = given[at];
-            return detail::approximate_regression<Rep, K>(regressorColumns, given[K]);
+            auto const split = detail::split_columns<K>(std::array<std::span<Rep const>, K + 1> { observedColumns... });
+            return detail::approximate_regression<Rep, K>(split.regressorColumns, split.valueColumn);
         }
     }
 };
