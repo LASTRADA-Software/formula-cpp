@@ -254,6 +254,11 @@ auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
                                         formula::Measured<CementVolume> { 300 },
                                         formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
 auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
+if (!ratio)
+{
+    std::println("water/cement ratio: {}", ratio.error());
+    return 1;
+}
 std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
 ```
 
@@ -262,8 +267,12 @@ w/c = 0.5 (manually entered)
 ```
 
 `waterCementRatio` names its result quantity where it is declared, so the call
-names none ([Naming the result once](#naming-the-result-once)). `{}` of an
-`Outcome` writes its number in its quantity's unit (a ratio has no symbol),
+names none ([Naming the result once](#naming-the-result-once)). The
+`std::expected` is checked before `*ratio` or `ratio->` reads it:
+dereferencing one that holds an error is undefined behaviour, and
+`ratio.error()` says in words what failed. A result computed at compile time is checked the same way by a
+`static_assert(area.has_value())`, as the example does for its area. `{}` of
+an `Outcome` writes its number in its quantity's unit (a ratio has no symbol),
 and `{}` of a `ValueSource` its words; see [Displaying numbers](display.md).
 
 ## Reading a result
@@ -276,7 +285,7 @@ number `x` holds, or nothing. It reads a `Measured<Q>`, an `Outcome<Q>`, the
 `ratio` above with it:
 
 ```cpp
-bool const overrideWinsOutright = ratio && ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
+bool const overrideWinsOutright = ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
 ```
 
 It is an `optional` and not a zero because zero is a measurement: a specimen
@@ -284,9 +293,9 @@ that weighed nothing and a specimen never weighed are different results.
 `optional == Rational` is false when the optional is empty, so
 `number_of(ratio) == 0.5_r` is a complete check on its own -- an absent
 number, an error and a verdict all compare unequal to every number. The
-`ratio &&` in front guards only the `->` that follows it. `number_of` says
-nothing about *why* there is no number; ask `Outcome::kind()` or the error
-for that.
+`ratio->` in front is safe because `ratio` was checked above. `number_of`
+says nothing about *why* there is no number; ask `Outcome::kind()` or the
+error for that.
 
 ## Choosing a representation
 

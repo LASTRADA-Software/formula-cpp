@@ -20,11 +20,14 @@ That is not a rare edge case; it is what binary floating point does with
 decimal input in general. A quantity such as 450 millilitres, stored as
 0,45 litres in a `double` and converted back, is not reliably 450 again --
 the round trip is lossy because 0,45 is not exactly representable in base 2.
-`Rational` makes that round trip exact. From `examples/exact_numbers.cpp`,
-where `450_r` is the exact number 450 ([Writing an exact
+`Rational` makes that round trip exact. From `examples/exact_numbers.cpp`
+(`_r` is the exact-decimal literal of [Writing an exact
 decimal](#writing-an-exact-decimal)):
 
 ```cpp
+using namespace formula::literals;
+
+// 450 millilitres, written exactly. 450_r is the number 450, never a double.
 Rational const volumeInMillilitres = 450_r;
 
 // Convert to litres by an exact integer factor: multiply, then divide.
@@ -57,6 +60,8 @@ is the only place precision is deliberately given up.
 Spelled out, as runnable code:
 
 ```cpp
+using namespace formula::literals;
+
 Rational const a { 7 };                                              // 7/1
 Rational const b { 3, 4 };                                           // 3/4
 Rational const c = 0.45_r;                                           // 9/20
@@ -197,6 +202,8 @@ Rational::Int const nearest = formula::round_to_int(Rational { 7, 4 }, RoundingM
 Beyond rounding to a whole number, three forms round to a place:
 
 ```cpp
+using namespace formula::literals;
+
 // Decimal places: 45,67 rounded to one decimal place is 45,7, i.e. 457/10.
 Rational const value = 45.67_r;
 Rational const toOneDecimal = formula::round(value, DecimalPlaces { 1 }, RoundingMode::HalfAwayFromZero);
@@ -211,8 +218,10 @@ Rational const snapped = formula::round_to_multiple(7, 5, RoundingMode::HalfAway
 
 A `Rational` is written as text as a fraction by default. To write it as a
 decimal -- exactly where it has one, rounded in a mode you name and marked `≈`
-where it does not -- in a trace, a rendered formula, `number_text()` or
-`std::format`, see [Displaying numbers](display.md).
+where it does not -- in a trace, a rendered formula or `number_text()`, see
+[Displaying numbers](display.md). `std::format` is the other way round: `{}`
+writes the exact decimal where there is one and the fraction where there is
+not, and `{:/}` always the fraction.
 
 ## Rounding is part of the calculation
 

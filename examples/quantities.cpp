@@ -110,27 +110,48 @@ int main()
 
     // ---- 4. A present measurement, converted exactly between quantities (450 l to m3) ----
     //
-    // Nothing in this program can make a conversion fail, so it uses the
-    // throwing spellings: convert_to, round_to_declared and within_bounds
-    // return the value itself, where their checked_ twins return a
-    // std::expected for a caller that handles the error.
+    // A conversion, a rounding and a bounds check each return a std::expected
+    // -- the value, or the arithmetic error that stopped it -- and each is
+    // checked before it is read. Nothing in this program can make one fail,
+    // but dereferencing a std::expected that holds an error is undefined
+    // behaviour.
     Measured<WaterVolume> const presentVolume { 450 };
-    auto const convertedPresent = formula::convert_to<VolumeInCubicMetres>(presentVolume);
-    std::println("{} converted to {} = {}", presentVolume, Describe<VolumeInCubicMetres>::unit, convertedPresent);
+    auto const convertedPresent = formula::checked_convert_to<VolumeInCubicMetres>(presentVolume);
+    if (!convertedPresent)
+    {
+        std::println("converting {}: {}", presentVolume, convertedPresent.error());
+        return 1;
+    }
+    std::println("{} converted to {} = {}", presentVolume, Describe<VolumeInCubicMetres>::unit, *convertedPresent);
     bool const presentValueConvertsExactly = formula::number_of(convertedPresent) == 0.45_r;
 
     // ---- 5. An absent measurement surviving conversion, rounding and a bounds check ----
     Measured<WaterVolume> const absentVolume {};
-    auto const convertedAbsent = formula::convert_to<VolumeInCubicMetres>(absentVolume);
-    auto const roundedAbsent = formula::round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
-    auto const boundsOfAbsent = formula::within_bounds(absentVolume);
+    auto const convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
+    if (!convertedAbsent)
+    {
+        std::println("converting an absent measurement: {}", convertedAbsent.error());
+        return 1;
+    }
+    auto const roundedAbsent = formula::checked_round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
+    if (!roundedAbsent)
+    {
+        std::println("rounding an absent measurement: {}", roundedAbsent.error());
+        return 1;
+    }
+    auto const boundsOfAbsent = formula::checked_within_bounds(absentVolume);
+    if (!boundsOfAbsent)
+    {
+        std::println("bounds-checking an absent measurement: {}", boundsOfAbsent.error());
+        return 1;
+    }
 
-    std::println("an absent measurement, converted: {}", convertedAbsent);
-    std::println("an absent measurement, rounded: {}", roundedAbsent);
-    std::println("an absent measurement, bounds-checked: {}", boundsOfAbsent);
+    std::println("an absent measurement, converted: {}", *convertedAbsent);
+    std::println("an absent measurement, rounded: {}", *roundedAbsent);
+    std::println("an absent measurement, bounds-checked: {}", *boundsOfAbsent);
 
-    bool const absenceSurvivesEveryOperation = convertedAbsent.is_absent() && roundedAbsent.is_absent()
-                                               && boundsOfAbsent == BoundsCheck::NotMeasured;
+    bool const absenceSurvivesEveryOperation = convertedAbsent->is_absent() && roundedAbsent->is_absent()
+                                               && *boundsOfAbsent == BoundsCheck::NotMeasured;
 
     // ---- 6. combine: absent if EITHER input is, not only if both are, and the
     //         RESULT is named by the caller, not inherited from either operand ----

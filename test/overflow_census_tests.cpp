@@ -162,7 +162,10 @@ struct Strength: formula::Quantity<Strength, "f", "compressive strength", unit::
 inline constexpr auto cylinderStrength = formula::constant<unit::One>(Rational { 4 }) * formula::var<FailureLoad>
                                          / (formula::pi * formula::pow<2>(formula::var<Diameter>));
 
-/// examples/expressions.cpp's circular area, as written there.
+/// examples/expressions.cpp's circular area, which that example writes as
+/// `yields<Area>(formula::pi * formula::pow<2>(var<Diameter>) / 4)`: the same
+/// tree, since its bare `4` is the dimensionless coefficient `Rational { 4 }`
+/// spelled here.
 inline constexpr auto circularArea = formula::pi * formula::pow<2>(formula::var<Diameter>) / formula::Rational { 4 };
 
 template <typename Q, std::size_t N, std::size_t... At>

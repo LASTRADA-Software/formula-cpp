@@ -687,11 +687,13 @@ them by hand, or fills in a `Step` by hand, writes whatever trace it likes.
 
 A `Variable`, `OverriddenConstant` or `DerivedQuantity` step records its
 quantity's symbol **when the formula is evaluated**, and `render_trace` only
-reads it back. So a jurisdiction's vocabulary (see [Citations and rendering](citations.md)) has to
-be given to the sink, not only to `render()` -- a page rendered in one
-vocabulary and a trace recorded in another would name one quantity with two
-different letters. An `explain_*` twin hands the vocabulary it is given to
-the sink it builds:
+reads it back. So a jurisdiction's vocabulary (see
+[Citations and rendering](citations.md)) has to be given to the sink, not
+only to `render()` -- a page rendered in one vocabulary and a trace recorded
+in another would name one quantity with two different letters. An
+`explain_*` twin hands the vocabulary it is given to the sink it builds. Over
+`limit`, `crossedInputs` and `south`, the fixtures of
+`test/vocabulary_tests.cpp`:
 
 ```cpp
 auto const southern = formula::explain_check(limit, crossedInputs, south);
@@ -706,11 +708,11 @@ auto const southern = formula::explain_check(limit, crossedInputs, south);
 (`test/vocabulary_tests.cpp`, `"a constraint's trace names quantities in the
 sink's vocabulary"`, which gives `south` to a `RecordingSink` of its own.)
 `explain` takes the vocabulary as an optional third argument, and every
-`explain_*` twin and `traced` as an optional last one. Those three step kinds are the only ones that name a quantity.
-Every other step names none -- arithmetic, a lookup, a rounding rule, a
-constraint, a method's constraints, a variant selection and a replaced
-variant refer to their operands by number -- and so reaches the vocabulary through the steps beneath
-it.
+`explain_*` twin and `traced` as an optional last one. Those three step kinds
+are the only ones that name a quantity. Every other step names none --
+arithmetic, a lookup, a rounding rule, a constraint, a method's constraints,
+a variant selection and a replaced variant refer to their operands by number --
+and so reaches the vocabulary through the steps beneath it.
 
 The sink keeps its own copy of the vocabulary -- plain data holding views of
 string literals -- so, unlike the `Trace`, the vocabulary need not outlive

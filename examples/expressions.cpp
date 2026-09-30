@@ -60,22 +60,30 @@ constexpr auto waterCementRatio = formula::yields<WaterCementRatio>(var<WaterVol
 
 int main()
 {
+    // Every checked_evaluate below returns a std::expected -- the outcome, or
+    // the arithmetic error that stopped it -- and each is checked before it is
+    // read. The first three are constants, so a static_assert checks them and
+    // an error would stop the build; the last is checked when it runs.
+
     // ---- 1. A formula with a constant and a power ----
     //
     // The exact area has no short decimal -- pi is a rational convergent -- so
     // it is printed rounded to six places, and marked as rounded.
     constexpr auto diameterKnown = formula::environment(formula::Measured<Diameter> { 103 });
     constexpr auto area = formula::checked_evaluate(circularArea, diameterKnown);
+    static_assert(area.has_value());
     std::println("circular area of a 103 mm diameter = {:~.6HalfAwayFromZero} ({})", *area, area->source());
 
     // ---- 2. A result quantity in a different unit from its input ----
     constexpr auto massInGrams = formula::environment(formula::Measured<SpecimenMass> { 2500 });
     constexpr auto massConverted = formula::checked_evaluate<MassInKilogram>(var<SpecimenMass>, massInGrams);
+    static_assert(massConverted.has_value());
     std::println("2500 g reported as {} = {}", formula::symbol_of<MassInKilogram>(), *massConverted);
 
     // ---- 3. An absent input propagates to an empty result, not a zero ----
     constexpr auto diameterUnknown = formula::environment(formula::Measured<Diameter>::absent());
     constexpr auto emptyArea = formula::checked_evaluate(circularArea, diameterUnknown);
+    static_assert(emptyArea.has_value());
     std::println("area with no diameter measured: {}", emptyArea->kind());
 
     // ---- 4. A dimensional error is a compile error, not a runtime one ----
@@ -86,18 +94,23 @@ int main()
                                             formula::Measured<CementVolume> { 300 },
                                             formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
     auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
+    if (!ratio)
+    {
+        std::println("water/cement ratio: {}", ratio.error());
+        return 1;
+    }
     std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
 
     // Every number printed above is checked here; nothing is printed that this
-    // bool does not also cover. number_of is empty for an error and for a
-    // result that is not a number, so comparing it is a complete check.
+    // bool does not also cover. number_of is empty for a result that is not a
+    // number, so comparing it is a complete check.
     auto const areaInSquareMetres = formula::number_of(area);
     bool const circularAreaIsCorrect = areaInSquareMetres && *areaInSquareMetres > 0.00833228_r
                                        && *areaInSquareMetres < 0.00833229_r
                                        && area->source() == formula::ValueSource::Derived;
     bool const massConvertsExactly = formula::number_of(massConverted) == 2.5_r;
-    bool const absenceStaysEmpty = emptyArea && emptyArea->is_empty();
-    bool const overrideWinsOutright = ratio && ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
+    bool const absenceStaysEmpty = emptyArea->is_empty();
+    bool const overrideWinsOutright = ratio->is_overridden() && formula::number_of(ratio) == 0.5_r;
 
     bool const allChecksPassed = circularAreaIsCorrect && massConvertsExactly && absenceStaysEmpty && overrideWinsOutright;
     std::println("all checks passed: {}", allChecksPassed ? "yes" : "no");

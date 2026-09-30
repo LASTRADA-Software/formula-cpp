@@ -103,6 +103,7 @@ evaluates it names none:
 ```cpp
 constexpr auto diameterKnown = formula::environment(formula::Measured<Diameter> { 103 });
 constexpr auto area = formula::checked_evaluate(circularArea, diameterKnown);
+static_assert(area.has_value());
 ```
 
 ```
@@ -110,7 +111,9 @@ circular area of a 103 mm diameter = ≈0.008332 m2 (derived)
 2500 g reported as m = 2.5 kg
 ```
 
-Note `constexpr`: that area was computed at compile time. The area is held
+Note `constexpr`: that area was computed at compile time, so the check that
+the arithmetic did not fail is a `static_assert` — `checked_evaluate` returns
+the outcome or the error, and neither is read unchecked. The area is held
 exactly, with `formula::pi` an exact fraction close to pi, and has no short
 decimal, so it is printed rounded to six places and marked `≈`.
 
@@ -119,6 +122,7 @@ decimal, so it is printed rounded to six places and marked `≈`.
 ```cpp
 constexpr auto diameterUnknown = formula::environment(formula::Measured<Diameter>::absent());
 constexpr auto emptyArea = formula::checked_evaluate(circularArea, diameterUnknown);
+static_assert(emptyArea.has_value());
 ```
 
 ```
@@ -136,13 +140,20 @@ auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
                                         formula::Measured<CementVolume> { 300 },
                                         formula::entered(formula::Measured<WaterCementRatio> { 0.5_r }));
 auto const ratio = formula::checked_evaluate(waterCementRatio, batch);
+if (!ratio)
+{
+    std::println("water/cement ratio: {}", ratio.error());
+    return 1;
+}
+std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *ratio, ratio->source());
 ```
 
 ```
 w/c = 0.5 (manually entered)
 ```
 
-Here `waterCementRatio` is
+The evaluation is checked before its outcome is read: `ratio.error()` would
+say, in words, what arithmetic failed. Here `waterCementRatio` is
 `formula::yields<WaterCementRatio>(var<WaterVolume> / var<CementVolume>)`, and
 `0.5_r` is the exact decimal one half, never a `double`. The formula would
 have computed 0.6. A person entered 0.5, so that is the answer — and

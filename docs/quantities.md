@@ -281,9 +281,17 @@ does not compile, and it draws one message, so a conversion nobody could
 perform cannot look like it succeeded merely because there was no value to
 get wrong. (Before this check moved to compile time, such a call compiled
 and returned `ArithmeticError::DomainError`.) With no value present the
-result is absent. The worked example converts one with `convert_to`, the
-throwing twin described [below](#bounds-precision-and-conversion), since
-nothing in it can fail:
+result is absent. The worked example checks the `std::expected` before it
+reads the measurement inside:
+
+```cpp
+auto const convertedAbsent = formula::checked_convert_to<VolumeInCubicMetres>(absentVolume);
+if (!convertedAbsent)
+{
+    std::println("converting an absent measurement: {}", convertedAbsent.error());
+    return 1;
+}
+```
 
 ```
 an absent measurement, converted: (not measured)
@@ -368,16 +376,9 @@ same arguments and return the value itself, and throw `ArithmeticException`
 where the `checked_` form returns an error. Absence behaves as above -- an
 absent measurement converts and rounds to an absent one and is `NotMeasured`
 for its bounds -- and a conversion across dimensions does not compile in
-either spelling. The worked example uses the twins, since nothing in it can
-fail. Its absent measurement is converted, rounded and checked by these
-lines:
-
-```cpp
-Measured<WaterVolume> const absentVolume {};
-auto const convertedAbsent = formula::convert_to<VolumeInCubicMetres>(absentVolume);
-auto const roundedAbsent = formula::round_to_declared(absentVolume, RoundingMode::HalfAwayFromZero);
-auto const boundsOfAbsent = formula::within_bounds(absentVolume);
-```
+either spelling. The worked example keeps the `checked_` forms, and checks
+each result before it reads it, as shown [above](#measurements-that-may-be-absent)
+for the conversion.
 
 ## Limits
 
