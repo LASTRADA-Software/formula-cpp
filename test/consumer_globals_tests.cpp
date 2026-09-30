@@ -1230,5 +1230,17 @@ ConsumerGlobalsProbe probe_consumer_globals()
         using namespace formula::literals;
         probe.checks.push_back(27.3_r == formula::Rational { 273, 10 });
     }
+
+    // Plain numbers and not_measured in a series, and exact numbers for a
+    // band's bounds and a breakpoint's key.
+    {
+        using namespace formula::literals;
+        auto const suppliedSeries = formula::measured_series<EdgeX>(127, 10.3_r, formula::not_measured);
+        probe.checks.push_back(suppliedSeries.size() == 3 && suppliedSeries.element(0).value() == formula::Rational { 127 }
+                               && suppliedSeries.element(1).value() == formula::Rational { 103, 10 }
+                               && suppliedSeries.element(2).is_absent()
+                               && formula::band(83.7_r, 97.3_r) == formula::band(837, 10, 973, 10)
+                               && formula::breakpoint(12.7_r) == formula::breakpoint(127, 10));
+    }
     return probe;
 }

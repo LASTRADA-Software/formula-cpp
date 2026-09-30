@@ -1167,3 +1167,10 @@ TEST_CASE("a row hit can still overflow in the result-unit conversion, and says 
     STATIC_REQUIRE(!computed.has_value());
     STATIC_REQUIRE(computed.error() == formula::ArithmeticError::Overflow);
 }
+
+TEST_CASE("breakpoint: a key given as an exact number", "[lookup]")
+{
+    using namespace formula::literals;
+    STATIC_REQUIRE(formula::breakpoint(12.7_r) == formula::breakpoint(127, 10));
+    STATIC_REQUIRE(formula::breakpoint(127) == formula::Breakpoint { 127, 1 }); // the integer overload still wins
+}

@@ -15,6 +15,9 @@ struct CementVolume: formula::Quantity<CementVolume, "V_c", "cement content", fo
 struct Ratio: formula::Quantity<Ratio, "w/c", "water/cement ratio", formula::unit::One>
 {
 };
+struct Retained: formula::Quantity<Retained, "m_r", "mass retained on a screen", formula::unit::Gram>
+{
+};
 
 constexpr formula::Rational rat(std::int64_t numerator, std::int64_t denominator = 1)
 {
@@ -93,4 +96,19 @@ TEST_CASE("environment: Entered compares by the measurement it carries", "[envir
     STATIC_REQUIRE_FALSE(low == high);
     STATIC_REQUIRE_FALSE(low == absent);
     STATIC_REQUIRE(absent == formula::entered(formula::Measured<Ratio>::absent()));
+}
+
+TEST_CASE("measured_series: plain numbers and not_measured stand for elements", "[environment][series]")
+{
+    using namespace formula::literals;
+    constexpr auto mixed = formula::measured_series<Retained>(127, 10.3_r, formula::not_measured, formula::Rational { 1, 3 });
+    STATIC_REQUIRE(mixed.size() == 4);
+    STATIC_REQUIRE(mixed.element(0) == formula::Measured<Retained> { 127 });
+    STATIC_REQUIRE(mixed.element(1) == formula::Measured<Retained> { formula::Rational { 103, 10 } });
+    STATIC_REQUIRE(mixed.element(2).is_absent());
+    STATIC_REQUIRE(mixed.element(3) == formula::Measured<Retained> { formula::Rational { 1, 3 } });
+    // The old spelling is unchanged.
+    constexpr auto spelled = formula::measured_series<Retained>(formula::Measured<Retained> { 127 }, formula::Measured<Retained>::absent());
+    STATIC_REQUIRE(spelled.element(0) == mixed.element(0));
+    STATIC_REQUIRE(spelled.element(1).is_absent());
 }

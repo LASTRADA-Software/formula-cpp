@@ -453,7 +453,7 @@ struct InterpolateAlongNode: NodeBase
 };
 
 /// The value of @p curveExpression at @p at: `interpolate_at(curve(screens,
-/// passing), constant<unit::Millimetre>(rat(42, 10)))`.
+/// passing), constant<unit::Millimetre>(4.2_r))`.
 template <CurveExpression C, Node At>
 [[nodiscard]] constexpr InterpolateAlongNode<C, At> interpolate_at(C curveExpression, At at) noexcept
 {

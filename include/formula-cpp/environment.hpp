@@ -164,15 +164,62 @@ class MeasuredSeries
     std::array<Measured<Q>, N> _elements;
 };
 
-/// Builds a series from its elements, in order, and counts them:
-/// `measured_series<Retained>(Measured<Retained> { ... }, Measured<Retained>::absent(), ...)`.
-/// `Q` is stated rather than deduced, so every element must already be a
-/// `Measured<Q>` of that one quantity.
-template <Described Q, typename... Ms>
-    requires(std::is_same_v<Ms, Measured<Q>> && ...)
-[[nodiscard]] constexpr auto measured_series(Ms... elements) noexcept
+/// An element of `measured_series` that was not measured:
+/// `measured_series<Retained>(127, formula::not_measured, 139)`.
+struct NotMeasured
 {
-    return MeasuredSeries<Q, sizeof...(Ms)> { std::array<Measured<Q>, sizeof...(Ms)> { elements... } };
+    /// Every `NotMeasured` is the same.
+    [[nodiscard]] constexpr bool operator==(NotMeasured const&) const noexcept = default;
+};
+
+/// The spelling of an absent element -- see `NotMeasured`.
+inline constexpr NotMeasured not_measured {};
+
+namespace detail
+{
+    /// Fails to compile when an element of `measured_series<Q>` is neither a
+    /// `Measured<Q>`, `not_measured`, nor something `Rational` is built from
+    /// (a `Measured` of another quantity, a string, ...). A `double` or a wide
+    /// unsigned integer is refused by `Rational` itself, in its own words, and
+    /// draws nothing here.
+    template <Described Q, typename Given>
+    struct RequireSeriesElementOf
+    {
+        static_assert(std::is_same_v<Given, Measured<Q>> || std::is_same_v<Given, NotMeasured> || std::is_constructible_v<Rational, Given>,
+                      "formula: an element of measured_series<Q> is a Measured<Q> of that one quantity, an exact number, or "
+                      "formula::not_measured; the quantity and the element's type appear in this diagnostic as the template "
+                      "arguments of RequireSeriesElementOf");
+
+        static constexpr bool value = true;
+    };
+
+    /// @p given as the series element it stands for. After a refusal by
+    /// `RequireSeriesElementOf` an element yields absent, so the mistake is
+    /// reported once and not again by the conversion below.
+    template <Described Q, typename Given>
+    [[nodiscard]] constexpr Measured<Q> series_element(Given given) noexcept
+    {
+        if constexpr (std::is_same_v<Given, Measured<Q>>)
+            return given;
+        else if constexpr (std::is_same_v<Given, NotMeasured>)
+            return Measured<Q>::absent();
+        else if constexpr (std::is_constructible_v<Rational, Given>)
+            return Measured<Q> { Rational { given } };
+        else
+            return Measured<Q>::absent();
+    }
+} // namespace detail
+
+/// Builds a series from its elements, in order, and counts them. Each element
+/// is a `Measured<Q>`, an exact number (`127`, `10.3_r`, a `Rational`), or
+/// `not_measured`: `measured_series<Retained>(127, 10.3_r, formula::not_measured)`.
+/// `Q` is stated rather than deduced, so a `Measured` of another quantity is
+/// refused.
+template <Described Q, typename... Given>
+[[nodiscard]] constexpr auto measured_series(Given... given) noexcept
+{
+    static_assert((detail::RequireSeriesElementOf<Q, Given>::value && ...));
+    return MeasuredSeries<Q, sizeof...(Given)> { std::array<Measured<Q>, sizeof...(Given)> { detail::series_element<Q>(given)... } };
 }
 
 /// A series a person supplied, as opposed to one the apparatus reported: the

@@ -190,7 +190,7 @@ struct SeriesConstantNode: SeriesNodeBase
 };
 
 /// A per-element constant, its length counted from the values given:
-/// `series_constant<unit::One>(rat(1), rat(2), rat(3))`.
+/// `series_constant<unit::One>(1, 2, 3)`.
 template <Unit U, typename... Rs>
     requires(sizeof...(Rs) > 0) && (std::convertible_to<Rs, Rational> && ...)
 [[nodiscard]] constexpr auto series_constant(Rs... values) noexcept

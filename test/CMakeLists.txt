@@ -435,6 +435,19 @@ formula_add_negative_test(environment_series_length_mismatch
 formula_add_negative_test(measured_series_short
     "this series was given a different number of elements than its length")
 
+# A wrong element in measured_series: another quantity's measurement draws the
+# series' own message (once, and no overload list); a double or a wide
+# unsigned draws Rational's, and the series' message stays silent.
+formula_add_negative_test(measured_series_element_other_quantity
+    "formula: an element of measured_series<Q> is a Measured<Q> of that one quantity" EXPECT_COUNT 1
+    REJECT "no matching" "cannot convert" "could not convert")
+formula_add_negative_test(measured_series_element_double
+    "formula: a floating-point value is not an exact rational" EXPECT_COUNT 1
+    REJECT "an element of measured_series<Q>")
+formula_add_negative_test(measured_series_element_wide_unsigned
+    "formula: this unsigned type can hold values above Rational's maximum" EXPECT_COUNT 1
+    REJECT "an element of measured_series<Q>")
+
 # A series where one value is asked for: checked_evaluate, evaluate and
 # variant<Tag>. The REJECTs pin that nothing past the refusal reads the
 # environment, and that variants(...) and method(...) around a refused

@@ -119,7 +119,7 @@ namespace detail
     };
 } // namespace detail
 
-/// No limit on this side of the row: `LimitRow { limit(rat(60)), unbounded }`
+/// No limit on this side of the row: `LimitRow { limit(60), unbounded }`
 /// is "at least 60".
 inline constexpr Limit unbounded = detail::LimitAccess::none();
 

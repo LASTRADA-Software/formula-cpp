@@ -110,6 +110,13 @@ struct Band
     return { lowNumerator, lowDenominator, highNumerator, highDenominator };
 }
 
+/// Builds a `Band` from its low (inclusive) and high (exclusive) bound as
+/// exact numbers: `band(83.7_r, 97.3_r)`, `band(0, 127)`.
+[[nodiscard]] constexpr Band band(Rational lowBound, Rational highBound) noexcept
+{
+    return { lowBound.numerator(), lowBound.denominator(), highBound.numerator(), highBound.denominator() };
+}
+
 /// A table of bands, declared in ascending order. An alias template, not a
 /// wrapping struct: a spike compiled `template <BandTable Bands>` directly,
 /// with alias-template deduction, on all four compilers, so a second type

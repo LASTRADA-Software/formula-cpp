@@ -9,7 +9,7 @@
 ///     formula::without_outliers<formula::PerPass::MostExtreme, formula::OnLimit::Keep,
 ///                               formula::AtMost<2>, formula::KeepAtLeast<4>>(
 ///         formula::series<Mass, 6>,
-///         formula::deviation_from_mean(formula::rat(6, 100) * formula::pass_mean<Mass>),
+///         formula::deviation_from_mean(0.06_r * formula::pass_mean<Mass>),
 ///         formula::Verdict { "discard the determinations and repeat the test" },
 ///         formula::Citation { .title = "Example Standard", .section = "7.4" })
 ///
@@ -146,7 +146,7 @@ enum class CriterionKind : std::uint8_t
 // ------------------------------------------------------------ placeholders
 
 /// The current pass's mean, read inside a rejection's limit expression: a
-/// relative tolerance is `rat(6, 100) * pass_mean<Mass>`. `Q` names the
+/// relative tolerance is `0.06_r * pass_mean<Mass>`. `Q` names the
 /// quantity the mean is a value of.
 template <Described Q>
 struct PassMeanNode: NodeBase
@@ -220,14 +220,14 @@ struct GapToRange
     static constexpr CriterionKind kind = CriterionKind::GapToRange;
 };
 
-/// abs(x - pass mean) against @p limitExpression: `deviation_from_mean(rat(6, 100) * pass_mean<Mass>)`.
+/// abs(x - pass mean) against @p limitExpression: `deviation_from_mean(0.06_r * pass_mean<Mass>)`.
 template <Node Limit>
 [[nodiscard]] constexpr DeviationFromMean<Limit> deviation_from_mean(Limit limitExpression) noexcept
 {
     return DeviationFromMean<Limit> { limitExpression };
 }
 
-/// abs(x - pass mean) / s against @p limitExpression: `deviation_in_stddevs(rat(7, 4))`.
+/// abs(x - pass mean) / s against @p limitExpression: `deviation_in_stddevs(1.75_r)`.
 template <Node Limit>
 [[nodiscard]] constexpr DeviationInStddevs<Limit> deviation_in_stddevs(Limit limitExpression) noexcept
 {
@@ -235,7 +235,7 @@ template <Node Limit>
 }
 
 /// gap / range for the two extremes against @p limitExpression:
-/// `gap_to_range(critical_value<Sizes, unit::One>(pass_count, {...}) * rat(1, 100))`.
+/// `gap_to_range(critical_value<Sizes, unit::One>(pass_count, {...}) * 0.01_r)`.
 template <Node Limit>
 [[nodiscard]] constexpr GapToRange<Limit> gap_to_range(Limit limitExpression) noexcept
 {

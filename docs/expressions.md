@@ -163,11 +163,11 @@ which gives, verbatim but for the paths, shown relative to the repository,
 on MSVC's `cl.exe` (19.51, `cl-debug` preset):
 
 ```
-include\formula-cpp/environment.hpp(439): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
-include\formula-cpp/environment.hpp(439): note: the template instantiation context (the oldest one first) is
+include\formula-cpp/environment.hpp(486): error C2338: static assertion failed: 'formula: this environment provides no value for this quantity; the quantity and the environment appear in this diagnostic as the template arguments of RequireProvided'
+include\formula-cpp/environment.hpp(486): note: the template instantiation context (the oldest one first) is
 test\negative\quantity_alias_environment_missing.cpp(15): note: see reference to function template instantiation 'formula::Measured<Ratio> formula::Environment<formula::Measured<WaterVolume>>::get<Ratio>(void) noexcept const' being compiled
 test\negative\quantity_alias_environment_missing.cpp(15): note: see the first reference to 'formula::Environment<formula::Measured<WaterVolume>>::get' in 'main'
-include\formula-cpp/environment.hpp(584): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
+include\formula-cpp/environment.hpp(631): note: see reference to class template instantiation 'formula::detail::RequireProvided<Ratio,formula::Environment<formula::Measured<WaterVolume>>>' being compiled
 ```
 
 The prototype this layer replaced answered a missing input with a runtime

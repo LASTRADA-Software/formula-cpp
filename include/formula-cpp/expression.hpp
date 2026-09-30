@@ -84,14 +84,14 @@ struct ConstantNode: NodeBase
     static constexpr Dimension dimension = U.dimension;
 };
 
-/// A coefficient with a unit: `constant<unit::Millimetre>(rat(150))`.
+/// A coefficient with a unit: `constant<unit::Millimetre>(150)`.
 template <Unit U>
 [[nodiscard]] constexpr ConstantNode<U> constant(Rational value) noexcept
 {
     return ConstantNode<U> { {}, value };
 }
 
-/// A dimensionless coefficient: `number(rat(1, 4))`.
+/// A dimensionless coefficient: `number(0.25_r)`.
 ///
 /// There is deliberately no overload that guesses a unit for a bare number.
 /// Guessing wrong is exactly the failure the dimension layer exists to prevent.

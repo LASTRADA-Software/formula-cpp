@@ -493,3 +493,8 @@ TEST_CASE("a price converts from cents to euros exactly and never from euros to 
     REQUIRE_FALSE(absentInYen.has_value());
     CHECK(absentInYen.error() == ArithmeticError::DomainError);
 }
+
+TEST_CASE("Measured: an integer is a present value without spelling Rational", "[measured]")
+{
+    STATIC_REQUIRE(formula::Measured<SpecimenMass> { 139 }.value() == formula::Rational { 139 });
+}

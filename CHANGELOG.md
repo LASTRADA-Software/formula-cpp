@@ -13,6 +13,10 @@ change is recorded here.
   exponent (`1.5e-3_r` is 3/2000) and digit separators, and a minus sign is `Rational`'s own
   negation. A spelling `Rational` cannot hold, and one that is not a decimal (`0x1F_r`, and `017_r`,
   which C++ reads as octal), fails to compile.
+- `measured_series<Q>` takes plain numbers and `not_measured` beside `Measured<Q>`:
+  `measured_series<Retained>(127, 10.3_r, not_measured)`. An element that is none of these draws
+  one message. `band(low, high)` takes its bounds, and `breakpoint(key)` its key, as exact numbers:
+  `band(83.7_r, 97.3_r)`, `breakpoint(12.7_r)`. Every earlier spelling stays.
 
 ## [0.2.0] - 2026-09-30
 

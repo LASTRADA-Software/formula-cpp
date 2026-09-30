@@ -281,6 +281,40 @@ nobody could perform is refused even when there was no value to get wrong:
 an absent measurement, converted: still absent
 ```
 
+## Supplying values
+
+A measurement is written with the number it holds, not with `Rational`
+spelled out around it. An integer is a value as it stands, and `_r`
+(`using namespace formula::literals;`) is an exact decimal:
+
+```cpp
+using namespace formula::literals;
+
+formula::Measured<WaterVolume> const whole { 139 };
+formula::Measured<WaterVolume> const fractional { 10.3_r };
+```
+
+`10.3_r` is exactly 103/10. A plain `10.3` is refused with a message that
+says why -- it is the double nearest 10.3, not 10.3 -- and so is an unsigned
+integer wide enough to hold values a `Rational` cannot.
+
+`formula::measured_series<Q>` takes the same spellings, mixed freely, and
+`formula::not_measured` for a point that was not measured. It is the same
+as `Measured<Q>::absent()`, and either may stand in one series:
+
+```cpp
+constexpr auto screens = formula::measured_series<WaterVolume>(127, 10.3_r, formula::not_measured, 139);
+```
+
+The series has four elements and the third is absent, not zero. Each element
+may still be a `Measured<WaterVolume>`; a `Measured` of another quantity is
+refused, and only one message says so.
+
+A band's bounds and a breakpoint's key are numbers in the same way:
+`formula::band(83.7_r, 97.3_r)` and `formula::breakpoint(12.7_r)` are the
+bands and breakpoints that `band(837, 10, 973, 10)` and `breakpoint(127, 10)`
+spell as numerator over denominator, and those spellings stay.
+
 ## Bounds, precision and conversion
 
 `formula::checked_within_bounds` and `formula::checked_round_to_declared`
