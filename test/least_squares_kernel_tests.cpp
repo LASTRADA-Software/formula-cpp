@@ -88,7 +88,8 @@ TEST_CASE("the exact kernel's line is the closed form", "[least-squares][kernel]
 {
     // Intercept 19/2 mm, slope 19/28 mm/s, R^2 1083/1085, four points -- not
     // the secant 41/60 mm/s, not x-on-y.
-    // At run time: one exact fit makes dozens of wide divisions (the constant-evaluation rule).
+    // At run time: one exact fit makes dozens of wide divisions (a constant
+    // evaluation of it would exceed the compiler's step limit).
     auto const line = exact_fit(lineTimes, lineLengths);
     REQUIRE(line.has_value());
     CHECK(*line == std::array { rat(19, 2000), rat(19, 28'000), rat(1083, 1085), rat(4) });

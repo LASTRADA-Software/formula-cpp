@@ -90,8 +90,8 @@ inline constexpr std::size_t regressionSumLimbs = 12;
 }
 
 /// @p dividend over @p divisor when that divides exactly; nothing for a zero
-/// divisor or a remainder. The foundation's signed type adds, subtracts and
-/// multiplies; the solve also divides, and only ever exactly.
+/// divisor or a remainder. `WideSigned` adds, subtracts and multiplies; the
+/// solve also divides, and only ever exactly.
 template <std::size_t L>
 [[nodiscard]] constexpr std::optional<WideSigned<L>> exact_quotient(WideSigned<L> const& dividend,
                                                                     WideSigned<L> const& divisor) noexcept
