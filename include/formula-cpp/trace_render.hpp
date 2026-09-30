@@ -901,7 +901,8 @@ namespace detail
 
     /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit whose
     /// symbol is @p unitSymbolText, in `render()`'s words (`rounding_call`), for every step that rounds to
-    /// decimal places. No unit clause for a unit with no symbol.
+    /// one number of decimal places; an element-wise rounding has its own spelling. No unit clause for a
+    /// unit with no symbol.
     [[nodiscard]] inline std::string rounding_call_text(std::string const& inner,
                                                         int granularity,
                                                         std::string const& unitSymbolText)

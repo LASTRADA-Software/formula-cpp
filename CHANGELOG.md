@@ -308,6 +308,8 @@ may break it, and each such change is recorded here.
 - `linear_least_squares` given anything but a curve or two sets of observations says "formula:
   linear_least_squares fits a curve, or points and values read as observations; pair a domain series and a value
   series with curve(domain, values), or read both with observations<Q, Capacity>", which names both ways to call it.
+- `LinearLeastSquares::compute<double>`, the curve fit in `double`, refuses one point that is NaN with the fit's own
+  `DomainError`, as it refuses any single point; it answered NaN for the intercept and the slope before.
 - `OpaqueCallFailure` has a last member, `site` (`FailureSite`, default `FailureSite::ResultElement`), so an
   aggregate initialisation naming the members before it is unchanged; a structured binding over one now has five
   members, not four. Raw observations that fail to convert at observation k relay

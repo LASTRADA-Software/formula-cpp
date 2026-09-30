@@ -87,7 +87,7 @@ TEST_CASE("the exact kernel's line is the closed form", "[least-squares][kernel]
     // Intercept 19/2 mm, slope 19/28 mm/s, R^2 1083/1085, four points -- not
     // the secant 41/60 mm/s, not x-on-y.
     // At compile time: four points are few enough for a constant evaluation.
-    // The fixtures below, of more rows or more regressors, run at run time.
+    // Most fixtures below, of more rows or more regressors, run at run time.
     constexpr auto line = exact_fit(lineTimes, lineLengths);
     STATIC_REQUIRE(line.has_value());
     STATIC_REQUIRE(*line == std::array { rat(19, 2000), rat(19, 28'000), rat(1083, 1085), rat(4) });

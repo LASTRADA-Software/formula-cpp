@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -158,6 +159,20 @@ TEST_CASE("a fit whose domain values are all equal, or which has one point, is t
                                                                                   std::span<formula::Rational const> {});
     REQUIRE(!noPoints.has_value());
     CHECK(noPoints.error() == formula::ArithmeticError::DomainError);
+}
+
+TEST_CASE("a fit of one point in double is the fit's own domain error, even when the point is NaN", "[least-squares]")
+{
+    // NaN equals nothing, itself included: a check that compared the lone
+    // point with itself took it for a second, distinct point, and the fit
+    // answered NaN for the intercept and the slope. One point has nothing to
+    // be compared with; it is the fit's DomainError, as any single point is.
+    std::array<double, 1> const lonePoint { std::numeric_limits<double>::quiet_NaN() };
+    std::array<double, 1> const loneValue { 0.0103 };
+    auto const nanAlone = formula::LinearLeastSquares::compute<double>(std::span<double const> { lonePoint },
+                                                                       std::span<double const> { loneValue });
+    REQUIRE(!nanAlone.has_value());
+    CHECK(nanAlone.error() == formula::ArithmeticError::DomainError);
 }
 
 TEST_CASE("a fit handed spans of different lengths is a domain error, never a read past the shorter", "[least-squares]")
@@ -959,7 +974,7 @@ TEST_CASE("a line through observations gives the exact intercept, slope, r squar
           "[least-squares][observations]")
 {
     // At compile time: four observations are few enough for a constant
-    // evaluation. The fits of more points in this file, from fifteen to
+    // evaluation. The fits of more points in this file, from five to
     // fifty-eight, run at run time.
     // The curve fit's numbers, and two more: R^2 = 14.25^2 / (21 * 9.6875) =
     // 1083/1085, and the four observations made, not the capacity of eight.

@@ -949,7 +949,8 @@ formula_add_negative_test(rejection_of_single_value
     "formula: without_outliers rejects determinations from a sample"
     REJECT "no matching" "a sample statistic needs a sample")
 
-# Phase 12's series-quantity refusal, reused unchanged for a statistic.
+# A statistic reads its quantity as a series, so an overlay that fixes it with
+# one constant is refused, as for any quantity read as a series.
 formula_add_negative_test(sample_mean_overlay_constant_on_sample
     "formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values"
     REJECT "overrides a quantity that no variant or constraint of the method uses" "cannot see inside")

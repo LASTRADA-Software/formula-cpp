@@ -2,9 +2,10 @@
 // EXPECT: formula: this overlay fixes a quantity the method reads as a series or as raw observations; one constant cannot stand for many values
 //
 // `with_constant<Mass>` on a method whose variant is the mean of six
-// determinations of `Mass`. The statistic reads its quantity as a series, and
-// phase 12's refusal says so, unchanged; the "nobody reads it" refusal stays
-// silent, since a variant does read it. This must not compile.
+// determinations of `Mass`. The statistic reads its quantity as a series, so
+// the overlay refuses to fix it with one constant, in the message above; the
+// "nobody reads it" refusal stays silent, since a variant does read it. This
+// must not compile.
 #include <formula-cpp/formula.hpp>
 
 #include <tuple>

@@ -1243,9 +1243,10 @@ namespace detail
     /// @p inner rounded to @p places decimal places of the unit whose symbol is @p unitSymbol, in dialect
     /// @p D: `round(<inner>, to <places> dp of <unit>)`, and in LaTeX
     /// `\operatorname{round}_{<places>\,<unit>}(<inner>)`, the unit set upright and escaped (`latex_unit`).
-    /// No unit clause for a unit with no symbol. The one spelling of every node that rounds to decimal
-    /// places -- `RoundNode`, `RoundedRootNode`, `RoundedTranscendentalNode`, `RoundedOpaqueOutputNode` --
-    /// and of a trace's line for one (`trace_render.hpp`).
+    /// No unit clause for a unit with no symbol. The one spelling of every node that rounds to one
+    /// number of decimal places -- `RoundNode`, `RoundedRootNode`, `RoundedTranscendentalNode`,
+    /// `RoundedOpaqueOutputNode` -- and of a trace's line for one (`trace_render.hpp`). A rounding of
+    /// each element to its own places (`ElementwiseRoundNode`) has its own spelling.
     template <Dialect D>
     [[nodiscard]] std::string rounding_call(std::string const& inner, DecimalPlaces places, std::string const& unitSymbol)
     {
