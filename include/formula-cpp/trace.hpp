@@ -19,6 +19,7 @@
 #include <formula-cpp/constraint.hpp>
 #include <formula-cpp/critical_value.hpp>
 #include <formula-cpp/curve.hpp>
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/function.hpp>

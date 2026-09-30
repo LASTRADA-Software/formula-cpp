@@ -2,9 +2,11 @@
 #pragma once
 
 /// @file
-/// `std::format` for a `Rational` and a `Measured<Q>`: `std::format("{}",
-/// Rational { 3, 5 })` is `0.6`, and a measured 5.2 in a unit whose symbol is
-/// `kJ` formats as `5.2 kJ`.
+/// `std::format` for a `Rational`, a `Measured<Q>`, an `Outcome<Q>`, a `Unit`,
+/// a `Dimension` and every enumeration that has a `describe()`:
+/// `std::format("{}", Rational { 3, 5 })` is `0.6`, a measured 5.2 in a unit
+/// whose symbol is `kJ` formats as `5.2 kJ`, `dim::Density` as `L^-3 M^1`, and
+/// `ArithmeticError::Overflow` as `overflow in exact arithmetic`.
 ///
 /// **Opt-in.** This header is not included by `formula.hpp`: it includes
 /// `<format>`, which the umbrella deliberately keeps out, so that a consumer
@@ -12,14 +14,15 @@
 ///
 ///     #include <formula-cpp/format.hpp>
 ///
-/// **Include it in every translation unit that formats a `Rational` or a
-/// `Measured`, or asks whether it can** (`std::formattable`). What it
-/// declares are explicit specialisations of `std::formatter`, and an explicit
-/// specialisation must be seen before any use that would otherwise
-/// instantiate the primary template. A translation unit that asks without it
-/// gets `std::formatter`'s disabled primary for a type another translation
-/// unit formats, and a program whose translation units disagree on that is
-/// ill-formed, with no diagnostic required.
+/// **Include it in every translation unit that formats any of these types, or
+/// asks whether it can** (`std::formattable`). What it declares are
+/// specialisations of `std::formatter`, and a specialisation must be seen
+/// before any use that would otherwise instantiate the primary template. A
+/// translation unit that asks without it gets `std::formatter`'s disabled
+/// primary for a type another translation unit formats, and a program whose
+/// translation units disagree on that is ill-formed, with no diagnostic
+/// required. That holds for an enumeration too: `std::formattable<RetryEnd,
+/// char>` is true only where this header is included.
 ///
 /// **One rule, the library's throughout** (`number_text.hpp`): a decimal is
 /// written only when it is the exact value, and a rounded one only when the
@@ -28,20 +31,25 @@
 /// `≈` saying it was rounded; `{:.3HalfEven}` is `0.333`, a rounding the
 /// format asked for outright.
 ///
-/// **The reference is on the two specialisations**,
+/// **The reference is on the specialisations for a number**,
 /// `std::formatter<formula::Rational, char>` and
-/// `std::formatter<formula::Measured<Q>, char>`: the spec's grammar, one
+/// `std::formatter<formula::Measured<Q>, char>`, which `Outcome<Q>` follows:
+/// the spec's grammar, one
 /// example per form with the text it writes, the seven rounding-mode names
 /// and why no mode is assumed, how the width counts, how a spec the grammar
 /// does not allow fails, and when writing a value throws. The guide
 /// `docs/display.md`, section "Formatting with `std::format`", sets it out
 /// for a reader with the output of a real program beside each form.
 ///
-/// **The library owns these two specialisations of `std::formatter`.** A
-/// consumer who specialises `std::formatter<formula::Rational, char>` or
-/// `std::formatter<formula::Measured<Q>, char>` as well defines one entity
-/// twice, which breaks the one-definition rule. Only `char` formatting is
-/// provided: a unit's symbol is UTF-8 bytes.
+/// **The library owns these specialisations of `std::formatter`.** A consumer
+/// who specialises `std::formatter` for `formula::Rational`,
+/// `formula::Measured<Q>`, `formula::Outcome<Q>`, `formula::Unit` or
+/// `formula::Dimension` as well defines one entity twice, which breaks the
+/// one-definition rule. A consumer's own `std::formatter<E, char>` for an
+/// enumeration listed in `detail::formats_by_describe` does the same, and a
+/// generic one constrained on `std::is_enum_v` is ambiguous for those
+/// enumerations. Only `char` formatting is provided: a unit's symbol is UTF-8
+/// bytes.
 
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
@@ -456,6 +464,16 @@ template <Described Q, typename OutputIterator>
     return write_formatted_number(spelled.view(), view(shownIn.symbolText), formatSpec, destination);
 }
 
+/// @p shown's `describe()` words. Called from inside `formula::detail`, so
+/// that ordinary lookup stops at `formula::describe` and never reaches a
+/// consumer's global of the same name; the enumeration's own overload is found
+/// by argument-dependent lookup where the formatter is instantiated.
+template <typename E>
+[[nodiscard]] std::string_view described_words(E shown)
+{
+    return describe(shown);
+}
+
 /// Appends @p baseName and @p exponentValue to @p spelled as `L^2` or
 /// `L^(1/2)`, after a space when @p spelled is not empty; nothing when the
 /// exponent is zero.
@@ -691,7 +709,9 @@ struct formatter<formula::Measured<Q>, char>
 /// an empty outcome as `(not measured)`, and a verdict or an invalid outcome
 /// as its label, filled, aligned and padded to the spec's width. A rounding in
 /// the spec does not apply to words, but a spec the grammar does not allow is
-/// refused as it is for a `Measured<Q>`.
+/// refused as it is for a `Measured<Q>`. A label is right-aligned by default,
+/// as a number is; the `Unit`, `Dimension` and enumeration formatters align
+/// left by default, as a string does.
 ///
 ///     std::format("{}", Outcome<Q>::value(Measured<Q> { Rational { 26, 5 } }, ValueSource::Derived))  5.2 kJ
 ///     std::format("{}", Outcome<Q>::empty())                                                           (not measured)
@@ -729,6 +749,9 @@ struct formatter<formula::Outcome<Q>, char>
 
 /// `std::format` of a `formula::Unit`: its symbol, filled and aligned as a
 /// string is.
+///
+/// Owned by this library: a consumer's own specialisation of it would define
+/// it twice, which breaks the one-definition rule.
 template <>
 struct formatter<formula::Unit, char>: formatter<string_view, char>
 {
@@ -744,6 +767,9 @@ struct formatter<formula::Unit, char>: formatter<string_view, char>
 /// `L^2 M^-3` or `L^(1/2)` (base names `L`, `M`, `T`, `I`, `Theta`, `N`, `J`,
 /// each left out at exponent 0), then any named base by its name, and
 /// `(dimensionless)` for a pure number. Filled and aligned as a string is.
+///
+/// Owned by this library: a consumer's own specialisation of it would define
+/// it twice, which breaks the one-definition rule.
 template <>
 struct formatter<formula::Dimension, char>: formatter<string_view, char>
 {
@@ -759,6 +785,9 @@ struct formatter<formula::Dimension, char>: formatter<string_view, char>
 /// `std::format` of a formula enumeration that `detail::formats_by_describe`
 /// lists: its `describe()` words, filled and aligned as a string is. The
 /// enumeration's own header must be included.
+///
+/// Owned by this library: a consumer's own `std::formatter` for one of those
+/// enumerations, or a generic one for every enumeration, collides with it.
 template <typename E>
     requires formula::detail::formats_by_describe<E>
 struct formatter<E, char>: formatter<string_view, char>
@@ -767,7 +796,7 @@ struct formatter<E, char>: formatter<string_view, char>
     template <typename FormatContext>
     auto format(E shown, FormatContext& formatContext) const
     {
-        return formatter<string_view, char>::format(describe(shown), formatContext);
+        return formatter<string_view, char>::format(formula::detail::described_words(shown), formatContext);
     }
 };
 } // namespace std

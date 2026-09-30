@@ -17,6 +17,7 @@
 /// vocabulary that produces them arrives with constraints, and nothing in this
 /// header needs to know it.
 
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/measured.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>

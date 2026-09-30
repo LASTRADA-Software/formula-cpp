@@ -13,6 +13,7 @@
 /// public fields; the convenient types appear at the point of use.
 
 #include <formula-cpp/dimension.hpp>
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/rational.hpp>
 #include <formula-cpp/rounding.hpp>
 

@@ -21,6 +21,7 @@
 /// by `documented()`.
 
 #include <formula-cpp/citation.hpp>
+#include <formula-cpp/error.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/predicate.hpp>
 #include <formula-cpp/sink.hpp>

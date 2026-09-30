@@ -6,6 +6,7 @@
 // same value and style.
 #include <formula-cpp/format.hpp>
 #include <formula-cpp/formula.hpp>
+#include <formula-cpp/trace.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -315,6 +316,21 @@ TEST_CASE("an outcome writes its value, or says why it has none", "[format]")
     CHECK(std::format("{}", Held::empty()) == "(not measured)");
     CHECK(std::format("{:>18}", Held::verdict({ "repeat the test" })) == "   repeat the test");
     CHECK(std::format("{:.2HalfEven}", Held::invalid({ "discarded" })) == "discarded");
+    // A label is filled and aligned like a number: right by default, and the
+    // fill the spec names; a rounding in the spec does not touch it.
+    CHECK(std::format("{:*<12.2HalfEven}", Held::invalid({ "discarded" })) == "discarded***");
+    CHECK(std::format("{:18}", Held::verdict({ "repeat the test" })) == "   repeat the test");
+    CHECK(std::format("{:>16}", Held::empty()) == "  (not measured)");
+}
+
+TEST_CASE("an outcome refuses a spec the grammar does not allow, whatever it holds", "[format]")
+{
+    using Held = formula::Outcome<ImpactWork>;
+    Held const verdict = Held::verdict({ "repeat the test" });
+    Held const value = Held::value(Measured<ImpactWork> { Rational { 26, 5 } }, formula::ValueSource::Derived);
+    CHECK(refusalOf("{:.2}", verdict).starts_with("formula: this number format rounds but names no rounding mode"));
+    CHECK(refusalOf("{:.2}", value).starts_with("formula: this number format rounds but names no rounding mode"));
+    CHECK(refusalOf("{:x}", verdict).starts_with("formula: this number format is not one formula-cpp understands"));
 }
 
 TEST_CASE("a unit is its symbol, a dimension its exponents", "[format]")
@@ -324,6 +340,10 @@ TEST_CASE("a unit is its symbol, a dimension its exponents", "[format]")
     CHECK(std::format("{}", formula::dim::Mass / formula::dim::Volume) == "L^-3 M^1");
     CHECK(std::format("{}", formula::nth_root(formula::dim::Length, 2)) == "L^(1/2)");
     CHECK(std::format("{}", formula::dim::Scalar) == "(dimensionless)");
+    // A named base follows the seven SI exponents, by its name.
+    CHECK(std::format("{}", formula::base_dimension("EUR") / formula::dim::Energy) == "L^-2 M^-1 T^2 EUR^1");
+    CHECK(std::format("{}", formula::base_dimension("EUR")) == "EUR^1");
+    CHECK(std::format("[{:<17}]", formula::dim::Scalar) == "[(dimensionless)  ]");
 }
 
 TEST_CASE("a described enumeration is its words, aligned like a string", "[format]")
@@ -331,4 +351,24 @@ TEST_CASE("a described enumeration is its words, aligned like a string", "[forma
     CHECK(std::format("{}", formula::ArithmeticError::Overflow) == "overflow in exact arithmetic");
     CHECK(std::format("[{:<12}]", formula::ConstraintOutcomeKind::Violated) == "[violated    ]");
     CHECK(std::format("{}", formula::ValueSource::ManuallyEntered) == "manually entered");
+    CHECK(std::format("{}", formula::RetryEnd::Accepted) == formula::describe(formula::RetryEnd::Accepted));
+}
+
+TEST_CASE("every enumeration with a describe() is formattable, and no other", "[format]")
+{
+    STATIC_REQUIRE(std::formattable<formula::ArithmeticError, char>);
+    STATIC_REQUIRE(std::formattable<formula::RoundingMode, char>);
+    STATIC_REQUIRE(std::formattable<formula::BoundsCheck, char>);
+    STATIC_REQUIRE(std::formattable<formula::SnapTie, char>);
+    STATIC_REQUIRE(std::formattable<formula::Monotone, char>);
+    STATIC_REQUIRE(std::formattable<formula::CumulativeDirection, char>);
+    STATIC_REQUIRE(std::formattable<formula::FailureSite, char>);
+    STATIC_REQUIRE(std::formattable<formula::ValueSource, char>);
+    STATIC_REQUIRE(std::formattable<formula::OutcomeKind, char>);
+    STATIC_REQUIRE(std::formattable<formula::ConstraintOutcomeKind, char>);
+    STATIC_REQUIRE(std::formattable<formula::RetryEnd, char>);
+    STATIC_REQUIRE(std::formattable<formula::Branch, char>);
+    // An enumeration with no describe() is not written: the formatter is not
+    // a blanket one for every enumeration.
+    STATIC_REQUIRE(!std::formattable<formula::CurveBreak, char>);
 }

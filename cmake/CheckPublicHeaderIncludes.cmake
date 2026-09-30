@@ -14,8 +14,9 @@
 # detail/latex_math.hpp qualifies as a part of render.hpp: it builds the
 # `std::string` render.hpp puts inside a LaTeX `\mathrm{...}`, and render.hpp
 # is its only includer, which check 2 keeps true. format.hpp qualifies too --
-# it specialises std::formatter, which needs <format>, and writes its output
-# with a plain loop, so that it includes nothing else from that list itself.
+# it specialises std::formatter, which needs <format>, and spells a dimension
+# as a std::string, so it names <string> too. It includes neither <vector>
+# nor <iostream>, and writes a number with a plain loop.
 #
 # Being named here does not, by itself, permit anything: check 2 below
 # enforces that no other header may reach one of these, which is what stops

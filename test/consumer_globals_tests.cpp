@@ -74,7 +74,10 @@
 // a measured value spelled by `number_text` in each notation, with
 // `checked_number_text`, `decimal_text`, `fraction_text` and
 // `exact_decimal_text`; a `Rational` and a measured value written by
-// `std::format`, aligned and rounded; and a quantity declared by alias at
+// `std::format`, aligned and rounded, and an `Outcome`, a `Unit`, a
+// `Dimension` and an enumeration written the same way; `symbol_of` with no
+// vocabulary, and `render` and `document` given `RenderOptions` and none;
+// and a quantity declared by alias at
 // global scope, so that its tag is one more global. A template it does
 // not reach is not guarded by it.
 // `consumer_globals_run_tests.cpp` checks that each of these computed what
@@ -1246,10 +1249,18 @@ ConsumerGlobalsProbe probe_consumer_globals()
                == formula::render(formula::var<EdgeX> * formula::Rational { 3, 5 },
                                   formula::DefaultVocabulary {},
                                   formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() }));
+    probe.checks.push_back(
+        formula::document(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                          formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() })
+            .formula
+        == formula::document(formula::var<EdgeX> * formula::Rational { 3, 5 },
+                             formula::DefaultVocabulary {},
+                             formula::RenderOptions { .numbers = formula::NumberStyle::exact_decimal() })
+               .formula);
 
     // The words of the enumerations a constraint, a retry and a series
-    // failure report, which a consumer's own function of the same name must
-    // not make ambiguous.
+    // failure report, called qualified: this checks that they answer, and
+    // that the header declaring them compiles beside the consumer's globals.
     probe.checks.push_back(formula::describe(formula::ConstraintOutcomeKind::Violated) == "violated"
                            && !formula::describe(formula::RetryEnd::Accepted).empty()
                            && !formula::describe(formula::FailureSite::ResultElement).empty());

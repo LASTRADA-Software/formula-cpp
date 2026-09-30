@@ -41,6 +41,11 @@ change is recorded here.
 
 ### Changed
 
+- `<formula-cpp/format.hpp>` now specialises `std::formatter` for `formula::Outcome<Q>`,
+  `formula::Unit`, `formula::Dimension` and every enumeration that has a `describe()`, as it
+  already did for `Rational` and `Measured<Q>`. A program that defines its own `std::formatter`
+  for one of these types now defines it twice, and a generic `std::formatter` for every
+  enumeration is ambiguous for them; remove it and use the library's.
 - `checked_convert_to` refuses a conversion between measured quantities of different dimensions
   where the call is written, with or without a value present. Code that converted, say, a volume
   into a mass, or euros into yen, used to compile and get `ArithmeticError::DomainError` at run
