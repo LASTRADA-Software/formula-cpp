@@ -4594,11 +4594,13 @@ template <typename Result = detail::ResultOfYields,
 /// The trace of evaluating @p expression for @p Result in @p environmentGiven --
 /// what a `RecordingSink` records during `checked_evaluate<Result>(expression,
 /// environmentGiven, sink)` -- whether the evaluation succeeds or fails. A
-/// failure while the expression is evaluated is the trace's last step; one
-/// converting the result into `Result`'s unit comes after it and is not in the
-/// trace, so read the outcome where that matters. For showing how a number was
-/// reached, or where it could not be: the outcome is not returned, so read it
-/// with `checked_evaluate` or `checked_explain` where it is used.
+/// failure while the expression is evaluated is the trace's last step (at
+/// every node that reports to its sink, as each of this library's does; see
+/// `docs/tracing.md`, section "The extension point"); one converting the
+/// result into `Result`'s unit comes after it and is not in the trace, so read
+/// the outcome where that matters. For showing how a number was reached, or
+/// where it could not be: the outcome is not returned, so read it with
+/// `checked_evaluate` or `checked_explain` where it is used.
 ///
 /// **Empty when @p environmentGiven holds an `entered` value for `Result`:**
 /// that value is returned without evaluating, as `explain` says, so nothing
@@ -4637,13 +4639,15 @@ template <typename Result = detail::ResultOfYields,
 
 /// The trace of the evaluation of @p expression in SI units with no result
 /// quantity named: the steps `trace_of<Q>` records for a derived result, and a
-/// failure is the last of them, since nothing is converted afterwards.
+/// failure is the last of them (at every node that reports to its sink, as
+/// `trace_of` says), since nothing is converted afterwards.
 ///
-/// Naming no result, it consults no `entered` value: it traces the expression
-/// even where `checked_evaluate<Q>` returns a typed-in value and records
-/// nothing, so a page showing it beside that value shows a derivation of a
-/// number that is not the one reported. For display, as `trace_of` is: read
-/// the outcome with `checked_evaluate_si` where it is used.
+/// Naming no result, it consults no `entered` value for a result; an input
+/// typed in is read as any other. It traces the expression even where
+/// `checked_evaluate<Q>` returns a typed-in value and records nothing, so a
+/// page showing it beside that value shows a derivation of a number that is
+/// not the one reported. For display, as `trace_of` is: read the outcome with
+/// `checked_evaluate_si` where it is used.
 ///
 /// Every step naming a quantity writes its symbol as @p vocabulary says.
 template <Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
