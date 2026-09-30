@@ -948,16 +948,25 @@ template <detail::FixedString Name, OpaqueOperation Op, typename... Inputs>
 
 /// Output @p I of the opaque call @p Call, rounded to @p Places decimal places
 /// of @p U under @p Mode -- the decimal the operation's true output rounds to,
-/// exact, even where that output is a fraction too wide for `Rational`: the
-/// fused counterpart of `opaque_output`, as `rounded_sqrt` is of `rounded<>`
-/// around a root. `rounded<>(opaque_output<>(...))` keeps meaning what it
-/// says, an exact output rounded afterwards, which fails where the exact
-/// output does.
+/// exact: the fused counterpart of `opaque_output`, as `rounded_sqrt` is of
+/// `rounded<>` around a root. Where that output is a fraction too wide for
+/// `Rational`, it is still answered for an operation that states its outputs
+/// in wider integers (`detail::declares_compute_exact`); any other operation's
+/// output is computed in `Rational`, rounded exactly, and fails with
+/// `Overflow` where `opaque_output` would. `rounded<>(opaque_output<>(...))`
+/// keeps meaning what it says, an exact output rounded afterwards, which fails
+/// where the exact output does.
 ///
 /// Its dimension is the output's, and it rounds in `U`, never in the coherent
 /// unit. @p Origin is `opaque_output`'s (`detail::UnnamedOpaqueOutput`); leave
-/// it to its default. No `{}` initialiser on `call`, deliberately (defect
-/// class 4).
+/// it to its default.
+///
+/// No `{}` initialiser on `call`, deliberately, as on every member that holds
+/// an expression or a call: a `{}` default member initialiser is instantiated
+/// outside the immediate context of a default-constructibility probe, such as
+/// the one `std::tuple`'s default constructor makes, and turns the probe into
+/// a hard error, as measured on clang++, clang-cl and g++ for the members
+/// `Corrections` (`lookup.hpp`) describes.
 template <std::size_t I, typename Call, Unit U, DecimalPlaces Places, RoundingMode Mode,
           typename Origin = detail::NamedOpaqueOutput>
 struct RoundedOpaqueOutputNode: NodeBase

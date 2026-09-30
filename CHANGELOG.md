@@ -176,7 +176,9 @@ may break it, and each such change is recorded here.
   input nobody measured, and what is refused.
 - `rounded_output<"name", U, Places, Mode>(call)`: one output of an opaque call, rounded to `Places`
   decimal places of the unit `U` under `Mode`, exactly -- the decimal the operation's true output
-  rounds to, even where that output is a fraction too wide for `Rational`. It rounds in `U`, never in
+  rounds to, even where that output is a fraction too wide for `Rational`, for an operation that
+  states its outputs in wider integers; any other operation's output is computed in `Rational`,
+  rounded exactly, and fails with `Overflow` where `opaque_output` would. It rounds in `U`, never in
   the coherent unit, and its dimension is the output's. It is refused, in the library's words, for an
   output the operation does not declare, for a unit that does not measure the output's dimension and
   for a unit with an offset, and it does not compile under `Rep = double`, as no rounding node does.
