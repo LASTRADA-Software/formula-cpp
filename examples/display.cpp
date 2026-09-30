@@ -129,16 +129,21 @@ int main()
     // ---- 1. A trace in every style --------------------------------------------------
     std::println("== 1. A trace in every style ==\n");
 
-    auto const moisture = formula::explain<MoistureContent>(moistureContent, specimen);
-    check(formula::number_of(moisture.outcome) == Rational { 2680, 237 }, "the moisture content is 2680/237 %");
+    auto const moisture = formula::checked_explain<MoistureContent>(moistureContent, specimen);
+    if (!moisture)
+    {
+        std::println("moisture content: {}", moisture.error().error);
+        return 1;
+    }
+    check(formula::number_of(moisture->outcome) == Rational { 2680, 237 }, "the moisture content is 2680/237 %");
 
     auto const exactStyle = NumberStyle::exact_decimal();
     auto const roundedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
     auto const paddedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded);
-    std::string const fractions = formula::render_trace(moisture.trace, { .maxSteps = 20 });
-    std::string const exactDecimals = formula::render_trace(moisture.trace, { .maxSteps = 20, .numbers = exactStyle });
-    std::string const rounded = formula::render_trace(moisture.trace, { .maxSteps = 20, .numbers = roundedStyle });
-    std::string const padded = formula::render_trace(moisture.trace, { .maxSteps = 20, .numbers = paddedStyle });
+    std::string const fractions = formula::render_trace(moisture->trace, { .maxSteps = 20 });
+    std::string const exactDecimals = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = exactStyle });
+    std::string const rounded = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = roundedStyle });
+    std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = paddedStyle });
     std::println("-- fractions, the default --\n{}", fractions);
     std::println("-- exact decimals --\n{}", exactDecimals);
     std::println("-- rounded where no decimal ends --\n{}", rounded);
@@ -150,11 +155,16 @@ int main()
     // ---- 2. A unit nobody declared, and a comparison ---------------------------------
     std::println("== 2. A unit nobody declared, and a comparison ==\n");
 
-    auto const dish = formula::explain<DishMass>(dishMass, weighings);
-    check(dish.outcome.is_value(), "the dish's mass is a value");
-    std::string const dishTraceText = formula::render_trace(dish.trace, { .maxSteps = 20, .numbers = paddedStyle });
+    auto const dish = formula::checked_explain<DishMass>(dishMass, weighings);
+    if (!dish)
+    {
+        std::println("the dish's mass: {}", dish.error().error);
+        return 1;
+    }
+    check(dish->outcome.is_value(), "the dish's mass is a value");
+    std::string const dishTraceText = formula::render_trace(dish->trace, { .maxSteps = 20, .numbers = paddedStyle });
     std::println("{}", dishTraceText);
-    formula::NumberText const dishText = formula::number_text(dish.outcome.measurement(), roundedStyle);
+    formula::NumberText const dishText = formula::number_text(dish->outcome.measurement(), roundedStyle);
     std::println("the dish's mass in its declared grams: {}\n", dishText.view());
     check(dishTraceText.contains("t = 4.21 g; 4.23 g; 4.26 g\n"), "padding cuts no decimal short");
     check(dishTraceText.contains("3. 1/3\n"), "a typed number is never rounded");
@@ -188,9 +198,14 @@ int main()
     check(dishPage.rejections.front().limit.contains("1/30"), "nor in a documentation page's limit");
 
     auto const paddedDecimals = NumberStyle::exact_decimal(DecimalPadding::Padded);
-    auto const tare = formula::explain<DryMass>(wholeTare, specimen);
+    auto const tare = formula::checked_explain<DryMass>(wholeTare, specimen);
+    if (!tare)
+    {
+        std::println("the dry mass less the tare: {}", tare.error().error);
+        return 1;
+    }
     std::string const tareFormula = formula::render(wholeTare, { .numbers = paddedDecimals });
-    std::string const tareTraceText = formula::render_trace(tare.trace, { .maxSteps = 20, .numbers = paddedDecimals });
+    std::string const tareTraceText = formula::render_trace(tare->trace, { .maxSteps = 20, .numbers = paddedDecimals });
     std::println("formula, padded style: {}", tareFormula);
     std::println("trace, padded style:\n{}", tareTraceText);
     check(tareFormula == "m_d - 24 g" && tareTraceText.contains("2. 24.0 g\n"),
@@ -200,7 +215,7 @@ int main()
     // ---- 4. number_text and decimal_text ------------------------------------------------
     std::println("== 4. number_text and decimal_text ==\n");
 
-    formula::Measured<MoistureContent> const w = moisture.outcome.measurement();
+    formula::Measured<MoistureContent> const w = moisture->outcome.measurement();
     formula::Measured<MoistureContent> const notMeasured {};
     formula::NumberText const measuredText = formula::number_text(w, roundedStyle);
     formula::NumberText const absentText = formula::number_text(notMeasured, roundedStyle);
@@ -259,19 +274,19 @@ int main()
     // ---- 6. Outcomes, units, dimensions and enumerations -------------------------------
     std::println("== 6. Outcomes, units, dimensions and enumerations ==\n");
 
-    // What a rejection of the dish's weighings gives when it cannot settle, and
-    // a dish nobody weighed.
+    // A verdict as a rejection of the dish's weighings yields it when it cannot
+    // settle, built directly here, and a dish nobody weighed.
     auto const reweigh = formula::Outcome<DishMass>::verdict({ "weigh the dish again" });
     auto const unweighed = formula::Outcome<DishMass>::empty();
     FormatRow const words[] = {
-        FORMAT_ROW("2680/237 %", std::format("{}", moisture.outcome)),
-        FORMAT_ROW("\xe2\x89\x88" "11.3 %", std::format("{:~HalfEven}", moisture.outcome)),
+        FORMAT_ROW("2680/237 %", std::format("{}", moisture->outcome)),
+        FORMAT_ROW("\xe2\x89\x88" "11.3 %", std::format("{:~HalfEven}", moisture->outcome)),
         FORMAT_ROW("(not measured)", std::format("{}", unweighed)),
         FORMAT_ROW("  weigh the dish again", std::format("{:22}", reweigh)),
         FORMAT_ROW("g   ", std::format("{:4}", unit::Gram)),
         FORMAT_ROW("M^1", std::format("{}", unit::Gram.dimension)),
         FORMAT_ROW("(dimensionless)", std::format("{}", unit::Percent.dimension)),
-        FORMAT_ROW("derived", std::format("{}", moisture.outcome.source())),
+        FORMAT_ROW("derived", std::format("{}", moisture->outcome.source())),
         FORMAT_ROW("nearest, ties to even", std::format("{}", RoundingMode::HalfEven)),
     };
     for (FormatRow const& row: words)

@@ -135,6 +135,9 @@ from "this is zero", and the difference matters when someone signs off on it.
 
 ### A number a person typed in never masquerades as a computed one
 
+The `0.5_r` below needs `using namespace formula::literals;` in scope, as the
+example has it:
+
 ```cpp
 auto const batch = formula::environment(formula::Measured<WaterVolume> { 180 },
                                         formula::Measured<CementVolume> { 300 },

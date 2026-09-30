@@ -111,22 +111,28 @@ int main()
     // A generic density and a generic volume, multiplied to a mass -- the
     // point is that the RESULT of a calculation, not a literal, gets rounded
     // to the unit it will be reported in. unit::Kilogram declares 3 decimals.
-    // Nothing here can make the rounding fail, so this uses the throwing
-    // round_to_declared rather than its checked_ twin.
+    // The rounding returns a std::expected -- the rounded value, or the
+    // arithmetic error that stopped it -- and it is checked before it is read.
     Rational const genericDensity { 1000, 7 }; // an arbitrary density, in kg/m3
     Rational const computedMass = genericDensity * volumeInCubicMetres;
-    Rational const roundedMass = formula::round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
+    auto const roundedMass =
+        formula::checked_round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
+    if (!roundedMass)
+    {
+        std::println("rounding the computed mass: {}", roundedMass.error());
+        return 1;
+    }
 
     std::println("computed mass = {:/} kg", computedMass);
     std::println("rounded to kg's declared precision ({} places) = {} kg",
                  formula::declared_decimals(unit::Kilogram).value,
-                 roundedMass);
+                 *roundedMass);
 
     // 450/7 kg is 64.2857..., which at kilogram's three declared places is
     // 64.286. Asserted, not merely printed: the documentation quotes this
     // number, and without a check here changing the rounding mode silently
     // changes it while the example still reports success.
-    bool const massRoundsAsDocumented = roundedMass == 64.286_r;
+    bool const massRoundsAsDocumented = *roundedMass == 64.286_r;
 
     // ---- 7. Bounds: NotChecked is not a verdict, WithinBounds is ----
     constexpr Unit BoundedGauge { .dimension = dim::Scalar,
@@ -136,16 +142,24 @@ int main()
                                   .decimals = 1,
                                   .bounds = formula::bounds(0, 1, 100, 1) };
 
-    // Neither unit declares a malformed range, the one thing that makes this
-    // check fail, so its std::expected is read directly.
-    BoundsCheck const unboundedVerdict = *formula::checked_within_bounds(1000000_r, unit::Litre);
-    BoundsCheck const boundedVerdict = *formula::checked_within_bounds(42_r, BoundedGauge);
+    auto const unboundedVerdict = formula::checked_within_bounds(1'000'000_r, unit::Litre);
+    if (!unboundedVerdict)
+    {
+        std::println("bounds-checking a litre: {}", unboundedVerdict.error());
+        return 1;
+    }
+    auto const boundedVerdict = formula::checked_within_bounds(42_r, BoundedGauge);
+    if (!boundedVerdict)
+    {
+        std::println("bounds-checking the gauge: {}", boundedVerdict.error());
+        return 1;
+    }
 
     // `{}` of a BoundsCheck writes its describe() words.
-    std::println("unbounded unit (litre) reports: {}", unboundedVerdict);
-    std::println("bounded gauge at 42%: {}", boundedVerdict);
+    std::println("unbounded unit (litre) reports: {}", *unboundedVerdict);
+    std::println("bounded gauge at 42%: {}", *boundedVerdict);
     bool const boundsBehaveAsDocumented =
-        unboundedVerdict == BoundsCheck::NotChecked && boundedVerdict == BoundsCheck::WithinBounds;
+        *unboundedVerdict == BoundsCheck::NotChecked && *boundedVerdict == BoundsCheck::WithinBounds;
 
     // ---- 8. A base dimension the SI does not have: money ----
     //

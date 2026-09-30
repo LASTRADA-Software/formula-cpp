@@ -69,12 +69,19 @@ inline constexpr auto specimen =
 
 `25.5_r` is the exact number its digits spell, 51/2
 (`using namespace formula::literals;`,
-[Writing an exact decimal](numbers.md#writing-an-exact-decimal)). `explain`
-evaluates the formula and returns its outcome together with a `Trace` of
-every step ([Tracing](tracing.md)):
+[Writing an exact decimal](numbers.md#writing-an-exact-decimal)).
+`checked_explain` evaluates the formula and returns a `std::expected`: the
+outcome together with a `Trace` of every step ([Tracing](tracing.md)), or the
+arithmetic error with the steps recorded up to it. The example checks it
+before reading either, as it checks every `std::expected` on this page:
 
 ```cpp
-auto const moisture = formula::explain<MoistureContent>(moistureContent, specimen);
+auto const moisture = formula::checked_explain<MoistureContent>(moistureContent, specimen);
+if (!moisture)
+{
+    std::println("moisture content: {}", moisture.error().error);
+    return 1;
+}
 ```
 
 `render_trace` takes the style in `TraceRenderOptions::numbers`. One trace,
@@ -84,10 +91,10 @@ four ways:
 auto const exactStyle = NumberStyle::exact_decimal();
 auto const roundedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven);
 auto const paddedStyle = NumberStyle::approximate_decimal(RoundingMode::HalfEven, DecimalPadding::Padded);
-std::string const fractions = formula::render_trace(moisture.trace, { .maxSteps = 20 });
-std::string const exactDecimals = formula::render_trace(moisture.trace, { .maxSteps = 20, .numbers = exactStyle });
-std::string const rounded = formula::render_trace(moisture.trace, { .maxSteps = 20, .numbers = roundedStyle });
-std::string const padded = formula::render_trace(moisture.trace, { .maxSteps = 20, .numbers = paddedStyle });
+std::string const fractions = formula::render_trace(moisture->trace, { .maxSteps = 20 });
+std::string const exactDecimals = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = exactStyle });
+std::string const rounded = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = roundedStyle });
+std::string const padded = formula::render_trace(moisture->trace, { .maxSteps = 20, .numbers = paddedStyle });
 ```
 
 ```text
@@ -395,7 +402,7 @@ The example spells the specimen's moisture content, `w`, and a moisture
 content nobody measured:
 
 ```cpp
-formula::Measured<MoistureContent> const w = moisture.outcome.measurement();
+formula::Measured<MoistureContent> const w = moisture->outcome.measurement();
 formula::Measured<MoistureContent> const notMeasured {};
 formula::NumberText const measuredText = formula::number_text(w, roundedStyle);
 formula::NumberText const absentText = formula::number_text(notMeasured, roundedStyle);
@@ -643,19 +650,23 @@ is included. The library owns these specialisations as well: a consumer's own
 enumerations defines it twice, and a generic one for every enumeration is
 ambiguous for them.
 
-`moisture.outcome` is the moisture content's outcome from the first section.
-The example adds a verdict and an empty outcome:
+`moisture->outcome` is the moisture content's outcome from the first section,
+read after its check. The example adds a verdict as a rejection yields it,
+built directly here with `Outcome<DishMass>::verdict`, and an empty outcome:
 
 ```cpp
-// What a rejection of the dish's weighings gives when it cannot settle, and
-// a dish nobody weighed.
+// A verdict as a rejection of the dish's weighings yields it when it cannot
+// settle, built directly here, and a dish nobody weighed.
 auto const reweigh = formula::Outcome<DishMass>::verdict({ "weigh the dish again" });
 auto const unweighed = formula::Outcome<DishMass>::empty();
 ```
 
+An output is quoted, in the table and in the program's output below, where a
+leading or trailing space would be missed.
+
 | Value | Written as | Example | Output |
 |---|---|---|---|
-| an `Outcome` holding a value | its `Measured`, in the same spec | `std::format("{:~HalfEven}", moisture.outcome)` | `≈11.3 %` |
+| an `Outcome` holding a value | its `Measured`, in the same spec | `std::format("{:~HalfEven}", moisture->outcome)` | `≈11.3 %` |
 | an empty `Outcome` | `(not measured)`, whatever the body | `std::format("{}", unweighed)` | `(not measured)` |
 | a verdict or an invalid `Outcome` | its label, right-aligned by default | `std::format("{:22}", reweigh)` | `"  weigh the dish again"` |
 | a `Unit` | its symbol, left-aligned by default | `std::format("{:4}", unit::Gram)` | `"g   "` |
@@ -666,14 +677,14 @@ The example prints every row, and checks each against the text in its
 source:
 
 ```text
-std::format("{}", moisture.outcome)                            2680/237 %
-std::format("{:~HalfEven}", moisture.outcome)                  ≈11.3 %
+std::format("{}", moisture->outcome)                           2680/237 %
+std::format("{:~HalfEven}", moisture->outcome)                 ≈11.3 %
 std::format("{}", unweighed)                                   (not measured)
 std::format("{:22}", reweigh)                                  "  weigh the dish again"
 std::format("{:4}", unit::Gram)                                "g   "
 std::format("{}", unit::Gram.dimension)                        M^1
 std::format("{}", unit::Percent.dimension)                     (dimensionless)
-std::format("{}", moisture.outcome.source())                   derived
+std::format("{}", moisture->outcome.source())                  derived
 std::format("{}", RoundingMode::HalfEven)                      nearest, ties to even
 ```
 

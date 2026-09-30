@@ -284,7 +284,13 @@ range (`bounds`), and both apply to a *computed* value, not just to a literal:
 
 ```cpp
 Rational const computedMass = genericDensity * volumeInCubicMetres;
-Rational const roundedMass = formula::round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
+auto const roundedMass =
+    formula::checked_round_to_declared(computedMass, unit::Kilogram, RoundingMode::HalfAwayFromZero);
+if (!roundedMass)
+{
+    std::println("rounding the computed mass: {}", roundedMass.error());
+    return 1;
+}
 ```
 
 ```text
@@ -295,17 +301,18 @@ rounded to kg's declared precision (3 places) = 64.286 kg
 `formula::declared_decimals` returns the rounding layer's own `DecimalPlaces`
 type, not a bare `int`, so it plugs directly into `formula::round` /
 `formula::checked_round` (see [`docs/numbers.md`](numbers.md)).
-`round_to_declared` is the two calls composed. It throws
-`ArithmeticException` where the rounding cannot be represented, as `convert`
-does, and the example uses it because nothing in it can fail.
-`checked_round_to_declared` is the same thing spelled to return a
-`std::expected`, like every other `checked_` function here, for a caller
-that handles the error.
+`checked_round_to_declared` is the two calls composed, and returns a
+`std::expected` like every other `checked_` function here: the rounded value,
+or the `ArithmeticError` that stopped it, which `{}` writes in words. The
+example checks it before reading the value. `round_to_declared` is the same
+thing spelled to throw, as `convert` is to `checked_convert`.
 
 `formula::checked_within_bounds` checks a value, in the unit's own scale,
-against that unit's declared `bounds`, and returns one of five
-`BoundsCheck` values: `WithinBounds`, `BelowMinimum`, `AboveMaximum`,
-`NotChecked`, or `NotMeasured`. **`NotChecked` is deliberately not the same thing as
+against that unit's declared `bounds`, and returns, in a `std::expected` the
+example checks before reading it, one of five `BoundsCheck` values:
+`WithinBounds`, `BelowMinimum`, `AboveMaximum`, `NotChecked`, or
+`NotMeasured` -- or an `ArithmeticError`, for a unit whose declared range is
+malformed. **`NotChecked` is deliberately not the same thing as
 `WithinBounds`.** A unit that declares no bounds at all has not validated
 anything, and reporting it as "within bounds" would make an unvalidated value
 indistinguishable from one that was actually checked and passed:
