@@ -31,10 +31,11 @@ int main()
     auto const checked = formula::checked_evaluate(rebound, inputs);
     auto const explained = formula::explain(rebound, inputs);
     auto const checkedExplained = formula::checked_explain(rebound, inputs);
+    auto const traced = formula::trace_of(rebound, inputs);
     auto const defined = formula::define(rebound);
     auto const written = formula::render(rebound) + formula::document(rebound).formula;
     return evaluated.is_value() && checked.has_value() && explained.outcome.is_value() && checkedExplained.has_value()
-                   && decltype(defined)::valid && !written.empty()
+                   && !traced.empty() && decltype(defined)::valid && !written.empty()
                ? 0
                : 1;
 }

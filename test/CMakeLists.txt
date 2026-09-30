@@ -511,7 +511,8 @@ formula_add_negative_test(yields_relabelled
     "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
     REJECT "no matching")
 formula_add_negative_test(trace_of_result_dimension_mismatch
-    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1)
+    "formula: this result quantity does not measure the dimension this expression computes" EXPECT_COUNT 1
+    REJECT "no matching")
 formula_add_negative_test(trace_of_yields_relabelled
     "formula: this formula names its result quantity with yields" EXPECT_COUNT 1
     REJECT "no matching")
@@ -522,14 +523,17 @@ formula_add_negative_test(trace_of_yields_relabelled
 # different types. The last two REJECTs name that error: clang's words, as
 # clang-cl 22.1.8 printed them, and g++'s, not yet measured.
 formula_add_negative_test(yields_relabelled_every_verb
-    "formula: this formula names its result quantity with yields" EXPECT_COUNT 9
+    "formula: this formula names its result quantity with yields" EXPECT_COUNT 10
     REJECT "no matching" "in return type deduced as" "inconsistent deduction for auto return type")
 formula_add_negative_test(yields_series_as_single
     "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
     REJECT "formula: this formula names its result quantity with yields")
+formula_add_negative_test(trace_of_series_as_single
+    "this expression is a series, not a single value; evaluate it with checked_evaluate_series" EXPECT_COUNT 1
+    REJECT "no matching")
 formula_add_negative_test(yields_around_yields
     "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
-    REJECT "no viable conversion" "no matching")
+    REJECT "no viable conversion" "no matching" "formula: this formula names its result quantity with yields")
 formula_add_negative_test(yields_around_yields_series
     "formula: this formula is bound to its result quantity already" EXPECT_COUNT 1
     REJECT "no viable conversion" "no matching")

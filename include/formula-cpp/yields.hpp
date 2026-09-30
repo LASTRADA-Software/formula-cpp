@@ -13,8 +13,9 @@
 /// Every verb that is told a result quantity takes a `Yields` in place of the
 /// expression and the quantity: `evaluate` and `checked_evaluate` here,
 /// `checked_evaluate_series` (`series.hpp`), `checked_evaluate_rejection`
-/// (`rejection.hpp`), `explain`, `checked_explain`, `explain_series` and
-/// `explain_rejection` (`trace.hpp`), and `define` (`calculation.hpp`). Each
+/// (`rejection.hpp`), `explain`, `checked_explain`, `trace_of`,
+/// `explain_series` and `explain_rejection` (`trace.hpp`), and `define`
+/// (`calculation.hpp`). Each
 /// returns what it returns for `boundFormula.expression` and the quantity the
 /// `Yields` names. A result named at the call as well is accepted when it is
 /// that quantity, and refused when it is another

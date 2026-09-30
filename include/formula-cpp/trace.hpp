@@ -4591,13 +4591,23 @@ template <typename Result = detail::ResultOfYields,
 
 /// The trace of evaluating @p expression for @p Result in @p environmentGiven --
 /// what a `RecordingSink` records during `checked_evaluate<Result>(expression,
-/// environmentGiven, sink)` -- whether the evaluation succeeds or fails; a
-/// failure is the trace's last step. For showing how a number was reached, or
-/// where it could not be: the outcome is not returned, so read it with
-/// `checked_evaluate` or `checked_explain` where it is used.
+/// environmentGiven, sink)` -- whether the evaluation succeeds or fails. A
+/// failure while the expression is evaluated is the trace's last step; one
+/// converting the result into `Result`'s unit comes after it and is not in the
+/// trace, so read the outcome where that matters. For showing how a number was
+/// reached, or where it could not be: the outcome is not returned, so read it
+/// with `checked_evaluate` or `checked_explain` where it is used.
+///
+/// **Empty when @p environmentGiven holds an `entered` value for `Result`:**
+/// that value is returned without evaluating, as `explain` says, so nothing
+/// is recorded.
 ///
 /// Every step naming a quantity writes its symbol as @p vocabulary says.
-template <Described Result, Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
+///
+/// A series is accepted here only to be refused in this library's words, as
+/// `checked_evaluate` refuses it.
+template <Described Result, typename Expression, typename Env, Vocabulary V = DefaultVocabulary>
+    requires(Node<Expression> || SeriesNode<Expression>)
 [[nodiscard]] Trace<Rational> trace_of(Expression const& expression, Env const& environmentGiven, V const& vocabulary = V {})
 {
     return traced([&](auto recordingSink) { return checked_evaluate<Result>(expression, environmentGiven, recordingSink); },
@@ -4622,15 +4632,24 @@ template <typename Result = detail::ResultOfYields,
         return trace_of<Q>(boundFormula.expression, environmentGiven, vocabulary);
 }
 
-/// The trace of `checked_evaluate_si<Rational>(expression, environmentGiven,
-/// sink)`: the evaluation in SI units, with no result quantity named.
+/// The trace of the evaluation of @p expression in SI units with no result
+/// quantity named: the steps `trace_of<Q>` records for a derived result, and a
+/// failure is the last of them, since nothing is converted afterwards.
+///
+/// Naming no result, it consults no `entered` value: it traces the expression
+/// even where `checked_evaluate<Q>` returns a typed-in value and records
+/// nothing, so a page showing it beside that value shows a derivation of a
+/// number that is not the one reported. For display, as `trace_of` is: read
+/// the outcome with `checked_evaluate_si` where it is used.
+///
+/// Every step naming a quantity writes its symbol as @p vocabulary says.
 template <Node Expression, typename Env, Vocabulary V = DefaultVocabulary>
 [[nodiscard]] Trace<Rational> trace_of_si(Expression const& expression,
                                           Env const& environmentGiven,
                                           V const& vocabulary = V {})
 {
     return traced([&](auto recordingSink)
-                  { return checked_evaluate_si<Rational>(expression, environmentGiven, recordingSink); },
+                  { return detail::dispatch<Rational>(expression, environmentGiven, recordingSink); },
                   vocabulary)
         .trace;
 }

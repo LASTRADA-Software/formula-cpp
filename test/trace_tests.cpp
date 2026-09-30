@@ -2037,8 +2037,7 @@ TEST_CASE("traced keeps a failure in the outcome and the steps up to it in the t
 
 namespace
 {
-/// Doubled strength: a result in megapascals, so that its SI evaluation and its
-/// evaluation for `Strength` are told apart by whatever the trace records.
+/// Doubled strength, a formula whose result is also a quantity it reads.
 constexpr auto doubledStrength = var<Strength> * formula::Rational { 2 };
 constexpr auto boundDoubled = formula::yields<Strength>(doubledStrength);
 

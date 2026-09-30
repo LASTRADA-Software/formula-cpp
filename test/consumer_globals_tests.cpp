@@ -80,7 +80,7 @@
 // `Dimension` and an enumeration written the same way; `symbol_of` with no
 // vocabulary, and `render` and `document` given `RenderOptions` and none;
 // `yields` of the formula touching every node kind, and `evaluate`,
-// `checked_evaluate`, `explain`, `checked_explain`, `render`, `document` and
+// `checked_evaluate`, `explain`, `checked_explain`, `trace_of`, `render`, `document` and
 // `define` of what it binds, and `checked_evaluate_series`,
 // `explain_series`, `checked_evaluate_rejection` and `explain_rejection` of
 // a series and a rejection bound the same way;

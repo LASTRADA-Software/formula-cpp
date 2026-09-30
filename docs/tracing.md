@@ -231,20 +231,26 @@ was typed in rather than derived leaves `trace` empty, as it does for
 
 Code that only shows how a number was reached has no use for the outcome, and
 `traced` spells the lambda out each time. `trace_of` gives the `Trace` alone,
-whether the evaluation succeeded or failed -- a failure is the trace's last
-step:
+whether the evaluation succeeded or failed. With `densityFormula` and `env` as
+in the `explain` example above:
 
 ```cpp
-using formula::var;
-
-auto const steps = formula::trace_of<Density>(var<Mass> / var<Volume>, measurements);
+auto const steps = formula::trace_of<Density>(densityFormula, env);
 auto const text = formula::render_trace(steps, { .maxSteps = 100 });
 ```
 
-A bound formula names its quantity already, so `trace_of(boundFormula,
-measurements)` needs none, and `trace_of_si(expression, measurements)` traces
-the evaluation in SI units with no result quantity named. All three take the
-vocabulary to write the symbols in as an optional last argument.
+A failure while the formula is evaluated is the trace's last step. One
+converting the result into `Density`'s unit comes after it and is not in the
+trace, so read the outcome where that matters. When `env` holds a value typed in
+for `Density`, that value is returned without evaluating and the trace is empty,
+as it is for `explain`.
+
+A bound formula names its quantity already, so `trace_of(boundFormula, env)`
+needs none. `trace_of_si(densityFormula, env)` traces the evaluation in SI units
+with no result quantity named: it records the same steps for a derived result,
+and since it consults no typed-in value it traces the derivation even where
+`trace_of<Density>` is empty. All three take the vocabulary to write the symbols
+in as an optional last argument.
 
 The outcome is deliberately not returned. A caller who needs it reads it with
 `checked_evaluate`, and one who needs it together with its trace uses
