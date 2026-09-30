@@ -498,6 +498,19 @@ enum class StepKind : std::uint8_t
     /// and its factory `rounded_output`, so nothing in namespace `formula` is
     /// spelt `RoundedOpaqueOutput`.
     RoundedOpaqueOutput,
+    /// A `TranscendentalNode` taking the natural logarithm of its one operand (`ln`). Its value is exact
+    /// -- 0 at 1 -- or its error is `Inexact`: an irrational logarithm is never a step's value.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `TranscendentalNode`, its own enumerator of this name
+    /// is scoped in `Transcendental`, and the factory is `ln`, so nothing in namespace `formula` is spelt
+    /// `NaturalLogarithm`.
+    NaturalLogarithm,
+    /// A `TranscendentalNode` taking the decimal logarithm of its one operand (`log10`): exact at 10^k.
+    /// Checked on GCC under `-Wshadow`, as `NaturalLogarithm` is.
+    DecimalLogarithm,
+    /// A `TranscendentalNode` taking the exponential of its one operand (`exp`): exact at 0. Checked on
+    /// GCC under `-Wshadow`, as `NaturalLogarithm` is.
+    Exponential,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1732,6 +1745,14 @@ namespace detail
     struct StepKindOf<RootNode<Degree, Operand>>
     {
         static constexpr StepKind value = StepKind::Root;
+    };
+
+    template <Transcendental F, Node Operand>
+    struct StepKindOf<TranscendentalNode<F, Operand>>
+    {
+        static constexpr StepKind value = F == Transcendental::NaturalLogarithm   ? StepKind::NaturalLogarithm
+                                          : F == Transcendental::DecimalLogarithm ? StepKind::DecimalLogarithm
+                                                                                  : StepKind::Exponential;
     };
 
     template <Node Inner>

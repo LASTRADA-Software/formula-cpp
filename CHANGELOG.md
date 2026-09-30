@@ -215,6 +215,9 @@ may break it, and each such change is recorded here.
   zero or of a negative value is `DomainError`. `checked_evaluate_si<double>` answers with `std::log`,
   `std::log10` and `std::exp`. `RepFunctions` gains `natural_log`, `decimal_log` and `exponential`,
   which a representation of a consumer's own needs only to evaluate these.
+  They render as `ln(x)`, `log10(x)` and `exp(x)`, in LaTeX as `\ln\left(x\right)`,
+  `\log_{10}\left(x\right)` and `\exp\left(x\right)`, and a trace writes each as a step of its own,
+  `ln(#1) = ...`.
 
 ### Changed
 
@@ -222,6 +225,8 @@ may break it, and each such change is recorded here.
   finds the library's function by argument-dependent lookup; one whose argument is a number still finds
   only the standard library's, which the library's refuses. A consumer's own function of one of these
   names that accepts a formula node now makes such a call ambiguous.
+- `StepKind` gains `NaturalLogarithm`, `DecimalLogarithm` and `Exponential`, appended; a consumer's
+  `switch` over `StepKind` that names every enumerator warns until it handles them.
 - An unqualified call of `fraction_text`, `number_text`, `decimal_text`, `exact_decimal_text`,
   `define`, `calculation` or `worksheet` now also finds the library's function by argument-dependent
   lookup, since each takes an argument of a type in namespace `formula`. A consumer's own function

@@ -28,6 +28,12 @@ using formula::var;
 struct Mass: formula::Quantity<Mass, "m", "specimen mass", unit::Kilogram>
 {
 };
+struct Ratio: formula::Quantity<Ratio, "r", "an invented ratio", unit::One>
+{
+};
+struct Share: formula::Quantity<Share, "p", "an invented share", unit::Percent>
+{
+};
 struct Volume: formula::Quantity<Volume, "V", "specimen volume", unit::CubicMetre>
 {
 };
@@ -380,6 +386,31 @@ TEST_CASE("a derivation renders a RoundedRoot step as one rounding of a root, in
               var<MassVariance>))
           == "1. s2 = 427/125 g2\n"
              "2. round(sqrt(#1), to 2 dp of g) = 46/25 g [toward negative infinity]\n");
+}
+
+TEST_CASE("a derivation writes a logarithm or an exponential as a call on its argument's step", "[trace-render]")
+{
+    auto const traceOf = [](auto const& node, auto const& inputs) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(node, inputs, sink);
+        return formula::render_trace(trace, { .maxSteps = 10 });
+    };
+    auto const ratioAt = [](formula::Rational ratioValue) {
+        return formula::environment(formula::Measured<Ratio> { ratioValue });
+    };
+    CHECK(traceOf(formula::log10(var<Ratio>), ratioAt(formula::Rational { 1000 })) == "1. r = 1000\n2. log10(#1) = 3\n");
+    CHECK(traceOf(formula::exp(formula::ln(var<Ratio> / var<Ratio>)), ratioAt(formula::Rational { 7 }))
+          == "1. r = 7\n2. r = 7\n3. #1 / #2 = 1\n4. ln(#3) = 0\n5. exp(#4) = 1\n");
+    // No exact value: the step says so, and so does every step it reaches. The irrational number
+    // appears nowhere.
+    CHECK(traceOf(formula::exp(formula::ln(var<Ratio>)), ratioAt(formula::Rational { 2 }))
+          == "1. r = 2\n2. ln(#1) = no exact rational result exists\n3. exp(#2) = no exact rational result exists\n");
+    CHECK(traceOf(formula::ln(var<Ratio>), ratioAt(formula::Rational { 0 }))
+          == "1. r = 0\n2. ln(#1) = argument outside the domain of the operation\n");
+    // A percentage is read as the number it is: 1000 % is 10.
+    CHECK(traceOf(formula::log10(var<Share>), formula::environment(formula::Measured<Share> { formula::Rational { 1000 } }))
+          == "1. p = 1000 %\n2. log10(#1) = 1\n");
 }
 
 TEST_CASE("a derivation names the rounding mode, which is the whole reason two runs differ",

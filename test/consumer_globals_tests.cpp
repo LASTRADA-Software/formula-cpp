@@ -271,7 +271,8 @@ inline constexpr formula::SampleSizeTable<2> Sizes { 1, 2 };
 /// A formula touching every node kind the evaluator, renderer and trace know:
 /// arithmetic, a power and a root, a documented citation, rounding both
 /// ways, a rounded square root, a conditional, the escape hatch, all three
-/// lookups, a critical value, an absolute value and a precision limit.
+/// lookups, a critical value, an absolute value, a precision limit, a
+/// logarithm, a decimal logarithm and an exponential.
 inline constexpr auto everything = formula::documented(
     formula::rounded<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(
         var<Force> / formula::pow<2>(var<EdgeX>)
@@ -290,7 +291,8 @@ inline constexpr auto everything = formula::documented(
         * formula::interpolating_lookup<unit::One, Points, unit::One>(
             var<Factor>, { formula::Rational { 1'043, 1'000 }, formula::Rational { 2'917, 1'000 } })
         * formula::rounded_to_digits<unit::One, formula::SignificantDigits { 3 }, formula::RoundingMode::HalfAwayFromZero>(
-            formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))),
+            formula::numeric_value_of<unit::One, "Example Standard 1 states it bare">(var<Factor>))
+        * formula::exp(formula::ln(var<Factor>)) * formula::log10(var<Factor> * formula::Rational { 10 })),
     formula::Citation { .title = "Everything", .reference = "Example Standard 1:2020", .section = "1" });
 
 /// A consumer's opaque operation: the span of a series, its highest element

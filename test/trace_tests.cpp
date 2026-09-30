@@ -22,6 +22,9 @@ using formula::var;
 struct Mass: formula::Quantity<Mass, "m", "specimen mass", unit::Kilogram>
 {
 };
+struct Ratio: formula::Quantity<Ratio, "r", "an invented ratio", unit::One>
+{
+};
 struct Volume: formula::Quantity<Volume, "V", "specimen volume", unit::CubicMetre>
 {
 };
@@ -421,6 +424,27 @@ TEST_CASE("a RoundSignificant step records its own declared unit and granularity
     CHECK(trace.steps[1].value == formula::Rational { 3, 250 });   // 12 mm, in coherent SI (m)
     REQUIRE(trace.steps[1].operands.size() == 1);
     CHECK(trace.steps[1].operands[0] == 0);
+}
+
+TEST_CASE("a logarithm step records its own kind and the error an irrational value is", "[trace]")
+{
+    auto const traced = [](auto const& node) {
+        formula::Trace<> trace {};
+        formula::RecordingSink<> sink { trace };
+        (void) formula::checked_evaluate_si<formula::Rational>(
+            node, formula::environment(formula::Measured<Ratio> { formula::Rational { 2 } }), sink);
+        return trace;
+    };
+    formula::Trace<> const natural = traced(formula::ln(var<Ratio>));
+    REQUIRE(natural.steps.size() == 2);
+    CHECK(natural.steps[1].kind == formula::StepKind::NaturalLogarithm);
+    CHECK(natural.steps[1].error == formula::ArithmeticError::Inexact);
+    CHECK_FALSE(natural.steps[1].value.has_value());
+    CHECK(natural.steps[1].unit == formula::coherent(formula::dim::Scalar));
+    REQUIRE(natural.steps[1].operands.size() == 1);
+    CHECK(natural.steps[1].operands[0] == 0);
+    CHECK(traced(formula::log10(var<Ratio>)).steps[1].kind == formula::StepKind::DecimalLogarithm);
+    CHECK(traced(formula::exp(var<Ratio>)).steps[1].kind == formula::StepKind::Exponential);
 }
 
 TEST_CASE("a Conditional step records the then branch it took, and every operand along the way", "[trace]")

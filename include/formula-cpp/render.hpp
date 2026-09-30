@@ -1209,6 +1209,47 @@ template <Dialect D, int Degree, Node Operand, Vocabulary V>
     }
 }
 
+namespace detail
+{
+    /// How LaTeX writes @p function: `\ln`, `\log_{10}`, `\exp`. `\exp` and not `e^{...}`: a power
+    /// renders its base as an atom, so `pow<2>(exp(x))` would read `e^{x}^{2}`, which LaTeX refuses; and
+    /// `e` is a quantity's symbol in many methods.
+    [[nodiscard]] constexpr std::string_view transcendental_latex_name(Transcendental function) noexcept
+    {
+        switch (function)
+        {
+            case Transcendental::NaturalLogarithm:
+                return "\\ln";
+            case Transcendental::DecimalLogarithm:
+                return "\\log_{10}";
+            case Transcendental::Exponential:
+                return "\\exp";
+        }
+        return "\\operatorname{unknown}";
+    }
+
+    /// @p function called on @p argumentText, in dialect @p D: `ln(x)`, and in LaTeX `\ln\left(x\right)`.
+    /// Shared by the plain node and the rounded one (`rounded_transcendental.hpp`).
+    template <Dialect D>
+    [[nodiscard]] std::string transcendental_text(Transcendental function, std::string const& argumentText)
+    {
+        if constexpr (D == Dialect::LaTeX)
+            return std::string { transcendental_latex_name(function) } + "\\left(" + argumentText + "\\right)";
+        else
+            return std::string { transcendental_name(function) } + "(" + argumentText + ")";
+    }
+} // namespace detail
+
+/// A logarithm or an exponential renders as a call on its argument -- `ln(x)`, `log10(x)`, `exp(x)`, and in
+/// LaTeX `\ln\left(x\right)`, `\log_{10}\left(x\right)`, `\exp\left(x\right)` -- in the vocabulary's
+/// symbols. Like `sqrt(...)`, the parentheses it always produces group its own argument, so it needs no
+/// `PrecedenceOf` entry: the primary's `Atom` is right, and `pow<2>(ln(x))` reads `ln(x)^2`.
+template <Dialect D, Transcendental F, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(TranscendentalNode<F, Operand> const& node, V const& vocabulary)
+{
+    return detail::transcendental_text<D>(F, render<D>(node.operand, vocabulary));
+}
+
 /// A rounding node renders as a function call, `round(<operand>, to <places>
 /// dp of <unit>)` -- braced onto a subscript in LaTeX, the same way a root's
 /// degree is. Like `sqrt` and `root` above, the parentheses it always

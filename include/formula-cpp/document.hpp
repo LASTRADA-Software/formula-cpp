@@ -415,6 +415,9 @@ namespace detail
     template <Vocabulary V, int Degree, Node Operand>
     void collect(Walk<V>& walk, RootNode<Degree, Operand> const& node);
 
+    template <Vocabulary V, Transcendental F, Node Operand>
+    void collect(Walk<V>& walk, TranscendentalNode<F, Operand> const& node);
+
     template <Vocabulary V, BinaryOperator Op, Node Left, Node Right>
     void collect(Walk<V>& walk, BinaryNode<Op, Left, Right> const& node);
 
@@ -770,6 +773,13 @@ namespace detail
 
     template <Vocabulary V, int Degree, Node Operand>
     void collect(Walk<V>& walk, RootNode<Degree, Operand> const& node)
+    {
+        collect(walk, node.operand);
+    }
+
+    /// A logarithm or an exponential reads what its argument reads.
+    template <Vocabulary V, Transcendental F, Node Operand>
+    void collect(Walk<V>& walk, TranscendentalNode<F, Operand> const& node)
     {
         collect(walk, node.operand);
     }

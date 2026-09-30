@@ -289,6 +289,17 @@ TEST_CASE("document: a variable under a rounded square root appears in the symbo
     CHECK(documentation.symbols[0].unit == GramSquared);
 }
 
+TEST_CASE("document: a logarithm lists what its argument reads and states itself as a call", "[document]")
+{
+    formula::Documentation const documentation = formula::document(formula::ln(var<WaterVolume> / var<CementVolume>));
+    CHECK(documentation.formula == "ln(V_w / V_c)");
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
+    CHECK(formula::document<formula::Dialect::LaTeX>(formula::exp(var<WaterVolume> / var<CementVolume>)).formula
+          == "\\exp\\left(\\frac{V_w}{V_c}\\right)");
+}
+
 namespace
 {
 struct Determinations: formula::Quantity<Determinations, "n", "number of determinations", formula::unit::One>

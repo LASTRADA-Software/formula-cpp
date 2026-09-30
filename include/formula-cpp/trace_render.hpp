@@ -898,6 +898,13 @@ namespace detail
                + " for " + tag_words(compared.subject());
     }
 
+    /// `ln(#1)`, `log10(#1)`, `exp(#1)`: @p function called on @p operandText, in `render()`'s words
+    /// (`transcendental_name`), so that a derivation names the function its formula names.
+    [[nodiscard]] inline std::string transcendental_call(Transcendental function, std::string const& operandText)
+    {
+        return std::string { transcendental_name(function) } + "(" + operandText + ")";
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -945,6 +952,12 @@ namespace detail
                 return shownStep.exponent == 2
                            ? "sqrt(" + sole_operand(shownStep) + ")"
                            : "root" + std::to_string(shownStep.exponent) + "(" + sole_operand(shownStep) + ")";
+            case StepKind::NaturalLogarithm:
+                return transcendental_call(Transcendental::NaturalLogarithm, sole_operand(shownStep));
+            case StepKind::DecimalLogarithm:
+                return transcendental_call(Transcendental::DecimalLogarithm, sole_operand(shownStep));
+            case StepKind::Exponential:
+                return transcendental_call(Transcendental::Exponential, sole_operand(shownStep));
             case StepKind::Documented:
                 return sole_operand(shownStep);
             // Its operand, exactly as `Documented`'s is: the selection chose
