@@ -443,6 +443,9 @@ formula_add_negative_test(measured_series_short
 formula_add_negative_test(measured_series_element_other_quantity
     "formula: an element of measured_series<Q> is a Measured<Q> of that one quantity" EXPECT_COUNT 1
     REJECT "no matching" "cannot convert" "could not convert")
+formula_add_negative_test(measured_series_element_bool
+    "formula: an element of measured_series<Q> is a Measured<Q> of that one quantity" EXPECT_COUNT 1
+    REJECT "no matching" "cannot convert" "could not convert")
 formula_add_negative_test(measured_series_element_double
     "formula: a floating-point value is not an exact rational" EXPECT_COUNT 1
     REJECT "an element of measured_series<Q>")
