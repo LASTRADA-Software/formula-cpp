@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // EXPECT: formula: this opaque call passes an input of another shape than the operation declares
 // REJECT: does not accept inputs of these dimensions
-// REJECT: compute cannot be called
 //
 // Raw observations passed where an operation declares a series: refused once,
-// as any other shape is, and the dimensions and compute are not asked about.
+// as any other shape is, and the dimensions are not asked about. The operation
+// accepts no dimension at all, so a dimension check reached past the shape's
+// refusal would add its own message.
 #include <formula-cpp/opaque.hpp>
 
 #include <array>
@@ -24,9 +25,9 @@ struct SeriesSpan
     static constexpr std::array<std::string_view, 1> outputs { "span" };
 
     static consteval std::optional<std::array<formula::Dimension, 1>> output_dimensions(
-        std::array<formula::Dimension, 1> declared) noexcept
+        std::array<formula::Dimension, 1>) noexcept
     {
-        return std::array { declared[0] };
+        return std::nullopt;
     }
 
     template <typename Rep>

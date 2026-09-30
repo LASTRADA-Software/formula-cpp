@@ -730,12 +730,12 @@ formula_add_negative_test(transcendental_exp_dimensioned
 formula_add_negative_test(transcendental_no_factory_dimensioned
     "formula: the argument of this logarithm or exponential is not dimensionless" EXPECT_COUNT 1)
 formula_add_negative_test(transcendental_refused_operand
-    "formula: this curve is read at a point that does not measure the dimension of its domain"
+    "formula: this curve is read at a point that does not measure the dimension of its domain" EXPECT_COUNT 1
     REJECT "formula: the argument of this logarithm or exponential is not dimensionless")
 # Two mistakes, two messages: the logarithm's own refusal does not hide the
 # sum's, since fixing either leaves the other.
 formula_add_negative_test(transcendental_then_addition
-    "formula: the two sides of this addition or subtraction measure different dimensions")
+    "formula: the two sides of this addition or subtraction measure different dimensions" EXPECT_COUNT 1)
 
 formula_add_negative_test(documented_dimension_mismatch
     "the two sides of this addition or subtraction measure different")
@@ -2229,9 +2229,11 @@ formula_add_negative_test(opaque_compute_signature
 formula_add_negative_test(opaque_output_as_series
     "formula: an opaque call is not a value, since an operation may have several outputs; choose one with opaque_output<\"name\">(call)"
     REJECT "this expression is a series, not a single value")
+# The operation accepts no dimension, so the dimension check's message is what
+# the shape's refusal keeps away.
 formula_add_negative_test(opaque_observations_where_series_declared
     "formula: this opaque call passes an input of another shape than the operation declares"
-    REJECT "does not accept inputs of these dimensions" "compute cannot be called")
+    REJECT "does not accept inputs of these dimensions")
 # Least squares (`least_squares.hpp`): two loose series are refused in this
 # library's words, not the compiler's; a fit in double is refused once, in the
 # curve's words.
