@@ -92,6 +92,7 @@ add_executable(formula-cpp-tests
     opaque_tests.cpp
     opaque_cross_tu_b.cpp
     least_squares_tests.cpp
+    least_squares_kernel_tests.cpp
     retry_tests.cpp
     calculation_tests.cpp
     calculation_trace_tests.cpp

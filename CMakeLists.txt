@@ -45,6 +45,7 @@ target_sources(formula-cpp INTERFACE
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/enum_name.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/fixed_string.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/latex_math.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/least_squares_kernel.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/name_text.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/transcendental.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/formula-cpp/detail/type_name.hpp"
