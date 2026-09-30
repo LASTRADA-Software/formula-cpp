@@ -133,25 +133,12 @@ plus the derivation"`.) `formula::evaluate<Result>` (and
 [Writing formulas](expressions.md) for the two of those) take a sink
 parameter that defaults to `NullSink`, so calling either without a sink
 argument is the untraced path: no `Trace` is built, and nothing is allocated
-for one. `formula::explain<Result>` builds a `RecordingSink` for you and
-evaluates through it:
-
-```cpp
-template <Described Result, typename Rep = Rational, Node Expression, typename Env>
-[[nodiscard]] Explained<Result, Rep> explain(Expression const& expression, Env const& environment)
-{
-    static_assert(std::is_same_v<Rep, Rational>, /* ... */);
-
-    Explained<Result, Rep> explained {};
-    RecordingSink<Rep> sink { explained.trace };
-    explained.outcome = evaluate<Result>(expression, environment, sink);
-    return explained;
-}
-```
-
-(`trace.hpp`.) `explained.outcome` is exactly what `evaluate<Result>(expression,
-environment)` would have returned -- tracing observes, it does not
-participate -- and `explained.trace` is the derivation. Reach for `evaluate` or
+for one. `formula::explain<Result>` builds a `RecordingSink`
+for you, evaluates through it, and returns the outcome beside the trace it
+recorded (`trace.hpp` has the four-line body). `explained.outcome` is exactly
+what `evaluate<Result>(expression, environment)` would have returned --
+tracing observes, it does not participate -- and `explained.trace` is the
+derivation. Reach for `evaluate` or
 `checked_evaluate` on a path that runs often and never shows its work to
 anyone; reach for `explain` at the point a derivation needs to be shown to a
 person -- a report, a review, a place where "here is the number" is not
@@ -236,7 +223,7 @@ auto const run = formula::traced([&](auto recordingSink)
 `explain_series` and `explain_retry` share the shape: `outcome`, then `trace`.
 A failure is in `outcome`, and `trace` holds the steps up to it; a value that
 was typed in rather than derived leaves `trace` empty, as it does for
-`explain`. The sink records in `Rational`, so an evaluation that computes in
+`explain`, which records in `Rational`: an evaluation that computes in
 `double` is traced by calling its `checked_evaluate_si<double>` with your own
 `RecordingSink<double>`.
 

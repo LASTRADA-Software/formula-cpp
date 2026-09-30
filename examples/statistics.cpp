@@ -59,7 +59,7 @@ using MassVariance = formula::Quantity<struct MassVarianceTag, "s2", "variance o
 // Six determinations of one mass: 40.2, 39.8, 40.5, 44.0, 40.0 and 43.3 g. A
 // method that fixes how many determinations it takes reads them as a series.
 inline constexpr auto sixMasses =
-    formula::environment(formula::measured_series<Mass>(40.2_r, 39.8_r, 40.5_r, 44_r, 40_r, 43.3_r));
+    formula::environment(formula::measured_series<Mass>(40.2_r, 39.8_r, 40.5_r, 44, 40, 43.3_r));
 
 inline constexpr auto determinations = formula::series<Mass, 6>;
 inline constexpr auto mean = formula::yields<Mass>(formula::sample_mean(determinations));
