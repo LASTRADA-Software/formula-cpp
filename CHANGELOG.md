@@ -228,6 +228,9 @@ may break it, and each such change is recorded here.
   the computation's width -- under 2^-118, relative for the exponential -- of a rounding boundary.
   Evaluated with `Rep = double`, each is refused at compile time, as `rounded_sqrt` is.
   `rounded<...>(ln(x))` still means an exact logarithm, which fails where there is none.
+  They render as `round(ln(x), to 4 dp)`, in LaTeX `\operatorname{round}_{4}(\ln\left(x\right))`, and a trace
+  writes each as one step whose value is the rounded decimal and whose bracket names the mode:
+  `round(ln(#1), to 4 dp) = 6931/10000 [nearest, ties away from zero]`.
 
 ### Changed
 
@@ -235,8 +238,6 @@ may break it, and each such change is recorded here.
   finds the library's function by argument-dependent lookup; one whose argument is a number still finds
   only the standard library's, which the library's refuses. A consumer's own function of one of these
   names that accepts a formula node now makes such a call ambiguous.
-- `StepKind` gains `NaturalLogarithm`, `DecimalLogarithm` and `Exponential`, appended; a consumer's
-  `switch` over `StepKind` that names every enumerator warns until it handles them.
 - An unqualified call of `fraction_text`, `number_text`, `decimal_text`, `exact_decimal_text`,
   `define`, `calculation` or `worksheet` now also finds the library's function by argument-dependent
   lookup, since each takes an argument of a type in namespace `formula`. A consumer's own function
@@ -262,9 +263,10 @@ may break it, and each such change is recorded here.
 - `OpaqueCallInfo` gains `values` after `dimensions`, defaulted to `OpaqueValues::Exact`: code that
   builds one with designated initialisers is unaffected; a structured binding over one now has five
   members, not four.
-- `StepKind` gains `RoundedOpaqueOutput`, after `AttemptInput`: a `switch` over `StepKind` that
-  names every enumerator and has no `default` now misses one, which g++ 14 reports under
-  `-Wswitch` (part of `-Wall`).
+- `StepKind` gains `RoundedOpaqueOutput`, `NaturalLogarithm`, `DecimalLogarithm`, `Exponential`,
+  `RoundedNaturalLogarithm`, `RoundedDecimalLogarithm` and `RoundedExponential`, appended after
+  `AttemptInput` in that order: a `switch` over `StepKind` that names every enumerator and has no
+  `default` now misses seven, which g++ 14 reports under `-Wswitch` (part of `-Wall`).
 - `OpaqueStepData` gains `values` and `answered`, after `inputsNotEvaluated`: a structured binding
   over one now has seven members, not five.
 

@@ -31,6 +31,7 @@
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
@@ -511,6 +512,21 @@ enum class StepKind : std::uint8_t
     /// A `TranscendentalNode` taking the exponential of its one operand (`exp`): exact at 0. Checked on
     /// GCC under `-Wshadow`, as `NaturalLogarithm` is.
     Exponential,
+    /// A `RoundedTranscendentalNode` over the natural logarithm: `ln` of its one operand, rounded to a
+    /// number of decimal places -- `Step::granularity` and `Step::mode`, as for `Round`; no unit of its own,
+    /// so `Step::unit` is the coherent one. One step and not a `NaturalLogarithm` beneath a `Round`: the
+    /// logarithm is irrational almost everywhere, so that step would have to show a number the evaluator
+    /// never had. The operand's value is exact, and so is this step's.
+    ///
+    /// Checked on GCC under `-Wshadow`: the node is `RoundedTranscendentalNode` and the factory
+    /// `rounded_ln`, so nothing in namespace `formula` is spelt `RoundedNaturalLogarithm`.
+    RoundedNaturalLogarithm,
+    /// The same for the decimal logarithm (`rounded_log10`). Checked on GCC under `-Wshadow`, as
+    /// `RoundedNaturalLogarithm` is.
+    RoundedDecimalLogarithm,
+    /// The same for the exponential (`rounded_exp`). Checked on GCC under `-Wshadow`, as
+    /// `RoundedNaturalLogarithm` is.
+    RoundedExponential,
 };
 
 /// Which branch a `Conditional` step took, if any.
@@ -1777,6 +1793,14 @@ namespace detail
     struct StepKindOf<RoundedRootNode<U, Places, Mode, Radicand>>
     {
         static constexpr StepKind value = StepKind::RoundedRoot;
+    };
+
+    template <Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    struct StepKindOf<RoundedTranscendentalNode<F, Places, Mode, Operand>>
+    {
+        static constexpr StepKind value = F == Transcendental::NaturalLogarithm   ? StepKind::RoundedNaturalLogarithm
+                                          : F == Transcendental::DecimalLogarithm ? StepKind::RoundedDecimalLogarithm
+                                                                                  : StepKind::RoundedExponential;
     };
 
     template <SampleSizeTable Sizes, Unit ResultUnit, Node Count>
@@ -3144,10 +3168,10 @@ class RecordingSink
         else if constexpr (requires { N::digits; })
             nodeStep.granularity = N::digits.value;
 
-        // `RoundNode`, `RoundSignificantNode`, `RoundedRootNode` and
-        // `RoundedOpaqueOutputNode` are the only kinds that declare one, so the
-        // `requires` alone selects them -- the same shape `exponent` and
-        // `granularity` above use.
+        // `RoundNode`, `RoundSignificantNode`, `RoundedRootNode`,
+        // `RoundedOpaqueOutputNode` and `RoundedTranscendentalNode` are the only
+        // kinds that declare one, so the `requires` alone selects them -- the same
+        // shape `exponent` and `granularity` above use.
         if constexpr (requires { N::mode; })
             nodeStep.mode = N::mode;
 

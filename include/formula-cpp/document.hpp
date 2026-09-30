@@ -25,6 +25,7 @@
 #include <formula-cpp/render.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/statistics.hpp>
 #include <formula-cpp/vocabulary.hpp>
@@ -432,6 +433,9 @@ namespace detail
 
     template <Vocabulary V, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radicand>
     void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node);
+
+    template <Vocabulary V, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundedTranscendentalNode<F, Places, Mode, Operand> const& node);
 
     template <Vocabulary V, Unit U, FixedString Justification, Node Operand>
     void collect(Walk<V>& walk, NumericValueNode<U, Justification, Operand> const& node);
@@ -858,6 +862,14 @@ namespace detail
     void collect(Walk<V>& walk, RoundedRootNode<U, Places, Mode, Radicand> const& node)
     {
         collect(walk, node.radicand);
+    }
+
+    /// A rounded logarithm or exponential reads what its argument reads, as a rounding node reads what
+    /// its operand does.
+    template <Vocabulary V, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand>
+    void collect(Walk<V>& walk, RoundedTranscendentalNode<F, Places, Mode, Operand> const& node)
+    {
+        collect(walk, node.operand);
     }
 
     /// The escape hatch still reads a variable, even though what it produces

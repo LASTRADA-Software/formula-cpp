@@ -447,6 +447,24 @@ TEST_CASE("a logarithm step records its own kind and the error an irrational val
     CHECK(traced(formula::exp(var<Ratio>)).steps[1].kind == formula::StepKind::Exponential);
 }
 
+TEST_CASE("a rounded logarithm step records its places and mode and no unit of its own", "[trace]")
+{
+    constexpr auto node =
+        formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfAwayFromZero>(var<Ratio>);
+    formula::Trace<> trace {};
+    formula::RecordingSink<> sink { trace };
+    (void) formula::checked_evaluate_si<formula::Rational>(
+        node, formula::environment(formula::Measured<Ratio> { formula::Rational { 2 } }), sink);
+    REQUIRE(trace.steps.size() == 2);
+    CHECK(trace.steps[1].kind == formula::StepKind::RoundedNaturalLogarithm);
+    CHECK(trace.steps[1].granularity == 4);
+    CHECK(trace.steps[1].mode == formula::RoundingMode::HalfAwayFromZero);
+    CHECK(trace.steps[1].unit == formula::coherent(formula::dim::Scalar));
+    CHECK(trace.steps[1].value == formula::Rational { 6931, 10000 });
+    REQUIRE(trace.steps[1].operands.size() == 1);
+    CHECK(trace.steps[1].operands[0] == 0);
+}
+
 TEST_CASE("a Conditional step records the then branch it took, and every operand along the way", "[trace]")
 {
     formula::Trace<> trace {};

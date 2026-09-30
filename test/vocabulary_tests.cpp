@@ -708,7 +708,14 @@ inline constexpr formula::BreakpointTable<3> everySnapSet { formula::breakpoint(
                * formula::precision_limit<formula::PrecisionKind::Repeatability>(r, formula::precision_level<EveryDerived>)
                // A logarithm and an exponential, each at a point where it is exact, so the product keeps
                // its value: ln(r / r) = ln 1 = 0, exp 0 = 1 and log10 10 = 1.
-               * formula::exp(formula::ln(r / r)) * formula::log10(formula::constant<unit::One>(rat(10)));
+               * formula::exp(formula::ln(r / r)) * formula::log10(formula::constant<unit::One>(rat(10)))
+               // The rounded forms, each over the overlay's fixed factor, so the rewrite must reach inside:
+               // round(ln(x_n / x_n)) = 0, whose exponential is 1, and round(log10(x_n / x_n * 10)) = 1.
+               * formula::rounded_exp<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                   formula::rounded_ln<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                       var<EveryFixed> / var<EveryFixed>))
+               * formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+                   var<EveryFixed> / var<EveryFixed> * formula::constant<unit::One>(rat(10)));
 }
 
 inline constexpr formula::PlacesTable<3> everyPlaces { formula::DecimalPlaces { 0 },
@@ -835,7 +842,7 @@ template <typename Tag>
 {
     formula::Trace<> trace {};
     (void) formula::evaluate_method<Tag>(everyOverlaid, everyInputs, formula::RecordingSink { trace, everyVocabulary });
-    return formula::render_trace(trace, { .maxSteps = 90 });
+    return formula::render_trace(trace, { .maxSteps = 120 });
 }
 
 [[nodiscard]] bool declares_no_symbol(std::string_view text)
@@ -856,7 +863,8 @@ TEST_CASE("every node kind renders in the vocabulary, in every dialect", "[vocab
              "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1087/1000, key Rough gives 1249/1000) "
              "* snap(x_n, to 1437/1000, 1537/1000, 1637/1000) "
              "+ round(sqrt(E / R * x_n), to 1 dp of %) "
-             "* critical(2, at 2, 3) * abs(E / R) * r(level; level = E / R) * exp(ln(E / R / (E / R))) * log10(10)");
+             "* critical(2, at 2, 3) * abs(E / R) * r(level; level = E / R) * exp(ln(E / R / (E / R))) * log10(10) "
+             "* round(exp(round(ln(x_n / x_n), to 2 dp)), to 2 dp) * round(log10(x_n / x_n * 10), to 2 dp)");
     CHECK(formula::render(cylinder, everyVocabulary) == "R / E");
 
     // Every series kind, the jurisdiction's symbol marked in each dialect.
@@ -1041,7 +1049,8 @@ TEST_CASE("every node kind writes its numbers in the style asked for, in the voc
              "* k_n * x_n * pi * 2 * lookup(key Rough, key Smooth gives 1.087, key Rough gives 1.249) "
              "* snap(x_n, to 1.437, 1.537, 1.637) "
              "+ round(sqrt(E / R * x_n), to 1 dp of %) "
-             "* critical(2, at 2, 3) * abs(E / R) * r(level; level = E / R) * exp(ln(E / R / (E / R))) * log10(10)");
+             "* critical(2, at 2, 3) * abs(E / R) * r(level; level = E / R) * exp(ln(E / R / (E / R))) * log10(10) "
+             "* round(exp(round(ln(x_n / x_n), to 2 dp)), to 2 dp) * round(log10(x_n / x_n * 10), to 2 dp)");
     constexpr auto curveVariant = std::get<3>(everyOverlaid.variantSet.cases).expression;
     CHECK(formula::render(curveVariant, everyVocabulary, exactDecimals)
           == "snap(interpolate(splice(curve(domain(1, 2, 4), m_n(i) / M_n), curve(domain(5), values(0.05)), "
@@ -1096,6 +1105,14 @@ TEST_CASE("every node kind traces in the vocabulary", "[vocabulary][trace]")
     // The logarithm and the exponential read the ratio over itself, and are calls on its step.
     CHECK(cube.find("77. #73 / #76 = 1\n78. ln(#77) = 0\n79. exp(#78) = 1\n") != std::string::npos);
     CHECK(cube.find("82. log10(#81) = 1\n") != std::string::npos);
+    // The rounded forms read the overlay's fixed factor, and are one step each with the function inside.
+    CHECK(cube.find("84. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+                    "85. x_n = 1487/1000 [fixed by jurisdiction overlay: Example Standard 12:2021 NA]\n"
+                    "86. #84 / #85 = 1\n"
+                    "87. round(ln(#86), to 2 dp) = 0 [nearest, ties away from zero]\n"
+                    "88. round(exp(#87), to 2 dp) = 1 [nearest, ties away from zero]\n")
+          != std::string::npos);
+    CHECK(cube.find("95. round(log10(#94), to 2 dp) = 1 [nearest, ties away from zero]\n") != std::string::npos);
 
     CHECK(everyTraceOf<EveryCylinder>()
           == "1. R = 12 MPa\n"

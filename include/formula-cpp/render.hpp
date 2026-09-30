@@ -54,6 +54,7 @@
 #include <formula-cpp/rejection.hpp>
 #include <formula-cpp/retry.hpp>
 #include <formula-cpp/rounded_root.hpp>
+#include <formula-cpp/rounded_transcendental.hpp>
 #include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/snap.hpp>
@@ -1353,6 +1354,23 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radic
                + "}(\\sqrt{" + inner + "})";
     else
         return "round(sqrt(" + inner + "), to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+}
+
+/// A rounded logarithm or exponential renders as what it computes, a rounding of the call:
+/// `round(ln(x), to 4 dp)`, and in LaTeX `\operatorname{round}_{4}(\ln\left(x\right))`. No unit clause:
+/// the node rounds a pure number. See `RoundNode`'s overload for why the mode is left out and why the
+/// places are a comma-separated second argument; the call's own parentheses group it, so the primary
+/// `PrecedenceOf`'s `Atom` is right.
+template <Dialect D, Transcendental F, DecimalPlaces Places, RoundingMode Mode, Node Operand, Vocabulary V>
+[[nodiscard]] std::string render_node(RoundedTranscendentalNode<F, Places, Mode, Operand> const& node,
+                                      V const& vocabulary)
+{
+    std::string const call = detail::transcendental_text<D>(F, render<D>(node.operand, vocabulary));
+    std::string const placesText = std::to_string(Places.value);
+    if constexpr (D == Dialect::LaTeX)
+        return "\\operatorname{round}_{" + placesText + "}(" + call + ")";
+    else
+        return "round(" + call + ", to " + placesText + " dp)";
 }
 
 /// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,

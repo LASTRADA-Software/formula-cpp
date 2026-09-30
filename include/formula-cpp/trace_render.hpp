@@ -905,6 +905,15 @@ namespace detail
         return std::string { transcendental_name(function) } + "(" + operandText + ")";
     }
 
+    /// `round(ln(#1), to 4 dp)`: `render()`'s spelling, one step with the function inside it, because the
+    /// unrounded value was never a value. No unit clause: the node rounds a pure number.
+    [[nodiscard]] inline std::string rounded_transcendental_expression(
+        Transcendental function, ShownStep const& shownStep)
+    {
+        return "round(" + transcendental_call(function, sole_operand(shownStep)) + ", to "
+               + std::to_string(shownStep.granularity) + " dp)";
+    }
+
     /// What a step computed, written in terms of the steps it consumed.
     ///
     /// A `Constant` is absent from this deliberately: a constant's expression
@@ -1081,6 +1090,12 @@ namespace detail
             case StepKind::RoundedRoot:
                 return "round(sqrt(" + sole_operand(shownStep) + "), to " + std::to_string(shownStep.granularity) + " dp"
                        + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+            case StepKind::RoundedNaturalLogarithm:
+                return rounded_transcendental_expression(Transcendental::NaturalLogarithm, shownStep);
+            case StepKind::RoundedDecimalLogarithm:
+                return rounded_transcendental_expression(Transcendental::DecimalLogarithm, shownStep);
+            case StepKind::RoundedExponential:
+                return rounded_transcendental_expression(Transcendental::Exponential, shownStep);
             // `render()`'s head name. The count is the subject, as a banded
             // lookup's operand is; which row it selected goes in the suffix.
             case StepKind::SampleSizeLookup:
@@ -3025,7 +3040,8 @@ namespace detail
         else if (recorded.kind == StepKind::Conditional && recorded.branch == Branch::Neither)
             annotation = " [" + std::string { describe(recorded.branch) } + "]";
         else if (recorded.kind == StepKind::Round || recorded.kind == StepKind::RoundSignificant
-                 || recorded.kind == StepKind::RoundedRoot)
+                 || recorded.kind == StepKind::RoundedRoot || recorded.kind == StepKind::RoundedNaturalLogarithm
+                 || recorded.kind == StepKind::RoundedDecimalLogarithm || recorded.kind == StepKind::RoundedExponential)
             annotation = rounding_mode_suffix(recorded.mode);
         else if (recorded.kind == StepKind::RoundingRuleApplied)
             annotation = rounding_rule_suffix(recorded);

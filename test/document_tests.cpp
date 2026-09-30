@@ -300,6 +300,17 @@ TEST_CASE("document: a logarithm lists what its argument reads and states itself
           == "\\exp\\left(\\frac{V_w}{V_c}\\right)");
 }
 
+TEST_CASE("document: a rounded logarithm lists what its argument reads", "[document]")
+{
+    formula::Documentation const documentation = formula::document(
+        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfAwayFromZero>(
+            var<WaterVolume> / var<CementVolume>));
+    CHECK(documentation.formula == "round(log10(V_w / V_c), to 2 dp)");
+    REQUIRE(documentation.symbols.size() == 2);
+    CHECK(documentation.symbols[0].symbol == std::string_view { "V_w" });
+    CHECK(documentation.symbols[1].symbol == std::string_view { "V_c" });
+}
+
 namespace
 {
 struct Determinations: formula::Quantity<Determinations, "n", "number of determinations", formula::unit::One>

@@ -254,6 +254,9 @@ TEST_CASE("render: the Markdown dialect covers every node kind, not only the var
     CHECK(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>))
           == "abs(`d` - `d`)"); // AbsoluteValueNode
     CHECK(formula::render<Dialect::Markdown>(formula::log10(var<Determinations>)) == "log10(`n_d`)"); // TranscendentalNode
+    CHECK(formula::render<Dialect::Markdown>(
+              formula::rounded_exp<formula::DecimalPlaces { 2 }, formula::RoundingMode::HalfEven>(var<Determinations>))
+          == "round(exp(`n_d`), to 2 dp)"); // RoundedTranscendentalNode
     CHECK(formula::render<Dialect::Markdown>(precisionOfDiameter)
           == "r(1/50 * level; level = (`d` + `d`) / 2)"); // PrecisionLimitNode, PrecisionLevelNode
 }
@@ -295,6 +298,30 @@ TEST_CASE("render: a rounded square root reads as a rounding of a root, in every
     CHECK(formula::render(pooled) == "round(sqrt((s2 + t2) / 2), to 3 dp of g)");
     CHECK(formula::render(pooled * rat(2)) == "round(sqrt((s2 + t2) / 2), to 3 dp of g) * 2");
     CHECK(formula::render<Dialect::LaTeX>(pooled) == "\\operatorname{round}_{3\\,\\mathrm{g}}(\\sqrt{\\frac{s2 + t2}{2}})");
+}
+
+TEST_CASE("render: a rounded logarithm or exponential reads as a rounding of the call in every dialect", "[render]")
+{
+    constexpr auto logged =
+        formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(var<Determinations>);
+    CHECK(formula::render(logged) == "round(ln(n_d), to 4 dp)");
+    CHECK(formula::render<Dialect::Markdown>(logged) == "round(ln(`n_d`), to 4 dp)");
+    CHECK(formula::render<Dialect::LaTeX>(logged) == "\\operatorname{round}_{4}(\\ln\\left(n_d\\right))");
+    constexpr auto decimal =
+        formula::rounded_log10<formula::DecimalPlaces { 2 }, formula::RoundingMode::Floor>(
+            var<WaterVolume> / var<CementVolume>);
+    CHECK(formula::render(decimal) == "round(log10(V_w / V_c), to 2 dp)");
+    CHECK(formula::render<Dialect::LaTeX>(decimal)
+          == "\\operatorname{round}_{2}(\\log_{10}\\left(\\frac{V_w}{V_c}\\right))");
+    constexpr auto grown =
+        formula::rounded_exp<formula::DecimalPlaces { -1 }, formula::RoundingMode::Ceiling>(var<Determinations>);
+    CHECK(formula::render(grown) == "round(exp(n_d), to -1 dp)");
+    // The mode is the trace's, as for every rounding: two nodes differing only in it render alike.
+    CHECK(formula::render(
+              formula::rounded_ln<formula::DecimalPlaces { 4 }, formula::RoundingMode::Floor>(var<Determinations>))
+          == formula::render(logged));
+    // A call: an atom to what holds it.
+    CHECK(formula::render(logged * rat(2)) == "round(ln(n_d), to 4 dp) * 2");
 }
 
 TEST_CASE("render: a citation does not appear in the rendered formula", "[render]")
@@ -1609,6 +1636,9 @@ TEST_CASE("render: Markdown output never contains text a CommonMark parser reint
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::abs(var<Diameter> - var<Diameter>))); // AbsoluteValueNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::ln(var<Determinations>)));            // TranscendentalNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(formula::exp(var<Diameter> / var<Diameter>)));
+    // RoundedTranscendentalNode
+    isInertInMarkdown(formula::render<Dialect::Markdown>(
+        formula::rounded_log10<formula::DecimalPlaces { 3 }, formula::RoundingMode::HalfEven>(var<Determinations>)));
     isInertInMarkdown(formula::render<Dialect::Markdown>(precisionOfDiameter));                         // PrecisionLimitNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(chosen));                                // WhenNode
     isInertInMarkdown(formula::render<Dialect::Markdown>(overThreshold));                             // PredicateNode
