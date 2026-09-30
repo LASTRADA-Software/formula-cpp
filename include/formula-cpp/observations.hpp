@@ -8,7 +8,8 @@
 /// the most there can be is part of the type.
 ///
 /// Read by a binning (`binning.hpp`), which counts them into classes, and by
-/// the sample statistics (`statistics.hpp`), which summarise them. A header of
+/// the sample statistics (`statistics.hpp`), which summarise them, and, as an
+/// input of an opaque operation (`opaque.hpp`), by a fit. A header of
 /// their own, so that a reader of observations need not include the classes,
 /// lookups and bands a binning brings.
 

@@ -2538,8 +2538,8 @@ namespace detail
 
     /// What an opaque call's line says of whose failure it carries, bracketed:
     /// the operation's own, relayed from the one input that failed -- named,
-    /// with its element counted from one when the failure had one -- or
-    /// undetermined.
+    /// with its element -- or its observation, for raw observations -- counted
+    /// from one when the failure had one -- or undetermined.
     [[nodiscard]] inline std::string opaque_failure_suffix(Step<Rational> const& recorded,
                                                            OpaqueFailure carried,
                                                            std::optional<std::size_t> failedInput)
@@ -2555,7 +2555,9 @@ namespace detail
                 std::string relayed = " [carried up from ";
                 relayed += failedInput.has_value() ? operand_reference(*failedInput) : std::string { "an input" };
                 if (recorded.failedElement.has_value())
-                    relayed += ", at element " + std::to_string(*recorded.failedElement + 1);
+                    relayed += (recorded.failureSite == FailureSite::InputObservation ? ", at observation "
+                                                                                      : ", at element ")
+                               + std::to_string(*recorded.failedElement + 1);
                 return relayed + "]";
             }
             case OpaqueFailure::Undetermined:

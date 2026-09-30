@@ -450,6 +450,8 @@ enum class StepKind : std::uint8_t
     /// inputs included, and `compute` runs once per output used: a call is
     /// evaluated where its output is, as every other subexpression is. Nothing
     /// is wrong in the second copy, and `document()` lists the operation once.
+    /// On a relayed failure the input's element is in `Step::failedElement`,
+    /// and what it counts in `Step::failureSite`.
     /// A later memoisation would rely on the side tables' step keys staying
     /// unique, which they do: steps are only ever appended.
     ///
@@ -1368,7 +1370,8 @@ struct Step
     /// For a series step that failed at a position: what `failedElement`
     /// counts, as the evaluation's `SeriesFailure::site` said -- an element of
     /// the step's own series, or an observation it read (raw observations and
-    /// a binning). Zero-initialises to `ResultElement`, the site of every
+    /// a binning) and, for an opaque call relaying the failure of raw
+    /// observations, the observation it arose at. Zero-initialises to `ResultElement`, the site of every
     /// other failure.
     FailureSite failureSite {};
 
@@ -4078,6 +4081,7 @@ class RecordingSink
         {
             callStep.error = result.error().error;
             callStep.failedElement = result.error().element;
+            callStep.failureSite = result.error().site;
             callRow.failure = result.error().origin;
             if (callRow.failure == OpaqueFailure::Propagated && !detail::an_operand_failed(_trace->steps, callStep))
                 callRow.failure = OpaqueFailure::Undetermined;

@@ -2227,6 +2227,9 @@ formula_add_negative_test(opaque_compute_signature
 formula_add_negative_test(opaque_output_as_series
     "formula: an opaque call is not a value, since an operation may have several outputs; choose one with opaque_output<\"name\">(call)"
     REJECT "this expression is a series, not a single value")
+formula_add_negative_test(opaque_observations_where_series_declared
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "does not accept inputs of these dimensions" "compute cannot be called")
 # Least squares (`least_squares.hpp`): two loose series are refused in this
 # library's words, not the compiler's; a fit in double is refused once, in the
 # curve's words.

@@ -11,6 +11,11 @@ may break it, and each such change is recorded here.
 - `observations.hpp`, holding raw observations -- `observations<Q, Capacity>`, `ObservationsVarNode`,
   `ObservationsNode`, `ObservationsValue` and `EvaluatedObservations` -- which `binning.hpp` declared before and
   still includes. Code that reads observations no longer needs a binning's classes, lookups and bands.
+- `InputShape::Observations`: an opaque operation may take raw observations, `observations<Q, Capacity>`, as an
+  input. `compute` receives one `std::span<Rep const>` over the observations made -- as many as were made, not
+  the capacity, and empty when none were -- in any `Rep`, `double` included. The library compares no counts: an
+  operation over two independent samples takes two counts, and one that pairs its inputs row by row checks its
+  counts itself.
 - `dim::Power`, energy per time, and the units `unit::Watt`, `unit::Kilowatt`, `unit::WattHour` and
   `unit::KilowattHour`. A kilowatt-hour is exactly 3600000 joules, so a power times a time converts
   into kilowatt-hours without a rounded factor.
@@ -244,6 +249,11 @@ may break it, and each such change is recorded here.
   finds the library's function by argument-dependent lookup; one whose argument is a number still finds
   only the standard library's, which the library's refuses. A consumer's own function of one of these
   names that accepts a formula node now makes such a call ambiguous.
+- `OpaqueCallFailure` has a last member, `site` (`FailureSite`, default `FailureSite::ResultElement`), so an
+  aggregate initialisation naming the members before it is unchanged. Raw observations that fail to convert at
+  observation k relay `site == FailureSite::InputObservation`, and the call's trace line says
+  `[carried up from #1, at observation k]`. `InputShape` has a fourth enumerator, so a consumer's exhaustive
+  `switch` over it warns.
 - An unqualified call of `fraction_text`, `number_text`, `decimal_text`, `exact_decimal_text`,
   `define`, `calculation` or `worksheet` now also finds the library's function by argument-dependent
   lookup, since each takes an argument of a type in namespace `formula`. A consumer's own function

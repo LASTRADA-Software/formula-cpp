@@ -25,14 +25,16 @@
 /// what lets the trace show every input and an overlay reach every use of a
 /// quantity.** Every input is evaluated by the library, in order, into the
 /// coherent unit: a single value arrives as `Rep`, a series as
-/// `std::span<Rep const>`, and a curve as two spans, its points first and then
-/// its values. Nothing is converted on the way out either: each output is in
+/// `std::span<Rep const>`, raw observations as one `std::span<Rep const>` over
+/// those made, and a curve as two spans, its points first and then its values.
+/// Nothing is converted on the way out either: each output is in
 /// the coherent unit of the dimension the operation declares for it.
 ///
 /// **Absence is strict**, as it is for a series: an absent single value, or an absent
 /// element anywhere in a series or a curve, makes the whole call absent, and
 /// `compute` is not called at all -- an operation cannot choose to fit "the
-/// points someone happened to enter". Absence is decided after every input
+/// points someone happened to enter". Raw observations are never absent: none
+/// made is an empty span. Absence is decided after every input
 /// has been asked, as `BinaryNode` decides it, so an input's failure is never
 /// hidden behind another's absence. The first input that fails stops the call
 /// there, and its error is relayed as the call's; `compute` returning
@@ -63,6 +65,7 @@
 #include <formula-cpp/escape.hpp>
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/expression.hpp>
+#include <formula-cpp/observations.hpp>
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
@@ -99,6 +102,15 @@ enum class InputShape : std::uint8_t
     /// `output_dimensions`, points then values. A curve is evaluated only with
     /// `Rep = Rational` (`curve.hpp`), so a call with a curve input is too.
     Curve,
+    /// Raw observations: any `ObservationsNode` (`observations.hpp`). They
+    /// arrive as one `std::span<Rep const>` over the observations **made** --
+    /// as many as were made, not the capacity, and empty when none were --
+    /// pointing into the evaluated value; nothing is copied. They contribute
+    /// one dimension. How many there are is data, so the library compares no
+    /// counts: an operation over two independent samples takes two counts,
+    /// and one that pairs its inputs row by row checks its counts itself.
+    /// Evaluated in any `Rep`.
+    Observations,
 };
 
 /// Whose failure an opaque call is carrying.
@@ -152,6 +164,12 @@ struct OpaqueCallFailure
     /// that failed were never evaluated -- the call stops at the first input
     /// that fails; 0 otherwise.
     std::size_t notEvaluated = 0;
+    /// What `element` counts: an element of the input that failed, or --
+    /// for raw observations whose conversion into the coherent unit failed --
+    /// an observation (`FailureSite::InputObservation`), which the trace
+    /// names `at observation k`. Last, and defaulted, so that an aggregate
+    /// initialisation naming the members before it stays valid.
+    FailureSite site = FailureSite::ResultElement;
 
     /// Memberwise equality.
     [[nodiscard]] constexpr bool operator==(OpaqueCallFailure const&) const noexcept = default;
@@ -187,7 +205,7 @@ using OpaqueEvaluated = std::expected<std::optional<std::array<Rep, M>>, OpaqueC
 namespace detail
 {
     /// How many dimensions @p shapes contribute to `output_dimensions`: one
-    /// per single value or series, two per curve.
+    /// per single value, series or observations, two per curve.
     template <std::size_t K>
     [[nodiscard]] consteval std::size_t input_dimension_count(std::array<InputShape, K> const& shapes) noexcept
     {
@@ -255,7 +273,8 @@ namespace detail
 ///    values;
 ///  - `template <typename Rep> static constexpr std::expected<std::array<Rep,
 ///    M>, ArithmeticError> compute(...) noexcept`, taking a single value as
-///    `Rep`, a series as `std::span<Rep const>` and a curve as two spans,
+///    `Rep`, a series as `std::span<Rep const>`, raw observations as one
+///    `std::span<Rep const>` over those made and a curve as two spans,
 ///    points first -- every value in the coherent unit.
 ///
 /// **`compute` must be a function of its arguments alone.** Nothing in its
@@ -300,8 +319,8 @@ concept OpaqueOperation = requires {
 namespace detail
 {
     /// Whether @p Op declares `output_dimensions` as `OpaqueOperation`
-    /// describes it: taking one `Dimension` per single value or series and
-    /// two per curve, and answering one per output.
+    /// describes it: taking one `Dimension` per single value, series or
+    /// observations and two per curve, and answering one per output.
     template <typename Op>
     inline constexpr bool opaque_dimensions_declared = requires {
         {
@@ -316,7 +335,7 @@ namespace detail
     {
         static_assert(opaque_dimensions_declared<Op>,
                       "formula: this opaque operation's output_dimensions must be a static function taking "
-                      "std::array<Dimension, D> -- one Dimension per single value or series input and two per curve, "
+                      "std::array<Dimension, D> -- one Dimension per single value, series or observations input and two per curve, "
                       "its points then its values -- and returning std::optional<std::array<Dimension, M>>, with M "
                       "the number of outputs; the operation appears in this diagnostic as the template argument of "
                       "RequireOpaqueOutputDimensionsDeclared");
@@ -439,6 +458,16 @@ namespace detail
         static constexpr std::array<Dimension, 2> dimensions { T::domainDimension, T::dimension };
     };
 
+    template <ObservationsNode T>
+    struct OpaqueInput<T>
+    {
+        static constexpr bool known = true;
+        static constexpr InputShape shape = InputShape::Observations;
+        /// Known only at run time: 0, which `opaque_lengths_agree` skips.
+        static constexpr std::size_t length = 0;
+        static constexpr std::array<Dimension, 1> dimensions { T::dimension };
+    };
+
     /// Whether each of @p Inputs has the shape @p Op declares at its position.
     /// Only asked once the counts agree.
     template <typename Op, typename... Inputs>
@@ -503,6 +532,12 @@ namespace detail
     struct OpaqueArguments<Rep, T>
     {
         using type = std::tuple<std::span<Rep const>, std::span<Rep const>>;
+    };
+
+    template <typename Rep, ObservationsNode T>
+    struct OpaqueArguments<Rep, T>
+    {
+        using type = std::tuple<std::span<Rep const>>;
     };
 
     /// Every argument `compute` is called with, for inputs @p Inputs, as one
@@ -617,8 +652,8 @@ namespace detail
     {
         static_assert(OpaqueComputeCallable<Op, Rep, OpaqueArgumentTuple<Rep, Inputs...>>::value,
                       "formula: this opaque operation's compute cannot be called with the values its declared inputs "
-                      "give, or does not return one value per output; a single value arrives as Rep, a series as "
-                      "std::span<Rep const>, a curve as two spans, points first, and compute returns "
+                      "give, or does not return one value per output; a single value arrives as Rep, a series or raw "
+                      "observations as std::span<Rep const>, a curve as two spans, points first, and compute returns "
                       "std::expected<std::array<Rep, M>, ArithmeticError>");
 
         static constexpr bool value = true;
@@ -1032,13 +1067,16 @@ namespace detail
 
 namespace detail
 {
-    /// Evaluates one input of an opaque call: a series through
+    /// Evaluates one input of an opaque call: raw observations through
+    /// `evaluate_observations`, a series through
     /// `dispatch_series`, a curve through `dispatch_curve`, a single value
     /// through `dispatch`.
     template <typename Rep, typename Input, typename Env, typename Sink>
     [[nodiscard]] constexpr auto evaluate_opaque_input(Input const& input, Env const& environment, Sink sink) noexcept
     {
-        if constexpr (SeriesNode<Input>)
+        if constexpr (ObservationsNode<Input>)
+            return evaluate_observations<Rep>(input, environment, sink);
+        else if constexpr (SeriesNode<Input>)
             return dispatch_series<Rep>(input, environment, sink);
         else if constexpr (CurveExpression<Input>)
             return dispatch_curve<Rep>(input, environment, sink);
@@ -1071,6 +1109,15 @@ namespace detail
         return OpaqueCallFailure { failed.error().error, OpaqueFailure::Propagated, failedAt };
     }
 
+    /// A failed observations input's failure: its error, and the observation
+    /// it arose at, counted as an observation.
+    template <typename Rep, std::size_t Capacity>
+    [[nodiscard]] constexpr OpaqueCallFailure opaque_input_failure(EvaluatedObservations<Rep, Capacity> const& failed) noexcept
+    {
+        return OpaqueCallFailure { failed.error().error, OpaqueFailure::Propagated, failed.error().element, 0,
+                                   failed.error().site };
+    }
+
     /// Whether an evaluated input is wholly present: the value, every element
     /// of a series, every point and value of a curve.
     template <typename Rep>
@@ -1094,6 +1141,13 @@ namespace detail
         for (std::size_t at = 0; at < N; ++at)
             if (!evaluatedCurve.domain[at].has_value() || !evaluatedCurve.values[at].has_value())
                 return false;
+        return true;
+    }
+
+    /// Raw observations are never absent: none made is an empty span.
+    template <typename Rep, std::size_t Capacity>
+    [[nodiscard]] constexpr bool opaque_input_present(ObservationsValue<Rep, Capacity> const&) noexcept
+    {
         return true;
     }
 
@@ -1134,6 +1188,25 @@ namespace detail
         return OpaqueHeldCurve<Rep, N> { opaque_values_of(evaluatedCurve.domain), opaque_values_of(evaluatedCurve.values) };
     }
 
+    /// The observations made, as `compute` reads them: a view into the
+    /// evaluated value, which the input walk (`evaluate_opaque_inputs`) holds
+    /// for as long as `compute` runs. Nothing is copied.
+    template <typename Rep>
+    struct OpaqueHeldObservations
+    {
+        /// The observations made, in the order made.
+        std::span<Rep const> made;
+    };
+
+    template <typename Rep, std::size_t Capacity>
+    [[nodiscard]] constexpr OpaqueHeldObservations<Rep> opaque_held(
+        ObservationsValue<Rep, Capacity> const& evaluatedObservations) noexcept
+    {
+        return OpaqueHeldObservations<Rep> {
+            std::span<Rep const> { evaluatedObservations.elements.data(), evaluatedObservations.count }
+        };
+    }
+
     /// What one held input passes to `compute`, as a tuple.
     template <typename Rep>
     [[nodiscard]] constexpr std::tuple<Rep> opaque_arguments(Rep const& held) noexcept
@@ -1153,6 +1226,12 @@ namespace detail
     {
         return std::tuple<std::span<Rep const>, std::span<Rep const>> { std::span<Rep const> { held.points },
                                                                         std::span<Rep const> { held.pointValues } };
+    }
+
+    template <typename Rep>
+    [[nodiscard]] constexpr std::tuple<std::span<Rep const>> opaque_arguments(OpaqueHeldObservations<Rep> const& held) noexcept
+    {
+        return std::tuple<std::span<Rep const>> { held.made };
     }
 
     /// Calls `compute` on every input, each wholly present: the outputs, or
