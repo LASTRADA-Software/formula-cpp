@@ -66,6 +66,7 @@
 #include <formula-cpp/evaluate.hpp>
 #include <formula-cpp/rational.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -122,7 +123,10 @@ template <std::size_t Wide, std::size_t Narrow>
 
 /// The least common multiple of every element's denominator: the number
 /// every element of @p observedColumn multiplies to an integer. Nothing when
-/// it leaves `L` limbs.
+/// it leaves `L` limbs. A denominator that already divides the running one --
+/// a repeated one, say -- leaves it as it is; below 2^32 that is decided by
+/// `divmod_small`, one step per limb, rather than by the lcm's gcd and long
+/// division.
 template <std::size_t L>
 [[nodiscard]] constexpr std::optional<WideUnsigned<L>> common_denominator(
     std::span<Rational const> observedColumn) noexcept
@@ -130,8 +134,12 @@ template <std::size_t L>
     WideUnsigned<L> common = WideUnsigned<L>::from_u64(1);
     for (Rational const& observed: observedColumn)
     {
+        auto const denominatorValue = static_cast<std::uint64_t>(observed.denominator());
+        if (denominatorValue <= 0xFFFF'FFFFU
+            && divmod_small(common, static_cast<std::uint32_t>(denominatorValue)).remainder == 0)
+            continue;
         std::optional<WideUnsigned<L>> const grown =
-            lcm_checked_or_none(common, WideUnsigned<L>::from_u64(static_cast<std::uint64_t>(observed.denominator())));
+            lcm_checked_or_none(common, WideUnsigned<L>::from_u64(denominatorValue));
         if (!grown.has_value())
             return std::nullopt;
         common = *grown;
@@ -157,10 +165,8 @@ template <std::size_t L>
 template <typename Rep>
 [[nodiscard]] constexpr bool all_equal_to_first(std::span<Rep const> observed) noexcept
 {
-    for (std::size_t at = 1; at < observed.size(); ++at)
-        if (!(observed[at] == observed[0]))
-            return false;
-    return true;
+    return observed.empty()
+           || std::ranges::all_of(observed.subspan(1), [&observed](Rep const& each) { return each == observed.front(); });
 }
 
 /// Whether a fit of @p responses on @p regressorColumns has an answer to look
