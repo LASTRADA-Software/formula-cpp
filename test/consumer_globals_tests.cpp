@@ -18,8 +18,9 @@
 // evaluation of every node kind -- arithmetic with a bare number on either
 // side, negation, powers and every root, pi, rounding both ways, a rounded
 // square root, a logarithm, a decimal logarithm and an exponential, exactly
-// and in double, each rounded exactly to declared places, a conditional, the escape hatch, the three lookups, a
-// critical value, an absolute value and a two-pass precision limit --
+// and in double, each rounded exactly to declared places, a conditional,
+// the escape hatch, the three lookups, a critical value, an absolute value
+// and a two-pass precision limit --
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
 // and its predicate, and of formulas an overlay fixed, derived and replaced;

@@ -10,9 +10,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <cstdint>
 #include <expected>
-#include <optional>
 
 namespace
 {
@@ -61,9 +59,9 @@ template <DecimalPlaces Places, RoundingMode Mode>
     return at(formula::rounded_exp<Places, Mode>(var<Ratio>), ratioValue);
 }
 
-using Outcome = std::expected<Rational, formula::ArithmeticError>;
-constexpr Outcome overflow { std::unexpected { formula::ArithmeticError::Overflow } };
-constexpr Outcome domainError { std::unexpected { formula::ArithmeticError::DomainError } };
+using RoundedOrError = std::expected<Rational, formula::ArithmeticError>;
+constexpr RoundedOrError overflow { std::unexpected { formula::ArithmeticError::Overflow } };
+constexpr RoundedOrError domainError { std::unexpected { formula::ArithmeticError::DomainError } };
 } // namespace
 
 TEST_CASE("rounded_transcendental: ln 2 to 4 dp in every mode and of 1/2 with the directions paired the other way",
@@ -179,8 +177,11 @@ TEST_CASE("rounded_transcendental: absence and failures come first and in order"
     STATIC_REQUIRE(lnAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { -1 }) == domainError);
     STATIC_REQUIRE(lnAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { 2 }) == overflow);
     STATIC_REQUIRE(lnAt<DecimalPlaces { -19 }, RoundingMode::HalfEven>(Rational { 1 }) == overflow);
-    // Places out of range before the tiny rule.
+    // Places out of range before the tiny rule: without that check the tiny rule would answer 0 in the modes
+    // that round down or to nearest (only the two upward modes overflow on their own).
     STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::Ceiling>(Rational { -50 }) == overflow);
+    STATIC_REQUIRE(expAt<DecimalPlaces { 19 }, RoundingMode::HalfEven>(Rational { -50 }) == overflow);
+    STATIC_REQUIRE(expAt<DecimalPlaces { -19 }, RoundingMode::Floor>(Rational { -50 }) == overflow);
 }
 
 TEST_CASE("rounded_transcendental: a percentage is read in the coherent unit", "[rounded_transcendental]")
@@ -221,5 +222,5 @@ TEST_CASE("rounded_transcendental: rounded of a plain logarithm stays an exact l
     // rounded<>(ln(x)) does not become rounded_ln: the plain node fails before the rounding sees a value.
     STATIC_REQUIRE(
         at(formula::rounded<unit::One, DecimalPlaces { 4 }, RoundingMode::HalfEven>(formula::ln(var<Ratio>)), Rational { 2 })
-        == Outcome { std::unexpected { formula::ArithmeticError::Inexact } });
+        == RoundedOrError { std::unexpected { formula::ArithmeticError::Inexact } });
 }

@@ -13,11 +13,11 @@ struct Ratio: formula::Quantity<Ratio, "r", "an invented ratio", formula::unit::
 };
 } // namespace
 
-     int main()
-     {
-         constexpr auto logarithm =
-             formula::rounded_exp<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(formula::var<Ratio>);
-         auto const evaluated = formula::checked_evaluate_si<double>(
-             logarithm, formula::environment(formula::Measured<Ratio> { formula::Rational { 2 } }));
-         return evaluated.has_value() ? 0 : 1;
-     }
+int main()
+{
+    constexpr auto exponential =
+        formula::rounded_exp<formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(formula::var<Ratio>);
+    auto const evaluated = formula::checked_evaluate_si<double>(
+        exponential, formula::environment(formula::Measured<Ratio> { formula::Rational { 2 } }));
+    return evaluated.has_value() ? 0 : 1;
+}
