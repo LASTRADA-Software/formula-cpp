@@ -24,8 +24,9 @@
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
 // and its predicate, and of formulas an overlay fixed, derived and replaced;
-// `render_trace`; `traced`, `trace_of`, `trace_of_si`, `explain_conformity` and
-// `explain_method`;
+// `render_trace`; `traced`, `trace_of`, `trace_of_si`, `explain_conformity`,
+// `explain_method`, `explain_check_method`, `explain_check` and
+// `explain_check_all`;
 // `check` and `check_all`; `evaluate_method` of an original
 // and of a replaced variant, and `check_method`, with `RecordingSink` and
 // with a sink of its own; `apply` with every overlay operation; `Outcome`'s
@@ -41,12 +42,14 @@
 // from either end, a per-element rounding and `sum`, inside a method an
 // overlay's constant rewrote, evaluated, rendered, documented and traced; a
 // conformity check against a limit envelope, a snap, and curves -- a declared
-// domain, a pairing, a splice and an interpolation -- on the same surfaces;
+// domain, a pairing, a splice and an interpolation -- on the same surfaces,
+// with `explain_curve`;
 // raw observations, `from` and `get_observations`, binned into classes and
 // divided by their sum, on the same surfaces;
 // a sample's count, mean, variance and range, and a rounded root of the
-// variance, on the same surfaces; a rejection of outliers, evaluated alone
-// and under a mean, on the same surfaces, and one by gap to range; a mean
+// variance, on the same surfaces; a rejection of outliers, evaluated alone,
+// with `explain_rejection` and under a mean, on the same surfaces, and one by
+// gap to range; a mean
 // and a rejection of raw observations, on the same surfaces; a consumer's
 // opaque operation's output, evaluated exactly and in double, and rounded
 // where it is used, traced, rendered and documented; a least-squares fit,
@@ -691,6 +694,14 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::render_trace(explainedEdgeCheck.trace, { .maxSteps = 20 })
                                   == formula::render_trace(conformityTrace, { .maxSteps = 20 }));
     probe.checks.push_back(explainedStrength.outcome == strength && !explainedStrength.trace.empty());
+    // The constraint twins and the method's: each the outcome of its untraced
+    // verb above, with the steps it recorded.
+    auto const explainedLimit = formula::explain_check(forceLimit, specimen, north);
+    auto const explainedLimits = formula::explain_check_all(formula::constraints(forceLimit), specimen, north);
+    auto const explainedVerdicts = formula::explain_check_method(overlaid, specimen, north);
+    probe.checks.push_back(explainedLimit.outcome == checkedLimit && !explainedLimit.trace.empty());
+    probe.checks.push_back(explainedLimits.outcome == setOutcomes && !explainedLimits.trace.empty());
+    probe.checks.push_back(explainedVerdicts.outcome == verdicts && !explainedVerdicts.trace.empty());
     // A snap: 150 mm among 137, 149 and 151 mm is a tie, decided toward the
     // higher.
     auto const snappedEdge = formula::snapped<unit::Millimetre, EdgeSnapSet, formula::SnapTie::TowardHigher>(var<EdgeX>);
@@ -724,6 +735,8 @@ ConsumerGlobalsProbe probe_consumer_globals()
         && formula::document<formula::Dialect::LaTeX>(readEdge).formula.find("interpolate") != std::string::npos
         && formula::document(edgeCurve, north).symbols.empty()
         && formula::render_trace(curveTrace, { .maxSteps = 40 }).find("[between 139 and 161 mm]") != std::string::npos);
+    auto const explainedCurve = formula::explain_curve<EdgeX, EdgeX>(edgeCurve, specimen, north);
+    probe.checks.push_back(explainedCurve.outcome == splicedEdge && !explainedCurve.trace.empty());
     // Raw observations, from a span, binned into two classes: 163 mm sits on
     // the boundary and is counted in the upper class.
     std::array<formula::Rational, 3> const edgeReadings { formula::Rational { 103 },
@@ -798,6 +811,12 @@ ConsumerGlobalsProbe probe_consumer_globals()
                            && formula::document(formula::sample_mean(trimmed), north).rejections.size() == 1
                            && formula::render_trace(trimmedTrace, { .maxSteps = 20 }).find("settled: 0 rejected, 2 remain")
                                   != std::string::npos);
+    auto const explainedRejection = formula::explain_rejection<EdgeX>(trimmed, bothScreens, north);
+    probe.checks.push_back(
+        explainedRejection.outcome.has_value() && trimmedOutcome.has_value()
+        && explainedRejection.outcome->outcome() == trimmedOutcome->outcome()
+        && formula::render_trace(explainedRejection.trace, { .maxSteps = 20 }).find("settled: 0 rejected, 2 remain")
+               != std::string::npos);
     // Gap to range at 3/4: 150 and 103 mm are each other's neighbour, a gap
     // of the whole range, so both are past it -- and rejecting both would
     // leave none of at least 1, so it aborts with the verdict.
