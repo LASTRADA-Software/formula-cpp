@@ -174,6 +174,18 @@ may break it, and each such change is recorded here.
   documentation page, a first run, changes and what each recalculates, the derivation of a value
   that was reused, a what-if copy, a value typed in by hand, a failure reaching what reads it, an
   input nobody measured, and what is refused.
+- `rounded_output<"name", U, Places, Mode>(call)`: one output of an opaque call, rounded to `Places`
+  decimal places of the unit `U` under `Mode`, exactly -- the decimal the operation's true output
+  rounds to, even where that output is a fraction too wide for `Rational`. It rounds in `U`, never in
+  the coherent unit, and its dimension is the output's. It is refused, in the library's words, for an
+  output the operation does not declare, for a unit that does not measure the output's dimension and
+  for a unit with an offset, and it does not compile under `Rep = double`, as no rounding node does.
+  `rounded<>(opaque_output<>(...))` is unchanged: the exact output rounded afterwards, or `Overflow`
+  where the exact output overflows.
+- `OpaqueValues`, and `OpaqueCallInfo::values`: a sink hearing an opaque call is told `Exact`, as
+  before, or `RoundedWhereUsed` for a call evaluated for a `rounded_output`, whose `opaque_produced`
+  is then handed an `OpaqueEvaluated<Rational, 0>` -- whether the call answered, was absent or
+  failed, and no value.
 
 ### Changed
 
@@ -199,6 +211,9 @@ may break it, and each such change is recorded here.
   `Environment` the two always agree, so its traces read as before. A variable's step can now
   record `ValueSource::Derived`, a value its environment calculated: its line ends `, calculated`,
   and one with no value reads `(no value), calculated` rather than `(not measured)`.
+- `OpaqueCallInfo` gains `values` after `dimensions`, defaulted to `OpaqueValues::Exact`: code that
+  builds one with designated initialisers is unaffected; a structured binding over one now has five
+  members, not four.
 
 ## [0.1.0] - 2026-09-28
 

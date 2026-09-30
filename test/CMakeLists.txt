@@ -96,6 +96,7 @@ add_executable(formula-cpp-tests
     format_tests.cpp
     wide_int_tests.cpp
     wide_rounding_tests.cpp
+    rounded_output_tests.cpp
     "${PROJECT_SOURCE_DIR}/support/fail_without_dialogs.cpp")
 target_link_libraries(formula-cpp-tests PRIVATE formula-cpp::formula-cpp Catch2::Catch2WithMain)
 formula_apply_warnings(formula-cpp-tests)
@@ -2205,6 +2206,35 @@ formula_add_negative_test(least_squares_refused_curve
 formula_add_negative_test(least_squares_in_double
     "formula: a curve can only be evaluated with Rep = Rational"
     REJECT "must be noexcept" "compute cannot be called")
+# rounded_output (`opaque.hpp`): each refusal once, gated on the ones before
+# it; every REJECT names what the next check down, or the result's, would add.
+formula_add_negative_test(rounded_output_unit_dimension_mismatch
+    "formula: this rounded_output names a unit that does not measure the dimension of the output it rounds; the output and the unit appear in this diagnostic as the template arguments of RequireRoundedOutputUnitMatches"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit with an offset" "this result quantity does not measure the dimension")
+formula_add_negative_test(rounded_output_offset_unit_dimension_mismatch
+    "formula: this rounded_output names a unit that does not measure the dimension of the output it rounds"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit with an offset")
+formula_add_negative_test(rounded_output_unit_has_offset
+    "formula: this rounded_output names a unit with an offset, such as degrees Celsius; a fitted coefficient is a difference or a ratio, which an offset unit would misstate; name the unit without its offset"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit that does not measure")
+formula_add_negative_test(rounded_output_unknown_output
+    "formula: this opaque operation has no output of that name; the operation and the name asked for appear in this diagnostic as the template arguments of RequireOpaqueOutputNamed"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit" "this result quantity does not measure the dimension")
+formula_add_negative_test(rounded_output_refused_call
+    "formula: this opaque call passes an input of another shape than the operation declares"
+    REJECT "formula: this rounded_output names a unit" "this result quantity does not measure the dimension")
+formula_add_negative_test(rounded_output_forged_position
+    "formula: this opaque output's position names no output of its operation"
+    EXPECT_COUNT 1
+    REJECT "formula: this rounded_output names a unit")
+# `RepRounding<double>`'s own refusal, as for every rounding node.
+formula_add_negative_test(rounded_output_rep_double
+    "formula: a rounding node cannot be evaluated with Rep = double"
+    REJECT "formula: this rounded_output names a unit")
 # A constant for a quantity read as a series inside an opaque call: the
 # rewrite sees through the call to its inputs, so the series refusal is the
 # one message -- not "cannot see inside", and not "nobody reads it".

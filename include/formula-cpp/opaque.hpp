@@ -41,10 +41,23 @@
 ///
 /// Every refusal here is a `Require...` struct with this library's words, and
 /// each is gated on the ones before it, so that one mistake draws one message.
+///
+/// **An output the exact layer cannot hold is reported at a declared
+/// precision.** `rounded_output<"slope", U, Places, Mode>(call)` is the
+/// decimal the operation's true output rounds to in `U` -- exact, even where
+/// the output itself is a fraction too wide for `Rational`, as a fit through
+/// many readings is. An operation may state its outputs exactly in wider
+/// integers for this (`compute_exact`, detected by
+/// `detail::declares_compute_exact`; internal, not a customisation point
+/// yet); one that does not is evaluated through `compute<Rational>` and
+/// rounded exactly. The call is then told to a sink with
+/// `OpaqueValues::RoundedWhereUsed`, and its trace names its outputs without
+/// values. `opaque_output` is unchanged: the exact output, or `Overflow`.
 
 #include <formula-cpp/citation.hpp>
 #include <formula-cpp/curve.hpp>
 #include <formula-cpp/detail/fixed_string.hpp>
+#include <formula-cpp/detail/wide_rounding.hpp>
 #include <formula-cpp/dimension.hpp>
 #include <formula-cpp/error.hpp>
 #include <formula-cpp/escape.hpp>
@@ -53,8 +66,11 @@
 #include <formula-cpp/outcome.hpp>
 #include <formula-cpp/quantity.hpp>
 #include <formula-cpp/rational.hpp>
+#include <formula-cpp/rounding.hpp>
+#include <formula-cpp/rounding_node.hpp>
 #include <formula-cpp/series.hpp>
 #include <formula-cpp/sink.hpp>
+#include <formula-cpp/unit.hpp>
 
 #include <array>
 #include <concepts>
@@ -107,6 +123,20 @@ enum class OpaqueFailure : std::uint8_t
     Undetermined,
 };
 
+/// Whether an opaque call holds its outputs' values, as a sink is told of it
+/// (`OpaqueCallInfo::values`) and a trace records it (`OpaqueStepData::values`).
+enum class OpaqueValues : std::uint8_t
+{
+    /// Every output is a `Rational`, exactly: `opaque_output`'s route. The zero
+    /// value, so a call described before this existed reads as it did.
+    Exact,
+    /// The call was evaluated for an output rounded where it is used
+    /// (`rounded_output`): no output exists as a `Rational` until it is
+    /// rounded, so the call holds no values, and each output used states its
+    /// own rounding.
+    RoundedWhereUsed,
+};
+
 /// Why an opaque call could not be evaluated.
 struct OpaqueCallFailure
 {
@@ -142,6 +172,11 @@ struct OpaqueCallInfo
     std::span<std::string_view const> outputs {};
     /// Each output's dimension, in the same order.
     std::span<Dimension const> dimensions {};
+    /// Whether the evaluation the sink is told of holds the outputs' values. A
+    /// call evaluated for a `rounded_output` says `RoundedWhereUsed`, and its
+    /// `opaque_produced` is handed an `OpaqueEvaluated<Rational, 0>`: whether
+    /// the call answered, was absent or failed, and no value.
+    OpaqueValues values = OpaqueValues::Exact;
 };
 
 /// What evaluating an opaque call produces: every output in the coherent
@@ -500,6 +535,34 @@ namespace detail
         static constexpr bool value = noexcept(Op::template compute<Rep>(std::declval<Args>()...));
     };
 
+    /// Whether @p Op declares the exact hook a `rounded_output` prefers, for
+    /// arguments @p Tuple: `static constexpr std::size_t exact_limbs`, at least
+    /// 4, and a `noexcept` `compute_exact` taking what `compute<Rational>`
+    /// takes and answering `std::expected<std::array<WideRatio<exact_limbs>,
+    /// M>, ArithmeticError>`, each output exactly. An internal hook, not a
+    /// customisation point: an operation that declares it any other way is
+    /// evaluated through `compute<Rational>`, as if it had none.
+    template <typename Op, typename Tuple>
+    struct OpaqueExactCallable;
+
+    template <typename Op, typename... Args>
+    struct OpaqueExactCallable<Op, std::tuple<Args...>>
+    {
+        static constexpr bool value = requires(Args... arguments) {
+            { Op::exact_limbs } -> std::convertible_to<std::size_t>;
+            requires Op::exact_limbs >= 4;
+            {
+                Op::compute_exact(arguments...)
+            } -> std::same_as<std::expected<std::array<WideRatio<Op::exact_limbs>, Op::outputs.size()>, ArithmeticError>>;
+            requires noexcept(Op::compute_exact(arguments...));
+        };
+    };
+
+    /// Whether a call of @p Op on @p Inputs is evaluated for a `rounded_output`
+    /// through `compute_exact`.
+    template <typename Op, typename... Inputs>
+    inline constexpr bool declares_compute_exact = OpaqueExactCallable<Op, OpaqueArgumentTuple<Rational, Inputs...>>::value;
+
     /// Fails to compile when an opaque call passes a different number of
     /// inputs than its operation declares.
     template <typename Op, typename... Inputs>
@@ -806,6 +869,37 @@ namespace detail
 
         static constexpr bool value = true;
     };
+
+    /// Fails to compile when the unit a `rounded_output` is stated in does not
+    /// measure the dimension of the output it rounds. Silent over a refused
+    /// call or an output of no declared name: @p Output is refused already.
+    template <typename Output, Unit U>
+    struct RequireRoundedOutputUnitMatches
+    {
+        static_assert(refused_already<Output>() || U.dimension == Output::dimension,
+                      "formula: this rounded_output names a unit that does not measure the dimension of the output it "
+                      "rounds; the output and the unit appear in this diagnostic as the template arguments of "
+                      "RequireRoundedOutputUnitMatches");
+
+        static constexpr bool value = true;
+    };
+
+    /// Fails to compile when that unit has an offset, as degrees Celsius has:
+    /// an operation's output -- a fitted coefficient, a spread -- is a
+    /// difference or a ratio, and every reader converts the node's value
+    /// through the unit, offset included. Asked only when @p DimensionMatches,
+    /// so that a unit wrong in both ways draws the dimension's one message, as
+    /// `RequireRootUnitWithoutOffset` is gated (`rounded_root.hpp`).
+    template <Unit U, bool DimensionMatches>
+    struct RequireRoundedOutputUnitWithoutOffset
+    {
+        static_assert(!DimensionMatches || U.offsetNumerator == 0,
+                      "formula: this rounded_output names a unit with an offset, such as degrees Celsius; a fitted "
+                      "coefficient is a difference or a ratio, which an offset unit would misstate; name the unit "
+                      "without its offset");
+
+        static constexpr bool value = true;
+    };
 } // namespace detail
 
 /// Output @p I of the opaque call @p Call: one value, and so a `Node`.
@@ -851,6 +945,81 @@ template <detail::FixedString Name, OpaqueOperation Op, typename... Inputs>
     else
         return OpaqueOutputNode<detail::unknownOutput, Call, detail::UnnamedOpaqueOutput> { {}, call };
 }
+
+/// Output @p I of the opaque call @p Call, rounded to @p Places decimal places
+/// of @p U under @p Mode -- the decimal the operation's true output rounds to,
+/// exact, even where that output is a fraction too wide for `Rational`: the
+/// fused counterpart of `opaque_output`, as `rounded_sqrt` is of `rounded<>`
+/// around a root. `rounded<>(opaque_output<>(...))` keeps meaning what it
+/// says, an exact output rounded afterwards, which fails where the exact
+/// output does.
+///
+/// Its dimension is the output's, and it rounds in `U`, never in the coherent
+/// unit. @p Origin is `opaque_output`'s (`detail::UnnamedOpaqueOutput`); leave
+/// it to its default. No `{}` initialiser on `call`, deliberately (defect
+/// class 4).
+template <std::size_t I, typename Call, Unit U, DecimalPlaces Places, RoundingMode Mode,
+          typename Origin = detail::NamedOpaqueOutput>
+struct RoundedOpaqueOutputNode: NodeBase
+{
+    static_assert(detail::RequireOpaqueOutputPosition<I, Call, Origin>::value);
+    static_assert(detail::RequireRoundedOutputUnitMatches<OpaqueOutputNode<I, Call, Origin>, U>::value);
+    static_assert(detail::RequireRoundedOutputUnitWithoutOffset<
+                  U,
+                  !OpaqueOutputNode<I, Call, Origin>::refused && U.dimension == OpaqueOutputNode<I, Call, Origin>::dimension>::value);
+
+    /// The call whose output this is. Evaluating this node evaluates it whole.
+    Call call;
+
+    /// The unit the rounding happens in, and the step's value is stated in.
+    static constexpr Unit unit = U;
+    /// How many decimal places of `unit` to keep.
+    static constexpr DecimalPlaces places = Places;
+    /// Which way to go; the three half modes differ only on a tie, which only
+    /// an output that is exactly rational can reach.
+    static constexpr RoundingMode mode = Mode;
+    /// The dimension the operation declares for this output.
+    static constexpr Dimension dimension = OpaqueOutputNode<I, Call, Origin>::dimension;
+    /// The output's position among the operation's outputs, zero-based.
+    static constexpr std::size_t index = I;
+    /// The output's name, as the operation declares it.
+    static constexpr std::string_view output = OpaqueOutputNode<I, Call, Origin>::output;
+    /// Whether the call was refused, or this position names no output
+    /// (`OpaqueOutputNode::refused`): then every check over this node is
+    /// silent, and it is never evaluated.
+    static constexpr detail::RefusedFlag refused = OpaqueOutputNode<I, Call, Origin>::refused;
+};
+
+/// The output named @p Name of @p call, rounded to @p Places decimal places of
+/// @p U under @p Mode, exactly:
+/// `rounded_output<"slope", millimetrePerSecond, DecimalPlaces { 4 }, RoundingMode::HalfEven>(fit)`.
+/// An output the operation does not declare is refused once, in
+/// `opaque_output`'s words.
+template <detail::FixedString Name, Unit U, DecimalPlaces Places, RoundingMode Mode, OpaqueOperation Op, typename... Inputs>
+[[nodiscard]] constexpr auto rounded_output(OpaqueCall<Op, Inputs...> call) noexcept
+{
+    using Call = OpaqueCall<Op, Inputs...>;
+    constexpr std::size_t namedAt = detail::output_index<Op, Name>();
+    static_assert(std::conditional_t<detail::opaque_operation_well_formed<Op>,
+                                     detail::RequireOpaqueOutputNamed<Op, Name>,
+                                     std::true_type>::value);
+    if constexpr (namedAt < Op::outputs.size())
+        return RoundedOpaqueOutputNode<namedAt, Call, U, Places, Mode> { {}, call };
+    else
+        return RoundedOpaqueOutputNode<detail::unknownOutput, Call, U, Places, Mode, detail::UnnamedOpaqueOutput> { {}, call };
+}
+
+namespace detail
+{
+    /// The output @p node rounds, as `opaque_output` builds it: for the walks
+    /// that treat the two alike -- `document`, an overlay's rewrite, `render`.
+    template <std::size_t I, typename Call, Unit U, DecimalPlaces Places, RoundingMode Mode, typename Origin>
+    [[nodiscard]] constexpr OpaqueOutputNode<I, Call, Origin> unrounded(
+        RoundedOpaqueOutputNode<I, Call, U, Places, Mode, Origin> const& node) noexcept
+    {
+        return OpaqueOutputNode<I, Call, Origin> { {}, node.call };
+    }
+} // namespace detail
 
 namespace detail
 {
@@ -977,36 +1146,38 @@ namespace detail
                                                                         std::span<Rep const> { held.pointValues } };
     }
 
-    /// Calls `compute` on every input, each wholly present, and says whose
-    /// failure an error is.
+    /// Calls `compute` on every input, each wholly present: the outputs, or
+    /// the operation's own error.
     template <typename Rep, typename Op, typename... Evaluated>
-    [[nodiscard]] constexpr OpaqueEvaluated<Rep, Op::outputs.size()> opaque_compute(
+    [[nodiscard]] constexpr std::expected<std::array<Rep, Op::outputs.size()>, ArithmeticError> opaque_compute(
         Evaluated const&... evaluatedInputs) noexcept
     {
-        constexpr std::size_t outputCount = Op::outputs.size();
         auto const held = std::tuple { opaque_held(evaluatedInputs)... };
         auto const arguments =
             std::apply([](auto const&... each) noexcept { return std::tuple_cat(opaque_arguments<Rep>(each)...); }, held);
-        std::expected<std::array<Rep, outputCount>, ArithmeticError> const computed =
-            std::apply([](auto const&... each) noexcept { return Op::template compute<Rep>(each...); }, arguments);
-        if (!computed.has_value())
-            return std::unexpected { OpaqueCallFailure { computed.error(), OpaqueFailure::Own, std::nullopt } };
-        return std::optional<std::array<Rep, outputCount>> { *computed };
+        return std::apply([](auto const&... each) noexcept { return Op::template compute<Rep>(each...); }, arguments);
     }
 
     /// Evaluates the call's inputs from position @p At on, each once and in
     /// order, carrying the ones already evaluated; stops at the first that
-    /// fails, and calls `compute` only when every input is wholly present.
-    template <typename Rep, std::size_t At, typename Op, typename... Inputs, typename Env, typename Sink, typename... Done>
-    [[nodiscard]] constexpr OpaqueEvaluated<Rep, Op::outputs.size()> evaluate_opaque_from(
-        OpaqueCall<Op, Inputs...> const& call, Env const& environment, Sink sink, Done const&... evaluatedSoFar) noexcept
+    /// fails, and hands the inputs to @p finish only when every one is wholly
+    /// present. @p finish answers `std::expected<Answer, ArithmeticError>`,
+    /// and its error is the operation's own.
+    template <typename Answer, typename Rep, std::size_t At, typename Op, typename... Inputs, typename Env, typename Sink,
+              typename Finish, typename... Done>
+    [[nodiscard]] constexpr std::expected<std::optional<Answer>, OpaqueCallFailure> evaluate_opaque_inputs(
+        OpaqueCall<Op, Inputs...> const& call, Env const& environment, Sink sink, Finish const& finish,
+        Done const&... evaluatedSoFar) noexcept
     {
         if constexpr (At == sizeof...(Inputs))
         {
             // Absence is decided here, after every input has been asked.
             if (!(opaque_input_present(evaluatedSoFar) && ...))
-                return std::optional<std::array<Rep, Op::outputs.size()>> {};
-            return opaque_compute<Rep, Op>(evaluatedSoFar...);
+                return std::optional<Answer> {};
+            std::expected<Answer, ArithmeticError> const answered = finish(evaluatedSoFar...);
+            if (!answered.has_value())
+                return std::unexpected { OpaqueCallFailure { answered.error(), OpaqueFailure::Own, std::nullopt } };
+            return std::optional<Answer> { *answered };
         }
         else
         {
@@ -1017,7 +1188,7 @@ namespace detail
                 stopped.notEvaluated = sizeof...(Inputs) - At - 1;
                 return std::unexpected { stopped };
             }
-            return evaluate_opaque_from<Rep, At + 1>(call, environment, sink, evaluatedSoFar..., *evaluatedInput);
+            return evaluate_opaque_inputs<Answer, Rep, At + 1>(call, environment, sink, finish, evaluatedSoFar..., *evaluatedInput);
         }
     }
 
@@ -1053,7 +1224,8 @@ namespace detail
         constexpr std::size_t outputCount = Op::outputs.size();
         if constexpr (HearsOpaque<Sink, Rep, outputCount>)
             sink.opaque_entered(opaque_call_info(call));
-        OpaqueEvaluated<Rep, outputCount> const evaluated = evaluate_opaque_from<Rep, 0>(call, environment, sink);
+        OpaqueEvaluated<Rep, outputCount> const evaluated = evaluate_opaque_inputs<std::array<Rep, outputCount>, Rep, 0>(
+            call, environment, sink, [](auto const&... held) noexcept { return opaque_compute<Rep, Op>(held...); });
         if constexpr (HearsOpaque<Sink, Rep, outputCount>)
             sink.opaque_produced(opaque_call_info(call), evaluated);
         return evaluated;
@@ -1069,6 +1241,93 @@ namespace detail
             return true;
         else
             return RequireOpaqueCallValid<Op, Rep, Inputs...>::value;
+    }
+
+    /// What a call evaluated for a `rounded_output` answers before it is
+    /// rounded: output @p I exactly, wide when the operation declares the hook
+    /// (`declares_compute_exact`), a `Rational` when it does not.
+    template <typename Op, bool Exact>
+    struct RoundedOpaqueAnswerOf
+    {
+        using type = Rational;
+    };
+
+    template <typename Op>
+    struct RoundedOpaqueAnswerOf<Op, true>
+    {
+        using type = WideRatio<Op::exact_limbs>;
+    };
+
+    /// Output @p I of @p Op on every input, each wholly present: through
+    /// `compute_exact` when @p Exact, through `compute<Rational>` otherwise.
+    template <typename Op, std::size_t I, bool Exact, typename... Evaluated>
+    [[nodiscard]] constexpr std::expected<typename RoundedOpaqueAnswerOf<Op, Exact>::type, ArithmeticError>
+    opaque_rounding_answer(Evaluated const&... evaluatedInputs) noexcept
+    {
+        auto const held = std::tuple { opaque_held(evaluatedInputs)... };
+        auto const arguments =
+            std::apply([](auto const&... each) noexcept { return std::tuple_cat(opaque_arguments<Rational>(each)...); }, held);
+        auto const computed = std::apply(
+            [](auto const&... each) noexcept {
+                if constexpr (Exact)
+                    return Op::compute_exact(each...);
+                else
+                    return Op::template compute<Rational>(each...);
+            },
+            arguments);
+        if (!computed.has_value())
+            return std::unexpected { computed.error() };
+        return (*computed)[I];
+    }
+
+    /// What a sink is told of a call evaluated for a rounded output: whether it
+    /// answered, was absent or failed -- and no value, since none exists yet.
+    template <typename Answer>
+    [[nodiscard]] constexpr OpaqueEvaluated<Rational, 0> without_values(
+        std::expected<std::optional<Answer>, OpaqueCallFailure> const& answered) noexcept
+    {
+        if (!answered.has_value())
+            return std::unexpected { answered.error() };
+        if (!answered->has_value())
+            return std::optional<std::array<Rational, 0>> {};
+        return std::optional<std::array<Rational, 0>> { std::array<Rational, 0> {} };
+    }
+
+    /// Evaluates the call @p call for its output @p I, rounded where it is
+    /// used: every input, in `Rational`, as `evaluate_call` does, then
+    /// `compute_exact` or `compute<Rational>`, keeping output @p I alone. A sink
+    /// that asks is told of the call as `evaluate_call` tells it, with
+    /// `OpaqueValues::RoundedWhereUsed` and an evaluation of no values.
+    template <std::size_t I, typename Op, typename... Inputs, typename Env, typename Sink>
+    [[nodiscard]] constexpr auto evaluate_rounded_call(OpaqueCall<Op, Inputs...> const& call, Env const& environment,
+                                                       Sink sink) noexcept
+    {
+        constexpr bool exact = declares_compute_exact<Op, Inputs...>;
+        using Answer = typename RoundedOpaqueAnswerOf<Op, exact>::type;
+        OpaqueCallInfo callInfo = opaque_call_info(call);
+        callInfo.values = OpaqueValues::RoundedWhereUsed;
+        if constexpr (HearsOpaque<Sink, Rational, 0>)
+            sink.opaque_entered(callInfo);
+        std::expected<std::optional<Answer>, OpaqueCallFailure> const answered = evaluate_opaque_inputs<Answer, Rational, 0>(
+            call, environment, sink, [](auto const&... held) noexcept { return opaque_rounding_answer<Op, I, exact>(held...); });
+        if constexpr (HearsOpaque<Sink, Rational, 0>)
+            sink.opaque_produced(callInfo, without_values(answered));
+        return answered;
+    }
+
+    /// @p computedExactly rounded in @p U: `rounded_in_unit` for a wide value,
+    /// `RepRounding<Rational>::round_in` -- a rounding node's own -- for a
+    /// `Rational`.
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode, std::size_t L>
+    [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rounded_opaque_value(WideRatio<L> const& computedExactly) noexcept
+    {
+        return rounded_in_unit(computedExactly, U, Places, Mode);
+    }
+
+    template <Unit U, DecimalPlaces Places, RoundingMode Mode>
+    [[nodiscard]] constexpr std::expected<Rational, ArithmeticError> rounded_opaque_value(Rational computedExactly) noexcept
+    {
+        return RepRounding<Rational>::round_in(computedExactly, U, Places, Mode);
     }
 } // namespace detail
 
@@ -1099,6 +1358,58 @@ template <typename Rep = Rational, std::size_t I, typename Op, typename... Input
             if (!called->has_value())
                 return detail::nothing<Rep>();
             return detail::present<Rep>((**called)[I]);
+        }();
+        sink.produced(node, evaluated);
+        return evaluated;
+    }
+}
+
+/// Evaluates a rounded opaque output: the whole call, then output @p I rounded
+/// in `U`. Under `Rational`, exactly, through the operation's exact hook when it
+/// has one (`detail::evaluate_rounded_call`); a failure of the call, the
+/// operation's own or an input's, is this output's, and so is one of the
+/// rounding itself. Under any other representation, that representation's own
+/// output and its own rounding (`RepRounding<Rep>::round_in`) -- which for
+/// `double` refuses to compile, as it does for every rounding node.
+template <typename Rep = Rational, std::size_t I, typename Op, typename... Inputs, Unit U, DecimalPlaces Places, RoundingMode Mode,
+          typename Origin, typename Env, typename Sink = NullSink>
+[[nodiscard]] constexpr Evaluated<Rep> checked_evaluate_si(
+    RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node,
+    Env const& environment,
+    Sink sink = {}) noexcept
+{
+    if constexpr (RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin>::refused)
+        return std::unexpected { ArithmeticError::DomainError };
+    else if constexpr (!detail::opaque_sound_for<Rep, Op, Inputs...>())
+        return std::unexpected { ArithmeticError::DomainError };
+    else
+    {
+        sink.entered(node);
+        Evaluated<Rep> const evaluated = [&]() -> Evaluated<Rep> {
+            if constexpr (std::is_same_v<Rep, Rational>)
+            {
+                auto const called = detail::evaluate_rounded_call<I>(node.call, environment, sink);
+                if (!called.has_value())
+                    return std::unexpected { called.error().error };
+                if (!called->has_value())
+                    return detail::nothing<Rep>();
+                std::expected<Rational, ArithmeticError> const rounded = detail::rounded_opaque_value<U, Places, Mode>(**called);
+                if (!rounded.has_value())
+                    return std::unexpected { rounded.error() };
+                return detail::present<Rep>(*rounded);
+            }
+            else
+            {
+                OpaqueEvaluated<Rep, Op::outputs.size()> const called = detail::evaluate_call<Rep>(node.call, environment, sink);
+                if (!called.has_value())
+                    return std::unexpected { called.error().error };
+                if (!called->has_value())
+                    return detail::nothing<Rep>();
+                std::expected<Rep, ArithmeticError> const rounded = RepRounding<Rep>::round_in((**called)[I], U, Places, Mode);
+                if (!rounded.has_value())
+                    return std::unexpected { rounded.error() };
+                return detail::present<Rep>(*rounded);
+            }
         }();
         sink.produced(node, evaluated);
         return evaluated;

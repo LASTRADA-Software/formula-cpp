@@ -106,8 +106,14 @@ concept SinkFor = requires(S sink, N const& node, V const& value) {
 /// **An opaque call (`opaque.hpp`) reaches a sink the same way**, through
 /// `opaque_entered(info)` before its first input is evaluated and
 /// `opaque_produced(info, result)` after `compute`, asked for together
-/// (`detail::HearsOpaque`); `info` is an `OpaqueCallInfo`, plain data. Each
-/// output used is a `Node`, and is told through `entered` and `produced`.
+/// (`detail::HearsOpaque`); `info` is an `OpaqueCallInfo`, plain data. A call
+/// evaluated for a `rounded_output` says `info.values ==
+/// OpaqueValues::RoundedWhereUsed`, and its `result` is an
+/// `OpaqueEvaluated<Rational, 0>`: whether it answered, was absent or failed,
+/// and no value -- none exists until the output is rounded. A sink whose
+/// `opaque_produced` takes one fixed number of outputs does not hear such a
+/// call. Each output used is a `Node`, and is told through `entered` and
+/// `produced`.
 ///
 /// **A retry (`retry.hpp`) reaches a sink the same way**, through two optional
 /// pairs, each asked for together: `retry_entered(info)` before its starting
