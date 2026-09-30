@@ -899,20 +899,26 @@ namespace detail
                + " for " + tag_words(compared.subject());
     }
 
-    /// `ln(#1)`, `log10(#1)`, `exp(#1)`: @p function called on @p operandText, in `render()`'s words
-    /// (`transcendental_name`), so that a derivation names the function its formula names.
-    [[nodiscard]] inline std::string transcendental_call(Transcendental function, std::string const& operandText)
+    /// `round(#1, to 2 dp of mm)`: @p inner rounded to @p granularity decimal places of the unit whose
+    /// symbol is @p unitSymbolText, in `render()`'s words (`rounding_call`), for every step that rounds to
+    /// decimal places. No unit clause for a unit with no symbol.
+    [[nodiscard]] inline std::string rounding_call_text(std::string const& inner,
+                                                        int granularity,
+                                                        std::string const& unitSymbolText)
     {
-        return std::string { transcendental_name(function) } + "(" + operandText + ")";
+        return rounding_call<Dialect::Plain>(inner, DecimalPlaces { granularity }, unitSymbolText);
     }
 
     /// `round(ln(#1), to 4 dp)`: `render()`'s spelling, one step with the function inside it, because the
-    /// unrounded value was never a value. No unit clause: the node rounds a pure number.
+    /// unrounded value was never a value. The function is named in `render()`'s words
+    /// (`transcendental_text`), so that a derivation names the function its formula names. No unit
+    /// clause: the node rounds a pure number.
     [[nodiscard]] inline std::string rounded_transcendental_expression(
         Transcendental function, ShownStep const& shownStep)
     {
-        return "round(" + transcendental_call(function, sole_operand(shownStep)) + ", to "
-               + std::to_string(shownStep.granularity) + " dp)";
+        return rounding_call_text(transcendental_text<Dialect::Plain>(function, sole_operand(shownStep)),
+                                  shownStep.granularity,
+                                  {});
     }
 
     /// What a step computed, written in terms of the steps it consumed.
@@ -962,12 +968,14 @@ namespace detail
                 return shownStep.exponent == 2
                            ? "sqrt(" + sole_operand(shownStep) + ")"
                            : "root" + std::to_string(shownStep.exponent) + "(" + sole_operand(shownStep) + ")";
+            // `render()`'s words, so that a derivation names the function its
+            // formula names.
             case StepKind::NaturalLogarithm:
-                return transcendental_call(Transcendental::NaturalLogarithm, sole_operand(shownStep));
+                return transcendental_text<Dialect::Plain>(Transcendental::NaturalLogarithm, sole_operand(shownStep));
             case StepKind::DecimalLogarithm:
-                return transcendental_call(Transcendental::DecimalLogarithm, sole_operand(shownStep));
+                return transcendental_text<Dialect::Plain>(Transcendental::DecimalLogarithm, sole_operand(shownStep));
             case StepKind::Exponential:
-                return transcendental_call(Transcendental::Exponential, sole_operand(shownStep));
+                return transcendental_text<Dialect::Plain>(Transcendental::Exponential, sole_operand(shownStep));
             case StepKind::Documented:
                 return sole_operand(shownStep);
             // Its operand, exactly as `Documented`'s is: the selection chose
@@ -976,8 +984,7 @@ namespace detail
             case StepKind::VariantSelected:
                 return sole_operand(shownStep);
             case StepKind::Round:
-                return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                return rounding_call_text(sole_operand(shownStep), shownStep.granularity, unit_symbol_text(shownStep.unit));
             case StepKind::RoundSignificant:
                 return "round(" + sole_operand(shownStep) + ", to " + std::to_string(shownStep.granularity) + " sf"
                        + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
@@ -1089,8 +1096,8 @@ namespace detail
             // `render()`'s spelling, `round(sqrt(...), to ...)`: one shownStep, and
             // the root inside it, because the root itself was never a value.
             case StepKind::RoundedRoot:
-                return "round(sqrt(" + sole_operand(shownStep) + "), to " + std::to_string(shownStep.granularity) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                return rounding_call_text(
+                    "sqrt(" + sole_operand(shownStep) + ")", shownStep.granularity, unit_symbol_text(shownStep.unit));
             case StepKind::RoundedNaturalLogarithm:
                 return rounded_transcendental_expression(Transcendental::NaturalLogarithm, shownStep);
             case StepKind::RoundedDecimalLogarithm:
@@ -1155,11 +1162,10 @@ namespace detail
             // `render()`'s spelling, as for a rounded root; the output's name is
             // in the call's row, which `rounded_opaque_output_line` reads.
             case StepKind::RoundedOpaqueOutput:
-                return "round("
-                       + (shownStep.operands.empty() ? std::string { "an opaque output" }
-                                                     : "output of " + sole_operand(shownStep))
-                       + ", to " + std::to_string(shownStep.granularity) + " dp"
-                       + unit_clause(" of ", unit_symbol_text(shownStep.unit)) + ")";
+                return rounding_call_text(shownStep.operands.empty() ? std::string { "an opaque output" }
+                                                                     : "output of " + sole_operand(shownStep),
+                                          shownStep.granularity,
+                                          unit_symbol_text(shownStep.unit));
             // A retry's steps name its result as `render()` does, `w(k)` for
             // an attempt's value and `w(k-1)` for the one before; the
             // attempt's and the retry's own lines are `retry_attempt_line` and
@@ -2828,8 +2834,8 @@ namespace detail
             && *opaqueLine.outputIndex < opaqueLine.call->outputs.size())
             outputText = escaped_author_text(opaqueLine.call->outputs[*opaqueLine.outputIndex].name) + " of "
                          + sole_operand(recorded);
-        std::string lineText = "round(" + outputText + ", to " + std::to_string(recorded.granularity) + " dp"
-                               + unit_clause(" of ", unit_symbol_text(recorded.unit)) + ") = ";
+        std::string lineText =
+            rounding_call_text(outputText, recorded.granularity, unit_symbol_text(recorded.unit)) + " = ";
         bool const callFailed = opaqueLine.call != nullptr && opaqueLine.call->failure != OpaqueFailure::None;
         if (recorded.error.has_value() && callFailed)
             lineText += std::string { describe(*recorded.error) }

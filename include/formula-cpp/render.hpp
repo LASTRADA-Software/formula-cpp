@@ -1239,6 +1239,22 @@ namespace detail
         else
             return std::string { transcendental_name(function) } + "(" + argumentText + ")";
     }
+
+    /// @p inner rounded to @p places decimal places of the unit whose symbol is @p unitSymbol, in dialect
+    /// @p D: `round(<inner>, to <places> dp of <unit>)`, and in LaTeX
+    /// `\operatorname{round}_{<places>\,<unit>}(<inner>)`, the unit set upright and escaped (`latex_unit`).
+    /// No unit clause for a unit with no symbol. The one spelling of every node that rounds to decimal
+    /// places -- `RoundNode`, `RoundedRootNode`, `RoundedTranscendentalNode`, `RoundedOpaqueOutputNode` --
+    /// and of a trace's line for one (`trace_render.hpp`).
+    template <Dialect D>
+    [[nodiscard]] std::string rounding_call(std::string const& inner, DecimalPlaces places, std::string const& unitSymbol)
+    {
+        std::string const placesText = std::to_string(places.value);
+        if constexpr (D == Dialect::LaTeX)
+            return "\\operatorname{round}_{" + placesText + unit_clause("\\,", latex_unit(unitSymbol)) + "}(" + inner + ")";
+        else
+            return "round(" + inner + ", to " + placesText + " dp" + unit_clause(" of ", unitSymbol) + ")";
+    }
 } // namespace detail
 
 /// A logarithm or an exponential renders as a call on its argument -- `ln(x)`, `log10(x)`, `exp(x)`, and in
@@ -1300,16 +1316,9 @@ template <Dialect D, Transcendental F, Node Operand, Vocabulary V>
 template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Operand, Vocabulary V>
 [[nodiscard]] std::string render_node(RoundNode<U, Places, Mode, Operand> const& node, V const& vocabulary)
 {
-    std::string const inner = render<D>(node.operand, vocabulary);
     constexpr Unit declaredUnit = U;
-    std::string const unitSymbol { view(declaredUnit.symbolText) };
-    std::string const placesText = std::to_string(Places.value);
-
-    if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}("
-               + inner + ")";
-    else
-        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+    return detail::rounding_call<D>(render<D>(node.operand, vocabulary), Places,
+                                    std::string { view(declaredUnit.symbolText) });
 }
 
 /// A significant-digits rounding node, spelled the same way as `RoundNode`
@@ -1347,13 +1356,10 @@ template <Dialect D, Unit U, DecimalPlaces Places, RoundingMode Mode, Node Radic
     std::string const inner = render<D>(node.radicand, vocabulary);
     constexpr Unit declaredUnit = U;
     std::string const unitSymbol { view(declaredUnit.symbolText) };
-    std::string const placesText = std::to_string(Places.value);
-
     if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol))
-               + "}(\\sqrt{" + inner + "})";
+        return detail::rounding_call<D>("\\sqrt{" + inner + "}", Places, unitSymbol);
     else
-        return "round(sqrt(" + inner + "), to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+        return detail::rounding_call<D>("sqrt(" + inner + ")", Places, unitSymbol);
 }
 
 /// A rounded logarithm or exponential renders as what it computes, a rounding of the call:
@@ -1365,12 +1371,7 @@ template <Dialect D, Transcendental F, DecimalPlaces Places, RoundingMode Mode, 
 [[nodiscard]] std::string render_node(RoundedTranscendentalNode<F, Places, Mode, Operand> const& node,
                                       V const& vocabulary)
 {
-    std::string const call = detail::transcendental_text<D>(F, render<D>(node.operand, vocabulary));
-    std::string const placesText = std::to_string(Places.value);
-    if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + "}(" + call + ")";
-    else
-        return "round(" + call + ", to " + placesText + " dp)";
+    return detail::rounding_call<D>(detail::transcendental_text<D>(F, render<D>(node.operand, vocabulary)), Places, {});
 }
 
 /// The numeric-value escape hatch renders as `numeric(<operand>, in <unit>)`,
@@ -1932,15 +1933,9 @@ template <Dialect D, std::size_t I, typename Op, typename... Inputs, Unit U, Dec
 [[nodiscard]] std::string render_node(RoundedOpaqueOutputNode<I, OpaqueCall<Op, Inputs...>, U, Places, Mode, Origin> const& node,
                                       V const& vocabulary)
 {
-    std::string const inner = render<D>(detail::unrounded(node), vocabulary);
     constexpr Unit declaredUnit = U;
-    std::string const unitSymbol { view(declaredUnit.symbolText) };
-    std::string const placesText = std::to_string(Places.value);
-    if constexpr (D == Dialect::LaTeX)
-        return "\\operatorname{round}_{" + placesText + detail::unit_clause("\\,", detail::latex_unit(unitSymbol)) + "}(" + inner
-               + ")";
-    else
-        return "round(" + inner + ", to " + placesText + " dp" + detail::unit_clause(" of ", unitSymbol) + ")";
+    return detail::rounding_call<D>(render<D>(detail::unrounded(node), vocabulary), Places,
+                                    std::string { view(declaredUnit.symbolText) });
 }
 
 /// A predicate renders as `<lhs> <comparison> <rhs>`. Not a `Node`, so it
