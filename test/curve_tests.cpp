@@ -624,6 +624,33 @@ TEST_CASE("a splice step shows the union, and a failure names its element counte
     CHECK(failed.steps.back().curveBreak == formula::CurveBreak::AgainstDirection);
 }
 
+TEST_CASE("explain_curve: the curve's outcome and the trace a RecordingSink records", "[curve][trace]")
+{
+    constexpr auto spliced = formula::splice<Monotone::NonDecreasing>(curveA, curveB);
+    formula::Trace<> handBuilt {};
+    auto const direct = formula::checked_evaluate_curve<Opening, Passing>(spliced, noInputs, formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_curve<Opening, Passing>(spliced, noInputs);
+    REQUIRE(direct.has_value());
+    CHECK(explained.outcome == direct);
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(explained.trace.steps.back().kind == formula::StepKind::CurveSplice);
+
+    // A failing curve: the failure is the outcome, and the trace still holds
+    // the step that broke, so a twin that dropped either would differ.
+    constexpr auto raised = formula::curve(formula::domain<unit::Metre, fine>,
+                                           formula::series_constant<unit::Percent>(rat(31, 10), rat(84, 10), rat(40)));
+    constexpr auto broken = formula::splice<Monotone::NonDecreasing>(curveA, raised);
+    formula::Trace<> failedByHand {};
+    auto const failedDirect =
+        formula::checked_evaluate_curve<Opening, Passing>(broken, noInputs, formula::RecordingSink<> { failedByHand });
+    auto const failed = formula::explain_curve<Opening, Passing>(broken, noInputs);
+    REQUIRE(!failed.outcome.has_value());
+    CHECK(failed.outcome == failedDirect);
+    CHECK(failed.outcome.error() == formula::SeriesFailure { formula::ArithmeticError::DomainError, 3 });
+    CHECK(formula::render_trace(failed.trace, { .maxSteps = 100 }) == formula::render_trace(failedByHand, { .maxSteps = 100 }));
+    CHECK(failed.trace.steps.back().failedElement == std::optional<std::size_t> { 3 });
+}
+
 TEST_CASE("a splice's failure line names the point and the rule, in either order", "[curve][trace]")
 {
     for (bool const xFirst: { true, false })

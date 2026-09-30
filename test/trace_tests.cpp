@@ -2,6 +2,7 @@
 #include <formula-cpp/formula.hpp>
 #include <formula-cpp/function.hpp>
 #include <formula-cpp/trace.hpp>
+#include <formula-cpp/trace_render.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -1985,4 +1986,50 @@ TEST_CASE("explain_series keeps a failure and its element, and the step that fai
     CHECK(explained.outcome.error() == formula::SeriesFailure { formula::ArithmeticError::Overflow, 1 });
     REQUIRE(explained.trace.steps.size() == 1);
     CHECK(explained.trace.steps[0].failedElement == std::optional<std::size_t> { 1 });
+}
+
+TEST_CASE("traced returns what the evaluation returned with the steps it recorded", "[trace]")
+{
+    constexpr auto density = var<Mass> / var<Volume>;
+    auto const environmentGiven = environmentOf(6, 3);
+
+    auto const recordedRun = formula::traced([&](auto recordingSink)
+                                             { return formula::checked_evaluate<Density>(density, environmentGiven, recordingSink); });
+    REQUIRE(recordedRun.outcome.has_value());
+    CHECK(recordedRun.outcome == formula::checked_evaluate<Density>(density, environmentGiven));
+    CHECK(recordedRun.outcome->measurement().value() == formula::Rational { 2 });
+
+    // The steps are the ones a hand-built sink records: m, V, then the division.
+    formula::Trace<> handBuilt {};
+    (void) formula::checked_evaluate<Density>(density, environmentGiven, formula::RecordingSink<> { handBuilt });
+    REQUIRE(recordedRun.trace.steps.size() == 3);
+    CHECK(recordedRun.trace.steps[2].kind == formula::StepKind::Divide);
+    CHECK(formula::render_trace(recordedRun.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+
+    // Another evaluation gives another value and another trace.
+    auto const other = formula::traced([&](auto recordingSink)
+                                       { return formula::checked_evaluate<Density>(density, environmentOf(9, 3), recordingSink); });
+    CHECK(other.outcome != recordedRun.outcome);
+    CHECK(formula::render_trace(other.trace, { .maxSteps = 100 }) != formula::render_trace(recordedRun.trace, { .maxSteps = 100 }));
+
+    // Every symbol is written as the vocabulary given says, the default one otherwise.
+    auto const renamed = formula::traced(
+        [&](auto recordingSink) { return formula::checked_evaluate<Density>(density, environmentGiven, recordingSink); },
+        formula::vocabulary(formula::renames<Mass>("M")));
+    CHECK(renamed.trace.steps[0].symbol == "M");
+    CHECK(recordedRun.trace.steps[0].symbol == "m");
+}
+
+TEST_CASE("traced keeps a failure in the outcome and the steps up to it in the trace", "[trace]")
+{
+    constexpr auto bad = var<Mass> / formula::number(formula::Rational { 0 });
+    auto const environmentGiven = environmentOf(6, 3);
+
+    auto const failed = formula::traced([&](auto recordingSink)
+                                        { return formula::checked_evaluate<Mass>(bad, environmentGiven, recordingSink); });
+    REQUIRE(!failed.outcome.has_value());
+    CHECK(failed.outcome.error() == formula::ArithmeticError::DivisionByZero);
+    REQUIRE(!failed.trace.empty());
+    CHECK(failed.trace.steps[failed.trace.root()].kind == formula::StepKind::Divide);
+    CHECK(failed.trace.steps[failed.trace.root()].error == formula::ArithmeticError::DivisionByZero);
 }

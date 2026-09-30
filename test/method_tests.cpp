@@ -335,6 +335,40 @@ TEST_CASE("a method applies its own rounding rule to the variant it selects", "[
     STATIC_REQUIRE(notATie->value() == formula::Rational { 6'000'000 });
 }
 
+TEST_CASE("explain_method: the method's value and the trace a RecordingSink records", "[method][trace]")
+{
+    constexpr auto methodGiven = formula::method(
+        formula::variants(formula::variant<Cube>(var<Force> / (var<EdgeX> * var<EdgeY>) ),
+                          formula::variant<Cylinder>(var<Force> / (var<EdgeX> * var<EdgeX>) )),
+        formula::rounding_rule<unit::Megapascal, formula::DecimalPlaces { 1 }, formula::RoundingMode::HalfAwayFromZero>(),
+        formula::constraints());
+    // Cylinder squares EdgeX, Cube multiplies EdgeX by EdgeY: 6.1 MPa and 0.6 MPa
+    // on this specimen, so a twin evaluating the other tag has another value and
+    // another trace.
+    auto const specimenGiven = specimen(60'500, 100, 999);
+
+    formula::Trace<> handBuilt {};
+    formula::Evaluated<formula::Rational> const direct =
+        formula::evaluate_method<Cylinder>(methodGiven, specimenGiven, formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_method<Cylinder>(methodGiven, specimenGiven);
+    CHECK(explained.outcome == direct);
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->value() == formula::Rational { 6'100'000 });
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+
+    auto const otherTag = formula::explain_method<Cube>(methodGiven, specimenGiven);
+    CHECK(otherTag.outcome != direct);
+    CHECK(formula::render_trace(otherTag.trace, { .maxSteps = 100 })
+          != formula::render_trace(explained.trace, { .maxSteps = 100 }));
+
+    // The vocabulary is the one the trace is written in.
+    auto const renamed = formula::explain_method<Cylinder>(
+        methodGiven, specimenGiven, formula::vocabulary(formula::renames<Force>("F_max")));
+    CHECK(formula::render_trace(renamed.trace, { .maxSteps = 100 }).find("F_max") != std::string::npos);
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }).find("F_max") == std::string::npos);
+}
+
 TEST_CASE("a sink is told whose constraints they are around the checks, or not at all", "[method][constraint]")
 {
     // Both of the pair: told once before the verdicts and once after, and
@@ -412,6 +446,26 @@ TEST_CASE("a precision check joins a method's constraints and is checked by chec
     REQUIRE(acceptance.kind == formula::StepKind::AcceptanceChecked);
     REQUIRE(acceptance.operands.size() == 1);
     CHECK(trace.steps[acceptance.operands[0]].kind == formula::StepKind::Constraint);
+}
+
+TEST_CASE("explain_check_method: the constraints' verdicts and the trace a RecordingSink records", "[method][trace]")
+{
+    // 1/50 satisfies the precision check and 1/60 violates it, so the verdicts
+    // and the steps both differ between the two.
+    formula::Trace<> handBuilt {};
+    auto const direct = formula::check_method(pairMethod, pairInputs(ratio(1, 60)), formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 60)));
+    CHECK(explained.outcome == direct);
+    REQUIRE(explained.outcome.size() == 1);
+    CHECK(explained.outcome[0].is_violated());
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+    CHECK(explained.trace.steps.back().kind == formula::StepKind::AcceptanceChecked);
+
+    auto const satisfied = formula::explain_check_method(pairMethod, pairInputs(ratio(1, 50)));
+    CHECK(satisfied.outcome[0].is_satisfied());
+    CHECK(formula::render_trace(satisfied.trace, { .maxSteps = 100 })
+          != formula::render_trace(explained.trace, { .maxSteps = 100 }));
 }
 
 TEST_CASE("with_constant reaches a coefficient inside a precision limit's limit expression", "[method][precision][overlay]")

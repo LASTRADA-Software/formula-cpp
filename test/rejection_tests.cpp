@@ -427,6 +427,29 @@ TEST_CASE("a rejection over a unit with no symbol reads its means and deviations
              "7. settled: 1 rejected, 3 remain\n");
 }
 
+TEST_CASE("explain_rejection: the rejection's outcome and the trace a RecordingSink records", "[rejection][trace]")
+{
+    // rejectionA settles after two rejections; rejectionA1 is stopped by its
+    // limit after one, so the outcome and the steps differ between the two.
+    formula::Trace<> handBuilt {};
+    auto const direct =
+        formula::checked_evaluate_rejection<Mass>(rejectionA, fixtureA, formula::RecordingSink<> { handBuilt });
+    REQUIRE(direct.has_value());
+    auto const explained = formula::explain_rejection<Mass>(rejectionA, fixtureA);
+    REQUIRE(explained.outcome.has_value());
+    CHECK(explained.outcome->outcome() == direct->outcome());
+    CHECK(explained.outcome->rejected().size() == 2);
+    CHECK(explained.outcome->rejected().size() == direct->rejected().size());
+    CHECK(explained.outcome->passes() == direct->passes());
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    CHECK(!explained.trace.empty());
+
+    auto const stopped = formula::explain_rejection<Mass>(rejectionA1, fixtureA);
+    REQUIRE(stopped.outcome.has_value());
+    CHECK(stopped.outcome->rejected().size() == 1);
+    CHECK(formula::render_trace(stopped.trace, { .maxSteps = 100 }) != formula::render_trace(explained.trace, { .maxSteps = 100 }));
+}
+
 TEST_CASE("only the library builds a RejectionOutcome", "[rejection]")
 {
     using Built = formula::RejectionOutcome<Mass, 6>;

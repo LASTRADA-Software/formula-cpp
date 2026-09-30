@@ -244,6 +244,22 @@ TEST_CASE("a conformity check documents its citation and its subject's rows", "[
     CHECK(formula::document(measuredCheck).citations.empty());
 }
 
+TEST_CASE("explain_conformity: the elements' outcomes and the trace a RecordingSink records", "[conformity][trace]")
+{
+    formula::Trace<> handBuilt {};
+    auto const direct = formula::check_conformity(measuredCheck, measuredPassing, formula::RecordingSink<> { handBuilt });
+    auto const explained = formula::explain_conformity(measuredCheck, measuredPassing);
+    CHECK(explained.outcome == direct);
+    // Elements 2 and 5 are outside their rows, 1, 3 and 4 inside: the mix a
+    // twin checking nothing or everything as satisfied would not reproduce.
+    CHECK(explained.outcome[0].is_satisfied());
+    CHECK(explained.outcome[1].is_violated());
+    CHECK(explained.outcome[4].is_violated());
+    CHECK(formula::render_trace(explained.trace, { .maxSteps = 100 }) == formula::render_trace(handBuilt, { .maxSteps = 100 }));
+    REQUIRE(explained.trace.steps.size() == 2);
+    CHECK(explained.trace.steps[1].kind == formula::StepKind::ConformityChecked);
+}
+
 TEST_CASE("a conformity check is one step with one outcome per element", "[conformity][trace]")
 {
     formula::Trace<> trace {};

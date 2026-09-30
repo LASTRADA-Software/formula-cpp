@@ -24,7 +24,8 @@
 // untraced and traced, with `explain`; `render` and `document` in all three
 // dialects, with and without a vocabulary, of that formula, of a constraint
 // and its predicate, and of formulas an overlay fixed, derived and replaced;
-// `render_trace`; `check` and `check_all`; `evaluate_method` of an original
+// `render_trace`; `traced`, `explain_conformity` and `explain_method`;
+// `check` and `check_all`; `evaluate_method` of an original
 // and of a replaced variant, and `check_method`, with `RecordingSink` and
 // with a sink of its own; `apply` with every overlay operation; `Outcome`'s
 // factories; `checked_convert_to`, `checked_within_bounds`,
@@ -672,6 +673,17 @@ ConsumerGlobalsProbe probe_consumer_globals()
                                       .find("[1 satisfied, 150 mm (from 139 to 163 mm); "
                                             "2 violated, 103 mm (at least 127 mm): reject the edge]")
                                   != std::string::npos);
+    // Tracing any evaluation, and two of the explain twins: the same outcome
+    // and the same steps as the hand-built sink above.
+    auto const tracedEdgeCheck = formula::traced(
+        [&](auto recordingSink) { return formula::check_conformity(edgeCheck, bothScreens, recordingSink); }, north);
+    auto const explainedEdgeCheck = formula::explain_conformity(edgeCheck, bothScreens, north);
+    auto const explainedStrength = formula::explain_method<Cube>(overlaid, specimen, north);
+    probe.checks.push_back(tracedEdgeCheck.outcome == edgeOutcomes && !tracedEdgeCheck.trace.empty());
+    probe.checks.push_back(explainedEdgeCheck.outcome == edgeOutcomes
+                           && formula::render_trace(explainedEdgeCheck.trace, { .maxSteps = 20 })
+                                  == formula::render_trace(conformityTrace, { .maxSteps = 20 }));
+    probe.checks.push_back(explainedStrength.outcome == strength && !explainedStrength.trace.empty());
     // A snap: 150 mm among 137, 149 and 151 mm is a tie, decided toward the
     // higher.
     auto const snappedEdge = formula::snapped<unit::Millimetre, EdgeSnapSet, formula::SnapTie::TowardHigher>(var<EdgeX>);

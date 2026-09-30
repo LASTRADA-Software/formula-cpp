@@ -197,6 +197,42 @@ note: see usage of 'formula::explain'
 Evaluate at compile time when you can; `explain` is a run-time-only way to see
 the working.
 
+## Tracing any evaluation
+
+`explain` traces a formula. The other verbs that take a sink -- a method, a
+curve, a rejection, a constraint, a conformity check -- have a twin of their
+own that returns the verb's result together with the trace it recorded:
+
+```cpp
+auto const derived = formula::explain_method<Cube>(strengthMethod, specimen);
+auto const verdicts = formula::explain_check_all(constraintSet, specimen);
+```
+
+`derived.outcome` is exactly what `evaluate_method<Cube>` returns, and
+`derived.trace` is the `Trace` a `RecordingSink` recorded while it did.
+`explain_method`, `explain_check_method`, `explain_curve`, `explain_rejection`,
+`explain_check`, `explain_check_all` and `explain_conformity` are the twins of
+`evaluate_method`, `check_method`, `checked_evaluate_curve`,
+`checked_evaluate_rejection`, `check`, `check_all` and `check_conformity`, and
+each takes the vocabulary to write the symbols in as an optional last
+argument, as `explain` does.
+
+A verb without a twin -- or one of your own that takes a sink -- goes through
+`traced`, which gives the evaluation a `RecordingSink` and returns what the
+evaluation returned beside what the sink recorded:
+
+```cpp
+auto const run = formula::traced([&](auto recordingSink)
+                                 { return formula::checked_evaluate<Density>(densityFormula, env, recordingSink); });
+```
+
+`explain_series` and `explain_retry` share the shape: `outcome`, then `trace`.
+A failure is in `outcome`, and `trace` holds the steps up to it; a value that
+was typed in rather than derived leaves `trace` empty, as it does for
+`explain`. The sink records in `Rational`, so an evaluation that computes in
+`double` is traced by calling its `checked_evaluate_si<double>` with your own
+`RecordingSink<double>`.
+
 ## Reading a derivation
 
 `examples/tracing.cpp` builds the same water/cement ratio

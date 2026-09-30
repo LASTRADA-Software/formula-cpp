@@ -4331,6 +4331,41 @@ template <typename Rep>
     return std::nullopt;
 }
 
+/// What an evaluation returned, together with how it was reached.
+///
+/// The shape `explain_series`, `explain_retry` and every `explain_*` twin of an
+/// evaluation verb share: `outcome`, then `trace`.
+template <typename R>
+struct Traced
+{
+    /// Exactly what the evaluation returned, failure included.
+    R outcome;
+    /// Every step the evaluation recorded -- empty when nothing was derived,
+    /// as for an entered value; see `explain`.
+    Trace<Rational> trace {};
+};
+
+/// Runs @p evaluation with a `RecordingSink` writing every symbol as
+/// @p vocabulary says, and returns what it returned with the trace it
+/// recorded -- so any verb that takes a sink can be traced in one call:
+/// `traced([&](auto recordingSink) { return check_method(methodGiven, environmentGiven, recordingSink); })`.
+///
+/// The result is the evaluation's own: tracing observes, it does not
+/// participate. A failure the evaluation returns is in `outcome`, with the
+/// steps recorded up to it in `trace`.
+///
+/// The sink records in `Rational`, so an evaluation that hands its sink an
+/// `Evaluated<double>` cannot be traced here; see `explain`.
+template <typename F, Vocabulary V = DefaultVocabulary>
+    requires std::invocable<F&, RecordingSink<Rational, V>>
+[[nodiscard]] auto traced(F&& evaluation, V const& vocabulary = V {})
+    -> Traced<std::remove_cvref_t<std::invoke_result_t<F&, RecordingSink<Rational, V>>>>
+{
+    Trace<Rational> recorded {};
+    auto evaluated = std::invoke(evaluation, RecordingSink<Rational, V> { recorded, vocabulary });
+    return { std::move(evaluated), std::move(recorded) };
+}
+
 /// An outcome together with the derivation that produced it.
 template <Described Result, typename Rep = Rational>
 struct Explained
@@ -4419,10 +4454,9 @@ template <Described Result, SeriesNode S, typename Env, Vocabulary V = DefaultVo
                                                                 Env const& environment,
                                                                 V const& vocabulary = V {})
 {
-    Trace<Rational> recorded {};
-    std::expected<SeriesOutcome<Result, S::length>, SeriesFailure> seriesOutcome =
-        checked_evaluate_series<Result>(expression, environment, RecordingSink<Rational, V> { recorded, vocabulary });
-    return ExplainedSeries<Result, S::length> { std::move(seriesOutcome), std::move(recorded) };
+    auto run = traced([&](auto recordingSink) { return checked_evaluate_series<Result>(expression, environment, recordingSink); },
+                      vocabulary);
+    return ExplainedSeries<Result, S::length> { std::move(run.outcome), std::move(run.trace) };
 }
 
 /// Why `checked_explain` has no outcome: the arithmetic error, and the
@@ -4507,10 +4541,89 @@ template <typename Rep = Rational,
                                               V const& vocabulary = V {})
 {
     static_assert(detail::RequireExactRetry<Rep>::value);
-    Trace<Rational> recorded {};
-    std::expected<RetryOutcome<R>, RetryFailure> retryOutcome =
-        checked_evaluate_retry<Rational>(retrying, environment, RecordingSink<Rational, V> { recorded, vocabulary });
-    return ExplainedRetry<R> { std::move(retryOutcome), std::move(recorded) };
+    auto run = traced([&](auto recordingSink) { return checked_evaluate_retry<Rational>(retrying, environment, recordingSink); },
+                      vocabulary);
+    return ExplainedRetry<R> { std::move(run.outcome), std::move(run.trace) };
+}
+
+/// Evaluates @p methodGiven for @p Tag and records how -- `evaluate_method`'s
+/// traced twin: its `Evaluated<Rational>` in `outcome`, the trace in `trace`.
+template <typename Tag, typename M, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] auto explain_method(M const& methodGiven, Env const& environmentGiven, V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink) { return evaluate_method<Tag>(methodGiven, environmentGiven, recordingSink); },
+                  vocabulary);
+}
+
+/// Checks the constraints of @p methodGiven and records how -- `check_method`'s
+/// traced twin: one `ConstraintOutcome` per constraint in `outcome`, the trace
+/// in `trace`.
+template <typename M, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] auto explain_check_method(M const& methodGiven, Env const& environmentGiven, V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink) { return check_method(methodGiven, environmentGiven, recordingSink); }, vocabulary);
+}
+
+/// Evaluates the curve @p curveGiven for its domain quantity @p DomainResult
+/// and its value quantity @p ValueResult and records how --
+/// `checked_evaluate_curve`'s traced twin, failure included in `outcome`.
+template <Described DomainResult, Described ValueResult, CurveExpression C, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] auto explain_curve(C const& curveGiven, Env const& environmentGiven, V const& vocabulary = V {})
+{
+    return traced(
+        [&](auto recordingSink)
+        { return checked_evaluate_curve<DomainResult, ValueResult>(curveGiven, environmentGiven, recordingSink); },
+        vocabulary);
+}
+
+/// Evaluates the rejection @p rejectionGiven for @p Result and records how --
+/// `checked_evaluate_rejection`'s traced twin, failure included in `outcome`.
+template <Described Result,
+          PerPass P,
+          OnLimit L,
+          typename AtMostT,
+          typename KeepAtLeastT,
+          typename S,
+          typename Criterion,
+          typename Env,
+          Vocabulary V = DefaultVocabulary>
+[[nodiscard]] auto explain_rejection(RejectionNode<P, L, AtMostT, KeepAtLeastT, S, Criterion> const& rejectionGiven,
+                                     Env const& environmentGiven,
+                                     V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink)
+                  { return checked_evaluate_rejection<Result>(rejectionGiven, environmentGiven, recordingSink); },
+                  vocabulary);
+}
+
+/// Checks @p constraintGiven and records how -- `check`'s traced twin: the
+/// `ConstraintOutcome` in `outcome`, the trace in `trace`.
+template <typename P, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] auto explain_check(Constraint<P> const& constraintGiven, Env const& environmentGiven, V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink) { return check(constraintGiven, environmentGiven, recordingSink); }, vocabulary);
+}
+
+/// Checks every constraint of @p constraintsGiven and records how --
+/// `check_all`'s traced twin: one `ConstraintOutcome` per constraint, in
+/// declaration order, in `outcome`, and the trace in `trace`.
+template <typename... Ps, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] auto explain_check_all(ConstraintSet<Ps...> const& constraintsGiven,
+                                     Env const& environmentGiven,
+                                     V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink) { return check_all(constraintsGiven, environmentGiven, recordingSink); }, vocabulary);
+}
+
+/// Checks @p conformityGiven and records how -- `check_conformity`'s traced
+/// twin: one `ConstraintOutcome` per element in `outcome`, the trace in `trace`.
+template <Unit U, SeriesNode S, typename Env, Vocabulary V = DefaultVocabulary>
+[[nodiscard]] auto explain_conformity(Conformity<U, S> const& conformityGiven,
+                                      Env const& environmentGiven,
+                                      V const& vocabulary = V {})
+{
+    return traced([&](auto recordingSink) { return check_conformity(conformityGiven, environmentGiven, recordingSink); },
+                  vocabulary);
 }
 
 /// What a block of a worksheet's derivation stands for.

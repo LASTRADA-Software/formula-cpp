@@ -38,6 +38,14 @@ change is recorded here.
 - `symbol_of<Q>()` without a vocabulary is `Describe<Q>::symbol`, and `render(x, options)`,
   `render<D>(x, options)`, `document(x, options)` and `document<D>(x, options)` take
   `RenderOptions` without a vocabulary that renames nothing.
+- `traced(evaluation)`, which runs any evaluation that takes a sink with a `RecordingSink` and
+  returns `{ outcome, trace }`: what it returned, failure included, and every step it recorded.
+  `explain_method<Tag>`, `explain_check_method`, `explain_curve<DomainQ, ValueQ>`,
+  `explain_rejection<Q>`, `explain_check`, `explain_check_all` and `explain_conformity` are the
+  traced twins of `evaluate_method`, `check_method`, `checked_evaluate_curve`,
+  `checked_evaluate_rejection`, `check`, `check_all` and `check_conformity`, each with the
+  vocabulary as an optional last argument. `explain_series` and `explain_retry` return the same
+  shape as before.
 
 ### Changed
 
