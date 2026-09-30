@@ -5,9 +5,12 @@
 // REJECT: no match for
 // REJECT: RequireResultDimension
 //
-// A retry in arithmetic, evaluated: refused once, in this library's words,
-// and the refused value asks nothing more.
+// A retry in arithmetic, then evaluated, rendered and documented: refused
+// once, in this library's words, and the refused value asks nothing more of
+// any of the three.
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/method.hpp>
+#include <formula-cpp/render.hpp>
 #include <formula-cpp/retry.hpp>
 
 namespace
@@ -44,9 +47,11 @@ struct Fitted
 
 int main()
 {
-    return formula::checked_evaluate<Estimate>(four + formula::constant<unit::Gram>(formula::Rational { 1 }),
-                                               formula::environment())
-                   .has_value()
+    constexpr auto misused = four + formula::constant<unit::Gram>(formula::Rational { 1 });
+    auto const shown = formula::render(misused);
+    auto const written = formula::document(misused);
+    return formula::checked_evaluate<Estimate>(misused, formula::environment()).has_value() && !shown.empty()
+                   && !written.formula.empty()
                ? 0
                : 1;
 }

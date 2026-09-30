@@ -2123,6 +2123,25 @@ template <Dialect D, typename Operand, Vocabulary V>
     return "(refused)";
 }
 
+/// A refused retry in arithmetic or a comparison (`detail::RefusedRetryValue`,
+/// `retry.hpp`) renders as a refused series does, as nothing a reader could
+/// take for a formula. A program holding one never compiles; this only keeps
+/// a `render` of it from adding a second, compiler-worded error.
+template <Dialect D, Dimension Dim, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedRetryValue<Dim> const&, V const&)
+{
+    return "(refused)";
+}
+
+/// A refused bound formula used as an operand (`detail::RefusedBoundValue`,
+/// `yields.hpp`) renders as a refused retry does; this only keeps a `render`
+/// of it from adding a second, compiler-worded error.
+template <Dialect D, Dimension Dim, Vocabulary V>
+[[nodiscard]] std::string render_node(detail::RefusedBoundValue<Dim> const&, V const&)
+{
+    return "(refused)";
+}
+
 namespace detail
 {
     /// Renders @p node through the `render_node` it has, and refuses a node of

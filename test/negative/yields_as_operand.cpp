@@ -6,10 +6,12 @@
 // REJECT: RequireResultDimension
 //
 // A formula bound to the water/cement ratio, used as an operand of another
-// formula and evaluated: refused once, in this library's words, and the
-// refused value asks nothing more. The formula it holds, .expression, is the
-// operand to use.
+// formula, then evaluated, rendered and documented: refused once, in this
+// library's words, and the refused value asks nothing more of any of the
+// three. The formula it holds, .expression, is the operand to use.
+#include <formula-cpp/document.hpp>
 #include <formula-cpp/formula.hpp>
+#include <formula-cpp/render.hpp>
 
 using WaterVolume = formula::Quantity<struct WaterVolumeTag, "V_w", "effective water content", formula::unit::Litre>;
 using CementVolume = formula::Quantity<struct CementVolumeTag, "V_c", "cement content", formula::unit::Litre>;
@@ -21,5 +23,10 @@ inline constexpr auto inputs =
 int main()
 {
     constexpr auto ratio = formula::yields<WaterCementRatio>(formula::var<WaterVolume> / formula::var<CementVolume>);
-    return formula::checked_evaluate<WaterVolume>(formula::var<WaterVolume> * ratio, inputs).has_value() ? 0 : 1;
+    constexpr auto misused = formula::var<WaterVolume> * ratio;
+    auto const shown = formula::render(misused);
+    auto const written = formula::document(misused);
+    return formula::checked_evaluate<WaterVolume>(misused, inputs).has_value() && !shown.empty() && !written.formula.empty()
+               ? 0
+               : 1;
 }

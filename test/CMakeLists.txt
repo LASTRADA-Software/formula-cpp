@@ -2640,7 +2640,7 @@ formula_add_negative_test(retry_as_variant
     "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
     REJECT "no matching" "RequireVariantsAgree" "RequireRoundingRuleMeasuresVariants")
 formula_add_negative_test(retry_in_arithmetic
-    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula"
+    "formula: a retry is evaluated at the top, by checked_evaluate_retry; it cannot stand in a formula" EXPECT_COUNT 1
     REJECT "no matching" "invalid operands" "no match for" "RequireResultDimension")
 formula_add_negative_test(retry_render_other_quantity
     "formula: previous_attempt and this_attempt name the retry's own result quantity; this one names another"
