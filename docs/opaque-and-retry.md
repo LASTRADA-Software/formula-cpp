@@ -224,7 +224,8 @@ numbers the caller has put in coherent units, but it returns bare numbers:
 nothing checks their dimensions, and nothing reaches the trace or the page.
 A fit over raw observations, [below](#a-line-through-observations), is
 evaluated in `double` too, untraced, and at a declared precision it answers
-where its exact route overflows.
+where its exact route overflows, within the kernel's width and beyond it
+`Overflow`.
 
 ### Rounded where it is used
 
@@ -333,8 +334,9 @@ rounded decimal instead, as long as the fit stays within the wide integers
 the kernel computes in (`detail/least_squares_kernel.hpp`; beyond them the
 answer is `Overflow` again, and the
 [numeric headroom](numeric-headroom.md#regression-over-observations-realistic-and-one-stress-control)
-page measures where). [Displaying numbers](display.md) explains values the
-exact layer cannot hold:
+page measures where). [Displaying numbers](display.md#values-the-exact-layer-cannot-hold)
+explains values the exact layer cannot hold. The example declares the slope
+this way:
 
 ```cpp
 constexpr auto observedSlope = formula::rounded_output<"slope", millimetrePerSecond, formula::DecimalPlaces { 4 },
@@ -454,11 +456,12 @@ The first three rows and the two nearly collinear ones are pinned by
 `test/multiple_least_squares_tests.cpp`; the last row by the refusals in
 `test/negative/`.
 
-**The tolerance, stated.** In `double` a design is taken for singular when a
+**The tolerance, stated.** In `double` a design of several regressors is taken
+for singular when a
 pivot of the centred normal equations is at or below 10⁻⁹ of its diagonal --
 when 1 - R² of a regressor on the ones before it is at or below 10⁻⁹. Rounded
-data cannot decide exact singularity, and a design near that line has few
-trustworthy digits either way. The exact routes decide it exactly. Fewer than
+data cannot decide exact singularity, and this route promises no digits.
+The exact routes decide it exactly. Fewer than
 K + 1 rows, a flat regressor and flat values are the fit's own `DomainError`;
 no regressor, more than eight, anything but raw observations, and a call
 without a citation are refused where they are written.

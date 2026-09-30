@@ -6,8 +6,9 @@
 // REJECT: constraints not satisfied
 // REJECT: MultipleLeastSquares<0>
 //
-// The last two are g++'s wording of the operation's own constraint on K, so
-// they can only fire on g++; cl words it differently.
+// The last two are how g++ 14 and clang++ 22 word the operation's own
+// constraint on K ("constraints not satisfied", "MultipleLeastSquares<0>");
+// cl words it differently, so on cl they cannot fire.
 // `regressors()` names none: refused once, and not also as too many regressors,
 // as operands that are not observations, or as a missing output.
 #include <formula-cpp/least_squares.hpp>

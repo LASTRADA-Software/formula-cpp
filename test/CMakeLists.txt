@@ -2273,8 +2273,9 @@ formula_add_negative_test(multiple_least_squares_series_of_values_quantity
 formula_add_negative_test(multiple_least_squares_series_values
     "formula: multiple_least_squares reads each regressor and the values as raw observations"
     REJECT "reads one quantity twice" "has no output of that name" "passes an input of another shape")
-# "constraints not satisfied" is g++'s wording of the operation's constraint on
-# K, so that REJECT can only fire on g++.
+# "constraints not satisfied" and "MultipleLeastSquares<0>" are how g++ 14 and
+# clang++ 22 word the operation's constraint on K; cl words it differently, so
+# on cl those two REJECTs cannot fire.
 formula_add_negative_test(multiple_least_squares_no_regressor
     "formula: multiple_least_squares needs at least one regressor"
     REJECT "fits at most 8" "reads each regressor" "has no output of that name" "constraints not satisfied"

@@ -29,8 +29,10 @@ their figures:
 - a **least-squares line** through readings at 3 decimal places, which
   overflows from 34 points, though not at every size above.
 
-A line through observations reported at declared decimals answers at every
-size measured below; its exact route stops sooner.
+A line through realistic observations reported at declared decimals answers
+at every size measured below; its exact route stops sooner, at 29 points on
+readings at 3 decimal places, where the curve fit's stops at 34. A different
+denominator on every point outgrows the rounded route too, from 62 points.
 
 The project's decision rule is: **any realistic case under 8 bits of headroom
 recommends wider intermediates**: 128-bit intermediate arithmetic, computing

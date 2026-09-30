@@ -528,8 +528,8 @@ int main()
                 exactFifty.has_value() ? "a line" : std::string { formula::describe(exactFifty.error()) }.c_str());
     auto const slopeOfFifty = formula::checked_evaluate<SlopeRate>(observedSlope, fifty);
     auto const startOfFifty = formula::checked_evaluate<StartLength>(
-        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 }, formula::RoundingMode::HalfEven>(
-            observedFit),
+        formula::rounded_output<"intercept", unit::Millimetre, formula::DecimalPlaces { 4 },
+                                formula::RoundingMode::HalfEven>(observedFit),
         fifty);
     auto const qualityOfFifty = formula::checked_evaluate<FitQuality>(
         formula::rounded_output<"r squared", unit::One, formula::DecimalPlaces { 6 }, formula::RoundingMode::Floor>(

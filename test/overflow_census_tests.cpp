@@ -522,7 +522,8 @@ inline constexpr formula::Unit millimetrePerSecond { .dimension = formula::dim::
 /// mod 997) / 10^4 s, y = 2410 + 3.17 k + ((3217 k mod 1009) - 504) / 10^4 mm.
 [[nodiscard]] FitPoint four_decimals_point(std::int64_t k)
 {
-    return { rat(10'000 * (k + 1) + (7919 * k) % 997, 10'000), rat(24'100'000 + 31'700 * k + (3217 * k) % 1009 - 504, 10'000) };
+    return { rat(10'000 * (k + 1) + (7919 * k) % 997, 10'000),
+             rat(24'100'000 + 31'700 * k + (3217 * k) % 1009 - 504, 10'000) };
 }
 
 /// Whether the line through the first @p count points of @p shape overflows
@@ -545,7 +546,11 @@ template <typename Y, formula::Unit SlopeUnit, typename Shape>
     constexpr auto fit = formula::linear_least_squares(formula::observations<FitTime, 128>,
                                                        formula::observations<Y, 128>,
                                                        { .reference = "Example Standard 12" });
-    auto const overflowed = [](auto const& evaluated) {
+    // A size answers or is Overflow: any other error would read as a size that
+    // did not overflow.
+    auto const overflowed = [count](auto const& evaluated) {
+        INFO("points " << count);
+        CHECK((evaluated.has_value() || evaluated.error() == formula::ArithmeticError::Overflow));
         return !evaluated.has_value() && evaluated.error() == formula::ArithmeticError::Overflow;
     };
     bool const exact = overflowed(formula::checked_evaluate_si<Rational>(formula::opaque_output<"slope">(fit), inputs));
@@ -610,7 +615,7 @@ struct FitWarmth: formula::Quantity<FitWarmth, "T_r", "temperature of a reading"
 /// `rounded_output` (coefficient 1 at 4 dp of N/s, R^2 floored at 6 dp).
 struct TwoRegressorRoutes
 {
-    /// The exact route's answer: the slope's, or the error.
+    /// The exact route's answer: coefficient 1's, or the error.
     std::optional<formula::ArithmeticError> exactError;
     /// The rounded route's: coefficient 1's, then R^2's.
     std::optional<formula::ArithmeticError> roundedError;
@@ -641,7 +646,8 @@ struct TwoRegressorRoutes
         return evaluated.error();
     };
     TwoRegressorRoutes routes;
-    routes.exactError = failure(formula::checked_evaluate_si<Rational>(formula::opaque_output<"coefficient 1">(fit), inputs));
+    routes.exactError =
+        failure(formula::checked_evaluate_si<Rational>(formula::opaque_output<"coefficient 1">(fit), inputs));
     routes.roundedError = failure(formula::checked_evaluate_si<Rational>(
         formula::rounded_output<"coefficient 1", newtonPerSecond, formula::DecimalPlaces { 4 },
                                 formula::RoundingMode::HalfEven>(fit),
