@@ -70,7 +70,7 @@ int main()
     // teaching material, and the check costs nothing to show.
     if (!result.has_value())
     {
-        std::println("evaluation failed");
+        std::println("{}: {}", formula::symbol_of<WaterCementRatio>(), result.error());
         return 1;
     }
     std::println("{} = {} ({})", formula::symbol_of<WaterCementRatio>(), *result, result->source());

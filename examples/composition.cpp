@@ -120,13 +120,13 @@ int main()
                                              formula::Measured<UnitPrice> { 250 });
 
     auto const outcome = formula::checked_evaluate(mixCost, inputs);
-    auto const cost = formula::number_of(outcome);
-    check("the composed formula evaluates", cost.has_value());
-    if (!cost)
+    if (!outcome)
     {
-        std::println("all checks passed: no");
+        std::println("the composed formula failed: {}", outcome.error());
         return 1;
     }
+    auto const cost = formula::number_of(outcome);
+    check("the composed formula evaluates", cost.has_value());
 
     // 250 EUR * (180 l / 300 l) = 250 * 3/5 = 150, with no rounding anywhere:
     // 3/5 is held as 3/5, not as 0.59999999999999998.
